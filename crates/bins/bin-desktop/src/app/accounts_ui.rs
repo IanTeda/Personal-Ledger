@@ -81,14 +81,7 @@ impl Shell {
     /// search cleared and the table back on its first row. The Accounts selection is untouched, so
     /// returning to Accounts finds the same row selected.
     pub(super) fn open_account_ledger(&mut self, id: u32, cx: &mut App) {
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_account(self.today, id)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
+        self.open_transactions_filtered(TransactionFilters::for_account(self.today, id), cx);
     }
 
     /// Selects the account with `id`, if it still exists.

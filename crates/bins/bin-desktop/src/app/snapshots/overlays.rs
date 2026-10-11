@@ -1,5 +1,5 @@
-//! What the integration tests read back of the Dashboard, the Toast layer and its history, and the
-//! Import step, kept apart from `shell.rs` so the snapshot shapes and their accessors sit together.
+//! What the integration tests read back of the Dashboard and the Toast layer and its history, kept
+//! apart from `shell.rs` so the snapshot shapes and their accessors sit together.
 
 use crate::app::Shell;
 use crate::bills;
@@ -25,27 +25,6 @@ pub struct ToastsSnapshot {
     pub history_open: bool,
     /// The Toasts Preference.
     pub on: bool,
-}
-
-/// One Import row: the raw statement text and its status.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportRowSnapshot {
-    pub raw: String,
-    /// `RuleMatch`, `NewPayee`, `Matched` or `NeedsReview`.
-    pub status: String,
-}
-
-/// The Import step's state.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportSnapshot {
-    pub rows: Vec<ImportRowSnapshot>,
-    pub selected: usize,
-    pub remember: bool,
-    /// `Payee` or `Category` while a row's select is open.
-    pub open_select: Option<String>,
-    pub can_continue: bool,
 }
 
 /// A Dashboard Needs Attention Bill row: its Plan and the `debug_selector` of its click target.
@@ -87,29 +66,6 @@ impl Shell {
             history_open: self.toast_history_open(),
             on: self.chrome.toasts.display().toasts_on,
         }
-    }
-
-    /// The Import step for a test; `None` while it is not showing.
-    #[doc(hidden)]
-    pub fn import_snapshot(&self, cx: &gpui::App) -> Option<ImportSnapshot> {
-        let state = self.import_state(cx)?;
-        Some(ImportSnapshot {
-            rows: state
-                .rows
-                .iter()
-                .map(|row| ImportRowSnapshot {
-                    raw: row.raw.clone(),
-                    status: format!("{:?}", row.status()),
-                })
-                .collect(),
-            selected: state.selected,
-            remember: state.remember,
-            open_select: state
-                .open_select
-                .as_ref()
-                .map(|(_, select, _)| format!("{select:?}")),
-            can_continue: state.can_continue(),
-        })
     }
 
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.

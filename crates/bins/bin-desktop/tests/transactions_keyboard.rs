@@ -1,5 +1,5 @@
 //! The Transactions page driven by keys alone: rows and selection, the search box, the filter
-//! popover and the not-yet-built row actions. Assertions read `TransactionsSnapshot`, `NavState`
+//! popover, the not-yet-built row actions, leaving the Import step and a Reveal from Bills. Assertions read `TransactionsSnapshot`, `NavState`
 //! and the status message back from `Shell`, never pixels.
 
 mod common;
@@ -291,4 +291,44 @@ fn escape_after_an_apply_keeps_the_applied_filter_and_reopening_shows_it(app: &m
         ui.transactions().chips[2].active,
         "the applied payee chip stays"
     );
+}
+
+#[gpui::test]
+fn leaving_transactions_abandons_the_import_step(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press(": i m p o r t enter");
+    assert!(ui.import().is_some());
+
+    ui.press("g w");
+    ui.press("g l");
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.import(), None);
+}
+
+#[gpui::test]
+fn the_filter_popover_takes_the_router_s_keys_while_it_is_open(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.press("f");
+
+    // `g` and `l` would be a jump in Normal mode; in the popover they are typed nowhere harmful.
+    ui.press("g w");
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert!(ui.transactions().filter_open);
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Filter);
+}
+
+#[gpui::test]
+fn a_bills_paid_row_reveal_clears_the_search(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.press("/ z z z enter");
+    assert_eq!(ui.transactions().search, "zzz");
+
+    ui.press("g w");
+    ui.click("bills-view-6");
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    let page = ui.transactions();
+    assert_eq!(page.search, "");
+    assert!(page.visible > 0, "the revealed Transaction is visible");
 }

@@ -11,7 +11,8 @@ use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::view::{institutions as institutions_view, units as units_view};
 
 use gpui::{
-    Context, ExternalPaths, KeyDownEvent, ScrollHandle, SharedString, Window, div, prelude::*, px,
+    Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 
 use lib_core::DateStyle;
@@ -31,7 +32,6 @@ use crate::{
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
     documents::{self},
-    import::{self},
     institutions::InstitutionRow,
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode, Noun},
@@ -44,7 +44,6 @@ use crate::{
     tags::{self},
     theme::colours::ColourChange,
     theme::{color, type_scale},
-    transactions::{self},
     units::{PriceSourceRow, UnitRow},
     view::format,
     view::{
@@ -54,9 +53,9 @@ use crate::{
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, import as import_view, payees as payees_view, placeholder,
+        help as help_view, payees as payees_view, placeholder,
         settings::{self as settings_view, SettingsBodyProps},
-        tags as tags_view, transactions as transactions_view,
+        tags as tags_view,
     },
 };
 
@@ -66,11 +65,7 @@ use crate::{
 type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::App)>;
 
 impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        // 6e shows only on Transactions: leaving the page (a jump, a rail click) abandons it.
-        if self.nav.noun() != Noun::Transactions && self.import_state(cx).is_some() {
-            self.edit_import(cx, |import| *import = None);
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let focus = self.nav.focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
@@ -740,42 +735,6 @@ impl Render for Shell {
                 .map(|figures| self.dashboard_budget_list(figures, cx))
                 .unwrap_or_default(),
         );
-        let import_categories = self.import_category_options(cx);
-        let import_page = self.import_state(cx).map(|state| {
-            let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: import_view::OnClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, handler);
-                });
-                on_click
-            };
-            let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: import_view::OnRowClick = Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |shell, cx| handler(shell, index, cx));
-                });
-                on_click
-            };
-            let on_select_click: import_view::OnSelectClick = {
-                let entity = entity.clone();
-                Rc::new(move |index, select, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_import_select_click(index, select, cx);
-                    });
-                })
-            };
-            import_view::ImportPageProps {
-                state,
-                payees: self.payees_list(cx),
-                categories: &import_categories,
-                on_row_click: indexed(Shell::handle_import_row_click),
-                on_select_click,
-                on_option_click: indexed(Shell::handle_import_option_click),
-                on_remember_click: entity_for(Shell::handle_import_remember_click),
-                on_back_click: entity_for(Shell::handle_import_back_click),
-                on_continue_click: entity_for(Shell::handle_import_continue_click),
-            }
-        });
         let on_settings_categories_row_click: categories_view::OnRowClick = {
             let entity = entity.clone();
             Rc::new(move |id, _window, cx| {
@@ -838,174 +797,10 @@ impl Render for Shell {
             })
         };
 
-        let on_transactions_row_click: transactions_view::OnRowClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_transactions_row_click(index, cx)
-                });
-            })
-        };
-        // Built only while the page is showing: formatting every visible row is a pass over the
-        // whole filtered set, which no other page needs.
-        let on_transactions_add_click: transactions_view::OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_transactions_add_click(cx));
-            })
-        };
-        let on_transactions_chip_click: transactions_view::OnChipClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_transactions_chip_click(field, cx)
-                });
-            })
-        };
-        let on_transactions_chip_clear: transactions_view::OnChipClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_transactions_chip_clear(field, cx)
-                });
-            })
-        };
-        let on_transactions_clear_all: transactions_view::OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_transactions_clear_all(cx));
-            })
-        };
-        let on_transactions_search_click: transactions_view::OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_transactions_search_click(cx));
-            })
-        };
-        let filter_popover = self
-            .transactions_state(cx)
-            .filter_form
-            .as_ref()
-            .map(|form| {
-                let entity_for = |shell_call: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                    let entity = entity.clone();
-                    Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
-                        entity.update(cx, shell_call);
-                    }) as Rc<dyn Fn(&mut Window, &mut gpui::App)>
-                };
-                let on_field_click: transactions_view::OnFieldClick = {
-                    let entity = entity.clone();
-                    Rc::new(move |field, _window, cx| {
-                        entity.update(cx, |shell, cx| shell.handle_filter_field_click(field, cx));
-                    })
-                };
-                let on_option_click: transactions_view::OnOptionClick = {
-                    let entity = entity.clone();
-                    Rc::new(move |field, index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.handle_filter_option_click(field, index, cx)
-                        });
-                    })
-                };
-                let on_status_click: transactions_view::OnStatusClick = {
-                    let entity = entity.clone();
-                    Rc::new(move |status, _window, cx| {
-                        entity.update(cx, |shell, cx| shell.handle_filter_status_click(status, cx));
-                    })
-                };
-                // Anchor just below the chip that opened it, left-aligned to it and kept inside the
-                // window; before any chip has been painted, a fixed spot.
-                let viewport = window.viewport_size();
-                let (left, top) = match self
-                    .transactions_state(cx)
-                    .chip_bounds
-                    .borrow()
-                    .get(&self.transactions_state(cx).filter_anchor)
-                    .copied()
-                {
-                    Some(bounds) => {
-                        let mut left = bounds.origin.x;
-                        let max_left = viewport.width - px(416.0);
-                        if left > max_left {
-                            left = max_left;
-                        }
-                        if left < px(8.0) {
-                            left = px(8.0);
-                        }
-                        (left, bounds.origin.y + bounds.size.height + px(6.0))
-                    }
-                    None => (px(300.0), px(200.0)),
-                };
-                let options = self.filter_form_options(cx);
-                transactions_view::render_popover(
-                    transactions_view::PopoverProps {
-                        form,
-                        options: &options,
-                        start_hint: form.start_hint(self.today, self.settings_date_style),
-                        end_hint: form.end_hint(self.today, self.settings_date_style),
-                        can_apply: form.is_valid(self.today, self.settings_date_style),
-                        left,
-                        top,
-                        on_field_click,
-                        on_option_click,
-                        on_status_click,
-                        on_reset: entity_for(Shell::handle_filter_reset),
-                        on_apply: entity_for(Shell::handle_filter_apply),
-                        on_cancel: entity_for(Shell::handle_filter_cancel),
-                    },
-                    cx,
-                )
-            });
-        let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
-            let ledger = self.transactions_ledger(cx);
-            let visible = transactions::query::query(
-                &ledger,
-                self.transactions(cx),
-                &self.transactions_state(cx).filters,
-                &self.transactions_state(cx).search,
-            );
-            let rows =
-                transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
-            let footer = transactions::chips::footer(
-                &visible,
-                &self.transactions_state(cx).filters,
-                &ledger,
-            );
-            let chips = transactions::chips::chips(
-                &self.transactions_state(cx).filters,
-                &ledger,
-                self.today,
-                self.settings_date_style,
-            );
-            transactions_view::TransactionsPageProps {
-                dimmed: self.transactions_state(cx).filter_form.is_some(),
-                header: transactions_view::HeaderProps {
-                    count_line: transactions::chips::count_line(self.transactions(cx)),
-                    chips,
-                    show_clear: !self.transactions_state(cx).filters.is_default(self.today),
-                    search: self.transactions_state(cx).search.clone(),
-                    searching: self.nav.mode() == InputMode::Search,
-                    on_add_click: on_transactions_add_click,
-                    on_chip_click: on_transactions_chip_click,
-                    on_chip_clear: on_transactions_chip_clear,
-                    on_clear_all: on_transactions_clear_all,
-                    on_search_click: on_transactions_search_click,
-                    chip_bounds: self.transactions_state(cx).chip_bounds.clone(),
-                },
-                selected: transactions::rows::clamp_selection(
-                    self.transactions_state(cx).selected,
-                    rows.len(),
-                ),
-                rows: Rc::new(rows),
-                row_height: px(format::row_height_px(self.settings_row_density)),
-                scroll: self.transactions_state(cx).scroll.clone(),
-                on_row_click: on_transactions_row_click,
-                footer,
-            }
-        });
         let documents_page =
             (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity, cx));
         let view_chrome = self.view_chrome(cx);
+        let active_view = self.active_view(cx);
 
         div()
             .size_full()
@@ -1041,15 +836,8 @@ impl Render for Shell {
                     .flex_col()
                     .opacity(content_opacity)
                     .child(
-                        TopBar::new(on_rail_toggle, view_chrome.title.clone()).context(
-                            if self.nav.noun() == Noun::Settings {
-                                Some(self.settings_view.read(cx).selected_section().label())
-                            } else {
-                                self.import_state(cx).map(|_| {
-                                    crate::msg::desktop_import_context(import::STATEMENT_FILE)
-                                })
-                            },
-                        ),
+                        TopBar::new(on_rail_toggle, view_chrome.title.clone())
+                            .context(active_view.context()),
                     )
                     .child(
                         div()
@@ -1105,8 +893,6 @@ impl Render for Shell {
                                         settings_payees: settings_payees_page,
                                         settings_documents: settings_documents_page,
                                         settings_inventory: settings_inventory_page,
-                                        import: import_page,
-                                        transactions: transactions_page,
                                         documents: documents_page,
                                     },
                                     SettingsPanelProps {
@@ -1164,7 +950,15 @@ impl Render for Shell {
                                     },
                                     cx,
                                 ),
-                                view => view_frame(view.element(), focus == FocusZone::View, cx),
+                                view => view_frame(
+                                    view.element(),
+                                    focus == FocusZone::View,
+                                    cx.listener(|shell, _: &MouseDownEvent, _window, cx| {
+                                        shell.nav.set_focus(FocusZone::View);
+                                        cx.notify();
+                                    }),
+                                    cx,
+                                ),
                             }),
                     ),
             )
@@ -1183,8 +977,9 @@ impl Render for Shell {
                 )
                 .page(view_chrome.status)
                 .mode_label(
-                    (self.import_state(cx).is_some() && self.nav.mode() == InputMode::Normal)
-                        .then(crate::msg::desktop_mode_import),
+                    active_view
+                        .mode_label()
+                        .filter(|_| self.nav.mode() == InputMode::Normal),
                 )
                 .on_hint(on_hint),
             )
@@ -1204,7 +999,6 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(filter_popover)
             .children((self.nav.mode() == InputMode::Help).then(|| {
                 let mut sheet = self.settings_cheat_sheet(cx);
                 sheet.extend(self.documents_cheat_sheet(cx));
@@ -1610,9 +1404,6 @@ struct PageProps<'a> {
     settings_documents: settings_view::documents::DocumentsPageProps<'a>,
     /// Settings' own Inventory page, mounted only while Settings shows it.
     settings_inventory: inventory_view::InventoryPageProps<'a>,
-    /// `Some` while 6e shows in place of the Transactions page.
-    import: Option<import_view::ImportPageProps<'a>>,
-    transactions: Option<transactions_view::TransactionsPageProps>,
     /// `Some` while Documents is the noun on show.
     documents: Option<documents_view::DocumentsPageProps>,
 }
@@ -1701,16 +1492,6 @@ fn render_view(
                 ),
             };
         }
-        ShellView::Import => {
-            if let Some(import) = pages.import {
-                return import_view::render(focused, scroll_handle, import, cx);
-            }
-        }
-        ShellView::Transactions => {
-            if let Some(transactions) = pages.transactions {
-                return transactions_view::render(focused, transactions, cx);
-            }
-        }
         ShellView::Settings(_) | ShellView::Dashboard | ShellView::Placeholder(_) => {}
     }
 
@@ -1789,7 +1570,6 @@ fn render_view(
         ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
         // Import and Transactions land here only without their props, which `Shell` never sends.
-        ShellView::Transactions | ShellView::Import => placeholder::render(Noun::Transactions, cx),
         ShellView::Documents | ShellView::Settings(_) => {
             unreachable!("handled above")
         }
@@ -1799,10 +1579,18 @@ fn render_view(
 }
 
 /// The focus-bordered frame a View that renders itself sits in (ADR-0037): the View draws its own
-/// scrolling page, and the border says whether the View zone has focus, which is `Shell`'s.
-fn view_frame(view: gpui::AnyElement, focused: bool, cx: &gpui::App) -> gpui::AnyElement {
+/// scrolling page, and the border says whether the View zone has focus, which is `Shell`'s. A
+/// click anywhere in the View gives the View zone focus (`on_click_focus`), so a View never sets
+/// `Shell`'s focus itself.
+fn view_frame(
+    view: gpui::AnyElement,
+    focused: bool,
+    on_click_focus: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
     div()
         .id("view-frame")
+        .on_mouse_down(gpui::MouseButton::Left, on_click_focus)
         .flex_1()
         .min_w(px(0.0))
         .h_full()

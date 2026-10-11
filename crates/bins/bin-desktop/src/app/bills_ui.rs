@@ -57,7 +57,8 @@ impl Shell {
         self.close_dialog();
         match outcome {
             BillOutcome::PlanSaved(id) => {
-                self.bills_view
+                self.views
+                    .bills
                     .update(cx, |view, cx| view.show_saved_plan(id, cx));
             }
             BillOutcome::Paid | BillOutcome::Skipped => {}

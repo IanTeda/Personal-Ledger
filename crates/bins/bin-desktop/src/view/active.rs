@@ -9,7 +9,10 @@
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
-use super::{bills::state::BillsView, budgets::state::BudgetsView, event::Reveal};
+use super::{
+    bills::state::BillsView, budgets::state::BudgetsView, event::Reveal,
+    transactions::state::TransactionsView,
+};
 use crate::{
     chrome::statusline::PageStatus,
     navigation::{active_view::ActiveView, key_router::Movement, nav::Noun},
@@ -21,6 +24,8 @@ use crate::{
 pub enum ActiveViewEntity {
     Bills(Entity<BillsView>),
     Budgets(Entity<BudgetsView>),
+    /// The Transactions page, and the Import step that takes it over while it is open.
+    Transactions(Entity<TransactionsView>),
     /// A View whose rendering and input are still `Shell`'s.
     Shell(ShellView),
 }
@@ -30,24 +35,29 @@ pub enum ActiveViewEntity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellView {
     Dashboard,
-    Transactions,
-    /// The CSV import step, which takes over the Transactions pane while it is open.
-    Import,
     Documents,
     Settings(SettingsSection),
     /// A Noun whose surface is a later map's work (#420).
     Placeholder(Noun),
 }
 
+/// The View Entities `Shell` owns, one per View that renders and handles its own input.
+pub struct ViewEntities {
+    pub bills: Entity<BillsView>,
+    pub budgets: Entity<BudgetsView>,
+    pub transactions: Entity<TransactionsView>,
+}
+
 impl ActiveViewEntity {
     /// The Entity behind `view`, from the View Entities `Shell` owns.
-    pub fn new(view: ActiveView, bills: &Entity<BillsView>, budgets: &Entity<BudgetsView>) -> Self {
+    pub fn new(view: ActiveView, views: &ViewEntities) -> Self {
         match view {
-            ActiveView::Bills => Self::Bills(bills.clone()),
-            ActiveView::Budgets => Self::Budgets(budgets.clone()),
+            ActiveView::Bills => Self::Bills(views.bills.clone()),
+            ActiveView::Budgets => Self::Budgets(views.budgets.clone()),
+            ActiveView::Transactions | ActiveView::Import => {
+                Self::Transactions(views.transactions.clone())
+            }
             ActiveView::Dashboard => Self::Shell(ShellView::Dashboard),
-            ActiveView::Transactions => Self::Shell(ShellView::Transactions),
-            ActiveView::Import => Self::Shell(ShellView::Import),
             ActiveView::Documents => Self::Shell(ShellView::Documents),
             ActiveView::Settings(section) => Self::Shell(ShellView::Settings(section)),
             ActiveView::Placeholder(noun) => Self::Shell(ShellView::Placeholder(noun)),
@@ -59,6 +69,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.clone().into_any_element(),
             Self::Budgets(view) => view.clone().into_any_element(),
+            Self::Transactions(view) => view.clone().into_any_element(),
             Self::Shell(_) => gpui::Empty.into_any_element(),
         }
     }
@@ -68,6 +79,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -77,6 +89,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -85,6 +98,9 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
+            Self::Transactions(view) => {
+                view.update(cx, |view, cx| view.apply_movement(movement, cx))
+            }
             Self::Shell(_) => {}
         }
     }
@@ -94,6 +110,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.escape(cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Shell(_) => false,
         }
     }
@@ -103,6 +120,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.start_search(cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Shell(_) => false,
         }
     }
@@ -112,6 +130,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -121,6 +140,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.on_enter(cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Shell(_) => {}
         }
     }
@@ -130,6 +150,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Shell(_) => {}
         }
     }
@@ -139,6 +160,7 @@ impl ActiveViewEntity {
         match self {
             Self::Bills(view) => view.read(cx).page_status(cx),
             Self::Budgets(view) => view.read(cx).page_status(cx),
+            Self::Transactions(view) => view.read(cx).page_status(cx),
             Self::Shell(_) => None,
         }
     }

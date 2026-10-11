@@ -1,7 +1,7 @@
 //! The stubbed **6e** Import "match payees" step (`docs/ux/desktop-mockups/20-payees/README.md`): the
 //! stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS /
 //! AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
-//! and **continue**. Shown in place of the Transactions page while `Shell` holds an
+//! and **continue**. Shown in place of the Transactions page while its Entity holds an
 //! [`ImportState`]; the pure rules live in `crate::import`.
 //!
 //! A row resolved by a rule shows its Payee and Category as text, as in the handoff; any other
@@ -57,12 +57,7 @@ pub fn payee_choices(payees: &[Payee], raw: &str) -> PayeeChoices {
     PayeeChoices::new(payees, raw, create_label)
 }
 
-pub fn render(
-    focused: bool,
-    scroll_handle: &ScrollHandle,
-    props: ImportPageProps<'_>,
-    cx: &App,
-) -> AnyElement {
+pub fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) -> AnyElement {
     div()
         .id("import")
         .flex_1()
@@ -70,9 +65,6 @@ pub fn render(
         .h_full()
         .flex()
         .flex_col()
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
         .child(heading(props.state.rows.len(), cx))
         .child(table_header(cx))
         .child(
@@ -358,6 +350,10 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
         .child(
             div()
                 .id(SharedString::from(id.clone()))
+                .debug_selector({
+                    let id = id.clone();
+                    move || id
+                })
                 .cursor_pointer()
                 .flex()
                 .items_center()
@@ -399,6 +395,10 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                     let on_option_click = on_option_click.clone();
                     div()
                         .id(SharedString::from(format!("{id}-option-{option}")))
+                        .debug_selector({
+                            let id = id.clone();
+                            move || format!("{id}-option-{option}")
+                        })
                         .cursor_pointer()
                         .py(px(4.0))
                         .px(px(6.0))

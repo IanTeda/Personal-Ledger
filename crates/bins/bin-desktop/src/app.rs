@@ -72,11 +72,11 @@ use crate::ledger_data::LedgerDataEvent;
 use crate::ledger_store::LedgerStore;
 use crate::units::UnitsStore;
 use crate::view::settings::state::SettingsView;
-use crate::view::transactions::state::{TransactionsState, TransactionsView};
+use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    ScrollHandle, Subscription, UniformListScrollHandle, point, px,
+    ScrollHandle, Subscription, point, px,
 };
 
 use lib_core::DateStyle;
@@ -85,13 +85,14 @@ use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
 use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
-use crate::view::active::ActiveViewEntity;
+use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
 };
+use crate::view::event::ViewMode;
 use crate::view::payees::state::PayeesView;
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
@@ -111,7 +112,7 @@ use crate::{
         display::{RowDensity, StatusGlyphs},
         tracing_log::TracingLevel,
     },
-    transactions::{TransactionsStore, chips::FilterField, query::TransactionFilters},
+    transactions::TransactionsStore,
     view::format,
     view::{
         budgets::{self as budgets_view},
@@ -143,10 +144,10 @@ pub struct Shell {
     /// [`PENDING_G_TIMEOUT`](key_dispatch::PENDING_G_TIMEOUT) rather than driven by a timer: nothing needs to happen on its
     /// own with no further keypress, so a lazily-checked timestamp is enough.
     pending_g: Option<Instant>,
-    /// Whether the active View entered the current `Insert` mode itself
-    /// (`ViewEvent::EnterInsert`), so `Insert` keys are its to read. The router's own `a` enters
-    /// an `Insert` no View asked for, which swallows every key as before.
-    view_insert: bool,
+    /// The mode the active View entered itself (`ViewEvent::EnterMode`), so that mode's keys are
+    /// its to read. The router's own `a` enters an `Insert` no View asked for, which swallows every
+    /// key as before.
+    view_mode: Option<ViewMode>,
     /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
     /// [`ChromeState`] and ADR-0032.
     chrome: ChromeState,
@@ -204,9 +205,6 @@ pub struct Shell {
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
     budgets_store: Entity<BudgetsStore>,
-    /// The Budgets page: its state (Budget, tab, month, cursors), its rendering and its input,
-    /// owned by its Entity (ADR-0037). It reaches `Shell` only through `ViewEvent`.
-    budgets_view: Entity<BudgetsView>,
     /// The Payees rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
     payees_store: Entity<PayeesStore>,
@@ -223,13 +221,9 @@ pub struct Shell {
     transactions_store: Entity<TransactionsStore>,
     /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
     bills_store: Entity<BillsStore>,
-    /// The Bills page: its state (tab, selection, period, All, filters and filter focus), its
-    /// rendering and its input, owned by its Entity (ADR-0037). It reaches `Shell` only through
-    /// `ViewEvent`.
-    bills_view: Entity<BillsView>,
-    /// The Transactions page's state (selection, scroll, filters, search and the popover draft),
-    /// owned by its Entity (ADR-0032).
-    transactions_view: Entity<TransactionsView>,
+    /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets and
+    /// Transactions with its Import step. Each reaches `Shell` only through `ViewEvent`.
+    views: ViewEntities,
     /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
     documents_store: Entity<DocumentsStore>,
@@ -307,17 +301,21 @@ impl Shell {
             });
         let transactions_store = cx.new(|cx| TransactionsStore::new(ledger.clone(), cx));
         let transactions_view = cx.new(|_| {
-            TransactionsView::new(TransactionsState {
-                selected: 0,
-                scroll: UniformListScrollHandle::new(),
-                filters: TransactionFilters::defaults(today),
-                search: String::new(),
-                filter_form: None,
-                filter_anchor: FilterField::Account,
-                chip_bounds: Default::default(),
-                import: None,
-            })
+            TransactionsView::new(
+                TransactionsSources {
+                    ledger: ledger.clone(),
+                    transactions: transactions_store.clone(),
+                    accounts: accounts.clone(),
+                    categories: categories_store.clone(),
+                    payees: payees_store.clone(),
+                    tags: tags_store.clone(),
+                },
+                today,
+            )
         });
+        let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
         let budgets_current = ledger
             .read(cx)
             .ledger()
@@ -372,7 +370,7 @@ impl Shell {
             focus_handle,
             view_scroll_handle: ScrollHandle::new(),
             pending_g: None,
-            view_insert: false,
+            view_mode: None,
             chrome: ChromeState {
                 status_message: None,
                 toasts: Toasts::default(),
@@ -404,15 +402,17 @@ impl Shell {
             categories_view,
             settings_view,
             budgets_store,
-            budgets_view,
             payees_store,
             payees_view,
             tags_store,
             tags_view,
             transactions_store,
-            transactions_view,
             bills_store,
-            bills_view,
+            views: ViewEntities {
+                bills: bills_view,
+                budgets: budgets_view,
+                transactions: transactions_view,
+            },
             documents_store,
             documents_view,
             inventory,
@@ -422,6 +422,8 @@ impl Shell {
                 budgets_view_observer,
                 bills_subscription,
                 bills_view_observer,
+                transactions_subscription,
+                transactions_view_observer,
                 documents_subscription,
                 tags_subscription,
                 payees_subscription,
@@ -540,20 +542,28 @@ impl Shell {
         ActiveView::derive(
             self.nav.noun(),
             self.settings_view.read(cx).selected_section(),
-            self.import_state(cx).is_some(),
+            self.views.transactions.read(cx).import_open(),
         )
     }
 
     /// The active View as `Shell` forwards to it (ADR-0037).
     fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        ActiveViewEntity::new(self.active_view(cx), &self.bills_view, &self.budgets_view)
+        ActiveViewEntity::new(self.active_view(cx), &self.views)
     }
 
     /// Hands the Display Preferences to the Views that read them, after a Settings change.
     fn push_display_preferences(&self, cx: &mut App) {
-        let (date_style, glyphs) = (self.settings_date_style, self.settings_status_glyphs);
-        self.bills_view
+        let (date_style, glyphs, density) = (
+            self.settings_date_style,
+            self.settings_status_glyphs,
+            self.settings_row_density,
+        );
+        self.views
+            .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
+        self.views.transactions.update(cx, |view, cx| {
+            view.set_display(date_style, glyphs, density, cx)
+        });
     }
 
     fn scroll_view(&mut self, movement: Movement) {

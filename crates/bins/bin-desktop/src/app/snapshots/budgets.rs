@@ -10,7 +10,7 @@ impl Shell {
     /// The Budgets page for a test, as its Entity builds it, plus the open Budgets dialog.
     #[doc(hidden)]
     pub fn budgets_snapshot(&self, cx: &gpui::App) -> BudgetsSnapshot {
-        let mut snapshot = self.budgets_view.read(cx).snapshot(cx);
+        let mut snapshot = self.views.budgets.read(cx).snapshot(cx);
         let dialog = self.dialog::<BudgetsDialog>();
         snapshot.dialog = dialog.map(|dialog| {
             match dialog {

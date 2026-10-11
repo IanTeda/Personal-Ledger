@@ -1,10 +1,16 @@
 //! The Transactions page driven by clicks: rows, chips and their clear buttons, the search box,
-//! the add button and the filter popover's fields, options, status control and buttons. Only
-//! elements tagged with `debug_selector` are clicked; state is read back from `Shell`.
+//! the add button, the filter popover's fields, options, status control and buttons, and the
+//! Import step's selects and focus. Only elements tagged with `debug_selector` are clicked; state
+//! is read back from `Shell`.
+
+#![expect(
+    clippy::expect_used,
+    reason = "test support: an Import step that doesn't open, or has nothing to review, should fail the test loudly"
+)]
 
 mod common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::navigation::nav::{FocusZone, InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -163,4 +169,63 @@ fn clear_filters_resets_every_filter_but_keeps_the_search(app: &mut TestAppConte
     assert!(!page.filters_changed);
     assert!(page.chips.iter().all(|chip| !chip.active));
     assert_eq!(page.search, "k", "clear filters leaves the search alone");
+}
+
+/// The `:import` step, with the first row whose Payee and Category selects are drawn.
+fn on_import(app: &mut TestAppContext) -> (Harness<'_>, usize) {
+    let mut ui = Harness::new(app);
+    ui.press(": i m p o r t enter");
+    let import = ui.import().expect("`:import` opens the step");
+    let row = import
+        .rows
+        .iter()
+        .position(|row| row.status == "NeedsReview")
+        .expect("the seeded statement has a row to review");
+    (ui, row)
+}
+
+#[gpui::test]
+fn clicking_an_import_select_opens_it_and_an_option_closes_it(app: &mut TestAppContext) {
+    let (mut ui, row) = on_import(app);
+
+    ui.click(&format!("import-payee-{row}"));
+    assert_eq!(
+        ui.import().expect("import is open").open_select.as_deref(),
+        Some("Payee")
+    );
+    ui.click(&format!("import-payee-{row}-option-0"));
+    assert_eq!(ui.import().expect("import is open").open_select, None);
+}
+
+#[gpui::test]
+fn clicking_an_open_import_select_again_closes_it(app: &mut TestAppContext) {
+    let (mut ui, row) = on_import(app);
+
+    ui.click(&format!("import-category-{row}"));
+    assert_eq!(
+        ui.import().expect("import is open").open_select.as_deref(),
+        Some("Category")
+    );
+    ui.click(&format!("import-category-{row}"));
+    assert_eq!(ui.import().expect("import is open").open_select, None);
+}
+
+#[gpui::test]
+fn continue_does_nothing_while_a_row_needs_review(app: &mut TestAppContext) {
+    let (mut ui, _) = on_import(app);
+
+    ui.click("import-continue");
+    assert!(ui.import().is_some());
+    assert!(ui.toasts().history.is_empty());
+}
+
+#[gpui::test]
+fn clicking_in_the_page_gives_the_view_focus(app: &mut TestAppContext) {
+    let (mut ui, _) = on_import(app);
+    ui.press("shift-tab");
+    assert_ne!(ui.read(|s| s.nav().focus()), FocusZone::View);
+
+    ui.click("import-row-3");
+    assert_eq!(ui.read(|s| s.nav().focus()), FocusZone::View);
+    assert_eq!(ui.import().expect("import is open").selected, 3);
 }

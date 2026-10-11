@@ -31,7 +31,7 @@ use crate::view::settings::hints::{
     settings_tags_hints, settings_tracing_hints,
 };
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
-use gpui::{App, Context, Keystroke, ScrollStrategy};
+use gpui::{App, Context, Keystroke};
 use lib_core::DateStyle;
 use lib_toast::ToastKind;
 
@@ -1108,11 +1108,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.settings_row_density = density;
-        // The Transactions table's scroll offset is in pixels, so a new row height would leave it
-        // pointing at a different row: re-anchor on the selected one for its next paint.
-        self.transactions_state(cx)
-            .scroll
-            .scroll_to_item_strict(self.transactions_state(cx).selected, ScrollStrategy::Center);
+        self.push_display_preferences(cx);
         cx.notify();
     }
 

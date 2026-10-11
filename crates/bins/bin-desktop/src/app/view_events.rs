@@ -5,13 +5,7 @@
 use gpui::{Context, Entity, EventEmitter, Subscription};
 
 use super::Shell;
-use crate::{
-    navigation::nav::InputMode,
-    view::{
-        active::ActiveViewEntity,
-        event::{Reveal, ViewEvent},
-    },
-};
+use crate::view::event::{Reveal, ViewEvent};
 
 impl Shell {
     /// Subscribes `Shell` to a View Entity's events. The subscription is kept on `Shell`, since
@@ -53,16 +47,16 @@ impl Shell {
             }
             ViewEvent::SetStatus(text) => self.chrome.status_message = text,
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
-            ViewEvent::EnterInsert => {
-                self.nav.enter_mode(InputMode::Insert);
-                self.view_insert = true;
+            ViewEvent::EnterMode(mode) => {
+                self.nav.enter_mode(mode.input_mode());
+                self.view_mode = Some(mode);
             }
-            // Only the View's own Insert: a mode entered since (a Dialog) is left alone.
-            ViewEvent::ExitInsert => {
-                if self.view_insert && self.nav.mode() == InputMode::Insert {
+            // Only the View's own mode: a mode entered since (a Dialog) is left alone.
+            ViewEvent::ExitMode => {
+                if self.view_owns_mode() {
                     self.nav.exit_mode();
                 }
-                self.view_insert = false;
+                self.view_mode = None;
             }
         }
     }
@@ -71,19 +65,13 @@ impl Shell {
     pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         self.nav.set_noun(reveal.noun());
         self.reset_view_scroll(cx);
-        match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(_) => self.reveal_in_shell(reveal, cx),
-            view => view.reveal(reveal, cx),
-        }
+        self.active_view_entity(cx).reveal(reveal, cx);
     }
 
-    /// A reveal whose destination is still drawn by `Shell`.
-    fn reveal_in_shell(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        match reveal {
-            Reveal::Transaction(id) => self.open_transaction_row(id, cx),
-            // Their View reveals them itself.
-            Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => {}
-        }
+    /// Whether the current mode is one the active View entered itself, so its keys are the View's.
+    pub(super) fn view_owns_mode(&self) -> bool {
+        self.view_mode
+            .is_some_and(|mode| mode.input_mode() == self.nav.mode())
     }
 }
 

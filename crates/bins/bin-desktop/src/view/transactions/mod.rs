@@ -4,45 +4,54 @@
 //!
 //! This module owns the page's frame: the `header` (title, count line, add button, chip row,
 //! search), the `table` (column header and virtualised rows) and the `footer`, stacked as a fixed
-//! header, a fixed column header, the one flexing list and a fixed footer. The filter popover is
-//! built over it by the next ticket.
+//! header, a fixed column header, the one flexing list and a fixed footer, with the filter popover
+//! drawn over the window while it is open. While the Import step is open it shows instead.
 //!
-//! Every row action is a callback into `Shell`, so keyboard and mouse reach the same handlers.
+//! [`state::TransactionsView`] renders the page itself (ADR-0037): every action is a call back into
+//! the Transactions Entity, so keyboard and mouse reach the same methods.
 
 mod filter_popover;
 mod footer;
 mod header;
 pub(crate) mod hints;
+mod import_step;
+pub mod snapshot;
 pub mod state;
 mod table;
 
-pub use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};
-pub use header::{HeaderProps, OnChipClick, OnPlainClick};
-pub use table::OnRowClick;
-
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Pixels, UniformListScrollHandle, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, Context, Pixels, UniformListScrollHandle, Window, div, point, prelude::*, px,
+};
 
-use crate::{theme::color, transactions::chips::Footer, transactions::rows::RowView};
+use crate::{
+    import::RowSelect,
+    transactions::{self, chips::FilterField, chips::Footer, rows::RowView},
+    view::{format, import as import_view},
+};
+use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};
+use header::{HeaderProps, OnChipClick, OnPlainClick};
+use state::TransactionsView;
+use table::OnRowClick;
 
-pub struct TransactionsPageProps {
+struct TransactionsPageProps {
     /// The filter popover is open: the page dims to 55% (no blur in gpui 0.2, so opacity only).
-    pub dimmed: bool,
-    pub header: HeaderProps,
+    dimmed: bool,
+    header: HeaderProps,
     /// Every visible row, formatted per the Display preferences.
-    pub rows: Rc<Vec<RowView>>,
+    rows: Rc<Vec<RowView>>,
     /// A position in `rows`, already clamped.
-    pub selected: usize,
+    selected: usize,
     /// The height of every row, from the Display density preference.
-    pub row_height: Pixels,
-    pub scroll: UniformListScrollHandle,
-    pub on_row_click: OnRowClick,
-    pub footer: Footer,
+    row_height: Pixels,
+    scroll: UniformListScrollHandle,
+    on_row_click: OnRowClick,
+    footer: Footer,
 }
 
 /// The page: the fixed header block, the fixed column header, the one flexing list, the fixed footer.
-pub fn render(focused: bool, props: TransactionsPageProps, cx: &App) -> AnyElement {
+fn render(props: TransactionsPageProps, cx: &App) -> AnyElement {
     div()
         .id("transactions")
         .flex_1()
@@ -51,9 +60,6 @@ pub fn render(focused: bool, props: TransactionsPageProps, cx: &App) -> AnyEleme
         .flex()
         .flex_col()
         .overflow_hidden()
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
         .when(props.dimmed, |this| this.opacity(0.55))
         .child(header::render(props.header, cx))
         .child(table::column_header(cx))
@@ -69,7 +75,187 @@ pub fn render(focused: bool, props: TransactionsPageProps, cx: &App) -> AnyEleme
         .into_any_element()
 }
 
-/// Draws the filter popover over the window: see [`filter_popover`].
-pub fn render_popover(props: PopoverProps<'_>, cx: &App) -> AnyElement {
-    filter_popover::render(props, cx)
+impl Render for TransactionsView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let plain = |handler: fn(&mut TransactionsView, &mut Context<'_, TransactionsView>)| {
+            let entity = entity.clone();
+            let on_click: OnPlainClick = Rc::new(move |_window, cx| entity.update(cx, handler));
+            on_click
+        };
+        let indexed =
+            |handler: fn(&mut TransactionsView, usize, &mut Context<'_, TransactionsView>)| {
+                let entity = entity.clone();
+                let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |view, cx| handler(view, index, cx));
+                });
+                on_click
+            };
+        let chip = |handler: fn(
+            &mut TransactionsView,
+            FilterField,
+            &mut Context<'_, TransactionsView>,
+        )| {
+            let entity = entity.clone();
+            let on_click: OnChipClick = Rc::new(move |field, _window, cx| {
+                entity.update(cx, |view, cx| handler(view, field, cx));
+            });
+            on_click
+        };
+
+        if let Some(import) = self.state.import.as_ref() {
+            let on_select_click: import_view::OnSelectClick = {
+                let entity = entity.clone();
+                Rc::new(move |index, select: RowSelect, _window, cx| {
+                    entity.update(cx, |view, cx| view.click_import_select(index, select, cx));
+                })
+            };
+            let categories = self.import_categories(cx);
+            return import_view::render(
+                &self.import_scroll,
+                import_view::ImportPageProps {
+                    state: import,
+                    payees: self.payees(cx),
+                    categories: &categories,
+                    on_row_click: indexed(TransactionsView::click_import_row),
+                    on_select_click,
+                    on_option_click: indexed(TransactionsView::click_import_option),
+                    on_remember_click: plain(TransactionsView::click_import_remember),
+                    on_back_click: plain(TransactionsView::click_import_back),
+                    on_continue_click: plain(TransactionsView::continue_import),
+                },
+                cx,
+            );
+        }
+
+        let popover = self
+            .state
+            .filter_form
+            .as_ref()
+            .map(|form| self.popover(form, window, &entity, cx));
+        let cx: &App = cx;
+        let state = &self.state;
+        let ledger = self.ledger(cx);
+        let visible = transactions::query::query(
+            &ledger,
+            self.transactions(cx),
+            &state.filters,
+            &state.search,
+        );
+        let rows = transactions::rows::build_rows(&visible, &ledger, &self.prefs());
+        let footer = transactions::chips::footer(&visible, &state.filters, &ledger);
+        let chips =
+            transactions::chips::chips(&state.filters, &ledger, self.today, self.date_style);
+        let page = render(
+            TransactionsPageProps {
+                dimmed: state.filter_form.is_some(),
+                header: HeaderProps {
+                    count_line: transactions::chips::count_line(self.transactions(cx)),
+                    chips,
+                    show_clear: !state.filters.is_default(self.today),
+                    search: state.search.clone(),
+                    searching: self.searching,
+                    on_add_click: plain(TransactionsView::click_add),
+                    on_chip_click: chip(TransactionsView::click_chip),
+                    on_chip_clear: chip(TransactionsView::clear_chip),
+                    on_clear_all: plain(TransactionsView::clear_all),
+                    on_search_click: plain(TransactionsView::click_search),
+                    chip_bounds: state.chip_bounds.clone(),
+                },
+                selected: transactions::rows::clamp_selection(state.selected, rows.len()),
+                rows: Rc::new(rows),
+                row_height: px(format::row_height_px(self.density)),
+                scroll: state.scroll.clone(),
+                on_row_click: indexed(TransactionsView::click_row),
+                footer,
+            },
+            cx,
+        );
+        div()
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .flex()
+            .child(page)
+            .children(popover)
+            .into_any_element()
+    }
+}
+
+impl TransactionsView {
+    /// The filter popover, drawn over the whole window (its cancelling layer covers the rails too)
+    /// and anchored just below the chip that opened it, left-aligned to it and kept inside the
+    /// window; before any chip has been painted, at a fixed spot.
+    fn popover(
+        &self,
+        form: &transactions::filter_form::FilterForm,
+        window: &Window,
+        entity: &gpui::Entity<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        let plain = |handler: fn(&mut TransactionsView, &mut Context<'_, TransactionsView>)| {
+            let entity = entity.clone();
+            Rc::new(move |_window: &mut Window, cx: &mut App| entity.update(cx, handler))
+                as crate::dialog::OnClick
+        };
+        let on_field_click: OnFieldClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |view, cx| view.click_filter_field(field, cx));
+            })
+        };
+        let on_option_click: OnOptionClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, index, _window, cx| {
+                entity.update(cx, |view, cx| view.click_filter_option(field, index, cx));
+            })
+        };
+        let on_status_click: OnStatusClick = {
+            let entity = entity.clone();
+            Rc::new(move |status, _window, cx| {
+                entity.update(cx, |view, cx| view.click_filter_status(status, cx));
+            })
+        };
+        let viewport = window.viewport_size();
+        let anchor = self
+            .state
+            .chip_bounds
+            .borrow()
+            .get(&self.state.filter_anchor)
+            .copied();
+        let (left, top) = match anchor {
+            Some(bounds) => {
+                let left = bounds.origin.x.min(viewport.width - px(416.0)).max(px(8.0));
+                (left, bounds.origin.y + bounds.size.height + px(6.0))
+            }
+            None => (px(300.0), px(200.0)),
+        };
+        let options = self.filter_options(cx);
+        let card = filter_popover::render(
+            PopoverProps {
+                form,
+                options: &options,
+                start_hint: form.start_hint(self.today, self.date_style),
+                end_hint: form.end_hint(self.today, self.date_style),
+                can_apply: form.is_valid(self.today, self.date_style),
+                left,
+                top,
+                on_field_click,
+                on_option_click,
+                on_status_click,
+                on_reset: plain(TransactionsView::reset_filter_form),
+                on_apply: plain(TransactionsView::apply_filter_form),
+                on_cancel: plain(TransactionsView::close_filter_popover),
+            },
+            cx,
+        );
+        // A window-sized layer at the window's origin, painted after everything else, so the card's
+        // window coordinates hold wherever the page itself sits.
+        gpui::deferred(
+            gpui::anchored()
+                .position(point(px(0.0), px(0.0)))
+                .child(div().w(viewport.width).h(viewport.height).child(card)),
+        )
+        .into_any_element()
+    }
 }

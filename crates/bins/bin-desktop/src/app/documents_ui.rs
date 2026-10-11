@@ -943,7 +943,9 @@ impl Shell {
     /// returns to Documents.
     pub(super) fn documents_goto_link(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
         match link {
-            DocumentLink::Transaction(id) => self.open_transaction_row(id, cx),
+            DocumentLink::Transaction(id) => {
+                self.reveal(crate::view::event::Reveal::Transaction(id), cx)
+            }
             DocumentLink::Account(id) => {
                 self.open_settings_page(SettingsSection::Accounts, cx);
                 self.select_account(id, cx);

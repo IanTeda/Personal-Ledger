@@ -11,22 +11,18 @@ use super::{Shell, document_types_ui, inventory_ui};
 use crate::view::{
     accounts::hints::accounts_hints,
     active::{ActiveViewEntity, ShellView},
-    import::import_hints,
     settings::hints::{
         confirm_dialog_hints, merge_tags_dialog_hints, payee_dialog_hints,
         settings_categories_hints, settings_documents_hints, settings_inventory_hints,
         settings_payees_hints, settings_tags_hints, tag_dialog_hints,
     },
-    transactions::hints::{filter_hints, transactions_hints},
 };
 use crate::{
     chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
-    import,
     navigation::nav::{FocusZone, InputMode},
     tags,
-    view::format,
     view::settings::{self as settings_view, inventory as inventory_view},
 };
 
@@ -50,7 +46,7 @@ impl Shell {
         self.pending_g = None;
         match action {
             HintAction::Command => self.open_palette(),
-            HintAction::Search => self.nav.enter_mode(InputMode::Search),
+            HintAction::Search => self.start_search(cx),
             HintAction::Help => self.nav.enter_mode(InputMode::Help),
             HintAction::ToggleRail => {
                 self.nav.toggle_primary_rail();
@@ -134,29 +130,6 @@ impl Shell {
             ShellView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
                 hints: self.settings_hints(cx),
                 right: self.settings_view.read(cx).selected_section().scope_note(),
-            }),
-            ShellView::Import => {
-                let pending = self
-                    .import_state(cx)
-                    .map_or(0, |state| import::summary(&state.rows).needs_review);
-                Some(PageStatus {
-                    hints: import_hints(),
-                    right: if pending == 0 {
-                        crate::msg::desktop_import_status_ready()
-                    } else {
-                        crate::msg::desktop_import_status_pending(
-                            i64::try_from(pending).unwrap_or(i64::MAX),
-                        )
-                    },
-                })
-            }
-            ShellView::Transactions => Some(PageStatus {
-                hints: if self.nav.mode() == InputMode::Filter {
-                    filter_hints()
-                } else {
-                    transactions_hints()
-                },
-                right: format::status_legend(self.settings_status_glyphs),
             }),
             ShellView::Settings(_) | ShellView::Dashboard | ShellView::Placeholder(_) => None,
         }

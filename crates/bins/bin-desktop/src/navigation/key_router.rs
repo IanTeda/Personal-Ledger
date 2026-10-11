@@ -76,7 +76,8 @@ pub enum KeyOutcome {
     Swallowed,
     /// `InputMode::Dialog` owns every keystroke -- hand off to `Shell::handle_dialog_key`.
     DelegateToDialog,
-    /// `InputMode::Filter` owns every keystroke -- hand off to `Shell::handle_filter_key`.
+    /// `InputMode::Filter` owns every keystroke. The View that opened its filter popover reads
+    /// them ahead of the router, so `Shell` swallows whatever reaches here.
     DelegateToFilter,
     /// `InputMode::Help` owns every keystroke: `?` closes the overlay again (`Esc` is handled
     /// before this, as for every mode), anything else is swallowed.

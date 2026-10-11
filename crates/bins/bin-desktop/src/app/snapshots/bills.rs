@@ -10,7 +10,7 @@ impl Shell {
     /// The Bills page for a test, as its Entity builds it, plus the open Bills dialog.
     #[doc(hidden)]
     pub fn bills_snapshot(&self, cx: &gpui::App) -> BillsSnapshot {
-        let mut snapshot = self.bills_view.read(cx).snapshot(cx);
+        let mut snapshot = self.views.bills.read(cx).snapshot(cx);
         let dialog = self.dialog::<BillsDialog>();
         snapshot.dialog = dialog.map(|dialog| {
             match dialog {

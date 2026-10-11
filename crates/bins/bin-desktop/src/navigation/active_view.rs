@@ -41,6 +41,38 @@ impl ActiveView {
         self.noun().label()
     }
 
+    /// The top bar's context beside the title: the Settings page on show, or the statement the
+    /// Import step is matching.
+    pub fn context(self) -> Option<String> {
+        match self {
+            Self::Settings(section) => Some(section.label()),
+            Self::Import => Some(crate::msg::desktop_import_context(
+                crate::import::STATEMENT_FILE,
+            )),
+            Self::Dashboard
+            | Self::Transactions
+            | Self::Documents
+            | Self::Bills
+            | Self::Budgets
+            | Self::Placeholder(_) => None,
+        }
+    }
+
+    /// The status line's mode label in `Normal` mode, where the View on show names its own: the
+    /// Import step's `IMPORT`.
+    pub fn mode_label(self) -> Option<String> {
+        match self {
+            Self::Import => Some(crate::msg::desktop_mode_import()),
+            Self::Dashboard
+            | Self::Transactions
+            | Self::Documents
+            | Self::Bills
+            | Self::Budgets
+            | Self::Settings(_)
+            | Self::Placeholder(_) => None,
+        }
+    }
+
     pub fn derive(noun: Noun, settings_section: SettingsSection, import_open: bool) -> Self {
         match noun {
             Noun::Dashboard => Self::Dashboard,

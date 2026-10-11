@@ -124,10 +124,6 @@ impl Shell {
                     self.scroll_view(movement);
                 }
             }
-            // The import step keeps the Transactions movement, as it did before `ActiveView`.
-            ShellView::Transactions | ShellView::Import => {
-                self.apply_transactions_movement(movement, cx);
-            }
             ShellView::Documents => self.apply_documents_movement(movement, cx),
             ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }

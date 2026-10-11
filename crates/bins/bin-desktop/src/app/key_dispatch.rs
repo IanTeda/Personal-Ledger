@@ -15,7 +15,10 @@ use crate::{
         nav::{FocusZone, InputMode, Noun},
     },
     settings::SettingsSection,
-    view::active::{ActiveViewEntity, ShellView},
+    view::{
+        active::{ActiveViewEntity, ShellView},
+        event::ViewMode,
+    },
 };
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
@@ -110,8 +113,8 @@ impl Shell {
         }
 
         // Keys a View claims ahead of the router (Bills' and Budgets' `tab`, Budgets' Plan cell
-        // edit, the Import step, the Documents keys, `J`/`K` reorders); the router would otherwise
-        // read them as `tab`, `a` or `j`/`k`.
+        // edit, the Transactions filter popover and Import step, the Documents keys, `J`/`K`
+        // reorders); the router would otherwise read them as `tab`, `a` or `j`/`k`.
         if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke, cx) {
             self.chrome.status_message = None;
             return true;
@@ -135,7 +138,7 @@ impl Shell {
                 return true;
             }
             if self.chrome.dialog.is_none()
-                && self.view_takes_key_ahead(keystroke)
+                && (self.view_owns_mode() || self.view_takes_key(keystroke))
                 && self.active_view_entity(cx).escape(cx)
             {
                 return true;
@@ -152,20 +155,12 @@ impl Shell {
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
                 // saving" -- discards whatever was typed, same as Cancel.
-                // The filter popover's dropdowns work the same way: the first `Esc` closes an open
-                // list only, the next discards the draft and closes the popover.
-                if self.with_filter_form(cx, |form| form.close_open_select()) == Some(true) {
-                    return true;
-                }
-                self.edit_transactions_state(cx, |s| s.filter_form = None);
                 self.close_dialog();
-                if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
-                    self.cancel_transactions_search(cx);
-                }
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
                     self.documents_cancel_search(cx);
                 }
                 self.nav.exit_mode();
+                self.view_mode = None;
                 return true;
             }
             KeyOutcome::EscapeNoOp => return false,
@@ -186,9 +181,9 @@ impl Shell {
             KeyOutcome::DelegateToDialog => {
                 self.handle_dialog_key(keystroke, cx) || had_status_message
             }
-            KeyOutcome::DelegateToFilter => {
-                self.handle_filter_key(keystroke, cx) || had_status_message
-            }
+            // Only a View opens a filter popover, and it reads the popover's keys ahead of the
+            // router; what it leaves is swallowed.
+            KeyOutcome::DelegateToFilter => had_status_message,
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
@@ -204,19 +199,7 @@ impl Shell {
                 true
             }
             KeyOutcome::EnterSearch => {
-                let view = self.active_view_entity(cx);
-                if !matches!(view, ActiveViewEntity::Shell(_)) {
-                    if view.start_search(cx) {
-                        self.nav.enter_mode(InputMode::Search);
-                    }
-                    return true;
-                }
-                // Settings has no Search: `/` is inert there rather than opening a mode with no box.
-                if self.nav.noun() == Noun::Documents {
-                    self.documents_start_search(cx);
-                } else if self.nav.noun() != Noun::Settings {
-                    self.nav.enter_mode(InputMode::Search);
-                }
+                self.start_search(cx);
                 true
             }
             KeyOutcome::EnterHelp => {
@@ -229,7 +212,7 @@ impl Shell {
             }
             KeyOutcome::EnterInsert => {
                 self.nav.enter_mode(InputMode::Insert);
-                self.view_insert = false;
+                self.view_mode = None;
                 true
             }
             // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`) --
@@ -294,9 +277,6 @@ impl Shell {
                         | SettingsSection::Tracing
                         | SettingsSection::About,
                     ) => false,
-                    ShellView::Transactions | ShellView::Import => {
-                        self.handle_transactions_key(keystroke, cx)
-                    }
                     ShellView::Dashboard | ShellView::Documents | ShellView::Placeholder(_) => {
                         false
                     }
@@ -322,11 +302,31 @@ impl Shell {
     }
 
     /// Whether a key reaches the active View ahead of the router: as [`Self::view_takes_key`], and
-    /// every key in an `Insert` mode the View entered for an edit it opened in place
-    /// (`ViewEvent::EnterInsert`). The router swallows every `Insert` key, so only the View can
-    /// use one; `Esc` comes back to the View as `escape`.
+    /// every key in an `Insert` or `Filter` mode the View entered for something it opened itself
+    /// (`ViewEvent::EnterMode`). The router swallows every key in those modes, so only the View can
+    /// use one; `Esc` comes back to the View as `escape`. A Search the View entered reads its keys
+    /// through `search_key` instead.
     fn view_takes_key_ahead(&self, keystroke: &Keystroke) -> bool {
-        (self.view_insert && self.nav.mode() == InputMode::Insert) || self.view_takes_key(keystroke)
+        (self.view_owns_mode() && self.nav.mode() != InputMode::Search)
+            || self.view_takes_key(keystroke)
+    }
+
+    /// `/` (or the hint strip's `/ search`): the active View's Search, when it has one. Settings
+    /// has no Search: `/` is inert there rather than opening a mode with no box.
+    pub(super) fn start_search(&mut self, cx: &mut Context<'_, Self>) {
+        let view = self.active_view_entity(cx);
+        if !matches!(view, ActiveViewEntity::Shell(_)) {
+            if view.start_search(cx) {
+                self.nav.enter_mode(InputMode::Search);
+                self.view_mode = Some(ViewMode::Search);
+            }
+            return;
+        }
+        if self.nav.noun() == Noun::Documents {
+            self.documents_start_search(cx);
+        } else if self.nav.noun() != Noun::Settings {
+            self.nav.enter_mode(InputMode::Search);
+        }
     }
 
     /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
@@ -342,7 +342,6 @@ impl Shell {
             view => return self.view_takes_key_ahead(keystroke) && view.key_ahead(keystroke, cx),
         };
         match view {
-            ShellView::Import => self.handle_import_key(keystroke, cx),
             ShellView::Documents => self.handle_documents_key(keystroke, cx),
             ShellView::Settings(SettingsSection::Documents) => {
                 self.handle_settings_documents_reorder_key(keystroke, cx)
@@ -350,8 +349,7 @@ impl Shell {
             ShellView::Settings(SettingsSection::Inventory) => {
                 self.handle_settings_inventory_reorder_key(keystroke, cx)
             }
-            ShellView::Transactions
-            | ShellView::Dashboard
+            ShellView::Dashboard
             | ShellView::Placeholder(_)
             | ShellView::Settings(
                 SettingsSection::General
@@ -427,15 +425,12 @@ impl Shell {
     }
 
     /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
-    /// [`Self::handle_palette_key`]'s shape): only Transactions has a Search box today. A no-op
+    /// [`Self::handle_palette_key`]'s shape): to the active View's Search, or Documents'. A no-op
     /// everywhere else.
     fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
         let view = self.active_view_entity(cx);
         if !matches!(view, ActiveViewEntity::Shell(_)) {
             return view.search_key(keystroke, cx);
-        }
-        if self.nav.noun() == Noun::Transactions {
-            return self.handle_transactions_search_key(keystroke, cx);
         }
         if self.nav.noun() == Noun::Documents {
             return self.handle_documents_search_key(keystroke, cx);

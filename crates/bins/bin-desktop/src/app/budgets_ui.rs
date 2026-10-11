@@ -17,7 +17,6 @@ use crate::{
     categories::{self},
     chrome::rail::{self as chrome_rail},
     chrome::{dialog_apply, dialog_host::OpenDialog},
-    navigation::nav::Noun,
     payees::{self},
     period::Period,
     transactions::query::TransactionFilters,
@@ -54,12 +53,12 @@ impl Shell {
 
     /// The Budget the Budgets page shows.
     pub(super) fn budgets_current(&self, cx: &gpui::App) -> u32 {
-        self.budgets_view.read(cx).current()
+        self.views.budgets.read(cx).current()
     }
 
     /// Everything the Budgets figures are worked out from, as the Budgets page reads it.
     pub(super) fn budgets_ledger<'a>(&self, cx: &'a gpui::App) -> budgets::BudgetSources<'a> {
-        self.budgets_view.read(cx).budget_sources(cx)
+        self.views.budgets.read(cx).budget_sources(cx)
     }
 
     /// The open Category detail's figures, or `None` once its Budget or Category is gone.
@@ -67,19 +66,20 @@ impl Shell {
         let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
-        self.budgets_view
+        self.views
+            .budgets
             .read(cx)
             .category_detail(detail.category_id, detail.month, cx)
     }
 
     /// Whether 9d offers Edit budget on `category_id`.
     pub(super) fn budgets_detail_editable(&self, category_id: u32, cx: &gpui::App) -> bool {
-        self.budgets_view.read(cx).detail_editable(category_id, cx)
+        self.views.budgets.read(cx).detail_editable(category_id, cx)
     }
 
     /// The Budget on show when it takes edits: an archived one is read-only.
     pub(super) fn budgets_editable<'a>(&self, cx: &'a gpui::App) -> Option<&'a budgets::Budget> {
-        self.budgets_view.read(cx).editable(cx)
+        self.views.budgets.read(cx).editable(cx)
     }
 
     /// Opens a dialog the Budgets page built, when it built one.
@@ -92,7 +92,8 @@ impl Shell {
     /// 9e on a leaf Category, from 9d's **Edit budget**.
     pub(super) fn open_budgets_limit(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
         let dialog = self
-            .budgets_view
+            .views
+            .budgets
             .read(cx)
             .limit_dialog(category_id, month, cx);
         self.open_budgets_built(dialog);
@@ -101,7 +102,8 @@ impl Shell {
     /// 9g, from 9e's footer link.
     pub(super) fn open_budgets_stop(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
         let dialog = self
-            .budgets_view
+            .views
+            .budgets
             .read(cx)
             .stop_dialog(category_id, month, cx);
         self.open_budgets_built(dialog);
@@ -109,31 +111,32 @@ impl Shell {
 
     /// `budgets switch`: 11b with the Budget on show highlighted.
     pub(super) fn open_budgets_switcher(&mut self, cx: &gpui::App) {
-        let dialog = self.budgets_view.read(cx).switcher_dialog(cx);
+        let dialog = self.views.budgets.read(cx).switcher_dialog(cx);
         self.open_budgets_dialog(dialog);
     }
 
     /// `budgets new` and the Switcher's and Manage's `+ New budget`: 11c.
     pub(super) fn open_budgets_new(&mut self, cx: &gpui::App) {
-        let dialog = self.budgets_view.read(cx).new_budget_dialog(cx);
+        let dialog = self.views.budgets.read(cx).new_budget_dialog(cx);
         self.open_budgets_dialog(dialog);
     }
 
     /// 11c's edit mode on Budget `id`. An archived Budget is read-only, so it opens nothing.
     pub(super) fn open_budgets_edit(&mut self, id: u32, cx: &gpui::App) {
-        let dialog = self.budgets_view.read(cx).edit_budget_dialog(id, cx);
+        let dialog = self.views.budgets.read(cx).edit_budget_dialog(id, cx);
         self.open_budgets_built(dialog);
     }
 
     /// `budgets manage` and the Switcher's `Manage budgets…`: 11f.
     pub(super) fn open_budgets_manage(&mut self, cx: &gpui::App) {
-        let dialog = self.budgets_view.read(cx).manage_dialog(cx);
+        let dialog = self.views.budgets.read(cx).manage_dialog(cx);
         self.open_budgets_dialog(dialog);
     }
 
     /// Shows Budget `id` on the Budgets page.
     pub(super) fn switch_budget(&mut self, id: u32, cx: &mut gpui::App) {
-        self.budgets_view
+        self.views
+            .budgets
             .update(cx, |view, cx| view.switch_budget(id, cx));
     }
 
@@ -233,14 +236,10 @@ impl Shell {
             .get(self.budgets_current(cx))
             .map(|budget| budget.account_ids.clone())
             .unwrap_or_default();
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_budget_category(category_id, month, &account_ids)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
+        self.open_transactions_filtered(
+            TransactionFilters::for_budget_category(category_id, month, &account_ids),
+            cx,
+        );
     }
 
     /// 9e's footer link: swaps Edit budget for Stop budgeting on the same Category and month.

@@ -29,7 +29,7 @@ use crate::{
     view::{
         accounts::state::AccountsStore,
         categories::state::CategoriesStore,
-        event::{Reveal, ViewEvent},
+        event::{Reveal, ViewEvent, ViewMode},
     },
 };
 
@@ -563,7 +563,7 @@ impl BudgetsView {
         if self.state.plan_edit.take().is_none() {
             return false;
         }
-        cx.emit(ViewEvent::ExitInsert);
+        cx.emit(ViewEvent::ExitMode);
         true
     }
 
@@ -854,7 +854,7 @@ impl BudgetsView {
             cell.month,
             cell.amount.as_ref(),
         ));
-        cx.emit(ViewEvent::EnterInsert);
+        cx.emit(ViewEvent::EnterMode(ViewMode::Insert));
         cx.notify();
     }
 
@@ -880,7 +880,7 @@ impl BudgetsView {
             self.state.plan_edit = Some(edit);
             return;
         }
-        cx.emit(ViewEvent::ExitInsert);
+        cx.emit(ViewEvent::ExitMode);
         if step == 0 {
             return;
         }
@@ -1107,8 +1107,8 @@ mod tests {
                 ),
                 _ => Seen::Other,
             },
-            ViewEvent::EnterInsert => Seen::EnterInsert,
-            ViewEvent::ExitInsert => Seen::ExitInsert,
+            ViewEvent::EnterMode(ViewMode::Insert) => Seen::EnterInsert,
+            ViewEvent::ExitMode => Seen::ExitInsert,
             ViewEvent::Reveal(reveal) => Seen::Reveal(*reveal),
             _ => Seen::Other,
         }

@@ -5,7 +5,10 @@
 use lib_toast::ToastKind;
 
 use crate::{
-    bills::EntryId, chrome::dialog_host::OpenDialog, navigation::nav::Noun, period::Period,
+    bills::EntryId,
+    chrome::dialog_host::OpenDialog,
+    navigation::nav::{InputMode, Noun},
+    period::Period,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,11 +24,34 @@ pub enum ViewEvent {
     /// Jump to a record another View owns (ADR-0037): `Shell` makes its destination active, then
     /// asks that View to show it.
     Reveal(Reveal),
-    /// Enter Insert mode for an edit the View has opened in place (Budgets' Plan cell). While
-    /// it lasts, `Shell` hands the View every key ahead of the router.
-    EnterInsert,
-    /// Leave Insert mode, once the View's edit in place is saved or abandoned.
-    ExitInsert,
+    /// Enter a mode for something the View has opened itself: an edit in place (Budgets' Plan
+    /// cell), its Search box or its filter popover (Transactions). While it lasts, `Shell` hands
+    /// the View that mode's keys, and `Esc` comes back to the View as `escape`.
+    EnterMode(ViewMode),
+    /// Leave the mode the View entered, once what it opened is closed.
+    ExitMode,
+}
+
+/// A mode a View enters for something it has opened itself: the [`InputMode`]s `Shell` hands
+/// back to the View rather than reading itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    /// An edit in place. `Shell` hands the View every key ahead of the router.
+    Insert,
+    /// The View's Search box. `Shell` hands the View every key through `search_key`.
+    Search,
+    /// A filter popover. `Shell` hands the View every key ahead of the router.
+    Filter,
+}
+
+impl ViewMode {
+    pub fn input_mode(self) -> InputMode {
+        match self {
+            Self::Insert => InputMode::Insert,
+            Self::Search => InputMode::Search,
+            Self::Filter => InputMode::Filter,
+        }
+    }
 }
 
 /// A record one View hands off to the View that owns it.
