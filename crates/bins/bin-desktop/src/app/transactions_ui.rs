@@ -20,7 +20,7 @@ use crate::{
 
 use gpui::{App, Context, Keystroke, ScrollStrategy};
 use lib_core::DateStyle;
-use lib_ledger::ImportPayees;
+use lib_ledger::{CountImportedTransactions, ImportPayees};
 use lib_list_cursor::Step;
 use lib_toast::ToastKind;
 
@@ -593,16 +593,15 @@ impl Shell {
         match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
-                self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |accounts| {
-                        if let Some(account) = accounts
-                            .iter_mut()
-                            .find(|account| account.id == import::EVERYDAY_ACCOUNT_ID)
-                        {
-                            account.transaction_count =
-                                account.transaction_count.saturating_add(imported);
-                        }
-                    })
+                // A missing Everyday account has no count to bump, as before.
+                let _ = self.ledger.update(cx, |store, cx| {
+                    store.apply(
+                        cx,
+                        CountImportedTransactions {
+                            id: import::EVERYDAY_ACCOUNT_ID,
+                            imported,
+                        },
+                    )
                 });
                 self.edit_import(cx, |import| *import = None);
                 self.reset_transactions_selection(cx);

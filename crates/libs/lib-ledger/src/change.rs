@@ -8,6 +8,7 @@
 
 use std::collections::BTreeSet;
 
+use lib_accounts::Account;
 use lib_bills::BillPlan;
 use lib_budgets::Budget;
 use lib_categories::Category;
@@ -39,6 +40,8 @@ pub enum Domain {
 /// prototype's commands write so far; each domain adds its own as its writes move onto commands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
+    UpsertAccount(Account),
+    DeleteAccount(u32),
     UpsertPayee(Payee),
     DeletePayee(u32),
     UpsertCategory(Category),
@@ -46,6 +49,7 @@ pub enum LedgerChange {
     UpsertTag(Tag),
     DeleteTag(u32),
     UpsertTransaction(Transaction),
+    DeleteTransaction(u32),
     UpsertBillPlan(BillPlan),
     UpsertBudget(Budget),
 }
@@ -54,9 +58,10 @@ impl LedgerChange {
     pub fn domain(&self) -> Domain {
         match self {
             Self::UpsertPayee(_) | Self::DeletePayee(_) => Domain::Payees,
+            Self::UpsertAccount(_) | Self::DeleteAccount(_) => Domain::Accounts,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
             Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
-            Self::UpsertTransaction(_) => Domain::Transactions,
+            Self::UpsertTransaction(_) | Self::DeleteTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
         }

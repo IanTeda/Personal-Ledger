@@ -4667,6 +4667,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_core",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

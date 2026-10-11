@@ -403,7 +403,7 @@ pub fn duplicate_of(groups: &[DuplicateGroup], id: u32) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use lib_accounts::AccountService;
+    use lib_accounts::default_accounts;
     use lib_core::{Money, Total, TransactionStatus};
     use lib_transactions::Split;
 
@@ -521,8 +521,8 @@ mod tests {
 
     #[test]
     fn an_unused_tag_has_no_total_and_no_last_used_date() {
-        let accounts = AccountService::seeded();
-        let usage = usage(&[], accounts.accounts(), 1);
+        let accounts = default_accounts();
+        let usage = usage(&[], &accounts, 1);
 
         assert_eq!(usage.transactions, 0);
         assert_eq!(usage.total, Total::Empty);

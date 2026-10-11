@@ -34,18 +34,6 @@ impl AccountsStore {
     pub fn accounts<'a>(&self, cx: &'a App) -> &'a [Account] {
         self.ledger.read(cx).ledger().accounts()
     }
-
-    /// Applies `change` to the rows, then tells every subscriber they changed. Mutations go
-    /// through here so no write can skip the notification.
-    #[expect(
-        deprecated,
-        reason = "Accounts writes move onto Ledger commands in #641"
-    )]
-    pub fn mutate<R>(&mut self, cx: &mut App, change: impl FnOnce(&mut Vec<Account>) -> R) -> R {
-        self.ledger.update(cx, |ledger, cx| {
-            ledger.write(cx, &[Domain::Accounts], |ledger| change(ledger.accounts))
-        })
-    }
 }
 
 /// What the Accounts page asks `Shell` to do. The page never opens a dialog itself.

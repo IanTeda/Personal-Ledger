@@ -52,61 +52,96 @@ pub struct Account {
     pub budget_count: u32,
 }
 
-/// The seam the Desktop's Accounts View reads and writes through, and the one the TUI can share
-/// (ADR-0032). It owns the rows and no UI state: callers hold it inside whatever owns the data
-/// and decide when to notify their readers. Backed by the in-memory seed for now.
+/// What the Edit dialog's Save writes onto an Account: the fields the form can change. Unit,
+/// opening balance and opened date are fixed at creation, so they are not here.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AccountService {
-    accounts: Vec<Account>,
+pub struct AccountDraft {
+    pub name: String,
+    pub institution: String,
+    pub account_type: AccountType,
+    pub account_number: Option<String>,
 }
 
-impl AccountService {
-    /// A service seeded with [`default_accounts`].
-    pub fn seeded() -> Self {
-        Self {
-            accounts: default_accounts(),
-        }
-    }
+/// What the Add dialog's Save creates: the editable fields plus those fixed at creation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewAccount {
+    pub draft: AccountDraft,
+    pub unit: String,
+    pub balance: Money,
+    pub opened_at: NaiveDate,
+}
 
-    /// A service over `accounts`, in the order given.
-    pub fn from_rows(accounts: Vec<Account>) -> Self {
-        Self { accounts }
-    }
+/// Why an Account write was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum AccountError {
+    #[error("account not found")]
+    NotFound,
+    /// A form was confirmed without everything an Account needs.
+    #[error("the account details are incomplete")]
+    Incomplete,
+}
 
-    /// The rows in insertion order, the order [`display_order`] groups from.
-    pub fn accounts(&self) -> &[Account] {
-        &self.accounts
-    }
+/// Adds the Account `new` describes, with no Transactions or Budgets yet, and returns its id.
+pub fn insert_account(accounts: &mut Vec<Account>, new: NewAccount) -> u32 {
+    let id = next_account_id(accounts);
+    accounts.push(Account {
+        id,
+        name: new.draft.name,
+        institution: new.draft.institution,
+        account_type: new.draft.account_type,
+        unit: new.unit,
+        balance: new.balance,
+        account_number: new.draft.account_number,
+        opened_at: new.opened_at,
+        transaction_count: 0,
+        budget_count: 0,
+    });
+    id
+}
 
-    pub fn get(&self, id: u32) -> Option<&Account> {
-        self.accounts.iter().find(|account| account.id == id)
-    }
+/// Writes `draft` onto Account `id`, leaving Unit, balance, opened date and the stub counts alone.
+pub fn edit_account(
+    accounts: &mut [Account],
+    id: u32,
+    draft: &AccountDraft,
+) -> Result<(), AccountError> {
+    let account = accounts
+        .iter_mut()
+        .find(|account| account.id == id)
+        .ok_or(AccountError::NotFound)?;
+    account.name.clone_from(&draft.name);
+    account.institution.clone_from(&draft.institution);
+    account.account_type = draft.account_type.clone();
+    account.account_number.clone_from(&draft.account_number);
+    Ok(())
+}
 
-    pub fn get_mut(&mut self, id: u32) -> Option<&mut Account> {
-        self.accounts.iter_mut().find(|account| account.id == id)
-    }
+/// Removes every row with Account `id`, so a deleted id can never leave the list orphaned, and
+/// returns the first one removed. The Transactions booked to it are the Ledger's to delete.
+pub fn remove_account(accounts: &mut Vec<Account>, id: u32) -> Result<Account, AccountError> {
+    let first = get(accounts, id).ok_or(AccountError::NotFound)?.clone();
+    accounts.retain(|account| account.id != id);
+    Ok(first)
+}
 
-    /// The position of account `id` in [`Self::accounts`].
-    pub fn index_of(&self, id: u32) -> Option<usize> {
-        self.accounts.iter().position(|account| account.id == id)
-    }
+/// Adds `imported` to Account `id`'s stub Transaction count, after an Import books that many
+/// Transactions to it.
+pub fn count_imported(
+    accounts: &mut [Account],
+    id: u32,
+    imported: u32,
+) -> Result<(), AccountError> {
+    let account = accounts
+        .iter_mut()
+        .find(|account| account.id == id)
+        .ok_or(AccountError::NotFound)?;
+    account.transaction_count = account.transaction_count.saturating_add(imported);
+    Ok(())
+}
 
-    /// The id a new account should take: one past the largest in use.
-    pub fn next_id(&self) -> u32 {
-        next_account_id(&self.accounts)
-    }
-
-    pub fn insert(&mut self, account: Account) {
-        self.accounts.push(account);
-    }
-
-    /// Removes every row with account `id`, returning the first one removed, or `None` when no
-    /// such account exists. Every row goes, so a deleted id can never leave a ledger orphaned.
-    pub fn remove(&mut self, id: u32) -> Option<Account> {
-        let first = self.get(id)?.clone();
-        self.accounts.retain(|account| account.id != id);
-        Some(first)
-    }
+/// Account `id`, if it exists.
+pub fn get(accounts: &[Account], id: u32) -> Option<&Account> {
+    accounts.iter().find(|account| account.id == id)
 }
 
 /// One type's block on the page: the indices (into the `Vec<Account>` it was built from) of its
@@ -540,48 +575,61 @@ mod tests {
         assert_eq!(find_by_name(&[], "wallet"), NameLookup::NotFound);
     }
 
-    #[test]
-    fn service_inserts_gets_and_removes_by_id() {
-        let mut service = AccountService::from_rows(Vec::new());
-        assert_eq!(service.next_id(), 1);
-        service.insert(account(1, "Savings", AccountType::Bank));
-        service.insert(account(2, "Card", AccountType::CreditCard));
-        assert_eq!(service.next_id(), 3);
-        assert_eq!(service.get(2).map(|a| a.name.as_str()), Some("Card"));
-        assert_eq!(service.index_of(2), Some(1));
-
-        let removed = service.remove(1).expect("account 1 exists");
-        assert_eq!(removed.name, "Savings");
-        assert_eq!(service.accounts().len(), 1);
-        assert_eq!(service.remove(1), None);
+    fn draft(name: &str) -> AccountDraft {
+        AccountDraft {
+            name: name.to_string(),
+            institution: "Bank".to_string(),
+            account_type: AccountType::CreditCard,
+            account_number: Some("42".to_string()),
+        }
     }
 
     #[test]
-    fn service_edits_in_place_through_get_mut() {
-        let mut service = AccountService::from_rows(vec![account(7, "Old", AccountType::Bank)]);
-        service.get_mut(7).expect("account 7 exists").name = "New".to_string();
-        assert_eq!(service.get(7).map(|a| a.name.as_str()), Some("New"));
-        assert!(service.get_mut(8).is_none());
+    fn insert_takes_the_next_id_with_zero_counts() {
+        let mut accounts = vec![account(4, "Savings", AccountType::Bank)];
+        let id = insert_account(
+            &mut accounts,
+            NewAccount {
+                draft: draft("Card"),
+                unit: "aud".to_string(),
+                balance: money("5"),
+                opened_at: date(2026, 2),
+            },
+        );
+        assert_eq!(id, 5);
+        let added = get(&accounts, 5).expect("inserted");
+        assert_eq!(added.name, "Card");
+        assert_eq!((added.transaction_count, added.budget_count), (0, 0));
     }
 
     #[test]
-    fn seeded_service_matches_the_seed_rows() {
+    fn edit_writes_the_draft_and_leaves_the_fixed_fields() {
+        let mut accounts = vec![account(7, "Old", AccountType::Bank)];
+        edit_account(&mut accounts, 7, &draft("New")).expect("account 7 exists");
+        let edited = get(&accounts, 7).expect("still there");
+        assert_eq!(edited.name, "New");
+        assert_eq!(edited.account_type, AccountType::CreditCard);
+        assert_eq!(edited.account_number.as_deref(), Some("42"));
+        assert_eq!(edited.unit, "aud");
         assert_eq!(
-            AccountService::seeded().accounts(),
-            default_accounts().as_slice()
+            edit_account(&mut accounts, 8, &draft("x")),
+            Err(AccountError::NotFound)
         );
     }
 
     #[test]
-    fn service_remove_takes_every_row_with_the_id() {
-        let mut service = AccountService::from_rows(vec![
+    fn remove_takes_every_row_with_the_id() {
+        let mut accounts = vec![
             account(4, "First", AccountType::Bank),
             account(4, "Second", AccountType::Bank),
             account(5, "Other", AccountType::Bank),
-        ]);
-        let removed = service.remove(4).expect("id 4 exists");
+        ];
+        let removed = remove_account(&mut accounts, 4).expect("id 4 exists");
         assert_eq!(removed.name, "First");
-        assert_eq!(service.accounts().len(), 1);
-        assert_eq!(service.get(5).map(|a| a.name.as_str()), Some("Other"));
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(
+            remove_account(&mut accounts, 4),
+            Err(AccountError::NotFound)
+        );
     }
 }

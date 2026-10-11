@@ -652,8 +652,7 @@ mod tests {
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use crate::{accounts, categories, payees, tags, transactions};
     use chrono::Local;
-    use lib_accounts::{Account, AccountService};
-    use lib_toast::ToastKind;
+    use lib_accounts::Account;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = accounts::default_accounts();
@@ -686,28 +685,6 @@ mod tests {
                 .iter()
                 .all(|(_, action)| !action.is_empty())
         );
-    }
-
-    #[test]
-    fn deleting_an_account_raises_a_success_toast_counting_its_transactions() {
-        crate::locale::init_for_tests();
-        let (accounts, _, mut transactions) = seeded_ledger();
-        let mut accounts = AccountService::from_rows(accounts);
-        let account = accounts.accounts()[0].clone();
-        let booked = transactions
-            .iter()
-            .filter(|t| t.account_id == account.id)
-            .count();
-        let before = transactions.len();
-        transactions.retain(|t| t.account_id != account.id);
-        let (kind, text) =
-            accounts_ui::delete_account(&mut accounts, before - transactions.len(), account.id);
-        assert_eq!(kind, ToastKind::Success);
-        assert_eq!(
-            text,
-            lib_locale::msg::toast_account_deleted(&account.name, booked as i64)
-        );
-        assert!(transactions.iter().all(|t| t.account_id != account.id));
     }
 
     #[test]

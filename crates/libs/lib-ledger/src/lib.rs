@@ -1,5 +1,6 @@
 //! The Ledger aggregate: every domain collection, joined into one stub dataset.
 
+mod account_commands;
 #[cfg(test)]
 mod budgets_seed_tests;
 mod category_commands;
@@ -10,6 +11,9 @@ pub mod query;
 pub mod seed;
 mod tag_commands;
 
+pub use account_commands::{
+    AccountDeleted, AddAccount, CountImportedTransactions, DeleteAccount, EditAccount,
+};
 pub use category_commands::{
     AddCategory, CategoryDeleted, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal,
     EditCategory, MonthlyBudget, MoveCategory, RenameCategory, SaveCategoryRefusal,

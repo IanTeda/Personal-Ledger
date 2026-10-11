@@ -3,6 +3,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
+use lib_accounts::{AccountDraft, NewAccount};
 use lib_core::{AccountType, Money};
 use lib_locale::Label;
 
@@ -438,54 +439,42 @@ impl AccountForm {
         }
     }
 
-    /// The Edit dialog's Save: writes Name, Institution, Type and Account number onto `account`,
-    /// leaving Unit, balance, opened date and the stub counts untouched. `false` (and no change)
-    /// while the form is invalid.
-    pub fn apply_to(&self, account: &mut Account) -> bool {
-        let Some(account_type) = self.selected_type().filter(|_| self.is_valid()) else {
-            return false;
-        };
-        let Some(institution) = self.resolved_institution(&account_type) else {
-            return false;
-        };
+    /// The Edit dialog's Save: the Name, Institution, Type and Account number to write, leaving
+    /// Unit, balance and opened date as they were. `None` while the form is invalid.
+    pub fn draft(&self) -> Option<AccountDraft> {
+        let account_type = self.selected_type().filter(|_| self.is_valid())?;
+        let institution = self.resolved_institution(&account_type)?;
         let account_number = self.account_number.text().trim();
-        account.name = self.name.text().trim().to_string();
-        account.institution = institution;
-        account.account_type = account_type;
-        account.account_number = (!account_number.is_empty()).then(|| account_number.to_string());
-        true
+        Some(AccountDraft {
+            name: self.name.text().trim().to_string(),
+            institution,
+            account_type,
+            account_number: (!account_number.is_empty()).then(|| account_number.to_string()),
+        })
     }
 
-    /// Builds the account this form describes. `is_currency` pads a currency amount to two
-    /// places (`1000` becomes `1000.00`); other Units keep what was typed. `None` while invalid.
-    pub fn into_account(self, id: u32, opened_at: NaiveDate, is_currency: bool) -> Option<Account> {
-        if !self.is_valid() {
-            return None;
-        }
-        let account_type = self.selected_type()?;
-        let institution = self.resolved_institution(&account_type)?;
+    /// The Account this form describes, for the Ledger to add. `is_currency` pads a currency
+    /// amount to two places (`1000` becomes `1000.00`); other Units keep what was typed. `None`
+    /// while invalid.
+    pub fn into_new_account(self, opened_at: NaiveDate, is_currency: bool) -> Option<NewAccount> {
+        let draft = self.draft()?;
         let mut balance = self.opening_balance_money()?;
         if is_currency && balance.0.fractional_digit_count() < 2 {
             balance = Money(balance.0.with_scale(2));
         }
-        let account_number = self.account_number.text().trim();
-        Some(Account {
-            id,
-            name: self.name.text().trim().to_string(),
-            institution,
-            account_type,
+        Some(NewAccount {
+            draft,
             unit: self.unit.value()?.to_string(),
             balance,
-            account_number: (!account_number.is_empty()).then(|| account_number.to_string()),
             opened_at,
-            transaction_count: 0,
-            budget_count: 0,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use lib_accounts::edit_account;
+
     use super::*;
     use crate::accounts::{default_accounts, group_accounts};
 
@@ -603,9 +592,9 @@ mod tests {
         let mut form = valid_form(&options);
         form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Up);
-        let account = form.into_account(9, date(2026, 9), true).expect("valid");
-        assert_eq!(account.account_type, AccountType::Cash);
-        assert_eq!(account.institution, NO_INSTITUTION);
+        let draft = form.draft().expect("valid");
+        assert_eq!(draft.account_type, AccountType::Cash);
+        assert_eq!(draft.institution, NO_INSTITUTION);
     }
 
     #[test]
@@ -709,21 +698,19 @@ mod tests {
     }
 
     #[test]
-    fn into_account_builds_a_trimmed_zero_count_row() {
+    fn into_new_account_builds_a_trimmed_row() {
         let options = add_options();
         let mut form = valid_form(&options);
         form.name = TextField::new("  Rainy Day  ");
         form.opening_balance = TextField::new("1500");
         form.account_number = TextField::new("  ");
-        let account = form.into_account(9, date(2026, 9), true).expect("valid");
-        assert_eq!(account.id, 9);
-        assert_eq!(account.name, "Rainy Day");
-        assert_eq!(account.account_type, AccountType::Bank);
-        assert_eq!(account.institution, "ANZ Banking Group");
-        assert_eq!(account.unit, "aud");
-        assert_eq!(account.account_number, None);
-        assert_eq!((account.transaction_count, account.budget_count), (0, 0));
-        assert_eq!(crate::view::format::amount(&account.balance).1, "1,500.00");
+        let new = form.into_new_account(date(2026, 9), true).expect("valid");
+        assert_eq!(new.draft.name, "Rainy Day");
+        assert_eq!(new.draft.account_type, AccountType::Bank);
+        assert_eq!(new.draft.institution, "ANZ Banking Group");
+        assert_eq!(new.unit, "aud");
+        assert_eq!(new.draft.account_number, None);
+        assert_eq!(crate::view::format::amount(&new.balance).1, "1,500.00");
     }
 
     #[test]
@@ -732,8 +719,8 @@ mod tests {
         let mut form = valid_form(&options);
         form.unit = SelectState::new(Some("vas".to_string()));
         form.opening_balance = TextField::new("10");
-        let account = form.into_account(9, date(2026, 9), false).expect("valid");
-        assert_eq!(crate::view::format::amount(&account.balance).1, "10");
+        let new = form.into_new_account(date(2026, 9), false).expect("valid");
+        assert_eq!(crate::view::format::amount(&new.balance).1, "10");
     }
 
     #[test]
@@ -741,9 +728,9 @@ mod tests {
         let options = add_options();
         let mut form = valid_form(&options);
         form.opening_balance = TextField::new("-250.005");
-        let account = form.into_account(9, date(2026, 9), true).expect("valid");
+        let new = form.into_new_account(date(2026, 9), true).expect("valid");
         assert_eq!(
-            crate::view::format::amount(&account.balance),
+            crate::view::format::amount(&new.balance),
             (true, "\u{2212}250.005".to_string())
         );
     }
@@ -752,7 +739,16 @@ mod tests {
     fn an_invalid_form_builds_nothing() {
         let options = add_options();
         let form = AccountForm::new(&options, None);
-        assert_eq!(form.into_account(9, date(2026, 9), true), None);
+        assert_eq!(form.into_new_account(date(2026, 9), true), None);
+    }
+
+    /// The Edit dialog's Save against one row, as the Ledger's `edit_account` runs it.
+    fn apply_to(form: &AccountForm, account: &mut Account) -> bool {
+        let Some(draft) = form.draft() else {
+            return false;
+        };
+        let id = account.id;
+        edit_account(std::slice::from_mut(account), id, &draft).is_ok()
     }
 
     fn seeded(name: &str) -> Account {
@@ -830,7 +826,7 @@ mod tests {
         form.account_type = SelectState::new(Some("Credit card".to_string()));
         form.account_number = TextField::new("  ");
 
-        assert!(form.apply_to(&mut account));
+        assert!(apply_to(&form, &mut account));
         assert_eq!(account.name, "Daily");
         assert_eq!(account.institution, "Westpac Banking");
         assert_eq!(account.account_type, AccountType::CreditCard);
@@ -853,7 +849,7 @@ mod tests {
             .expect("seeded");
         let mut form = AccountForm::from_account(&accounts[index], &options);
         form.account_type = SelectState::new(Some("Loan".to_string()));
-        assert!(form.apply_to(&mut accounts[index]));
+        assert!(apply_to(&form, &mut accounts[index]));
 
         let loans = group_accounts(&accounts)
             .into_iter()
@@ -868,12 +864,12 @@ mod tests {
         let mut account = seeded("ANZ Everyday");
         let mut form = AccountForm::from_account(&account, &options);
         form.account_type = SelectState::new(Some("Cash".to_string()));
-        assert!(form.apply_to(&mut account));
+        assert!(apply_to(&form, &mut account));
         assert_eq!(account.institution, NO_INSTITUTION);
 
         let mut form = AccountForm::from_account(&account, &options);
         form.account_type = SelectState::new(Some("Bank".to_string()));
-        assert!(form.apply_to(&mut account));
+        assert!(apply_to(&form, &mut account));
         assert_eq!(account.institution, "ANZ Banking Group");
     }
 
@@ -884,7 +880,7 @@ mod tests {
         let before = account.clone();
         let mut form = AccountForm::from_account(&account, &options);
         form.name = TextField::new("   ");
-        assert!(!form.apply_to(&mut account));
+        assert!(!apply_to(&form, &mut account));
         assert_eq!(account, before);
     }
 

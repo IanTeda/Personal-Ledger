@@ -19,27 +19,7 @@ use crate::{
 };
 
 use gpui::{App, Context, Keystroke};
-use lib_accounts::AccountService;
 use lib_toast::ToastKind;
-
-/// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,
-/// returning the Success Toast that counts them.
-pub(super) fn delete_account(
-    accounts: &mut AccountService,
-    deleted_transactions: usize,
-    id: u32,
-) -> (ToastKind, String) {
-    let name = accounts
-        .get(id)
-        .map(|account| account.name.clone())
-        .unwrap_or_default();
-    accounts.remove(id);
-    let deleted = i64::try_from(deleted_transactions).unwrap_or(i64::MAX);
-    (
-        ToastKind::Success,
-        lib_locale::msg::toast_account_deleted(&name, deleted),
-    )
-}
 
 impl Shell {
     /// Whether the Accounts rows own the keyboard: Settings' Accounts page with focus in the page
@@ -209,9 +189,7 @@ impl Shell {
     /// into the deleted row's place (or the last one).
     pub(super) fn confirm_accounts_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = AccountsApply {
-            accounts: self.accounts.clone(),
-            units: self.units_store.clone(),
-            transactions: self.transactions_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<AccountsDialog>() else {
             return;

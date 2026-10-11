@@ -1,24 +1,24 @@
 //! The Accounts Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Accounts, Units and Transactions stores. When `LedgerStore`
-//! replaces the per-domain stores only [`AccountsApply`] changes.
+//! [`Apply`] that runs it against the Ledger.
 
 use chrono::Local;
 use gpui::{App, Entity};
-use lib_accounts::next_account_id;
+use lib_accounts::{AccountDraft, AccountError, NewAccount};
+use lib_ledger::{AddAccount, DeleteAccount, EditAccount};
 
 use super::form::{AccountForm, AccountsDialog};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    transactions::{TransactionsStore, edit_transactions},
-    units::UnitsStore,
-    view::accounts::state::AccountsStore,
+    ledger_store::LedgerStore,
 };
 
 /// What confirming an Accounts Dialog asks for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AccountCommand {
-    Add(AccountForm),
-    Edit(u32, AccountForm),
+    /// Add the account. The Unit's kind decides how the opening balance is padded, which the form
+    /// can't know, so the padding happens in [`AccountsApply`].
+    Add(Box<AccountForm>),
+    Edit(u32, AccountDraft),
     /// Delete the account and the Transactions booked to it.
     Delete(u32),
 }
@@ -28,26 +28,21 @@ pub enum AccountCommand {
 pub enum AccountOutcome {
     /// Added or edited: the account to select.
     Saved(u32),
-    /// Deleted: the name, read before the write removes it, and how many Transactions went with it.
+    /// Deleted: the name, and how many Transactions went with it.
     Deleted { name: String, transactions: usize },
-}
-
-/// Why an account command didn't land. The forms validate first, so this only happens when the
-/// account was deleted while its Dialog was open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountRefusal {
-    NotFound,
-    Invalid,
 }
 
 impl DialogForm for AccountsDialog {
     type Command = AccountCommand;
-    type Refusal = AccountRefusal;
+    type Refusal = AccountError;
 
     fn command(&self) -> Result<AccountCommand, FormError> {
         match self {
-            Self::Add(form) if form.is_valid() => Ok(AccountCommand::Add(form.clone())),
-            Self::Edit(id, form) if form.is_valid() => Ok(AccountCommand::Edit(*id, form.clone())),
+            Self::Add(form) if form.is_valid() => Ok(AccountCommand::Add(Box::new(form.clone()))),
+            Self::Edit(id, form) if form.is_valid() => form
+                .draft()
+                .map(|draft| AccountCommand::Edit(*id, draft))
+                .ok_or(FormError),
             Self::Delete(id, form) if form.is_valid() => Ok(AccountCommand::Delete(*id)),
             _ => Err(FormError),
         }
@@ -55,81 +50,58 @@ impl DialogForm for AccountsDialog {
 
     /// A refusal here means the account vanished under an open, valid form, so there is nothing
     /// left for the form to correct: the Dialog stays open and `Esc` closes it.
-    fn refuse(&mut self, _refusal: AccountRefusal) {}
+    fn refuse(&mut self, _refusal: AccountError) {}
 }
 
-/// Runs [`AccountCommand`]s against the Accounts store, reading the Unit an account is held in
-/// from the Units store and deleting its Transactions from theirs.
+/// Runs [`AccountCommand`]s against the Ledger as Ledger commands. Deleting an account deletes its
+/// Transactions in the same command.
 pub struct AccountsApply {
-    pub accounts: Entity<AccountsStore>,
-    pub units: Entity<UnitsStore>,
-    pub transactions: Entity<TransactionsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<AccountCommand> for AccountsApply {
     type Outcome = AccountOutcome;
-    type Refusal = AccountRefusal;
+    type Refusal = AccountError;
 
     fn apply(
         &mut self,
         command: AccountCommand,
         cx: &mut App,
-    ) -> Result<AccountOutcome, AccountRefusal> {
+    ) -> Result<AccountOutcome, AccountError> {
         match command {
             AccountCommand::Add(form) => {
                 let is_currency = form
                     .unit
                     .value()
                     .and_then(|code| {
-                        self.units
+                        self.ledger
                             .read(cx)
-                            .units(cx)
+                            .ledger()
+                            .units()
                             .iter()
                             .find(|unit| unit.code == code)
                     })
                     .is_none_or(|unit| unit.kind == lib_core::UnitKind::Fiat);
-                let opened_at = Local::now().date_naive();
-                self.accounts
-                    .update(cx, |store, cx| {
-                        store.mutate(cx, |accounts| {
-                            let id = next_account_id(accounts);
-                            let account = form.into_account(id, opened_at, is_currency)?;
-                            accounts.push(account);
-                            Some(id)
-                        })
-                    })
-                    .map(AccountOutcome::Saved)
-                    .ok_or(AccountRefusal::Invalid)
+                let new: NewAccount = (*form)
+                    .into_new_account(Local::now().date_naive(), is_currency)
+                    .ok_or(AccountError::Incomplete)?;
+                Ok(AccountOutcome::Saved(
+                    self.ledger
+                        .update(cx, |store, cx| store.apply(cx, AddAccount(new)))?,
+                ))
             }
-            AccountCommand::Edit(id, form) => self.accounts.update(cx, |store, cx| {
-                store.mutate(cx, |accounts| {
-                    let account = accounts
-                        .iter_mut()
-                        .find(|account| account.id == id)
-                        .ok_or(AccountRefusal::NotFound)?;
-                    form.apply_to(account)
-                        .then_some(AccountOutcome::Saved(id))
-                        .ok_or(AccountRefusal::Invalid)
-                })
-            }),
+            AccountCommand::Edit(id, draft) => self
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, EditAccount { id, draft }))
+                .map(|()| AccountOutcome::Saved(id)),
             AccountCommand::Delete(id) => {
-                let name = self
-                    .accounts
-                    .read(cx)
-                    .accounts(cx)
-                    .iter()
-                    .find(|account| account.id == id)
-                    .map(|account| account.name.clone())
-                    .ok_or(AccountRefusal::NotFound)?;
-                let transactions = edit_transactions(&self.transactions, cx, |transactions| {
-                    let before = transactions.len();
-                    transactions.retain(|transaction| transaction.account_id != id);
-                    before - transactions.len()
-                });
-                self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |accounts| accounts.retain(|account| account.id != id))
-                });
-                Ok(AccountOutcome::Deleted { name, transactions })
+                let deleted = self
+                    .ledger
+                    .update(cx, |store, cx| store.apply(cx, DeleteAccount(id)))?;
+                Ok(AccountOutcome::Deleted {
+                    name: deleted.name,
+                    transactions: deleted.transactions,
+                })
             }
         }
     }
@@ -137,7 +109,7 @@ impl Apply<AccountCommand> for AccountsApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -155,16 +127,11 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        let accounts = cx.new(|cx| AccountsStore::new(ledger.clone(), cx));
-        let units = cx.new(|cx| UnitsStore::new(ledger.clone(), cx));
-        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
         let mut apply = AccountsApply {
-            accounts: accounts.clone(),
-            units,
-            transactions,
+            ledger: ledger.clone(),
         };
         let (id, name) = cx.read(|cx| {
-            let account = &accounts.read(cx).accounts(cx)[0];
+            let account = &ledger.read(cx).ledger().accounts()[0];
             (account.id, account.name.clone())
         });
 
@@ -186,6 +153,15 @@ mod tests {
                 transactions: 0
             })
         );
-        cx.read(|cx| assert!(accounts.read(cx).accounts(cx).iter().all(|a| a.id != id)));
+        cx.read(|cx| {
+            assert!(
+                ledger
+                    .read(cx)
+                    .ledger()
+                    .accounts()
+                    .iter()
+                    .all(|a| a.id != id)
+            )
+        });
     }
 }
