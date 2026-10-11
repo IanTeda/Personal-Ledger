@@ -8,9 +8,13 @@ use crate::bills::BillsDialog;
 use std::rc::Rc;
 
 use crate::{
-    bills::{self, edit_bills, edit_bills_and_transactions, pay_form::PayForm},
+    bills::{
+        self,
+        apply::{BillOutcome, BillsApply},
+        pay_form::PayForm,
+    },
     categories,
-    chrome::dialog_host::OpenDialog,
+    chrome::dialog_apply,
     payees,
     view::bills as bills_view,
     view::format,
@@ -35,49 +39,33 @@ impl Shell {
             .and_then(BillsDialog::plan_form_mut)
     }
 
-    /// Applies a confirmed Bills dialog (`Enter` and the confirm button).
-    pub(super) fn apply_bills_dialog(&mut self, dialog: BillsDialog, cx: &mut Context<'_, Self>) {
-        match dialog {
-            BillsDialog::Add(form) => self.apply_bill_plan(None, form, cx),
-            BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form, cx),
-            BillsDialog::Pay(form) => self.apply_pay_bill(form, cx),
-            BillsDialog::Skip(entry) => self.apply_skip_bill(entry, cx),
-        }
-    }
-
-    /// **Add bill plan** / **Save**: adds or edits the Plan (Schedule regeneration is
-    /// `bills::insert_plan`'s, `edit_plan`'s and `set_active`'s) and selects it on the Planner
-    /// tab. A refused Save reopens the dialog with the error shown.
-    pub(super) fn apply_bill_plan(
-        &mut self,
-        editing: Option<u32>,
-        mut form: bills::form::BillPlanForm,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let Some(draft) = form.draft() else {
+    /// Confirms the open Bills dialog through the host's cycle (`Enter` and the confirm button):
+    /// the form's command runs against the Bills store, a refusal stays on the form, and a landed
+    /// one closes the dialog. **Add bill plan** / **Save** select the Plan on the Planner tab; a
+    /// refused Skip closes with the reason in the status line.
+    pub(super) fn confirm_bills_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = BillsApply {
+            bills: self.bills_store.clone(),
+            accounts: self.accounts.clone(),
+            categories: self.categories_store.clone(),
+            transactions: self.transactions_store.clone(),
+            today: self.today,
+        };
+        let Some(dialog) = self.dialog_mut::<BillsDialog>() else {
             return;
         };
-        let (today, is_active) = (self.today, form.is_active);
-        let accounts = self.accounts.read(cx).accounts().to_vec();
-        let categories = self.categories(cx).to_vec();
-        let result = edit_bills(&self.bills_store, cx, |plans, entries| match editing {
-            None => bills::insert_plan(plans, entries, &draft, &categories, &accounts, today),
-            Some(id) => bills::edit_plan(plans, entries, id, &draft, &categories, &accounts, today)
-                .and_then(|()| bills::set_active(plans, entries, id, is_active, today))
-                .map(|()| id),
-        });
-        match result {
-            Ok(id) => {
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            BillOutcome::PlanSaved(id) => {
                 self.bills_view
                     .update(cx, |view, cx| view.show_saved_plan(id, cx));
             }
-            Err(error) => {
-                form.error = Some(error);
-                let dialog = match editing {
-                    None => BillsDialog::Add(form),
-                    Some(id) => BillsDialog::Edit(id, form),
-                };
-                self.open_dialog(OpenDialog::Bills(Box::new(dialog)));
+            BillOutcome::Paid | BillOutcome::Skipped => {}
+            BillOutcome::SkipRefused => {
+                self.chrome.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
             }
         }
     }
@@ -127,55 +115,10 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn handle_bills_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_bills_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
     pub(super) fn pay_form_mut(&mut self) -> Option<&mut PayForm> {
         match self.dialog_mut::<BillsDialog>() {
             Some(BillsDialog::Pay(form)) => Some(form),
             _ => None,
-        }
-    }
-
-    /// **Create transaction & mark paid** / **Match & mark paid**: settles the entry through
-    /// `bills::pay` or `bills::match_split`. A refused settle reopens the dialog with the error
-    /// shown.
-    pub(super) fn apply_pay_bill(&mut self, mut form: PayForm, cx: &mut Context<'_, Self>) {
-        let entry = form.entry;
-        let Some(action) = form.action() else {
-            return;
-        };
-        let accounts = self.accounts.read(cx).accounts().to_vec();
-        let categories = self.categories(cx).to_vec();
-        let result = edit_bills_and_transactions(
-            &self.bills_store,
-            &self.transactions_store,
-            cx,
-            |plans, entries, transactions| match action {
-                bills::pay_form::PayAction::Pay { amount, date } => {
-                    bills::pay(plans, entries, transactions, entry, &amount, date).map(|_| ())
-                }
-                bills::pay_form::PayAction::Match(split) => bills::match_split(
-                    plans,
-                    entries,
-                    transactions,
-                    &accounts,
-                    &categories,
-                    entry,
-                    split,
-                ),
-            },
-        );
-        if let Err(error) = result {
-            form.error = Some(error);
-            self.open_dialog(OpenDialog::Bills(Box::new(BillsDialog::Pay(form))));
         }
     }
 
@@ -279,8 +222,8 @@ impl Shell {
                     on_mode_click,
                     on_choice_click,
                     on_field_click,
-                    on_cancel: plain(Shell::handle_bills_dialog_cancel),
-                    on_confirm: plain(Shell::handle_bills_dialog_confirm),
+                    on_cancel: plain(Shell::handle_dialog_cancel),
+                    on_confirm: plain(Shell::handle_dialog_confirm),
                 },
             },
             cx,
@@ -327,18 +270,6 @@ impl Shell {
             .collect()
     }
 
-    /// **Skip this cycle**: resolves the entry through `bills::skip`. The dialog carries no form
-    /// to show an error on, so a refused skip (the entry resolved or superseded underneath it)
-    /// closes with the reason in the status line.
-    pub(super) fn apply_skip_bill(&mut self, entry: bills::EntryId, cx: &mut App) {
-        let skipped = edit_bills(&self.bills_store, cx, |plans, entries| {
-            bills::skip(plans, entries, entry)
-        });
-        if skipped.is_err() {
-            self.chrome.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
-        }
-    }
-
     /// The Skip dialog (8e) over the Schedule, or nothing once its entry's Plan is gone.
     pub(super) fn render_skip_bill_dialog(
         &self,
@@ -359,8 +290,8 @@ impl Shell {
                 plan_name: &plan.name,
                 due: lib_locale::format::format_month_day(entry.due),
                 one_shot: plan.recurrence == bills::Recurrence::OneShot,
-                on_cancel: plain(Shell::handle_bills_dialog_cancel),
-                on_confirm: plain(Shell::handle_bills_dialog_confirm),
+                on_cancel: plain(Shell::handle_dialog_cancel),
+                on_confirm: plain(Shell::handle_dialog_confirm),
             },
             cx,
         ))
@@ -428,8 +359,8 @@ impl Shell {
                         on_field_click,
                         on_option_click,
                         on_amount_kind_click,
-                        on_cancel: plain(Shell::handle_bills_dialog_cancel),
-                        on_confirm: plain(Shell::handle_bills_dialog_confirm),
+                        on_cancel: plain(Shell::handle_dialog_cancel),
+                        on_confirm: plain(Shell::handle_dialog_confirm),
                     },
                 },
                 cx,

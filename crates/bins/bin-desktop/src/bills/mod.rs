@@ -24,6 +24,7 @@
 //!
 //! Plan and Transaction ids are the stubs' `u32`s, matching every other desktop stub.
 
+pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod history;
 pub(crate) mod pay_form;
