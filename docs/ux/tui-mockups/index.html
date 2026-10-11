@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TUI Mockups</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+:root{--bg:#f3f2f2;--fg:#201e1d;--dim:#6b6764;--line:#d9d6d4;--card:#fff;--accent:#1f5f8b;--mono:"JetBrains Mono",ui-monospace,monospace;--sans:Archivo,system-ui,sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#181716;--fg:#ebe8e6;--dim:#9a9592;--line:#34312f;--card:#222120;--accent:#6fb0dc;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#181716;--fg:#ebe8e6;--dim:#9a9592;--line:#34312f;--card:#222120;--accent:#6fb0dc;color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);padding-inline:16px}
+main{max-width:56rem;margin:0 auto;padding-block:28px}
+.switch{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:20px}
+.switch a,.switch span{padding:8px 18px;font-family:var(--mono);font-size:.85rem;text-decoration:none;color:var(--dim);background:var(--card)}
+.switch span{background:var(--fg);color:var(--bg);font-weight:700}
+.switch a:hover,.switch a:focus-visible{color:var(--accent);outline:none}
+h1{font-size:1.75rem;margin:0 0 4px;text-wrap:balance}
+h2{font-size:1rem;margin:32px 0 12px;color:var(--dim)}
+p{color:var(--dim);line-height:1.5;max-width:65ch;margin:0 0 24px}
+ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:12px}
+li a{display:block;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:6px;color:var(--fg);text-decoration:none;min-width:0;height:100%;box-sizing:border-box}
+li a:hover,li a:focus-visible{border-color:var(--accent);outline:none}
+b{display:block;font-size:1rem}
+small{display:block;margin-top:4px;color:var(--dim);font-family:var(--mono);font-size:.78rem;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<main>
+<nav class="switch" aria-label="Mockup set"><a href="../desktop-mockups/index.html">Desktop</a><span>TUI</span></nav>
+<h1>TUI Mockups</h1>
+<p>Keyboard-only terminal wireframes for the ratatui client. Read the terminal-cell geometry, not the pixels. Cards are numbered TUI-001 to TUI-046.</p>
+<ul>
+<li><a href="01-chrome/Ledger%20TUI%20Chrome.dc.html"><b>Chrome</b><small>TUI-001–005 · 5 cards</small></a></li>
+<li><a href="02-accounts/Ledger%20TUI%20Accounts.dc.html"><b>Accounts</b><small>TUI-006–009 · 4 cards</small></a></li>
+<li><a href="03-categories/Ledger%20TUI%20Categories.dc.html"><b>Categories</b><small>TUI-010–013 · 4 cards</small></a></li>
+<li><a href="04-payees/Ledger%20TUI%20Payees.dc.html"><b>Payees</b><small>TUI-014–018 · 5 cards</small></a></li>
+<li><a href="05-settings/Ledger%20TUI%20Settings.dc.html"><b>Settings</b><small>TUI-019–021, 032–046 · 18 cards</small></a></li>
+<li><a href="06-tags/Ledger%20TUI%20Tags.dc.html"><b>Tags</b><small>TUI-022–026 · 5 cards</small></a></li>
+<li><a href="07-units/Ledger%20TUI%20Units.dc.html"><b>Units</b><small>TUI-027–031 · 5 cards</small></a></li>
+</ul>
+</main>
+</body>
+</html>

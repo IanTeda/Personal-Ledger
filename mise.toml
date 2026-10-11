@@ -114,6 +114,10 @@ run = "mise run docs-rustdoc && mise run docs-mdbook"
 description = "Serve mdBook documentation on port 8001"
 run = "mdbook serve --port 8001"
 
+[tasks.mockups]
+description = "Serve the Desktop and TUI mockups on port 8002"
+run = "python3 -m http.server 8002 --bind 127.0.0.1 --directory docs/ux"
+
 
 # -------------------------------[DATABASE]-------------------------------------
 

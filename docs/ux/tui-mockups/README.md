@@ -1,6 +1,8 @@
 # Personal Ledger TUI — handoff index
 
-Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in **Rust + ratatui**. Each package holds one destination: a design file (`*.dc.html`, open it in a browser from inside its folder, `support.js` beside it) and a `README.md` spec. They are references, not code to port.
+Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in **Rust + ratatui**. Each package holds one destination: a design file (`*.dc.html`, `support.js` beside it) and a `README.md` spec. They are references, not code to port.
+
+**Viewing:** run `mise run mockups` and open <http://localhost:8002>. The design files render through `support.js`, which fetches the page over HTTP, so opening a `.dc.html` straight from disk (`file://`) shows a blank page. `index.html` lists every page, with a switch between the Desktop and TUI sets.
 
 **Card IDs:** every card carries a `TUI-NNN` ID (the label on the card and its `#` anchor). Say "TUI-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
 
