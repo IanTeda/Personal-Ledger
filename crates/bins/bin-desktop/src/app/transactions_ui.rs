@@ -20,6 +20,7 @@ use crate::{
 
 use gpui::{App, Context, Keystroke, ScrollStrategy};
 use lib_core::DateStyle;
+use lib_ledger::ImportPayees;
 use lib_list_cursor::Step;
 use lib_toast::ToastKind;
 
@@ -580,8 +581,15 @@ impl Shell {
                 transactions,
             )
         });
-        self.payees_store
-            .update(cx, |store, cx| store.replace(cx, payees));
+        if payees != self.payees_list(cx) {
+            let merged = self
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, ImportPayees(payees)));
+            if let Err(refusal) = merged {
+                self.raise_toast(ToastKind::Error, refusal.to_string());
+                return;
+            }
+        }
         match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);

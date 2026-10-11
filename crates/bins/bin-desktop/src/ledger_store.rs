@@ -31,13 +31,6 @@ impl LedgerStore {
     /// Runs any command: the Dialog host's `Apply` (ADR-0037). A refusal changes nothing and emits
     /// nothing; a landed command announces the domains its recorded changes touched. Nothing
     /// persists the changes until the repository is wired (#636), so they're dropped here.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the first command arrives with Payees writes (#638)"
-        )
-    )]
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -104,33 +97,9 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use gpui::{AppContext, Entity, TestAppContext};
-    use lib_ledger::{LedgerChange, LedgerParts};
+    use lib_ledger::{DeletePayee, LedgerParts};
 
     use super::*;
-
-    /// Stands in for a command until the first real one lands: records one change, or refuses.
-    struct DropPayee {
-        id: u32,
-    }
-
-    impl LedgerCommand for DropPayee {
-        type Outcome = ();
-        type Refusal = ();
-        #[expect(
-            deprecated,
-            reason = "a stand-in command with no Ledger method of its own"
-        )]
-        fn run(self, ledger: &mut Ledger) -> Result<(), ()> {
-            let payees = ledger.hatch().payees;
-            let before = payees.len();
-            payees.retain(|payee| payee.id != self.id);
-            if payees.len() == before {
-                return Err(());
-            }
-            ledger.record_for_test(LedgerChange::DeletePayee(self.id));
-            Ok(())
-        }
-    }
 
     fn store(cx: &mut TestAppContext) -> (Entity<LedgerStore>, Rc<RefCell<Vec<LedgerChanged>>>) {
         let store = cx.new(|_| {
@@ -156,7 +125,9 @@ mod tests {
         let id = store.read_with(cx, |store, _| store.ledger().payees()[0].id);
 
         store.update(cx, |store, cx| {
-            store.apply(cx, DropPayee { id }).expect("the Payee exists")
+            store
+                .apply(cx, DeletePayee(id))
+                .expect("the Payee exists and nothing names it")
         });
         cx.run_until_parked();
 
@@ -173,7 +144,7 @@ mod tests {
         let (store, events) = store(cx);
 
         store.update(cx, |store, cx| {
-            assert!(store.apply(cx, DropPayee { id: u32::MAX }).is_err());
+            assert!(store.apply(cx, DeletePayee(u32::MAX)).is_err());
         });
         cx.run_until_parked();
 

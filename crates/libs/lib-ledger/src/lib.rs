@@ -4,11 +4,16 @@
 mod budgets_seed_tests;
 mod change;
 mod hatch;
+mod payee_commands;
 pub mod query;
 pub mod seed;
 
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use hatch::LedgerHatch;
+pub use payee_commands::{
+    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, ImportPayees, ImportPayeesRefusal,
+    PayeeUse, SetPayeeActive, SetPayeeActiveRefusal,
+};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 
 use chrono::{Local, NaiveDate};
@@ -212,13 +217,6 @@ impl Ledger {
     /// repository (ADR-0039).
     pub fn drain_changes(&mut self) -> Vec<LedgerChange> {
         std::mem::take(&mut self.pending)
-    }
-
-    /// Records `change` as a command would, so a Client's store can be tested before the first
-    /// real command lands. Delete it once one does (#638).
-    #[doc(hidden)]
-    pub fn record_for_test(&mut self, change: LedgerChange) {
-        self.pending.push(change);
     }
 }
 

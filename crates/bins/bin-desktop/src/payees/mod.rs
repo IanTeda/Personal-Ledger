@@ -17,6 +17,7 @@ mod tests {
         transactions::default_transactions,
     };
     use form::DeleteAction;
+    use lib_ledger::PayeeUse;
     use lib_transactions::Transaction;
 
     fn today() -> NaiveDate {
@@ -38,42 +39,25 @@ mod tests {
     }
 
     #[test]
-    fn an_unreferenced_payee_hard_deletes_and_a_referenced_one_is_in_use() {
-        let mut payees = default_payees();
-        let transactions = seeded_transactions(&payees);
-        let netflix = id_of(&payees, "Netflix");
-        let j_smith = id_of(&payees, "J Smith");
-        assert!(!is_referenced(&transactions, netflix));
-        assert_eq!(
-            delete_payee(&mut payees, &transactions, j_smith),
-            Err(PayeeError::InUse)
-        );
-        delete_payee(&mut payees, &transactions, netflix).unwrap();
-        assert_eq!(get(&payees, netflix), None);
-        assert_eq!(
-            delete_payee(&mut payees, &transactions, netflix),
-            Err(PayeeError::NotFound)
-        );
-    }
-
-    #[test]
     fn the_delete_action_follows_references_and_activity() {
         let mut payees = default_payees();
-        let transactions = seeded_transactions(&payees);
         let netflix = id_of(&payees, "Netflix");
         let j_smith = id_of(&payees, "J Smith");
-        let action =
-            |payees: &[Payee], id| DeleteAction::for_payee(get(payees, id).unwrap(), &transactions);
+        let used = PayeeUse {
+            splits: 1,
+            bill_plans: 0,
+        };
+        let action = |payees: &[Payee], id, payee_use| {
+            DeleteAction::for_payee(get(payees, id).unwrap(), payee_use)
+        };
 
-        assert_eq!(action(&payees, netflix), DeleteAction::Delete);
-        assert_eq!(action(&payees, j_smith), DeleteAction::Deactivate);
+        assert_eq!(
+            action(&payees, netflix, PayeeUse::default()),
+            DeleteAction::Delete
+        );
+        assert_eq!(action(&payees, j_smith, used), DeleteAction::Deactivate);
         set_active(&mut payees, j_smith, false).unwrap();
-        assert!(!get(&payees, j_smith).unwrap().is_active);
-        assert_eq!(action(&payees, j_smith), DeleteAction::Reactivate);
-        set_active(&mut payees, j_smith, true).unwrap();
-        assert!(get(&payees, j_smith).unwrap().is_active);
-        delete_payee(&mut payees, &transactions, netflix).unwrap();
-        assert_eq!(get(&payees, netflix), None);
+        assert_eq!(action(&payees, j_smith, used), DeleteAction::Reactivate);
     }
 
     #[test]

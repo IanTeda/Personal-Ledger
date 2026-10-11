@@ -134,12 +134,11 @@ impl Shell {
     }
 
     /// Confirms the open Payees dialog through the host's cycle: the form's command runs against
-    /// the Payees store, a refusal stays on the form, and a landed one closes the dialog. Add and
+    /// the Ledger, a refusal stays on the form, and a landed one closes the dialog. Add and
     /// Edit then select the Payee; Delete toasts the outcome and keeps the selection in range.
     pub(super) fn confirm_payees_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = PayeesApply {
-            payees: self.payees_store.clone(),
-            transactions: self.transactions_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<PayeesDialog>() else {
             return;
@@ -189,7 +188,8 @@ impl Shell {
         let Some(payee) = payees::get(self.payees_list(cx), id) else {
             return;
         };
-        let action = payees::form::DeleteAction::for_payee(payee, self.transactions(cx));
+        let payee_use = self.ledger.read(cx).ledger().payee_use(id);
+        let action = payees::form::DeleteAction::for_payee(payee, payee_use);
         let form = payees::form::DeletePayeeForm::new(payee, action);
         self.open_dialog(OpenDialog::Payees(PayeesDialog::Delete(id, form)));
     }

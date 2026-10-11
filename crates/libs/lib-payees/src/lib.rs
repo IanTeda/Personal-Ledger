@@ -243,18 +243,14 @@ pub fn edit_payee(payees: &mut [Payee], id: u32, draft: &PayeeDraft) -> Result<(
     Ok(())
 }
 
-/// Hard-deletes Payee `id` and its aliases, only if no Split references it.
-pub fn delete_payee(
-    payees: &mut Vec<Payee>,
-    transactions: &[Transaction],
-    id: u32,
-) -> Result<(), PayeeError> {
-    get(payees, id).ok_or(PayeeError::NotFound)?;
-    if is_referenced(transactions, id) {
-        return Err(PayeeError::InUse);
-    }
-    payees.retain(|p| p.id != id);
-    Ok(())
+/// Removes Payee `id` and its aliases and returns the row. Whether anything still names it is a
+/// cross-domain rule, so `Ledger::delete_payee` checks that before calling this.
+pub fn delete_payee(payees: &mut Vec<Payee>, id: u32) -> Result<Payee, PayeeError> {
+    let index = payees
+        .iter()
+        .position(|p| p.id == id)
+        .ok_or(PayeeError::NotFound)?;
+    Ok(payees.remove(index))
 }
 
 /// Deactivates or reactivates Payee `id`.
@@ -356,82 +352,36 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
         .count()
 }
 
-/// The Payees data behind the Desktop's Payees Entity: the rows, read through `payees` and changed
-/// only through the rule-checked methods, so the rules above stay the way a name, alias or Split
-/// reference changes. Each check runs before the rows are touched, so a refused change leaves them
-/// as they were. Persistence is a later phase, so the rows are in memory.
-pub struct PayeeService {
-    payees: Vec<Payee>,
-}
-
-impl PayeeService {
-    /// A service over `payees`, as the Desktop seeds it from [`default_payees`].
-    pub fn new(payees: Vec<Payee>) -> Self {
-        Self { payees }
-    }
-
-    pub fn payees(&self) -> &[Payee] {
-        &self.payees
-    }
-
-    /// Adds a new, active Payee and returns its id; see [`insert_payee`].
-    pub fn insert(&mut self, draft: &PayeeDraft) -> Result<u32, PayeeError> {
-        insert_payee(&mut self.payees, draft)
-    }
-
-    /// Replaces Payee `id`'s fields with `draft`'s; see [`edit_payee`].
-    pub fn edit(&mut self, id: u32, draft: &PayeeDraft) -> Result<(), PayeeError> {
-        edit_payee(&mut self.payees, id, draft)
-    }
-
-    /// Hard-deletes Payee `id`, refused while a Split references it; see [`delete_payee`].
-    pub fn delete(&mut self, id: u32, transactions: &[Transaction]) -> Result<(), PayeeError> {
-        delete_payee(&mut self.payees, transactions, id)
-    }
-
-    /// Deactivates or reactivates Payee `id`; see [`set_active`].
-    pub fn set_active(&mut self, id: u32, is_active: bool) -> Result<(), PayeeError> {
-        set_active(&mut self.payees, id, is_active)
-    }
-
-    /// Replaces every row at once. Import's commit adds Payees and Aliases to a copy of the rows
-    /// with the same rules, then writes the copy back in one step, since it also writes
-    /// Transactions. This is the only bulk write, so keep new callers on the methods above.
-    pub fn replace(&mut self, rows: Vec<Payee>) {
-        self.payees = rows;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn service_hands_out_the_rows_it_was_seeded_with_and_keeps_writes() {
-        let mut service = PayeeService::new(default_payees());
-        let seeded = service.payees().len();
-        assert!(seeded > 0);
+    fn delete_returns_the_removed_row_and_refuses_an_unknown_id() {
+        let mut payees = default_payees();
+        let seeded = payees.len();
 
-        service.delete(1, &[]).unwrap();
-        assert_eq!(service.payees().len(), seeded - 1);
-        assert!(get(service.payees(), 1).is_none());
+        let removed = delete_payee(&mut payees, 1).unwrap();
+        assert_eq!(removed.id, 1);
+        assert_eq!(payees.len(), seeded - 1);
+        assert!(get(&payees, 1).is_none());
+        assert_eq!(delete_payee(&mut payees, 1), Err(PayeeError::NotFound));
     }
 
     #[test]
     fn refused_writes_leave_the_rows_untouched() {
-        let mut service = PayeeService::new(default_payees());
-        let before = service.payees().to_vec();
-        let taken = before[0].name.clone();
+        let mut payees = default_payees();
+        let before = payees.clone();
         let draft = PayeeDraft {
-            name: taken,
+            name: before[0].name.clone(),
             aliases: Vec::new(),
             default_category: None,
         };
 
-        assert!(service.insert(&draft).is_err());
-        assert!(service.edit(before[1].id, &draft).is_err());
-        assert!(service.edit(u32::MAX, &draft).is_err());
-        assert_eq!(service.payees(), before.as_slice());
+        assert!(insert_payee(&mut payees, &draft).is_err());
+        assert!(edit_payee(&mut payees, before[1].id, &draft).is_err());
+        assert!(edit_payee(&mut payees, u32::MAX, &draft).is_err());
+        assert_eq!(payees, before);
     }
 
     use lib_categories::{self as categories, default_categories};

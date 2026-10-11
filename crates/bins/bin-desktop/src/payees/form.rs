@@ -2,16 +2,15 @@
 //! select's options and the dialog they sit behind. `gpui`-free, like the rest of this domain;
 //! `view::payees` renders it.
 
-use super::{
-    Payee, PayeeDraft, PayeeError, alias_owner, clean_name, is_referenced, normalise_alias,
-};
+use lib_ledger::PayeeUse;
+
+use super::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
 use crate::{
     accounts::form::SelectKey,
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectState,
-    transactions::Transaction,
 };
 
 /// The Default category select's options: "none" first, then every leaf Category. `labels` are
@@ -361,8 +360,8 @@ pub enum DeleteAction {
 }
 
 impl DeleteAction {
-    pub fn for_payee(payee: &Payee, transactions: &[Transaction]) -> Self {
-        if !is_referenced(transactions, payee.id) {
+    pub fn for_payee(payee: &Payee, payee_use: PayeeUse) -> Self {
+        if !payee_use.is_used() {
             Self::Delete
         } else if payee.is_active {
             Self::Deactivate

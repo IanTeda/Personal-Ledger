@@ -28,6 +28,7 @@ lib_units = { path = "../lib-units" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

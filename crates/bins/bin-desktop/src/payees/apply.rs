@@ -1,16 +1,19 @@
 //! The Payees Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Payees store. When `LedgerStore` replaces the per-domain
-//! stores only [`PayeesApply`] changes.
+//! [`Apply`] that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_ledger::{
+    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, SetPayeeActive, SetPayeeActiveRefusal,
+};
 
 use super::{
-    Payee, PayeeDraft, PayeeError, PayeesStore,
+    Payee, PayeeDraft, PayeeError,
     form::{DeleteAction, PayeesDialog},
 };
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    transactions::TransactionsStore,
+    ledger_store::LedgerStore,
+    payees,
 };
 
 /// What confirming a Payees Dialog asks for.
@@ -53,11 +56,11 @@ impl DialogForm for PayeesDialog {
     }
 }
 
-/// Runs [`PayeeCommand`]s against the Payees store, reading the Transactions a delete is checked
-/// against from theirs.
+/// Runs [`PayeeCommand`]s against the Ledger as Ledger commands. A Payee the Ledger refuses to
+/// delete because a Split or Bill Plan names it comes back as [`PayeeError::InUse`], the refusal
+/// the forms already show as a Message.
 pub struct PayeesApply {
-    pub payees: Entity<PayeesStore>,
-    pub transactions: Entity<TransactionsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<PayeeCommand> for PayeesApply {
@@ -67,23 +70,37 @@ impl Apply<PayeeCommand> for PayeesApply {
     fn apply(&mut self, command: PayeeCommand, cx: &mut App) -> Result<PayeeOutcome, PayeeError> {
         match command {
             PayeeCommand::Add(draft) => self
-                .payees
-                .update(cx, |store, cx| store.insert(cx, &draft))
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, AddPayee(draft)))
                 .map(PayeeOutcome::Saved),
             PayeeCommand::Edit(id, draft) => self
-                .payees
-                .update(cx, |store, cx| store.edit(cx, id, &draft))
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, EditPayee { id, draft }))
                 .map(|()| PayeeOutcome::Saved(id)),
             PayeeCommand::Remove(id, action) => {
-                let name = super::get(self.payees.read(cx).payees(cx), id)
+                let name = payees::get(self.ledger.read(cx).ledger().payees(), id)
                     .map(|payee: &Payee| payee.name.clone())
                     .ok_or(PayeeError::NotFound)?;
-                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
-                self.payees
-                    .update(cx, |store, cx| {
-                        store.apply_delete(cx, id, action, &transactions)
-                    })
-                    .map(|()| PayeeOutcome::Removed { name, action })
+                self.ledger.update(cx, |store, cx| match action {
+                    DeleteAction::Delete => {
+                        store
+                            .apply(cx, DeletePayee(id))
+                            .map_err(|refusal| match refusal {
+                                DeletePayeeRefusal::NotFound => PayeeError::NotFound,
+                                DeletePayeeRefusal::InUse { .. } => PayeeError::InUse,
+                            })
+                    }
+                    DeleteAction::Deactivate | DeleteAction::Reactivate => store
+                        .apply(
+                            cx,
+                            SetPayeeActive {
+                                id,
+                                is_active: action == DeleteAction::Reactivate,
+                            },
+                        )
+                        .map_err(|SetPayeeActiveRefusal::NotFound| PayeeError::NotFound),
+                })?;
+                Ok(PayeeOutcome::Removed { name, action })
             }
         }
     }
@@ -91,7 +108,7 @@ impl Apply<PayeeCommand> for PayeesApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
 
     use lib_ledger::LedgerParts;
 
@@ -113,12 +130,7 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        let payees = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
-        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
-        let mut apply = PayeesApply {
-            payees,
-            transactions,
-        };
+        let mut apply = PayeesApply { ledger };
         let options = PayeeOptions::new(&[], "None".into());
         let mut dialog = PayeesDialog::Add(PayeeForm::new(&options, &rows));
 
