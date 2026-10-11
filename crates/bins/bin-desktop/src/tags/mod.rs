@@ -18,6 +18,7 @@
 //! - Usage is all time across every Account: distinct Transactions, the newest one's date, and a
 //!   total that only sums when every Split carrying the Tag shares one Unit.
 
+pub(crate) mod apply;
 pub(crate) mod form;
 
 pub use lib_tags::*;

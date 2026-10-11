@@ -27,11 +27,12 @@ impl Shell {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
-        // Payees runs through the host's cycle (`DialogForm`/`Apply`); the other domains still
-        // take their Dialog and apply it themselves until #633.
-        if matches!(self.chrome.dialog, Some(OpenDialog::Payees(_))) {
-            self.confirm_payees_dialog(cx);
-            return;
+        // Payees and Tags run through the host's cycle (`DialogForm`/`Apply`); the other domains
+        // still take their Dialog and apply it themselves until #633 lands.
+        match self.chrome.dialog {
+            Some(OpenDialog::Payees(_)) => return self.confirm_payees_dialog(cx),
+            Some(OpenDialog::Tags(_)) => return self.confirm_tags_dialog(cx),
+            _ => {}
         }
         let Some(dialog) = self.chrome.dialog.take() else {
             return;
@@ -44,7 +45,7 @@ impl Shell {
             OpenDialog::Payees(_) => unreachable!("Payees confirms through the host's cycle"),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog, cx),
             OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog, cx),
-            OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog, cx),
+            OpenDialog::Tags(_) => unreachable!("Tags confirms through the host's cycle"),
             OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog, cx),
             OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog, cx),
             OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog, cx),

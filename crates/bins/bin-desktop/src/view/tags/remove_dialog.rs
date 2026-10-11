@@ -41,6 +41,10 @@ pub fn render(props: RemoveTagProps<'_>, cx: &App) -> AnyElement {
         ));
     }
 
+    if let Some(error) = &form.error {
+        fields.push(super::colour_field::error_line(error.to_string(), cx));
+    }
+
     let card = div()
         .flex()
         .flex_col()

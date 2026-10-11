@@ -44,6 +44,8 @@ pub struct TagForm {
     tags: Vec<Tag>,
     /// The Tag being edited; `None` on Add.
     own_id: Option<u32>,
+    /// What the domain refused the confirm with, shown in place of the live name check.
+    pub error: Option<TagError>,
 }
 
 impl TagForm {
@@ -60,6 +62,7 @@ impl TagForm {
             editing: false,
             tags,
             own_id: None,
+            error: None,
         }
     }
 
@@ -78,6 +81,7 @@ impl TagForm {
             editing: true,
             tags,
             own_id: Some(tag.id),
+            error: None,
         }
     }
 
@@ -148,7 +152,7 @@ impl TagForm {
         if self.name.is_blank() {
             return None;
         }
-        name_error(&self.tags, self.own_id, self.name.text())
+        name_error(&self.tags, self.own_id, self.name.text()).or_else(|| self.error.clone())
     }
 
     pub fn is_valid(&self) -> bool {
@@ -219,6 +223,8 @@ impl Dialog for TagForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveTagForm {
     pub confirmation_name: TextField,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<TagError>,
     /// The Tag's name and Transaction count, copied in when the Dialog opens.
     name: String,
     transactions: usize,
@@ -228,6 +234,7 @@ impl RemoveTagForm {
     pub fn new(name: impl Into<String>, transactions: usize) -> Self {
         Self {
             confirmation_name: TextField::default(),
+            error: None,
             name: name.into(),
             transactions,
         }
@@ -341,6 +348,8 @@ pub struct MergeTagsForm {
     pub source: SelectState,
     pub target: SelectState,
     pub focused: MergeField,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<TagError>,
     /// Every Tag and its label in usage order, copied in when the Dialog opens.
     options: Vec<MergeOption>,
 }
@@ -374,6 +383,7 @@ impl MergeTagsForm {
             source: SelectState::new(label_of(&options, source)),
             target: SelectState::new(label_of(&options, target)),
             focused,
+            error: None,
             options,
         }
     }

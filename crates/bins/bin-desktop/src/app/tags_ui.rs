@@ -1,7 +1,13 @@
 //! The Tags destination's wiring: keys, clicks, the Add, Edit, Remove and Merge dialogs, and the Settings Tags list. The pure rules live in `lib_tags`; the chrome in `view::tags`, and its View state in the `TagsView` Entity.
 
 use super::Shell;
-use crate::tags::form::TagsDialog;
+use crate::{
+    chrome::dialog_apply,
+    tags::{
+        apply::{TagOutcome, TagsApply},
+        form::TagsDialog,
+    },
+};
 
 use crate::{
     chrome::dialog_host::OpenDialog,
@@ -11,7 +17,6 @@ use crate::{
     },
     settings::{SettingsFocus, SettingsSection},
     tags::{self, Tag},
-    transactions::edit_transactions,
 };
 
 use gpui::{App, Context, Keystroke};
@@ -156,44 +161,50 @@ impl Shell {
         }
     }
 
-    /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
-    /// and selects it, removes it, or merges it into another, toasting the last two.
-    pub(super) fn apply_tags_dialog(&mut self, dialog: TagsDialog, cx: &mut Context<'_, Self>) {
-        match dialog {
-            TagsDialog::Add(form) => {
-                let Some(draft) = form.draft() else {
-                    return;
-                };
-                let mut rows = self.tags_list(cx).to_vec();
-                // `is_valid` ran the same name check, so a refusal can only leave the dialog open.
-                match tags::insert_tag(&mut rows, &draft) {
-                    Ok(id) => {
-                        self.store_tags(rows, cx);
-                        self.select_tag(id, cx);
-                    }
-                    Err(_) => self.open_dialog(OpenDialog::Tags(TagsDialog::Add(form))),
-                }
+    /// Confirms the open Tags dialog through the host's cycle: the form's command runs against the
+    /// Tags and Transactions stores, a refusal stays on the form, and a landed one closes the
+    /// dialog. Add and Edit select the Tag; Remove and Merge toast the outcome and select the
+    /// Tag the cursor lands on.
+    pub(super) fn confirm_tags_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = TagsApply {
+            tags: self.tags_store.clone(),
+            transactions: self.transactions_store.clone(),
+        };
+        let Some(dialog) = self.dialog_mut::<TagsDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            TagOutcome::Saved(id) => self.select_tag(id, cx),
+            // The selection keeps its position, so it lands on the next Tag in usage order (or the
+            // new last one).
+            TagOutcome::Removed { name } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_tag_deleted(&name),
+                );
+                let last = self.tags_list(cx).len().saturating_sub(1);
+                let selected = self.tags_page_selected(cx).min(last);
+                self.set_tags_page_selected(selected, cx);
             }
-            TagsDialog::Edit(id, form) => {
-                let Some(draft) = form.draft() else {
-                    return;
-                };
-                let mut rows = self.tags_list(cx).to_vec();
-                let saved = tags::edit_tag(&mut rows, id, &draft)
-                    .and_then(|()| tags::set_active(&mut rows, id, form.is_active));
-                match saved {
-                    Ok(()) => {
-                        self.store_tags(rows, cx);
-                        self.select_tag(id, cx);
-                    }
-                    Err(_) => self.open_dialog(OpenDialog::Tags(TagsDialog::Edit(id, form))),
-                }
-            }
-            TagsDialog::Remove(id, _) => self.apply_remove_tag(id, cx),
-            TagsDialog::Merge(form) => {
-                if let Some((source, target)) = form.pair() {
-                    self.apply_merge_tags(source, target, cx);
-                }
+            TagOutcome::Merged {
+                source_name,
+                target_name,
+                retagged,
+                target,
+            } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_tag_merged(
+                        &source_name,
+                        &target_name,
+                        i64::try_from(retagged).unwrap_or(i64::MAX),
+                    ),
+                );
+                self.select_tag(target, cx);
             }
         }
     }
@@ -224,16 +235,6 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn handle_tags_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
     pub(super) fn open_edit_tag_dialog(&mut self, id: u32, cx: &App) {
         let rows = self.tags_list(cx);
         let Some(tag) = tags::get(rows, id) else {
@@ -254,38 +255,6 @@ impl Shell {
         self.open_dialog(OpenDialog::Tags(TagsDialog::Remove(id, form)));
     }
 
-    /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
-    /// lands on the next Tag in usage order (or the new last one).
-    pub(super) fn apply_remove_tag(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(name) = tags::get(self.tags_list(cx), id).map(|tag| tag.name.clone()) else {
-            return;
-        };
-        let mut rows = self.tags_list(cx).to_vec();
-        let removed = edit_transactions(&self.transactions_store, cx, |transactions| {
-            tags::remove_tag(&mut rows, transactions, id)
-        });
-        let (kind, text) = match removed {
-            Ok(()) => {
-                self.store_tags(rows, cx);
-                (
-                    ToastKind::Success,
-                    lib_locale::msg::toast_tag_deleted(&name),
-                )
-            }
-            Err(error) => (
-                ToastKind::Error,
-                lib_locale::msg::toast_save_failed(
-                    &lib_locale::msg::toast_entity_tag(),
-                    &error.to_string(),
-                ),
-            ),
-        };
-        self.raise_toast(kind, text);
-        let last = self.tags_list(cx).len().saturating_sub(1);
-        let selected = self.tags_page_selected(cx).min(last);
-        self.set_tags_page_selected(selected, cx);
-    }
-
     /// The 7e selects' options, labelled `Shared (9 txns)`.
     pub(super) fn merge_tag_options(&self, cx: &App) -> Vec<tags::form::MergeOption> {
         tags::form::merge_options(self.tags_list(cx), self.transactions(cx), |name, count| {
@@ -301,50 +270,6 @@ impl Shell {
         let target = source.and_then(|id| tags::duplicate_of(&groups, id));
         let form = tags::form::MergeTagsForm::new(self.merge_tag_options(cx), source, target);
         self.open_dialog(OpenDialog::Tags(TagsDialog::Merge(form)));
-    }
-
-    /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
-    /// target.
-    pub(super) fn apply_merge_tags(
-        &mut self,
-        source: u32,
-        target: u32,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let rows = self.tags_list(cx);
-        let (Some(source_name), Some(target_name)) = (
-            tags::get(rows, source).map(|tag| tag.name.clone()),
-            tags::get(rows, target).map(|tag| tag.name.clone()),
-        ) else {
-            return;
-        };
-        let retagged = tags::transaction_count(self.transactions(cx), source);
-        let mut rows = rows.to_vec();
-        let merged = edit_transactions(&self.transactions_store, cx, |transactions| {
-            tags::merge_tags(&mut rows, transactions, source, target)
-        });
-        let (kind, text) = match merged {
-            Ok(()) => {
-                self.store_tags(rows, cx);
-                (
-                    ToastKind::Success,
-                    lib_locale::msg::toast_tag_merged(
-                        &source_name,
-                        &target_name,
-                        i64::try_from(retagged).unwrap_or(i64::MAX),
-                    ),
-                )
-            }
-            Err(error) => (
-                ToastKind::Error,
-                lib_locale::msg::toast_save_failed(
-                    &lib_locale::msg::toast_entity_tag(),
-                    &error.to_string(),
-                ),
-            ),
-        };
-        self.raise_toast(kind, text);
-        self.select_tag(target, cx);
     }
 
     pub(super) fn handle_merge_tags_field_click(

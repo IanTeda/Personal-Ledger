@@ -119,7 +119,16 @@ pub fn render(props: MergeTagsProps<'_>, cx: &App) -> AnyElement {
             false,
             cx,
         ))
-        .child(dialog::body([selects, callout(pair, transactions, cx)]))
+        .child(dialog::body(
+            [Some(selects), Some(callout(pair, transactions, cx))]
+                .into_iter()
+                .flatten()
+                .chain(
+                    form.error
+                        .as_ref()
+                        .map(|error| super::colour_field::error_line(error.to_string(), cx)),
+                ),
+        ))
         .child(dialog::action_row(
             [
                 dialog::cancel_button("merge-tags-cancel", on_cancel, cx).into_any_element(),

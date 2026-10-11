@@ -673,8 +673,8 @@ impl Render for Shell {
             tags_view::add_dialog::TagDialogHandlers {
                 on_field_click,
                 on_pick,
-                on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
-                on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                on_cancel: tag_plain(Shell::handle_dialog_cancel),
+                on_confirm: tag_plain(Shell::handle_dialog_confirm),
             }
         };
         let tag_groups = tags::duplicate_groups(self.tags_list(cx), self.transactions(cx));
@@ -1463,8 +1463,8 @@ impl Render for Shell {
                                 tag,
                                 form,
                                 transactions: tags::transaction_count(self.transactions(cx), *id),
-                                on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
-                                on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                                on_cancel: tag_plain(Shell::handle_dialog_cancel),
+                                on_confirm: tag_plain(Shell::handle_dialog_confirm),
                             },
                             cx,
                         )
@@ -1498,8 +1498,8 @@ impl Render for Shell {
                                 .map_or(0, |id| tags::transaction_count(self.transactions(cx), id)),
                             on_field_click,
                             on_option_click,
-                            on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
-                            on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                            on_cancel: tag_plain(Shell::handle_dialog_cancel),
+                            on_confirm: tag_plain(Shell::handle_dialog_confirm),
                         },
                         cx,
                     ))
