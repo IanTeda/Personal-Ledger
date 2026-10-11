@@ -1,17 +1,14 @@
 //! The Tags Dialogs' confirm cycle (ADR-0037): the command each form describes and the [`Apply`]
-//! that runs it against the Tags and Transactions stores. When `LedgerStore` replaces the
-//! per-domain stores only [`TagsApply`] changes.
+//! that runs it against the Ledger.
 
 use gpui::{App, Entity};
 
-use super::{
-    TagDraft, TagError, edit_tag, form::TagsDialog, get, insert_tag, merge_tags, remove_tag,
-    set_active, transaction_count,
-};
+use lib_ledger::{AddTag, EditTag, MergeTags, RemoveTag};
+
+use super::{TagDraft, TagError, form::TagsDialog, get};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    transactions::{TransactionsStore, edit_transactions},
-    view::tags::state::TagsStore,
+    ledger_store::LedgerStore,
 };
 
 /// What confirming a Tags Dialog asks for.
@@ -74,11 +71,10 @@ impl DialogForm for TagsDialog {
     }
 }
 
-/// Runs [`TagCommand`]s against the Tags store, reading and rewriting the Transactions whose
-/// Splits carry a Tag from theirs.
+/// Runs [`TagCommand`]s against the Ledger as Ledger commands. Removing or merging a Tag rewrites
+/// the Transactions whose Splits carry it, which the Ledger does in the same command.
 pub struct TagsApply {
-    pub tags: Entity<TagsStore>,
-    pub transactions: Entity<TransactionsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<TagCommand> for TagsApply {
@@ -86,54 +82,42 @@ impl Apply<TagCommand> for TagsApply {
     type Refusal = TagError;
 
     fn apply(&mut self, command: TagCommand, cx: &mut App) -> Result<TagOutcome, TagError> {
+        // Names are read before the write removes them, for the Toast that follows.
+        let name_of = |cx: &App, id| {
+            get(self.ledger.read(cx).ledger().tags(), id)
+                .map(|tag| tag.name.clone())
+                .ok_or(TagError::NotFound)
+        };
         match command {
             TagCommand::Add(draft) => self
-                .tags
-                .update(cx, |store, cx| {
-                    store.mutate(cx, |rows| insert_tag(rows, &draft))
-                })
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, AddTag(draft)))
                 .map(TagOutcome::Saved),
             TagCommand::Edit(id, draft, is_active) => self
-                .tags
+                .ledger
                 .update(cx, |store, cx| {
-                    // The rules work on a copy, so a refused change never reaches the store.
-                    let mut rows = store.tags(cx).to_vec();
-                    edit_tag(&mut rows, id, &draft)
-                        .and_then(|()| set_active(&mut rows, id, is_active))?;
-                    store.mutate(cx, |tags| *tags = rows);
-                    Ok(())
+                    store.apply(
+                        cx,
+                        EditTag {
+                            id,
+                            draft,
+                            is_active,
+                        },
+                    )
                 })
                 .map(|()| TagOutcome::Saved(id)),
             TagCommand::Remove(id) => {
-                let name = get(self.tags.read(cx).tags(cx), id)
-                    .map(|tag| tag.name.clone())
-                    .ok_or(TagError::NotFound)?;
-                let mut rows = self.tags.read(cx).tags(cx).to_vec();
-                edit_transactions(&self.transactions, cx, |transactions| {
-                    remove_tag(&mut rows, transactions, id)
-                })?;
-                self.tags.update(cx, |store, cx| {
-                    store.mutate(cx, |tags| *tags = rows);
-                });
+                let name = name_of(cx, id)?;
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, RemoveTag(id)))?;
                 Ok(TagOutcome::Removed { name })
             }
             TagCommand::Merge { source, target } => {
-                let rows = self.tags.read(cx).tags(cx);
-                let (Some(source_name), Some(target_name)) = (
-                    get(rows, source).map(|tag| tag.name.clone()),
-                    get(rows, target).map(|tag| tag.name.clone()),
-                ) else {
-                    return Err(TagError::NotFound);
-                };
-                let retagged =
-                    transaction_count(self.transactions.read(cx).transactions(cx), source);
-                let mut rows = self.tags.read(cx).tags(cx).to_vec();
-                edit_transactions(&self.transactions, cx, |transactions| {
-                    merge_tags(&mut rows, transactions, source, target)
+                let (source_name, target_name) = (name_of(cx, source), name_of(cx, target));
+                let (source_name, target_name) = (source_name?, target_name?);
+                let retagged = self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, MergeTags { source, target })
                 })?;
-                self.tags.update(cx, |store, cx| {
-                    store.mutate(cx, |tags| *tags = rows);
-                });
                 Ok(TagOutcome::Merged {
                     source_name,
                     target_name,
@@ -147,7 +131,7 @@ impl Apply<TagCommand> for TagsApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
 
     use lib_ledger::LedgerParts;
 
@@ -166,9 +150,7 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        let tags = cx.new(|cx| TagsStore::new(ledger.clone(), cx));
-        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
-        TagsApply { tags, transactions }
+        TagsApply { ledger }
     }
 
     #[gpui::test]

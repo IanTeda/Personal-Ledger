@@ -1,7 +1,6 @@
 //! The Tags destination's Entities (ADR-0032). [`TagsStore`] reads the rows through
 //! [`LedgerStore`], which holds the only copy; [`TagsView`] owns the two selections (the Tags page's usage-order row and
-//! the Settings list's id). `Shell` opens the dialogs and runs the rules, since the dialog host
-//! and the Transactions store are `Shell`'s.
+//! the Settings list's id). `Shell` opens the dialogs; their writes are Ledger commands.
 
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_ledger::Domain;
@@ -42,15 +41,6 @@ impl TagsStore {
 
     pub fn tags<'a>(&self, cx: &'a App) -> &'a [Tag] {
         self.ledger.read(cx).ledger().tags()
-    }
-
-    /// Applies `change` to the rows, then emits [`TagsEvent::Changed`]. Mutations go through here
-    /// so no write can skip the event.
-    #[expect(deprecated, reason = "Tags writes move onto Ledger commands in #640")]
-    pub fn mutate<R>(&mut self, cx: &mut App, change: impl FnOnce(&mut Vec<Tag>) -> R) -> R {
-        self.ledger.update(cx, |ledger, cx| {
-            ledger.write(cx, &[Domain::Tags], |ledger| change(ledger.tags))
-        })
     }
 }
 

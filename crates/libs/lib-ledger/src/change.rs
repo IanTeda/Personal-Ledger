@@ -12,6 +12,7 @@ use lib_bills::BillPlan;
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_payees::Payee;
+use lib_tags::Tag;
 use lib_transactions::Transaction;
 
 use crate::Ledger;
@@ -42,6 +43,8 @@ pub enum LedgerChange {
     DeletePayee(u32),
     UpsertCategory(Category),
     DeleteCategory(u32),
+    UpsertTag(Tag),
+    DeleteTag(u32),
     UpsertTransaction(Transaction),
     UpsertBillPlan(BillPlan),
     UpsertBudget(Budget),
@@ -52,6 +55,7 @@ impl LedgerChange {
         match self {
             Self::UpsertPayee(_) | Self::DeletePayee(_) => Domain::Payees,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
+            Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,

@@ -8,6 +8,7 @@ mod hatch;
 mod payee_commands;
 pub mod query;
 pub mod seed;
+mod tag_commands;
 
 pub use category_commands::{
     AddCategory, CategoryDeleted, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal,
@@ -20,6 +21,7 @@ pub use payee_commands::{
     PayeeUse, SetPayeeActive, SetPayeeActiveRefusal,
 };
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
+pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
 
 use chrono::{Local, NaiveDate};
 use lib_accounts::{Account, default_accounts};

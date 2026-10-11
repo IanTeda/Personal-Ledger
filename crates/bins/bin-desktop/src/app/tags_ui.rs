@@ -28,13 +28,6 @@ impl Shell {
         self.tags_store.read(cx).tags(cx)
     }
 
-    /// Writes `rows` back to the Tags store, which notifies its readers. The rules work on a copy
-    /// of the rows, so a refused change never reaches the store.
-    fn store_tags(&mut self, rows: Vec<Tag>, cx: &mut App) {
-        self.tags_store
-            .update(cx, |store, cx| store.mutate(cx, |tags| *tags = rows));
-    }
-
     /// The Tags page's selected row, a position in `tags::sorted_by_usage`'s order.
     fn tags_page_selected(&self, cx: &App) -> usize {
         self.tags_view.read(cx).selected()
@@ -162,13 +155,12 @@ impl Shell {
     }
 
     /// Confirms the open Tags dialog through the host's cycle: the form's command runs against the
-    /// Tags and Transactions stores, a refusal stays on the form, and a landed one closes the
+    /// Ledger, a refusal stays on the form, and a landed one closes the
     /// dialog. Add and Edit select the Tag; Remove and Merge toast the outcome and select the
     /// Tag the cursor lands on.
     pub(super) fn confirm_tags_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = TagsApply {
-            tags: self.tags_store.clone(),
-            transactions: self.transactions_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<TagsDialog>() else {
             return;
