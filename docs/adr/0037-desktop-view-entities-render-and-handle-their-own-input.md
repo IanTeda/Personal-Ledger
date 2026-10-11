@@ -19,7 +19,7 @@ We're making each View Entity render itself and handle its own input. `Shell` ke
 ## Consequences
 
 - `Shell` shrinks toward navigation, Chrome, the Dialog host, Toasts and the forwarding enum, and `app/*_ui.rs` shrinks to cross-cutting wiring.
-- Confirming or refusing a Dialog still runs through `Shell` until the Dialog host's cycle is decided (#596). Refreshing stale copies when another View writes shared data waits on the Ledger aggregate (#592).
+- The Dialog host owns the confirm, refuse and reopen cycle (#596). Each form implements `DialogForm`: `command()` returns its command or a `FormError` from field validation, and `refuse()` shows a domain refusal as a Message, so the wording stays in the bin and the domain libs stay locale-free. The host runs the command through an `Apply` trait, implemented against the per-domain stores until `LedgerStore` replaces them, and closes the Dialog only on success. A Dialog stays a value in `OpenDialog`, reached through one generic `dialog_mut::<T>()`. Refreshing stale copies when another View writes shared data waits on the Ledger aggregate (#592).
 - A View now depends on the stores it reads, so its tests must set up those store Entities.
 
 ## Considered Options
@@ -27,3 +27,4 @@ We're making each View Entity render itself and handle its own input. `Shell` ke
 - **Keep `Shell`'s `ActiveView` match at each call site, each arm one line.** Rejected: the per-destination matches would stay spread across four files.
 - **A statically dispatched `ViewEntity` trait behind the enum.** Rejected, as in ADR-0016's #538 update: the enum already makes every View handle every method, and the trait would add nothing but uniform signatures.
 - **Keep the per-View intent events and delete `ViewEvent`.** Rejected: `Shell` would keep a View-specific match that turns each intent into a Dialog. This reverses the reasoning in ADR-0016's #538 update that a View's handling needs `Shell`'s shared state. A View reads the stores itself and asks `Shell` only for what `Shell` owns.
+- **Make each Dialog a gpui Entity.** Rejected (#596): a Dialog lives only while it is open and watches nothing, so an Entity would add `update(cx, …)` plumbing for no gain.
