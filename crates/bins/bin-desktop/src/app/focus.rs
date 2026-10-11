@@ -4,11 +4,13 @@
 use super::Shell;
 use crate::{
     chrome::rail as chrome_rail,
-    navigation::active_view::ActiveView,
     navigation::key_router::Movement,
     navigation::nav::FocusZone,
     settings::{SettingsFocus, SettingsSection},
-    view::documents::DocumentsFocus,
+    view::{
+        active::{ActiveViewEntity, ShellView},
+        documents::DocumentsFocus,
+    },
 };
 
 impl Shell {
@@ -31,6 +33,7 @@ impl Shell {
     /// last-visited one and stays.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
+        self.active_view_entity(cx).on_enter(cx);
         self.settings_view
             .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::default()));
         self.settings_view
@@ -86,26 +89,30 @@ impl Shell {
     fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
         let page_focused = self.nav.focus() == FocusZone::View
             && self.settings_view.read(cx).focus() == SettingsFocus::Page;
-        match self.active_view(cx) {
-            ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
+        let view = match self.active_view_entity(cx) {
+            ActiveViewEntity::Shell(view) => view,
+            view => return view.apply_movement(movement, cx),
+        };
+        match view {
+            ShellView::Settings(SettingsSection::Accounts) if page_focused => {
                 self.apply_accounts_movement(movement, cx);
             }
-            ActiveView::Settings(SettingsSection::Categories) if page_focused => {
+            ShellView::Settings(SettingsSection::Categories) if page_focused => {
                 self.apply_settings_categories_movement(movement, cx);
             }
-            ActiveView::Settings(SettingsSection::Tags) if page_focused => {
+            ShellView::Settings(SettingsSection::Tags) if page_focused => {
                 self.apply_settings_tags_movement(movement, cx);
             }
-            ActiveView::Settings(SettingsSection::Payees) if page_focused => {
+            ShellView::Settings(SettingsSection::Payees) if page_focused => {
                 self.apply_settings_payees_movement(movement, cx);
             }
-            ActiveView::Settings(SettingsSection::Documents) if page_focused => {
+            ShellView::Settings(SettingsSection::Documents) if page_focused => {
                 self.apply_settings_documents_movement(movement, cx);
             }
-            ActiveView::Settings(SettingsSection::Inventory) if page_focused => {
+            ShellView::Settings(SettingsSection::Inventory) if page_focused => {
                 self.apply_settings_inventory_movement(movement, cx);
             }
-            ActiveView::Settings(_) => {
+            ShellView::Settings(_) => {
                 if self.settings_view.read(cx).focus() == SettingsFocus::Index
                     && matches!(
                         movement,
@@ -118,13 +125,12 @@ impl Shell {
                 }
             }
             // The import step keeps the Transactions movement, as it did before `ActiveView`.
-            ActiveView::Transactions | ActiveView::Import => {
+            ShellView::Transactions | ShellView::Import => {
                 self.apply_transactions_movement(movement, cx);
             }
-            ActiveView::Documents => self.apply_documents_movement(movement, cx),
-            ActiveView::Bills => self.apply_bills_movement(movement, cx),
-            ActiveView::Budgets => self.apply_budgets_movement(movement, cx),
-            ActiveView::Dashboard | ActiveView::Placeholder(_) => self.scroll_view(movement),
+            ShellView::Documents => self.apply_documents_movement(movement, cx),
+            ShellView::Budgets => self.apply_budgets_movement(movement, cx),
+            ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }
     }
 }

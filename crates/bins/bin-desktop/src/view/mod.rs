@@ -3,6 +3,7 @@
 //! placeholder views, a separate ticket (#153).
 
 pub mod accounts;
+pub mod active;
 pub mod bills;
 pub mod budgets;
 pub mod categories;

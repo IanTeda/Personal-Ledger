@@ -1,11 +1,14 @@
 //! The `ViewEvent` channel into `Shell`: `Shell` subscribes to each View Entity and handles
 //! every event in `handle_view_event`, the one place a View's request turns into `Shell` state
-//! (ADR-0032). An `impl Shell` block, not a module of the same name.
+//! (ADR-0032, ADR-0037). An `impl Shell` block, not a module of the same name.
 
-use gpui::{Context, Entity, EventEmitter};
+use gpui::{Context, Entity, EventEmitter, Subscription};
 
 use super::Shell;
-use crate::view::event::ViewEvent;
+use crate::view::{
+    active::ActiveViewEntity,
+    event::{Reveal, ViewEvent},
+};
 
 impl Shell {
     /// Subscribes `Shell` to a View Entity's events. The subscription is kept on `Shell`, since
@@ -15,17 +18,26 @@ impl Shell {
         view: &Entity<V>,
         cx: &mut Context<'_, Self>,
     ) {
-        let subscription = cx.subscribe(view, |shell, _view, event: &ViewEvent, cx| {
+        let subscription = Self::view_event_subscription(view, cx);
+        self.view_subscriptions.push(subscription);
+    }
+
+    /// The subscription that hands a View's events to [`Self::handle_view_event`], for a View
+    /// built before `Shell` itself is.
+    pub(super) fn view_event_subscription<V: EventEmitter<ViewEvent>>(
+        view: &Entity<V>,
+        cx: &mut Context<'_, Self>,
+    ) -> Subscription {
+        cx.subscribe(view, |shell, _view, event: &ViewEvent, cx| {
             shell.handle_view_event(event.clone(), cx);
             // A View's request changes what `Shell` draws, and nothing else schedules a frame.
             cx.notify();
-        });
-        self.view_subscriptions.push(subscription);
+        })
     }
 
     /// Applies one View request to `Shell`'s own state, using the same helpers the keyboard and
     /// the palette use, so a View's request and a keypress leave the same state behind.
-    pub(super) fn handle_view_event(&mut self, event: ViewEvent, cx: &mut gpui::App) {
+    pub(super) fn handle_view_event(&mut self, event: ViewEvent, cx: &mut Context<'_, Self>) {
         match event {
             ViewEvent::RaiseToast { kind, text } => self.raise_toast(kind, text),
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
@@ -36,7 +48,27 @@ impl Shell {
                     self.reset_view_scroll(cx);
                 }
             }
-            ViewEvent::SetStatus(text) => self.chrome.status_message = Some(text),
+            ViewEvent::SetStatus(text) => self.chrome.status_message = text,
+            ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
+        }
+    }
+
+    /// A cross-View jump: makes the record's destination active, then asks its View to show it.
+    pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+        self.nav.set_noun(reveal.noun());
+        self.reset_view_scroll(cx);
+        match self.active_view_entity(cx) {
+            ActiveViewEntity::Shell(_) => self.reveal_in_shell(reveal, cx),
+            view => view.reveal(reveal, cx),
+        }
+    }
+
+    /// A reveal whose destination is still drawn by `Shell`.
+    fn reveal_in_shell(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+        match reveal {
+            Reveal::Transaction(id) => self.open_transaction_row(id, cx),
+            // Their View reveals them itself.
+            Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => {}
         }
     }
 }
@@ -94,11 +126,39 @@ mod tests {
         shell.read_with(cx, |shell, _| assert_eq!(shell.nav.noun(), Noun::Bills));
 
         view.update(cx, |_, cx| {
-            cx.emit(ViewEvent::SetStatus("Exported".to_string()))
+            cx.emit(ViewEvent::SetStatus(Some("Exported".to_string())))
         });
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.status_message(), Some("Exported"));
+        });
+
+        view.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
+        cx.run_until_parked();
+        shell.read_with(cx, |shell, _| assert_eq!(shell.status_message(), None));
+    }
+
+    #[gpui::test]
+    fn a_reveal_makes_its_destination_active_and_shows_the_record(cx: &mut TestAppContext) {
+        crate::locale::init_for_tests();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
+        let shell = cx.new(|cx| Shell::with_today(NavState::new(), cx.focus_handle(), today, cx));
+        let view = cx.new(|_| StandInView);
+        shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));
+        let (id, last_plan) = shell.read_with(cx, |shell, cx| {
+            crate::bills::planner_order(shell.bill_plans(cx))
+                .last()
+                .map(|plan| (plan.id, plan.name.clone()))
+                .expect("the seed has Bill Plans")
+        });
+
+        view.update(cx, |_, cx| cx.emit(ViewEvent::Reveal(Reveal::BillPlan(id))));
+        cx.run_until_parked();
+        shell.read_with(cx, |shell, cx| {
+            assert_eq!(shell.nav.noun(), Noun::Bills);
+            let page = shell.bills_snapshot(cx);
+            assert_eq!(page.tab, "Planner");
+            assert_eq!(page.plans[page.selected], last_plan);
         });
     }
 }

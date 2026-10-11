@@ -3,8 +3,9 @@
 //! period nav at its right, a 2px rule, then the active tab's body.
 //!
 //! The Schedule (8a, `schedule`, with its `filters`) and Planner (8b, `planner`) tabs are built;
-//! 8f's History tab was folded into the Schedule (#381). Every action is a callback into `Shell`,
-//! so the keyboard and the mouse reach the same handlers.
+//! 8f's History tab was folded into the Schedule (#381). [`state::BillsView`] renders the page
+//! itself (ADR-0037): every action is a call back into the Bills Entity, so the keyboard and the
+//! mouse reach the same methods.
 
 pub mod filters;
 pub(crate) mod hints;
@@ -13,13 +14,15 @@ pub mod plan_dialog;
 pub mod planner;
 pub mod schedule;
 pub mod skip_dialog;
+pub mod snapshot;
 pub mod state;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, ScrollHandle, SharedString, Window, div, prelude::*, px};
 
-use crate::{bills::BillsTab, navigation::nav::Noun, period::Period, theme::color};
+use crate::{bills, bills::BillsTab, navigation::nav::Noun, period::Period, theme::color};
+use state::BillsView;
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// Called with a row's position in the active tab's order (`bills::schedule_rows` or
@@ -41,12 +44,7 @@ pub struct BillsPageProps<'a> {
     pub on_all_click: OnPlainClick,
 }
 
-pub fn render(
-    focused: bool,
-    scroll_handle: &ScrollHandle,
-    props: BillsPageProps<'_>,
-    cx: &App,
-) -> AnyElement {
+pub fn render(scroll_handle: &ScrollHandle, props: BillsPageProps<'_>, cx: &App) -> AnyElement {
     let meta = match props.tab {
         BillsTab::Schedule => Some(schedule::meta_line(&props.schedule, cx).into_any_element()),
         BillsTab::Planner => Some(planner::meta_line(&props.planner, cx).into_any_element()),
@@ -62,9 +60,6 @@ pub fn render(
         .h_full()
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
         .px(px(28.0))
         .py(px(22.0))
         .child(page_header(meta, props.on_add_click.clone(), cx))
@@ -235,4 +230,134 @@ fn period_nav(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
 /// A period as the Locale writes a month and year (`Sept 2026`).
 pub fn period_label(period: Period) -> String {
     lib_locale::format::format_year_month(period.year, period.month)
+}
+
+impl Render for BillsView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let plain = |handler: fn(&mut BillsView, &mut Context<'_, BillsView>)| {
+            let entity = entity.clone();
+            let on_click: OnPlainClick = Rc::new(move |_window, cx| entity.update(cx, handler));
+            on_click
+        };
+        let indexed = |handler: fn(&mut BillsView, usize, &mut Context<'_, BillsView>)| {
+            let entity = entity.clone();
+            let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
+                entity.update(cx, |view, cx| handler(view, index, cx));
+            });
+            on_click
+        };
+        let on_tab_click: OnTabClick = {
+            let entity = entity.clone();
+            Rc::new(move |tab, _window, cx| {
+                entity.update(cx, |view, cx| view.set_tab(tab, cx));
+            })
+        };
+        let on_field_click: filters::OnFieldClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |view, cx| view.click_filter_field(field, cx));
+            })
+        };
+        let on_option_click: filters::OnOptionClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, index, _window, cx| {
+                entity.update(cx, |view, cx| view.click_filter_option(field, index, cx));
+            })
+        };
+
+        let cx: &App = cx;
+        let store = self.sources.bills.read(cx);
+        let (plans, entries) = (store.plans(), store.entries());
+        let transactions = self.sources.transactions.read(cx).transactions();
+        let accounts = self.sources.accounts.read(cx).accounts();
+        let base_unit = self
+            .sources
+            .units
+            .read(cx)
+            .units()
+            .iter()
+            .find(|unit| unit.is_base)
+            .map(|unit| unit.code.as_str());
+        let state = &self.state;
+        let unfiltered = self.unfiltered_rows(cx);
+        let rows = state.filters.apply(&unfiltered, plans);
+        let summary = bills::period_summary(&rows, plans, entries, transactions);
+        let planner_plans = bills::planner_order(plans);
+        let selects = filters::FilterField::ORDER
+            .into_iter()
+            .map(|field| {
+                let focused = state
+                    .filter_focus
+                    .as_ref()
+                    .filter(|(focused, _)| *focused == field);
+                filters::FilterSelect {
+                    field,
+                    options: self.filter_options(field, cx).0,
+                    state: focused.map_or_else(
+                        || self.filter_select_state(field, cx),
+                        |(_, select)| select.clone(),
+                    ),
+                    focused: focused.is_some(),
+                }
+            })
+            .collect();
+        let stats = state
+            .filters
+            .plan_id
+            .and_then(|id| bills::get(plans, id))
+            .map(|plan| {
+                let stats =
+                    bills::history::plan_stats(plan, plans, entries, transactions, self.today);
+                (plan, stats)
+            });
+        let props = BillsPageProps {
+            tab: state.tab,
+            period: state.period,
+            all: state.all,
+            schedule: schedule::ScheduleProps {
+                rows: &rows,
+                total: unfiltered.len(),
+                all: state.all,
+                filters: filters::FilterProps {
+                    filters: &state.filters,
+                    selects,
+                    stats,
+                    base_unit,
+                    on_chip_click: indexed(BillsView::toggle_filter_chip),
+                    on_field_click,
+                    on_option_click,
+                },
+                summary: &summary,
+                plans,
+                entries,
+                accounts,
+                transactions,
+                base_unit,
+                glyphs: self.glyphs,
+                selected: (!rows.is_empty()).then(|| state.selected.min(rows.len() - 1)),
+                on_row_click: indexed(BillsView::select),
+                on_pay_click: indexed(BillsView::click_pay),
+                on_skip_click: indexed(BillsView::click_skip),
+                on_view_transaction_click: indexed(BillsView::click_view_transaction),
+            },
+            planner: planner::PlannerProps {
+                plans: &planner_plans,
+                inactive: bills::inactive_count(plans),
+                categories: self.sources.categories.read(cx).categories(),
+                accounts,
+                base_unit,
+                selected: (!planner_plans.is_empty())
+                    .then(|| state.selected.min(planner_plans.len() - 1)),
+                on_row_click: indexed(BillsView::select),
+                on_edit_click: indexed(BillsView::click_edit_plan),
+            },
+            on_add_click: plain(BillsView::open_add_plan),
+            on_tab_click,
+            on_period_prev: plain(|view, cx| view.shift_period(false, cx)),
+            on_period_next: plain(|view, cx| view.shift_period(true, cx)),
+            on_all_click: plain(BillsView::toggle_all),
+        };
+        render(&self.scroll, props, cx)
+    }
 }

@@ -295,6 +295,7 @@ impl Shell {
                     DISPLAY_FIELD_SIDEBAR => self.settings_start_sidebar_minimised = delta > 0,
                     _ => self.set_toasts_on(delta < 0),
                 }
+                self.push_display_preferences(cx);
                 true
             }
             "enter" | "space" => {
@@ -1135,6 +1136,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.settings_date_style = style;
+        self.push_display_preferences(cx);
         cx.notify();
     }
 
@@ -1163,6 +1165,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.settings_status_glyphs = glyphs;
+        self.push_display_preferences(cx);
         cx.notify();
     }
 

@@ -117,6 +117,14 @@ impl Dialog for BillsDialog {
     fn close_open_select(&mut self) -> bool {
         self.inner_mut().is_some_and(Dialog::close_open_select)
     }
+
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        Some(match self {
+            Self::Add(_) | Self::Edit(..) => crate::view::settings::hints::payee_dialog_hints(),
+            Self::Pay(_) => crate::view::bills::hints::pay_bill_dialog_hints(),
+            Self::Skip(_) => crate::view::bills::hints::skip_bill_dialog_hints(),
+        })
+    }
 }
 
 #[cfg(test)]

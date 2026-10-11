@@ -30,7 +30,6 @@ use crate::{
     documents::{self},
     import::{self},
     institutions::InstitutionRow,
-    navigation::active_view::ActiveView,
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode, Noun},
     payees::{self},
@@ -46,11 +45,14 @@ use crate::{
     units::{PriceSourceRow, UnitRow},
     view::format,
     view::{
-        accounts as accounts_view, bills as bills_view,
+        accounts as accounts_view,
+        active::{ActiveViewEntity, ShellView},
+        bills as bills_view,
         budgets::{self as budgets_view},
         categories as categories_view,
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
+        event::Reveal,
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
         tags as tags_view, transactions as transactions_view,
@@ -518,69 +520,6 @@ impl Render for Shell {
             });
             on_click
         };
-        let bills_dialog_element = self.bills_dialog().and_then(|dialog| {
-            let (editing, form) = match dialog {
-                bills::BillsDialog::Add(form) => (None, form),
-                bills::BillsDialog::Edit(id, form) => (
-                    Some(bills::get(self.bill_plans(cx), *id)?.name.as_str()),
-                    form,
-                ),
-                bills::BillsDialog::Pay(form) => {
-                    return self.render_pay_bill_dialog(form, &entity, cx);
-                }
-                bills::BillsDialog::Skip(entry) => {
-                    return self.render_skip_bill_dialog(*entry, &entity, cx);
-                }
-            };
-            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, handler);
-                });
-                on_click
-            };
-            let on_field_click: bills_view::plan_dialog::OnFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_field_click(field, cx)
-                    });
-                })
-            };
-            let on_option_click: bills_view::plan_dialog::OnOptionClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_option_click(field, index, cx);
-                    });
-                })
-            };
-            let on_amount_kind_click: bills_view::plan_dialog::OnAmountKindClick = {
-                let entity = entity.clone();
-                Rc::new(move |kind, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_amount_kind_click(kind, cx);
-                    });
-                })
-            };
-            Some(bills_view::plan_dialog::render(
-                bills_view::plan_dialog::PlanDialogProps {
-                    editing,
-                    form,
-                    options: &form.options,
-                    errors: form.errors(),
-                    valid: form.draft().is_some(),
-                    handlers: bills_view::plan_dialog::PlanDialogHandlers {
-                        on_field_click,
-                        on_option_click,
-                        on_amount_kind_click,
-                        on_cancel: plain(Shell::handle_bills_dialog_cancel),
-                        on_confirm: plain(Shell::handle_bills_dialog_confirm),
-                    },
-                },
-                cx,
-            ))
-        });
         let payees_dialog_handlers = {
             let plain = plain_payees;
             let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
@@ -724,18 +663,6 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
-        let bills_unfiltered = self.bills_unfiltered_rows(cx);
-        let bills_rows = self
-            .bills_state(cx)
-            .filters
-            .apply(&bills_unfiltered, self.bill_plans(cx));
-        let bills_summary = bills::period_summary(
-            &bills_rows,
-            self.bill_plans(cx),
-            self.bill_entries(cx),
-            self.transactions(cx),
-        );
-        let bills_planner_plans = bills::planner_order(self.bill_plans(cx));
         let bills_base_unit = self
             .units_store
             .read(cx)
@@ -743,25 +670,11 @@ impl Render for Shell {
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
-        let bills_plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: bills_view::OnPlainClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        let bills_indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: bills_view::OnRowClick = Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| handler(shell, index, cx));
-            });
-            on_click
-        };
         let on_dashboard_bill_click: dashboard::OnBillClick = {
             let entity = entity.clone();
             Rc::new(move |id, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.open_bill_entry(id, cx);
+                    shell.reveal(Reveal::BillEntry(id), cx);
                     cx.notify();
                 });
             })
@@ -804,110 +717,6 @@ impl Render for Shell {
                 .map(|figures| self.dashboard_budget_list(figures, cx))
                 .unwrap_or_default(),
         );
-        let bills_page = bills_view::BillsPageProps {
-            tab: self.bills_state(cx).tab,
-            period: self.bills_state(cx).period,
-            all: self.bills_state(cx).all,
-            schedule: bills_view::schedule::ScheduleProps {
-                rows: &bills_rows,
-                total: bills_unfiltered.len(),
-                all: self.bills_state(cx).all,
-                filters: bills_view::filters::FilterProps {
-                    filters: &self.bills_state(cx).filters,
-                    selects: bills_view::filters::FilterField::ORDER
-                        .into_iter()
-                        .map(|field| {
-                            let focused = self
-                                .bills_state(cx)
-                                .filter_focus
-                                .as_ref()
-                                .filter(|(focused, _)| *focused == field);
-                            bills_view::filters::FilterSelect {
-                                field,
-                                options: self.bills_filter_options(field, cx).0,
-                                state: focused.map_or_else(
-                                    || self.bills_filter_select_state(field, cx),
-                                    |(_, state)| state.clone(),
-                                ),
-                                focused: focused.is_some(),
-                            }
-                        })
-                        .collect(),
-                    stats: self
-                        .bills_state(cx)
-                        .filters
-                        .plan_id
-                        .and_then(|id| bills::get(self.bill_plans(cx), id))
-                        .map(|plan| {
-                            let stats = bills::history::plan_stats(
-                                plan,
-                                self.bill_plans(cx),
-                                self.bill_entries(cx),
-                                self.transactions(cx),
-                                self.today,
-                            );
-                            (plan, stats)
-                        }),
-                    base_unit: bills_base_unit,
-                    on_chip_click: bills_indexed(Shell::handle_bills_filter_chip_click),
-                    on_field_click: {
-                        let entity = entity.clone();
-                        Rc::new(move |field, _window, cx| {
-                            entity.update(cx, |shell, cx| {
-                                shell.handle_bills_filter_field_click(field, cx);
-                            });
-                        })
-                    },
-                    on_option_click: {
-                        let entity = entity.clone();
-                        Rc::new(move |field, index, _window, cx| {
-                            entity.update(cx, |shell, cx| {
-                                shell.handle_bills_filter_option_click(field, index, cx);
-                            });
-                        })
-                    },
-                },
-                summary: &bills_summary,
-                plans: self.bill_plans(cx),
-                entries: self.bill_entries(cx),
-                accounts: self.accounts.read(cx).accounts(),
-                transactions: self.transactions(cx),
-                base_unit: bills_base_unit,
-                glyphs: self.settings_status_glyphs,
-                selected: (!bills_rows.is_empty())
-                    .then(|| self.bills_state(cx).selected.min(bills_rows.len() - 1)),
-                on_row_click: bills_indexed(Shell::handle_bills_row_click),
-                on_pay_click: bills_indexed(Shell::handle_bills_pay_click),
-                on_skip_click: bills_indexed(Shell::handle_bills_skip_click),
-                on_view_transaction_click: bills_indexed(
-                    Shell::handle_bills_view_transaction_click,
-                ),
-            },
-            planner: bills_view::planner::PlannerProps {
-                plans: &bills_planner_plans,
-                inactive: bills::inactive_count(self.bill_plans(cx)),
-                categories: self.categories(cx),
-                accounts: self.accounts.read(cx).accounts(),
-                base_unit: bills_base_unit,
-                selected: (!bills_planner_plans.is_empty()).then(|| {
-                    self.bills_state(cx)
-                        .selected
-                        .min(bills_planner_plans.len() - 1)
-                }),
-                on_row_click: bills_indexed(Shell::handle_bills_row_click),
-                on_edit_click: bills_indexed(Shell::handle_bills_edit_plan_click),
-            },
-            on_add_click: bills_plain(Shell::handle_bills_add_click),
-            on_tab_click: {
-                let entity = entity.clone();
-                Rc::new(move |tab, _window, cx| {
-                    entity.update(cx, |shell, cx| shell.handle_bills_tab_click(tab, cx));
-                })
-            },
-            on_period_prev: bills_plain(Shell::handle_bills_period_prev),
-            on_period_next: bills_plain(Shell::handle_bills_period_next),
-            on_all_click: bills_plain(Shell::handle_bills_all_click),
-        };
         let import_categories = self.import_category_options(cx);
         let import_page = self.import_state(cx).map(|state| {
             let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -1294,7 +1103,6 @@ impl Render for Shell {
                     || this.handle_settings_tracing_key(&event.keystroke, cx)
                     || this.handle_settings_focus_key(&event.keystroke, cx)
                     || this.handle_colour_theme_grid_key(&event.keystroke, cx)
-                    || this.handle_bills_tab_key(&event.keystroke, cx)
                     || this.handle_budgets_tab_key(&event.keystroke, cx)
                     || this.handle_key_down(event, cx)
                 {
@@ -1359,73 +1167,83 @@ impl Render for Shell {
                                     ))
                                 },
                             )
-                            .child(render_view(
-                                self.active_view(cx),
-                                self.nav.ledger_open(),
-                                focus == FocusZone::View,
-                                &self.view_scroll_handle,
-                                on_empty_state_command_click,
-                                PageProps {
-                                    dashboard,
-                                    accounts: accounts_page,
-                                    settings_categories: settings_categories_page,
-                                    settings_tags: settings_tags_page,
-                                    settings_payees: settings_payees_page,
-                                    settings_documents: settings_documents_page,
-                                    settings_inventory: settings_inventory_page,
-                                    bills: bills_page,
-                                    budgets: budgets_page,
-                                    import: import_page,
-                                    transactions: transactions_page,
-                                    documents: documents_page,
-                                },
-                                SettingsPanelProps {
-                                    selected: self.settings_view.read(cx).selected_section(),
-                                    focus: self.settings_view.read(cx).focus(),
-                                    on_index_click: on_settings_index_click,
-                                    date_style: self.settings_date_style,
-                                    row_density: self.settings_row_density,
-                                    status_glyphs: self.settings_status_glyphs,
-                                    start_sidebar_minimised: self.settings_start_sidebar_minimised,
-                                    on_start_sidebar_minimised_click,
-                                    on_date_style_click,
-                                    on_row_density_click,
-                                    on_status_glyphs_click,
-                                    toasts_on: self.chrome.toasts.display().toasts_on,
-                                    on_toasts_click,
-                                    colour_theme_focus: self
-                                        .settings_view
-                                        .read(cx)
-                                        .colour_theme_focus(),
-                                    display_field: self.settings_view.read(cx).display_field(),
-                                    on_colour_theme_click,
-                                    units: self.units_store.read(cx).units(),
-                                    on_unit_edit_click,
-                                    on_unit_delete_click,
-                                    on_add_unit_click,
-                                    price_sources: self.units_store.read(cx).price_sources(),
-                                    on_price_source_test_click,
-                                    on_price_source_edit_click,
-                                    on_price_source_delete_click,
-                                    on_add_price_source_click,
-                                    institutions: self.institutions_store.read(cx).institutions(),
-                                    on_institution_edit_click,
-                                    on_institution_delete_click,
-                                    on_add_institution_click,
-                                    on_sync_now_click,
-                                    on_backup_now_click,
-                                    on_export_ledger_click,
-                                    log: settings_view::tracing::LogBoxProps {
-                                        level: self.settings_view.read(cx).log().level(),
-                                        entries: self.settings_view.read(cx).log().visible(),
-                                        hidden: self.settings_view.read(cx).log().hidden_count(),
-                                        list: self.settings_view.read(cx).log_list().clone(),
+                            .child(match self.active_view_entity(cx) {
+                                ActiveViewEntity::Shell(view) => render_view(
+                                    view,
+                                    self.nav.ledger_open(),
+                                    focus == FocusZone::View,
+                                    &self.view_scroll_handle,
+                                    on_empty_state_command_click,
+                                    PageProps {
+                                        dashboard,
+                                        accounts: accounts_page,
+                                        settings_categories: settings_categories_page,
+                                        settings_tags: settings_tags_page,
+                                        settings_payees: settings_payees_page,
+                                        settings_documents: settings_documents_page,
+                                        settings_inventory: settings_inventory_page,
+                                        budgets: budgets_page,
+                                        import: import_page,
+                                        transactions: transactions_page,
+                                        documents: documents_page,
                                     },
-                                    on_tracing_level_click,
-                                    on_clear_logs_click,
-                                },
-                                cx,
-                            )),
+                                    SettingsPanelProps {
+                                        selected: self.settings_view.read(cx).selected_section(),
+                                        focus: self.settings_view.read(cx).focus(),
+                                        on_index_click: on_settings_index_click,
+                                        date_style: self.settings_date_style,
+                                        row_density: self.settings_row_density,
+                                        status_glyphs: self.settings_status_glyphs,
+                                        start_sidebar_minimised: self
+                                            .settings_start_sidebar_minimised,
+                                        on_start_sidebar_minimised_click,
+                                        on_date_style_click,
+                                        on_row_density_click,
+                                        on_status_glyphs_click,
+                                        toasts_on: self.chrome.toasts.display().toasts_on,
+                                        on_toasts_click,
+                                        colour_theme_focus: self
+                                            .settings_view
+                                            .read(cx)
+                                            .colour_theme_focus(),
+                                        display_field: self.settings_view.read(cx).display_field(),
+                                        on_colour_theme_click,
+                                        units: self.units_store.read(cx).units(),
+                                        on_unit_edit_click,
+                                        on_unit_delete_click,
+                                        on_add_unit_click,
+                                        price_sources: self.units_store.read(cx).price_sources(),
+                                        on_price_source_test_click,
+                                        on_price_source_edit_click,
+                                        on_price_source_delete_click,
+                                        on_add_price_source_click,
+                                        institutions: self
+                                            .institutions_store
+                                            .read(cx)
+                                            .institutions(),
+                                        on_institution_edit_click,
+                                        on_institution_delete_click,
+                                        on_add_institution_click,
+                                        on_sync_now_click,
+                                        on_backup_now_click,
+                                        on_export_ledger_click,
+                                        log: settings_view::tracing::LogBoxProps {
+                                            level: self.settings_view.read(cx).log().level(),
+                                            entries: self.settings_view.read(cx).log().visible(),
+                                            hidden: self
+                                                .settings_view
+                                                .read(cx)
+                                                .log()
+                                                .hidden_count(),
+                                            list: self.settings_view.read(cx).log_list().clone(),
+                                        },
+                                        on_tracing_level_click,
+                                        on_clear_logs_click,
+                                    },
+                                    cx,
+                                ),
+                                view => view_frame(view.element(), focus == FocusZone::View, cx),
+                            }),
                     ),
             )
             .child(
@@ -1527,7 +1345,7 @@ impl Render for Shell {
                     }
                 }
             }))
-            .children(bills_dialog_element)
+            .children(self.render_bills_dialog(&entity, cx))
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))
@@ -1864,7 +1682,6 @@ struct PageProps<'a> {
     settings_documents: settings_view::documents::DocumentsPageProps<'a>,
     /// Settings' own Inventory page, mounted only while Settings shows it.
     settings_inventory: inventory_view::InventoryPageProps<'a>,
-    bills: bills_view::BillsPageProps<'a>,
     /// `None` when the Budget shown has gone.
     budgets: Option<budgets_view::BudgetsPageProps<'a>>,
     /// `Some` while 6e shows in place of the Transactions page.
@@ -1935,7 +1752,7 @@ struct SettingsPanelProps<'a> {
     reason = "the view props plus the App the Colour Theme is read from; the remaining sweeps may fold them into one struct"
 )]
 fn render_view(
-    view: ActiveView,
+    view: ShellView,
     ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
@@ -1947,7 +1764,7 @@ fn render_view(
     // Each View's props are `Some` exactly while it is active; the placeholder arms keep a missing
     // one from panicking.
     match view {
-        ActiveView::Documents => {
+        ShellView::Documents => {
             return match pages.documents {
                 Some(documents) => documents_view::render(focused, documents, cx),
                 None => scrolling_pane(
@@ -1958,8 +1775,7 @@ fn render_view(
                 ),
             };
         }
-        ActiveView::Bills => return bills_view::render(focused, scroll_handle, pages.bills, cx),
-        ActiveView::Budgets => {
+        ShellView::Budgets => {
             return match pages.budgets {
                 Some(budgets) => budgets_view::render(focused, scroll_handle, budgets, cx),
                 None => scrolling_pane(
@@ -1970,20 +1786,20 @@ fn render_view(
                 ),
             };
         }
-        ActiveView::Import => {
+        ShellView::Import => {
             if let Some(import) = pages.import {
                 return import_view::render(focused, scroll_handle, import, cx);
             }
         }
-        ActiveView::Transactions => {
+        ShellView::Transactions => {
             if let Some(transactions) = pages.transactions {
                 return transactions_view::render(focused, transactions, cx);
             }
         }
-        ActiveView::Settings(_) | ActiveView::Dashboard | ActiveView::Placeholder(_) => {}
+        ShellView::Settings(_) | ShellView::Dashboard | ShellView::Placeholder(_) => {}
     }
 
-    if let ActiveView::Settings(_) = view {
+    if let ShellView::Settings(_) = view {
         return div()
             .id("settings")
             .flex_1()
@@ -2054,20 +1870,33 @@ fn render_view(
     }
 
     let content = match view {
-        ActiveView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
-        ActiveView::Dashboard => empty_state(on_empty_state_command_click, cx),
-        ActiveView::Placeholder(noun) => placeholder_view(noun, cx),
+        ShellView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
+        ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
+        ShellView::Placeholder(noun) => placeholder_view(noun, cx),
         // Import and Transactions land here only without their props, which `Shell` never sends.
-        ActiveView::Transactions | ActiveView::Import => placeholder_view(Noun::Transactions, cx),
-        ActiveView::Documents
-        | ActiveView::Bills
-        | ActiveView::Budgets
-        | ActiveView::Settings(_) => {
+        ShellView::Transactions | ShellView::Import => placeholder_view(Noun::Transactions, cx),
+        ShellView::Documents | ShellView::Budgets | ShellView::Settings(_) => {
             unreachable!("handled above")
         }
     };
 
     scrolling_pane(content, focused, scroll_handle, cx)
+}
+
+/// The focus-bordered frame a View that renders itself sits in (ADR-0037): the View draws its own
+/// scrolling page, and the border says whether the View zone has focus, which is `Shell`'s.
+fn view_frame(view: gpui::AnyElement, focused: bool, cx: &gpui::App) -> gpui::AnyElement {
+    div()
+        .id("view-frame")
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .flex()
+        .when(focused, |this| {
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
+        })
+        .child(view)
+        .into_any_element()
 }
 
 /// The scrollable, focus-bordered frame every non-Settings View sits in.

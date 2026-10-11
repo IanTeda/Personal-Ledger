@@ -80,6 +80,12 @@ pub trait Dialog {
     fn close_open_select(&mut self) -> bool {
         false
     }
+
+    /// The status line's hints while this Dialog is open, in place of the View's (ADR-0037).
+    /// `None` leaves them to the View, as for a Dialog whose View still words its hints itself.
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        None
+    }
 }
 
 /// The session Toast history: read-only, so it takes no key but `Esc`, which the router turns
@@ -165,6 +171,10 @@ impl Dialog for OpenDialog {
 
     fn close_open_select(&mut self) -> bool {
         self.inner_mut().close_open_select()
+    }
+
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        self.inner().hints()
     }
 }
 

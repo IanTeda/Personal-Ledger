@@ -9,8 +9,9 @@
 //! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
 //! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
 //! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169,
-//! `InputMode::Help`). No `View` trait (ADR-0016): `Shell` dispatches on the `ActiveView` enum,
-//! and `render_view` in `app/render.rs` is its plain exhaustive match.
+//! `InputMode::Help`). No `View` trait (ADR-0016): `Shell` forwards to the active View through
+//! `view::active::ActiveViewEntity` (ADR-0037), and `render_view` in `app/render.rs` draws the
+//! Views not yet moved onto it.
 //!
 //! This is the root of the `app` module, so the `Shell` struct's own module and its child files
 //! sit in `app/`. The file holds the `Shell` struct, construction, persisted setters, the accessor
@@ -51,7 +52,6 @@ mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
-use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
@@ -83,7 +83,8 @@ use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
 use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
-use crate::view::bills::state::{BillsEvent, BillsView};
+use crate::view::active::ActiveViewEntity;
+use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{
@@ -142,7 +143,7 @@ pub struct Shell {
     /// When this `g` was pressed -- `Some` while a completing chord (`gg`, or `g` + a jump
     /// key) is still possible. Cleared by the next keypress regardless of outcome, so an
     /// abandoned `g` never leaks into the one after it. Checked against
-    /// [`PENDING_G_TIMEOUT`] rather than driven by a timer: nothing needs to happen on its
+    /// [`PENDING_G_TIMEOUT`](key_dispatch::PENDING_G_TIMEOUT) rather than driven by a timer: nothing needs to happen on its
     /// own with no further keypress, so a lazily-checked timestamp is enough.
     pending_g: Option<Instant>,
     /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
@@ -222,8 +223,9 @@ pub struct Shell {
     /// (ADR-0032). Seeded by `bills::default_bills`, which also writes their settling
     /// Transactions into the Transactions store.
     bills_store: Entity<BillsStore>,
-    /// The Bills page's state (tab, selection, period, All, filters and filter focus), owned by
-    /// its Entity. Its events are handled in `handle_bills_event`.
+    /// The Bills page: its state (tab, selection, period, All, filters and filter focus), its
+    /// rendering and its input, owned by its Entity (ADR-0037). It reaches `Shell` only through
+    /// `ViewEvent`.
     bills_view: Entity<BillsView>,
     /// The Transactions page's state (selection, scroll, filters, search and the popover draft),
     /// owned by its Entity (ADR-0032).
@@ -356,11 +358,22 @@ impl Shell {
                 shell.handle_budgets_event(*event, cx);
             });
         let bills_store = cx.new(|_| BillsStore::new(bills_seed.plans, bills_seed.entries));
-        let bills_view = cx.new(|_| BillsView::new(bills_store.clone(), today));
-        let bills_subscription =
-            cx.subscribe(&bills_view, |shell, _view, event: &BillsEvent, cx| {
-                shell.handle_bills_event(*event, cx);
-            });
+        let bills_view = cx.new(|_| {
+            BillsView::new(
+                BillsSources {
+                    bills: bills_store.clone(),
+                    transactions: transactions_store.clone(),
+                    categories: categories_store.clone(),
+                    accounts: accounts.clone(),
+                    payees: payees_store.clone(),
+                    units: units_store.clone(),
+                },
+                today,
+            )
+        });
+        let bills_subscription = Self::view_event_subscription(&bills_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
         let documents_store = cx.new(|_| {
             DocumentsStore::new(documents_seed.documents, documents::types::default_types())
         });
@@ -422,6 +435,7 @@ impl Shell {
                 accounts_subscription,
                 budgets_subscription,
                 bills_subscription,
+                bills_view_observer,
                 documents_subscription,
                 tags_subscription,
                 payees_subscription,
@@ -542,6 +556,18 @@ impl Shell {
             self.settings_view.read(cx).selected_section(),
             self.import_state(cx).is_some(),
         )
+    }
+
+    /// The active View as `Shell` forwards to it (ADR-0037).
+    fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
+        ActiveViewEntity::new(self.active_view(cx), &self.bills_view)
+    }
+
+    /// Hands the Display Preferences to the Views that read them, after a Settings change.
+    fn push_display_preferences(&self, cx: &mut App) {
+        let (date_style, glyphs) = (self.settings_date_style, self.settings_status_glyphs);
+        self.bills_view
+            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
     }
 
     fn scroll_view(&mut self, movement: Movement) {

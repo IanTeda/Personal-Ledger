@@ -958,15 +958,7 @@ impl Shell {
                 self.select_payee(id, cx);
             }
             DocumentLink::BillPlan(id) => {
-                let at = crate::bills::planner_order(self.bill_plans(cx))
-                    .iter()
-                    .position(|plan| plan.id == id);
-                let Some(at) = at else {
-                    return;
-                };
-                self.nav.set_noun(Noun::Bills);
-                self.set_bills_tab(crate::bills::BillsTab::Planner, cx);
-                self.edit_bills_state(cx, |state| state.selected = at);
+                self.reveal(crate::view::event::Reveal::BillPlan(id), cx);
             }
             DocumentLink::InventoryItem(_) => {
                 self.nav.set_noun(Noun::Inventory);

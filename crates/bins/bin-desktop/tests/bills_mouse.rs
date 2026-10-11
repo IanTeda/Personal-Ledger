@@ -138,3 +138,25 @@ fn a_planner_edit_button_opens_the_edit_dialog(app: &mut TestAppContext) {
 
     assert_eq!(ui.bills().dialog.as_deref(), Some("Edit"));
 }
+
+#[gpui::test]
+fn a_filter_select_opens_on_click_and_an_option_scopes_the_schedule(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    ui.click("bills-filter-plan");
+    assert_eq!(ui.bills().filter_focus.as_deref(), Some("Plan"));
+    // Option 0 is "All bills"; option 1 is the first Bill Plan in Planner order.
+    ui.click("bills-filter-plan-option-1");
+    let page = ui.bills();
+    assert!(!page.rows.is_empty(), "the first Plan has a row this month");
+    assert!(page.rows.iter().all(|row| row.plan == page.plans[0]));
+}
+
+#[gpui::test]
+fn a_paid_row_view_button_opens_its_transaction(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    // The last row is the Paid one.
+    ui.click("bills-view-6");
+    assert_eq!(ui.noun(), Noun::Transactions);
+}

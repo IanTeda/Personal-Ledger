@@ -108,6 +108,22 @@ fn f_cycles_focus_through_the_filter_selects_and_off(app: &mut TestAppContext) {
     assert_eq!(ui.bills().filter_focus, None);
 }
 
+/// #460: `Esc` closes an open filter list first, then leaves the filter row.
+#[gpui::test]
+fn escape_closes_an_open_filter_list_then_leaves_the_filter_row(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    ui.press("f enter");
+    ui.press("escape");
+    assert_eq!(ui.bills().filter_focus.as_deref(), Some("Plan"));
+    ui.press("escape");
+    assert_eq!(ui.bills().filter_focus, None);
+
+    ui.press("f escape");
+    assert_eq!(ui.bills().filter_focus, None);
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Normal);
+}
+
 #[gpui::test]
 fn pay_opens_the_dialog_and_enter_marks_the_row_paid(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
@@ -193,6 +209,24 @@ fn pay_and_skip_refuse_a_row_with_nothing_to_settle(app: &mut TestAppContext) {
 
     ui.press("s");
     assert_eq!(ui.bills().dialog, None);
+}
+
+#[gpui::test]
+fn enter_on_a_paid_row_opens_its_transaction(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    // The last row is the Paid one.
+    ui.press("shift-g enter");
+    assert_eq!(ui.noun(), Noun::Transactions);
+}
+
+#[gpui::test]
+fn slash_is_inert_since_bills_has_no_search(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    ui.press("/");
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Normal);
+    assert_eq!(ui.noun(), Noun::Bills);
 }
 
 #[gpui::test]

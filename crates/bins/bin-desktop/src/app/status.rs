@@ -6,9 +6,7 @@ use gpui::Context;
 use super::{Shell, document_types_ui, inventory_ui};
 use crate::view::{
     accounts::hints::accounts_hints,
-    bills::hints::{
-        bills_planner_hints, bills_schedule_hints, pay_bill_dialog_hints, skip_bill_dialog_hints,
-    },
+    active::{ActiveViewEntity, ShellView},
     import::import_hints,
     settings::hints::{
         confirm_dialog_hints, merge_tags_dialog_hints, payee_dialog_hints,
@@ -18,16 +16,16 @@ use crate::view::{
     transactions::hints::{filter_hints, transactions_hints},
 };
 use crate::{
-    bills, budgets,
+    budgets,
+    chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
     import,
-    navigation::active_view::ActiveView,
     navigation::nav::{FocusZone, InputMode},
     payees, tags,
     view::format,
     view::{
-        bills as bills_view, budgets as budgets_view,
+        budgets as budgets_view,
         settings::{self as settings_view, inventory as inventory_view},
     },
 };
@@ -69,7 +67,8 @@ impl Shell {
     }
 
     /// The status line's per-page hints and right-hand text for the View on show, or `None` when
-    /// it has none. The Budgets arguments are the figures `Shell::render` already built for the
+    /// it has none. While a Dialog that has its own hints is open, they replace the View's
+    /// (ADR-0037). The Budgets arguments are the figures `Shell::render` already built for the
     /// page, so the status line reads the same numbers.
     pub(super) fn page_status(
         &self,
@@ -78,15 +77,39 @@ impl Shell {
         budgets_history: Option<&budgets::History>,
         cx: &gpui::App,
     ) -> Option<PageStatus> {
-        match self.active_view(cx) {
-            ActiveView::Documents => self.documents_page_status(cx),
-            ActiveView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
+        let status = match self.active_view_entity(cx) {
+            ActiveViewEntity::Shell(view) => {
+                self.shell_page_status(view, budgets_figures, budgets_plan, budgets_history, cx)
+            }
+            view => view.page_status(cx),
+        };
+        match self.chrome.dialog.as_ref().and_then(Dialog::hints) {
+            Some(hints) => Some(PageStatus {
+                hints,
+                right: status.map(|status| status.right).unwrap_or_default(),
+            }),
+            None => status,
+        }
+    }
+
+    /// [`Self::page_status`] for a View `Shell` still draws.
+    fn shell_page_status(
+        &self,
+        view: ShellView,
+        budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
+        budgets_plan: Option<&budgets::Plan>,
+        budgets_history: Option<&budgets::History>,
+        cx: &gpui::App,
+    ) -> Option<PageStatus> {
+        match view {
+            ShellView::Documents => self.documents_page_status(cx),
+            ShellView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
                     i64::try_from(self.accounts.read(cx).accounts().len()).unwrap_or(i64::MAX),
                 ),
             }),
-            ActiveView::Settings(_) if self.settings_tags_page_has_focus(cx) => Some(PageStatus {
+            ShellView::Settings(_) if self.settings_tags_page_has_focus(cx) => Some(PageStatus {
                 hints: match self.tags_dialog() {
                     Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
@@ -99,17 +122,15 @@ impl Shell {
                     &tags::duplicate_groups(self.tags_list(cx), self.transactions(cx)),
                 ),
             }),
-            ActiveView::Settings(_) if self.settings_payees_page_has_focus(cx) => {
-                Some(PageStatus {
-                    hints: match self.payees_dialog() {
-                        Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
-                        Some(_) => payee_dialog_hints(),
-                        None => settings_payees_hints(),
-                    },
-                    right: settings_view::payees::scope_text(self.payees_list(cx)),
-                })
-            }
-            ActiveView::Settings(_) if self.settings_documents_page_has_focus(cx) => {
+            ShellView::Settings(_) if self.settings_payees_page_has_focus(cx) => Some(PageStatus {
+                hints: match self.payees_dialog() {
+                    Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
+                    Some(_) => payee_dialog_hints(),
+                    None => settings_payees_hints(),
+                },
+                right: settings_view::payees::scope_text(self.payees_list(cx)),
+            }),
+            ShellView::Settings(_) if self.settings_documents_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: self
                         .document_types_dialog()
@@ -117,7 +138,7 @@ impl Shell {
                     right: settings_view::documents::scope_text(self.document_types(cx)),
                 })
             }
-            ActiveView::Settings(_) if self.settings_inventory_page_has_focus(cx) => {
+            ShellView::Settings(_) if self.settings_inventory_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: self.inventory_dialog().map_or_else(
                         || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
@@ -126,72 +147,17 @@ impl Shell {
                     right: inventory_view::scope_text(self.inventory(cx)),
                 })
             }
-            ActiveView::Settings(_) if self.settings_categories_page_has_focus(cx) => {
+            ShellView::Settings(_) if self.settings_categories_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: settings_categories_hints(),
                     right: settings_view::categories::scope_note(self.categories(cx)),
                 })
             }
-            ActiveView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
+            ShellView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
                 hints: self.settings_hints(cx),
                 right: self.settings_view.read(cx).selected_section().scope_note(),
             }),
-            ActiveView::Bills
-                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Pay(_))) =>
-            {
-                Some(PageStatus {
-                    hints: pay_bill_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills
-                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Skip(_))) =>
-            {
-                Some(PageStatus {
-                    hints: skip_bill_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills
-                if matches!(
-                    self.bills_dialog(),
-                    Some(bills::BillsDialog::Add(_) | bills::BillsDialog::Edit(..))
-                ) =>
-            {
-                Some(PageStatus {
-                    hints: payee_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills if self.bills_state(cx).tab == bills::BillsTab::Schedule => {
-                Some(PageStatus {
-                    hints: bills_schedule_hints(),
-                    right: crate::msg::desktop_bills_status_period(
-                        &if self.bills_state(cx).all {
-                            crate::msg::desktop_bills_period_all()
-                        } else {
-                            bills_view::period_label(self.bills_state(cx).period)
-                        },
-                        &self.bills_schedule_rows(cx).len().to_string(),
-                        i64::try_from(self.bills_unfiltered_rows(cx).len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills if self.bills_state(cx).tab == bills::BillsTab::Planner => {
-                Some(PageStatus {
-                    hints: bills_planner_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
+            ShellView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
                     hints: self.budgets_hints(cx),
                     right: crate::msg::desktop_budgets_status_period(
@@ -202,7 +168,7 @@ impl Shell {
                     ),
                 })
             }
-            ActiveView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan => {
+            ShellView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan => {
                 Some(PageStatus {
                     hints: self.budgets_hints(cx),
                     right: budgets_plan.map_or_else(String::new, |plan| {
@@ -213,7 +179,7 @@ impl Shell {
                     }),
                 })
             }
-            ActiveView::Budgets => Some(PageStatus {
+            ShellView::Budgets => Some(PageStatus {
                 hints: self.budgets_hints(cx),
                 right: budgets_history
                     .as_ref()
@@ -224,7 +190,7 @@ impl Shell {
                         )
                     }),
             }),
-            ActiveView::Import => {
+            ShellView::Import => {
                 let pending = self
                     .import_state(cx)
                     .map_or(0, |state| import::summary(&state.rows).needs_review);
@@ -239,7 +205,7 @@ impl Shell {
                     },
                 })
             }
-            ActiveView::Transactions => Some(PageStatus {
+            ShellView::Transactions => Some(PageStatus {
                 hints: if self.nav.mode() == InputMode::Filter {
                     filter_hints()
                 } else {
@@ -247,10 +213,7 @@ impl Shell {
                 },
                 right: format::status_legend(self.settings_status_glyphs),
             }),
-            ActiveView::Bills
-            | ActiveView::Settings(_)
-            | ActiveView::Dashboard
-            | ActiveView::Placeholder(_) => None,
+            ShellView::Settings(_) | ShellView::Dashboard | ShellView::Placeholder(_) => None,
         }
     }
 }

@@ -10,12 +10,12 @@ use super::Shell;
 use crate::{
     chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
     navigation::{
-        active_view::ActiveView,
         explorer::ExplorerMode,
         key_router::{self, KeyOutcome, route_key},
-        nav::{InputMode, Noun},
+        nav::{FocusZone, InputMode, Noun},
     },
     settings::SettingsSection,
+    view::active::{ActiveViewEntity, ShellView},
 };
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
@@ -109,8 +109,9 @@ impl Shell {
             return true;
         }
 
-        // Keys a View claims ahead of the router (Budgets' Plan cell edit, the Import step, the
-        // Documents keys, `J`/`K` reorders); the router would otherwise read them as `a` or `j`/`k`.
+        // Keys a View claims ahead of the router (Bills' `tab`, Budgets' Plan cell edit, the Import
+        // step, the Documents keys, `J`/`K` reorders); the router would otherwise read them as
+        // `tab`, `a` or `j`/`k`.
         if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke, cx) {
             self.chrome.status_message = None;
             return true;
@@ -118,23 +119,35 @@ impl Shell {
 
         let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
 
+        // `Esc` asks the Dialog host's open select first, then the View, then falls back to the
+        // close-and-exit-mode below (ADR-0037). The View is asked even when the router has nothing
+        // for `Esc` to do, since only the View knows what of its own is open.
+        if matches!(
+            outcome,
+            KeyOutcome::ClosePopupsAndExitMode | KeyOutcome::EscapeNoOp
+        ) {
+            if self
+                .chrome
+                .dialog
+                .as_mut()
+                .is_some_and(Dialog::close_open_select)
+            {
+                return true;
+            }
+            if self.chrome.dialog.is_none()
+                && self.view_takes_key(keystroke)
+                && self.active_view_entity(cx).escape(cx)
+            {
+                return true;
+            }
+        }
+
         // `Esc`'s three shapes short-circuit before the hint-strip-clearing precedent below --
         // mirrors the original tier order exactly, including the quirk that a bare `Esc` with
         // nothing to do (`EscapeNoOp`) does *not* clear a stale status message.
         match outcome {
             KeyOutcome::ClearPendingG => return true,
             KeyOutcome::ClosePopupsAndExitMode => {
-                if self
-                    .chrome
-                    .dialog
-                    .as_mut()
-                    .is_some_and(Dialog::close_open_select)
-                {
-                    return true;
-                }
-                if self.close_bills_filter_focus(cx) {
-                    return true;
-                }
                 self.chrome.palette = None;
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
@@ -192,6 +205,13 @@ impl Shell {
                 true
             }
             KeyOutcome::EnterSearch => {
+                let view = self.active_view_entity(cx);
+                if !matches!(view, ActiveViewEntity::Shell(_)) {
+                    if view.start_search(cx) {
+                        self.nav.enter_mode(InputMode::Search);
+                    }
+                    return true;
+                }
                 // Settings has no Search: `/` is inert there rather than opening a mode with no box.
                 if self.nav.noun() == Noun::Documents {
                     self.documents_start_search(cx);
@@ -237,26 +257,34 @@ impl Shell {
                 true
             }
             KeyOutcome::NoOp => {
-                let handled = match self.active_view(cx) {
-                    ActiveView::Settings(SettingsSection::Accounts) => {
+                let view = match self.active_view_entity(cx) {
+                    ActiveViewEntity::Shell(view) => view,
+                    view => {
+                        let handled =
+                            self.view_takes_key(keystroke) && view.handle_key(keystroke, cx);
+                        return handled || had_status_message;
+                    }
+                };
+                let handled = match view {
+                    ShellView::Settings(SettingsSection::Accounts) => {
                         self.handle_accounts_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Categories) => {
+                    ShellView::Settings(SettingsSection::Categories) => {
                         self.handle_categories_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Payees) => {
+                    ShellView::Settings(SettingsSection::Payees) => {
                         self.handle_payees_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Documents) => {
+                    ShellView::Settings(SettingsSection::Documents) => {
                         self.handle_settings_documents_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Inventory) => {
+                    ShellView::Settings(SettingsSection::Inventory) => {
                         self.handle_settings_inventory_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Tags) => {
+                    ShellView::Settings(SettingsSection::Tags) => {
                         self.handle_tags_key(keystroke, cx)
                     }
-                    ActiveView::Settings(
+                    ShellView::Settings(
                         SettingsSection::General
                         | SettingsSection::Display
                         | SettingsSection::Units
@@ -266,12 +294,11 @@ impl Shell {
                         | SettingsSection::Tracing
                         | SettingsSection::About,
                     ) => false,
-                    ActiveView::Bills => self.handle_bills_key(keystroke, cx),
-                    ActiveView::Budgets => self.handle_budgets_key(keystroke, cx),
-                    ActiveView::Transactions | ActiveView::Import => {
+                    ShellView::Budgets => self.handle_budgets_key(keystroke, cx),
+                    ShellView::Transactions | ShellView::Import => {
                         self.handle_transactions_key(keystroke, cx)
                     }
-                    ActiveView::Dashboard | ActiveView::Documents | ActiveView::Placeholder(_) => {
+                    ShellView::Dashboard | ShellView::Documents | ShellView::Placeholder(_) => {
                         false
                     }
                 };
@@ -285,37 +312,42 @@ impl Shell {
         }
     }
 
-    /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
-    /// `docs/ux/tui-mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
-    /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
-    /// through previously run commands, `Enter` runs the selected command (see
-    /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.
-    /// Everything else is swallowed here rather than falling through to the zone/movement
-    /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
-    /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
+    /// Whether a key reaches the active View: the View zone has focus, in `Normal` mode, with no
+    /// `Ctrl`, `Alt` or `Cmd` held (ADR-0037). A pending `g` is ruled out before this is asked.
+    /// `Shift` is the View's to read.
+    fn view_takes_key(&self, keystroke: &Keystroke) -> bool {
+        let modifiers = &keystroke.modifiers;
+        self.nav.focus() == FocusZone::View
+            && self.nav.mode() == InputMode::Normal
+            && !(modifiers.control || modifiers.alt || modifiers.platform)
+    }
+
     /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
-    /// because `ActiveView` is: the handler behind an arm only fires for the View it names, so
+    /// because `ShellView` is: the handler behind an arm only fires for the View it names, so
     /// matching on the View first keeps the same keys owned by the same View.
     fn handle_view_key_ahead_of_router(
         &mut self,
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        match self.active_view(cx) {
-            ActiveView::Budgets => self.handle_budgets_plan_edit_key(keystroke, cx),
-            ActiveView::Import => self.handle_import_key(keystroke, cx),
-            ActiveView::Documents => self.handle_documents_key(keystroke, cx),
-            ActiveView::Settings(SettingsSection::Documents) => {
+        let view = match self.active_view_entity(cx) {
+            ActiveViewEntity::Shell(view) => view,
+            view => return self.view_takes_key(keystroke) && view.key_ahead(keystroke, cx),
+        };
+        match view {
+            ShellView::Budgets => self.handle_budgets_plan_edit_key(keystroke, cx),
+            ShellView::Import => self.handle_import_key(keystroke, cx),
+            ShellView::Documents => self.handle_documents_key(keystroke, cx),
+            ShellView::Settings(SettingsSection::Documents) => {
                 self.handle_settings_documents_reorder_key(keystroke, cx)
             }
-            ActiveView::Settings(SettingsSection::Inventory) => {
+            ShellView::Settings(SettingsSection::Inventory) => {
                 self.handle_settings_inventory_reorder_key(keystroke, cx)
             }
-            ActiveView::Transactions
-            | ActiveView::Dashboard
-            | ActiveView::Bills
-            | ActiveView::Placeholder(_)
-            | ActiveView::Settings(
+            ShellView::Transactions
+            | ShellView::Dashboard
+            | ShellView::Placeholder(_)
+            | ShellView::Settings(
                 SettingsSection::General
                 | SettingsSection::Display
                 | SettingsSection::Units
@@ -332,6 +364,14 @@ impl Shell {
         }
     }
 
+    /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
+    /// `docs/ux/tui-mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
+    /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
+    /// through previously run commands, `Enter` runs the selected command (see
+    /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.
+    /// Everything else is swallowed here rather than falling through to the zone/movement
+    /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
+    /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
     fn handle_palette_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let Some(palette) = self.chrome.palette.as_mut() else {
             return false;
@@ -384,6 +424,10 @@ impl Shell {
     /// [`Self::handle_palette_key`]'s shape): only Transactions has a Search box today. A no-op
     /// everywhere else.
     fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
+        let view = self.active_view_entity(cx);
+        if !matches!(view, ActiveViewEntity::Shell(_)) {
+            return view.search_key(keystroke, cx);
+        }
         if self.nav.noun() == Noun::Transactions {
             return self.handle_transactions_search_key(keystroke, cx);
         }
@@ -421,8 +465,6 @@ impl Shell {
     }
 }
 
-/// The one character an unmodified keystroke types into a text field, or `None` for a modified
-/// key (a chord this field gives no meaning to) or anything that isn't a single character.
 /// `keystroke` as the Dialog host reads it.
 fn dialog_key(keystroke: &Keystroke) -> DialogKey {
     match keystroke.key.as_str() {
@@ -453,6 +495,8 @@ fn dialog_key(keystroke: &Keystroke) -> DialogKey {
     }
 }
 
+/// The one character an unmodified keystroke types into a text field, or `None` for a modified
+/// key (a chord this field gives no meaning to) or anything that isn't a single character.
 pub(super) fn typed_char(keystroke: &Keystroke) -> Option<char> {
     let modifiers = &keystroke.modifiers;
     if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {

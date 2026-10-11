@@ -7,7 +7,6 @@ use super::{Shell, key_dispatch::PENDING_G_TIMEOUT};
 use std::rc::Rc;
 
 use crate::{
-    bills::{self},
     budgets,
     categories::{self},
     chrome::dialog_host::OpenDialog,
@@ -2016,16 +2015,9 @@ impl Shell {
     }
 
     /// The KNOWN COSTS stat's link: the Bills Schedule on the period being shown.
-    pub(super) fn open_budgets_schedule(&mut self, cx: &mut gpui::App) {
+    pub(super) fn open_budgets_schedule(&mut self, cx: &mut Context<'_, Self>) {
         let period = self.budgets_state(cx).period;
-        self.set_bills_tab(bills::BillsTab::Schedule, cx);
-        self.edit_bills_state(cx, |state| {
-            state.period = period;
-            state.all = false;
-            state.filters = bills::history::BillFilters::default();
-        });
-        self.nav.set_noun(Noun::Bills);
-        self.reset_view_scroll(cx);
+        self.reveal(crate::view::event::Reveal::BillsPeriod(period), cx);
     }
 
     pub(super) fn handle_budgets_tab_click(
