@@ -29,8 +29,8 @@ None in `lib-core`. The pure model is `src/documents/mod.rs` (`gpui`-free and un
 
 - `src/documents/form.rs` — `DocumentsDialog`, `DocumentForm`, `ImportForm`, `FactsForm` and their validation.
 - `src/documents/picker.rs` — the link picker: `PickerState`, `Purpose` (link, file, follow) and the derived `rows`.
-- `src/view/documents/` — `mod.rs` (page and Library), `inbox.rs` (4b), `dialogs.rs`, `model.rs`.
-- `src/shell/documents_ui.rs` — `Shell`'s side: `handle_documents_key` (keys ahead of the global router), search keys, status-line hints, the `?` cheat-sheet group, link navigation and `DocumentsSnapshot` for tests.
+- `src/view/documents/` — `state.rs` the `DocumentsView` Entity, which renders the page and handles its own keys (ahead of the global router), Search, movement, `Esc`, filing, the OS file hand-off and link navigation (as `ViewEvent::Reveal`), and builds the dialogs (ADR-0037); `mod.rs` (page and Library), `inbox.rs` (4b), `hints.rs` the status-line legends, `snapshot.rs` what the UI tests read back, `dialogs.rs`.
+- `src/app/documents_ui.rs` — `Shell`'s side: the Dialog host's Documents dialogs (drawn, confirmed, and the link picker's picks), the `documents <verb>` palette commands, dropped files and the persisted mode, scope and sort.
 - `src/navigation/command.rs` — `DocumentsVerb` and the `documents` / `documents inbox|library|accept-all|add|import` commands. `Noun::Documents` is bound to `g f`.
 - `src/chrome/rail/` — the index rail and count badges.
 - Messages in `i18n/en-US/documents.ftl`.
@@ -42,16 +42,16 @@ Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Plan
 | Requirement | Code | Test |
 | --- | --- | --- |
 | DOC-001 | `view/documents/mod.rs`, `documents::LibraryScope` | `tests/documents_mouse.rs::index_rail_facets_narrow_the_library` |
-| DOC-002 | `shell/documents_ui.rs`, `documents::LibrarySort` | `tests/documents_keyboard.rs::slash_searches_the_library`, `s_toggles_the_sort_in_the_library_only` |
+| DOC-002 | `view/documents/state.rs`, `documents::LibrarySort` | `tests/documents_keyboard.rs::slash_searches_the_library`, `s_toggles_the_sort_in_the_library_only` |
 | DOC-003 | `view/documents/mod.rs` | `tests/documents_mouse.rs::clicking_a_list_row_selects_it_and_focuses_the_list` |
-| DOC-004 | `documents/picker.rs`, `shell/documents_ui.rs` | `tests/documents_keyboard.rs::enter_in_the_link_picker_toggles_a_link`, `shift_l_follows_a_single_link` |
+| DOC-004 | `documents/picker.rs`, `app/documents_ui.rs` | `tests/documents_keyboard.rs::enter_in_the_link_picker_toggles_a_link`, `shift_l_follows_a_single_link` |
 | DOC-005 | `documents/form.rs`, `view/documents/dialogs.rs` | `tests/documents_keyboard.rs::a_opens_the_add_dialog_in_the_library` |
 | DOC-006 | `documents/form.rs::ImportForm` | `tests/documents_keyboard.rs::shift_i_opens_the_import_dialog` |
 | DOC-007 | `documents::suggestion`, `view/documents/inbox.rs` | unit tests in `src/documents/mod.rs` |
 | DOC-008 | `documents::accept`, `accept_all_strong`, `undo` | `tests/documents_keyboard.rs::y_accepts_the_focused_strong_match_and_u_undoes_it`, `shift_y_opens_accept_all_and_esc_cancels` |
 | DOC-009 | `documents/form.rs::FactsForm` | unit tests in `src/documents/form.rs` |
 | DOC-010 | `documents::band`, `Document::band` | unit tests in `src/documents/mod.rs` |
-| DOC-011 | `shell/documents_ui.rs::documents_open_selected` | none: it calls the OS, which the headless tests avoid |
+| DOC-011 | `view/documents/state.rs::open_selected` | none: it calls the OS, which the headless tests avoid |
 
 ## Decisions
 

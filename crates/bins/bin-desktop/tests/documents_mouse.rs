@@ -114,6 +114,37 @@ fn a_single_link_name_navigates_to_its_target(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn an_account_link_selects_the_account_on_its_settings_page(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+
+    ui.click("documents-link-0");
+
+    assert_eq!(ui.settings().page, "Accounts");
+    assert!(
+        ui.settings_accounts()
+            .selected_account
+            .is_some_and(|name| name.contains("Amex")),
+        "the Amex statement's Account is selected"
+    );
+}
+
+#[gpui::test]
+fn a_payee_link_selects_the_payee_on_its_settings_page(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    focus_row(&mut ui, "aami-car-policy.pdf");
+
+    ui.click("documents-link-0");
+
+    assert_eq!(ui.settings().page, "Payees");
+    assert!(
+        ui.settings_payees()
+            .selected_payee
+            .is_some_and(|name| name.contains("AAMI")),
+        "the policy's Payee is selected"
+    );
+}
+
+#[gpui::test]
 fn each_link_kind_navigates_to_its_own_target(app: &mut TestAppContext) {
     // The AAMI policy links, in order, to a Payee, a Bill Plan and an Inventory item.
     let targets = [Noun::Settings, Noun::Bills, Noun::Inventory];

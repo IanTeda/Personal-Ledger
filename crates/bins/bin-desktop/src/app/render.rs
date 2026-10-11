@@ -34,7 +34,7 @@ use crate::{
     documents::{self},
     institutions::InstitutionRow,
     navigation::explorer::{self as explorer_view},
-    navigation::nav::{FocusZone, InputMode, Noun},
+    navigation::nav::{FocusZone, InputMode},
     payees::{self},
     period::Period,
     settings::{
@@ -67,6 +67,9 @@ type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let focus = self.nav.focus();
+        // The active View's own element, built before anything else borrows the App.
+        let active_entity = self.active_view_entity(cx);
+        let active_element = active_entity.element(focus == FocusZone::View, cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
         // bar and content row only, not the status line -- that same spec separately describes
@@ -797,8 +800,6 @@ impl Render for Shell {
             })
         };
 
-        let documents_page =
-            (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity, cx));
         let view_chrome = self.view_chrome(cx);
         let active_view = self.active_view(cx);
 
@@ -878,7 +879,7 @@ impl Render for Shell {
                                     ))
                                 },
                             )
-                            .child(match self.active_view_entity(cx) {
+                            .child(match active_entity {
                                 ActiveViewEntity::Shell(view) => render_view(
                                     view,
                                     self.nav.ledger_open(),
@@ -893,7 +894,6 @@ impl Render for Shell {
                                         settings_payees: settings_payees_page,
                                         settings_documents: settings_documents_page,
                                         settings_inventory: settings_inventory_page,
-                                        documents: documents_page,
                                     },
                                     SettingsPanelProps {
                                         selected: self.settings_view.read(cx).selected_section(),
@@ -950,8 +950,8 @@ impl Render for Shell {
                                     },
                                     cx,
                                 ),
-                                view => view_frame(
-                                    view.element(),
+                                _ => view_frame(
+                                    active_element,
                                     focus == FocusZone::View,
                                     cx.listener(|shell, _: &MouseDownEvent, _window, cx| {
                                         shell.nav.set_focus(FocusZone::View);
@@ -1404,8 +1404,6 @@ struct PageProps<'a> {
     settings_documents: settings_view::documents::DocumentsPageProps<'a>,
     /// Settings' own Inventory page, mounted only while Settings shows it.
     settings_inventory: inventory_view::InventoryPageProps<'a>,
-    /// `Some` while Documents is the noun on show.
-    documents: Option<documents_view::DocumentsPageProps>,
 }
 
 /// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
@@ -1478,23 +1476,6 @@ fn render_view(
     settings: SettingsPanelProps<'_>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    // Each View's props are `Some` exactly while it is active; the placeholder arms keep a missing
-    // one from panicking.
-    match view {
-        ShellView::Documents => {
-            return match pages.documents {
-                Some(documents) => documents_view::render(focused, documents, cx),
-                None => scrolling_pane(
-                    placeholder::render(Noun::Documents, cx),
-                    focused,
-                    scroll_handle,
-                    cx,
-                ),
-            };
-        }
-        ShellView::Settings(_) | ShellView::Dashboard | ShellView::Placeholder(_) => {}
-    }
-
     if let ShellView::Settings(_) = view {
         return div()
             .id("settings")
@@ -1569,10 +1550,7 @@ fn render_view(
         ShellView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
         ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
-        // Import and Transactions land here only without their props, which `Shell` never sends.
-        ShellView::Documents | ShellView::Settings(_) => {
-            unreachable!("handled above")
-        }
+        ShellView::Settings(_) => unreachable!("handled above"),
     };
 
     scrolling_pane(content, focused, scroll_handle, cx)

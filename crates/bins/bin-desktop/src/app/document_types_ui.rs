@@ -82,13 +82,9 @@ impl Shell {
                     .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
             }
             DocumentTypeOutcome::Removed { id, selected } => {
-                if self.documents_state(cx).scope
-                    == documents::LibraryScope::Type(documents::DocumentType(id))
-                {
-                    self.edit_documents_state(cx, |state| {
-                        state.scope = documents::LibraryScope::All;
-                    });
-                }
+                self.views
+                    .documents
+                    .update(cx, |view, cx| view.type_removed(id, cx));
                 self.settings_view
                     .update(cx, |v, cx| v.set_documents_selected(cx, selected));
             }

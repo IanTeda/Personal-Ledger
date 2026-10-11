@@ -2,18 +2,23 @@
 //! (header, toolbar, count line and rows) and the 300px detail pane. The Library (4a) is drawn
 //! here and the Inbox (4b) in `inbox`, each filling the list and detail panes.
 //!
-//! Every action is a callback into `Shell`, so keys and clicks share handlers. The detail pane is
-//! never focused: its actions are list keys (`enter`, `o`, `l`).
+//! [`state::DocumentsView`] renders the page itself (ADR-0037): every action is a call back into the
+//! Documents Entity, so keys and clicks reach the same methods. The detail pane is never focused:
+//! its actions are list keys (`enter`, `o`, `l`).
 
 pub mod dialogs;
 pub mod drop_overlay;
+pub(crate) mod hints;
 mod inbox;
+pub mod snapshot;
 pub mod state;
 pub mod type_dialogs;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Pixels, ScrollHandle, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, Context, Pixels, ScrollHandle, SharedString, Window, div, prelude::*, px,
+};
 use lib_locale::format::upper;
 
 use crate::documents::model::{
@@ -21,9 +26,10 @@ use crate::documents::model::{
     RowView,
 };
 use crate::{
-    documents::{DocumentLink, DocumentsMode, LibrarySort, RailEntry},
+    documents::{self, DocumentLink, DocumentsMode, LibraryScope, LibrarySort, RailEntry, model},
     theme::color,
 };
+use state::DocumentsView;
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnRailClick = Rc<dyn Fn(RailEntry, &mut Window, &mut App)>;
@@ -93,8 +99,9 @@ pub struct DocumentsPageProps {
     pub on_skip_click: OnPlainClick,
 }
 
-/// The whole destination: rail, list pane and detail pane, side by side.
-pub fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
+/// The whole destination: rail, list pane and detail pane, side by side. `focused` is whether the
+/// View zone has focus; the focus ring is drawn on the rail or the list within it.
+fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
     let list_focused = focused && props.focus == DocumentsFocus::List;
     let index_focused = focused && props.focus == DocumentsFocus::Index;
     let props = DocumentsPageProps {
@@ -146,9 +153,8 @@ fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoE
         .bg(color::background(cx))
         .border_r(px(2.0))
         .border_color(color::structural_rule(cx))
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
+        // The View frame draws the focused edge at the rail's left; the rail only darkens its rule.
+        .when(focused, |this| this.border_color(color::foreground(cx)))
         .text_size(px(12.5))
         .child(column)
         .child(
@@ -166,12 +172,7 @@ fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoE
 }
 
 /// The caps label that opens a section, if `scope` is its first row.
-fn section_label(
-    scope: crate::documents::LibraryScope,
-    index: usize,
-    rows: &[RailRow],
-) -> Option<String> {
-    use crate::documents::LibraryScope;
+fn section_label(scope: LibraryScope, index: usize, rows: &[RailRow]) -> Option<String> {
     let previous = index.checked_sub(1).and_then(|at| rows.get(at));
     match scope {
         LibraryScope::Type(_)
@@ -920,4 +921,127 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .on_click(move |_event, window, cx| on_show(window, cx))
                 .child(crate::msg::desktop_documents_show_in_folder()),
         )
+}
+
+impl Render for DocumentsView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let plain = |act: fn(&mut DocumentsView, &mut Context<'_, DocumentsView>)| -> OnPlainClick {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| entity.update(cx, act))
+        };
+        let indexed =
+            |act: fn(&mut DocumentsView, usize, &mut Context<'_, DocumentsView>)| -> OnRowClick {
+                let entity = entity.clone();
+                Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |view, cx| act(view, index, cx))
+                })
+            };
+        let linked = |act: fn(
+            &mut DocumentsView,
+            DocumentLink,
+            &mut Context<'_, DocumentsView>,
+        )|
+         -> OnLinkClick {
+            let entity = entity.clone();
+            Rc::new(move |link, _window, cx| entity.update(cx, |view, cx| act(view, link, cx)))
+        };
+        let on_rail_click: OnRailClick = {
+            let entity = entity.clone();
+            Rc::new(move |entry, _window, cx| {
+                entity.update(cx, |view, cx| view.click_rail(entry, cx))
+            })
+        };
+        let on_sort_click: OnSortClick = {
+            let entity = entity.clone();
+            Rc::new(move |sort, _window, cx| {
+                entity.update(cx, |view, cx| view.click_sort(sort, cx))
+            })
+        };
+        let on_accept_candidate_click: OnCandidateClick = {
+            let entity = entity.clone();
+            Rc::new(move |transaction_id, _window, cx| {
+                entity.update(cx, |view, cx| view.click_candidate(transaction_id, cx));
+            })
+        };
+
+        let cx: &App = cx;
+        let state = &self.state;
+        let lookups = self.lookups(cx);
+        let all = self.documents(cx);
+        let rows = self.library_rows(cx);
+        let selected = state.selected.min(rows.len().saturating_sub(1));
+        let total = documents::scope_count(self.types(cx), all, LibraryScope::All);
+        let count_line = crate::msg::desktop_documents_count_line(
+            &rows.len().to_string(),
+            &total.to_string(),
+            &documents::need_review_count(self.types(cx), &rows, self.today).to_string(),
+        );
+        let detail = rows
+            .get(selected)
+            .filter(|_| state.mode == DocumentsMode::Library)
+            .map(|document| model::detail(document, &lookups));
+        let row_views: Vec<_> = rows
+            .iter()
+            .map(|document| model::row(document, &lookups))
+            .collect();
+        let inbox = self.inbox_rows(cx);
+        let inbox_selected = self.inbox_at(inbox.len());
+        let inbox_views: Vec<_> = inbox
+            .iter()
+            .map(|document| model::inbox_row(document, all, &lookups))
+            .collect();
+        let inbox_detail = inbox
+            .get(inbox_selected)
+            .filter(|_| state.mode == DocumentsMode::Inbox)
+            .map(|document| model::inbox_detail(document, all, &lookups));
+        let props = DocumentsPageProps {
+            mode: state.mode,
+            focus: state.focus,
+            rail: model::rail_rows(self.types(cx), all, self.today),
+            rail_selected: self.rail_selected(),
+            rail_footer: self.stored_text(cx),
+            subline: match state.mode {
+                DocumentsMode::Library => {
+                    crate::msg::desktop_documents_subline(i64::try_from(total).unwrap_or(i64::MAX))
+                }
+                DocumentsMode::Inbox => crate::msg::desktop_documents_inbox_subline(
+                    i64::try_from(documents::inbox_count(all)).unwrap_or(i64::MAX),
+                ),
+            },
+            query: state.query.clone(),
+            searching: self.searching,
+            sort: state.sort,
+            count_line,
+            rows: row_views,
+            selected,
+            detail,
+            inbox_rows: inbox_views,
+            inbox_selected,
+            inbox_detail,
+            inbox_strong: documents::strong_count(all, lookups.transactions, lookups.payees),
+            inbox_hints: hints::inbox_hints(),
+            list_focused: false,
+            scroll: state.scroll.clone(),
+            on_rail_click,
+            on_row_click: indexed(DocumentsView::click_row),
+            on_sort_click,
+            on_search_click: plain(DocumentsView::click_search),
+            on_add_click: plain(DocumentsView::open_add),
+            on_import_click: plain(DocumentsView::open_import),
+            on_open_click: plain(|view, cx| view.open_selected(false, cx)),
+            on_show_click: plain(|view, cx| view.open_selected(true, cx)),
+            on_link_click: linked(DocumentsView::goto_link),
+            on_unlink_click: linked(DocumentsView::unlink),
+            on_add_link_click: plain(DocumentsView::link_picker),
+            on_watched_click: plain(DocumentsView::watched_folder),
+            on_accept_all_click: plain(DocumentsView::open_accept_all),
+            on_accept_row_click: indexed(DocumentsView::click_accept_row),
+            on_accept_next_click: plain(DocumentsView::accept_focused),
+            on_accept_candidate_click,
+            on_link_elsewhere_click: plain(DocumentsView::link_picker),
+            on_skip_click: plain(DocumentsView::skip_focused),
+        };
+        render(self.zone_focused, props, cx)
+    }
 }

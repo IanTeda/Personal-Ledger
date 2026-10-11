@@ -7,10 +7,7 @@ use crate::{
     navigation::key_router::Movement,
     navigation::nav::FocusZone,
     settings::{SettingsFocus, SettingsSection},
-    view::{
-        active::{ActiveViewEntity, ShellView},
-        documents::DocumentsFocus,
-    },
+    view::active::{ActiveViewEntity, ShellView},
 };
 
 impl Shell {
@@ -38,8 +35,6 @@ impl Shell {
             .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::default()));
         self.settings_view
             .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
-        // `g f` and the palette land on the Documents list, unlike Settings' index.
-        self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -124,7 +119,6 @@ impl Shell {
                     self.scroll_view(movement);
                 }
             }
-            ShellView::Documents => self.apply_documents_movement(movement, cx),
             ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }
     }

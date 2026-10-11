@@ -89,9 +89,7 @@ use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
-use crate::view::documents::state::{
-    DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
-};
+use crate::view::documents::state::{DocumentsSources, DocumentsStore, DocumentsView};
 use crate::view::event::ViewMode;
 use crate::view::payees::state::PayeesView;
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
@@ -221,15 +219,13 @@ pub struct Shell {
     transactions_store: Entity<TransactionsStore>,
     /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
     bills_store: Entity<BillsStore>,
-    /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets and
-    /// Transactions with its Import step. Each reaches `Shell` only through `ViewEvent`.
+    /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets,
+    /// Transactions with its Import step, and Documents. Each reaches `Shell` only through
+    /// `ViewEvent`.
     views: ViewEntities,
     /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
     documents_store: Entity<DocumentsStore>,
-    /// The Documents page's state (mode, scope, sort, search, selection). Its events are handled
-    /// in `handle_documents_event`.
-    documents_view: Entity<DocumentsView>,
     /// The Inventory, read through its store Entity (ADR-0032). Shared: Settings' Inventory page
     /// edits it, and Documents resolve their Links against it.
     inventory: Entity<InventoryStore>,
@@ -358,13 +354,22 @@ impl Shell {
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
         let documents_store = cx.new(|cx| DocumentsStore::new(ledger.clone(), cx));
-        let documents_view = cx.new(|_| DocumentsView::new(DocumentsState::default()));
-        let documents_subscription = cx.subscribe(
-            &documents_view,
-            |shell, _view, event: &DocumentsEvent, cx| {
-                shell.handle_documents_event(event, cx);
-            },
-        );
+        let documents_view = cx.new(|_| {
+            DocumentsView::new(
+                DocumentsSources {
+                    documents: documents_store.clone(),
+                    accounts: accounts.clone(),
+                    payees: payees_store.clone(),
+                    bills: bills_store.clone(),
+                    inventory: inventory.clone(),
+                    transactions: transactions_store.clone(),
+                },
+                today,
+            )
+        });
+        let documents_subscription = Self::view_event_subscription(&documents_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
         Self {
             nav,
             focus_handle,
@@ -412,9 +417,9 @@ impl Shell {
                 bills: bills_view,
                 budgets: budgets_view,
                 transactions: transactions_view,
+                documents: documents_view,
             },
             documents_store,
-            documents_view,
             inventory,
             view_subscriptions: vec![
                 accounts_subscription,
@@ -425,6 +430,7 @@ impl Shell {
                 transactions_subscription,
                 transactions_view_observer,
                 documents_subscription,
+                documents_view_observer,
                 tags_subscription,
                 payees_subscription,
                 payees_view_observer,
@@ -564,6 +570,9 @@ impl Shell {
         self.views.transactions.update(cx, |view, cx| {
             view.set_display(date_style, glyphs, density, cx)
         });
+        self.views
+            .documents
+            .update(cx, |view, cx| view.set_display(date_style, cx));
     }
 
     fn scroll_view(&mut self, movement: Movement) {

@@ -10,6 +10,7 @@
 
 mod common;
 
+use bin_desktop::app::DocumentsSnapshot;
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
@@ -201,14 +202,22 @@ fn y_accepts_the_focused_strong_match_and_u_undoes_it(app: &mut TestAppContext) 
 }
 
 #[gpui::test]
-fn u_with_nothing_to_undo_changes_nothing(app: &mut TestAppContext) {
+fn u_with_nothing_to_undo_changes_nothing_and_says_so(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     let before = ui.documents();
 
     ui.press("u");
 
-    assert_eq!(ui.documents(), before);
+    let after = ui.documents();
+    assert_eq!(after.status.as_deref(), Some("Nothing to undo."));
+    assert_eq!(
+        DocumentsSnapshot {
+            status: None,
+            ..after
+        },
+        before
+    );
 }
 
 #[gpui::test]

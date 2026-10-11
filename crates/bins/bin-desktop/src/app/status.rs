@@ -76,7 +76,6 @@ impl Shell {
     /// [`Self::page_status`] for a View `Shell` still draws.
     fn shell_page_status(&self, view: ShellView, cx: &gpui::App) -> Option<PageStatus> {
         match view {
-            ShellView::Documents => self.documents_page_status(cx),
             ShellView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(

@@ -898,6 +898,17 @@ impl Dialog for DocumentsDialog {
         }
     }
 
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        use crate::view::documents::hints::{dialog_hints, picker_hints};
+        Some(match self {
+            Self::Import(..) => dialog_hints(true),
+            Self::Picker(_) => picker_hints(),
+            Self::Add(_) | Self::Edit(..) | Self::Facts(..) | Self::AcceptAll(_) => {
+                dialog_hints(false)
+            }
+        })
+    }
+
     fn focused_text(&mut self) -> Option<&mut TextField> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => form.focused_text(),

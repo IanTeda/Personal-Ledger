@@ -65,6 +65,10 @@ pub enum Reveal {
     BillPlan(u32),
     /// The Bills Schedule tab on a period, with no filter hiding its rows.
     BillsPeriod(Period),
+    /// An Account, by id, selected on Settings › Accounts.
+    Account(u32),
+    /// A Payee, by id, selected on Settings › Payees.
+    Payee(u32),
 }
 
 impl Reveal {
@@ -73,6 +77,7 @@ impl Reveal {
         match self {
             Self::Transaction(_) => Noun::Transactions,
             Self::BillEntry(_) | Self::BillPlan(_) | Self::BillsPeriod(_) => Noun::Bills,
+            Self::Account(_) | Self::Payee(_) => Noun::Settings,
         }
     }
 }

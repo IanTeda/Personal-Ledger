@@ -156,9 +156,6 @@ impl Shell {
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
                 // saving" -- discards whatever was typed, same as Cancel.
                 self.close_dialog();
-                if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
-                    self.documents_cancel_search(cx);
-                }
                 self.nav.exit_mode();
                 self.view_mode = None;
                 return true;
@@ -277,9 +274,7 @@ impl Shell {
                         | SettingsSection::Tracing
                         | SettingsSection::About,
                     ) => false,
-                    ShellView::Dashboard | ShellView::Documents | ShellView::Placeholder(_) => {
-                        false
-                    }
+                    ShellView::Dashboard | ShellView::Placeholder(_) => false,
                 };
                 handled || had_status_message
             }
@@ -322,9 +317,7 @@ impl Shell {
             }
             return;
         }
-        if self.nav.noun() == Noun::Documents {
-            self.documents_start_search(cx);
-        } else if self.nav.noun() != Noun::Settings {
+        if self.nav.noun() != Noun::Settings {
             self.nav.enter_mode(InputMode::Search);
         }
     }
@@ -342,7 +335,6 @@ impl Shell {
             view => return self.view_takes_key_ahead(keystroke) && view.key_ahead(keystroke, cx),
         };
         match view {
-            ShellView::Documents => self.handle_documents_key(keystroke, cx),
             ShellView::Settings(SettingsSection::Documents) => {
                 self.handle_settings_documents_reorder_key(keystroke, cx)
             }
@@ -425,15 +417,12 @@ impl Shell {
     }
 
     /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
-    /// [`Self::handle_palette_key`]'s shape): to the active View's Search, or Documents'. A no-op
-    /// everywhere else.
+    /// [`Self::handle_palette_key`]'s shape): to the active View's Search. A no-op everywhere
+    /// else.
     fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
         let view = self.active_view_entity(cx);
         if !matches!(view, ActiveViewEntity::Shell(_)) {
             return view.search_key(keystroke, cx);
-        }
-        if self.nav.noun() == Noun::Documents {
-            return self.handle_documents_search_key(keystroke, cx);
         }
         false
     }
