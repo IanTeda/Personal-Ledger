@@ -6,6 +6,7 @@
 //! All data is stubbed and in-memory (the Desktop Accounts Surface map's Destination): nothing
 //! here reads `lib_database`.
 
+pub(crate) mod apply;
 pub(crate) mod form;
 
 pub use lib_accounts::*;

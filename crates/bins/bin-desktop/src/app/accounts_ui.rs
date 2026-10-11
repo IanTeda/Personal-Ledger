@@ -7,9 +7,10 @@ use chrono::Local;
 use crate::{
     accounts::{
         self, NameLookup,
+        apply::{AccountOutcome, AccountsApply},
         form::{AccountField, AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
     },
-    chrome::dialog_host::OpenDialog,
+    chrome::{dialog_apply, dialog_host::OpenDialog},
     form::field::TextField,
     navigation::command::AccountsVerb,
     navigation::key_router::Movement,
@@ -203,78 +204,37 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn handle_accounts_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_accounts_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
-    /// Applies a confirmed Accounts dialog (reached through [`Self::confirm_open_dialog`] from
-    /// the Add account button, the Edit dialog's **Save**, the Delete dialog's **Delete account**
-    /// or `Enter`): Add builds the account, appends it and selects it; Edit writes the changes
-    /// onto the existing row (which regroups if its Type changed) and keeps it selected; Delete
-    /// removes it. The form has already validated.
-    pub(super) fn apply_accounts_dialog(
-        &mut self,
-        dialog: AccountsDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let is_currency = match &dialog {
-            AccountsDialog::Add(form) => form
-                .unit
-                .value()
-                .and_then(|code| {
-                    self.units_store
-                        .read(cx)
-                        .units()
-                        .iter()
-                        .find(|unit| unit.code == code)
-                })
-                .is_none_or(|unit| unit.kind == "currency"),
-            _ => true,
+    /// Confirms the open Accounts dialog through the host's cycle: the form's command runs
+    /// against the Accounts store, and a landed one closes the dialog. Add and Edit select the
+    /// account (an Edit regroups it if its Type changed); Delete toasts the count of Transactions
+    /// that went with it and keeps the selection in range, so it lands on the account that slid
+    /// into the deleted row's place (or the last one).
+    pub(super) fn confirm_accounts_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = AccountsApply {
+            accounts: self.accounts.clone(),
+            units: self.units_store.clone(),
+            transactions: self.transactions_store.clone(),
         };
-        let changed_id = match dialog {
-            AccountsDialog::Add(form) => {
-                let opened_at = Local::now().date_naive();
-                self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |service| {
-                        let id = service.next_id();
-                        let account = form.into_account(id, opened_at, is_currency)?;
-                        service.insert(account);
-                        Some(id)
-                    })
-                })
-            }
-            AccountsDialog::Edit(id, form) => self.accounts.update(cx, |store, cx| {
-                store.mutate(cx, |service| {
-                    service
-                        .get_mut(id)
-                        .and_then(|account| form.apply_to(account).then_some(id))
-                })
-            }),
-            AccountsDialog::Delete(id, _) => {
-                let removed = edit_transactions(&self.transactions_store, cx, |transactions| {
-                    let before = transactions.len();
-                    transactions.retain(|transaction| transaction.account_id != id);
-                    before - transactions.len()
-                });
-                let (kind, text) = self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |service| delete_account(service, removed, id))
-                });
-                self.raise_toast(kind, text);
-                // Keep the selection in range, so it lands on the account that slid into the
-                // deleted row's place (or the last one).
+        let Some(dialog) = self.dialog_mut::<AccountsDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            AccountOutcome::Saved(id) => self.select_account(id, cx),
+            AccountOutcome::Deleted { name, transactions } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_account_deleted(
+                        &name,
+                        i64::try_from(transactions).unwrap_or(i64::MAX),
+                    ),
+                );
                 self.accounts_view
                     .update(cx, |view, cx| view.clamp_selection(cx));
-                None
             }
-        };
-        if let Some(id) = changed_id {
-            self.select_account(id, cx);
         }
     }
 

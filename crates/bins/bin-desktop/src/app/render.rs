@@ -449,13 +449,13 @@ impl Render for Shell {
         let on_accounts_dialog_cancel: accounts_view::add_dialog::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_dialog_cancel(cx));
+                entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
             })
         };
         let on_accounts_dialog_confirm: accounts_view::add_dialog::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_dialog_confirm(cx));
+                entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
         let account_options = self.account_dialog_options(cx);
