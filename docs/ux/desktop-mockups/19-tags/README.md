@@ -14,7 +14,7 @@ Tag management for the Personal Ledger desktop app. Tags are free-form, cross-cu
 ---
 
 ## App shell (shared by all screens)
-- **Title bar** 48px, bg `#eae9e9`, bottom border 2px `rgba(32,30,29,.38)`, padding `0 10px 0 12px`, gap 12px. Contents: 16px panel icon · "Personal Ledger" 13.5px/800 · context word "tags" 12px `#9b9797` · spacer · command box ("**:** run a command", 12px, 1px border `rgba(32,30,29,.30)`, padding 4px 9px) · three 26×26 window buttons (bg `rgba(32,30,29,.08)`, gap 2px).
+- **Title bar** 48px, bg `#eae9e9`, bottom border 2px `rgba(32,30,29,.38)`, padding `0 10px 0 12px`, gap 12px. Contents: 16px panel icon · "Personal Ledger" 13.5px/800 · context word "tags" 12px `#9b9797` · spacer · three 26×26 window buttons (bg `rgba(32,30,29,.08)`, gap 2px).
 - **Sidebar** 206px, bg `#eae9e9`, right border 2px `rgba(32,30,29,.38)`, padding `14px 0 10px`. Section labels ("LEDGER", "PLAN") 10px/800, letter-spacing .11em, `#9b9797`. Items: padding 7px 14px, gap 9px, 14px line icon, label, shortcut hint 11px `#9b9797`. Active item (Tags): bg `#201e1d`, text `#f3f2f2`/800, hint `#bab6b6`, count badge "18" inverted (bg `#f3f2f2`, 10px/800, padding 1px 5px).
 - **Content** padding 22px 28px.
 - **Status bar** 28px, bg `#eae9e9`, top border 2px, 11.5px `#605d5d`; mode pill (NORMAL / DIALOG — bg `#201e1d`, text `#f3f2f2`, 10px/800, letter-spacing .1em, padding 2px 7px), key hints, right-aligned summary.

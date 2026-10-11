@@ -22,7 +22,7 @@ All variants are drawn at **1280 × 800**, the reference desktop window. Vertica
 **Purpose**: Management table for categories, grouped Expense / Income (same management-table pattern as Accounts). Categories nest to arbitrary depth (e.g. Housing → Utilities → Electricity); a parent's BUDGET/SPENT columns roll up its descendants. Only **leaf** categories can be assigned to a transaction.
 
 **Layout**:
-- Header (48px): app glyph, "Personal Ledger" wordmark, `categories` breadcrumb, `:` command affordance, 3 window controls
+- Header (48px): app glyph, "Personal Ledger" wordmark, `categories` breadcrumb, 3 window controls
 - Primary rail (206px): Categories active (dark treatment, badge "12"), grouped LEDGER/PLAN as in the shell
 - Main pane (padding `22px 28px`, `overflow:auto`):
   - Header row: title "Categories" (28px/800) + meta line "12 categories, 3 levels deep · **1** over budget this month" (11.5px `#9b9797`, the "1" in `#ae1800` 800), `+ Add category` primary button (36px) right-aligned

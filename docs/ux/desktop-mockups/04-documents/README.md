@@ -25,7 +25,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 
 ## Frame & shell
 - Every frame is **1280 × 800**: a 48px header, then the body (`flex:1`).
-- **Header:** `#eae9e9`, `border-bottom:2px solid rgba(32,30,29,.38)`, `padding:0 10px 0 12px`, gap 12. It holds the panel icon (28px box), the wordmark "Personal Ledger" (800 13.5px), a spacer, the `:` "run a command" affordance (`padding:4px 9px; border:1px solid rgba(32,30,29,.30); 12px #605d5d`) and "synced 14:22" (12px #605d5d).
+- **Header:** `#eae9e9`, `border-bottom:2px solid rgba(32,30,29,.38)`, `padding:0 10px 0 12px`, gap 12. It holds the panel icon (28px box), the wordmark "Personal Ledger" (800 13.5px), a spacer and "synced 14:22" (12px #605d5d).
   - **Align with the shell:** add the breadcrumb `ledger › documents` (12px #9b9797), the sync icon and the three 26px window controls, as on every other destination.
 - **Primary rail (206px):** Documents is active (`g f`). Groups:
   - LEDGER: Dashboard `g d`, Transactions `g l`, **Documents `g f`**, Events `g e`, Notifications `g m` (red badge)

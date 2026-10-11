@@ -25,7 +25,7 @@ Both variants are drawn at **1280 × 800**, the reference desktop window. Vertic
 **Purpose**: Cross-account view — unlike the per-account ledger (see Desktop Shell & Navigation, screen 1b), this table shows transactions from every account with an **ACCOUNT** column, and accumulates a **RUNNING TOTAL** column over whatever's currently filtered. Shown filtered to "groceries" across all 7 accounts, newest first.
 
 **Layout**:
-- Header (48px): app glyph, wordmark, `transactions` breadcrumb, `:` command affordance, 3 window controls
+- Header (48px): app glyph, wordmark, `transactions` breadcrumb, 3 window controls
 - Primary rail (206px): Transactions active (dark treatment)
 - Main pane, split into a fixed filter/header block and a scrolling table:
   - **View header** (padding `16px 28px 14px`, `border-bottom:2px solid rgba(32,30,29,.38)`):

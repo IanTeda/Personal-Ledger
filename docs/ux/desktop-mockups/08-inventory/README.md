@@ -21,7 +21,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 
 ## Frame & shell
 - **Frame:** 1280 × 800.
-- **Header:** 48px. The mockups show only the wordmark, the `:` command affordance and "synced 14:22". **Align with the rest of the shell:** add the breadcrumb `net worth › inventory`, the sync icon and the three window controls.
+- **Header:** 48px. The mockups show only the wordmark and "synced 14:22". **Align with the rest of the shell:** add the breadcrumb `net worth › inventory`, the sync icon and the three window controls.
 - **Primary rail:** 206px. Inventory is active (NET WORTH: Cash `g c` · **Inventory `g o`** · Loans `g n` · Credit cards `g k` · Investments `g i`).
 - **Status bar:** the mockups omit it. Add the standard 28px status bar (see Keyboard).
 - **Body:** `flex`, with the list pane (`flex:1; min-width:0; padding:18px 24px; flex column; overflow:hidden`) and a **300px** detail pane (`border-left:2px solid rgba(32,30,29,.38); background:#eae9e9`).

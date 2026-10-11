@@ -22,7 +22,7 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
 **Purpose**: The shell's structural baseline, shown in its **cold-start state**. The primary rail groups the domain nouns under headings and carries each item's `g`-jump binding in a right-hand column. No second rail: the landing view has no entity to scope to.
 
 **Layout**:
-- **Header** (48px): app glyph, "Personal Ledger" wordmark, `:` run-a-command affordance, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
+- **Header** (48px): app glyph, "Personal Ledger" wordmark, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
 - **Primary rail** (206px): grouped nav
   - `LEDGER` — Dashboard `g d`, Transactions `g l`, Documents `g f` (receipts, statements, policies, tax papers — linked to what they prove), Events `g e` (milestones, occasions, incidents and balance checks on the timeline), Notifications `g m` (+ red unread badge)
   - `NET WORTH` — Cash `g c`, Inventory `g o`, Loans `g n`, Credit cards `g k`, Investments `g i`
@@ -234,6 +234,6 @@ fileExplorer
 - `README.md` — this document
 
 ## Changes (9 October 2026)
-- **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, breadcrumb, `:` command affordance, sync status, window controls.
+- **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, breadcrumb, sync status, window controls.
 - **1b** is now the Dashboard (see above).
 - **Settings rail** lists Backup, History and Logs in place of Data & backup and Tracing (Logs).

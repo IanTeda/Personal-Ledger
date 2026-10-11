@@ -44,7 +44,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 
 ## Shell (all destinations)
 Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px. Full spec in `01-shell/README.md`.
-- **Header:** `#eae9e9`, 2px bottom rule. It holds the panel toggle, the wordmark "Personal Ledger" (800 13.5px), the breadcrumb `ledger › <destination>` (12px #9b9797), the `:` run-a-command affordance, sync status, and three 26px window controls.
+- **Header:** `#eae9e9`, 2px bottom rule. It holds the panel toggle, the wordmark "Personal Ledger" (800 13.5px), the breadcrumb `ledger › <destination>` (12px #9b9797), sync status, and three 26px window controls.
 - **Primary rail, 206px**, `#eae9e9`, 2px right rule:
   - LEDGER: Dashboard `g d` · Transactions `g l` · Documents `g f` · Events `g e` · Notifications `g m` (red count badge)
   - NET WORTH: Cash `g c` · Inventory `g o` · Loans `g n` · Credit cards `g k` · Investments `g i`
