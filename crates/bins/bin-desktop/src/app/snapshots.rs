@@ -17,5 +17,10 @@ pub use overlays::{
     DashboardBillSnapshot, ImportRowSnapshot, ImportSnapshot, ToastSnapshot, ToastsSnapshot,
 };
 pub use palette::PaletteSnapshot;
-pub use settings::{AccountFormSnapshot, SettingsSnapshot};
+pub use settings::{
+    AccountFormSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
+    SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot,
+    SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
+    SettingsTracingSnapshot, SettingsUnitsSnapshot,
+};
 pub use transactions::{ChipSnapshot, TransactionsSnapshot};

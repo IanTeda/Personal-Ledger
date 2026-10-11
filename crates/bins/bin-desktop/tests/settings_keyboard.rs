@@ -91,21 +91,27 @@ fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
 fn accounts_rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_page(app, 4, "Accounts");
 
-    let first = ui.settings().selected_account;
+    let first = ui.settings_accounts().selected_account;
     assert_eq!(
         first.as_deref(),
-        ui.settings().account_names.first().map(String::as_str)
+        ui.settings_accounts()
+            .account_names
+            .first()
+            .map(String::as_str)
     );
     ui.press("j");
     assert_eq!(
-        ui.settings().selected_account,
-        Some(ui.settings().account_names[1].clone())
+        ui.settings_accounts().selected_account,
+        Some(ui.settings_accounts().account_names[1].clone())
     );
     ui.press("shift-g");
-    let page = ui.settings();
-    assert_eq!(page.selected_account.as_ref(), page.account_names.last());
+    let accounts_page = ui.settings_accounts();
+    assert_eq!(
+        accounts_page.selected_account.as_ref(),
+        accounts_page.account_names.last()
+    );
     ui.press("g g");
-    assert_eq!(ui.settings().selected_account, first);
+    assert_eq!(ui.settings_accounts().selected_account, first);
 }
 
 #[gpui::test]
@@ -123,22 +129,31 @@ fn n_opens_add_account_and_escape_cancels_it(app: &mut TestAppContext) {
 #[gpui::test]
 fn typing_a_name_and_pressing_enter_adds_the_account(app: &mut TestAppContext) {
     let mut ui = in_page(app, 4, "Accounts");
-    let before = ui.settings().account_names.len();
+    let before = ui.settings_accounts().account_names.len();
 
     ui.press("n");
     ui.press("r a i n y");
     assert_eq!(ui.settings().dialog_name.as_deref(), Some("rainy"));
     ui.press("enter");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.account_names.len(), before + 1);
-    assert!(page.account_names.iter().any(|name| name == "rainy"));
+    assert_eq!(accounts_page.account_names.len(), before + 1);
+    assert!(
+        accounts_page
+            .account_names
+            .iter()
+            .any(|name| name == "rainy")
+    );
 }
 
 #[gpui::test]
 fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppContext) {
     let mut ui = in_page(app, 4, "Accounts");
-    let name = ui.settings().selected_account.expect("seeded accounts");
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
 
     ui.press("e");
     let page = ui.settings();
@@ -146,22 +161,26 @@ fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppCo
     assert_eq!(page.dialog_name.as_deref(), Some(name.as_str()));
     ui.press("x");
     ui.press("enter");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert!(page.account_names.contains(&format!("{name}x")));
+    assert!(accounts_page.account_names.contains(&format!("{name}x")));
 }
 
 #[gpui::test]
 fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContext) {
     let mut ui = in_page(app, 4, "Accounts");
-    let before = ui.settings().account_names.len();
-    let name = ui.settings().selected_account.expect("seeded accounts");
+    let before = ui.settings_accounts().account_names.len();
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
 
     ui.press("d");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
     ui.press("enter");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
-    assert_eq!(ui.settings().account_names.len(), before);
+    assert_eq!(ui.settings_accounts().account_names.len(), before);
     for ch in name.chars() {
         ui.press(&if ch == ' ' {
             "space".to_string()
@@ -171,21 +190,28 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
     }
     assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(name.as_str()));
     ui.press("enter");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.account_names.len(), before - 1);
-    assert!(!page.account_names.contains(&name));
+    assert_eq!(accounts_page.account_names.len(), before - 1);
+    assert!(!accounts_page.account_names.contains(&name));
 }
 
 #[gpui::test]
 fn payees_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
     let mut ui = in_page(app, 7, "Payees");
 
-    let page = ui.settings();
-    assert_eq!(page.selected_payee.as_ref(), page.payee_names.first());
+    let payees_page = ui.settings_payees();
+    assert_eq!(
+        payees_page.selected_payee.as_ref(),
+        payees_page.payee_names.first()
+    );
     ui.press("j");
-    let page = ui.settings();
-    assert_eq!(page.selected_payee.as_ref(), page.payee_names.get(1));
+    let payees_page = ui.settings_payees();
+    assert_eq!(
+        payees_page.selected_payee.as_ref(),
+        payees_page.payee_names.get(1)
+    );
     ui.press("e");
     assert_eq!(ui.settings().dialog.as_deref(), Some("EditPayee"));
     ui.press("escape");
@@ -201,25 +227,26 @@ fn payees_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_new_payee_is_added_by_typing_its_name(app: &mut TestAppContext) {
     let mut ui = in_page(app, 7, "Payees");
-    let before = ui.settings().payee_names.len();
+    let before = ui.settings_payees().payee_names.len();
 
     ui.press("n");
     ui.press("z o o");
     assert_eq!(ui.settings().dialog_name.as_deref(), Some("zoo"));
     ui.press("enter");
+    let payees_page = ui.settings_payees();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.payee_names.len(), before + 1);
-    assert!(page.payee_names.iter().any(|name| name == "zoo"));
+    assert_eq!(payees_page.payee_names.len(), before + 1);
+    assert!(payees_page.payee_names.iter().any(|name| name == "zoo"));
 }
 
 #[gpui::test]
 fn categories_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
     let mut ui = in_page(app, 5, "Categories");
 
-    assert_eq!(ui.settings().selected_category, None);
+    assert_eq!(ui.settings_categories().selected_category, None);
     ui.press("j");
-    assert!(ui.settings().selected_category.is_some());
+    assert!(ui.settings_categories().selected_category.is_some());
     ui.press("e");
     assert_eq!(ui.settings().dialog.as_deref(), Some("EditCategory"));
     ui.press("escape");
@@ -236,16 +263,22 @@ fn categories_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_new_category_is_added_by_typing_its_name(app: &mut TestAppContext) {
     let mut ui = in_page(app, 5, "Categories");
-    let before = ui.settings().category_names.len();
+    let before = ui.settings_categories().category_names.len();
 
     ui.press("n");
     ui.press("p e t s");
     assert_eq!(ui.settings().dialog_name.as_deref(), Some("pets"));
     ui.press("enter");
+    let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.category_names.len(), before + 1);
-    assert!(page.category_names.iter().any(|name| name == "pets"));
+    assert_eq!(categories_page.category_names.len(), before + 1);
+    assert!(
+        categories_page
+            .category_names
+            .iter()
+            .any(|name| name == "pets")
+    );
 }
 
 #[gpui::test]
@@ -256,7 +289,10 @@ fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) 
     ui.press("d");
     assert_eq!(ui.settings().dialog, None);
     ui.press("right");
-    assert_eq!(ui.settings().selected_category.as_deref(), Some("Rent"));
+    assert_eq!(
+        ui.settings_categories().selected_category.as_deref(),
+        Some("Rent")
+    );
     ui.press("d");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.press("escape");

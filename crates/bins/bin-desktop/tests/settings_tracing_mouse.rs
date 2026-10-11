@@ -25,18 +25,18 @@ fn captured() -> LogBuffer {
 #[gpui::test]
 fn clicking_a_level_radio_filters_the_box(app: &mut TestAppContext) {
     let mut ui = on_page(Harness::with_logs(app, captured(), Some(Levels::INFO)));
-    assert_eq!(ui.settings().log_line_count, 1);
+    assert_eq!(ui.settings_tracing().log_line_count, 1);
 
     ui.click("tracing-level-debug");
-    assert_eq!(ui.settings().tracing_level, "Debug");
-    assert_eq!(ui.settings().log_line_count, 2);
+    assert_eq!(ui.settings_tracing().tracing_level, "Debug");
+    assert_eq!(ui.settings_tracing().log_line_count, 2);
     ui.click("tracing-level-error");
-    assert_eq!(ui.settings().tracing_level, "Error");
-    assert_eq!(ui.settings().log_line_count, 0);
+    assert_eq!(ui.settings_tracing().tracing_level, "Error");
+    assert_eq!(ui.settings_tracing().log_line_count, 0);
     ui.click("tracing-level-warn");
-    assert_eq!(ui.settings().log_line_count, 1);
+    assert_eq!(ui.settings_tracing().log_line_count, 1);
     ui.click("tracing-level-info");
-    assert_eq!(ui.settings().tracing_level, "Info");
+    assert_eq!(ui.settings_tracing().tracing_level, "Info");
 }
 
 #[gpui::test]
@@ -59,7 +59,7 @@ fn an_empty_capture_shows_the_empty_state(app: &mut TestAppContext) {
 fn a_filter_hiding_everything_shows_the_empty_state(app: &mut TestAppContext) {
     let mut ui = on_page(Harness::with_logs(app, captured(), Some(Levels::ERROR)));
     assert!(ui.is_drawn("tracing-log-empty"));
-    assert_eq!(ui.settings().log_hidden_count, 2);
+    assert_eq!(ui.settings_tracing().log_hidden_count, 2);
 }
 
 #[gpui::test]
@@ -70,9 +70,10 @@ fn clear_logs_asks_and_cancel_keeps_the_entries(app: &mut TestAppContext) {
     assert_eq!(ui.settings().dialog.as_deref(), Some("ClearLogs"));
     ui.click("clear-logs-cancel");
 
+    let tracing_page = ui.settings_tracing();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.log_line_count, 2);
+    assert_eq!(tracing_page.log_line_count, 2);
 }
 
 #[gpui::test]
@@ -82,9 +83,13 @@ fn confirming_clear_logs_empties_the_box(app: &mut TestAppContext) {
     ui.click("settings-clear-logs");
     ui.click("clear-logs-confirm");
 
+    let tracing_page = ui.settings_tracing();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.log_line_count, 0);
-    assert_eq!(page.tracing_level, "Debug", "clearing keeps the level");
+    assert_eq!(tracing_page.log_line_count, 0);
+    assert_eq!(
+        tracing_page.tracing_level, "Debug",
+        "clearing keeps the level"
+    );
     assert!(ui.is_drawn("tracing-log-empty"));
 }

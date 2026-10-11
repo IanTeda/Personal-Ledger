@@ -83,16 +83,22 @@ fn choosing_cash_with_the_mouse_makes_the_institution_read_only(app: &mut TestAp
 #[gpui::test]
 fn the_confirm_button_adds_only_a_valid_form(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
-    let before = ui.settings().account_names.len();
+    let before = ui.settings_accounts().account_names.len();
 
     ui.click("add-account-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
-    assert_eq!(ui.settings().account_names.len(), before);
+    assert_eq!(ui.settings_accounts().account_names.len(), before);
 
     ui.press("r a i n y");
     ui.click("add-account-confirm");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.account_names.len(), before + 1);
-    assert!(page.account_names.iter().any(|name| name == "rainy"));
+    assert_eq!(accounts_page.account_names.len(), before + 1);
+    assert!(
+        accounts_page
+            .account_names
+            .iter()
+            .any(|name| name == "rainy")
+    );
 }

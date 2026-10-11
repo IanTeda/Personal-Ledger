@@ -21,9 +21,9 @@ fn clicking_a_date_format_option_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-date-style-4");
-    assert_eq!(ui.settings().date_style.as_deref(), Some("Iso"));
+    assert_eq!(ui.settings_display().date_style.as_deref(), Some("Iso"));
     ui.click("display-date-style-0");
-    assert_eq!(ui.settings().date_style, None);
+    assert_eq!(ui.settings_display().date_style, None);
 }
 
 #[gpui::test]
@@ -31,9 +31,9 @@ fn clicking_a_row_density_option_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-row-density-0");
-    assert_eq!(ui.settings().row_density, "Compact");
+    assert_eq!(ui.settings_display().row_density, "Compact");
     ui.click("display-row-density-2");
-    assert_eq!(ui.settings().row_density, "Roomy");
+    assert_eq!(ui.settings_display().row_density, "Roomy");
 }
 
 #[gpui::test]
@@ -41,9 +41,9 @@ fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-status-glyphs-1");
-    assert_eq!(ui.settings().status_glyphs, "AsciiFallback");
+    assert_eq!(ui.settings_display().status_glyphs, "AsciiFallback");
     ui.click("display-status-glyphs-0");
-    assert_eq!(ui.settings().status_glyphs, "Unicode");
+    assert_eq!(ui.settings_display().status_glyphs, "Unicode");
 }
 
 #[gpui::test]
@@ -51,9 +51,9 @@ fn clicking_the_sidebar_checkbox_toggles_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-start-sidebar-minimised");
-    assert!(ui.settings().start_sidebar_minimised);
+    assert!(ui.settings_display().start_sidebar_minimised);
     ui.click("display-start-sidebar-minimised");
-    assert!(!ui.settings().start_sidebar_minimised);
+    assert!(!ui.settings_display().start_sidebar_minimised);
 }
 
 #[gpui::test]
@@ -61,9 +61,9 @@ fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-toasts-1");
-    assert!(!ui.settings().toasts_on);
+    assert!(!ui.settings_display().toasts_on);
     ui.click("display-toasts-0");
-    assert!(ui.settings().toasts_on);
+    assert!(ui.settings_display().toasts_on);
 }
 
 #[gpui::test]

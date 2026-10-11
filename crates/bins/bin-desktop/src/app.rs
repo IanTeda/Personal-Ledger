@@ -58,14 +58,19 @@ use log_feed::LOG_LIST_OVERDRAW;
 pub use snapshots::{
     AccountFormSnapshot, BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot,
     ChipSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportRowSnapshot, ImportSnapshot,
-    PaletteSnapshot, SettingsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
+    PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
+    SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
+    SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
+    SettingsUnitsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
 
 use std::time::{Duration, Instant};
 
-use crate::view::settings::state::{
-    InstitutionsStore, InventoryStore, LedgerDataEvent, SettingsView, UnitsStore,
-};
+use crate::institutions::InstitutionsStore;
+use crate::inventory::InventoryStore;
+use crate::ledger_data::LedgerDataEvent;
+use crate::units::UnitsStore;
+use crate::view::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsState, TransactionsView};
 
 use gpui::{
@@ -76,6 +81,7 @@ use gpui::{
 use lib_core::DateStyle;
 use lib_toast::Toasts;
 
+use crate::payees::{PayeesEvent, PayeesStore};
 use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
 use crate::view::bills::state::{BillsEvent, BillsView};
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
@@ -83,7 +89,7 @@ use crate::view::categories::state::{CategoriesEvent, CategoriesStore, Categorie
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
 };
-use crate::view::payees::state::{PayeesEvent, PayeesStore, PayeesView};
+use crate::view::payees::state::PayeesView;
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
     bills::{self, BillsStore},

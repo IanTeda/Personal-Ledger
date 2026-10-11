@@ -23,9 +23,10 @@ fn on_categories(app: &mut TestAppContext) -> Harness<'_> {
 fn opens_on_the_categories_page_with_no_row_selected(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
+    let categories_page = ui.settings_categories();
     let page = ui.settings();
-    assert!(!page.category_names.is_empty());
-    assert_eq!(page.selected_category, None);
+    assert!(!categories_page.category_names.is_empty());
+    assert_eq!(categories_page.selected_category, None);
     assert_eq!(page.dialog, None);
 }
 
@@ -34,7 +35,7 @@ fn j_moves_the_selection_onto_a_category(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
     ui.press("j");
-    assert!(ui.settings().selected_category.is_some());
+    assert!(ui.settings_categories().selected_category.is_some());
 }
 
 #[gpui::test]
@@ -64,16 +65,22 @@ fn shift_n_and_n_open_the_add_dialog(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_new_category_is_added_by_typing_its_name(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
-    let before = ui.settings().category_names.len();
+    let before = ui.settings_categories().category_names.len();
 
     ui.press("n");
     ui.press("p e t s");
     assert_eq!(ui.settings().dialog_name.as_deref(), Some("pets"));
     ui.press("enter");
+    let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.category_names.len(), before + 1);
-    assert!(page.category_names.iter().any(|name| name == "pets"));
+    assert_eq!(categories_page.category_names.len(), before + 1);
+    assert!(
+        categories_page
+            .category_names
+            .iter()
+            .any(|name| name == "pets")
+    );
 }
 
 #[gpui::test]
@@ -84,7 +91,10 @@ fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) 
     ui.press("d");
     assert_eq!(ui.settings().dialog, None);
     ui.press("right");
-    assert_eq!(ui.settings().selected_category.as_deref(), Some("Rent"));
+    assert_eq!(
+        ui.settings_categories().selected_category.as_deref(),
+        Some("Rent")
+    );
     ui.press("d");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.press("escape");

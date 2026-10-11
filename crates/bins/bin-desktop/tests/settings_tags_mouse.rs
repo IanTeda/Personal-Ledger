@@ -30,28 +30,29 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
 #[gpui::test]
 fn the_add_dialog_confirm_is_inert_until_a_name_is_typed(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
-    let before = ui.settings().tag_names.len();
+    let before = ui.settings_tags().tag_names.len();
 
     ui.click("settings-tags-add");
     ui.click("add-tag-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("AddTag"));
     ui.press("z e b r a");
     ui.click("add-tag-confirm");
+    let tags_page = ui.settings_tags();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.tag_names.len(), before + 1);
-    assert_eq!(page.selected_tag.as_deref(), Some("zebra"));
+    assert_eq!(tags_page.tag_names.len(), before + 1);
+    assert_eq!(tags_page.selected_tag.as_deref(), Some("zebra"));
 }
 
 #[gpui::test]
 fn clicking_a_row_selects_it(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
 
-    let first = ui.settings().selected_tag;
+    let first = ui.settings_tags().selected_tag;
     ui.click("settings-tags-row-2");
-    let page = ui.settings();
-    assert_eq!(page.selected_tag.as_deref(), Some("shared"));
-    assert_ne!(first, page.selected_tag);
+    let tags_page = ui.settings_tags();
+    assert_eq!(tags_page.selected_tag.as_deref(), Some("shared"));
+    assert_ne!(first, tags_page.selected_tag);
 }
 
 #[gpui::test]
@@ -71,7 +72,7 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
     let mut ui = on_tags(app);
     // A new Tag is unused, so Remove needs no typed name; it takes the next id, 10.
     ui.press("l n z e b r a enter");
-    let before = ui.settings().tag_names.len();
+    let before = ui.settings_tags().tag_names.len();
 
     ui.click("settings-tags-remove-10");
     assert_eq!(ui.settings().dialog.as_deref(), Some("RemoveTag"));
@@ -79,26 +80,29 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
     assert_eq!(ui.settings().dialog, None);
     ui.click("settings-tags-remove-10");
     ui.click("remove-tag-confirm");
+    let tags_page = ui.settings_tags();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.tag_names.len(), before - 1);
-    assert!(!page.tag_names.iter().any(|name| name == "zebra"));
+    assert_eq!(tags_page.tag_names.len(), before - 1);
+    assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
 }
 
 #[gpui::test]
 fn the_merge_action_on_a_flagged_duplicate_merges_it_away(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
-    let before = ui.settings().tag_names.len();
+    let before = ui.settings_tags().tag_names.len();
 
     ui.click("settings-tags-merge-9");
+    let tags_page = ui.settings_tags();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("MergeTags"));
-    assert!(page.merge_pair.is_some());
+    assert!(tags_page.merge_pair.is_some());
     ui.click("merge-tags-cancel");
     assert_eq!(ui.settings().dialog, None);
     ui.click("settings-tags-merge-9");
     ui.click("merge-tags-confirm");
+    let tags_page = ui.settings_tags();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.tag_names.len(), before - 1);
+    assert_eq!(tags_page.tag_names.len(), before - 1);
 }

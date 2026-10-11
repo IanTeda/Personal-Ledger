@@ -1,7 +1,7 @@
 //! The Add institution dialog's live form state -- pure, `gpui`-free; `Shell` owns it and
 //! `view::settings` renders it.
 
-use super::AccountType;
+use super::InstitutionProduct;
 use crate::{form::field::TextField, units::UnitRow};
 
 /// The Add institution dialog's own live form state (issue #187) -- pure, `gpui`-free.
@@ -13,7 +13,7 @@ use crate::{form::field::TextField, units::UnitRow};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AddInstitutionForm {
     pub name: TextField,
-    pub account_types: Vec<AccountType>,
+    pub account_types: Vec<InstitutionProduct>,
     /// The selected default unit's own *code*, not an index into `Shell::settings_units` -- a
     /// code stays meaningful even if that `Vec`'s shape changes, though nothing in this map
     /// actually opens two dialogs at once for that to matter yet.
@@ -28,13 +28,13 @@ impl AddInstitutionForm {
     pub fn new(units: &[UnitRow]) -> Self {
         Self {
             name: TextField::default(),
-            account_types: vec![AccountType::Savings],
+            account_types: vec![InstitutionProduct::Savings],
             default_unit_code: units.first().map(|unit| unit.code.clone()),
         }
     }
 
     /// Toggles `account_type`'s own membership -- present removes it, absent adds it.
-    pub fn toggle_account_type(&mut self, account_type: AccountType) {
+    pub fn toggle_account_type(&mut self, account_type: InstitutionProduct) {
         match self
             .account_types
             .iter()
@@ -63,7 +63,7 @@ mod tests {
     fn add_institution_form_new_seeds_savings_and_the_first_unit() {
         let units = default_units();
         let form = AddInstitutionForm::new(&units);
-        assert_eq!(form.account_types, vec![AccountType::Savings]);
+        assert_eq!(form.account_types, vec![InstitutionProduct::Savings]);
         assert_eq!(form.default_unit_code.as_deref(), Some("aud"));
     }
 
@@ -76,10 +76,10 @@ mod tests {
     #[test]
     fn add_institution_form_toggle_account_type_adds_and_removes() {
         let mut form = AddInstitutionForm::new(&default_units());
-        assert!(form.account_types.contains(&AccountType::Savings));
-        form.toggle_account_type(AccountType::Savings);
-        assert!(!form.account_types.contains(&AccountType::Savings));
-        form.toggle_account_type(AccountType::Loan);
-        assert!(form.account_types.contains(&AccountType::Loan));
+        assert!(form.account_types.contains(&InstitutionProduct::Savings));
+        form.toggle_account_type(InstitutionProduct::Savings);
+        assert!(!form.account_types.contains(&InstitutionProduct::Savings));
+        form.toggle_account_type(InstitutionProduct::Loan);
+        assert!(form.account_types.contains(&InstitutionProduct::Loan));
     }
 }

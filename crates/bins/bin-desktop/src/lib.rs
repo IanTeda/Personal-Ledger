@@ -19,6 +19,7 @@ mod help;
 mod import;
 mod institutions;
 mod inventory;
+mod ledger_data;
 pub mod locale;
 pub mod navigation;
 mod payees;

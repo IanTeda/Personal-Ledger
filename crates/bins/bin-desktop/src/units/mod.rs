@@ -2,8 +2,10 @@
 //! Unit), with their price sources. `gpui`-free; Settings' Units page is only where they're edited.
 
 pub(crate) mod form;
+pub(crate) mod store;
 
 pub use lib_units::{PriceSourceRow, UnitRow, default_price_sources, default_units};
+pub use store::UnitsStore;
 
 /// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop-mockups/16-settings/README.md`'s "2b —
 /// Add unit": "Type (select: currency / cryptocurrency / custom)") -- rendered as a segmented

@@ -86,7 +86,7 @@ fn the_opening_balance_only_takes_a_decimal_amount(app: &mut TestAppContext) {
 #[gpui::test]
 fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
-    let before = ui.settings().account_names.len();
+    let before = ui.settings_accounts().account_names.len();
 
     ui.press("enter");
     assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
@@ -96,9 +96,10 @@ fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     ui.press("o k");
     assert!(ui.account_form().valid);
     ui.press("enter");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
-    assert_eq!(page.account_names.len(), before + 1);
+    assert_eq!(accounts_page.account_names.len(), before + 1);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -207,15 +208,19 @@ fn editing_fixes_the_unit_and_balance_and_tab_skips_them(app: &mut TestAppContex
 #[gpui::test]
 fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
-    let name = ui.settings().selected_account.expect("seeded accounts");
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
 
     ui.press("e");
     assert_eq!(ui.account_form().name, name);
     ui.press("backspace");
     ui.press("enter");
+    let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
     let mut shorter = name.clone();
     shorter.pop();
-    assert!(page.account_names.contains(&shorter));
+    assert!(accounts_page.account_names.contains(&shorter));
 }

@@ -7,7 +7,7 @@ use super::Shell;
 use super::key_dispatch::PENDING_G_TIMEOUT;
 use super::log_feed::LOG_LINE_STEP;
 use crate::chrome::dialog_host::OpenDialog;
-use crate::institutions::AccountType;
+use crate::institutions::InstitutionProduct;
 use crate::institutions::form::AddInstitutionForm;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, InputMode, Noun};
@@ -1069,7 +1069,7 @@ impl Shell {
 
     pub(super) fn handle_add_institution_account_type_click(
         &mut self,
-        account_type: AccountType,
+        account_type: InstitutionProduct,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog_mut() {

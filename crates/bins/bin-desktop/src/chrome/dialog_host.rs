@@ -223,7 +223,7 @@ mod tests {
         form::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm},
     };
     use crate::{
-        institutions::{AccountType, form::AddInstitutionForm},
+        institutions::{InstitutionProduct, form::AddInstitutionForm},
         units::{
             default_units,
             form::{AddUnitField, DeleteUnitForm, UnitForm},
@@ -304,7 +304,7 @@ mod tests {
         type_text(&mut dialog, "ANZ");
         assert!(dialog.is_valid());
         if let OpenDialog::Settings(SettingsDialog::AddInstitution(form)) = &mut dialog {
-            form.toggle_account_type(AccountType::Savings);
+            form.toggle_account_type(InstitutionProduct::Savings);
         }
         assert!(!dialog.is_valid());
     }

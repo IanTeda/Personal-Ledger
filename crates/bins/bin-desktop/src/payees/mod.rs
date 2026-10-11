@@ -1,6 +1,8 @@
 pub(crate) mod form;
+pub(crate) mod store;
 
 pub use lib_payees::*;
+pub use store::{PayeesEvent, PayeesStore};
 
 #[cfg(test)]
 mod tests {

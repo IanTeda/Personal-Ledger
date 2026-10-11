@@ -3,5 +3,7 @@
 //! `inventory::X` path keeps working.
 
 pub(crate) mod form;
+pub(crate) mod store;
 
 pub use lib_inventory::*;
+pub use store::InventoryStore;

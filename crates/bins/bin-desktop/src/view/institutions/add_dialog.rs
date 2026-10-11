@@ -22,7 +22,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    institutions::{AccountType, form::AddInstitutionForm},
+    institutions::{InstitutionProduct, form::AddInstitutionForm},
     theme::color,
     units::UnitRow,
 };
@@ -31,7 +31,7 @@ use crate::view::form_fields::{field_label, text_field};
 
 const WIDTH: gpui::Pixels = px(460.0);
 
-pub type OnAccountTypeClick = Rc<dyn Fn(AccountType, &mut Window, &mut App)>;
+pub type OnAccountTypeClick = Rc<dyn Fn(InstitutionProduct, &mut Window, &mut App)>;
 /// Passes the clicked unit's own code -- `Shell::settings_units` is a live `Vec` the dialog
 /// doesn't own, so an index would need re-deriving against it anyway; the code is what
 /// `AddInstitutionForm::default_unit_code` actually stores (see that field's own doc).
@@ -99,7 +99,7 @@ fn name_field(value: &str, cx: &App) -> AnyElement {
 /// `display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid
 /// rgba(32,30,29,.30); font-size:12px; cursor:pointer`, selected takes the dark treatment).
 fn account_types_field(
-    selected: &[AccountType],
+    selected: &[InstitutionProduct],
     on_click: OnAccountTypeClick,
     cx: &App,
 ) -> impl IntoElement {
@@ -108,7 +108,7 @@ fn account_types_field(
             crate::msg::desktop_settings_institutions_account_types(),
         ))
         .child(div().flex().flex_wrap().gap(px(8.0)).mt(px(4.0)).children(
-            AccountType::ALL.into_iter().map(|account_type| {
+            InstitutionProduct::ALL.into_iter().map(|account_type| {
                 let checked = selected.contains(&account_type);
                 let on_click = on_click.clone();
                 chip(account_type, checked, on_click, cx)
@@ -117,7 +117,7 @@ fn account_types_field(
 }
 
 fn chip(
-    account_type: AccountType,
+    account_type: InstitutionProduct,
     checked: bool,
     on_click: OnAccountTypeClick,
     cx: &App,

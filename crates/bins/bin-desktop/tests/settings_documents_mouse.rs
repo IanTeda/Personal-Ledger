@@ -19,8 +19,12 @@ fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
 
     ui.click("settings-documents-row-4");
+    let document_types_page = ui.settings_document_types();
     let page = ui.settings();
-    assert_eq!(page.selected_document_type.as_deref(), Some("Insurance"));
+    assert_eq!(
+        document_types_page.selected_document_type.as_deref(),
+        Some("Insurance")
+    );
     assert!(page.page_focused);
 }
 
@@ -29,13 +33,19 @@ fn the_edit_action_opens_the_edit_dialog_and_save_applies_it(app: &mut TestAppCo
     let mut ui = on_documents(app);
 
     ui.click("settings-documents-edit-6");
-    let page = ui.settings();
-    assert_eq!(page.selected_document_type.as_deref(), Some("Contracts"));
-    assert_eq!(page.document_type_dialog.as_deref(), Some("edit"));
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(
+        document_types_page.selected_document_type.as_deref(),
+        Some("Contracts")
+    );
+    assert_eq!(
+        document_types_page.document_type_dialog.as_deref(),
+        Some("edit")
+    );
     // Tracks date None (index 0) makes Contracts track nothing; Save applies it.
     ui.click("document-type-tracks-0");
     ui.click("edit-document-type-confirm");
-    assert_eq!(ui.settings().document_type_dialog, None);
+    assert_eq!(ui.settings_document_types().document_type_dialog, None);
 }
 
 #[gpui::test]
@@ -48,14 +58,20 @@ fn the_remove_action_opens_the_dialog_and_other_has_no_button(app: &mut TestAppC
     assert!(ui.cx.debug_bounds("settings-documents-remove-3").is_some());
 
     ui.click("settings-documents-remove-3");
-    let page = ui.settings();
-    assert_eq!(page.selected_document_type.as_deref(), Some("Tax"));
-    assert_eq!(page.document_type_dialog.as_deref(), Some("remove"));
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(
+        document_types_page.selected_document_type.as_deref(),
+        Some("Tax")
+    );
+    assert_eq!(
+        document_types_page.document_type_dialog.as_deref(),
+        Some("remove")
+    );
     ui.click("remove-document-type-confirm");
-    let page = ui.settings();
-    assert_eq!(page.document_type_dialog, None);
-    assert_eq!(page.document_type_names.len(), 8);
-    assert_eq!(page.document_type_files.last(), Some(&33));
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(document_types_page.document_type_names.len(), 8);
+    assert_eq!(document_types_page.document_type_files.last(), Some(&33));
 }
 
 #[gpui::test]
@@ -69,9 +85,9 @@ fn the_destination_dropdown_picks_with_a_click(app: &mut TestAppContext) {
     ui.click("document-type-destination-option-2");
     ui.click("remove-document-type-confirm");
 
-    let page = ui.settings();
-    assert_eq!(page.document_type_files[2], 18 + 31);
-    assert_eq!(page.document_type_files.last(), Some(&2));
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(document_types_page.document_type_files[2], 18 + 31);
+    assert_eq!(document_types_page.document_type_files.last(), Some(&2));
 }
 
 #[gpui::test]
@@ -81,9 +97,9 @@ fn cancel_closes_the_remove_dialog_without_removing(app: &mut TestAppContext) {
     ui.click("settings-documents-remove-3");
     ui.click("remove-document-type-cancel");
 
-    let page = ui.settings();
-    assert_eq!(page.document_type_dialog, None);
-    assert_eq!(page.document_type_names.len(), 9);
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(document_types_page.document_type_names.len(), 9);
 }
 
 #[gpui::test]
@@ -91,12 +107,19 @@ fn the_add_button_opens_the_dialog_and_the_controls_click(app: &mut TestAppConte
     let mut ui = on_documents(app);
 
     ui.click("settings-documents-add");
+    let document_types_page = ui.settings_document_types();
     let page = ui.settings();
     assert!(page.page_focused);
-    assert_eq!(page.document_type_dialog.as_deref(), Some("add"));
+    assert_eq!(
+        document_types_page.document_type_dialog.as_deref(),
+        Some("add")
+    );
     // Name is empty, so the confirm does nothing.
     ui.click("add-document-type-confirm");
-    assert_eq!(ui.settings().document_type_dialog.as_deref(), Some("add"));
+    assert_eq!(
+        ui.settings_document_types().document_type_dialog.as_deref(),
+        Some("add")
+    );
     ui.click("document-type-name");
     ui.press("l e a s e s");
     ui.click("document-type-tracks-2");
@@ -104,10 +127,13 @@ fn the_add_button_opens_the_dialog_and_the_controls_click(app: &mut TestAppConte
     ui.click("document-type-financial-year");
     ui.click("add-document-type-confirm");
 
-    let page = ui.settings();
-    assert_eq!(page.document_type_dialog, None);
+    let document_types_page = ui.settings_document_types();
+    assert_eq!(document_types_page.document_type_dialog, None);
     assert_eq!(
-        page.document_type_names.last().map(String::as_str),
+        document_types_page
+            .document_type_names
+            .last()
+            .map(String::as_str),
         Some("leases")
     );
 }
@@ -119,6 +145,6 @@ fn cancel_closes_the_add_dialog(app: &mut TestAppContext) {
     ui.click("settings-documents-add");
     ui.click("add-document-type-cancel");
 
-    assert_eq!(ui.settings().document_type_dialog, None);
-    assert_eq!(ui.settings().document_type_names.len(), 9);
+    assert_eq!(ui.settings_document_types().document_type_dialog, None);
+    assert_eq!(ui.settings_document_types().document_type_names.len(), 9);
 }

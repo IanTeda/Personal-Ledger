@@ -2,14 +2,16 @@
 //! Institution). `gpui`-free; Settings' Institutions page is only where they're edited.
 
 pub(crate) mod form;
+pub(crate) mod store;
 
 pub use lib_institutions::{InstitutionRow, default_institutions};
+pub use store::InstitutionsStore;
 
-/// The Add institution dialog's own Account types multi-select chips
+/// The Add institution dialog's own product multi-select chips (not `lib_core::AccountType`, which classes an Account)
 /// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2e — Add institution": savings / credit card /
 /// offset / loan / investment).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountType {
+pub enum InstitutionProduct {
     Savings,
     CreditCard,
     Offset,
@@ -17,8 +19,8 @@ pub enum AccountType {
     Investment,
 }
 
-impl AccountType {
-    pub const ALL: [AccountType; 5] = [
+impl InstitutionProduct {
+    pub const ALL: [InstitutionProduct; 5] = [
         Self::Savings,
         Self::CreditCard,
         Self::Offset,
@@ -63,6 +65,6 @@ mod tests {
     #[test]
     fn account_type_labels_come_from_the_catalogue() {
         crate::locale::init_for_tests();
-        assert_eq!(AccountType::CreditCard.label(), "Credit card");
+        assert_eq!(InstitutionProduct::CreditCard.label(), "Credit card");
     }
 }

@@ -12,7 +12,8 @@ use crate::{
     tags::{self, form::TagsDialog},
 };
 
-/// The Settings pages' state: plain values, so the private form types stay private.
+/// The Settings shell's state: the page on show and the dialog open over it. Each page's own state
+/// is its own snapshot (`settings_<page>_snapshot`), so a change to one domain edits one struct.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsSnapshot {
@@ -20,24 +21,56 @@ pub struct SettingsSnapshot {
     pub page: String,
     /// Whether the page, not the index rail, holds keyboard focus.
     pub page_focused: bool,
-    /// Account names in the order the page lists them, and the selected row's name.
+    /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
+    /// dialog is ever open.
+    pub dialog: Option<String>,
+    /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
+    pub dialog_name: Option<String>,
+    pub dialog_confirm: Option<String>,
+    /// The status line's message, where the stubbed buttons report.
+    pub status_message: Option<String>,
+}
+
+/// The Accounts page: names in the order the page lists them, and the selected row's name.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsAccountsSnapshot {
     pub account_names: Vec<String>,
     pub selected_account: Option<String>,
-    /// Category names in storage order, and the selected row's name.
+}
+
+/// The Categories page: names in storage order, and the selected row's name.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsCategoriesSnapshot {
     pub category_names: Vec<String>,
     pub selected_category: Option<String>,
-    /// Payee names A-Z, and the selected row's name.
+}
+
+/// The Payees page: names A-Z, and the selected row's name.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsPayeesSnapshot {
     pub payee_names: Vec<String>,
     pub selected_payee: Option<String>,
-    /// Document type names in the user's order, and the selected row's name.
+}
+
+/// The Document Types page: names in the user's order, the selected row's name, filed files per
+/// type in the same order, and the open dialog (`add`, `edit`, `remove` or `notice`).
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsDocumentTypesSnapshot {
     pub document_type_names: Vec<String>,
     pub selected_document_type: Option<String>,
-    /// Filed files per type in the same order, and the open dialog (`add`, `edit`, `remove` or
-    /// `notice`).
     pub document_type_files: Vec<u32>,
     pub document_type_dialog: Option<String>,
-    /// The Inventory page's visible rows and the selected one, as `property:<name>` or
-    /// `room:<name>`, each Property's Rooms in order, and the dialog last asked for.
+}
+
+/// The Inventory page's visible rows and the selected one, as `property:<name>` or `room:<name>`,
+/// each Property's Rooms in order, and the dialog last asked for.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsInventorySnapshot {
     pub inventory_rows: Vec<String>,
     pub selected_inventory: Option<String>,
     pub inventory_rooms: Vec<(String, Vec<String>)>,
@@ -47,34 +80,45 @@ pub struct SettingsSnapshot {
     pub inventory_properties: Vec<(String, String, Option<String>)>,
     /// Each Room's name with its Item count, in page order.
     pub inventory_room_items: Vec<(String, usize)>,
-    /// Tag names A-Z, and the selected row's name.
+}
+
+/// The Tags page: names A-Z, the selected row's name, and the Merge tags dialog's chosen
+/// `(source, target)` names once both are set.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsTagsSnapshot {
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
-    /// The Merge tags dialog's chosen `(source, target)` names, once both are set.
     pub merge_pair: Option<(String, String)>,
-    /// Unit codes in table order.
+}
+
+/// The Units page: codes in table order, `(code, name, kind)` rows, and the Add/Edit unit dialog's
+/// Name draft, Type (`UnitKind` variant name) and focused field (`Code` or `Name`).
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
-    /// Institution `(name, account type)` rows in table order.
-    pub institutions: Vec<(String, String)>,
-    /// Unit `(code, name, kind)` rows in table order.
     pub unit_rows: Vec<(String, String, String)>,
-    /// The Add/Edit unit dialog's Name draft, Type (`UnitKind` variant name) and focused field
-    /// (`Code` or `Name`).
     pub unit_dialog_name: Option<String>,
     pub unit_dialog_kind: Option<String>,
     pub unit_dialog_field: Option<String>,
-    /// The Add institution dialog's checked Account types (`AccountType` variant names) and
-    /// chosen Default unit code.
+}
+
+/// The Institutions page: `(name, account type)` rows in table order, and the Add institution
+/// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsInstitutionsSnapshot {
+    pub institutions: Vec<(String, String)>,
     pub institution_dialog_types: Option<Vec<String>>,
     pub institution_dialog_unit: Option<String>,
-    /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
-    /// dialog is ever open.
-    pub dialog: Option<String>,
-    /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
-    pub dialog_name: Option<String>,
-    pub dialog_confirm: Option<String>,
-    /// The Display page: the focused control above the Colour Theme grid and the focused card,
-    /// then each control's value (enum variant names; `date_style` is `None` for the default).
+}
+
+/// The Display page: the focused control above the Colour Theme grid and the focused card, then
+/// each control's value (enum variant names; `date_style` is `None` for the default).
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsDisplaySnapshot {
     pub display_field: Option<usize>,
     pub colour_theme_focus: Option<usize>,
     pub date_style: Option<String>,
@@ -82,16 +126,32 @@ pub struct SettingsSnapshot {
     pub status_glyphs: String,
     pub start_sidebar_minimised: bool,
     pub toasts_on: bool,
-    /// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the
-    /// filter shows, their bodies newest first (`subsystem: message key=value`), how many it
-    /// hides, and the list's top row.
+}
+
+/// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the filter
+/// shows, their bodies newest first (`subsystem: message key=value`), how many it hides, and the
+/// list's top row.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsTracingSnapshot {
     pub tracing_level: String,
     pub log_line_count: usize,
     pub log_lines: Vec<String>,
     pub log_hidden_count: usize,
     pub log_scroll_top: usize,
-    /// The status line's message, where the stubbed buttons report.
-    pub status_message: Option<String>,
+}
+
+/// What the open Settings dialog shows, read once for the snapshots that report it.
+#[derive(Default)]
+struct OpenDialog {
+    label: Option<&'static str>,
+    name: Option<String>,
+    confirm: Option<String>,
+    merge_pair: Option<(String, String)>,
+    /// The Add/Edit unit dialog's Name, Type and focused field.
+    unit: Option<(String, String, String)>,
+    /// The Add institution dialog's checked products and Default unit code.
+    institution: Option<(Vec<String>, Option<String>)>,
 }
 
 /// The open Add or Edit account dialog's form: plain values, so the private form type stays
@@ -152,48 +212,9 @@ impl Shell {
         }
     }
 
-    /// The Settings pages for a test.
-    #[doc(hidden)]
-    pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
-        let account_names = accounts::display_order(self.accounts.read(cx).accounts())
-            .into_iter()
-            .filter_map(|index| self.accounts.read(cx).accounts().get(index))
-            .map(|account| account.name.clone())
-            .collect::<Vec<_>>();
-        let selected_account = self
-            .accounts_view
-            .read(cx)
-            .selected_index(cx)
-            .and_then(|index| self.accounts.read(cx).accounts().get(index))
-            .map(|account| account.name.clone());
-        let selected_category = self.categories_view.read(cx).selected_id().and_then(|id| {
-            self.categories(cx)
-                .iter()
-                .find(|category| category.id == id)
-                .map(|category| category.name.clone())
-        });
-        let selected_payee = self.settings_payees_selected_id(cx).and_then(|id| {
-            self.payees_list(cx)
-                .iter()
-                .find(|payee| payee.id == id)
-                .map(|payee| payee.name.clone())
-        });
-
-        let selected_document_type = self.settings_documents_selected_id(cx).and_then(|id| {
-            self.document_types(cx)
-                .iter()
-                .find(|row| row.id == id)
-                .map(|row| row.name.clone())
-        });
-        let selected_tag = self
-            .settings_tags_selected_id(cx)
-            .and_then(|id| tags::get(self.tags_list(cx), id).map(|tag| tag.name.clone()));
-        let mut merge_pair = None;
-        let mut dialog = None;
-        let mut dialog_name = None;
-        let mut dialog_confirm = None;
-        let mut unit_form = None;
-        let mut institution_form = None;
+    /// The open Settings dialog, whichever page owns it.
+    fn open_settings_dialog(&self, cx: &gpui::App) -> OpenDialog {
+        let mut open_dialog = OpenDialog::default();
         if let Some(open) = self.accounts_dialog() {
             let (label, name, confirm) = match open {
                 AccountsDialog::Add(form) => {
@@ -208,9 +229,9 @@ impl Shell {
                     Some(form.confirm_input.text().to_string()),
                 ),
             };
-            dialog = Some(label);
-            dialog_name = name;
-            dialog_confirm = confirm;
+            open_dialog.label = Some(label);
+            open_dialog.name = name;
+            open_dialog.confirm = confirm;
         } else if let Some(open) = self.categories_dialog() {
             let (label, name, confirm) = match open {
                 CategoriesDialog::Add { form, .. } => {
@@ -225,9 +246,9 @@ impl Shell {
                     Some(form.confirmation_name.text().to_string()),
                 ),
             };
-            dialog = Some(label);
-            dialog_name = name;
-            dialog_confirm = confirm;
+            open_dialog.label = Some(label);
+            open_dialog.name = name;
+            open_dialog.confirm = confirm;
         } else if let Some(open) = self.payees_dialog() {
             let (label, name, confirm) = match open {
                 PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
@@ -240,9 +261,9 @@ impl Shell {
                     Some(form.confirmation_name.text().to_string()),
                 ),
             };
-            dialog = Some(label);
-            dialog_name = name;
-            dialog_confirm = confirm;
+            open_dialog.label = Some(label);
+            open_dialog.name = name;
+            open_dialog.confirm = confirm;
         } else if let Some(open) = self.tags_dialog() {
             let (label, name, confirm) = match open {
                 TagsDialog::Add(form) => ("AddTag", Some(form.name.text().to_string()), None),
@@ -253,7 +274,7 @@ impl Shell {
                     Some(form.confirmation_name.text().to_string()),
                 ),
                 TagsDialog::Merge(form) => {
-                    merge_pair = form.pair().and_then(|(source, target)| {
+                    open_dialog.merge_pair = form.pair().and_then(|(source, target)| {
                         Some((
                             tags::get(self.tags_list(cx), source)?.name.clone(),
                             tags::get(self.tags_list(cx), target)?.name.clone(),
@@ -262,17 +283,25 @@ impl Shell {
                     ("MergeTags", None, None)
                 }
             };
-            dialog = Some(label);
-            dialog_name = name;
-            dialog_confirm = confirm;
+            open_dialog.label = Some(label);
+            open_dialog.name = name;
+            open_dialog.confirm = confirm;
         } else if let Some(open) = self.settings_dialog() {
             let (label, name, confirm) = match open {
                 SettingsDialog::AddUnit(form) => {
-                    unit_form = Some(form);
+                    open_dialog.unit = Some((
+                        form.name.text().to_string(),
+                        format!("{:?}", form.kind),
+                        format!("{:?}", form.focused_field),
+                    ));
                     ("AddUnit", Some(form.code.text().to_string()), None)
                 }
                 SettingsDialog::EditUnit(_, form) => {
-                    unit_form = Some(form);
+                    open_dialog.unit = Some((
+                        form.name.text().to_string(),
+                        format!("{:?}", form.kind),
+                        format!("{:?}", form.focused_field),
+                    ));
                     ("EditUnit", Some(form.code.text().to_string()), None)
                 }
                 SettingsDialog::DeleteUnit(_, form) => (
@@ -281,32 +310,108 @@ impl Shell {
                     Some(form.confirm_input.text().to_string()),
                 ),
                 SettingsDialog::AddInstitution(form) => {
-                    institution_form = Some(form);
+                    open_dialog.institution = Some((
+                        form.account_types
+                            .iter()
+                            .map(|product| format!("{product:?}"))
+                            .collect(),
+                        form.default_unit_code.clone(),
+                    ));
                     ("AddInstitution", Some(form.name.text().to_string()), None)
                 }
                 SettingsDialog::ClearLogs => ("ClearLogs", None, None),
             };
-            dialog = Some(label);
-            dialog_name = name;
-            dialog_confirm = confirm;
+            open_dialog.label = Some(label);
+            open_dialog.name = name;
+            open_dialog.confirm = confirm;
         }
+        open_dialog
+    }
 
+    /// The Settings shell for a test: the page on show and the open dialog.
+    #[doc(hidden)]
+    pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
+        let dialog = self.open_settings_dialog(cx);
         SettingsSnapshot {
             page: format!("{:?}", self.settings_view.read(cx).selected_section()),
             page_focused: self.settings_view.read(cx).focus() == SettingsFocus::Page,
+            dialog: dialog.label.map(str::to_string),
+            dialog_name: dialog.name,
+            dialog_confirm: dialog.confirm,
+            status_message: self.chrome.status_message.clone(),
+        }
+    }
+
+    /// The Settings Accounts page for a test.
+    #[doc(hidden)]
+    pub fn settings_accounts_snapshot(&self, cx: &gpui::App) -> SettingsAccountsSnapshot {
+        let account_names = accounts::display_order(self.accounts.read(cx).accounts())
+            .into_iter()
+            .filter_map(|index| self.accounts.read(cx).accounts().get(index))
+            .map(|account| account.name.clone())
+            .collect::<Vec<_>>();
+        let selected_account = self
+            .accounts_view
+            .read(cx)
+            .selected_index(cx)
+            .and_then(|index| self.accounts.read(cx).accounts().get(index))
+            .map(|account| account.name.clone());
+        SettingsAccountsSnapshot {
             account_names,
             selected_account,
+        }
+    }
+
+    /// The Settings Categories page for a test.
+    #[doc(hidden)]
+    pub fn settings_categories_snapshot(&self, cx: &gpui::App) -> SettingsCategoriesSnapshot {
+        let selected_category = self.categories_view.read(cx).selected_id().and_then(|id| {
+            self.categories(cx)
+                .iter()
+                .find(|category| category.id == id)
+                .map(|category| category.name.clone())
+        });
+        SettingsCategoriesSnapshot {
             category_names: self
                 .categories(cx)
                 .iter()
                 .map(|category| category.name.clone())
                 .collect(),
             selected_category,
+        }
+    }
+
+    /// The Settings Payees page for a test.
+    #[doc(hidden)]
+    pub fn settings_payees_snapshot(&self, cx: &gpui::App) -> SettingsPayeesSnapshot {
+        let selected_payee = self.settings_payees_selected_id(cx).and_then(|id| {
+            self.payees_list(cx)
+                .iter()
+                .find(|payee| payee.id == id)
+                .map(|payee| payee.name.clone())
+        });
+        SettingsPayeesSnapshot {
             payee_names: payees::sorted_by_name(self.payees_list(cx))
                 .into_iter()
                 .map(|payee| payee.name.clone())
                 .collect(),
             selected_payee,
+        }
+    }
+
+    /// The Settings Document Types page for a test.
+    #[doc(hidden)]
+    pub fn settings_document_types_snapshot(
+        &self,
+        cx: &gpui::App,
+    ) -> SettingsDocumentTypesSnapshot {
+        let selected_document_type = self.settings_documents_selected_id(cx).and_then(|id| {
+            self.document_types(cx)
+                .iter()
+                .find(|row| row.id == id)
+                .map(|row| row.name.clone())
+        });
+        SettingsDocumentTypesSnapshot {
             document_type_names: self
                 .document_types(cx)
                 .iter()
@@ -318,6 +423,22 @@ impl Shell {
                 .iter()
                 .map(|row| row.files)
                 .collect(),
+            document_type_dialog: self.document_types_dialog().map(|dialog| {
+                match dialog {
+                    DocumentTypesDialog::Add(_) => "add",
+                    DocumentTypesDialog::Edit(..) => "edit",
+                    DocumentTypesDialog::Remove(..) => "remove",
+                    DocumentTypesDialog::DefaultNotice => "notice",
+                }
+                .to_string()
+            }),
+        }
+    }
+
+    /// The Settings Inventory page for a test.
+    #[doc(hidden)]
+    pub fn settings_inventory_snapshot(&self, cx: &gpui::App) -> SettingsInventorySnapshot {
+        SettingsInventorySnapshot {
             inventory_rows: crate::view::settings::inventory::visible_rows(
                 self.inventory(cx),
                 self.settings_view.read(cx).inventory_expanded(),
@@ -374,34 +495,36 @@ impl Shell {
                     )
                 })
                 .collect(),
-            document_type_dialog: self.document_types_dialog().map(|dialog| {
-                match dialog {
-                    DocumentTypesDialog::Add(_) => "add",
-                    DocumentTypesDialog::Edit(..) => "edit",
-                    DocumentTypesDialog::Remove(..) => "remove",
-                    DocumentTypesDialog::DefaultNotice => "notice",
-                }
-                .to_string()
-            }),
+        }
+    }
+
+    /// The Settings Tags page for a test.
+    #[doc(hidden)]
+    pub fn settings_tags_snapshot(&self, cx: &gpui::App) -> SettingsTagsSnapshot {
+        let selected_tag = self
+            .settings_tags_selected_id(cx)
+            .and_then(|id| tags::get(self.tags_list(cx), id).map(|tag| tag.name.clone()));
+        SettingsTagsSnapshot {
             tag_names: tags::sorted_by_name(self.tags_list(cx))
                 .into_iter()
                 .map(|tag| tag.name.clone())
                 .collect(),
             selected_tag,
-            merge_pair,
+            merge_pair: self.open_settings_dialog(cx).merge_pair,
+        }
+    }
+
+    /// The Settings Units page for a test.
+    #[doc(hidden)]
+    pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
+        let unit_form = self.open_settings_dialog(cx).unit;
+        SettingsUnitsSnapshot {
             unit_codes: self
                 .units_store
                 .read(cx)
                 .units()
                 .iter()
                 .map(|unit| unit.code.clone())
-                .collect(),
-            institutions: self
-                .institutions_store
-                .read(cx)
-                .institutions()
-                .iter()
-                .map(|row| (row.name.clone(), row.account_type.clone()))
                 .collect(),
             unit_rows: self
                 .units_store
@@ -410,20 +533,33 @@ impl Shell {
                 .iter()
                 .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
                 .collect(),
-            unit_dialog_name: unit_form.map(|form| form.name.text().to_string()),
-            unit_dialog_kind: unit_form.map(|form| format!("{:?}", form.kind)),
-            unit_dialog_field: unit_form.map(|form| format!("{:?}", form.focused_field)),
-            institution_dialog_types: institution_form.map(|form| {
-                form.account_types
-                    .iter()
-                    .map(|account_type| format!("{account_type:?}"))
-                    .collect()
-            }),
-            institution_dialog_unit: institution_form
-                .and_then(|form| form.default_unit_code.clone()),
-            dialog: dialog.map(str::to_string),
-            dialog_name,
-            dialog_confirm,
+            unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
+            unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),
+            unit_dialog_field: unit_form.map(|(.., field)| field),
+        }
+    }
+
+    /// The Settings Institutions page for a test.
+    #[doc(hidden)]
+    pub fn settings_institutions_snapshot(&self, cx: &gpui::App) -> SettingsInstitutionsSnapshot {
+        let institution_form = self.open_settings_dialog(cx).institution;
+        SettingsInstitutionsSnapshot {
+            institutions: self
+                .institutions_store
+                .read(cx)
+                .institutions()
+                .iter()
+                .map(|row| (row.name.clone(), row.account_type.clone()))
+                .collect(),
+            institution_dialog_types: institution_form.as_ref().map(|(types, _)| types.clone()),
+            institution_dialog_unit: institution_form.and_then(|(_, unit)| unit),
+        }
+    }
+
+    /// The Settings Display page for a test.
+    #[doc(hidden)]
+    pub fn settings_display_snapshot(&self, cx: &gpui::App) -> SettingsDisplaySnapshot {
+        SettingsDisplaySnapshot {
             display_field: self.settings_view.read(cx).display_field(),
             colour_theme_focus: self.settings_view.read(cx).colour_theme_focus(),
             date_style: self.settings_date_style.map(|style| format!("{style:?}")),
@@ -431,6 +567,13 @@ impl Shell {
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
             start_sidebar_minimised: self.settings_start_sidebar_minimised,
             toasts_on: self.chrome.toasts.display().toasts_on,
+        }
+    }
+
+    /// The Settings Tracing page for a test.
+    #[doc(hidden)]
+    pub fn settings_tracing_snapshot(&self, cx: &gpui::App) -> SettingsTracingSnapshot {
+        SettingsTracingSnapshot {
             tracing_level: format!("{:?}", self.settings_view.read(cx).log().level()),
             log_line_count: self.settings_view.read(cx).log().visible().len(),
             log_lines: self
@@ -448,7 +591,6 @@ impl Shell {
                 .log_list()
                 .logical_scroll_top()
                 .item_ix,
-            status_message: self.chrome.status_message.clone(),
         }
     }
 }

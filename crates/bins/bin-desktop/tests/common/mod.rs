@@ -13,7 +13,10 @@ use bin_desktop::{
     ShellBindings, ShellLogs,
     app::{
         AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,
-        DocumentsSnapshot, ImportSnapshot, SettingsSnapshot, Shell, ToastsSnapshot,
+        DocumentsSnapshot, ImportSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
+        SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot,
+        SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
+        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, ToastsSnapshot,
         TransactionsSnapshot,
     },
     build_shell,
@@ -141,9 +144,59 @@ impl<'a> Harness<'a> {
         self.read_app(Shell::budgets_snapshot)
     }
 
-    /// The Settings pages' state, read back for assertions.
+    /// The Settings shell's state (page and open dialog), read back for assertions.
     pub fn settings(&mut self) -> SettingsSnapshot {
         self.read_app(Shell::settings_snapshot)
+    }
+
+    /// The Settings Accounts page's state, read back for assertions.
+    pub fn settings_accounts(&mut self) -> SettingsAccountsSnapshot {
+        self.read_app(Shell::settings_accounts_snapshot)
+    }
+
+    /// The Settings Categories page's state, read back for assertions.
+    pub fn settings_categories(&mut self) -> SettingsCategoriesSnapshot {
+        self.read_app(Shell::settings_categories_snapshot)
+    }
+
+    /// The Settings Display page's state, read back for assertions.
+    pub fn settings_display(&mut self) -> SettingsDisplaySnapshot {
+        self.read_app(Shell::settings_display_snapshot)
+    }
+
+    /// The Settings DocumentTypes page's state, read back for assertions.
+    pub fn settings_document_types(&mut self) -> SettingsDocumentTypesSnapshot {
+        self.read_app(Shell::settings_document_types_snapshot)
+    }
+
+    /// The Settings Institutions page's state, read back for assertions.
+    pub fn settings_institutions(&mut self) -> SettingsInstitutionsSnapshot {
+        self.read_app(Shell::settings_institutions_snapshot)
+    }
+
+    /// The Settings Inventory page's state, read back for assertions.
+    pub fn settings_inventory(&mut self) -> SettingsInventorySnapshot {
+        self.read_app(Shell::settings_inventory_snapshot)
+    }
+
+    /// The Settings Payees page's state, read back for assertions.
+    pub fn settings_payees(&mut self) -> SettingsPayeesSnapshot {
+        self.read_app(Shell::settings_payees_snapshot)
+    }
+
+    /// The Settings Tags page's state, read back for assertions.
+    pub fn settings_tags(&mut self) -> SettingsTagsSnapshot {
+        self.read_app(Shell::settings_tags_snapshot)
+    }
+
+    /// The Settings Tracing page's state, read back for assertions.
+    pub fn settings_tracing(&mut self) -> SettingsTracingSnapshot {
+        self.read_app(Shell::settings_tracing_snapshot)
+    }
+
+    /// The Settings Units page's state, read back for assertions.
+    pub fn settings_units(&mut self) -> SettingsUnitsSnapshot {
+        self.read_app(Shell::settings_units_snapshot)
     }
 
     /// The open Add or Edit account dialog's form; panics if none is open.
