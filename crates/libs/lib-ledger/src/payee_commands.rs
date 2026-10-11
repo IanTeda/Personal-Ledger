@@ -5,9 +5,7 @@
 //! Single-Payee rules (names, aliases) stay in `lib_payees`. What lives here is the rule that
 //! crosses domains: a Payee that a Split or a Bill Plan names can only be deactivated.
 
-use lib_payees::{
-    Payee, PayeeDraft, PayeeError, clean_name, delete_payee, edit_payee, get, insert_payee,
-};
+use lib_payees::{PayeeDraft, PayeeError, delete_payee, edit_payee, get, insert_payee};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -38,19 +36,6 @@ pub enum DeletePayeeRefusal {
 pub enum SetPayeeActiveRefusal {
     #[error("payee not found")]
     NotFound,
-}
-
-/// Why an Import's Payees could not be merged in.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ImportPayeesRefusal {
-    /// The Ledger changed under the working copy: a new row's id is already taken.
-    #[error("payee id {0} is already taken")]
-    IdTaken(u32),
-    /// A row named an existing Payee but changed more than its Aliases.
-    #[error("payee id {0} changed beyond its aliases")]
-    NotAliasOnly(u32),
-    #[error(transparent)]
-    Payee(#[from] PayeeError),
 }
 
 impl Ledger {
@@ -105,45 +90,6 @@ impl Ledger {
             .map_err(|_| SetPayeeActiveRefusal::NotFound)?;
         self.record_payee(id);
         Ok(())
-    }
-
-    /// Merges the Payees an Import's working copy created or gave Aliases to. `rows` is the whole
-    /// Payees list after the Import's rules ran; only rows that are new or differ are written.
-    pub fn import_payees(&mut self, rows: &[Payee]) -> Result<Vec<u32>, ImportPayeesRefusal> {
-        let mut next = self.payees.clone();
-        let mut written = Vec::new();
-        for row in rows {
-            match get(&next, row.id) {
-                Some(existing) if existing == row => {}
-                Some(existing) => {
-                    let only_aliases = Payee {
-                        aliases: row.aliases.clone(),
-                        ..existing.clone()
-                    } == *row
-                        && existing.aliases.iter().all(|a| row.aliases.contains(a));
-                    if !only_aliases {
-                        return Err(ImportPayeesRefusal::NotAliasOnly(row.id));
-                    }
-                    next.iter_mut()
-                        .filter(|p| p.id == row.id)
-                        .for_each(|p| p.aliases = row.aliases.clone());
-                    written.push(row.id);
-                }
-                None => {
-                    if next.iter().any(|p| p.id == row.id) {
-                        return Err(ImportPayeesRefusal::IdTaken(row.id));
-                    }
-                    clean_name(&next, None, &row.name)?;
-                    next.push(row.clone());
-                    written.push(row.id);
-                }
-            }
-        }
-        self.payees = next;
-        for id in &written {
-            self.record_payee(*id);
-        }
-        Ok(written)
     }
 
     fn record_payee(&mut self, id: u32) {
@@ -204,18 +150,6 @@ impl LedgerCommand for SetPayeeActive {
     type Refusal = SetPayeeActiveRefusal;
     fn run(self, ledger: &mut Ledger) -> Result<(), SetPayeeActiveRefusal> {
         ledger.set_payee_active(self.id, self.is_active)
-    }
-}
-
-/// [`Ledger::import_payees`] as a value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportPayees(pub Vec<Payee>);
-
-impl LedgerCommand for ImportPayees {
-    type Outcome = Vec<u32>;
-    type Refusal = ImportPayeesRefusal;
-    fn run(self, ledger: &mut Ledger) -> Result<Vec<u32>, ImportPayeesRefusal> {
-        ledger.import_payees(&self.0)
     }
 }
 
@@ -366,60 +300,6 @@ mod tests {
     }
 
     #[test]
-    fn import_writes_only_new_and_alias_extended_rows() {
-        let mut ledger = Ledger::stub();
-        let mut rows = ledger.payees().to_vec();
-        let id = rows[0].id;
-        rows[0].aliases.push("NEW TOKEN".into());
-        let new_id = rows.iter().map(|p| p.id).max().unwrap() + 1;
-        rows.push(Payee {
-            id: new_id,
-            name: "Aussie Candle Co".into(),
-            aliases: vec![],
-            default_category: None,
-            is_active: true,
-        });
-
-        let written = ImportPayees(rows).run(&mut ledger).unwrap();
-
-        assert_eq!(written, vec![id, new_id]);
-        assert_eq!(ledger.drain_changes().len(), 2);
-        assert!(
-            get(ledger.payees(), id)
-                .unwrap()
-                .aliases
-                .contains(&"NEW TOKEN".to_owned())
-        );
-    }
-
-    #[test]
-    fn a_refused_import_leaves_the_ledger_untouched() {
-        let mut ledger = Ledger::stub();
-        let before = ledger.payees().to_vec();
-        let mut rows = before.clone();
-        rows[0].name = "Renamed".into();
-        assert_eq!(
-            ImportPayees(rows).run(&mut ledger),
-            Err(ImportPayeesRefusal::NotAliasOnly(before[0].id))
-        );
-
-        let mut dup = before.clone();
-        dup.push(Payee {
-            id: 9_999,
-            name: before[1].name.clone(),
-            aliases: vec![],
-            default_category: None,
-            is_active: true,
-        });
-        assert!(matches!(
-            ImportPayees(dup).run(&mut ledger),
-            Err(ImportPayeesRefusal::Payee(PayeeError::DuplicateName(_)))
-        ));
-        assert_eq!(ledger.payees(), before);
-        assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
     fn an_in_use_payee_can_be_deactivated_and_the_change_is_recorded() {
         let mut ledger = Ledger::stub();
         let id = id_of(&ledger, "J Smith");
@@ -434,19 +314,5 @@ mod tests {
 
         assert!(!get(ledger.payees(), id).unwrap().is_active);
         assert_eq!(ledger.drain_changes().len(), 1);
-    }
-
-    #[test]
-    fn an_import_row_reusing_an_id_with_other_fields_is_refused() {
-        let mut ledger = Ledger::stub();
-        let before = ledger.payees().to_vec();
-        let mut rows = before.clone();
-        rows[0].is_active = !rows[0].is_active;
-
-        assert_eq!(
-            ImportPayees(rows).run(&mut ledger),
-            Err(ImportPayeesRefusal::NotAliasOnly(before[0].id))
-        );
-        assert_eq!(ledger.payees(), before);
     }
 }

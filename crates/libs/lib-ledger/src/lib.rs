@@ -10,6 +10,7 @@ mod payee_commands;
 pub mod query;
 pub mod seed;
 mod tag_commands;
+mod transaction_commands;
 
 pub use account_commands::{
     AccountDeleted, AddAccount, CountImportedTransactions, DeleteAccount, EditAccount,
@@ -21,11 +22,12 @@ pub use category_commands::{
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use hatch::LedgerHatch;
 pub use payee_commands::{
-    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, ImportPayees, ImportPayeesRefusal,
-    PayeeUse, SetPayeeActive, SetPayeeActiveRefusal,
+    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,
+    SetPayeeActiveRefusal,
 };
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
+pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
 
 use chrono::{Local, NaiveDate};
 use lib_accounts::{Account, default_accounts};

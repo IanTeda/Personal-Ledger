@@ -11,12 +11,12 @@
 
 use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
-use lib_core::{Money, TransactionStatus};
+use lib_core::Money;
+use lib_ledger::{BookingPayee, ImportBooking};
 
 use crate::{
     form::select::SelectState,
-    payees::{self, Payee, PayeeDraft, form::PayeeOptions},
-    transactions::{Split, Transaction},
+    payees::{self, Payee, form::PayeeOptions},
 };
 
 /// The statement's file name, shown in the title-bar context and the subline.
@@ -502,109 +502,50 @@ impl ImportState {
     }
 }
 
-/// What **continue** did, for its Toast.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Committed {
-    pub transactions: usize,
-    pub new_payees: usize,
-}
-
 /// Why **continue** refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ImportError {
     #[error("{0} rows still need review")]
     NeedsReview(usize),
-    #[error(transparent)]
-    Payee(#[from] payees::PayeeError),
 }
 
-/// **continue**: creates each new Payee once (with its rows' cleaned tokens as aliases when
-/// `remember`), then appends one single-Split Transaction per row to `account_id`, newest first.
-/// Nothing changes when any row still needs review.
-pub fn commit(
-    rows: &[ImportRow],
-    remember: bool,
-    account_id: u32,
-    payees_list: &mut Vec<Payee>,
-    transactions: &mut Vec<Transaction>,
-) -> Result<Committed, ImportError> {
+/// **continue**'s first half: each resolved row as the booking the Ledger's `CommitImport` writes,
+/// remembering a new Payee's cleaned token as its alias when `remember`. Refused while any row
+/// still needs review.
+pub fn bookings(rows: &[ImportRow], remember: bool) -> Result<Vec<ImportBooking>, ImportError> {
     let pending = rows.iter().filter(|r| r.needs_review()).count();
     if pending > 0 {
         return Err(ImportError::NeedsReview(pending));
     }
-
-    let mut created: Vec<(String, u32)> = Vec::new();
-    let mut splits_for: Vec<(u32, u32)> = Vec::with_capacity(rows.len());
-    for row in rows {
-        let (Some(payee), Some(category)) = (&row.payee, row.category) else {
-            return Err(ImportError::NeedsReview(1));
-        };
-        let id = match payee {
-            RowPayee::Rule(id) | RowPayee::Existing(id) => *id,
-            RowPayee::Create(name) => {
-                let folded = name.to_lowercase();
-                match created.iter().find(|(n, _)| *n == folded) {
-                    Some((_, id)) => *id,
-                    None => {
-                        let id = payees::insert_payee(
-                            payees_list,
-                            &PayeeDraft {
-                                name: name.clone(),
-                                default_category: None,
-                                aliases: Vec::new(),
-                            },
-                        )?;
-                        created.push((folded, id));
-                        id
-                    }
-                }
-            }
-        };
-        // A token another Payee already owns is skipped, keeping aliases unique (#282).
-        if remember
-            && matches!(payee, RowPayee::Create(_))
-            && let Some(token) = cleaned_token(&row.raw)
-            && payees::alias_owner(payees_list, &token).is_none_or(|owner| owner.id == id)
-            && let Some(new_payee) = payees_list.iter_mut().find(|p| p.id == id)
-            && !new_payee.aliases.contains(&token)
-        {
-            new_payee.aliases.push(token);
-        }
-        splits_for.push((id, category));
-    }
-
-    let first_id = transactions.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-    for (id, (row, (payee_id, category_id))) in (first_id..).zip(rows.iter().zip(splits_for)) {
-        transactions.push(Transaction {
-            id,
-            date: row.date,
-            account_id,
-            status: TransactionStatus::Cleared,
-            is_flagged: false,
-            description: Some(row.raw.clone()),
-            splits: vec![Split {
+    rows.iter()
+        .map(|row| {
+            let (Some(payee), Some(category_id)) = (&row.payee, row.category) else {
+                return Err(ImportError::NeedsReview(1));
+            };
+            let payee = match payee {
+                RowPayee::Rule(id) | RowPayee::Existing(id) => BookingPayee::Existing(*id),
+                RowPayee::Create(name) => BookingPayee::Create {
+                    name: name.clone(),
+                    alias: remember.then(|| cleaned_token(&row.raw)).flatten(),
+                },
+            };
+            Ok(ImportBooking {
+                date: row.date,
+                description: row.raw.clone(),
                 amount: row.amount.clone(),
+                payee,
                 category_id,
-                payee_id: Some(payee_id),
-                tag_ids: Vec::new(),
-            }],
-        });
-    }
-    transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
-
-    Ok(Committed {
-        transactions: rows.len(),
-        new_payees: created.len(),
-    })
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        accounts::default_accounts, categories::default_categories, payees::default_payees,
-        tags::default_tags, transactions::default_transactions,
-    };
+    use lib_ledger::{CommitImport, Ledger, LedgerCommand};
+
+    use crate::{categories::default_categories, payees::default_payees};
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 28).unwrap()
@@ -833,68 +774,59 @@ mod tests {
         }
     }
 
-    fn seeded_transactions(payees: &[Payee]) -> Vec<Transaction> {
-        default_transactions(
-            &default_accounts(),
-            &default_categories(),
-            payees,
-            &default_tags(),
-            today(),
-        )
+    fn book(
+        ledger: &mut Ledger,
+        rows: &[ImportRow],
+        remember: bool,
+    ) -> Result<lib_ledger::ImportCommitted, String> {
+        let bookings = bookings(rows, remember).map_err(|error| error.to_string())?;
+        CommitImport {
+            account_id: EVERYDAY_ACCOUNT_ID,
+            bookings,
+        }
+        .run(ledger)
+        .map_err(|refusal| refusal.to_string())
     }
 
     #[test]
-    fn commit_refuses_while_rows_need_review_and_changes_nothing() {
-        let (mut payees, state) = state();
-        let mut transactions = seeded_transactions(&payees);
-        let (payees_before, transactions_before) = (payees.clone(), transactions.len());
-        let result = commit(
-            &state.rows,
-            true,
-            EVERYDAY_ACCOUNT_ID,
-            &mut payees,
-            &mut transactions,
+    fn bookings_refuse_while_rows_need_review() {
+        let (_, state) = state();
+        assert_eq!(
+            bookings(&state.rows, true),
+            Err(ImportError::NeedsReview(4))
         );
-        assert_eq!(result, Err(ImportError::NeedsReview(4)));
-        assert_eq!(payees, payees_before);
-        assert_eq!(transactions.len(), transactions_before);
     }
 
     #[test]
     fn commit_creates_payees_with_remembered_aliases_and_appends_transactions() {
-        let (mut payees, mut state) = state();
+        let (_, mut state) = state();
         resolve_all(&mut state);
-        let mut transactions = seeded_transactions(&payees);
-        let before = transactions.len();
-        let committed = commit(
-            &state.rows,
-            true,
-            EVERYDAY_ACCOUNT_ID,
-            &mut payees,
-            &mut transactions,
-        )
-        .unwrap();
+        let mut ledger = Ledger::stub_on(today());
+        let before = ledger.transactions().len();
+        let committed = book(&mut ledger, &state.rows, true).unwrap();
         assert_eq!(
             committed,
-            Committed {
+            lib_ledger::ImportCommitted {
                 transactions: 18,
                 new_payees: 3
             }
         );
-        assert_eq!(transactions.len(), before + 18);
+        assert_eq!(ledger.transactions().len(), before + 18);
 
-        let candle = payees::find_by_name(&payees, "Aussie Candle Co").unwrap();
+        let payees = ledger.payees();
+        let candle = payees::find_by_name(payees, "Aussie Candle Co").unwrap();
         assert_eq!(
-            payees::get(&payees, candle).unwrap().aliases,
+            payees::get(payees, candle).unwrap().aliases,
             vec!["AUSSIE CANDLE CO"]
         );
         // The next import matches it by rule.
         assert_eq!(
-            payees::match_alias(&payees, "SP AUSSIE CANDLE CO"),
+            payees::match_alias(payees, "SP AUSSIE CANDLE CO"),
             Some(candle)
         );
 
-        let imported = transactions
+        let imported = ledger
+            .transactions()
             .iter()
             .find(|t| t.description.as_deref() == Some("SP AUSSIE CANDLE CO"))
             .unwrap();
@@ -903,29 +835,28 @@ mod tests {
         assert_eq!(imported.splits[0].payee_id, Some(candle));
         assert_eq!(imported.splits[0].category_id, 10);
         // Still newest first.
-        assert!(transactions.windows(2).all(|w| w[0].date >= w[1].date));
+        assert!(
+            ledger
+                .transactions()
+                .windows(2)
+                .all(|w| w[0].date >= w[1].date)
+        );
     }
 
     #[test]
     fn commit_without_remember_adds_no_aliases() {
-        let (mut payees, mut state) = state();
+        let (_, mut state) = state();
         resolve_all(&mut state);
-        let mut transactions = seeded_transactions(&payees);
-        commit(
-            &state.rows,
-            false,
-            EVERYDAY_ACCOUNT_ID,
-            &mut payees,
-            &mut transactions,
-        )
-        .unwrap();
-        let candle = payees::find_by_name(&payees, "Aussie Candle Co").unwrap();
-        assert!(payees::get(&payees, candle).unwrap().aliases.is_empty());
+        let mut ledger = Ledger::stub_on(today());
+        book(&mut ledger, &state.rows, false).unwrap();
+        let payees = ledger.payees();
+        let candle = payees::find_by_name(payees, "Aussie Candle Co").unwrap();
+        assert!(payees::get(payees, candle).unwrap().aliases.is_empty());
     }
 
     #[test]
     fn rows_sharing_a_new_name_create_one_payee() {
-        let mut payees = default_payees();
+        let payees = default_payees();
         let rows: Vec<ImportRow> = ["SP AUSSIE CANDLE CO", "SP AUSSIE CANDLE CO 2"]
             .iter()
             .map(|raw| ImportRow {
@@ -933,18 +864,11 @@ mod tests {
                 ..match_row(&payees, raw, cents_money(-100), today())
             })
             .collect();
-        let before = payees.len();
-        let mut transactions = Vec::new();
-        let committed = commit(
-            &rows,
-            true,
-            EVERYDAY_ACCOUNT_ID,
-            &mut payees,
-            &mut transactions,
-        )
-        .unwrap();
+        let mut ledger = Ledger::stub_on(today());
+        let before = ledger.payees().len();
+        let committed = book(&mut ledger, &rows, true).unwrap();
         assert_eq!(committed.new_payees, 1);
-        assert_eq!(payees.len(), before + 1);
+        assert_eq!(ledger.payees().len(), before + 1);
         assert_eq!(summary(&rows).new_payees, 1);
     }
 }

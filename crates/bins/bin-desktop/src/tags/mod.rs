@@ -45,11 +45,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        accounts::default_accounts,
-        categories::default_categories,
-        payees::default_payees,
-        transactions::{Split, default_transactions},
+        accounts::default_accounts, categories::default_categories, payees::default_payees,
+        transactions::default_transactions,
     };
+    use lib_transactions::Split;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

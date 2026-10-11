@@ -10,7 +10,6 @@ use crate::{
     transactions::{
         self, Transaction,
         chips::FilterField,
-        edit_transactions,
         filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
         query::{Ledger, TransactionFilters},
         rows::DisplayPrefs,
@@ -20,7 +19,7 @@ use crate::{
 
 use gpui::{App, Context, Keystroke, ScrollStrategy};
 use lib_core::DateStyle;
-use lib_ledger::{CountImportedTransactions, ImportPayees};
+use lib_ledger::{CommitImport, CountImportedTransactions};
 use lib_list_cursor::Step;
 use lib_toast::ToastKind;
 
@@ -565,31 +564,22 @@ impl Shell {
     /// **continue** / `enter`: commits the import to the stubs and lands on Transactions with a
     /// Toast. Does nothing while a row needs review (the button is disabled then).
     pub(super) fn continue_import(&mut self, cx: &mut Context<'_, Self>) {
-        // Cloned so the commit can borrow `cx` mutably for the store write.
         let Some(state) = self.import_state(cx).cloned() else {
             return;
         };
-        // Copied out so the commit can add Payees and Aliases, then written back whether or not it
-        // committed, as the in-place commit always kept its Payee edits.
-        let mut payees = self.payees_list(cx).to_vec();
-        let committed = edit_transactions(&self.transactions_store, cx, |transactions| {
-            import::commit(
-                &state.rows,
-                state.remember,
-                import::EVERYDAY_ACCOUNT_ID,
-                &mut payees,
-                transactions,
+        let bookings = match import::bookings(&state.rows, state.remember) {
+            Ok(bookings) => bookings,
+            Err(import::ImportError::NeedsReview(_)) => return,
+        };
+        let committed = self.ledger.update(cx, |store, cx| {
+            store.apply(
+                cx,
+                CommitImport {
+                    account_id: import::EVERYDAY_ACCOUNT_ID,
+                    bookings,
+                },
             )
         });
-        if payees != self.payees_list(cx) {
-            let merged = self
-                .ledger
-                .update(cx, |store, cx| store.apply(cx, ImportPayees(payees)));
-            if let Err(refusal) = merged {
-                self.raise_toast(ToastKind::Error, refusal.to_string());
-                return;
-            }
-        }
         match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
@@ -613,10 +603,7 @@ impl Shell {
                     ),
                 );
             }
-            Err(import::ImportError::NeedsReview(_)) => {}
-            Err(import::ImportError::Payee(error)) => {
-                self.raise_toast(ToastKind::Error, error.to_string());
-            }
+            Err(refusal) => self.raise_toast(ToastKind::Error, refusal.to_string()),
         }
     }
 
