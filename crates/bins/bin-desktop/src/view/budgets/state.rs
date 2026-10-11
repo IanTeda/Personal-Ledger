@@ -37,18 +37,6 @@ impl BudgetsStore {
     pub fn budgets<'a>(&self, cx: &'a App) -> &'a Budgets {
         self.ledger.read(cx).ledger().budgets()
     }
-
-    /// Applies `change` to the Budgets, then tells every subscriber they changed. Mutations go
-    /// through here so no write can skip the notification.
-    #[expect(
-        deprecated,
-        reason = "Budgets writes move onto Ledger commands in #644"
-    )]
-    pub fn mutate<R>(&mut self, cx: &mut App, change: impl FnOnce(&mut Budgets) -> R) -> R {
-        self.ledger.update(cx, |ledger, cx| {
-            ledger.write(cx, &[Domain::Budgets], |ledger| change(ledger.budgets))
-        })
-    }
 }
 
 /// What the Budgets page asks `Shell` to do. The page never navigates or opens a dialog itself.

@@ -5,6 +5,10 @@ use crate::budgets::{
     apply::{BudgetOutcome, BudgetsApply},
 };
 use lib_core::CategoryTypes;
+use lib_ledger::{
+    ArchiveBudget, CycleBudgetRollover, DuplicateBudget, LedgerCommand, RestoreBudget,
+    SaveBudgetCell, SetDefaultBudget,
+};
 use lib_toast::ToastKind;
 
 use super::{Shell, key_dispatch::PENDING_G_TIMEOUT};
@@ -159,14 +163,16 @@ impl Shell {
         self.budgets_store.read(cx).budgets(cx)
     }
 
-    /// Applies `change` to the shared Budgets, notifying every reader.
-    pub(super) fn mutate_budgets<R>(
+    /// Runs a Budgets command on the Ledger, which announces the change to every reader.
+    pub(super) fn apply_budgets_command<C>(
         &self,
         cx: &mut gpui::App,
-        change: impl FnOnce(&mut budgets::Budgets) -> R,
-    ) -> R {
-        self.budgets_store
-            .update(cx, |store, cx| store.mutate(cx, change))
+        command: C,
+    ) -> Result<C::Outcome, budgets::BudgetError>
+    where
+        C: LedgerCommand<Refusal = budgets::BudgetError>,
+    {
+        self.ledger.update(cx, |store, cx| store.apply(cx, command))
     }
 
     /// The Budgets page's state, read from its view Entity.
@@ -217,11 +223,7 @@ impl Shell {
             return;
         }
         let mut apply = BudgetsApply {
-            budgets: self.budgets_store.clone(),
-            accounts: self.accounts.clone(),
-            categories: self.categories_store.clone(),
-            transactions: self.transactions_store.clone(),
-            bills: self.bills_store.clone(),
+            ledger: self.ledger.clone(),
             current: self.budgets_state(cx).current,
             today: self.today,
         };
@@ -359,9 +361,14 @@ impl Shell {
         };
         if column == budgets::PLAN_ROLLOVER_COLUMN {
             let current = self.budgets_state(cx).current;
-            let _ = self.mutate_budgets(cx, |budgets| {
-                budgets.cycle_rollover(current, row.category_id, self.today)
-            });
+            let _ = self.apply_budgets_command(
+                cx,
+                CycleBudgetRollover {
+                    budget_id: current,
+                    category_id: row.category_id,
+                    today: self.today,
+                },
+            );
             return;
         }
         let Some(cell) = row.cells.get(column) else {
@@ -392,18 +399,17 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
-        let categories = self.categories(cx).to_vec();
-        let saved = self.mutate_budgets(cx, |budgets| {
-            budgets.save_cell(
-                current,
-                &categories,
-                edit.category_id,
-                edit.month,
+        let saved = self.apply_budgets_command(
+            cx,
+            SaveBudgetCell {
+                budget_id: current,
+                category_id: edit.category_id,
+                month: edit.month,
                 span,
-                &edit.text,
-                self.today,
-            )
-        });
+                text: edit.text.clone(),
+                today: self.today,
+            },
+        );
         if saved == Err(budgets::BudgetError::InvalidAmount) {
             self.edit_budgets_state(cx, |state| state.plan_edit = Some(edit));
             return;
@@ -441,18 +447,17 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
-        let categories = self.categories(cx).to_vec();
-        let _ = self.mutate_budgets(cx, |budgets| {
-            budgets.save_cell(
-                current,
-                &categories,
-                row.category_id,
-                cell.month,
-                budgets::Span::Onward,
-                text,
-                self.today,
-            )
-        });
+        let _ = self.apply_budgets_command(
+            cx,
+            SaveBudgetCell {
+                budget_id: current,
+                category_id: row.category_id,
+                month: cell.month,
+                span: budgets::Span::Onward,
+                text: text.to_string(),
+                today: self.today,
+            },
+        );
     }
 
     /// Keys typed into a Plan cell (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9b, Insert
@@ -531,9 +536,14 @@ impl Shell {
                     && let Some(row) = plan.row(self.budgets_plan_cursor_in(&plan, cx).0)
                 {
                     let current = self.budgets_state(cx).current;
-                    let _ = self.mutate_budgets(cx, |budgets| {
-                        budgets.cycle_rollover(current, row.category_id, self.today)
-                    });
+                    let _ = self.apply_budgets_command(
+                        cx,
+                        CycleBudgetRollover {
+                            budget_id: current,
+                            category_id: row.category_id,
+                            today: self.today,
+                        },
+                    );
                 }
             }
             "f" => self.open_budgets_fill(cx),
@@ -1137,17 +1147,22 @@ impl Shell {
                 self.open_budgets_edit(id, cx);
                 return;
             }
-            ManageAction::Duplicate => self
-                .mutate_budgets(cx, |budgets| budgets.duplicate(id))
-                .map(|copy| {
-                    self.switch_budget(copy, cx);
-                    self.open_budgets_edit(copy, cx);
-                }),
-            ManageAction::SetDefault => self.mutate_budgets(cx, |budgets| budgets.set_default(id)),
-            ManageAction::Archive => {
-                self.mutate_budgets(cx, |budgets| budgets.archive(id, self.today))
+            ManageAction::Duplicate => {
+                self.apply_budgets_command(cx, DuplicateBudget(id))
+                    .map(|copy| {
+                        self.switch_budget(copy, cx);
+                        self.open_budgets_edit(copy, cx);
+                    })
             }
-            ManageAction::Restore => self.mutate_budgets(cx, |budgets| budgets.restore(id)),
+            ManageAction::SetDefault => self.apply_budgets_command(cx, SetDefaultBudget(id)),
+            ManageAction::Archive => self.apply_budgets_command(
+                cx,
+                ArchiveBudget {
+                    id,
+                    today: self.today,
+                },
+            ),
+            ManageAction::Restore => self.apply_budgets_command(cx, RestoreBudget(id)),
         };
         let refused = outcome.err();
         match self.chrome.dialog.as_mut() {

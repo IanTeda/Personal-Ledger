@@ -2,6 +2,7 @@
 
 mod account_commands;
 mod bill_commands;
+mod budget_commands;
 #[cfg(test)]
 mod budgets_seed_tests;
 mod category_commands;
@@ -18,6 +19,10 @@ pub use account_commands::{
 };
 pub use bill_commands::{
     AddBillPlan, EditBillPlan, MatchBill, PayBill, SkipBill, UnmatchBill, UnskipBill,
+};
+pub use budget_commands::{
+    AddBudget, ArchiveBudget, CycleBudgetRollover, DuplicateBudget, EditBudget, FillBudget,
+    RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,
 };
 pub use category_commands::{
     AddCategory, CategoryDeleted, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal,
