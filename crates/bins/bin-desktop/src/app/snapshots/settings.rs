@@ -531,7 +531,13 @@ impl Shell {
                 .read(cx)
                 .units(cx)
                 .iter()
-                .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
+                .map(|unit| {
+                    (
+                        unit.code.clone(),
+                        unit.name.clone(),
+                        unit.kind.as_str().to_string(),
+                    )
+                })
                 .collect(),
             unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
             unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),

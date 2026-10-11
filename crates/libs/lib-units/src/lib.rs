@@ -1,22 +1,22 @@
 //! Units: the currencies, cryptocurrencies and other commodities a Ledger counts in (`GLOSSARY.md`'s
 //! Unit), with their price sources. Pure and I/O-free: the desktop's Settings › Units page reads
-//! them through `UnitsStore`, and the Type selector's labels stay in the desktop, which owns the
+//! them through `UnitsStore`, and the Type selector's labels come from `lib_locale::Label`, which owns the
 //! Message catalogue.
+
+pub use lib_core::UnitKind;
 
 /// One row of the **Units** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 /// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
 /// from CODE / NAME / TYPE). Owned `String` fields, not `&'static str` --
 /// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
-/// now hold text a person actually typed, not just compile-time dummy data. `kind` stays a
-/// free-form string rather than `UnitKind`: the table just displays it, and legacy seeded rows
-/// ("crypto", "etf") don't match any `UnitKind` label anyway. Issue #185's Edit dialog reads it
-/// back through `UnitKind::from_label` to pre-fill the Type selector, but the row itself is
-/// never typed narrower than a string -- the desktop's own dialog selector governs the Type control.
+/// now hold text a person actually typed, not just compile-time dummy data. `kind` is the
+/// [`UnitKind`] enum, never a display label: the label is read through `lib_locale::Label` at render
+/// time, so a Locale switch can't change what an Edit then saves back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitRow {
     pub code: String,
     pub name: String,
-    pub kind: String,
+    pub kind: UnitKind,
     /// The SOURCE column shorthand (issue #189) -- e.g. `"USD"` (aud's rate is sourced against
     /// USD as the reference currency), `"CoinGecko"`, `"Manual entry"`. A unit added via the Add
     /// unit dialog (issue #184) has no real price-source integration, so it defaults to `"Manual
@@ -40,7 +40,7 @@ pub fn default_units() -> Vec<UnitRow> {
         UnitRow {
             code: "aud".to_string(),
             name: "Australian Dollar".to_string(),
-            kind: "currency".to_string(),
+            kind: UnitKind::Fiat,
             source: "USD".to_string(),
             is_base: true,
             is_default: true,
@@ -48,7 +48,7 @@ pub fn default_units() -> Vec<UnitRow> {
         UnitRow {
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
-            kind: "crypto".to_string(),
+            kind: UnitKind::Crypto,
             source: "CoinGecko".to_string(),
             is_base: false,
             is_default: false,
@@ -56,7 +56,7 @@ pub fn default_units() -> Vec<UnitRow> {
         UnitRow {
             code: "vas".to_string(),
             name: "Vanguard Aus Shares".to_string(),
-            kind: "etf".to_string(),
+            kind: UnitKind::Stock,
             source: "Manual entry".to_string(),
             is_base: false,
             is_default: false,
@@ -120,12 +120,12 @@ impl UnitService {
     }
 
     /// Appends a unit from the Add unit dialog; see [`add_unit`].
-    pub fn add_unit(&mut self, code: String, name: String, kind: String) {
+    pub fn add_unit(&mut self, code: String, name: String, kind: UnitKind) {
         add_unit(&mut self.units, code, name, kind);
     }
 
     /// Rewrites the row at `index` from the Edit unit dialog; see [`edit_unit`].
-    pub fn edit_unit(&mut self, index: usize, code: String, name: String, kind: String) -> bool {
+    pub fn edit_unit(&mut self, index: usize, code: String, name: String, kind: UnitKind) -> bool {
         edit_unit(&mut self.units, index, code, name, kind)
     }
 
@@ -138,7 +138,7 @@ impl UnitService {
 /// Appends a unit from the Add unit dialog. It has no price-source integration yet, so its source
 /// is "Manual entry", and it can't be the base or default unit: nothing lets a user change which
 /// one that is.
-pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: String) {
+pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: UnitKind) {
     units.push(UnitRow {
         code,
         name,
@@ -157,7 +157,7 @@ pub fn edit_unit(
     index: usize,
     code: String,
     name: String,
-    kind: String,
+    kind: UnitKind,
 ) -> bool {
     let Some(existing) = units.get_mut(index) else {
         return false;
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn a_dialog_added_unit_is_manual_and_neither_base_nor_default() {
         let mut service = service();
-        service.add_unit("eth".into(), "Ethereum".into(), "crypto".into());
+        service.add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto);
         let added = service.units().last().expect("the unit was appended");
         assert_eq!(added.code, "eth");
         assert_eq!(added.source, "Manual entry");
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn editing_keeps_the_source_and_the_base_and_default_flags() {
         let mut service = service();
-        assert!(service.edit_unit(0, "aud2".into(), "Aussie".into(), "currency".into()));
+        assert!(service.edit_unit(0, "aud2".into(), "Aussie".into(), UnitKind::Fiat));
         let edited = service.unit(0).expect("row 0 exists");
         assert_eq!(edited.code, "aud2");
         assert_eq!(edited.source, "USD");
@@ -215,10 +215,19 @@ mod tests {
     }
 
     #[test]
+    fn a_unit_kind_survives_an_edit_round_trip() {
+        let mut service = service();
+        for kind in UnitKind::all() {
+            assert!(service.edit_unit(1, "btc".into(), "Bitcoin".into(), *kind));
+            assert_eq!(service.unit(1).expect("row 1 exists").kind, *kind);
+        }
+    }
+
+    #[test]
     fn editing_past_the_end_changes_nothing() {
         let mut service = service();
         let before = service.units().to_vec();
-        assert!(!service.edit_unit(99, "x".into(), "x".into(), "currency".into()));
+        assert!(!service.edit_unit(99, "x".into(), "x".into(), UnitKind::Fiat));
         assert_eq!(service.units(), before.as_slice());
     }
 

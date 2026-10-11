@@ -47,7 +47,7 @@ impl Shell {
             .read(cx)
             .units(cx)
             .iter()
-            .filter(|unit| unit.kind == "currency")
+            .filter(|unit| unit.kind == lib_core::UnitKind::Fiat)
             .map(|unit| {
                 (
                     crate::msg::desktop_inventory_unit_option(

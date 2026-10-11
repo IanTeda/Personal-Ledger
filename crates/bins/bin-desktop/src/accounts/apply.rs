@@ -87,7 +87,7 @@ impl Apply<AccountCommand> for AccountsApply {
                             .iter()
                             .find(|unit| unit.code == code)
                     })
-                    .is_none_or(|unit| unit.kind == "currency");
+                    .is_none_or(|unit| unit.kind == lib_core::UnitKind::Fiat);
                 let opened_at = Local::now().date_naive();
                 self.accounts
                     .update(cx, |store, cx| {

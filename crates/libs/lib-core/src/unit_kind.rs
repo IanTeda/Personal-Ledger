@@ -6,7 +6,9 @@
 //! `GLOSSARY.md`'s Unit glossary entry).
 
 /// One of the descriptive groupings a Unit can carry.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub enum UnitKind {
     /// Government-issued currency (e.g. AUD, USD, JPY).
     #[default]
@@ -84,7 +86,7 @@ impl UnitKind {
 
         let all = Self::all();
         let index: usize = (0..all.len()).fake();
-        all[index].clone()
+        all[index]
     }
 }
 

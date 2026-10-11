@@ -28,14 +28,12 @@ pub struct UnitForm {
 }
 
 impl UnitForm {
-    /// Pre-fills a form from an existing row (issue #185's own Edit unit dialog) -- `kind` maps
-    /// back through [`UnitKind::from_label`] since the row stores a free-form string, not the
-    /// enum itself.
+    /// Pre-fills a form from an existing row (issue #185's own Edit unit dialog).
     pub fn from_row(row: &UnitRow) -> Self {
         Self {
             code: TextField::new(row.code.as_str()),
             name: TextField::new(row.name.as_str()),
-            kind: UnitKind::from_label(&row.kind),
+            kind: row.kind,
             focused_field: AddUnitField::default(),
         }
     }
@@ -102,7 +100,7 @@ mod tests {
         let row = UnitRow {
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
-            kind: "crypto".to_string(),
+            kind: UnitKind::Crypto,
             source: "CoinGecko".to_string(),
             is_base: false,
             is_default: false,
@@ -110,7 +108,7 @@ mod tests {
         let form = UnitForm::from_row(&row);
         assert_eq!(form.code.text(), "btc");
         assert_eq!(form.name.text(), "Bitcoin");
-        assert_eq!(form.kind, UnitKind::Custom);
+        assert_eq!(form.kind, UnitKind::Crypto);
         assert_eq!(form.focused_field, AddUnitField::Code);
     }
 

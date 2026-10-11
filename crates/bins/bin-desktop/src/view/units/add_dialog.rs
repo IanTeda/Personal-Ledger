@@ -27,6 +27,8 @@
 
 use std::rc::Rc;
 
+use lib_locale::Label;
+
 use gpui::{AnyElement, App, Window, div, prelude::*};
 
 use crate::{
@@ -120,9 +122,9 @@ pub(super) fn type_field(
         .child(field_label(lib_locale::msg::column_type()))
         .child(segmented_control(
             id_prefix,
-            &UnitKind::ALL,
+            UnitKind::all(),
             selected,
-            UnitKind::label,
+            |kind| kind.label(),
             on_click,
             cx,
         ))

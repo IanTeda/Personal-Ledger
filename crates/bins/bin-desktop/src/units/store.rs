@@ -2,7 +2,7 @@
 
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_ledger::{Domain, LedgerHatch};
-use lib_units::{PriceSourceRow, UnitRow, add_unit, edit_unit, remove_unit};
+use lib_units::{PriceSourceRow, UnitKind, UnitRow, add_unit, edit_unit, remove_unit};
 
 use crate::ledger_data::LedgerDataEvent;
 use crate::ledger_store::{LedgerChanged, LedgerStore};
@@ -43,7 +43,7 @@ impl UnitsStore {
         self.ledger.read(cx).ledger().price_sources()
     }
 
-    pub fn add_unit(&mut self, cx: &mut App, code: String, name: String, kind: String) {
+    pub fn add_unit(&mut self, cx: &mut App, code: String, name: String, kind: UnitKind) {
         self.write(cx, |ledger| add_unit(ledger.units, code, name, kind));
     }
 
@@ -54,7 +54,7 @@ impl UnitsStore {
         index: usize,
         code: String,
         name: String,
-        kind: String,
+        kind: UnitKind,
     ) -> bool {
         self.try_write(cx, |ledger| {
             edit_unit(ledger.units, index, code, name, kind)

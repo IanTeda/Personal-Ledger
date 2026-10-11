@@ -8,6 +8,8 @@
 
 use gpui::{App, Entity};
 
+use lib_units::UnitKind;
+
 use super::SettingsDialog;
 use crate::{
     chrome::{
@@ -24,13 +26,13 @@ pub enum SettingsCommand {
     AddUnit {
         code: String,
         name: String,
-        kind: String,
+        kind: UnitKind,
     },
     EditUnit {
         index: usize,
         code: String,
         name: String,
-        kind: String,
+        kind: UnitKind,
     },
     DeleteUnit {
         index: usize,
@@ -73,7 +75,7 @@ impl DialogForm for SettingsDialog {
             Self::AddUnit(form) => SettingsCommand::AddUnit {
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
-                kind: form.kind.label().to_string(),
+                kind: form.kind,
             },
             // Source and the base and default flags aren't Edit unit fields either, so the store
             // keeps them from the row being edited.
@@ -81,7 +83,7 @@ impl DialogForm for SettingsDialog {
                 index: *index,
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
-                kind: form.kind.label().to_string(),
+                kind: form.kind,
             },
             Self::DeleteUnit(index, form) => SettingsCommand::DeleteUnit {
                 index: *index,

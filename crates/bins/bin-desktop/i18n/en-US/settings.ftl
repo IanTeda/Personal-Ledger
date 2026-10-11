@@ -116,9 +116,6 @@ desktop-settings-units-column-last-updated = Last updated
 desktop-settings-units-flag-base = base
 desktop-settings-units-flag-default = default
 desktop-settings-units-test = test
-desktop-settings-unit-kind-currency = currency
-desktop-settings-unit-kind-cryptocurrency = cryptocurrency
-desktop-settings-unit-kind-custom = custom
 
 desktop-settings-units-usage-notice = Used by { $accounts ->
     [one] { $accounts } account

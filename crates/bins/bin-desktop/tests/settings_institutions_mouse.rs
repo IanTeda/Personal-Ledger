@@ -135,10 +135,10 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
     ui.press("g o l d");
     ui.press("tab");
     ui.press("g o l d");
-    ui.click("add-unit-type-2");
+    ui.click("add-unit-type-4");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Custom")
+        Some("Other")
     );
     ui.click("add-unit-confirm");
     let units_page = ui.settings_units();
@@ -150,7 +150,7 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
             .unit_rows
             .last()
             .map(|row| (row.0.as_str(), row.2.as_str())),
-        Some(("gold", "custom"))
+        Some(("gold", "other"))
     );
 }
 
@@ -163,15 +163,24 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
     ui.click("edit-unit-type-1");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Cryptocurrency")
+        Some("Crypto")
     );
     ui.click("edit-unit-confirm");
     let units_page = ui.settings_units();
     let page = ui.settings();
     assert_eq!(page.dialog, None);
+    assert_eq!(units_page.unit_rows[0], (code, name, "crypto".to_string()));
+}
+
+#[gpui::test]
+fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Units");
+
+    // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
+    ui.click("unit-edit-2");
     assert_eq!(
-        units_page.unit_rows[0],
-        (code, name, "cryptocurrency".to_string())
+        ui.settings_units().unit_dialog_kind.as_deref(),
+        Some("Stock")
     );
 }
 

@@ -23,6 +23,8 @@
 
 use std::rc::Rc;
 
+use lib_locale::Label;
+
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
@@ -212,7 +214,7 @@ fn row(
             div()
                 .w(TYPE_WIDTH)
                 .text_color(color::faint_text(cx))
-                .child(unit.kind.clone()),
+                .child(unit.kind.label()),
         )
         .child(
             div()
