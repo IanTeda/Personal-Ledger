@@ -900,4 +900,120 @@ mod tests {
                 .is_none()
         );
     }
+
+    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key, type_text};
+
+    fn account_options() -> AccountOptions {
+        AccountOptions::new(
+            vec!["ANZ".to_string(), "CBA".to_string()],
+            vec!["aud".to_string(), "btc".to_string()],
+        )
+    }
+
+    fn add_account() -> OpenDialog {
+        OpenDialog::Accounts(AccountsDialog::Add(AccountForm::new(
+            &account_options(),
+            Some("aud"),
+        )))
+    }
+
+    fn account_form(dialog: &OpenDialog) -> &AccountForm {
+        match dialog {
+            OpenDialog::Accounts(AccountsDialog::Add(form) | AccountsDialog::Edit(_, form)) => form,
+            other => panic!("expected an account form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn account_typing_edits_the_focused_text_field_and_tab_moves_on() {
+        let mut dialog = add_account();
+        type_text(&mut dialog, "Everyday");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(account_form(&dialog).name.text(), "Everyda");
+
+        // Name -> Institution (a select): typed characters are swallowed, not typed.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(account_form(&dialog).focused, AccountField::Institution);
+        type_text(&mut dialog, "x");
+        assert_eq!(account_form(&dialog).name.text(), "Everyda");
+        assert_eq!(account_form(&dialog).account_number.text(), "");
+
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(account_form(&dialog).focused, AccountField::Name);
+    }
+
+    #[test]
+    fn account_opening_balance_only_takes_a_decimal_amount() {
+        let mut dialog = add_account();
+        if let OpenDialog::Accounts(AccountsDialog::Add(form)) = &mut dialog {
+            form.focus(AccountField::OpeningBalance);
+        }
+        type_text(&mut dialog, "-12a3.4.5e-");
+        assert_eq!(account_form(&dialog).opening_balance.text(), "-123.45");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(account_form(&dialog).opening_balance.text(), "-123.4");
+    }
+
+    #[test]
+    fn account_enter_confirms_only_with_a_name_and_activates_a_focused_select() {
+        let mut dialog = add_account();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Everyday");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        // On a select, Enter opens its list instead of confirming.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert!(account_form(&dialog).institution.is_open());
+    }
+
+    #[test]
+    fn account_select_keys_step_and_the_first_esc_closes_only_the_open_list() {
+        let mut dialog = add_account();
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(account_form(&dialog).institution.value(), Some("ANZ"));
+        handle_key(&mut dialog, DialogKey::Down);
+        assert_eq!(account_form(&dialog).institution.value(), Some("CBA"));
+
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(account_form(&dialog).institution.is_open());
+        assert!(dialog.close_open_select(), "first Esc closes the list");
+        assert!(!dialog.close_open_select(), "second Esc closes the Dialog");
+    }
+
+    #[test]
+    fn delete_account_confirms_only_on_the_exact_case_sensitive_name() {
+        let mut dialog = OpenDialog::Accounts(AccountsDialog::Delete(
+            1,
+            DeleteAccountForm::new("Amex Platinum"),
+        ));
+        type_text(&mut dialog, "amex platinum");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        for _ in 0.."amex platinum".len() {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "Amex Platinum");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        type_text(&mut dialog, " ");
+        assert!(!dialog.is_valid(), "no trimming");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+    }
 }

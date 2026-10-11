@@ -512,7 +512,6 @@ impl Dialog for MergeTagsForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chrome::dialog_host::handle_key;
     use crate::tags::{default_tags, find_by_name, get, tests::seeded};
 
     #[test]
@@ -770,5 +769,100 @@ mod tests {
         assert_eq!(form.source_id(), Some(1));
         assert_eq!(form.focused, MergeField::Target);
         assert!(!Dialog::close_open_select(&mut form));
+    }
+
+    use crate::chrome::dialog_host::type_text;
+    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+
+    fn tag_options() -> Vec<MergeOption> {
+        ["a", "b", "c"]
+            .iter()
+            .zip(1..)
+            .map(|(label, id)| MergeOption {
+                id,
+                label: (*label).to_string(),
+            })
+            .collect()
+    }
+
+    fn add_tag() -> OpenDialog {
+        OpenDialog::Tags(TagsDialog::Add(TagForm::new(default_tags())))
+    }
+
+    fn tag_form(dialog: &OpenDialog) -> &TagForm {
+        match dialog {
+            OpenDialog::Tags(TagsDialog::Add(form) | TagsDialog::Edit(_, form)) => form,
+            other => panic!("expected a tag form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tag_typing_tab_and_enter_only_when_valid() {
+        let mut dialog = add_tag();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "campingx");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(tag_form(&dialog).name.text(), "camping");
+        // The swatch row takes no text; the hex box stops at seven characters.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled
+        );
+        assert_eq!(tag_form(&dialog).name.text(), "camping");
+        handle_key(&mut dialog, DialogKey::Tab);
+        type_text(&mut dialog, "#12abef99");
+        assert_eq!(tag_form(&dialog).hex.text(), "#12abef");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(tag_form(&dialog).focused, TagField::Swatches);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+    }
+
+    #[test]
+    fn remove_tag_with_transactions_confirms_only_on_the_typed_name() {
+        let mut dialog = OpenDialog::Tags(TagsDialog::Remove(1, RemoveTagForm::new("travel", 3)));
+        type_text(&mut dialog, "trav");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "el");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn merge_tags_first_esc_closes_the_select_and_enter_needs_a_pair() {
+        let mut dialog = OpenDialog::Tags(TagsDialog::Merge(MergeTagsForm::new(
+            tag_options(),
+            Some(1),
+            None,
+        )));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        handle_key(&mut dialog, DialogKey::Down);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
     }
 }

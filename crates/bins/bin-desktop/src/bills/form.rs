@@ -905,4 +905,123 @@ mod tests {
         form.toggle();
         assert!(!form.is_active);
     }
+
+    use crate::bills::BillsDialog;
+    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, type_text};
+
+    fn bill_plan_form() -> BillPlanForm {
+        use crate::{accounts::default_accounts, categories::default_categories};
+        let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let source = BillPlanSource::new(
+            &default_categories(),
+            &default_accounts(),
+            &default_payees(),
+            None,
+            "none".to_string(),
+            |recurrence| format!("{recurrence:?}"),
+            today,
+            None,
+        );
+        BillPlanForm::new(source)
+    }
+
+    fn bill_plan_form_of(dialog: &OpenDialog) -> &BillPlanForm {
+        match dialog {
+            OpenDialog::Bills(inner) => match &**inner {
+                BillsDialog::Add(form) => form,
+                other => panic!("expected Add bill plan, got {other:?}"),
+            },
+            other => panic!("expected Bills, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bill_plan_typing_tab_and_the_amount_filter() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        type_text(&mut dialog, "Water");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(bill_plan_form_of(&dialog).name.text(), "Wate");
+
+        // Name, then the Category, Unit, Account, Payee selects, to Amount.
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(bill_plan_form_of(&dialog).focused, BillPlanField::Amount);
+        type_text(&mut dialog, "1a2.3.4-");
+        assert_eq!(bill_plan_form_of(&dialog).amount.text(), "12.34");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(bill_plan_form_of(&dialog).focused, BillPlanField::Payee);
+        type_text(&mut dialog, "x");
+        assert_eq!(
+            bill_plan_form_of(&dialog).name.text(),
+            "Wate",
+            "selects take no text"
+        );
+    }
+
+    #[test]
+    fn bill_plan_enter_confirms_only_once_valid_and_a_select_takes_enter_first() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Water");
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        type_text(&mut dialog, "90");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        // On a select `Enter` opens its list instead, and a first Esc closes it.
+        handle_key(&mut dialog, DialogKey::BackTab);
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+    }
+
+    #[test]
+    fn bill_plan_space_toggles_fixed_estimated_and_a_unit_change_keeps_the_account_in_it() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        for _ in 0..6 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(
+            bill_plan_form_of(&dialog).focused,
+            BillPlanField::AmountKind
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert_eq!(
+            bill_plan_form_of(&dialog).amount_kind,
+            AmountKind::Estimated
+        );
+        handle_key(&mut dialog, DialogKey::Left);
+        assert_eq!(bill_plan_form_of(&dialog).amount_kind, AmountKind::Fixed);
+
+        let OpenDialog::Bills(inner) = &mut dialog else {
+            panic!("expected Bills");
+        };
+        let BillsDialog::Add(form) = &mut **inner else {
+            panic!("expected Add bill plan");
+        };
+        form.focus(BillPlanField::Unit);
+        let before = form.account.value().map(str::to_string);
+        if form.options.units.len() > 1 {
+            handle_key(form, DialogKey::Down);
+            assert_ne!(form.account.value().map(str::to_string), before);
+            assert!(
+                form.options
+                    .account_labels
+                    .iter()
+                    .any(|a| Some(a.as_str()) == form.account.value())
+            );
+        }
+    }
 }

@@ -580,4 +580,147 @@ mod tests {
         assert_eq!(form.rules, woolworths.aliases);
         assert_eq!(form.draft().default_category, Some(7));
     }
+
+    use crate::chrome::dialog_host::type_text;
+    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+
+    fn payee_options() -> PayeeOptions {
+        PayeeOptions::new(&default_categories(), "none".into())
+    }
+
+    fn add_payee() -> OpenDialog {
+        OpenDialog::Payees(PayeesDialog::Add(PayeeForm::new(
+            &payee_options(),
+            &default_payees(),
+        )))
+    }
+
+    fn payee_form(dialog: &OpenDialog) -> &PayeeForm {
+        match dialog {
+            OpenDialog::Payees(PayeesDialog::Add(form) | PayeesDialog::Edit(_, form)) => form,
+            other => panic!("expected a payee form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn payee_typing_edits_the_focused_text_field_and_tab_moves_on() {
+        let mut dialog = add_payee();
+        type_text(&mut dialog, "Aussie");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(payee_form(&dialog).name.text(), "Aussi");
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(payee_form(&dialog).focused, PayeeField::DefaultCategory);
+        handle_key(&mut dialog, DialogKey::Tab);
+        type_text(&mut dialog, "aussie");
+        assert_eq!(payee_form(&dialog).rule_input.text(), "aussie");
+        assert_eq!(payee_form(&dialog).name.text(), "Aussi");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(payee_form(&dialog).focused, PayeeField::DefaultCategory);
+    }
+
+    #[test]
+    fn payee_enter_confirms_only_with_a_free_name() {
+        let mut dialog = add_payee();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "coles");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "Aussie Candle Co");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn payee_enter_in_the_rule_input_adds_a_chip_instead_of_confirming() {
+        let mut dialog = add_payee();
+        type_text(&mut dialog, "Aussie Candle Co");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(payee_form(&dialog).focused, PayeeField::Rule);
+        type_text(&mut dialog, "candle");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert_eq!(payee_form(&dialog).rules, vec!["CANDLE".to_string()]);
+        // With the input empty again, Enter submits.
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        // Backspace in the empty input removes the last chip.
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert!(payee_form(&dialog).rules.is_empty());
+    }
+
+    #[test]
+    fn payee_typing_clears_a_refused_rules_error() {
+        let mut dialog = add_payee();
+        handle_key(&mut dialog, DialogKey::BackTab);
+        type_text(&mut dialog, "woolies");
+        handle_key(&mut dialog, DialogKey::Enter);
+        assert!(payee_form(&dialog).error.is_some());
+        type_text(&mut dialog, "!");
+        assert_eq!(payee_form(&dialog).error, None);
+    }
+
+    #[test]
+    fn payee_select_takes_arrows_and_swallows_typing_and_first_esc_closes_it() {
+        let mut dialog = add_payee();
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled
+        );
+        assert_eq!(payee_form(&dialog).name.text(), "");
+        handle_key(&mut dialog, DialogKey::Enter);
+        assert!(payee_form(&dialog).default_category.is_open());
+        handle_key(&mut dialog, DialogKey::Down);
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        // The dialog itself is still there for the second Esc to close.
+        assert!(matches!(dialog, OpenDialog::Payees(_)));
+    }
+
+    #[test]
+    fn delete_payee_needs_the_exact_name_except_to_reactivate() {
+        let payees = default_payees();
+        let j_smith = payees.iter().find(|p| p.name == "J Smith").unwrap();
+        let mut dialog = OpenDialog::Payees(PayeesDialog::Delete(
+            j_smith.id,
+            DeletePayeeForm::new(j_smith, DeleteAction::Delete),
+        ));
+        type_text(&mut dialog, "j smith");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        for _ in 0..7 {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "J Smith");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        let mut reactivate = OpenDialog::Payees(PayeesDialog::Delete(
+            j_smith.id,
+            DeletePayeeForm::new(j_smith, DeleteAction::Reactivate),
+        ));
+        assert_eq!(
+            handle_key(&mut reactivate, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
 }

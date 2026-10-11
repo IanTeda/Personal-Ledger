@@ -185,3 +185,111 @@ impl Dialog for CategoriesDialog {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::categories::form::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
+    use crate::chrome::dialog_host::type_text;
+    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+
+    fn add_category() -> OpenDialog {
+        OpenDialog::Categories(CategoriesDialog::Add {
+            parent_id: None,
+            form: CategoryForm::default(),
+        })
+    }
+
+    fn category_form(dialog: &OpenDialog) -> &CategoryForm {
+        match dialog {
+            OpenDialog::Categories(dialog) => dialog.form().expect("an Add or Edit dialog"),
+            other => panic!("expected a Categories form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn category_typing_edits_the_name_and_tab_cycles_through_the_fields() {
+        let mut dialog = add_category();
+        type_text(&mut dialog, "Pets");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(category_form(&dialog).name.text(), "Pet");
+
+        // Parent and Type are click-driven selects: typing there is swallowed, not leaked.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(category_form(&dialog).focused, CategoryField::Parent);
+        type_text(&mut dialog, "x");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Backspace),
+            DialogOutcome::Handled
+        );
+        assert_eq!(category_form(&dialog).name.text(), "Pet");
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(category_form(&dialog).focused, CategoryField::Budget);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(category_form(&dialog).focused, CategoryField::Name);
+    }
+
+    #[test]
+    fn category_budget_takes_only_numbers_and_nothing_while_locked() {
+        let mut dialog = add_category();
+        for _ in 0..3 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        type_text(&mut dialog, "1a2.5");
+        assert_eq!(category_form(&dialog).budget.text(), "12.5");
+
+        if let OpenDialog::Categories(CategoriesDialog::Add { form, .. }) = &mut dialog {
+            form.budget_lock = Some(BudgetLock::Parent);
+        }
+        type_text(&mut dialog, "9");
+        assert_eq!(category_form(&dialog).budget.text(), "12.5");
+    }
+
+    #[test]
+    fn category_enter_confirms_only_with_a_name() {
+        let mut dialog = add_category();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Pets");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn category_dialogs_have_no_select_for_the_first_esc_to_close() {
+        let mut dialog = add_category();
+        assert!(!dialog.close_open_select(), "first Esc closes the Dialog");
+    }
+
+    #[test]
+    fn delete_category_confirms_only_on_the_exact_name() {
+        let mut dialog = OpenDialog::Categories(CategoriesDialog::Delete(
+            4,
+            DeleteCategoryForm::new("Groceries"),
+        ));
+        type_text(&mut dialog, "groceries");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        for _ in 0.."groceries".len() {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "Groceries");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled,
+            "Tab is swallowed, the confirmation being the only field"
+        );
+    }
+}

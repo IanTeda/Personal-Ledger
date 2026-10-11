@@ -82,4 +82,22 @@ mod tests {
         form.toggle_account_type(InstitutionProduct::Loan);
         assert!(form.account_types.contains(&InstitutionProduct::Loan));
     }
+
+    use crate::chrome::dialog_host::type_text;
+    use crate::chrome::dialog_host::{Dialog as _, OpenDialog};
+    use crate::settings::SettingsDialog;
+
+    #[test]
+    fn add_institution_needs_a_name_an_account_type_and_a_unit() {
+        let mut dialog = OpenDialog::Settings(SettingsDialog::AddInstitution(
+            AddInstitutionForm::new(&default_units()),
+        ));
+        assert!(!dialog.is_valid());
+        type_text(&mut dialog, "ANZ");
+        assert!(dialog.is_valid());
+        if let OpenDialog::Settings(SettingsDialog::AddInstitution(form)) = &mut dialog {
+            form.toggle_account_type(InstitutionProduct::Savings);
+        }
+        assert!(!dialog.is_valid());
+    }
 }
