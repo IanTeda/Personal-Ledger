@@ -1,6 +1,10 @@
 //! The status line's hint clicks and page status of `Shell`. An `impl Shell` block for the
 //! concern, not the status line itself (`chrome::statusline`).
 
+use crate::documents::types::DocumentTypesDialog;
+use crate::inventory::form::InventoryDialog;
+use crate::payees::form::PayeesDialog;
+use crate::tags::form::TagsDialog;
 use gpui::Context;
 
 use super::{Shell, document_types_ui, inventory_ui};
@@ -22,7 +26,7 @@ use crate::{
     chrome::view_chrome::ViewChrome,
     import,
     navigation::nav::{FocusZone, InputMode},
-    payees, tags,
+    tags,
     view::format,
     view::{
         budgets as budgets_view,
@@ -110,11 +114,11 @@ impl Shell {
                 ),
             }),
             ShellView::Settings(_) if self.settings_tags_page_has_focus(cx) => Some(PageStatus {
-                hints: match self.tags_dialog() {
-                    Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
-                    Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(tags::form::TagsDialog::Remove(..)) => confirm_dialog_hints(),
-                    Some(tags::form::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
+                hints: match self.dialog::<TagsDialog>() {
+                    Some(TagsDialog::Add(_)) => tag_dialog_hints(false),
+                    Some(TagsDialog::Edit(..)) => tag_dialog_hints(true),
+                    Some(TagsDialog::Remove(..)) => confirm_dialog_hints(),
+                    Some(TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
                     None => settings_tags_hints(),
                 },
                 right: settings_view::tags::scope_text(
@@ -123,8 +127,8 @@ impl Shell {
                 ),
             }),
             ShellView::Settings(_) if self.settings_payees_page_has_focus(cx) => Some(PageStatus {
-                hints: match self.payees_dialog() {
-                    Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
+                hints: match self.dialog::<PayeesDialog>() {
+                    Some(PayeesDialog::Delete(..)) => confirm_dialog_hints(),
                     Some(_) => payee_dialog_hints(),
                     None => settings_payees_hints(),
                 },
@@ -133,14 +137,14 @@ impl Shell {
             ShellView::Settings(_) if self.settings_documents_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: self
-                        .document_types_dialog()
+                        .dialog::<DocumentTypesDialog>()
                         .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
                     right: settings_view::documents::scope_text(self.document_types(cx)),
                 })
             }
             ShellView::Settings(_) if self.settings_inventory_page_has_focus(cx) => {
                 Some(PageStatus {
-                    hints: self.inventory_dialog().map_or_else(
+                    hints: self.dialog::<InventoryDialog>().map_or_else(
                         || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
                         inventory_ui::dialog_hints,
                     ),

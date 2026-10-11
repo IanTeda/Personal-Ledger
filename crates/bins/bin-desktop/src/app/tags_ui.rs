@@ -1,6 +1,7 @@
 //! The Tags destination's wiring: keys, clicks, the Add, Edit, Remove and Merge dialogs, and the Settings Tags list. The pure rules live in `lib_tags`; the chrome in `view::tags`, and its View state in the `TagsView` Entity.
 
 use super::Shell;
+use crate::tags::form::TagsDialog;
 
 use crate::{
     chrome::dialog_host::OpenDialog,
@@ -144,28 +145,22 @@ impl Shell {
 
     pub(super) fn open_add_tag_dialog(&mut self, cx: &App) {
         let form = tags::form::TagForm::new(self.tags_list(cx).to_vec());
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form)));
+        self.open_dialog(OpenDialog::Tags(TagsDialog::Add(form)));
     }
 
     /// The form behind the open Add or Edit tag dialog, if that is what's open.
     pub(super) fn tag_form_mut(&mut self) -> Option<&mut tags::form::TagForm> {
-        match self.tags_dialog_mut() {
-            Some(tags::form::TagsDialog::Add(form) | tags::form::TagsDialog::Edit(_, form)) => {
-                Some(form)
-            }
+        match self.dialog_mut::<TagsDialog>() {
+            Some(TagsDialog::Add(form) | TagsDialog::Edit(_, form)) => Some(form),
             _ => None,
         }
     }
 
     /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
     /// and selects it, removes it, or merges it into another, toasting the last two.
-    pub(super) fn apply_tags_dialog(
-        &mut self,
-        dialog: tags::form::TagsDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
+    pub(super) fn apply_tags_dialog(&mut self, dialog: TagsDialog, cx: &mut Context<'_, Self>) {
         match dialog {
-            tags::form::TagsDialog::Add(form) => {
+            TagsDialog::Add(form) => {
                 let Some(draft) = form.draft() else {
                     return;
                 };
@@ -176,10 +171,10 @@ impl Shell {
                         self.store_tags(rows, cx);
                         self.select_tag(id, cx);
                     }
-                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form))),
+                    Err(_) => self.open_dialog(OpenDialog::Tags(TagsDialog::Add(form))),
                 }
             }
-            tags::form::TagsDialog::Edit(id, form) => {
+            TagsDialog::Edit(id, form) => {
                 let Some(draft) = form.draft() else {
                     return;
                 };
@@ -191,13 +186,11 @@ impl Shell {
                         self.store_tags(rows, cx);
                         self.select_tag(id, cx);
                     }
-                    Err(_) => {
-                        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)))
-                    }
+                    Err(_) => self.open_dialog(OpenDialog::Tags(TagsDialog::Edit(id, form))),
                 }
             }
-            tags::form::TagsDialog::Remove(id, _) => self.apply_remove_tag(id, cx),
-            tags::form::TagsDialog::Merge(form) => {
+            TagsDialog::Remove(id, _) => self.apply_remove_tag(id, cx),
+            TagsDialog::Merge(form) => {
                 if let Some((source, target)) = form.pair() {
                     self.apply_merge_tags(source, target, cx);
                 }
@@ -247,7 +240,7 @@ impl Shell {
             return;
         };
         let form = tags::form::TagForm::for_edit(tag, rows.to_vec());
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)));
+        self.open_dialog(OpenDialog::Tags(TagsDialog::Edit(id, form)));
     }
 
     pub(super) fn open_remove_tag_dialog(&mut self, id: u32, cx: &App) {
@@ -258,7 +251,7 @@ impl Shell {
             &tag.name,
             tags::transaction_count(self.transactions(cx), id),
         );
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Remove(id, form)));
+        self.open_dialog(OpenDialog::Tags(TagsDialog::Remove(id, form)));
     }
 
     /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
@@ -307,7 +300,7 @@ impl Shell {
         let groups = tags::duplicate_groups(self.tags_list(cx), self.transactions(cx));
         let target = source.and_then(|id| tags::duplicate_of(&groups, id));
         let form = tags::form::MergeTagsForm::new(self.merge_tag_options(cx), source, target);
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Merge(form)));
+        self.open_dialog(OpenDialog::Tags(TagsDialog::Merge(form)));
     }
 
     /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
@@ -359,7 +352,7 @@ impl Shell {
         field: tags::form::MergeField,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+        if let Some(TagsDialog::Merge(form)) = self.dialog_mut::<TagsDialog>() {
             form.toggle(field);
         }
         cx.notify();
@@ -371,7 +364,7 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+        if let Some(TagsDialog::Merge(form)) = self.dialog_mut::<TagsDialog>() {
             form.choose(field, index);
         }
         cx.notify();

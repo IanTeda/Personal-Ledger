@@ -152,6 +152,46 @@ impl OpenDialog {
     }
 }
 
+/// A feature's Dialog as one [`OpenDialog`] variant holds it, so `Shell::dialog_mut::<T>()` finds
+/// the open Dialog by type instead of one accessor per feature.
+pub trait DialogVariant: Sized {
+    fn from_open(open: &OpenDialog) -> Option<&Self>;
+    fn from_open_mut(open: &mut OpenDialog) -> Option<&mut Self>;
+}
+
+/// Generates the [`DialogVariant`] impl for the `OpenDialog` variant that holds `$ty`; a boxed
+/// variant passes the inner type and the box derefs.
+macro_rules! dialog_variant {
+    ($variant:ident, $ty:ty) => {
+        impl DialogVariant for $ty {
+            fn from_open(open: &OpenDialog) -> Option<&Self> {
+                match open {
+                    OpenDialog::$variant(dialog) => Some(dialog),
+                    _ => None,
+                }
+            }
+
+            fn from_open_mut(open: &mut OpenDialog) -> Option<&mut Self> {
+                match open {
+                    OpenDialog::$variant(dialog) => Some(dialog),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+dialog_variant!(Settings, SettingsDialog);
+dialog_variant!(Accounts, AccountsDialog);
+dialog_variant!(Categories, CategoriesDialog);
+dialog_variant!(Payees, PayeesDialog);
+dialog_variant!(DocumentTypes, DocumentTypesDialog);
+dialog_variant!(Inventory, InventoryDialog);
+dialog_variant!(Tags, TagsDialog);
+dialog_variant!(Bills, BillsDialog);
+dialog_variant!(Budgets, BudgetsDialog);
+dialog_variant!(Documents, DocumentsDialog);
+
 impl Dialog for OpenDialog {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         self.inner_mut().handle_own_key(key)
@@ -261,6 +301,15 @@ mod tests {
             handle_key(&mut dialog, DialogKey::Other),
             DialogOutcome::Ignored
         );
+    }
+
+    #[test]
+    fn dialog_variant_finds_only_its_own_features_dialog() {
+        let mut dialog = OpenDialog::Settings(SettingsDialog::ClearLogs);
+        assert!(SettingsDialog::from_open(&dialog).is_some());
+        assert!(SettingsDialog::from_open_mut(&mut dialog).is_some());
+        assert!(AccountsDialog::from_open(&dialog).is_none());
+        assert!(AccountsDialog::from_open_mut(&mut dialog).is_none());
     }
 
     #[test]

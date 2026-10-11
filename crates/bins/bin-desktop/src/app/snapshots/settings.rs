@@ -177,7 +177,7 @@ impl Shell {
     /// The open Add or Edit account dialog's form for a test; `None` for any other dialog.
     #[doc(hidden)]
     pub fn account_form_snapshot(&self) -> Option<AccountFormSnapshot> {
-        let form = self.accounts_dialog()?.form()?;
+        let form = self.dialog::<AccountsDialog>()?.form()?;
         Some(AccountFormSnapshot {
             focused: format!("{:?}", form.focused),
             name: form.name.text().to_string(),
@@ -215,7 +215,7 @@ impl Shell {
     /// The open Settings dialog, whichever page owns it.
     fn open_settings_dialog(&self, cx: &gpui::App) -> OpenDialog {
         let mut open_dialog = OpenDialog::default();
-        if let Some(open) = self.accounts_dialog() {
+        if let Some(open) = self.dialog::<AccountsDialog>() {
             let (label, name, confirm) = match open {
                 AccountsDialog::Add(form) => {
                     ("AddAccount", Some(form.name.text().to_string()), None)
@@ -232,7 +232,7 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.categories_dialog() {
+        } else if let Some(open) = self.dialog::<CategoriesDialog>() {
             let (label, name, confirm) = match open {
                 CategoriesDialog::Add { form, .. } => {
                     ("AddCategory", Some(form.name.text().to_string()), None)
@@ -249,7 +249,7 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.payees_dialog() {
+        } else if let Some(open) = self.dialog::<PayeesDialog>() {
             let (label, name, confirm) = match open {
                 PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
                 PayeesDialog::Edit(_, form) => {
@@ -264,7 +264,7 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.tags_dialog() {
+        } else if let Some(open) = self.dialog::<TagsDialog>() {
             let (label, name, confirm) = match open {
                 TagsDialog::Add(form) => ("AddTag", Some(form.name.text().to_string()), None),
                 TagsDialog::Edit(_, form) => ("EditTag", Some(form.name.text().to_string()), None),
@@ -286,7 +286,7 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.settings_dialog() {
+        } else if let Some(open) = self.dialog::<SettingsDialog>() {
             let (label, name, confirm) = match open {
                 SettingsDialog::AddUnit(form) => {
                     open_dialog.unit = Some((
@@ -423,7 +423,7 @@ impl Shell {
                 .iter()
                 .map(|row| row.files)
                 .collect(),
-            document_type_dialog: self.document_types_dialog().map(|dialog| {
+            document_type_dialog: self.dialog::<DocumentTypesDialog>().map(|dialog| {
                 match dialog {
                     DocumentTypesDialog::Add(_) => "add",
                     DocumentTypesDialog::Edit(..) => "edit",
@@ -464,7 +464,7 @@ impl Shell {
                     )
                 })
                 .collect(),
-            inventory_dialog: self.inventory_dialog().map(|dialog| {
+            inventory_dialog: self.dialog::<InventoryDialog>().map(|dialog| {
                 match dialog {
                     InventoryDialog::Add(_) => "add",
                     InventoryDialog::Edit(..) => "edit",

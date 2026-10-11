@@ -125,7 +125,9 @@ impl Shell {
                 settings_colour_grid_hints()
             }
             SettingsSection::Display => settings_display_hints(),
-            SettingsSection::Tracing if self.settings_dialog().is_some() => confirm_dialog_hints(),
+            SettingsSection::Tracing if self.dialog::<SettingsDialog>().is_some() => {
+                confirm_dialog_hints()
+            }
             SettingsSection::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         }
@@ -844,7 +846,7 @@ impl Shell {
         field: AddUnitField,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.settings_dialog_mut() {
+        if let Some(dialog) = self.dialog_mut::<SettingsDialog>() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
                     form.focused_field = field;
@@ -865,7 +867,7 @@ impl Shell {
         kind: UnitKind,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.settings_dialog_mut() {
+        if let Some(dialog) = self.dialog_mut::<SettingsDialog>() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
                     form.kind = kind;
@@ -1073,7 +1075,7 @@ impl Shell {
         account_type: InstitutionProduct,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog_mut() {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.dialog_mut::<SettingsDialog>() {
             form.toggle_account_type(account_type);
             cx.notify();
         }
@@ -1084,7 +1086,7 @@ impl Shell {
         code: String,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog_mut() {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.dialog_mut::<SettingsDialog>() {
             form.default_unit_code = Some(code);
             cx.notify();
         }

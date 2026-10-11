@@ -3,15 +3,8 @@
 
 use super::Shell;
 use crate::{
-    accounts::form::AccountsDialog,
-    bills, budgets, categories,
-    chrome::dialog_host::{Dialog, OpenDialog},
-    documents::types::DocumentTypesDialog,
-    inventory::form::InventoryDialog,
+    chrome::dialog_host::{Dialog, DialogVariant, OpenDialog},
     navigation::nav::InputMode,
-    payees,
-    settings::SettingsDialog,
-    tags,
 };
 
 impl Shell {
@@ -54,131 +47,12 @@ impl Shell {
         }
     }
 
-    pub(super) fn settings_dialog(&self) -> Option<&SettingsDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Settings(dialog) => Some(dialog),
-            _ => None,
-        }
+    /// The open Dialog as a `T`, `None` when no Dialog or another feature's is open.
+    pub(super) fn dialog<T: DialogVariant>(&self) -> Option<&T> {
+        T::from_open(self.chrome.dialog.as_ref()?)
     }
 
-    pub(super) fn settings_dialog_mut(&mut self) -> Option<&mut SettingsDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Settings(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn categories_dialog(&self) -> Option<&categories::form::CategoriesDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Categories(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn categories_dialog_mut(
-        &mut self,
-    ) -> Option<&mut categories::form::CategoriesDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Categories(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn document_types_dialog(&self) -> Option<&DocumentTypesDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::DocumentTypes(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn inventory_dialog(&self) -> Option<&InventoryDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Inventory(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn inventory_dialog_mut(&mut self) -> Option<&mut InventoryDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Inventory(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn document_types_dialog_mut(&mut self) -> Option<&mut DocumentTypesDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::DocumentTypes(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn bills_dialog(&self) -> Option<&bills::BillsDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Bills(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn bills_dialog_mut(&mut self) -> Option<&mut bills::BillsDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Bills(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn budgets_dialog(&self) -> Option<&budgets::BudgetsDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Budgets(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn budgets_dialog_mut(&mut self) -> Option<&mut budgets::BudgetsDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Budgets(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn tags_dialog(&self) -> Option<&tags::form::TagsDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Tags(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn tags_dialog_mut(&mut self) -> Option<&mut tags::form::TagsDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Tags(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn payees_dialog(&self) -> Option<&payees::form::PayeesDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Payees(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn payees_dialog_mut(&mut self) -> Option<&mut payees::form::PayeesDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Payees(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn accounts_dialog(&self) -> Option<&AccountsDialog> {
-        match self.chrome.dialog.as_ref()? {
-            OpenDialog::Accounts(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    pub(super) fn accounts_dialog_mut(&mut self) -> Option<&mut AccountsDialog> {
-        match self.chrome.dialog.as_mut()? {
-            OpenDialog::Accounts(dialog) => Some(dialog),
-            _ => None,
-        }
+    pub(super) fn dialog_mut<T: DialogVariant>(&mut self) -> Option<&mut T> {
+        T::from_open_mut(self.chrome.dialog.as_mut()?)
     }
 }

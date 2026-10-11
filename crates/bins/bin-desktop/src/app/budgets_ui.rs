@@ -1,5 +1,6 @@
 //! The Budgets destination's wiring: keys, clicks, dialogs, the Progress, Plan and History tabs' state changes, and the element builders for its dialogs. The pure rules live in `budgets`; the chrome in `view::budgets`.
 
+use crate::budgets::BudgetsDialog;
 use lib_core::CategoryTypes;
 use lib_toast::ToastKind;
 
@@ -196,7 +197,7 @@ impl Shell {
     /// as when a click made the request.
     pub(super) fn apply_budgets_dialog(
         &mut self,
-        dialog: budgets::BudgetsDialog,
+        dialog: BudgetsDialog,
         cx: &mut Context<'_, Self>,
     ) {
         use budgets::{BudgetsDialog, DetailRequest, ManageRequest, SwitcherRequest};
@@ -234,7 +235,7 @@ impl Shell {
         }
     }
 
-    pub(super) fn open_budgets_dialog(&mut self, dialog: budgets::BudgetsDialog) {
+    pub(super) fn open_budgets_dialog(&mut self, dialog: BudgetsDialog) {
         self.open_dialog(OpenDialog::Budgets(Box::new(dialog)));
     }
 
@@ -723,14 +724,16 @@ impl Shell {
             .map_or(0, |detail| {
                 detail.lines.len().min(budgets_view::detail_dialog::LISTED)
             });
-        self.open_budgets_dialog(budgets::BudgetsDialog::CategoryDetail(
-            budgets::Detail::new(category_id, month, listed),
-        ));
+        self.open_budgets_dialog(BudgetsDialog::CategoryDetail(budgets::Detail::new(
+            category_id,
+            month,
+            listed,
+        )));
     }
 
     /// The open Category detail's figures, or `None` once its Budget or Category is gone.
     pub(super) fn budgets_detail(&self, cx: &gpui::App) -> Option<budgets::CategoryDetail> {
-        let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
         self.budgets_detail_for(detail.category_id, detail.month, cx)
@@ -756,7 +759,7 @@ impl Shell {
     /// 9d's `open in Transactions →`: Transactions filtered to the Category, the month and the
     /// Budget's on-budget Accounts, following [`Self::open_payee_transactions`].
     pub(super) fn open_budgets_detail_transactions(&mut self, cx: &mut gpui::App) {
-        let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() else {
             return;
         };
         let (category_id, month) = (detail.category_id, detail.month);
@@ -829,7 +832,7 @@ impl Shell {
         } else {
             return;
         };
-        self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(form));
+        self.open_budgets_dialog(BudgetsDialog::EditLimit(form));
     }
 
     /// **+ Budget a category**: 9e with its Category picker.
@@ -841,7 +844,7 @@ impl Shell {
         else {
             return;
         };
-        self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(
+        self.open_budgets_dialog(BudgetsDialog::EditLimit(
             budgets::limit_form::LimitForm::pick(None, &options),
         ));
     }
@@ -859,9 +862,11 @@ impl Shell {
         if budgets::applied(chain, current).is_none() && budgets::applied(chain, month).is_none() {
             return;
         }
-        self.open_budgets_dialog(budgets::BudgetsDialog::Stop(
-            budgets::limit_form::StopForm::new(category_id, month, &options),
-        ));
+        self.open_budgets_dialog(BudgetsDialog::Stop(budgets::limit_form::StopForm::new(
+            category_id,
+            month,
+            &options,
+        )));
     }
 
     /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
@@ -903,7 +908,7 @@ impl Shell {
         });
         if let Err(error) = saved {
             form.error = Some(error);
-            self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(form));
+            self.open_budgets_dialog(BudgetsDialog::EditLimit(form));
         }
     }
 
@@ -924,13 +929,13 @@ impl Shell {
         });
         if let Err(error) = stopped {
             form.error = Some(error);
-            self.open_budgets_dialog(budgets::BudgetsDialog::Stop(form));
+            self.open_budgets_dialog(BudgetsDialog::Stop(form));
         }
     }
 
     /// 9e's footer link: swaps Edit budget for Stop budgeting on the same Category and month.
     pub(super) fn open_budgets_stop_from_limit(&mut self, cx: &gpui::App) {
-        let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::EditLimit(form)) = self.dialog::<BudgetsDialog>() else {
             return;
         };
         let (Some(category_id), Some(month)) = (form.fixed_category, form.month()) else {
@@ -942,7 +947,7 @@ impl Shell {
     /// The Budgets page's status-line legend: the open dialog's keys, else the tab's.
     pub(super) fn budgets_hints(&self, cx: &gpui::App) -> Vec<(&'static str, String)> {
         use budgets::{BudgetsDialog, BudgetsTab};
-        match (self.budgets_dialog(), self.budgets_state(cx).tab) {
+        match (self.dialog::<BudgetsDialog>(), self.budgets_state(cx).tab) {
             (Some(BudgetsDialog::Switcher(_)), _) => budgets_switcher_hints(),
             (Some(BudgetsDialog::EditLimit(_) | BudgetsDialog::Budget(_)), _) => {
                 budgets_limit_hints()
@@ -963,7 +968,7 @@ impl Shell {
     /// `B` or a click on the title: opens 11b with the Budget on show highlighted.
     pub(super) fn open_budgets_switcher(&mut self, cx: &gpui::App) {
         let switcher = budgets::Switcher::new(self.budgets(cx), self.budgets_state(cx).current);
-        self.open_budgets_dialog(budgets::BudgetsDialog::Switcher(switcher));
+        self.open_budgets_dialog(BudgetsDialog::Switcher(switcher));
     }
 
     /// Shows Budget `id` on the surface, keeping the active tab (every method built has all
@@ -998,7 +1003,7 @@ impl Shell {
             self.accounts.read(cx).accounts(),
             self.budgets(cx).get(self.budgets_state(cx).current),
         );
-        self.open_budgets_dialog(budgets::BudgetsDialog::Budget(form));
+        self.open_budgets_dialog(BudgetsDialog::Budget(form));
     }
 
     /// 11c's edit mode on Budget `id`: rename it or change its Accounts. An archived Budget is
@@ -1011,7 +1016,7 @@ impl Shell {
         else {
             return;
         };
-        self.open_budgets_dialog(budgets::BudgetsDialog::Budget(
+        self.open_budgets_dialog(BudgetsDialog::Budget(
             budgets::form::BudgetForm::from_budget(budget, self.accounts.read(cx).accounts()),
         ));
     }
@@ -1060,14 +1065,14 @@ impl Shell {
             Ok(None) => {}
             Err(error) => {
                 form.error = Some(error);
-                self.open_budgets_dialog(budgets::BudgetsDialog::Budget(form));
+                self.open_budgets_dialog(BudgetsDialog::Budget(form));
             }
         }
     }
 
     pub(super) fn budget_form_mut(&mut self) -> Option<&mut budgets::form::BudgetForm> {
-        match self.budgets_dialog_mut() {
-            Some(budgets::BudgetsDialog::Budget(form)) => Some(form),
+        match self.dialog_mut::<BudgetsDialog>() {
+            Some(BudgetsDialog::Budget(form)) => Some(form),
             _ => None,
         }
     }
@@ -1083,7 +1088,7 @@ impl Shell {
         entity: &gpui::Entity<Self>,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
-        let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::Budget(form)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -1165,7 +1170,7 @@ impl Shell {
     /// The Switcher's `Manage budgets…`: 11f, with the Budget on show under the cursor.
     pub(super) fn open_budgets_manage(&mut self, cx: &gpui::App) {
         let manage = budgets::Manage::new(self.budgets(cx), self.budgets_state(cx).current);
-        self.open_budgets_dialog(budgets::BudgetsDialog::Manage(manage));
+        self.open_budgets_dialog(BudgetsDialog::Manage(manage));
     }
 
     /// Runs one of 11f's actions on Budget `id`. Open and Edit leave Manage budgets; Duplicate
@@ -1200,10 +1205,8 @@ impl Shell {
         };
         let refused = outcome.err();
         match self.chrome.dialog.as_mut() {
-            Some(OpenDialog::Budgets(dialog))
-                if matches!(**dialog, budgets::BudgetsDialog::Manage(_)) =>
-            {
-                if let budgets::BudgetsDialog::Manage(manage) = &mut **dialog {
+            Some(OpenDialog::Budgets(dialog)) if matches!(**dialog, BudgetsDialog::Manage(_)) => {
+                if let BudgetsDialog::Manage(manage) = &mut **dialog {
                     // Archiving or restoring moves the row between the two sections: follow it.
                     manage.refresh(self.budgets_store.read(cx).budgets(), id);
                     manage.error = refused;
@@ -1228,7 +1231,7 @@ impl Shell {
         entity: &gpui::Entity<Self>,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
-        let Some(budgets::BudgetsDialog::Manage(manage)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::Manage(manage)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -1280,8 +1283,8 @@ impl Shell {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
-                            if let Some(budgets::BudgetsDialog::Manage(manage)) =
-                                shell.budgets_dialog_mut()
+                            if let Some(BudgetsDialog::Manage(manage)) =
+                                shell.dialog_mut::<BudgetsDialog>()
                             {
                                 manage.selected = index;
                             }
@@ -1311,7 +1314,7 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_switcher_search_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(budgets::BudgetsDialog::Switcher(switcher)) = self.budgets_dialog_mut() {
+        if let Some(BudgetsDialog::Switcher(switcher)) = self.dialog_mut::<BudgetsDialog>() {
             switcher.searching = true;
         }
         cx.notify();
@@ -1355,7 +1358,7 @@ impl Shell {
         entity: &gpui::Entity<Self>,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
-        let Some(budgets::BudgetsDialog::Switcher(switcher)) = self.budgets_dialog() else {
+        let Some(BudgetsDialog::Switcher(switcher)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -1422,7 +1425,7 @@ impl Shell {
         if self.budgets_editable(cx).is_none() {
             return;
         }
-        self.open_budgets_dialog(budgets::BudgetsDialog::Fill {
+        self.open_budgets_dialog(BudgetsDialog::Fill {
             month: self.budgets_fill_target(cx),
             source: budgets::FillSource::default(),
         });
@@ -1454,12 +1457,12 @@ impl Shell {
             budgets.fill(current, &ledger, month, source, self.today)
         });
         if !matches!(wrote, Ok(count) if count > 0) {
-            self.open_budgets_dialog(budgets::BudgetsDialog::Fill { month, source });
+            self.open_budgets_dialog(BudgetsDialog::Fill { month, source });
         }
     }
 
     pub(super) fn set_budgets_fill_source(&mut self, chosen: budgets::FillSource) {
-        if let Some(budgets::BudgetsDialog::Fill { source, .. }) = self.budgets_dialog_mut() {
+        if let Some(BudgetsDialog::Fill { source, .. }) = self.dialog_mut::<BudgetsDialog>() {
             *source = chosen;
         }
     }
@@ -1480,7 +1483,7 @@ impl Shell {
         entity: &gpui::Entity<Self>,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
-        let Some(&budgets::BudgetsDialog::Fill { month, source }) = self.budgets_dialog() else {
+        let Some(&BudgetsDialog::Fill { month, source }) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
         let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
@@ -1557,7 +1560,7 @@ impl Shell {
 
     /// 9d's **Edit budget**: 9e on the detail's Category and month. A parent's rollup has none.
     pub(super) fn open_budgets_detail_limit(&mut self, cx: &gpui::App) {
-        if let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() {
+        if let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() {
             let (category_id, month) = (detail.category_id, detail.month);
             self.open_budgets_limit(category_id, month, cx);
         }
@@ -1593,14 +1596,14 @@ impl Shell {
     }
 
     pub(super) fn limit_form_mut(&mut self) -> Option<&mut budgets::limit_form::LimitForm> {
-        match self.budgets_dialog_mut() {
-            Some(budgets::BudgetsDialog::EditLimit(form)) => Some(form),
+        match self.dialog_mut::<BudgetsDialog>() {
+            Some(BudgetsDialog::EditLimit(form)) => Some(form),
             _ => None,
         }
     }
 
     pub(super) fn handle_budgets_stop_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(budgets::BudgetsDialog::Stop(form)) = self.budgets_dialog_mut() {
+        if let Some(BudgetsDialog::Stop(form)) = self.dialog_mut::<BudgetsDialog>() {
             form.click_select();
         }
         cx.notify();
@@ -1644,8 +1647,8 @@ impl Shell {
                 .find(|category| category.id == category_id)
                 .map(|category| category.name.clone())
         };
-        match self.budgets_dialog()? {
-            budgets::BudgetsDialog::EditLimit(form) => {
+        match self.dialog::<BudgetsDialog>()? {
+            BudgetsDialog::EditLimit(form) => {
                 let draft = form.draft();
                 let preview = draft.as_ref().and_then(|draft| {
                     budgets::limit_form::preview(
@@ -1733,14 +1736,14 @@ impl Shell {
                     cx,
                 ))
             }
-            budgets::BudgetsDialog::Stop(form) => {
+            BudgetsDialog::Stop(form) => {
                 let category = leaf_name(form.category_id)?;
                 let on_option_click: accounts_view::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
-                            if let Some(budgets::BudgetsDialog::Stop(form)) =
-                                shell.budgets_dialog_mut()
+                            if let Some(BudgetsDialog::Stop(form)) =
+                                shell.dialog_mut::<BudgetsDialog>()
                             {
                                 form.choose(index);
                             }
@@ -1877,8 +1880,8 @@ impl Shell {
                 detail: &detail,
                 lines,
                 more,
-                selected: match self.budgets_dialog() {
-                    Some(budgets::BudgetsDialog::CategoryDetail(open)) => open.selected,
+                selected: match self.dialog::<BudgetsDialog>() {
+                    Some(BudgetsDialog::CategoryDetail(open)) => open.selected,
                     _ => 0,
                 },
                 track,

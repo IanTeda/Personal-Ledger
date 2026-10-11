@@ -71,7 +71,7 @@ impl Shell {
                 (budget.name.clone(), rows)
             })
             .unwrap_or_default();
-        let switcher = match self.budgets_dialog() {
+        let switcher = match self.dialog::<BudgetsDialog>() {
             Some(BudgetsDialog::Switcher(switcher)) => Some(switcher),
             _ => None,
         };
@@ -101,7 +101,7 @@ impl Shell {
                 self.budgets_state(cx).history_end.year,
                 self.budgets_state(cx).history_end.month,
             ),
-            dialog: self.budgets_dialog().map(|dialog| {
+            dialog: self.dialog::<BudgetsDialog>().map(|dialog| {
                 match dialog {
                     BudgetsDialog::Switcher(_) => "Switcher",
                     BudgetsDialog::Budget(_) => "Budget",
@@ -113,7 +113,7 @@ impl Shell {
                 }
                 .to_string()
             }),
-            limit_amount: match self.budgets_dialog() {
+            limit_amount: match self.dialog::<BudgetsDialog>() {
                 Some(BudgetsDialog::EditLimit(form)) => Some(form.amount.text().to_string()),
                 _ => None,
             },
@@ -124,15 +124,15 @@ impl Shell {
                     .collect()
             }),
             switcher_selected: switcher.map(|switcher| switcher.selected),
-            budget_name: match self.budgets_dialog() {
+            budget_name: match self.dialog::<BudgetsDialog>() {
                 Some(BudgetsDialog::Budget(form)) => Some(form.name.text().to_string()),
                 _ => None,
             },
-            fill_source: match self.budgets_dialog() {
+            fill_source: match self.dialog::<BudgetsDialog>() {
                 Some(BudgetsDialog::Fill { source, .. }) => Some(format!("{source:?}")),
                 _ => None,
             },
-            stop_category: match self.budgets_dialog() {
+            stop_category: match self.dialog::<BudgetsDialog>() {
                 Some(BudgetsDialog::Stop(form)) => Some(form.category_id),
                 _ => None,
             },

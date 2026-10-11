@@ -1,6 +1,7 @@
 //! The Payees destination's wiring: keys, clicks, the Add, Edit and Delete dialogs, and the Settings Payees list. The pure rules live in `lib_payees`; the chrome in `view::payees` and `view::settings::payees`, and its View state in the `PayeesView` Entity.
 
 use super::Shell;
+use crate::payees::form::PayeesDialog;
 
 use crate::{
     chrome::dialog_host::OpenDialog,
@@ -123,20 +124,16 @@ impl Shell {
     pub(super) fn open_add_payee_dialog(&mut self, cx: &App) {
         let form =
             payees::form::PayeeForm::new(&self.payee_dialog_options(cx), self.payees_list(cx));
-        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
+        self.open_dialog(OpenDialog::Payees(PayeesDialog::Add(form)));
     }
 
     /// Applies a confirmed Payees dialog (reached through [`Self::confirm_open_dialog`] from the
     /// **Add payee** / **Save** / **Delete** buttons or `Enter`). Add and Edit store the Payee and
     /// select it; a refused submit reopens the dialog with the error shown. Delete applies its
     /// [`payees::form::DeleteAction`], toasts the outcome and keeps the selection in range.
-    pub(super) fn apply_payees_dialog(
-        &mut self,
-        dialog: payees::form::PayeesDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
+    pub(super) fn apply_payees_dialog(&mut self, dialog: PayeesDialog, cx: &mut Context<'_, Self>) {
         match dialog {
-            payees::form::PayeesDialog::Delete(id, form) => {
+            PayeesDialog::Delete(id, form) => {
                 // The dialog is only ever opened on a Payee that exists, so a miss means it was
                 // removed while the dialog was open. There is nothing left to delete.
                 let Some(name) = payees::get(self.payees_list(cx), id).map(|p| p.name.clone())
@@ -177,7 +174,7 @@ impl Shell {
                 self.payees_view
                     .update(cx, |view, cx| view.set_selected(selected, cx));
             }
-            payees::form::PayeesDialog::Add(mut form) => {
+            PayeesDialog::Add(mut form) => {
                 let draft = form.draft();
                 match self
                     .payees_store
@@ -186,11 +183,11 @@ impl Shell {
                     Ok(id) => self.select_payee(id, cx),
                     Err(error) => {
                         form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
+                        self.open_dialog(OpenDialog::Payees(PayeesDialog::Add(form)));
                     }
                 }
             }
-            payees::form::PayeesDialog::Edit(id, mut form) => {
+            PayeesDialog::Edit(id, mut form) => {
                 let draft = form.draft();
                 match self
                     .payees_store
@@ -199,9 +196,7 @@ impl Shell {
                     Ok(()) => self.select_payee(id, cx),
                     Err(error) => {
                         form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(
-                            id, form,
-                        )));
+                        self.open_dialog(OpenDialog::Payees(PayeesDialog::Edit(id, form)));
                     }
                 }
             }
@@ -214,8 +209,8 @@ impl Shell {
         change: impl FnOnce(&mut payees::form::PayeeForm),
     ) {
         if let Some(form) = self
-            .payees_dialog_mut()
-            .and_then(payees::form::PayeesDialog::form_mut)
+            .dialog_mut::<PayeesDialog>()
+            .and_then(PayeesDialog::form_mut)
         {
             change(form);
         }
@@ -276,9 +271,7 @@ impl Shell {
             return;
         };
         let form = payees::form::PayeeForm::from_payee(payee, &self.payee_dialog_options(cx), rows);
-        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(
-            id, form,
-        )));
+        self.open_dialog(OpenDialog::Payees(PayeesDialog::Edit(id, form)));
     }
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
@@ -289,9 +282,7 @@ impl Shell {
         };
         let action = payees::form::DeleteAction::for_payee(payee, self.transactions(cx));
         let form = payees::form::DeletePayeeForm::new(payee, action);
-        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Delete(
-            id, form,
-        )));
+        self.open_dialog(OpenDialog::Payees(PayeesDialog::Delete(id, form)));
     }
 
     /// The Payee the Delete dialog is open on and what confirming it would do (#283).
@@ -299,7 +290,7 @@ impl Shell {
         &self,
         cx: &'a App,
     ) -> Option<(&'a Payee, payees::form::DeleteAction)> {
-        let Some(payees::form::PayeesDialog::Delete(id, form)) = self.payees_dialog() else {
+        let Some(PayeesDialog::Delete(id, form)) = self.dialog::<PayeesDialog>() else {
             return None;
         };
         Some((payees::get(self.payees_list(cx), *id)?, form.action()))

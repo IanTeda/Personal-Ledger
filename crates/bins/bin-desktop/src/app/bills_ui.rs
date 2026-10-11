@@ -3,6 +3,7 @@
 //! Entity (`view::bills`); the pure rules live in `bills`.
 
 use super::Shell;
+use crate::bills::BillsDialog;
 
 use std::rc::Rc;
 
@@ -30,21 +31,17 @@ impl Shell {
 
     /// The form behind the open Add or Edit bill plan dialog, if that is what's open.
     pub(super) fn bill_plan_form_mut(&mut self) -> Option<&mut bills::form::BillPlanForm> {
-        self.bills_dialog_mut()
-            .and_then(bills::BillsDialog::plan_form_mut)
+        self.dialog_mut::<BillsDialog>()
+            .and_then(BillsDialog::plan_form_mut)
     }
 
     /// Applies a confirmed Bills dialog (`Enter` and the confirm button).
-    pub(super) fn apply_bills_dialog(
-        &mut self,
-        dialog: bills::BillsDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
+    pub(super) fn apply_bills_dialog(&mut self, dialog: BillsDialog, cx: &mut Context<'_, Self>) {
         match dialog {
-            bills::BillsDialog::Add(form) => self.apply_bill_plan(None, form, cx),
-            bills::BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form, cx),
-            bills::BillsDialog::Pay(form) => self.apply_pay_bill(form, cx),
-            bills::BillsDialog::Skip(entry) => self.apply_skip_bill(entry, cx),
+            BillsDialog::Add(form) => self.apply_bill_plan(None, form, cx),
+            BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form, cx),
+            BillsDialog::Pay(form) => self.apply_pay_bill(form, cx),
+            BillsDialog::Skip(entry) => self.apply_skip_bill(entry, cx),
         }
     }
 
@@ -77,8 +74,8 @@ impl Shell {
             Err(error) => {
                 form.error = Some(error);
                 let dialog = match editing {
-                    None => bills::BillsDialog::Add(form),
-                    Some(id) => bills::BillsDialog::Edit(id, form),
+                    None => BillsDialog::Add(form),
+                    Some(id) => BillsDialog::Edit(id, form),
                 };
                 self.open_dialog(OpenDialog::Bills(Box::new(dialog)));
             }
@@ -141,8 +138,8 @@ impl Shell {
     }
 
     pub(super) fn pay_form_mut(&mut self) -> Option<&mut PayForm> {
-        match self.bills_dialog_mut() {
-            Some(bills::BillsDialog::Pay(form)) => Some(form),
+        match self.dialog_mut::<BillsDialog>() {
+            Some(BillsDialog::Pay(form)) => Some(form),
             _ => None,
         }
     }
@@ -178,7 +175,7 @@ impl Shell {
         );
         if let Err(error) = result {
             form.error = Some(error);
-            self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Pay(form))));
+            self.open_dialog(OpenDialog::Bills(Box::new(BillsDialog::Pay(form))));
         }
     }
 
@@ -375,17 +372,17 @@ impl Shell {
         entity: &Entity<Self>,
         cx: &App,
     ) -> Option<gpui::AnyElement> {
-        self.bills_dialog().and_then(|dialog| {
+        self.dialog::<BillsDialog>().and_then(|dialog| {
             let (editing, form) = match dialog {
-                bills::BillsDialog::Add(form) => (None, form),
-                bills::BillsDialog::Edit(id, form) => (
+                BillsDialog::Add(form) => (None, form),
+                BillsDialog::Edit(id, form) => (
                     Some(bills::get(self.bill_plans(cx), *id)?.name.as_str()),
                     form,
                 ),
-                bills::BillsDialog::Pay(form) => {
+                BillsDialog::Pay(form) => {
                     return self.render_pay_bill_dialog(form, entity, cx);
                 }
-                bills::BillsDialog::Skip(entry) => {
+                BillsDialog::Skip(entry) => {
                     return self.render_skip_bill_dialog(*entry, entity, cx);
                 }
             };

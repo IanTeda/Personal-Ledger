@@ -136,7 +136,7 @@ impl Shell {
         change: impl FnOnce(&mut DocumentTypeForm),
     ) {
         if let Some(form) = self
-            .document_types_dialog_mut()
+            .dialog_mut::<DocumentTypesDialog>()
             .and_then(DocumentTypesDialog::form_mut)
         {
             change(form);
@@ -155,7 +155,8 @@ impl Shell {
     }
 
     fn handle_document_types_destination_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(DocumentTypesDialog::Remove(_, form)) = self.document_types_dialog_mut() {
+        if let Some(DocumentTypesDialog::Remove(_, form)) = self.dialog_mut::<DocumentTypesDialog>()
+        {
             form.click_select();
         }
         cx.notify();
@@ -166,7 +167,8 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(DocumentTypesDialog::Remove(_, form)) = self.document_types_dialog_mut() {
+        if let Some(DocumentTypesDialog::Remove(_, form)) = self.dialog_mut::<DocumentTypesDialog>()
+        {
             form.choose(index);
         }
         cx.notify();
@@ -196,7 +198,7 @@ impl Shell {
             on_click
         };
         let types = self.document_types(cx);
-        match self.document_types_dialog()? {
+        match self.dialog::<DocumentTypesDialog>()? {
             DocumentTypesDialog::Add(form) => Some(view::render_form(
                 view::FormProps {
                     form,

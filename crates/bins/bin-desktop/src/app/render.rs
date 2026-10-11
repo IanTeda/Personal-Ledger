@@ -2,6 +2,9 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Shell;
+use crate::categories::form::CategoriesDialog;
+use crate::payees::form::PayeesDialog;
+use crate::tags::form::TagsDialog;
 use std::rc::Rc;
 
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
@@ -1293,7 +1296,7 @@ impl Render for Shell {
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
-            .children(self.accounts_dialog().map(|dialog| match dialog {
+            .children(self.dialog::<AccountsDialog>().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,
                     &account_options,
@@ -1352,19 +1355,17 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(match self.payees_dialog() {
-                Some(payees::form::PayeesDialog::Add(form)) => {
-                    Some(payees_view::add_dialog::render(
-                        payees_view::add_dialog::PayeeDialogMode::Add,
-                        form,
-                        form.options(),
-                        form.name_error(),
-                        form.is_valid(),
-                        payees_dialog_handlers,
-                        cx,
-                    ))
-                }
-                Some(payees::form::PayeesDialog::Edit(id, form)) => {
+            .children(match self.dialog::<PayeesDialog>() {
+                Some(PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
+                    payees_view::add_dialog::PayeeDialogMode::Add,
+                    form,
+                    form.options(),
+                    form.name_error(),
+                    form.is_valid(),
+                    payees_dialog_handlers,
+                    cx,
+                )),
+                Some(PayeesDialog::Edit(id, form)) => {
                     payees::get(self.payees_list(cx), *id).map(|payee| {
                         payees_view::add_dialog::render(
                             payees_view::add_dialog::PayeeDialogMode::Edit {
@@ -1386,7 +1387,7 @@ impl Render for Shell {
                         )
                     })
                 }
-                Some(payees::form::PayeesDialog::Delete(id, form)) => {
+                Some(PayeesDialog::Delete(id, form)) => {
                     self.delete_payee_target(cx).map(|(payee, action)| {
                         payees_view::delete_dialog::render(
                             payees_view::delete_dialog::DeletePayeeProps {
@@ -1411,32 +1412,29 @@ impl Render for Shell {
             })
             .children(self.render_document_types_dialog(&entity, cx))
             .children(self.render_inventory_dialog(&entity, cx))
-            .children(match self.tags_dialog() {
-                Some(tags::form::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
+            .children(match self.dialog::<TagsDialog>() {
+                Some(TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
                     form,
                     form.name_error(),
                     form.is_valid(),
                     tags_dialog_handlers,
                     cx,
                 )),
-                Some(tags::form::TagsDialog::Edit(id, form)) => tags::get(self.tags_list(cx), *id)
-                    .map(|tag| {
-                        tags_view::edit_dialog::render(
-                            tags_view::edit_dialog::EditTagProps {
-                                original_name: &tag.name,
-                                form,
-                                name_error: form.name_error(),
-                                valid: form.is_valid(),
-                                transactions: tags::transaction_count(self.transactions(cx), *id),
-                                on_toggle_active: tag_plain(
-                                    Shell::handle_tags_dialog_toggle_active,
-                                ),
-                            },
-                            tags_dialog_handlers,
-                            cx,
-                        )
-                    }),
-                Some(tags::form::TagsDialog::Remove(id, form)) => {
+                Some(TagsDialog::Edit(id, form)) => tags::get(self.tags_list(cx), *id).map(|tag| {
+                    tags_view::edit_dialog::render(
+                        tags_view::edit_dialog::EditTagProps {
+                            original_name: &tag.name,
+                            form,
+                            name_error: form.name_error(),
+                            valid: form.is_valid(),
+                            transactions: tags::transaction_count(self.transactions(cx), *id),
+                            on_toggle_active: tag_plain(Shell::handle_tags_dialog_toggle_active),
+                        },
+                        tags_dialog_handlers,
+                        cx,
+                    )
+                }),
+                Some(TagsDialog::Remove(id, form)) => {
                     tags::get(self.tags_list(cx), *id).map(|tag| {
                         tags_view::remove_dialog::render(
                             tags_view::remove_dialog::RemoveTagProps {
@@ -1450,7 +1448,7 @@ impl Render for Shell {
                         )
                     })
                 }
-                Some(tags::form::TagsDialog::Merge(form)) => {
+                Some(TagsDialog::Merge(form)) => {
                     let source = form.source_id();
                     let entity = entity.clone();
                     let on_field_click: tags_view::merge_dialog::OnFieldClick = {
@@ -1486,72 +1484,80 @@ impl Render for Shell {
                 }
                 None => None,
             })
-            .children(self.categories_dialog().map(|dialog| match dialog {
-                categories::form::CategoriesDialog::Add { form, .. } => {
-                    let parent_options: Vec<_> = self
-                        .categories(cx)
-                        .iter()
-                        .map(|c| {
-                            let depth = categories::depth(self.categories(cx), c.id);
-                            let is_available = depth < 2; // Can't add children to depth-2 categories
-                            categories_view::add_dialog::ParentOption {
-                                id: Some(c.id),
-                                label: categories::path(self.categories(cx), c.id)
-                                    .unwrap_or_else(|| c.name.clone()),
-                                is_available,
-                            }
-                        })
-                        .collect();
+            .children(
+                self.dialog::<CategoriesDialog>()
+                    .map(|dialog| match dialog {
+                        CategoriesDialog::Add { form, .. } => {
+                            let parent_options: Vec<_> = self
+                                .categories(cx)
+                                .iter()
+                                .map(|c| {
+                                    let depth = categories::depth(self.categories(cx), c.id);
+                                    let is_available = depth < 2; // Can't add children to depth-2 categories
+                                    categories_view::add_dialog::ParentOption {
+                                        id: Some(c.id),
+                                        label: categories::path(self.categories(cx), c.id)
+                                            .unwrap_or_else(|| c.name.clone()),
+                                        is_available,
+                                    }
+                                })
+                                .collect();
 
-                    categories_view::add_dialog::render(
-                        form,
-                        &parent_options,
-                        self.categories(cx),
-                        categories_view::DialogHandlers {
-                            on_field_click: on_categories_dialog_field_click,
-                            on_parent_change: on_categories_dialog_parent_change,
-                            on_type_change: on_categories_dialog_type_change,
-                            on_cancel: on_categories_dialog_cancel,
-                            on_confirm: on_categories_dialog_confirm,
-                        },
-                        cx,
-                    )
-                }
-                categories::form::CategoriesDialog::Edit(category_id, form) => {
-                    let category = self.categories(cx).iter().find(|c| c.id == *category_id);
-                    let descendants = category
-                        .map(|_| {
-                            categories::descendants_inclusive(self.categories(cx), *category_id)
-                        })
-                        .unwrap_or_default();
+                            categories_view::add_dialog::render(
+                                form,
+                                &parent_options,
+                                self.categories(cx),
+                                categories_view::DialogHandlers {
+                                    on_field_click: on_categories_dialog_field_click,
+                                    on_parent_change: on_categories_dialog_parent_change,
+                                    on_type_change: on_categories_dialog_type_change,
+                                    on_cancel: on_categories_dialog_cancel,
+                                    on_confirm: on_categories_dialog_confirm,
+                                },
+                                cx,
+                            )
+                        }
+                        CategoriesDialog::Edit(category_id, form) => {
+                            let category =
+                                self.categories(cx).iter().find(|c| c.id == *category_id);
+                            let descendants = category
+                                .map(|_| {
+                                    categories::descendants_inclusive(
+                                        self.categories(cx),
+                                        *category_id,
+                                    )
+                                })
+                                .unwrap_or_default();
 
-                    let parent_options: Vec<_> = self
-                        .categories(cx)
-                        .iter()
-                        .filter(|c| {
-                            // Exclude the category itself
-                            if c.id == *category_id {
-                                return false;
-                            }
-                            // Exclude descendants (to prevent cycles)
-                            if descendants.contains(&c.id) {
-                                return false;
-                            }
-                            // Check depth: can't be at depth 2 or deeper
-                            let depth = categories::depth(self.categories(cx), c.id);
-                            depth < 2
-                        })
-                        .map(|c| categories_view::edit_dialog::ParentOption {
-                            id: Some(c.id),
-                            label: categories::path(self.categories(cx), c.id)
-                                .unwrap_or_else(|| c.name.clone()),
-                            is_available: true,
-                        })
-                        .collect();
+                            let parent_options: Vec<_> = self
+                                .categories(cx)
+                                .iter()
+                                .filter(|c| {
+                                    // Exclude the category itself
+                                    if c.id == *category_id {
+                                        return false;
+                                    }
+                                    // Exclude descendants (to prevent cycles)
+                                    if descendants.contains(&c.id) {
+                                        return false;
+                                    }
+                                    // Check depth: can't be at depth 2 or deeper
+                                    let depth = categories::depth(self.categories(cx), c.id);
+                                    depth < 2
+                                })
+                                .map(|c| categories_view::edit_dialog::ParentOption {
+                                    id: Some(c.id),
+                                    label: categories::path(self.categories(cx), c.id)
+                                        .unwrap_or_else(|| c.name.clone()),
+                                    is_available: true,
+                                })
+                                .collect();
 
-                    // Count splits in this category (and descendants if parent)
-                    let split_count =
-                        categories::descendants_inclusive(self.categories(cx), *category_id)
+                            // Count splits in this category (and descendants if parent)
+                            let split_count = categories::descendants_inclusive(
+                                self.categories(cx),
+                                *category_id,
+                            )
                             .iter()
                             .flat_map(|cat_id| {
                                 self.transactions(cx).iter().flat_map(move |t| {
@@ -1560,36 +1566,38 @@ impl Render for Shell {
                             })
                             .count();
 
-                    let is_parent = !categories::is_leaf(self.categories(cx), *category_id);
+                            let is_parent = !categories::is_leaf(self.categories(cx), *category_id);
 
-                    categories_view::edit_dialog::render(
-                        *category_id,
-                        form,
-                        &parent_options,
-                        self.categories(cx),
-                        split_count,
-                        is_parent,
-                        categories_view::DialogHandlers {
-                            on_field_click: on_categories_dialog_field_click,
-                            on_parent_change: on_categories_dialog_parent_change,
-                            on_type_change: on_categories_dialog_type_change,
-                            on_cancel: on_categories_dialog_cancel,
-                            on_confirm: on_categories_dialog_confirm,
-                        },
-                        cx,
-                    )
-                }
-                categories::form::CategoriesDialog::Delete(category_id, form) => {
-                    let category = self
-                        .categories(cx)
-                        .iter()
-                        .find(|c| c.id == *category_id)
-                        .cloned();
+                            categories_view::edit_dialog::render(
+                                *category_id,
+                                form,
+                                &parent_options,
+                                self.categories(cx),
+                                split_count,
+                                is_parent,
+                                categories_view::DialogHandlers {
+                                    on_field_click: on_categories_dialog_field_click,
+                                    on_parent_change: on_categories_dialog_parent_change,
+                                    on_type_change: on_categories_dialog_type_change,
+                                    on_cancel: on_categories_dialog_cancel,
+                                    on_confirm: on_categories_dialog_confirm,
+                                },
+                                cx,
+                            )
+                        }
+                        CategoriesDialog::Delete(category_id, form) => {
+                            let category = self
+                                .categories(cx)
+                                .iter()
+                                .find(|c| c.id == *category_id)
+                                .cloned();
 
-                    if let Some(category) = category {
-                        // Count splits in this category (and descendants if parent)
-                        let split_count =
-                            categories::descendants_inclusive(self.categories(cx), *category_id)
+                            if let Some(category) = category {
+                                // Count splits in this category (and descendants if parent)
+                                let split_count = categories::descendants_inclusive(
+                                    self.categories(cx),
+                                    *category_id,
+                                )
                                 .iter()
                                 .flat_map(|cat_id| {
                                     self.transactions(cx).iter().flat_map(move |t| {
@@ -1598,24 +1606,25 @@ impl Render for Shell {
                                 })
                                 .count();
 
-                        // Count budgets attached to this category
-                        let budget_count = self.budgets(cx).limit_count(*category_id);
+                                // Count budgets attached to this category
+                                let budget_count = self.budgets(cx).limit_count(*category_id);
 
-                        categories_view::delete_dialog::render(
-                            &category,
-                            form,
-                            split_count,
-                            budget_count,
-                            on_categories_dialog_cancel.clone(),
-                            on_categories_dialog_confirm.clone(),
-                            cx,
-                        )
-                    } else {
-                        div().into_any_element()
-                    }
-                }
-            }))
-            .children(self.settings_dialog().map(|dialog| match dialog {
+                                categories_view::delete_dialog::render(
+                                    &category,
+                                    form,
+                                    split_count,
+                                    budget_count,
+                                    on_categories_dialog_cancel.clone(),
+                                    on_categories_dialog_confirm.clone(),
+                                    cx,
+                                )
+                            } else {
+                                div().into_any_element()
+                            }
+                        }
+                    }),
+            )
+            .children(self.dialog::<SettingsDialog>().map(|dialog| match dialog {
                 SettingsDialog::AddUnit(form) => units_view::add_dialog::render(
                     form,
                     on_unit_dialog_field_click.clone(),

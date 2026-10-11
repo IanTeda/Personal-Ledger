@@ -11,7 +11,7 @@ impl Shell {
     #[doc(hidden)]
     pub fn bills_snapshot(&self, cx: &gpui::App) -> BillsSnapshot {
         let mut snapshot = self.bills_view.read(cx).snapshot(cx);
-        let dialog = self.bills_dialog();
+        let dialog = self.dialog::<BillsDialog>();
         snapshot.dialog = dialog.map(|dialog| {
             match dialog {
                 BillsDialog::Add(_) => "Add",

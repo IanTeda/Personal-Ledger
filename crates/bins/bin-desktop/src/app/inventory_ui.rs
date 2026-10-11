@@ -377,7 +377,7 @@ impl Shell {
         change: impl FnOnce(&mut PropertyForm),
     ) {
         if let Some(InventoryDialog::Add(form) | InventoryDialog::Edit(_, form)) =
-            self.inventory_dialog_mut()
+            self.dialog_mut::<InventoryDialog>()
         {
             change(form);
         }
@@ -399,14 +399,14 @@ impl Shell {
     }
 
     fn handle_room_destination_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.inventory_dialog_mut() {
+        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.dialog_mut::<InventoryDialog>() {
             form.click_select();
         }
         cx.notify();
     }
 
     fn handle_room_destination_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.inventory_dialog_mut() {
+        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.dialog_mut::<InventoryDialog>() {
             form.choose(index);
         }
         cx.notify();
@@ -433,7 +433,7 @@ impl Shell {
             });
             on_click
         };
-        match self.inventory_dialog()? {
+        match self.dialog::<InventoryDialog>()? {
             InventoryDialog::AddRoom(property, form) => {
                 let name = self.inventory(cx).property(*property)?.name.clone();
                 Some(self.render_room_form(true, &name, form, form.problem(), plain, cx))

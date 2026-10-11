@@ -1,6 +1,7 @@
 //! The Categories destination's wiring: the Settings Categories tree's keys, clicks and folds, and the Add, Edit and Delete dialogs. The pure tree rules live in `lib_categories`, the chrome in `view::settings::categories` and `view::categories`, and the tree's rows and cursor are the `CategoriesStore` and `CategoriesView` Entities (ADR-0032).
 
 use super::{Shell, transactions_ui::move_category_splits};
+use crate::categories::form::CategoriesDialog;
 
 use crate::{
     budgets, categories,
@@ -202,9 +203,10 @@ impl Shell {
             budget_lock: self.categories_budget_lock(None, cx),
             focused: categories::form::CategoryField::Name,
         };
-        self.open_dialog(OpenDialog::Categories(
-            categories::form::CategoriesDialog::Add { parent_id, form },
-        ));
+        self.open_dialog(OpenDialog::Categories(CategoriesDialog::Add {
+            parent_id,
+            form,
+        }));
     }
 
     /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
@@ -229,9 +231,10 @@ impl Shell {
                 budget_lock: self.categories_budget_lock(Some(category_id), cx),
                 focused: categories::form::CategoryField::Name,
             };
-            self.open_dialog(OpenDialog::Categories(
-                categories::form::CategoriesDialog::Edit(category_id, form),
-            ));
+            self.open_dialog(OpenDialog::Categories(CategoriesDialog::Edit(
+                category_id,
+                form,
+            )));
         }
     }
 
@@ -340,9 +343,10 @@ impl Shell {
             return;
         };
         let form = categories::form::DeleteCategoryForm::new(category.name.as_str());
-        self.open_dialog(OpenDialog::Categories(
-            categories::form::CategoriesDialog::Delete(category_id, form),
-        ));
+        self.open_dialog(OpenDialog::Categories(CategoriesDialog::Delete(
+            category_id,
+            form,
+        )));
     }
 
     pub(super) fn handle_categories_dialog_field_click(
@@ -350,7 +354,7 @@ impl Shell {
         field: categories::form::CategoryField,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog_mut()
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
             && let Some(form) = dialog.form_mut()
         {
             form.focus_field(field);
@@ -370,7 +374,7 @@ impl Shell {
                 .find(|c| c.id == parent_id)
                 .map(|parent| parent.category_type.clone())
         });
-        if let Some(dialog) = self.categories_dialog_mut()
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
             && let Some(form) = dialog.form_mut()
         {
             form.parent_id = parent_id;
@@ -386,9 +390,9 @@ impl Shell {
         category_type: CategoryTypes,
         cx: &mut Context<'_, Self>,
     ) {
-        let can_change_type = match self.categories_dialog() {
-            Some(categories::form::CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
-            Some(categories::form::CategoriesDialog::Edit(id, _)) => self
+        let can_change_type = match self.dialog::<CategoriesDialog>() {
+            Some(CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
+            Some(CategoriesDialog::Edit(id, _)) => self
                 .categories(cx)
                 .iter()
                 .find(|c| c.id == *id)
@@ -398,11 +402,11 @@ impl Shell {
         if !can_change_type {
             return;
         }
-        let edited_id = match self.categories_dialog() {
-            Some(categories::form::CategoriesDialog::Edit(id, _)) => Some(*id),
+        let edited_id = match self.dialog::<CategoriesDialog>() {
+            Some(CategoriesDialog::Edit(id, _)) => Some(*id),
             _ => None,
         };
-        if let Some(dialog) = self.categories_dialog_mut()
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
             && let Some(form) = dialog.form_mut()
         {
             form.category_type = Some(category_type.clone());
@@ -433,11 +437,11 @@ impl Shell {
     /// selection in range. The form has already validated.
     pub(super) fn apply_categories_dialog(
         &mut self,
-        dialog: categories::form::CategoriesDialog,
+        dialog: CategoriesDialog,
         cx: &mut Context<'_, Self>,
     ) {
         match dialog {
-            categories::form::CategoriesDialog::Add { form, .. } => {
+            CategoriesDialog::Add { form, .. } => {
                 let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
                 // A rejected insert (e.g. depth) closes the dialog without adding anything.
                 if let Ok(category_id) = self.categories_store.update(cx, |store, cx| {
@@ -451,7 +455,7 @@ impl Shell {
                     self.save_category_budget(category_id, &form, false, cx);
                 }
             }
-            categories::form::CategoriesDialog::Edit(id, form) => {
+            CategoriesDialog::Edit(id, form) => {
                 let name = form.name.text().trim().to_string();
                 let renamed = self
                     .categories_store
@@ -464,7 +468,7 @@ impl Shell {
                 self.report_category_write(moved);
                 self.save_category_budget(id, &form, true, cx);
             }
-            categories::form::CategoriesDialog::Delete(category_id, _) => {
+            CategoriesDialog::Delete(category_id, _) => {
                 let (kind, text) = self.delete_category(category_id, cx);
                 self.raise_toast(kind, text);
                 // Keep the selection in range. It indexes the Settings rows, Expense then Income,

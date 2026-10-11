@@ -175,7 +175,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self
-            .accounts_dialog_mut()
+            .dialog_mut::<AccountsDialog>()
             .and_then(AccountsDialog::form_mut)
         {
             if field.is_select() {
@@ -195,7 +195,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self
-            .accounts_dialog_mut()
+            .dialog_mut::<AccountsDialog>()
             .and_then(AccountsDialog::form_mut)
         {
             form.choose_option(field, index);
