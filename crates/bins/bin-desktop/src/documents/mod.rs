@@ -2,6 +2,7 @@
 //! that need the Desktop's messages and dialogs. The `gpui`-free model, rules and stub seed live in
 //! `lib_documents` and are re-exported here, so every `documents::X` path keeps working.
 
+pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod model;
 pub(crate) mod picker;

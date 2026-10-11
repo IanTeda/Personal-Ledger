@@ -5,7 +5,6 @@
 //! state in `DocumentsView` (ADR-0032); the helpers below read and edit them through `cx`. The rules themselves are `documents` and `documents::form`; this only
 //! wires them to keys and clicks.
 
-use std::path::Path;
 use std::rc::Rc;
 
 use gpui::{Context, Keystroke, Window};
@@ -13,7 +12,8 @@ use lib_toast::ToastKind;
 
 use super::{OpenDialog, Shell, key_dispatch::typed_char};
 use crate::{
-    chrome::statusline::PageStatus,
+    chrome::{dialog_apply, statusline::PageStatus},
+    documents::apply::{DocumentOutcome, DocumentsApply, exists_on_disk},
     documents::form::{
         DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
         ImportForm, ImportOutcome,
@@ -94,11 +94,6 @@ fn dialog_hints(import: bool) -> Vec<(&'static str, String)> {
         crate::msg::desktop_hint_confirm(),
     ));
     hints
-}
-
-/// Whether the path exists on disk, passed to the form checks so they stay testable.
-fn exists_on_disk(path: &Path) -> bool {
-    path.exists()
 }
 
 impl Shell {
@@ -1177,37 +1172,6 @@ impl Shell {
         self.open_documents_dialog(DocumentsDialog::AcceptAll(count));
     }
 
-    pub(super) fn apply_documents_accept_all(&mut self, cx: &mut gpui::App) {
-        let focus = self
-            .documents_selected_document(cx)
-            .map(|document| document.id);
-        // Copied out so the Documents can be written while the Transactions and Payees are read.
-        let transactions = self.transactions(cx).to_vec();
-        let payees = self.payees_list(cx).to_vec();
-        let batch = self.mutate_documents(cx, |data| {
-            documents::accept_all_strong(
-                &data.types,
-                &mut data.documents,
-                &transactions,
-                &payees,
-                focus,
-            )
-        });
-        let Some(batch) = batch else {
-            return;
-        };
-        let count = batch.entries.len();
-        self.edit_documents_state(cx, |state| state.undo = Some(batch));
-        self.edit_documents_state(cx, |state| state.inbox_selected = 0);
-        self.documents_state(cx)
-            .scroll
-            .set_offset(gpui::Point::default());
-        self.raise_toast(
-            ToastKind::Success,
-            crate::msg::desktop_documents_toast_filed_many(&count.to_string()),
-        );
-    }
-
     /// `e` in the Inbox: the focused Document's Extracted Facts.
     fn open_documents_facts(&mut self, cx: &gpui::App) {
         let options = self.documents_options(cx);
@@ -1223,37 +1187,6 @@ impl Shell {
         let id = document.id;
         let form = FactsForm::new(&facts, &options, self.today, self.settings_date_style);
         self.open_documents_dialog(DocumentsDialog::Facts(id, Box::new(form)));
-    }
-
-    /// Saves the facts; suggestions recompute on the next render. A no-op while a field is wrong.
-    pub(super) fn apply_documents_facts(&mut self, id: u32, form: &FactsForm, cx: &mut gpui::App) {
-        let Some(facts) = form.build() else {
-            return;
-        };
-        let title = documents::get(self.documents(cx), id)
-            .map(|document| document.title.clone())
-            .unwrap_or_default();
-        if self
-            .mutate_documents(cx, |data| {
-                documents::edit_facts(&mut data.documents, id, facts)
-            })
-            .is_err()
-        {
-            return;
-        }
-        // Editing clears a skip, so the Document may have moved up the list: follow it.
-        if let Some(at) = self
-            .documents_inbox_rows(cx)
-            .iter()
-            .position(|document| document.id == id)
-        {
-            self.edit_documents_state(cx, |state| state.inbox_selected = at);
-            self.documents_state(cx).scroll.scroll_to_item(at);
-        }
-        self.raise_toast(
-            ToastKind::Success,
-            crate::msg::desktop_documents_toast_facts_saved(&title),
-        );
     }
 
     fn handle_facts_field_click(&mut self, field: FactsField, cx: &mut Context<'_, Self>) {
@@ -1353,21 +1286,97 @@ impl Shell {
         self.open_dialog(OpenDialog::Documents(dialog));
     }
 
-    /// Applies a confirmed Documents dialog (`Enter`, `Ctrl-Enter` in Import, and the confirm
-    /// button). A form with a problem only `Shell` can see (a missing file, a duplicate path) and
-    /// an import that took nothing reopen the Dialog, which shows why.
-    pub(super) fn apply_documents_dialog(
-        &mut self,
-        dialog: DocumentsDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
-        match dialog {
-            DocumentsDialog::Add(form) => self.apply_documents_form(None, form, cx),
-            DocumentsDialog::Edit(id, form) => self.apply_documents_form(Some(id), form, cx),
-            DocumentsDialog::Import(form, _) => self.apply_documents_import(form, cx),
-            DocumentsDialog::Facts(id, form) => self.apply_documents_facts(id, &form, cx),
-            DocumentsDialog::AcceptAll(_) => self.apply_documents_accept_all(cx),
-            DocumentsDialog::Picker(state) => self.apply_documents_picker(*state, cx),
+    /// Confirms the open Documents dialog (`Enter`, `Ctrl-Enter` in Import, and the confirm
+    /// button). The forms go through the host's cycle: the command runs against the Documents
+    /// store, a refusal stays on the form (an import that took nothing says why each path
+    /// failed), and a landed one closes the dialog. The link picker answers with a request that
+    /// needs the live rows, run by [`Self::apply_documents_picker`].
+    pub(super) fn confirm_documents_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        if matches!(self.documents_dialog(), Some(DocumentsDialog::Picker(_))) {
+            let Some(OpenDialog::Documents(DocumentsDialog::Picker(state))) =
+                self.chrome.dialog.take()
+            else {
+                return;
+            };
+            self.nav.exit_mode();
+            self.apply_documents_picker(*state, cx);
+            return;
+        }
+        let mut apply = DocumentsApply {
+            documents: self.documents_store.clone(),
+            transactions: self.transactions_store.clone(),
+            payees: self.payees_store.clone(),
+            today: self.today,
+            focus: self
+                .documents_selected_document(cx)
+                .map(|document| document.id),
+        };
+        let Some(dialog) = self.dialog_mut::<DocumentsDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            DocumentOutcome::Added { id, title } => {
+                self.select_added_document(id, cx);
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_documents_toast_added(&title),
+                );
+            }
+            DocumentOutcome::Saved { id, title } => {
+                self.select_added_document(id, cx);
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_documents_toast_saved(&title),
+                );
+            }
+            DocumentOutcome::Imported { imported, skipped } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    if skipped == 0 {
+                        crate::msg::desktop_documents_toast_imported(
+                            i64::try_from(imported).unwrap_or(i64::MAX),
+                        )
+                    } else {
+                        crate::msg::desktop_documents_toast_import_partial(
+                            &imported.to_string(),
+                            &skipped.to_string(),
+                        )
+                    },
+                );
+                self.set_documents_mode(DocumentsMode::Inbox, cx);
+            }
+            DocumentOutcome::FactsSaved { id, title } => {
+                // Editing clears a skip, so the Document may have moved up the list: follow it.
+                if let Some(at) = self
+                    .documents_inbox_rows(cx)
+                    .iter()
+                    .position(|document| document.id == id)
+                {
+                    self.edit_documents_state(cx, |state| state.inbox_selected = at);
+                    self.documents_state(cx).scroll.scroll_to_item(at);
+                }
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_documents_toast_facts_saved(&title),
+                );
+            }
+            DocumentOutcome::Accepted(None) => {}
+            DocumentOutcome::Accepted(Some(batch)) => {
+                let count = batch.entries.len();
+                self.edit_documents_state(cx, |state| state.undo = Some(batch));
+                self.edit_documents_state(cx, |state| state.inbox_selected = 0);
+                self.documents_state(cx)
+                    .scroll
+                    .set_offset(gpui::Point::default());
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_documents_toast_filed_many(&count.to_string()),
+                );
+            }
         }
     }
 
@@ -1398,64 +1407,6 @@ impl Shell {
         }
     }
 
-    /// **Add document** / **Save** and `enter`: adds a Filed Document (selecting it) or saves the
-    /// edit. A no-op while the form has a problem or is incomplete.
-    pub(super) fn apply_documents_form(
-        &mut self,
-        editing: Option<u32>,
-        form: Box<DocumentForm>,
-        cx: &mut gpui::App,
-    ) {
-        let problems = form.problems(self.documents(cx), exists_on_disk);
-        let Some(new) = form.can_save(&problems).then(|| form.build()).flatten() else {
-            let dialog = match editing {
-                None => DocumentsDialog::Add(form),
-                Some(id) => DocumentsDialog::Edit(id, form),
-            };
-            self.open_documents_dialog(dialog);
-            return;
-        };
-        let title = new.title.clone();
-        match editing {
-            None => {
-                let Ok(id) = self
-                    .mutate_documents(cx, |data| documents::add_filed(&mut data.documents, new))
-                else {
-                    self.open_documents_dialog(DocumentsDialog::Add(form));
-                    return;
-                };
-                self.select_added_document(id, cx);
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_documents_toast_added(&title),
-                );
-            }
-            Some(id) => {
-                if self
-                    .mutate_documents(cx, |data| {
-                        documents::edit_metadata(
-                            &mut data.documents,
-                            id,
-                            &new.title,
-                            new.doc_type,
-                            new.date,
-                            new.key_date,
-                        )
-                    })
-                    .is_err()
-                {
-                    self.open_documents_dialog(DocumentsDialog::Edit(id, form));
-                    return;
-                }
-                self.select_added_document(id, cx);
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_documents_toast_saved(&title),
-                );
-            }
-        }
-    }
-
     /// Puts the Library on All documents, clears the search and selects `id`, so a Document just
     /// added or edited is on screen whatever scope was showing.
     fn select_added_document(&mut self, id: u32, cx: &mut gpui::App) {
@@ -1481,59 +1432,6 @@ impl Shell {
             .unwrap_or(0);
         self.edit_documents_state(cx, |state| state.selected = at);
         self.documents_state(cx).scroll.scroll_to_item(at);
-    }
-
-    /// **Import**: every typed path that exists lands in the Inbox. When none does the dialog stays
-    /// open and says why each failed.
-    pub(super) fn apply_documents_import(&mut self, form: ImportForm, cx: &mut gpui::App) {
-        let outcomes = self.mutate_documents(cx, |data| {
-            documents::form::import_all(
-                &data.types,
-                &form,
-                &mut data.documents,
-                self.today,
-                exists_on_disk,
-            )
-        });
-        let imported = outcomes
-            .iter()
-            .filter(|outcome| matches!(outcome, ImportOutcome::Imported(_)))
-            .count();
-        let notes: Vec<String> = outcomes
-            .iter()
-            .filter_map(|outcome| match outcome {
-                ImportOutcome::Imported(_) => None,
-                ImportOutcome::NotFound(path) => {
-                    Some(crate::msg::desktop_documents_error_path_missing(path))
-                }
-                ImportOutcome::Unsupported(path) => Some(format!(
-                    "{path}: {}",
-                    crate::msg::desktop_documents_error_unsupported()
-                )),
-                ImportOutcome::Already(title) => {
-                    Some(crate::msg::desktop_documents_error_already(title))
-                }
-            })
-            .collect();
-        if imported == 0 {
-            self.open_documents_dialog(DocumentsDialog::Import(form, notes));
-            return;
-        }
-        let skipped = notes.len();
-        self.raise_toast(
-            ToastKind::Success,
-            if skipped == 0 {
-                crate::msg::desktop_documents_toast_imported(
-                    i64::try_from(imported).unwrap_or(i64::MAX),
-                )
-            } else {
-                crate::msg::desktop_documents_toast_import_partial(
-                    &imported.to_string(),
-                    &skipped.to_string(),
-                )
-            },
-        );
-        self.set_documents_mode(DocumentsMode::Inbox, cx);
     }
 
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
