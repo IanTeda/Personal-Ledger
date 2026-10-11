@@ -4,6 +4,7 @@
 //! and `view::settings` are the chrome; this module only knows what pages exist, their index
 //! order, and their label/scope-note/search text.
 
+pub(crate) mod apply;
 pub mod display;
 pub mod tracing_log;
 

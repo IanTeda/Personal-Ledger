@@ -214,13 +214,13 @@ impl Render for Shell {
         let on_settings_dialog_cancel: units_view::add_dialog::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_settings_dialog_cancel(cx));
+                entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
             })
         };
         let on_settings_dialog_confirm: units_view::add_dialog::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_settings_dialog_confirm(cx));
+                entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
         let on_add_institution_account_type_click: institutions_view::add_dialog::OnAccountTypeClick = {

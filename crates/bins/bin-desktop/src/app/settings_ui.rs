@@ -6,11 +6,13 @@
 use super::Shell;
 use super::key_dispatch::PENDING_G_TIMEOUT;
 use super::log_feed::LOG_LINE_STEP;
+use crate::chrome::dialog_apply;
 use crate::chrome::dialog_host::OpenDialog;
 use crate::institutions::InstitutionProduct;
 use crate::institutions::form::AddInstitutionForm;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, InputMode, Noun};
+use crate::settings::apply::{SettingsApply, SettingsOutcome};
 use crate::settings::display::{DATE_STYLE_CHOICES, RowDensity, StatusGlyphs};
 use crate::settings::tracing_log::TracingLevel;
 use crate::settings::{
@@ -881,70 +883,30 @@ impl Shell {
         }
     }
 
-    /// Shared by the Add/Edit unit dialogs' own Cancel button -- discards whatever was typed,
-    /// same as `Esc` (`Self::handle_key_down`'s `ClosePopupsAndExitMode` arm).
-    pub(super) fn handle_settings_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
+    /// Confirms the open Settings dialog through the host's cycle: the form's command runs
+    /// against the Units and Institutions stores, and a landed one closes the dialog. Deleting a
+    /// Unit and Clear logs toast.
+    pub(super) fn confirm_settings_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = SettingsApply {
+            units: self.units_store.clone(),
+            institutions: self.institutions_store.clone(),
+        };
+        let Some(dialog) = self.dialog_mut::<SettingsDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
         self.close_dialog();
-        cx.notify();
-    }
-
-    /// Applies a confirmed Settings dialog (reached through [`Self::confirm_open_dialog`], from
-    /// the Add/Save/Delete button or `Enter`): the README's own "Dialog lifecycle" rows -- Add
-    /// "validate -> append to Units table -> close", Edit "Save -> update the in-memory row ->
-    /// close" (a changed code just relabels the row here; rewriting real references is out of
-    /// scope per the map's own Destination), Delete "confirm -> remove + close". The form has
-    /// already validated.
-    pub(super) fn apply_settings_dialog(&mut self, dialog: SettingsDialog, cx: &mut App) {
-        match dialog {
-            SettingsDialog::AddUnit(form) => {
-                // Neither Add unit field carries a source or a base or default flag: the store
-                // defaults a dialog-created unit to "Manual entry", not base and not default.
-                self.units_store.update(cx, |store, cx| {
-                    store.add_unit(
-                        cx,
-                        form.code.into_text(),
-                        form.name.into_text(),
-                        form.kind.label().to_string(),
-                    );
-                });
+        match outcome {
+            SettingsOutcome::Saved => {}
+            SettingsOutcome::UnitDeleted { code } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_unit_deleted(&code),
+                );
             }
-            SettingsDialog::EditUnit(index, form) => {
-                // Source and the base and default flags aren't Edit unit fields either, so the
-                // store keeps them from the row being edited.
-                self.units_store.update(cx, |store, cx| {
-                    store.edit_unit(
-                        cx,
-                        index,
-                        form.code.into_text(),
-                        form.name.into_text(),
-                        form.kind.label().to_string(),
-                    );
-                });
-            }
-            SettingsDialog::DeleteUnit(index, form) => {
-                // Defensive only: the dialog is modal, so the row it opened on is still there.
-                let removed = self
-                    .units_store
-                    .update(cx, |store, cx| store.remove_unit(cx, index, &form.code));
-                if let Some(unit) = removed {
-                    self.raise_toast(
-                        ToastKind::Success,
-                        lib_locale::msg::toast_unit_deleted(&unit.code),
-                    );
-                }
-            }
-            SettingsDialog::AddInstitution(form) => {
-                let account_type = form
-                    .account_types
-                    .iter()
-                    .map(|account_type| account_type.label())
-                    .collect::<Vec<_>>()
-                    .join(" \u{b7} ");
-                self.institutions_store.update(cx, |store, cx| {
-                    store.add(cx, form.name.into_text(), account_type);
-                });
-            }
-            SettingsDialog::ClearLogs => {
+            SettingsOutcome::LogsConfirmed => {
                 self.settings_view
                     .update(cx, |view, cx| view.update_log(cx, |log| log.clear()));
                 self.raise_toast(
@@ -953,11 +915,6 @@ impl Shell {
                 );
             }
         }
-    }
-
-    pub(super) fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
     }
 
     /// The settings index rail's own row click (`chrome::rail::settings_index::OnEntryClick`):

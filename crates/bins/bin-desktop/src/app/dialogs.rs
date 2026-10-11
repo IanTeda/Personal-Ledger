@@ -27,41 +27,21 @@ impl Shell {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
-        // Payees, Tags, Accounts, Categories, Inventory, Bills, Budgets, Documents and Document types run through the host's cycle (`DialogForm`/`Apply`); the other domains
-        // still take their Dialog and apply it themselves until #633 lands.
+        // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
-            Some(OpenDialog::Payees(_)) => return self.confirm_payees_dialog(cx),
-            Some(OpenDialog::Tags(_)) => return self.confirm_tags_dialog(cx),
-            Some(OpenDialog::Accounts(_)) => return self.confirm_accounts_dialog(cx),
-            Some(OpenDialog::Categories(_)) => return self.confirm_categories_dialog(cx),
-            Some(OpenDialog::Inventory(_)) => return self.confirm_inventory_dialog(cx),
-            Some(OpenDialog::Bills(_)) => return self.confirm_bills_dialog(cx),
-            Some(OpenDialog::Budgets(_)) => return self.confirm_budgets_dialog(cx),
-            Some(OpenDialog::Documents(_)) => return self.confirm_documents_dialog(cx),
-            Some(OpenDialog::DocumentTypes(_)) => return self.confirm_document_types_dialog(cx),
-            _ => {}
-        }
-        let Some(dialog) = self.chrome.dialog.take() else {
-            return;
-        };
-        self.nav.exit_mode();
-        match dialog {
-            OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog, cx),
-            OpenDialog::Accounts(_) => unreachable!("Accounts confirms through the host's cycle"),
-            OpenDialog::Categories(_) => {
-                unreachable!("Categories confirms through the host's cycle")
-            }
-            OpenDialog::Payees(_) => unreachable!("Payees confirms through the host's cycle"),
-            OpenDialog::DocumentTypes(_) => {
-                unreachable!("Document types confirm through the host's cycle")
-            }
-            OpenDialog::Inventory(_) => unreachable!("Inventory confirms through the host's cycle"),
-            OpenDialog::Tags(_) => unreachable!("Tags confirms through the host's cycle"),
-            OpenDialog::Bills(_) => unreachable!("Bills confirms through the host's cycle"),
-            OpenDialog::Budgets(_) => unreachable!("Budgets confirms through the host's cycle"),
-            OpenDialog::Documents(_) => unreachable!("Documents confirms through the host's cycle"),
+            Some(OpenDialog::Settings(_)) => self.confirm_settings_dialog(cx),
+            Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
+            Some(OpenDialog::Categories(_)) => self.confirm_categories_dialog(cx),
+            Some(OpenDialog::Payees(_)) => self.confirm_payees_dialog(cx),
+            Some(OpenDialog::DocumentTypes(_)) => self.confirm_document_types_dialog(cx),
+            Some(OpenDialog::Inventory(_)) => self.confirm_inventory_dialog(cx),
+            Some(OpenDialog::Tags(_)) => self.confirm_tags_dialog(cx),
+            Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
+            Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
+            Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
             // Read-only: it has nothing to apply.
-            OpenDialog::ToastHistory(_) => {}
+            Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
+            None => {}
         }
     }
 
