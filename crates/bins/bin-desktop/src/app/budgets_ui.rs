@@ -1,6 +1,9 @@
 //! The Budgets destination's wiring: keys, clicks, dialogs, the Progress, Plan and History tabs' state changes, and the element builders for its dialogs. The pure rules live in `budgets`; the chrome in `view::budgets`.
 
-use crate::budgets::BudgetsDialog;
+use crate::budgets::{
+    BudgetsDialog,
+    apply::{BudgetOutcome, BudgetsApply},
+};
 use lib_core::CategoryTypes;
 use lib_toast::ToastKind;
 
@@ -10,8 +13,8 @@ use std::rc::Rc;
 use crate::{
     budgets,
     categories::{self},
-    chrome::dialog_host::OpenDialog,
     chrome::rail::{self as chrome_rail},
+    chrome::{dialog_apply, dialog_host::OpenDialog},
     navigation::key_router::Movement,
     navigation::nav::{FocusZone, InputMode, Noun},
     payees::{self},
@@ -191,16 +194,54 @@ impl Shell {
         cx.notify();
     }
 
-    /// Applies a confirmed Budgets dialog (`Enter` and the confirm button). The list dialogs
-    /// answer with a request: a Dialog that stays open afterwards (Manage's `*`/`x`, 9d's
-    /// handoffs that find nothing to open) goes back into the slot first, so the same code runs
-    /// as when a click made the request.
-    pub(super) fn apply_budgets_dialog(
-        &mut self,
-        dialog: BudgetsDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
-        use budgets::{BudgetsDialog, DetailRequest, ManageRequest, SwitcherRequest};
+    /// Confirms the open Budgets dialog. The forms that write (the Budget form, Edit budget, Stop
+    /// and Fill) go through the host's cycle: the command runs against the Budgets store, a
+    /// refusal stays on the form, and a landed one closes the dialog. The Switcher, Manage and
+    /// Category detail lists answer with a request instead, run by [`Self::apply_budgets_request`].
+    pub(super) fn confirm_budgets_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let writes = matches!(
+            self.dialog::<BudgetsDialog>(),
+            Some(
+                BudgetsDialog::Budget(_)
+                    | BudgetsDialog::EditLimit(_)
+                    | BudgetsDialog::Stop(_)
+                    | BudgetsDialog::Fill { .. }
+            )
+        );
+        if !writes {
+            let Some(OpenDialog::Budgets(dialog)) = self.chrome.dialog.take() else {
+                return;
+            };
+            self.nav.exit_mode();
+            self.apply_budgets_request(*dialog, cx);
+            return;
+        }
+        let mut apply = BudgetsApply {
+            budgets: self.budgets_store.clone(),
+            accounts: self.accounts.clone(),
+            categories: self.categories_store.clone(),
+            transactions: self.transactions_store.clone(),
+            bills: self.bills_store.clone(),
+            current: self.budgets_state(cx).current,
+            today: self.today,
+        };
+        let Some(dialog) = self.dialog_mut::<BudgetsDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        if let BudgetOutcome::Created(id) = outcome {
+            self.switch_budget(id, cx);
+        }
+    }
+
+    /// Runs the request a list dialog answered with, on the dialog the confirm took. A Dialog
+    /// that stays open afterwards (Manage's `*`/`x`, 9d's handoffs that find nothing to open) goes
+    /// back into the slot first, so the same code runs as when a click made the request.
+    fn apply_budgets_request(&mut self, dialog: BudgetsDialog, cx: &mut Context<'_, Self>) {
+        use budgets::{DetailRequest, ManageRequest, SwitcherRequest};
         match dialog {
             BudgetsDialog::Switcher(switcher) => match switcher.request {
                 SwitcherRequest::Choose => {
@@ -210,7 +251,6 @@ impl Shell {
                 }
                 SwitcherRequest::New => self.open_budgets_new(cx),
             },
-            BudgetsDialog::Budget(form) => self.apply_budgets_form(form, cx),
             BudgetsDialog::Manage(mut manage) => match manage.request.take() {
                 Some(ManageRequest::New) => self.open_budgets_new(cx),
                 Some(ManageRequest::Action(id, action)) => {
@@ -229,9 +269,11 @@ impl Shell {
                     DetailRequest::Edit => self.open_budgets_detail_limit(cx),
                 }
             }
-            BudgetsDialog::EditLimit(form) => self.apply_budgets_limit(form, cx),
-            BudgetsDialog::Fill { month, source } => self.apply_budgets_fill(month, source, cx),
-            BudgetsDialog::Stop(form) => self.apply_budgets_stop(form, cx),
+            // The write forms confirm through the host's cycle.
+            BudgetsDialog::Budget(_)
+            | BudgetsDialog::EditLimit(_)
+            | BudgetsDialog::Fill { .. }
+            | BudgetsDialog::Stop(_) => {}
         }
     }
 
@@ -891,48 +933,6 @@ impl Shell {
         }
     }
 
-    /// **Save budget** and `enter`: writes the record. A refused save reopens the dialog with the
-    /// error shown.
-    pub(super) fn apply_budgets_limit(
-        &mut self,
-        mut form: budgets::limit_form::LimitForm,
-        cx: &mut gpui::App,
-    ) {
-        let Some(draft) = form.draft() else {
-            return;
-        };
-        let current = self.budgets_state(cx).current;
-        let categories = self.categories(cx).to_vec();
-        let saved = self.mutate_budgets(cx, |budgets| {
-            budgets::limit_form::save(budgets, current, &categories, &draft, self.today)
-        });
-        if let Err(error) = saved {
-            form.error = Some(error);
-            self.open_budgets_dialog(BudgetsDialog::EditLimit(form));
-        }
-    }
-
-    /// **Stop budgeting** and `enter`: writes the Stop from the chosen month. A refused one
-    /// reopens the dialog with the error shown.
-    pub(super) fn apply_budgets_stop(
-        &mut self,
-        mut form: budgets::limit_form::StopForm,
-        cx: &mut gpui::App,
-    ) {
-        let Some(month) = form.month() else {
-            return;
-        };
-        let current = self.budgets_state(cx).current;
-        let categories = self.categories(cx).to_vec();
-        let stopped = self.mutate_budgets(cx, |budgets| {
-            budgets.stop(current, &categories, form.category_id, month, self.today)
-        });
-        if let Err(error) = stopped {
-            form.error = Some(error);
-            self.open_budgets_dialog(BudgetsDialog::Stop(form));
-        }
-    }
-
     /// 9e's footer link: swaps Edit budget for Stop budgeting on the same Category and month.
     pub(super) fn open_budgets_stop_from_limit(&mut self, cx: &gpui::App) {
         let Some(BudgetsDialog::EditLimit(form)) = self.dialog::<BudgetsDialog>() else {
@@ -1021,65 +1021,11 @@ impl Shell {
         ));
     }
 
-    /// **Create budget** / **Save** and `enter`: creates the Budget and switches to it, or saves
-    /// the rename and Accounts. A refused save reopens the dialog with the error shown.
-    pub(super) fn apply_budgets_form(
-        &mut self,
-        mut form: budgets::form::BudgetForm,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let Some(draft) = form.draft() else {
-            return;
-        };
-        // Copied out so the store can be written while the Accounts, Transactions and Bills are read.
-        let accounts = self.accounts.read(cx).accounts().to_vec();
-        let transactions = self.transactions(cx).to_vec();
-        let plans = self.bill_plans(cx).to_vec();
-        let entries = self.bill_entries(cx).to_vec();
-        let saved = match draft {
-            budgets::form::BudgetDraft::Create(new) => {
-                let categories = self.categories(cx).to_vec();
-                let ledger = budgets::Ledger {
-                    categories: &categories,
-                    accounts: &accounts,
-                    transactions: &transactions,
-                    plans: &plans,
-                    entries: &entries,
-                };
-                self.mutate_budgets(cx, |budgets| {
-                    budgets.create(&new, &ledger, self.today).map(Some)
-                })
-            }
-            budgets::form::BudgetDraft::Edit {
-                id,
-                name,
-                account_ids,
-            } => self.mutate_budgets(cx, |budgets| {
-                budgets
-                    .edit(id, &name, account_ids, &accounts)
-                    .map(|()| None)
-            }),
-        };
-        match saved {
-            Ok(Some(id)) => self.switch_budget(id, cx),
-            Ok(None) => {}
-            Err(error) => {
-                form.error = Some(error);
-                self.open_budgets_dialog(BudgetsDialog::Budget(form));
-            }
-        }
-    }
-
     pub(super) fn budget_form_mut(&mut self) -> Option<&mut budgets::form::BudgetForm> {
         match self.dialog_mut::<BudgetsDialog>() {
             Some(BudgetsDialog::Budget(form)) => Some(form),
             _ => None,
         }
-    }
-
-    pub(super) fn handle_budgets_form_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
     }
 
     /// New budget (11c), or its edit mode.
@@ -1151,8 +1097,8 @@ impl Shell {
                     });
                 })
             },
-            on_cancel: plain(Shell::handle_budgets_dialog_cancel),
-            on_confirm: plain(Shell::handle_budgets_form_confirm),
+            on_cancel: plain(Shell::handle_dialog_cancel),
+            on_confirm: plain(Shell::handle_dialog_confirm),
         };
         Some(budgets_view::budget_dialog::render(
             budgets_view::budget_dialog::BudgetDialogProps {
@@ -1302,7 +1248,7 @@ impl Shell {
                     })
                 },
                 on_new: plain(Shell::handle_budgets_new_click),
-                on_close: plain(Shell::handle_budgets_dialog_cancel),
+                on_close: plain(Shell::handle_dialog_cancel),
             },
             cx,
         ))
@@ -1404,7 +1350,7 @@ impl Shell {
                 },
                 on_new: plain(Shell::handle_budgets_new_click),
                 on_manage: plain(Shell::handle_budgets_manage_click),
-                on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+                on_cancel: plain(Shell::handle_dialog_cancel),
             },
             cx,
         ))
@@ -1431,36 +1377,6 @@ impl Shell {
         });
     }
 
-    /// **Fill** and `enter`: writes the chosen source's Month-only amounts. A Fill that would
-    /// change nothing stays open, as its disabled button says.
-    pub(super) fn apply_budgets_fill(
-        &mut self,
-        month: Period,
-        source: budgets::FillSource,
-        cx: &mut Context<'_, Self>,
-    ) {
-        // Copied out so the store can be written while the Accounts, Transactions and Bills are read.
-        let accounts = self.accounts.read(cx).accounts().to_vec();
-        let transactions = self.transactions(cx).to_vec();
-        let plans = self.bill_plans(cx).to_vec();
-        let entries = self.bill_entries(cx).to_vec();
-        let categories = self.categories(cx).to_vec();
-        let ledger = budgets::Ledger {
-            categories: &categories,
-            accounts: &accounts,
-            transactions: &transactions,
-            plans: &plans,
-            entries: &entries,
-        };
-        let current = self.budgets_state(cx).current;
-        let wrote = self.mutate_budgets(cx, |budgets| {
-            budgets.fill(current, &ledger, month, source, self.today)
-        });
-        if !matches!(wrote, Ok(count) if count > 0) {
-            self.open_budgets_dialog(BudgetsDialog::Fill { month, source });
-        }
-    }
-
     pub(super) fn set_budgets_fill_source(&mut self, chosen: budgets::FillSource) {
         if let Some(BudgetsDialog::Fill { source, .. }) = self.dialog_mut::<BudgetsDialog>() {
             *source = chosen;
@@ -1469,11 +1385,6 @@ impl Shell {
 
     pub(super) fn handle_budgets_fill_click(&mut self, cx: &mut Context<'_, Self>) {
         self.open_budgets_fill(cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_budgets_fill_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -1551,8 +1462,8 @@ impl Shell {
                         });
                     })
                 },
-                on_cancel: plain(Shell::handle_budgets_dialog_cancel),
-                on_confirm: plain(Shell::handle_budgets_fill_confirm),
+                on_cancel: plain(Shell::handle_dialog_cancel),
+                on_confirm: plain(Shell::handle_dialog_confirm),
             },
             cx,
         ))
@@ -1575,23 +1486,8 @@ impl Shell {
             })
     }
 
-    pub(super) fn handle_budgets_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_budgets_limit_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
     pub(super) fn handle_budgets_limit_stop(&mut self, cx: &mut Context<'_, Self>) {
         self.open_budgets_stop_from_limit(cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_budgets_stop_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -1711,8 +1607,8 @@ impl Shell {
                         })
                     },
                     on_stop: (!form.is_pick()).then(|| plain(Shell::handle_budgets_limit_stop)),
-                    on_cancel: plain(Shell::handle_budgets_dialog_cancel),
-                    on_confirm: plain(Shell::handle_budgets_limit_confirm),
+                    on_cancel: plain(Shell::handle_dialog_cancel),
+                    on_confirm: plain(Shell::handle_dialog_confirm),
                 };
                 Some(budgets_view::limit_dialog::render(
                     budgets_view::limit_dialog::LimitDialogProps {
@@ -1764,8 +1660,8 @@ impl Shell {
                             .collect(),
                         on_field_click: plain(Shell::handle_budgets_stop_field_click),
                         on_option_click,
-                        on_cancel: plain(Shell::handle_budgets_dialog_cancel),
-                        on_confirm: plain(Shell::handle_budgets_stop_confirm),
+                        on_cancel: plain(Shell::handle_dialog_cancel),
+                        on_confirm: plain(Shell::handle_dialog_confirm),
                     },
                     cx,
                 ))

@@ -27,7 +27,7 @@ impl Shell {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
-        // Payees, Tags, Accounts, Categories, Inventory, Bills and Document types run through the host's cycle (`DialogForm`/`Apply`); the other domains
+        // Payees, Tags, Accounts, Categories, Inventory, Bills, Budgets and Document types run through the host's cycle (`DialogForm`/`Apply`); the other domains
         // still take their Dialog and apply it themselves until #633 lands.
         match self.chrome.dialog {
             Some(OpenDialog::Payees(_)) => return self.confirm_payees_dialog(cx),
@@ -36,6 +36,7 @@ impl Shell {
             Some(OpenDialog::Categories(_)) => return self.confirm_categories_dialog(cx),
             Some(OpenDialog::Inventory(_)) => return self.confirm_inventory_dialog(cx),
             Some(OpenDialog::Bills(_)) => return self.confirm_bills_dialog(cx),
+            Some(OpenDialog::Budgets(_)) => return self.confirm_budgets_dialog(cx),
             Some(OpenDialog::DocumentTypes(_)) => return self.confirm_document_types_dialog(cx),
             _ => {}
         }
@@ -56,7 +57,7 @@ impl Shell {
             OpenDialog::Inventory(_) => unreachable!("Inventory confirms through the host's cycle"),
             OpenDialog::Tags(_) => unreachable!("Tags confirms through the host's cycle"),
             OpenDialog::Bills(_) => unreachable!("Bills confirms through the host's cycle"),
-            OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog, cx),
+            OpenDialog::Budgets(_) => unreachable!("Budgets confirms through the host's cycle"),
             OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog, cx),
             // Read-only: it has nothing to apply.
             OpenDialog::ToastHistory(_) => {}

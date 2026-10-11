@@ -3,6 +3,7 @@
 //! share it, and is re-exported here so callers keep reaching it as `budgets::*`. The Desktop
 //! reads it through the `BudgetsStore` Entity (ADR-0032).
 
+pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod limit_form;
 
