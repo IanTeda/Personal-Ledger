@@ -6,7 +6,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 
 **Viewing:** run `mise run mockups` and open <http://localhost:8002>. The design files render through `support.js`, which fetches the page over HTTP, so opening a `.dc.html` straight from disk (`file://`) shows a blank page. `index.html` lists every page, with a switch between the Desktop and TUI sets.
 
-**Card IDs:** every card carries a `DUI-NNN` ID (the label on the card and its `#` anchor). Say "DUI-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
+**Card IDs:** every card carries a `DESKTOP-NNN` ID (the label on the card and its `#` anchor). Say "DESKTOP-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
 
 ## How to use
 1. Read this file for the shell, the rail and the tokens that every destination shares.

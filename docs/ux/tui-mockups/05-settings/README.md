@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Settings destination for the `bin-tui` Client. It carries the **same sixteen pages, in the same order, with the same content** as Desktop Settings ([`../../desktop-mockups/16-settings/`](../../desktop-mockups/16-settings/README.md), DUI-063–DUI-083), re-hosted in the TUI's one-view shell and reinterpreted for a keyboard-only terminal.
+The Settings destination for the `bin-tui` Client. It carries the **same sixteen pages, in the same order, with the same content** as Desktop Settings ([`../../desktop-mockups/16-settings/`](../../desktop-mockups/16-settings/README.md), DESKTOP-063–DESKTOP-083), re-hosted in the TUI's one-view shell and reinterpreted for a keyboard-only terminal.
 
 This package replaces the earlier "database-backed settings" draft (a generic key/value `settings` table with defaults in a code registry). That model contradicted [ADR-0014](../../../adr/0014-preferences-table-and-leaner-sync-server-config.md), which chose typed Preference tables over a key/value store, and the Desktop design, so it is retired. Settings now follows the same Preference / Configuration split as the Desktop:
 
@@ -13,24 +13,24 @@ Eighteen cards are drawn, one per page plus the General editing states and the S
 
 | ID | Local | Page or state | Desktop equivalent |
 | --- | --- | --- | --- |
-| TUI-019 | 4a | General, with the index focused | DUI-063 (16a) |
+| TUI-019 | 4a | General, with the index focused | DESKTOP-063 (16a) |
 | TUI-020 | 4b | General, editing a field in place | 16a field edit |
 | TUI-021 | 4c | Base unit guard (typed confirm) | TUI-only, see below |
-| TUI-032 | 4d | Display | DUI-064 (16f) |
-| TUI-033 | 4e | Units | DUI-065 (16g) |
-| TUI-040 | 4l | Institutions | DUI-066 (16h) |
-| TUI-041 | 4m | Accounts | DUI-067 (16o) |
-| TUI-042 | 4n | Categories | DUI-068 (16i) |
-| TUI-043 | 4o | Tags | DUI-069 (16j) |
+| TUI-032 | 4d | Display | DESKTOP-064 (16f) |
+| TUI-033 | 4e | Units | DESKTOP-065 (16g) |
+| TUI-040 | 4l | Institutions | DESKTOP-066 (16h) |
+| TUI-041 | 4m | Accounts | DESKTOP-067 (16o) |
+| TUI-042 | 4n | Categories | DESKTOP-068 (16i) |
+| TUI-043 | 4o | Tags | DESKTOP-069 (16j) |
 | TUI-044 | 4p | Payees | not drawn on Desktop; built to its spec |
-| TUI-045 | 4q | Documents | DUI-070 (16p) |
-| TUI-046 | 4r | Inventory | DUI-071 (16q) |
-| TUI-034 | 4f | AI Connections | DUI-072 (16v) |
-| TUI-035 | 4g | Sync Server, Edit dialog with a failed test | DUI-073 (16k) + DUI-082 (16s) |
-| TUI-036 | 4h | Backup | DUI-074 (16l) |
-| TUI-037 | 4i | History | DUI-076 (16u) |
-| TUI-038 | 4j | Logs | DUI-075 (16m) |
-| TUI-039 | 4k | About | DUI-077 (16n) |
+| TUI-045 | 4q | Documents | DESKTOP-070 (16p) |
+| TUI-046 | 4r | Inventory | DESKTOP-071 (16q) |
+| TUI-034 | 4f | AI Connections | DESKTOP-072 (16v) |
+| TUI-035 | 4g | Sync Server, Edit dialog with a failed test | DESKTOP-073 (16k) + DESKTOP-082 (16s) |
+| TUI-036 | 4h | Backup | DESKTOP-074 (16l) |
+| TUI-037 | 4i | History | DESKTOP-076 (16u) |
+| TUI-038 | 4j | Logs | DESKTOP-075 (16m) |
+| TUI-039 | 4k | About | DESKTOP-077 (16n) |
 
 Cards appear in index order. The IDs are not consecutive because TUI-019–021 keep their IDs from the earlier draft and new cards take the next free numbers, in the order they were added (see [`../../mockup-ids.md`](../../mockup-ids.md)).
 
