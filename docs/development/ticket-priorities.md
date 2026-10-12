@@ -4,7 +4,7 @@ Every open GitHub issue carries `priority:` labels, so the issue list shows what
 
 ## Labels
 
-A ticket has exactly one **rank** and at most one **state** beside it. The numbers sort the labels in GitHub's label list.
+A ticket has exactly one **rank** and at most one **state** beside it. A closed ticket has no rank or state: its `priority:` label is `90-done`. On finishing, `ready-for-agent` is removed and the `agent:*` label is set to the model and effort that actually actioned the ticket. Other labels are untouched. The numbers sort the labels in GitHub's label list.
 
 | Label                     | Kind  | Means                                                                                                                  |
 | ------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -13,6 +13,7 @@ A ticket has exactly one **rank** and at most one **state** beside it. The numbe
 | `priority:30-in-progress` | State | Assigned and being worked on                                                                                           |
 | `priority:40-waiting`     | State | Can't move until something happens: frozen, a decision, something outside the repo, released unfinished, or done but not closed |
 | `priority:99-backlog`     | Rank  | Not yet specified: an idea or parent ticket that needs grilling and Wayfinder charting before it can be ticketed       |
+| `priority:90-done`        | Done  | Finished and closed. Replaces the rank and state on closing; a closed ticket keeps no other `priority:` label |
 
 - **The Now cap:** no more than 5 open tickets are `10-now` or `30-in-progress`. A sixth means moving one down to `20-next`.
 - **Blocked by a ticket:** a ticket blocked only by another ticket keeps its rank and gets no state. GitHub's native dependency shows the block, and the ticket rises once the blocker closes.
@@ -40,7 +41,7 @@ The result:
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Creating a ticket                      | Gives it a rank, and comments with the reason                                                                     |
 | Claiming a ticket (assigning it)       | Adds `30-in-progress`                                                                                             |
-| Finishing a ticket                     | In the same session as the commit: comments with the commit and closes it. If you asked to review first, swaps `30-in-progress` for `40-waiting`, naming the commit |
+| Finishing a ticket                     | In the same session as the commit: comments with the commit, swaps its `priority:` label for `90-done`, removes `ready-for-agent`, sets its `agent:<model>-<effort>` label to the model and effort that actioned it, and closes it. Other labels stay. If you asked to review first, swaps `30-in-progress` for `40-waiting`, naming the commit |
 | Releasing a ticket unfinished          | Swaps `30-in-progress` for `40-waiting`, and comments with where it stopped                                      |
 | Anything else that blocks a ticket     | Adds `40-waiting`, and comments with what it's waiting on                                                        |
 | A parent ticket closes, or a Wayfinder session starts | Re-ranks the affected tickets, and checks open tickets against `git log`: closes a finished one, or marks it `40-waiting` with its commit |
