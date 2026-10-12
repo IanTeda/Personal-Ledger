@@ -124,6 +124,8 @@ Run `mise tasks` to see every available task, including docs (`docs-serve`) and 
 
 The repo is set up for AI coding agents like [Claude Code](https://claude.com/claude-code). Agent conventions live in [`CLAUDE.md`](CLAUDE.md) and project skills in [`.claude/skills/`](.claude/skills/). The workflow (idea → spec → tickets → TDD → review) follows [Matt Pocock's skills](https://github.com/mattpocock/skills).
 
+Every open issue carries a `priority:` label (`10-now`, `20-next`, `30-in-progress`, `40-waiting`, `99-backlog`), so the [issue list](https://github.com/IanTeda/Personal-Ledger/issues) shows what to do next. How a priority is chosen, and when it changes, is in [Ticket priorities](docs/development/ticket-priorities.md).
+
 ## Roadmap
 
 - [ ] Finish the desktop and TUI screens

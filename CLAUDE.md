@@ -66,6 +66,7 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 - **Full suites at parent-ticket close only:** the full UI suite (bare `mise run end-to-end-ui`) and the full workspace `cargo test` are required when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push. Run the targeted tests for what you changed.
 - **Tests:** unit tests alongside the code in `#[cfg(test)] mod tests`; DB tests use `sqlx::test`; generated data uses `fake` with deterministic seeds. No doctests: every library sets `[lib] doctest = false`, and doc comments explain why rather than carrying `# Examples`.
 - **Commits:** `<area>: <short description>`, e.g. `desktop: move the Inventory into a store Entity behind lib_inventory's service`.
+- **Ticket priorities:** when you create, claim, finish, release or rank a ticket, set its `priority:` labels by `docs/development/ticket-priorities.md`.
 - **Issue titles:** prefix every GitHub issue title with its bin crate, `TUI: `, `DESKTOP: ` or `SYNC: `, or `CORE: ` for none or several; an issue for a lib crate inherits the prefix of the bin being worked on when it was created (`docs/agents/issue-tracker.md`).
 - **Signing key check before committing:** commits are SSH-signed with a key held by the Bitwarden ssh-agent (`SSH_AUTH_SOCK`), which is only reachable while Bitwarden is open and unlocked. Before `git commit`, run `ssh-add -l | grep -qF "$(ssh-keygen -lf "$(git config user.signingkey)" | cut -d' ' -f2)"`. If it fails, don't commit (and never bypass signing): ask the user to open or unlock Bitwarden, then check again.
 
@@ -80,7 +81,13 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 
 A self-contained ticket body is the spec: the user usually `/clear`s between independent tickets, so don't rely on earlier conversation. If the body lacks what you need (acceptance criteria, files, decisions), stop and ask.
 
-Use Opus medium for research and decisions: Wayfinder charting and its `research`/`prototype`/`grilling` tickets, domain modelling, ADRs, design, code review, unclear requirements. Use Haiku low for implementation against a fixed scope: explicit acceptance criteria, tests, lint fixes, routine refactors, extending an established pattern. Raise to Opus high for hard bugs and cross-cutting design, or Sonnet medium for `/end-user-docs` pages. If Haiku low hits ambiguity or a decision point, stop and escalate rather than guess. The same split applies when picking a subagent's model.
+Pick the model by what the change adds, not by the ticket's type:
+
+- **Haiku low**: adds no new type, enum variant or interim shim, touches about 5 files or fewer, and every decision is written in the ticket (tests, lint fixes, small refactors).
+- **Sonnet medium**: repeats a pattern an earlier commit set, with that commit named in the ticket; `/end-user-docs` pages.
+- **Opus medium**: the first ticket of a series (it sets the pattern), any ticket with an open item under "Seams to decide", and research and decisions (Wayfinder charting and its non-`task` tickets, domain modelling, ADRs, design, code review). **Opus high**: hard bugs and cross-cutting design.
+
+A ticket that migrates in steps lists under "Seams to decide" the halfway state it leaves and the new types or events it needs, or "None". Its acceptance criteria name that halfway state, and any test file they name either exists or is listed as new. If you hit a seam the ticket didn't decide, stop and relabel the ticket up rather than guess. The same split applies when picking a subagent's model.
 
 ## graphify
 

@@ -176,3 +176,6 @@ mise.local.toml
 
 # graphify knowledge graph (derived output)
 graphify-out/
+
+# Local linker choice (mold); CI runners do not have it.
+/.cargo/config.toml

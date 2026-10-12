@@ -35,5 +35,6 @@
 - [Payees](development/payees.md)
 - [Settings](development/settings.md)
 - [Tags](development/tags.md)
+- [Ticket priorities](development/ticket-priorities.md)
 - [Transactions](development/transactions.md)
 - [Units](development/units.md)
