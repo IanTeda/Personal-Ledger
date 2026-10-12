@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop Structure 2026-10-12</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #f5f5f5; --card: #ffffff; --ink: #2d3142; --muted: #4f5d75; --faint: #8a93a6;
+      --line: #d9dce3; --accent: #eb6c36;
+      --out-bg: #eeedfe; --out-fg: #3c3489; --out-b: #534ab7;
+      --in-bg: #e1f5ee; --in-fg: #085041; --in-b: #0f6e56;
+      --both-bg: #faeeda; --both-fg: #633806; --both-b: #854f0b;
+      --good: #3b6d11; --warn: #854f0b; --bad: #a32d2d;
+      --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --paper: #17181c; --card: #202228; --ink: #e6e7eb; --muted: #a9b0bf; --faint: #7a8192; --line: #353841;
+        --out-bg: #3c3489; --out-fg: #eeedfe; --out-b: #afa9ec;
+        --in-bg: #085041; --in-fg: #e1f5ee; --in-b: #5dcaa5;
+        --both-bg: #633806; --both-fg: #faeeda; --both-b: #ef9f27;
+        --good: #97c459; --warn: #ef9f27; --bad: #f09595;
+      }
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); line-height: 1.6; padding: 3rem 16px; }
+    .frame { max-width: 960px; margin: 0 auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.6rem, 2.4vw + 0.8rem, 2.2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 0.75rem; }
+    h2 { font-family: var(--font-serif); font-size: 1.5rem; font-weight: 400; margin: 2.5rem 0 0.75rem; }
+    h3 { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 0.35rem; }
+    p, li { font-size: 0.95rem; color: var(--ink); }
+    p { margin: 0.5rem 0; max-width: 72ch; }
+    ul, ol { margin: 0.5rem 0 0.5rem 1.3rem; max-width: 74ch; }
+    li { margin: 0.3rem 0; }
+    code { font-family: var(--font-mono); font-size: 0.82em; }
+    a { color: var(--accent); }
+    .lede { color: var(--muted); max-width: 72ch; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 1.5rem 0; }
+    .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 1rem; }
+    .stat b { display: block; font-size: 1.4rem; font-weight: 500; }
+    .stat span { font-size: 0.78rem; color: var(--muted); }
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; margin: 1rem 0; }
+    .key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .key span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); border: 1px solid var(--b); }
+    .lyr { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+    .lyr-h { font-size: 0.8rem; color: var(--muted); padding-top: 5px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-family: var(--font-mono); font-size: 0.75rem; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; transition: opacity .15s; }
+    .chip small { font-family: var(--font-sans); color: var(--faint); margin-left: 6px; font-size: 0.68rem; }
+    .chip.ext { cursor: default; background: transparent; border-style: dashed; color: var(--muted); }
+    .chip.sel { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    .chip.out { background: var(--out-bg); color: var(--out-fg); border-color: var(--out-b); }
+    .chip.in { background: var(--in-bg); color: var(--in-fg); border-color: var(--in-b); }
+    .chip.both { background: var(--both-bg); color: var(--both-fg); border-color: var(--both-b); }
+    .chip.sel small, .chip.out small, .chip.in small, .chip.both small { color: inherit; opacity: .75; }
+    .chip.dim { opacity: .35; }
+    #detail { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--line); font-size: 0.85rem; }
+    #detail div { margin: 0.2rem 0; color: var(--muted); }
+    #detail div:first-child { color: var(--ink); }
+    .note { font-size: 0.78rem; color: var(--faint); margin-top: 0.5rem; }
+    .verdict { display: inline-block; font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; border: 1px solid currentColor; margin-right: 6px; vertical-align: 1px; }
+    .v-good { color: var(--good); } .v-warn { color: var(--warn); } .v-bad { color: var(--bad); }
+    table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 0.75rem 0; }
+    th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+    .tablewrap { overflow-x: auto; }
+    pre { font-family: var(--font-mono); font-size: 0.78rem; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.5; margin: 0.75rem 0; }
+    footer { margin-top: 3rem; font-size: 0.78rem; color: var(--faint); }
+    @media (max-width: 600px) { .lyr { grid-template-columns: 1fr; gap: 4px; } }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Architecture review · bin-desktop · 2026-10-12 · branch concept @ 771b019 + working tree</p>
+  <h1>Desktop app: module structure and the road to persistence</h1>
+  <p class="lede">A snapshot of <code>crates/bins/bin-desktop</code> four days after the <a href="desktop-structure-2026-10-08.html">2026-10-08 review</a>. Since then about 30 commits have moved Dialogs onto the host's confirm cycle, made <code>LedgerStore</code> the only copy of the Ledger, put writes onto Ledger commands, and moved four Views to render and handle their own input. The codebase is still mostly Shell, Chrome and Views over stub data. The next phase adds the service, controller and database layers behind each View, and this review is written with that in mind.</p>
+
+  <div class="stats">
+    <div class="stat"><b>74.6k</b><span>lines in src and tests</span></div>
+    <div class="stat"><b>30</b><span>top-level modules</span></div>
+    <div class="stat"><b>28.8k</b><span>lines in <code>view/</code> (39%)</span></div>
+    <div class="stat"><b>9.1k</b><span>lines still in <code>app/</code> (Shell)</span></div>
+    <div class="stat"><b>0</b><span><code>edit_*_state</code> hatches left (was 111)</span></div>
+    <div class="stat"><b>17</b><span>deprecated hatch writes left</span></div>
+  </div>
+
+  <h2>Module graph</h2>
+  <p>Select a module to see what it imports and what imports it. Each edge counts the files in the source module that name the target through <code>crate::</code>. <code>msg::</code>, the generated message accessors, is left out because nearly every file uses it. The layers are a reading of intent, not something the compiler enforces.</p>
+  <div class="panel">
+    <div class="key"><span style="--c:var(--out-bg);--b:var(--out-b)">imports (selected uses it)</span><span style="--c:var(--in-bg);--b:var(--in-b)">imported by</span><span style="--c:var(--both-bg);--b:var(--both-b)">both ways</span><span style="--c:transparent;--b:var(--line)">external crate</span></div>
+    <div id="graph"></div>
+    <div id="detail"></div>
+  </div>
+
+  <h2>What changed since 2026-10-08</h2>
+
+  <h3><span class="verdict v-good">Good</span>View Entities render and handle their own input (ADR-0037)</h3>
+  <p>Bills, Budgets, Transactions with Import, and Documents now implement <code>Render</code>. Settings is in progress in the working tree, which moves about 1.7k lines out of <code>app/settings_ui.rs</code>, <code>app/render.rs</code> and <code>app/key_dispatch.rs</code> into <code>view/settings/</code>. Every per-destination match is now in <code>view/active.rs</code>, and all 111 <code>edit_*_state</code> hatches are gone. This is the most valuable change in the period: it gives each screen a natural home for a controller.</p>
+  <p>It isn't finished. Accounts, Categories, Tags, Payees, Units, Inventory, Institutions, Dashboard and Help still render through <code>Shell</code>. There are still 48 <code>*Props</code> structs and 132 <code>On*</code> callback aliases. <code>Shell</code> also still builds and renders domain Dialogs: <code>app/budgets_ui.rs</code> is 978 lines of <code>open_budgets_*</code>, <code>render_budgets_form_dialog</code> and <code>run_budgets_manage_action</code>.</p>
+
+  <h3><span class="verdict v-good">Good</span>One Dialog confirm cycle (<code>DialogForm</code> and <code>Apply</code>)</h3>
+  <p>Every domain Dialog now goes through the host's confirm, refuse and reopen cycle, and <code>dialog_mut::&lt;T&gt;()</code> replaces 20 accessors. A form describes a command, <code>Apply</code> runs it against the Ledger, and a refusal comes back as a Message. This is the right shape for a controller: validation in the form, the decision in the Ledger, the wording in the bin.</p>
+  <p>One thing to change: the traits live in <code>chrome::dialog_apply</code>, so every domain module's <code>apply.rs</code> imports <code>chrome</code>, and <code>chrome::dialog_host</code> imports every domain's Dialog type for <code>OpenDialog</code>. The closed <code>OpenDialog</code> enum is fine as the single registration point, like <code>ActiveViewEntity</code>. But the traits belong in the existing <code>dialog</code> module, not in Chrome.</p>
+
+  <h3><span class="verdict v-good">Good</span><span class="verdict v-warn">Unfinished</span>LedgerStore is the only copy, and writes go through Ledger commands (ADR-0038)</h3>
+  <p>Payees, Categories, Tags, Accounts, Transactions with Import, Bills and Budgets now write through typed <code>LedgerCommand</code>s with per-command refusals. <code>LedgerStore::apply</code> drains the recorded <code>LedgerChange</code>s and emits one <code>LedgerChanged { what }</code>. This is the seam the database will plug into (ADR-0039), and it was the right thing to do before persistence.</p>
+  <p>The migration has left three dual paths:</p>
+  <ul>
+    <li><strong>Hatch writes.</strong> <code>LedgerStore::write</code>/<code>try_write</code> are deprecated but still have 17 callers, in <code>view/documents/state.rs</code> and the <code>inventory</code>, <code>units</code> and <code>institutions</code> stores. A hatch write records no <code>LedgerChange</code>, so when persistence lands <strong>these writes will be silently lost on save</strong>.</li>
+    <li><strong>Per-domain stores.</strong> Payees, Units, Institutions and Inventory stores, and the <code>ledger_data::LedgerDataEvent</code> they emit, still re-broadcast <code>LedgerChanged</code>. ADR-0038 says they go.</li>
+    <li><strong>Direct domain-crate dependencies.</strong> The bin still depends on all 11 domain crates (about 60 references) next to <code>lib_ledger</code>. ADR-0038 says Clients depend on <code>lib-ledger</code> only, so Cargo can enforce that writes go through the Ledger. Until then nothing stops a new View from mutating domain types directly.</li>
+  </ul>
+
+  <h3><span class="verdict v-good">Good</span>Smaller fixes</h3>
+  <ul>
+    <li><code>lib-list-cursor</code> (#591): one movement model for every list.</li>
+    <li>The Unit kind is stored as <code>lib_core::UnitKind</code> instead of a localised label. Data no longer depends on the Locale, which would have broken the moment it reached the database.</li>
+    <li>Dialog key tests moved out of <code>dialog_host.rs</code> into their domains.</li>
+  </ul>
+
+  <h3><span class="verdict v-warn">Watch</span>Overall</h3>
+  <p>The direction is sound and matches the ADRs. The risk isn't any one decision; it's that four migrations are each part-way done: Render, the per-domain stores, the hatch writes, and the domain-crate dependencies. Each one keeps two ways of doing the same thing alive. Adding services, controllers and a database now would mean writing a third path next to two old ones. <strong>Finish the migrations first.</strong></p>
+
+  <h2>Recommended architecture changes</h2>
+
+  <h3>1. Don't add a separate service and controller layer per View: you already have them</h3>
+  <p>The usual web-app "service, controller, repository" vocabulary maps onto what ADRs 0037 to 0039 already decided. Adding a <code>PayeesService</code> and <code>PayeesController</code> in the bin would bring back the per-domain stores ADR-0038 removed.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Layer you're about to add</th><th>Where it already lives</th><th>Owns</th></tr>
+    <tr><td>Service (business rules)</td><td><code>lib-ledger</code> commands and queries, single-entity rules in domain crates</td><td>Validation that needs data, cross-domain writes, refusals, the <code>LedgerChange</code> list</td></tr>
+    <tr><td>Controller (input → intent)</td><td>The View Entity, plus its forms' <code>DialogForm</code> and <code>Apply</code></td><td>View state, keys, clicks, which command to build, mapping refusals to Messages</td></tr>
+    <tr><td>Model store and events</td><td><code>LedgerStore</code></td><td>The one <code>Ledger</code>, <code>LedgerChanged { what }</code></td></tr>
+    <tr><td>Repository (database)</td><td><code>LedgerRepository</code> in <code>lib-ledger</code>, SQLite adapter (ADR-0039, #636)</td><td><code>load()</code>, <code>apply(changes)</code> in one transaction</td></tr>
+  </table></div>
+  <pre>View Entity ── DialogForm::command() ──▶ Apply ──▶ LedgerStore::apply(cmd)
+     ▲                                                 │  cmd.run(&amp;mut ledger)   (sync, pure)
+     │                                                 │  drain_changes()
+     └──── LedgerChanged { what } ◀───────────────────┤
+                                                       └─▶ LedgerRepository::apply(changes)   (one tx)</pre>
+  <p>The database plugs in at exactly one place: <code>LedgerStore::apply</code>. If a View needs "a service", that's a new <code>Ledger</code> query or command, not a new type in the bin.</p>
+
+  <h3>2. Finish the migrations, in this order, before #636</h3>
+  <ol>
+    <li>Move the 17 hatch writes onto Ledger commands, then delete <code>LedgerStore::write</code>, <code>try_write</code> and <code>Ledger::hatch</code>. This is the hard gate, because hatch writes can't be persisted.</li>
+    <li>Delete the Payees, Units, Institutions and Inventory stores and <code>ledger_data.rs</code>. Views subscribe to <code>LedgerStore</code> and filter on <code>what</code>.</li>
+    <li>Re-export what the bin needs from <code>lib_ledger</code> and remove the 11 domain crates from <code>bin-desktop/Cargo.toml</code>.</li>
+    <li>Switch ids to <code>RowID</code> newtypes (ADR-0040, #635). Every command in the bin still carries <code>u32</code> (for example <code>PayeeCommand::Edit(u32, …)</code>), and that churn is cheaper before a schema depends on it.</li>
+    <li>Finish ADR-0037 for the remaining Views, so that every View has a controller home before it gets real data.</li>
+  </ol>
+
+  <h3>3. Organise the bin by feature, not by layer</h3>
+  <p>Today one domain lives in three places: <code>src/payees/</code> (forms, apply, store), <code>src/view/payees/</code> (View Entity, Dialog rendering) and <code>src/app/payees_ui.rs</code> (Shell wiring). That split causes the upward edges in the graph (domain modules importing <code>view</code> and <code>chrome</code>) and means touching three directories per change. As each View finishes ADR-0037, fold all three into one slice:</p>
+  <pre>src/view/payees/
+  mod.rs        PayeesView: Render, keys, page_status, snapshot
+  state.rs      list state, selection (lib-list-cursor)
+  form.rs       PayeeForm, DialogForm impl
+  apply.rs      Apply impl → lib_ledger commands
+  dialogs.rs    Dialog rendering</pre>
+  <p>The target is <code>app/*_ui.rs</code> at zero files, and <code>Shell</code> at navigation, Chrome, the Dialog host, Toasts and <code>view/active.rs</code>. Shared building blocks (<code>form</code>, <code>dialog</code>, <code>theme</code>, <code>locale</code>, <code>format</code>) stay at the top level and never import a feature.</p>
+
+  <h3>4. Decide the async boundary in LedgerStore, once</h3>
+  <p>Keep Ledger commands synchronous and pure, as ADR-0039 says. Then <code>LedgerStore::apply</code> applies the command in memory, emits <code>LedgerChanged</code> straight away so the UI stays responsive, and hands the drained changes to one serial writer task on gpui's background executor. If a write fails, raise an error Toast (ADR-0027) and reload with <code>load()</code>. The serial queue keeps writes in command order, and that same queue can become the Change Set outbox for sync (ADR-0009). Views never <code>await</code> storage.</p>
+
+  <h3>5. Smaller structural fixes</h3>
+  <ul>
+    <li><strong>Rename <code>persistence</code>.</strong> It saves window and navigation restart state, not Ledger data. Call it <code>session_state</code> (or similar) before "persistence" starts meaning the database. That also clears up the <code>navigation</code> ↔ <code>persistence</code> cycle.</li>
+    <li><strong>Move <code>DialogForm</code>, <code>Apply</code> and <code>FormError</code></strong> from <code>chrome::dialog_apply</code> into <code>dialog</code>, so domain code doesn't import Chrome and the <code>chrome</code> ↔ <code>dialog</code> cycle goes away.</li>
+    <li><strong>Collect the reusable field widgets</strong> into <code>form</code>: <code>view/accounts/select_field.rs</code>, <code>view/payees/rules_field.rs</code>, <code>view/tags/colour_field.rs</code> and <code>view/form_fields.rs</code> are general widgets living inside one feature.</li>
+    <li><strong>Test persistence through one contract suite.</strong> Write one <code>LedgerRepository</code> test suite and run it against both the stub adapter and SQLite (<code>sqlx::test</code>). The headless UI tests stay on the stub (ADR-0030), and the contract suite proves the two adapters agree.</li>
+    <li><strong>Watch the big files</strong> as real data arrives: <code>documents/form.rs</code> (1.5k lines), <code>app/render.rs</code> (1.3k), <code>view/budgets/state.rs</code> (1.3k), <code>inventory/form.rs</code> (1.2k). They're not urgent, but they're where the controllers will grow.</li>
+  </ul>
+
+  <h2>Suggested next tickets</h2>
+  <ol>
+    <li>DESKTOP: move the remaining hatch writes (Documents, Inventory, Units, Institutions) onto Ledger commands and delete the hatch.</li>
+    <li>DESKTOP: delete the per-domain read stores and <code>LedgerDataEvent</code>.</li>
+    <li>DESKTOP: depend on <code>lib-ledger</code> only.</li>
+    <li>CORE: Ledger ids as <code>RowID</code> newtypes (#635).</li>
+    <li>DESKTOP: finish ADR-0037 for the list Views, folding <code>src/&lt;domain&gt;/</code> and <code>app/&lt;domain&gt;_ui.rs</code> into <code>view/&lt;domain&gt;/</code>.</li>
+    <li>CORE: wire Ledger persistence to SQLite (#636) through <code>LedgerStore::apply</code> and a serial writer.</li>
+  </ol>
+
+  <footer>Generated 2026-10-12 from the working tree on <code>concept</code> (771b019 plus uncommitted Settings View work). Line counts by <code>wc -l</code>; edges by scanning <code>crate::</code> paths, including grouped <code>use crate::{…}</code>. Previous review: <a href="desktop-structure-2026-10-08.html">2026-10-08</a>.</footer>
+</div>
+
+<script>
+const LOC={"error":25,"locale":124,"period":4,"main":28,"persistence":256,"import":874,"dialog":232,"help":136,"ledger_data":8,"ledger_store":179,"app":9051,"lib":272,"view":28753,"transactions":2013,"bills":2582,"budgets":2626,"documents":4735,"inventory":1647,"navigation":3484,"chrome":2997,"theme":482,"assets":184,"form":329,"accounts":1337,"categories":520,"payees":1071,"tags":1531,"units":330,"institutions":223,"settings":1290};
+const FILES={"app":31,"view":102,"chrome":14,"navigation":6,"documents":7,"bills":6,"budgets":6,"transactions":6,"inventory":4,"payees":4,"settings":4};
+const SUB={"view":["accounts","active","bills","budgets","categories","dashboard","documents","event","form_fields","format","help","import","institutions","inventory","payees","placeholder","settings","tags","transactions","units"],"transactions":["chips","filter_form","query","rows","store"],"bills":["apply","form","history","pay_form","store"],"budgets":["apply","form","limit_form","surface","tests"],"documents":["apply","form","model","picker","type_apply","types"],"inventory":["apply","form","store"],"navigation":["active_view","command","explorer","key_router","nav"],"chrome":["dialog_apply","dialog_host","palette","rail","state","statusline","toast","topbar","view_chrome"],"theme":["colours"],"assets":["icon"],"form":["field","select"],"accounts":["apply","form"],"categories":["apply","form"],"payees":["apply","form","store"],"tags":["apply","form"],"units":["form","store"],"institutions":["form","store"],"settings":["apply","display","tracing_log"],"app":["render","focus","key_dispatch","commands","view_events","status","toasts","log_feed","dialogs","explorer","rail","snapshots","accounts_ui","bills_ui","budgets_ui","categories_ui","document_types_ui","documents_ui","inventory_ui","payees_ui","settings_ui","tags_ui","transactions_ui"]};
+const E=[["accounts","chrome",2],["accounts","form",2],["accounts","institutions",2],["accounts","ledger_store",1],["accounts","locale",1],["accounts","units",3],["accounts","view",1],["app","accounts",4],["app","bills",6],["app","budgets",5],["app","categories",6],["app","chrome",19],["app","dialog",6],["app","documents",8],["app","form",5],["app","institutions",2],["app","inventory",4],["app","ledger_data",1],["app","ledger_store",1],["app","locale",2],["app","navigation",19],["app","payees",7],["app","period",2],["app","settings",16],["app","tags",5],["app","theme",1],["app","transactions",4],["app","units",2],["app","view",19],["assets","navigation",1],["bills","accounts",5],["bills","categories",4],["bills","chrome",4],["bills","form",3],["bills","ledger_store",2],["bills","payees",4],["bills","period",1],["bills","tags",4],["bills","transactions",4],["bills","view",1],["budgets","accounts",4],["budgets","categories",3],["budgets","chrome",4],["budgets","form",3],["budgets","ledger_store",1],["budgets","period",4],["budgets","transactions",1],["budgets","view",1],["categories","accounts",1],["categories","budgets",1],["categories","chrome",2],["categories","form",2],["categories","ledger_store",1],["chrome","accounts",1],["chrome","assets",2],["chrome","bills",1],["chrome","budgets",1],["chrome","categories",1],["chrome","dialog",2],["chrome","documents",1],["chrome","form",1],["chrome","inventory",1],["chrome","locale",2],["chrome","navigation",6],["chrome","payees",1],["chrome","settings",3],["chrome","tags",1],["chrome","theme",9],["chrome","units",1],["dialog","chrome",1],["dialog","navigation",1],["dialog","theme",1],["documents","accounts",4],["documents","bills",3],["documents","categories",3],["documents","chrome",5],["documents","form",4],["documents","inventory",3],["documents","ledger_store",2],["documents","locale",2],["documents","payees",4],["documents","tags",3],["documents","transactions",5],["documents","view",5],["help","locale",1],["help","navigation",1],["import","categories",1],["import","form",1],["import","payees",1],["institutions","chrome",1],["institutions","form",1],["institutions","ledger_data",1],["institutions","ledger_store",1],["institutions","locale",1],["institutions","settings",1],["institutions","units",1],["inventory","chrome",2],["inventory","documents",1],["inventory","form",1],["inventory","ledger_data",1],["inventory","ledger_store",2],["inventory","locale",1],["inventory","settings",1],["inventory","transactions",1],["inventory","view",1],["navigation","assets",1],["navigation","chrome",2],["navigation","import",1],["navigation","locale",2],["navigation","persistence",2],["navigation","settings",2],["navigation","theme",2],["payees","accounts",2],["payees","categories",2],["payees","chrome",2],["payees","form",2],["payees","ledger_store",2],["payees","tags",1],["payees","transactions",1],["persistence","navigation",1],["persistence","settings",1],["settings","chrome",2],["settings","form",2],["settings","institutions",2],["settings","ledger_store",1],["settings","locale",3],["settings","units",2],["settings","view",2],["tags","accounts",1],["tags","categories",1],["tags","chrome",2],["tags","form",2],["tags","ledger_store",1],["tags","payees",1],["tags","transactions",2],["transactions","accounts",3],["transactions","categories",3],["transactions","form",1],["transactions","ledger_store",1],["transactions","locale",2],["transactions","payees",3],["transactions","settings",2],["transactions","tags",3],["transactions","view",2],["units","chrome",1],["units","form",1],["units","ledger_data",1],["units","ledger_store",1],["units","settings",1],["view","accounts",13],["view","bills",12],["view","budgets",12],["view","categories",13],["view","chrome",9],["view","dialog",37],["view","documents",7],["view","form",26],["view","help",1],["view","import",4],["view","institutions",3],["view","inventory",3],["view","ledger_store",7],["view","locale",18],["view","navigation",15],["view","payees",9],["view","period",6],["view","settings",10],["view","tags",8],["view","theme",64],["view","transactions",21],["view","units",9],["main","lib",1],["lib","app",1]];
+const LAYERS=[
+  ["Entry",["main","lib"]],
+  ["Shell",["app"]],
+  ["Screens and chrome",["view","chrome","navigation"]],
+  ["Domain forms and apply",["accounts","bills","budgets","categories","documents","institutions","inventory","payees","tags","transactions","units","settings","import","help"]],
+  ["Shared infra",["dialog","form","ledger_store","ledger_data","persistence","theme","locale","assets","period","error"]],
+  ["Workspace libs",["lib_ledger","lib_accounts … lib_units (11)","lib_list_cursor","lib_toast","lib_colour_theme","lib_locale","lib_config","lib_database","lib_core","lib_tracing"],true],
+  ["Third party",["gpui 0.2","gpui-component 0.5","tokio","chrono","bigdecimal"],true]
+];
+const fmt=n=>n>=1000?(n/1000).toFixed(1)+'k':String(n);
+const g=document.getElementById('graph');
+LAYERS.forEach(([name,mods,ext])=>{
+  const r=document.createElement('div');r.className='lyr';
+  r.innerHTML=`<div class="lyr-h">${name}</div><div class="chips">${mods.map(m=>ext?`<span class="chip ext">${m}</span>`:`<button class="chip" data-m="${m}">${m}<small>${fmt(LOC[m]||0)}</small></button>`).join('')}</div>`;
+  g.appendChild(r);
+});
+function select(m){
+  const out=new Map(E.filter(e=>e[0]===m).map(e=>[e[1],e[2]]));
+  const inn=new Map(E.filter(e=>e[1]===m).map(e=>[e[0],e[2]]));
+  document.querySelectorAll('.chip[data-m]').forEach(c=>{
+    const k=c.dataset.m;c.className='chip';
+    if(k===m)c.classList.add('sel');
+    else if(out.has(k)&&inn.has(k))c.classList.add('both');
+    else if(out.has(k))c.classList.add('out');
+    else if(inn.has(k))c.classList.add('in');
+    else c.classList.add('dim');
+  });
+  const list=mp=>[...mp].sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<code>${k}</code> (${n})`).join(', ')||'none';
+  const sub=SUB[m]?`<div>Submodules: ${SUB[m].map(s=>`<code>${s}</code>`).join(' ')}</div>`:'';
+  document.getElementById('detail').innerHTML=`<div><code>${m}</code> · ${LOC[m]||0} lines${FILES[m]?` · ${FILES[m]} files`:''}</div>${sub}<div>Imports: ${list(out)}</div><div>Imported by: ${list(inn)}</div>`;
+}
+g.addEventListener('click',e=>{const c=e.target.closest('.chip[data-m]');if(c)select(c.dataset.m)});
+select('app');
+</script>
+</body>
+</html>
