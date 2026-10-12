@@ -16,6 +16,12 @@ doctest = false
 name = "desktop"
 path = "src/main.rs"
 
+# Every headless UI test is a module of one binary (ADR-0030): each separate test file would link
+# all of gpui again, roughly 780 MB apiece. `mise run end-to-end-ui <view>` filters its modules.
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+
 [features]
 # Turns on gpui's in-process test support, which also makes the `debug_selector` tags the
 # integration tests click take effect (without it gpui compiles them to no-ops). Only the self
