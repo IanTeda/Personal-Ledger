@@ -156,6 +156,12 @@ tracing = { version = "0.1.43" }
 unic-langid = { version = "0.9.6" }
 uuid = { version = "1.19.0", features = ["v7", "serde"] }
 
+# Keep file and line numbers in debug builds (panic backtraces, test failures) but drop the
+# variable and type info. Full debug info for every crate, gpui included, made each Desktop test
+# binary about 780 MB and slowed linking.
+[profile.dev]
+debug = "line-tables-only"
+
 # Drop `proc-macro-error2` (future-incompatibility warning E0365) from gpui's
 # `stacksafe` 0.1 dependency; see `vendor/stacksafe-macro/Cargo.toml`.
 [patch.crates-io]
