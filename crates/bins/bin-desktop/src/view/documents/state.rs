@@ -7,7 +7,10 @@
 //! confirms.
 
 use chrono::NaiveDate;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
+use gpui::{
+    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
+    UniformListScrollHandle,
+};
 use lib_core::DateStyle;
 use lib_ledger::Domain;
 use lib_toast::ToastKind;
@@ -122,7 +125,10 @@ pub struct DocumentsState {
     pub focus: DocumentsFocus,
     /// The selected Library row, a position in the listed rows; clamped wherever it is read.
     pub selected: usize,
-    pub scroll: ScrollHandle,
+    /// The Library list's scroll: a `uniform_list`, so only the rows in view are built.
+    pub library_scroll: UniformListScrollHandle,
+    /// The Inbox list's scroll. Its rows vary in height, so it stays a plain scrolling `div`.
+    pub inbox_scroll: ScrollHandle,
     /// The focused Inbox row, a position in the Inbox's rows; clamped wherever it is read. Kept
     /// apart from the Library's so an `i` round-trip returns to both.
     pub inbox_selected: usize,
@@ -139,7 +145,8 @@ impl Default for DocumentsState {
             query: String::new(),
             focus: DocumentsFocus::default(),
             selected: 0,
-            scroll: ScrollHandle::new(),
+            library_scroll: UniformListScrollHandle::new(),
+            inbox_scroll: ScrollHandle::new(),
             inbox_selected: 0,
             undo: None,
         }
@@ -498,7 +505,10 @@ impl DocumentsView {
     pub fn set_mode(&mut self, mode: DocumentsMode, cx: &mut Context<'_, Self>) {
         if self.state.mode != mode {
             self.state.mode = mode;
-            self.state.scroll.set_offset(gpui::Point::default());
+            self.state
+                .library_scroll
+                .scroll_to_item(0, ScrollStrategy::Top);
+            self.state.inbox_scroll.set_offset(gpui::Point::default());
         }
         cx.notify();
     }
@@ -516,7 +526,9 @@ impl DocumentsView {
 
     fn reset_selection(&mut self) {
         self.state.selected = 0;
-        self.state.scroll.set_offset(gpui::Point::default());
+        self.state
+            .library_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
     }
 
     fn select_entry(&mut self, entry: RailEntry, cx: &mut Context<'_, Self>) {
@@ -578,10 +590,18 @@ impl DocumentsView {
         let next = lib_list_cursor::step(current, len, step);
         if inbox {
             self.state.inbox_selected = next;
+            self.state.inbox_scroll.scroll_to_item(next);
         } else {
             self.state.selected = next;
+            // A non-strict scroll moves only when the row is off-screen, so a step lands the row
+            // at the edge it came from, as on Transactions.
+            let strategy = if next < current {
+                ScrollStrategy::Top
+            } else {
+                ScrollStrategy::Bottom
+            };
+            self.state.library_scroll.scroll_to_item(next, strategy);
         }
-        self.state.scroll.scroll_to_item(next);
     }
 
     /// Leaves the Search, keeping its query.
@@ -610,7 +630,9 @@ impl DocumentsView {
             .position(|document| document.id == id)
             .unwrap_or(0);
         self.state.selected = at;
-        self.state.scroll.scroll_to_item(at);
+        self.state
+            .library_scroll
+            .scroll_to_item(at, ScrollStrategy::Center);
         cx.notify();
     }
 
@@ -622,7 +644,7 @@ impl DocumentsView {
             .position(|document| document.id == id)
         {
             self.state.inbox_selected = at;
-            self.state.scroll.scroll_to_item(at);
+            self.state.inbox_scroll.scroll_to_item(at);
         }
         cx.notify();
     }
@@ -631,7 +653,7 @@ impl DocumentsView {
     pub fn accepted_batch(&mut self, batch: FilingUndo, cx: &mut Context<'_, Self>) {
         self.state.undo = Some(batch);
         self.state.inbox_selected = 0;
-        self.state.scroll.set_offset(gpui::Point::default());
+        self.state.inbox_scroll.set_offset(gpui::Point::default());
         cx.notify();
     }
 
@@ -968,7 +990,7 @@ impl DocumentsView {
         if let Some(at) = at {
             let next = documents::focus_after_filing(at, len).unwrap_or(0);
             self.state.inbox_selected = next;
-            self.state.scroll.scroll_to_item(next);
+            self.state.inbox_scroll.scroll_to_item(next);
         }
         self.toast(
             ToastKind::Success,
@@ -1010,7 +1032,7 @@ impl DocumentsView {
                 .position(|document| document.id == id)
         {
             self.state.inbox_selected = at;
-            self.state.scroll.scroll_to_item(at);
+            self.state.inbox_scroll.scroll_to_item(at);
         }
         self.toast(
             ToastKind::Info,

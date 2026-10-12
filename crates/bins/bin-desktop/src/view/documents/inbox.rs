@@ -108,7 +108,7 @@ fn rows(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .flex_1()
         .min_h(px(0.0))
         .overflow_y_scroll()
-        .track_scroll(&props.scroll);
+        .track_scroll(&props.inbox_scroll);
     if props.inbox_rows.is_empty() {
         return body.child(
             div()
@@ -294,7 +294,7 @@ fn footnote(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let below = props
         .inbox_rows
         .len()
-        .saturating_sub(props.scroll.bottom_item() + 1);
+        .saturating_sub(props.inbox_scroll.bottom_item() + 1);
     let note = crate::msg::desktop_documents_inbox_footnote();
     let text = if below > 0 && !props.inbox_rows.is_empty() {
         format!(

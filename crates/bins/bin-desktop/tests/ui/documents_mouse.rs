@@ -147,11 +147,15 @@ fn a_payee_link_selects_the_payee_on_its_settings_page(app: &mut TestAppContext)
 #[gpui::test]
 fn each_link_kind_navigates_to_its_own_target(app: &mut TestAppContext) {
     // The AAMI policy links, in order, to a Payee, a Bill Plan and an Inventory item.
+    // Walked to once: Documents keeps its selection while away, so each return lands on the policy.
     let targets = [Noun::Settings, Noun::Bills, Noun::Inventory];
+    let mut ui = on_documents(app);
+    focus_row(&mut ui, "aami-car-policy.pdf");
     for (index, target) in targets.into_iter().enumerate() {
-        let mut ui = on_documents(app);
-        focus_row(&mut ui, "aami-car-policy.pdf");
-        assert_eq!(ui.documents().selected_links, 3);
+        ui.click("primary-rail-Documents");
+        let page = ui.documents();
+        assert_eq!(page.selected_file.as_deref(), Some("aami-car-policy.pdf"));
+        assert_eq!(page.selected_links, 3);
 
         ui.click(&format!("documents-link-{index}"));
 

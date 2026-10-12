@@ -14,10 +14,11 @@ pub mod snapshot;
 pub mod state;
 pub mod type_dialogs;
 
-use std::rc::Rc;
+use std::{ops::Range, rc::Rc};
 
 use gpui::{
-    AnyElement, App, Context, Pixels, ScrollHandle, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, Context, Pixels, ScrollHandle, SharedString, UniformListScrollHandle, Window,
+    div, prelude::*, px, uniform_list,
 };
 use lib_locale::format::upper;
 
@@ -63,7 +64,8 @@ pub struct DocumentsPageProps {
     pub searching: bool,
     pub sort: LibrarySort,
     pub count_line: String,
-    pub rows: Vec<RowView>,
+    /// Shared with the `uniform_list` that builds the rows in view.
+    pub rows: Rc<Vec<RowView>>,
     pub selected: usize,
     pub detail: Option<DetailView>,
     /// The Inbox's rows (newest first, Skipped last), the focused index and its detail.
@@ -76,7 +78,8 @@ pub struct DocumentsPageProps {
     pub inbox_hints: Vec<(&'static str, String)>,
     /// Whether the list zone has keyboard focus, which draws the focused Inbox row's outline.
     pub list_focused: bool,
-    pub scroll: ScrollHandle,
+    pub library_scroll: UniformListScrollHandle,
+    pub inbox_scroll: ScrollHandle,
     pub on_rail_click: OnRailClick,
     pub on_row_click: OnRowClick,
     pub on_sort_click: OnSortClick,
@@ -478,47 +481,58 @@ fn sort_control(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         ))
 }
 
-fn rows(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
-    let body = div()
-        .id("documents-rows")
-        .flex_1()
-        .min_h(px(0.0))
-        .overflow_y_scroll()
-        .track_scroll(&props.scroll);
+/// The Library's rows, as a `uniform_list` so only the rows in view are built: drawing all of a
+/// large Library on every keystroke made each one cost a full layout of every row. Every row is
+/// the file glyph's height, which is why the chips keep to one line.
+fn rows(props: &DocumentsPageProps, cx: &App) -> AnyElement {
     if props.rows.is_empty() {
         let note = if props.query.trim().is_empty() {
             crate::msg::desktop_documents_empty_scope()
         } else {
             crate::msg::desktop_documents_empty_search()
         };
-        return body.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(14.0))
-                .px(px(14.0))
-                .py(px(16.0))
-                .text_color(color::muted(cx))
-                .child(note)
-                .when(props.query.trim().is_empty(), |this| {
-                    this.child(secondary_button(
-                        "documents-empty-add",
-                        crate::msg::desktop_documents_add_button(),
-                        props.on_add_click.clone(),
-                        cx,
-                    ))
-                }),
-        );
+        return div()
+            .flex_1()
+            .min_h(px(0.0))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(14.0))
+                    .px(px(14.0))
+                    .py(px(16.0))
+                    .text_color(color::muted(cx))
+                    .child(note)
+                    .when(props.query.trim().is_empty(), |this| {
+                        this.child(secondary_button(
+                            "documents-empty-add",
+                            crate::msg::desktop_documents_add_button(),
+                            props.on_add_click.clone(),
+                            cx,
+                        ))
+                    }),
+            )
+            .into_any_element();
     }
-    body.children(props.rows.iter().enumerate().map(|(index, row)| {
-        document_row(
-            row,
-            index == props.selected,
-            index,
-            props.on_row_click.clone(),
-            cx,
-        )
-    }))
+    let rows = props.rows.clone();
+    let selected = props.selected;
+    let on_click = props.on_row_click.clone();
+    uniform_list(
+        "documents-rows",
+        rows.len(),
+        move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
+            range
+                .map(|index| {
+                    document_row(&rows[index], index == selected, index, on_click.clone(), cx)
+                        .into_any_element()
+                })
+                .collect::<Vec<_>>()
+        },
+    )
+    .track_scroll(props.library_scroll.clone())
+    .flex_1()
+    .min_h(px(0.0))
+    .into_any_element()
 }
 
 fn document_row(
@@ -612,7 +626,8 @@ fn chips(chips: &[Chip], ink: gpui::Rgba, selected: bool, cx: &App) -> impl Into
     }
     div()
         .flex()
-        .flex_wrap()
+        .overflow_hidden()
+        .whitespace_nowrap()
         .gap(px(10.0))
         .text_size(px(11.0))
         .text_color(ink)
@@ -1013,7 +1028,7 @@ impl Render for DocumentsView {
             searching: self.searching,
             sort: state.sort,
             count_line,
-            rows: row_views,
+            rows: Rc::new(row_views),
             selected,
             detail,
             inbox_rows: inbox_views,
@@ -1022,7 +1037,8 @@ impl Render for DocumentsView {
             inbox_strong: documents::strong_count(all, lookups.transactions, lookups.payees),
             inbox_hints: hints::inbox_hints(),
             list_focused: false,
-            scroll: state.scroll.clone(),
+            library_scroll: state.library_scroll.clone(),
+            inbox_scroll: state.inbox_scroll.clone(),
             on_rail_click,
             on_row_click: indexed(DocumentsView::click_row),
             on_sort_click,
