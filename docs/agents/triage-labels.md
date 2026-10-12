@@ -29,4 +29,4 @@ The other `wayfinder:` types are `agent:opus-medium`; a `wayfinder:task` takes w
 
 ## Priority labels
 
-Each open ticket has one rank (`priority:10-now`, `priority:20-next`, `priority:99-backlog`) and at most one state (`priority:30-in-progress`, `priority:40-waiting`). Choose and change them by [Ticket priorities](../development/ticket-priorities.md).
+Each open ticket has one rank (`priority:10-now`, `priority:20-next`, `priority:99-backlog`) and at most one state (`priority:30-in-progress`, `priority:40-waiting`, `priority:41-needs-review`). Choose and change them by [Ticket priorities](../development/ticket-priorities.md).
