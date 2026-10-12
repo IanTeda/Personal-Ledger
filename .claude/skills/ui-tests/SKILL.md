@@ -1,15 +1,15 @@
 ---
 name: ui-tests
-description: Write or extend headless keyboard and mouse integration tests for the Desktop UI (bin-desktop) using the gpui test-support harness. Use when adding a test under crates/bins/bin-desktop/tests/ or when a Desktop UI change needs behaviour coverage.
+description: Write or extend headless keyboard and mouse integration tests for the Desktop UI (bin-desktop) using the gpui test-support harness. Use when adding a test under crates/bins/bin-desktop/tests/ui/ or when a Desktop UI change needs behaviour coverage.
 ---
 
 # Desktop UI tests
 
-Run them with `mise run end-to-end-ui <view>` while developing (headless; no window or GPU, so it works in Claude's sandbox), where `<view>` is a substring of the `tests/` file names, e.g. `settings_inventory` or `documents`. The bare `mise run end-to-end-ui` (the whole suite) is required only when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push. Design and gating are in ADR-0030.
+Run them with `mise run end-to-end-ui <view>` while developing (headless; no window or GPU, so it works in Claude's sandbox), where `<view>` is a substring of the `tests/ui/` module names, e.g. `settings_inventory` or `documents`. The bare `mise run end-to-end-ui` (the whole suite) is required only when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push. Design and gating are in ADR-0030.
 
-## Harness (`tests/common/mod.rs`)
+## Harness (`tests/ui/common/mod.rs`)
 
-Each test file starts with `mod common;` and takes a `&mut TestAppContext` under `#[gpui::test]`.
+Every test file is a module of the one `ui` test binary, declared in `tests/ui/main.rs`, so a new file needs a `mod <file>;` line there. Each file starts with `use super::common;` and takes a `&mut TestAppContext` under `#[gpui::test]`.
 
 - `Harness::new(app)` boots the app-level globals, pins the Locale to en-US and builds `Shell` through the lib's `build_shell` with `today()` fixed at 2026-06-15.
 - `ui.press("g f")` presses a space-separated keystroke sequence through the real key router, then settles.
