@@ -162,6 +162,12 @@ uuid = { version = "1.19.0", features = ["v7", "serde"] }
 [profile.dev]
 debug = "line-tables-only"
 
+# Optimise dependencies (not workspace crates) in debug builds. Unoptimised gpui and taffy made
+# every Desktop frame about six times slower, which the headless UI tests pay on each keystroke.
+# A dependency builds once and stays cached, so edit-and-rebuild of our own crates is unchanged.
+[profile.dev.package."*"]
+opt-level = 1
+
 # Drop `proc-macro-error2` (future-incompatibility warning E0365) from gpui's
 # `stacksafe` 0.1 dependency; see `vendor/stacksafe-macro/Cargo.toml`.
 [patch.crates-io]
