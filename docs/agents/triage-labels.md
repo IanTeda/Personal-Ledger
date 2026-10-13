@@ -29,7 +29,7 @@ The other `wayfinder:` types are `agent:opus-medium`; a `wayfinder:task` takes w
 
 ## Priority and State Labels
 
-An open ticket has exactly one `priority:` rank and at most one `state:` beside it. Closing a ticket removes both and adds `state:90-done`, so a closed ticket keeps no `priority:` label. The numbers sort the labels in GitHub's label list. Choose and change them by [Ticket labels](../development/ticket-labels.md).
+An open ticket has exactly one `priority:` rank and at most one `state:` beside it. Closing a ticket removes both and adds `state:90-done`, so a closed ticket keeps no `priority:` label. The numbers sort the labels in GitHub's label list. Choose and change them by [Ticket labels](ticket-labels.md).
 
 | Rank                  | Means                                                                                                            |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -41,5 +41,5 @@ An open ticket has exactly one `priority:` rank and at most one `state:` beside 
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `state:10-in-progress`  | Assigned and being worked on                                                                                                                  |
 | `state:20-waiting`      | Can't move until something happens: frozen, a decision, something outside the repo, or released unfinished                                    |
-| `state:30-needs-review` | Done and committed, waiting on your review before it closes; see [Closing or review](../development/ticket-labels.md#closing-or-review)       |
+| `state:30-needs-review` | Done and committed, waiting on your review before it closes; see [Closing or review](ticket-labels.md#closing-or-review)       |
 | `state:90-done`         | Finished and closed. Replaces the rank and any other state on closing                                                                         |

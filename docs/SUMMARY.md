@@ -35,6 +35,6 @@
 - [Payees](development/payees.md)
 - [Settings](development/settings.md)
 - [Tags](development/tags.md)
-- [Ticket labels](development/ticket-labels.md)
+- [Ticket labels](agents/ticket-labels.md)
 - [Transactions](development/transactions.md)
 - [Units](development/units.md)
