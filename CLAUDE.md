@@ -66,7 +66,7 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 - **Full suites and review at parent-ticket close only:** the full UI suite (bare `mise run end-to-end-ui`), the full workspace `cargo test` and a `/code-review` of the parent's commits are required when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push, even where a skill such as `/implement` asks for them. Run the targeted tests for what you changed.
 - **Tests:** unit tests alongside the code in `#[cfg(test)] mod tests`; DB tests use `sqlx::test`; generated data uses `fake` with deterministic seeds. No doctests: every library sets `[lib] doctest = false`, and doc comments explain why rather than carrying `# Examples`.
 - **Commits:** `<area>: <short description>`, e.g. `desktop: move the Inventory into a store Entity behind lib_inventory's service`.
-- **Ticket labels:** when you create, claim, finish, release or rank a ticket, set its `priority:` and `state:` labels by `docs/agents/ticket-labels.md`; on finishing, it also decides whether you close the ticket or gate it for review.
+- **Ticket labels:** when you create, claim, finish, release or rank a ticket, set its `category:`, `priority:` and `state:` labels by `docs/agents/ticket-labels.md`, recording each label decision in the ticket body's `## Labels` section; on finishing, it also decides whether you close the ticket or gate it for review.
 - **Issue titles:** prefix every GitHub issue title with its bin crate, `TUI: `, `DESKTOP: ` or `SYNC: `, or `CORE: ` for none or several; an issue for a lib crate inherits the prefix of the bin being worked on when it was created (`docs/agents/issue-tracker.md`).
 - **Signing key check before committing:** commits are SSH-signed with a key held by the Bitwarden ssh-agent (`SSH_AUTH_SOCK`), which is only reachable while Bitwarden is open and unlocked. Before `git commit`, run `ssh-add -l | grep -qF "$(ssh-keygen -lf "$(git config user.signingkey)" | cut -d' ' -f2)"`. If it fails, don't commit (and never bypass signing): ask the user to open or unlock Bitwarden, then check again.
 
@@ -81,13 +81,9 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 
 A self-contained ticket body is the spec: the user usually `/clear`s between independent tickets, so don't rely on earlier conversation. If the body lacks what you need (acceptance criteria, files, decisions), stop and ask.
 
-Pick the model by what the change adds, not by the ticket's type:
+Pick the model, for a ticket or a subagent, by the `agent:` label rules in `docs/agents/triage-labels.md`.
 
-- **Haiku medium**: adds no new type, enum variant or interim shim, touches about 5 files or fewer, and every decision is written in the ticket (tests, lint fixes, small refactors).
-- **Sonnet low**: repeats a pattern an earlier commit set, with that commit named in the ticket; `/end-user-docs` pages.
-- **Opus medium**: the first ticket of a series (it sets the pattern), any ticket with an open item under "Seams to decide", and research and decisions (Wayfinder charting and its non-`task` tickets, domain modelling, ADRs, design, code review). **Opus high**: hard bugs and cross-cutting design.
-
-A ticket that migrates in steps lists under "Seams to decide" the halfway state it leaves and the new types or events it needs, or "None". Its acceptance criteria name that halfway state, and any test file they name either exists or is listed as new. If you hit a seam the ticket didn't decide, stop and relabel the ticket up rather than guess. The same split applies when picking a subagent's model.
+A ticket that migrates in steps lists under "Seams to decide" the halfway state it leaves and the new types or events it needs, or "None". Its acceptance criteria name that halfway state, and any test file they name either exists or is listed as new. If you hit a seam the ticket didn't decide, stop and relabel the ticket up rather than guess.
 
 ## graphify
 
