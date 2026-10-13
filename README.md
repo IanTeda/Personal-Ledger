@@ -43,7 +43,7 @@ _The Desktop Client_
 
 _The TUI Client_
 
-Personal Ledger is a personal finance app. The goal is simple: show you clearly where your money goes and what you own, so you can keep an eye on your finances and plan ahead.
+Personal Ledger is a personal finance app. It's goal is to show you clearly where your money goes and what you own, so you can keep an eye on and understand your finances and plan ahead.
 
 Why build another one?
 
