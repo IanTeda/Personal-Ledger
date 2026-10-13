@@ -1,23 +1,10 @@
 # Ticket labels
 
-Every open GitHub issue carries a `priority:` rank, and a `state:` label while something is happening to it, so the issue list shows what to work on next. This page is the one place the rules live; `CLAUDE.md`, the README and `docs/agents/triage-labels.md` point here.
+Every open GitHub issue carries a `priority:` rank, and a `state:` label while something is happening to it, so the issue list shows what to work on next. This page is the one place the rules for choosing and changing them live; `CLAUDE.md`, the README and `docs/agents/triage-labels.md` point here. What each label means is defined in `docs/agents/triage-labels.md`.
 
 ## Labels
 
-An open ticket has exactly one `priority:` rank and at most one `state:` beside it. Closing a ticket removes both and adds `state:90-done`, so a closed ticket keeps no `priority:` label. On finishing, `triage:ready-for-agent` is removed and the `agent:*` label is set to the model and effort that actually actioned the ticket. Other labels are untouched. The numbers sort the labels in GitHub's label list.
-
-| Rank                  | Means                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `priority:10-now`     | Specified, and waiting costs: do these first                                                                     |
-| `priority:20-next`    | Specified and ready to start, with no compounding cost or leverage                                               |
-| `priority:99-backlog` | Not yet specified: an idea or parent ticket that needs grilling and Wayfinder charting before it can be ticketed |
-
-| State                   | Means                                                                                                      |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `state:10-in-progress`  | Assigned and being worked on                                                                               |
-| `state:20-waiting`      | Can't move until something happens: frozen, a decision, something outside the repo, or released unfinished |
-| `state:30-needs-review` | Done and committed, waiting on your review before it closes; see [Closing or review](#closing-or-review)   |
-| `state:90-done`         | Finished and closed. Replaces the rank and any other state on closing                                      |
+On finishing, `triage:ready-for-agent` is removed and the `agent:*` label is set to the model and effort that actually actioned the ticket. Other labels are untouched.
 
 - **The Now cap:** no more than 5 open tickets are `priority:10-now`, whatever their state. A sixth means moving one down to `priority:20-next`.
 - **Blocked by a ticket:** a ticket blocked only by another ticket keeps its rank and gets no state. GitHub's native dependency shows the block, and the ticket rises once the blocker closes.

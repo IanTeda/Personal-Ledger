@@ -29,4 +29,17 @@ The other `wayfinder:` types are `agent:opus-medium`; a `wayfinder:task` takes w
 
 ## Priority and State Labels
 
-Each open ticket has one rank (`priority:10-now`, `priority:20-next`, `priority:99-backlog`) and at most one state (`state:10-in-progress`, `state:20-waiting`, `state:30-needs-review`); a closed ticket has only `state:90-done`. Choose and change them by [Ticket labels](../development/ticket-labels.md).
+An open ticket has exactly one `priority:` rank and at most one `state:` beside it. Closing a ticket removes both and adds `state:90-done`, so a closed ticket keeps no `priority:` label. The numbers sort the labels in GitHub's label list. Choose and change them by [Ticket labels](../development/ticket-labels.md).
+
+| Rank                  | Means                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `priority:10-now`     | Specified, and waiting costs: do these first                                                                     |
+| `priority:20-next`    | Specified and ready to start, with no compounding cost or leverage                                               |
+| `priority:99-backlog` | Not yet specified: an idea or parent ticket that needs grilling and Wayfinder charting before it can be ticketed |
+
+| State                   | Means                                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state:10-in-progress`  | Assigned and being worked on                                                                                                                  |
+| `state:20-waiting`      | Can't move until something happens: frozen, a decision, something outside the repo, or released unfinished                                    |
+| `state:30-needs-review` | Done and committed, waiting on your review before it closes; see [Closing or review](../development/ticket-labels.md#closing-or-review)       |
+| `state:90-done`         | Finished and closed. Replaces the rank and any other state on closing                                                                         |
