@@ -7,6 +7,7 @@ mod budget_commands;
 mod budgets_seed_tests;
 mod category_commands;
 mod change;
+mod document_commands;
 mod hatch;
 mod payee_commands;
 pub mod query;
@@ -29,6 +30,12 @@ pub use category_commands::{
     EditCategory, MonthlyBudget, MoveCategory, RenameCategory, SaveCategoryRefusal,
 };
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
+pub use document_commands::{
+    AcceptAllDocuments, AcceptDocument, AddDocument, AddDocumentType, DocumentEdit,
+    DropDocumentInventoryLinks, EditDocument, EditDocumentType, FileDocumentByHand,
+    ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, SkipDocument,
+    ToggleDocumentLink, UndoFiling, UnknownDocumentType,
+};
 pub use hatch::LedgerHatch;
 pub use payee_commands::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,
@@ -45,7 +52,7 @@ use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
 use lib_documents::{
     Document, default_documents,
-    types::{DocumentTypeRow, default_types},
+    types::{DocumentTypeRow, default_types, first_free_id},
 };
 use lib_institutions::{InstitutionRow, default_institutions};
 use lib_inventory::{Inventory, default_inventory};
@@ -69,6 +76,9 @@ pub struct Ledger {
     budgets: Budgets,
     documents: Vec<Document>,
     document_types: Vec<DocumentTypeRow>,
+    /// The id the next added Document Type takes. It only counts up, so ids are never reused, and
+    /// it goes when ids become UUIDv7 newtypes (ADR-0040).
+    document_type_next_id: u32,
     inventory: Inventory,
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
@@ -116,6 +126,7 @@ impl Ledger {
             units,
             price_sources,
         } = parts;
+        let document_type_next_id = first_free_id(&document_types);
         Self {
             accounts,
             categories,
@@ -127,6 +138,7 @@ impl Ledger {
             budgets,
             documents,
             document_types,
+            document_type_next_id,
             inventory,
             institutions,
             units,

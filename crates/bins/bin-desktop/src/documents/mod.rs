@@ -113,12 +113,12 @@ mod tests {
         let linked = had(&world.documents);
         assert!(linked > 0, "the seed links a Document to the Fridge");
         assert_eq!(
-            drop_inventory_links(&mut world.documents, &[fridge]),
+            drop_inventory_links(&mut world.documents, &[fridge]).len(),
             linked
         );
         assert_eq!(had(&world.documents), 0);
         assert_eq!(world.documents.len(), count, "no Document is removed");
-        assert_eq!(drop_inventory_links(&mut world.documents, &[fridge]), 0);
+        assert!(drop_inventory_links(&mut world.documents, &[fridge]).is_empty());
     }
 
     #[test]
@@ -127,7 +127,7 @@ mod tests {
         let elm = world.inventory.properties[0].id;
         let removed = crate::inventory::remove_property(&mut world.inventory, elm).unwrap();
         let lost = drop_inventory_links(&mut world.documents, &removed.items);
-        assert!(lost > 0);
+        assert!(!lost.is_empty());
         for document in &world.documents {
             for link in &document.links {
                 if let DocumentLink::InventoryItem(id) = link {

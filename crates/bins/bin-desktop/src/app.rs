@@ -79,7 +79,7 @@ use gpui::{
     ScrollHandle, Subscription,
 };
 
-use lib_ledger::Ledger;
+use lib_ledger::{Ledger, MoveDocumentType};
 use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
@@ -339,6 +339,7 @@ impl Shell {
         let documents_view = cx.new(|_| {
             DocumentsView::new(
                 DocumentsSources {
+                    ledger: ledger.clone(),
                     documents: documents_store.clone(),
                     accounts: accounts.clone(),
                     payees: payees_store.clone(),
@@ -577,7 +578,8 @@ impl Shell {
 
     fn move_selected_document_type(&mut self, delta: isize, cx: &mut App) {
         if let Some(id) = self.settings_documents_selected_id(cx) {
-            self.mutate_documents(cx, |data| documents::types::move_by(data.types, id, delta));
+            let command = MoveDocumentType { id, delta };
+            let Ok(_moved) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
             self.views
                 .settings
                 .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));

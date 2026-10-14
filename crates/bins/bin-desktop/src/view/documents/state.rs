@@ -12,7 +12,10 @@ use gpui::{
     UniformListScrollHandle,
 };
 use lib_core::DateStyle;
-use lib_ledger::Domain;
+use lib_ledger::{
+    AcceptDocument, Domain, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink,
+    UndoFiling,
+};
 use lib_toast::ToastKind;
 
 use super::{
@@ -28,7 +31,7 @@ use crate::{
         form::{DocumentForm, DocumentOptions, DocumentsDialog, FactsForm, ImportForm},
         model::Lookups,
         picker::{PickerRow, PickerState, Purpose},
-        types::{DocumentTypeRow, first_free_id},
+        types::DocumentTypeRow,
     },
     inventory::store::InventoryStore,
     ledger_store::{LedgerChanged, LedgerStore},
@@ -41,30 +44,17 @@ use crate::{
     },
 };
 
-/// The Documents and the Types, handed to a mutation as one value so it can borrow them together.
-pub struct DocumentsData<'a> {
-    pub documents: &'a mut Vec<Document>,
-    /// The Ledger's Document Types in the user's order (mock data until persistence lands).
-    pub types: &'a mut Vec<DocumentTypeRow>,
-    /// The id the next added Document Type takes; only counts up, so ids are never reused.
-    pub types_next_id: &'a mut u32,
-}
-
 /// The shared Documents and Document Types, read through [`LedgerStore`]. The Documents page,
 /// Settings › Documents, the rail badge and the Inventory removal all read them from here, so a
 /// change is seen everywhere on the next render.
 pub struct DocumentsStore {
     ledger: Entity<LedgerStore>,
-    /// The id counter for Document Types. It's not a row, and it goes when ids become UUIDv7
-    /// newtypes (ADR-0040), so it stays here rather than on the Ledger.
-    types_next_id: u32,
     _ledger_changed: Subscription,
 }
 
 impl DocumentsStore {
     /// A store over `ledger`'s Documents and Document Types.
     pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
-        let types_next_id = first_free_id(ledger.read(cx).ledger().document_types());
         let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
             if event.what.contains(&Domain::Documents)
                 || event.what.contains(&Domain::DocumentTypes)
@@ -74,7 +64,6 @@ impl DocumentsStore {
         });
         Self {
             ledger,
-            types_next_id,
             _ledger_changed,
         }
     }
@@ -85,29 +74,6 @@ impl DocumentsStore {
 
     pub fn types<'a>(&self, cx: &'a App) -> &'a [DocumentTypeRow] {
         self.ledger.read(cx).ledger().document_types()
-    }
-
-    /// Applies `change` to the data, then tells every subscriber it changed. Mutations go through
-    /// here so no write can skip the notification.
-    #[expect(
-        deprecated,
-        reason = "Documents and Document Types writes move onto Ledger commands in #645"
-    )]
-    pub fn mutate<R>(
-        &mut self,
-        cx: &mut App,
-        change: impl FnOnce(&mut DocumentsData<'_>) -> R,
-    ) -> R {
-        let types_next_id = &mut self.types_next_id;
-        self.ledger.update(cx, |ledger, cx| {
-            ledger.write(cx, &[Domain::Documents, Domain::DocumentTypes], |ledger| {
-                change(&mut DocumentsData {
-                    documents: ledger.documents,
-                    types: ledger.document_types,
-                    types_next_id,
-                })
-            })
-        })
     }
 }
 
@@ -153,9 +119,10 @@ impl Default for DocumentsState {
     }
 }
 
-/// The store Entities the Documents page reads. It writes only the Documents.
+/// The store Entities the Documents page reads, and the Ledger it writes the Documents through.
 #[derive(Clone)]
 pub struct DocumentsSources {
+    pub ledger: Entity<LedgerStore>,
     pub documents: Entity<DocumentsStore>,
     pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
@@ -244,10 +211,11 @@ impl DocumentsView {
         self.sources.documents.read(cx).types(cx)
     }
 
-    fn mutate<R>(&self, cx: &mut App, change: impl FnOnce(&mut DocumentsData<'_>) -> R) -> R {
+    /// Runs `command` through the Ledger, which announces the Documents it changed.
+    fn apply<C: LedgerCommand>(&self, cx: &mut App, command: C) -> Result<C::Outcome, C::Refusal> {
         self.sources
-            .documents
-            .update(cx, |store, cx| store.mutate(cx, change))
+            .ledger
+            .update(cx, |store, cx| store.apply(cx, command))
     }
 
     /// Everything a Document's rows, detail and picker rows are worded from.
@@ -875,9 +843,7 @@ impl DocumentsView {
     pub(super) fn unlink(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
         if let Some(id) = self.selected_document(cx).map(|document| document.id) {
             let name = self.link_name(link, cx);
-            if self.mutate(cx, |data| documents::toggle_link(data.documents, id, link))
-                == Some(false)
-            {
+            if self.apply(cx, ToggleDocumentLink { id, link }) == Ok(false) {
                 self.toast(
                     ToastKind::Info,
                     crate::msg::desktop_documents_toast_unlinked(&name),
@@ -929,17 +895,7 @@ impl DocumentsView {
     /// Files `id` under `transaction_id`, remembers it for `u` and moves focus to the next row.
     pub fn accept(&mut self, id: u32, transaction_id: u32, cx: &mut Context<'_, Self>) {
         let before = self.before_filing(id, cx);
-        // Copied out so the Documents can be written while the Transactions are read.
-        let transactions = self.sources.transactions.read(cx).transactions(cx).to_vec();
-        let Ok(entry) = self.mutate(cx, |data| {
-            documents::accept(
-                data.types,
-                data.documents,
-                &transactions,
-                id,
-                transaction_id,
-            )
-        }) else {
+        let Ok(entry) = self.apply(cx, AcceptDocument { id, transaction_id }) else {
             return;
         };
         self.after_filing(id, before, entry, cx);
@@ -954,9 +910,7 @@ impl DocumentsView {
         cx: &mut Context<'_, Self>,
     ) {
         let before = self.before_filing(id, cx);
-        let Ok(entry) = self.mutate(cx, |data| {
-            documents::file_by_hand(data.documents, id, doc_type, link)
-        }) else {
+        let Ok(entry) = self.apply(cx, FileDocumentByHand { id, doc_type, link }) else {
             return;
         };
         self.after_filing(id, before, entry, cx);
@@ -1006,10 +960,7 @@ impl DocumentsView {
         let Some(id) = self.selected_document(cx).map(|document| document.id) else {
             return;
         };
-        if self
-            .mutate(cx, |data| documents::skip(data.documents, id))
-            .is_ok()
-        {
+        if self.apply(cx, SkipDocument(id)).is_ok() {
             let len = self.inbox_rows(cx).len();
             self.state.inbox_selected = self.inbox_at(len);
         }
@@ -1023,7 +974,7 @@ impl DocumentsView {
             return;
         };
         let count = record.entries.len();
-        let focus = self.mutate(cx, |data| documents::undo(data.documents, record));
+        let Ok(focus) = self.apply(cx, UndoFiling(record));
         self.set_mode(DocumentsMode::Inbox, cx);
         if let Some(id) = focus
             && let Some(at) = self

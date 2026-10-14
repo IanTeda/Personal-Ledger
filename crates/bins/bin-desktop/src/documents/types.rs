@@ -104,6 +104,16 @@ impl DocumentTypeForm {
         }
     }
 
+    /// What the form describes, for the Ledger to add or apply.
+    pub fn draft(&self) -> DocumentTypeDraft {
+        DocumentTypeDraft {
+            name: self.name.text().trim().to_string(),
+            tracks_date: self.tracks_date,
+            remind: self.remind,
+            financial_year: self.financial_year,
+        }
+    }
+
     /// The name's problem, if any.
     pub fn name_error(&self) -> Option<NameError> {
         let name = self.name.text().trim();
@@ -374,38 +384,6 @@ pub fn destination_select(types: &[DocumentTypeRow], removing: u32) -> SelectSta
     )
 }
 
-/// Adds a type from `form` at the end of the order and returns its new id. `next_id` only ever
-/// counts up, so removing the newest type never frees its id for a saved `type:<id>` filter to
-/// match against a different type.
-pub fn add_type(
-    types: &mut Vec<DocumentTypeRow>,
-    next_id: &mut u32,
-    form: &DocumentTypeForm,
-) -> u32 {
-    let id = *next_id;
-    *next_id += 1;
-    types.push(DocumentTypeRow {
-        id,
-        name: form.name.text().trim().to_string(),
-        tracks_date: form.tracks_date,
-        remind: form.remind,
-        financial_year: form.financial_year,
-        files: 0,
-        is_default: false,
-    });
-    id
-}
-
-/// Applies `form` to the type with `id`. The id never changes, so saved filters survive a rename.
-pub fn edit_type(types: &mut [DocumentTypeRow], id: u32, form: &DocumentTypeForm) {
-    if let Some(row) = types.iter_mut().find(|row| row.id == id) {
-        row.name = form.name.text().trim().to_string();
-        row.tracks_date = form.tracks_date;
-        row.remind = form.remind;
-        row.financial_year = form.financial_year;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,38 +454,20 @@ mod tests {
     }
 
     #[test]
-    fn add_appends_with_a_fresh_id_and_no_files() {
-        let mut types = default_types();
-        let mut next_id = first_free_id(&types);
-        let id = add_type(&mut types, &mut next_id, &form("  Leases "));
-        assert_eq!(id, 10);
-        assert_eq!(next_id, 11);
-        let row = types.last().unwrap();
+    fn the_draft_trims_the_name_and_carries_the_fields() {
+        let mut form = form("  Leases ");
+        form.tracks_date = Some(TracksDate::Renews);
+        form.remind = Some(RemindLead::Days(14));
+        form.financial_year = true;
         assert_eq!(
-            (row.name.as_str(), row.files, row.is_default),
-            ("Leases", 0, false)
+            form.draft(),
+            DocumentTypeDraft {
+                name: "Leases".to_string(),
+                tracks_date: Some(TracksDate::Renews),
+                remind: Some(RemindLead::Days(14)),
+                financial_year: true,
+            }
         );
-    }
-
-    #[test]
-    fn a_removed_types_id_is_never_given_to_a_new_type() {
-        let mut types = default_types();
-        let mut next_id = first_free_id(&types);
-        let newest = add_type(&mut types, &mut next_id, &form("Leases"));
-        assert_eq!(remove_type(&mut types, newest, None), Ok(()));
-        assert_ne!(add_type(&mut types, &mut next_id, &form("Loans")), newest);
-    }
-
-    #[test]
-    fn edit_renames_but_keeps_the_id_files_and_default_flag() {
-        let mut types = default_types();
-        let mut draft = DocumentTypeForm::from_row(&types[8], &types);
-        draft.name = TextField::new("Misc");
-        edit_type(&mut types, 9, &draft);
-        assert_eq!(types[8].id, 9);
-        assert_eq!(types[8].name, "Misc");
-        assert_eq!(types[8].files, 2);
-        assert!(types[8].is_default);
     }
 
     #[test]

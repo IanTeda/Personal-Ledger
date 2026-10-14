@@ -163,6 +163,45 @@ pub fn first_free_id(types: &[DocumentTypeRow]) -> u32 {
         .map_or(1, |max| max + 1)
 }
 
+/// What the Add and Edit Dialogs collect for a type: everything but its id, file count and
+/// Default flag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentTypeDraft {
+    /// Trimmed on the way in.
+    pub name: String,
+    pub tracks_date: Option<TracksDate>,
+    pub remind: Option<RemindLead>,
+    pub financial_year: bool,
+}
+
+/// Adds a type from `draft` at the end of the order with the id `id`, which the caller takes from
+/// a counter that only counts up so removing the newest type never frees its id for a saved
+/// `type:<id>` filter to match against a different type.
+pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: u32, draft: &DocumentTypeDraft) {
+    types.push(DocumentTypeRow {
+        id,
+        name: draft.name.trim().to_string(),
+        tracks_date: draft.tracks_date,
+        remind: draft.remind,
+        financial_year: draft.financial_year,
+        files: 0,
+        is_default: false,
+    });
+}
+
+/// Applies `draft` to the type with `id`. The id never changes, so saved filters survive a rename.
+/// Returns whether the type exists.
+pub fn edit_type(types: &mut [DocumentTypeRow], id: u32, draft: &DocumentTypeDraft) -> bool {
+    let Some(row) = types.iter_mut().find(|row| row.id == id) else {
+        return false;
+    };
+    row.name = draft.name.trim().to_string();
+    row.tracks_date = draft.tracks_date;
+    row.remind = draft.remind;
+    row.financial_year = draft.financial_year;
+    true
+}
+
 /// Why a type can't be removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoveError {
@@ -262,5 +301,34 @@ mod tests {
         assert!(move_by(&mut types, 9, -1));
         assert_eq!(types[7].id, 9);
         assert!(!move_by(&mut types, 99, 1));
+    }
+    fn draft(name: &str) -> DocumentTypeDraft {
+        DocumentTypeDraft {
+            name: format!("  {name} "),
+            tracks_date: Some(TracksDate::Renews),
+            remind: Some(RemindLead::Days(14)),
+            financial_year: true,
+        }
+    }
+
+    #[test]
+    fn add_type_appends_a_trimmed_empty_row_with_the_given_id() {
+        let mut types = default_types();
+        add_type(&mut types, 10, &draft("Warranties"));
+        let row = types.last().unwrap();
+        assert_eq!(
+            (row.id, row.name.as_str(), row.files),
+            (10, "Warranties", 0)
+        );
+        assert!(!row.is_default);
+        assert_eq!(row.tracks_date, Some(TracksDate::Renews));
+    }
+
+    #[test]
+    fn edit_type_keeps_the_id_and_reports_a_missing_type() {
+        let mut types = default_types();
+        assert!(edit_type(&mut types, 3, &draft("Renamed")));
+        assert_eq!(get(&types, 3).unwrap().name, "Renamed");
+        assert!(!edit_type(&mut types, 99, &draft("Nope")));
     }
 }

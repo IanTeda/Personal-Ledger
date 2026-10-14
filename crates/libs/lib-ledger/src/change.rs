@@ -12,6 +12,7 @@ use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
+use lib_documents::{Document, types::DocumentTypeRow};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
@@ -53,6 +54,9 @@ pub enum LedgerChange {
     UpsertBillPlan(BillPlan),
     UpsertBillEntry(BillScheduleEntry),
     UpsertBudget(Budget),
+    UpsertDocument(Document),
+    UpsertDocumentType(DocumentTypeRow),
+    DeleteDocumentType(u32),
 }
 
 impl LedgerChange {
@@ -65,6 +69,8 @@ impl LedgerChange {
             Self::UpsertTransaction(_) | Self::DeleteTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
+            Self::UpsertDocument(_) => Domain::Documents,
+            Self::UpsertDocumentType(_) | Self::DeleteDocumentType(_) => Domain::DocumentTypes,
         }
     }
 }

@@ -1,16 +1,13 @@
 //! The Document type Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Documents store. When `LedgerStore` replaces the per-domain
-//! stores only [`DocumentTypesApply`] changes.
+//! [`Apply`] that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_ledger::{AddDocumentType, EditDocumentType, RemoveDocumentType};
 
-use super::types::{
-    self, DocumentTypeForm, DocumentTypesDialog, RemoveError, add_type, edit_type, remove_type,
-};
+use super::types::{self, DocumentTypeForm, DocumentTypesDialog, RemoveError};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    documents::DocumentType,
-    view::documents::state::DocumentsStore,
+    ledger_store::LedgerStore,
 };
 
 /// What confirming a Document types Dialog asks for.
@@ -66,10 +63,10 @@ impl DialogForm for DocumentTypesDialog {
     }
 }
 
-/// Runs [`DocumentTypeCommand`]s against the Documents store, which holds the types and the Filed
-/// files that follow them.
+/// Runs [`DocumentTypeCommand`]s against the Ledger as Ledger commands. Removing a type moves its
+/// Filed Documents in the same command.
 pub struct DocumentTypesApply {
-    pub documents: Entity<DocumentsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<DocumentTypeCommand> for DocumentTypesApply {
@@ -82,41 +79,28 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
         cx: &mut App,
     ) -> Result<DocumentTypeOutcome, RemoveError> {
         match command {
-            DocumentTypeCommand::Add(form) => Ok(DocumentTypeOutcome::Saved(
-                self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| add_type(data.types, data.types_next_id, &form))
-                }),
-            )),
+            DocumentTypeCommand::Add(form) => {
+                let command = AddDocumentType(form.draft());
+                let Ok(id) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
+                Ok(DocumentTypeOutcome::Saved(id))
+            }
             DocumentTypeCommand::Edit(id, form) => {
-                self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| edit_type(data.types, id, &form));
-                });
+                let command = EditDocumentType {
+                    id,
+                    draft: form.draft(),
+                };
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, command))
+                    .map_err(|_| RemoveError::Unknown)?;
                 Ok(DocumentTypeOutcome::Saved(id))
             }
             DocumentTypeCommand::Remove { id, destination } => {
-                let (position, moved_to) = {
-                    let rows = &self.documents.read(cx).types(cx);
-                    let position = types::position(rows, id).unwrap_or(0);
-                    let moved_to = destination
-                        .as_deref()
-                        .and_then(|name| types::id_by_name(rows, name))
-                        .filter(|moved_to| *moved_to != id)
-                        .unwrap_or_else(|| types::fallback_id(rows));
-                    (position, moved_to)
-                };
-                self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| {
-                        remove_type(data.types, id, destination.as_deref())?;
-                        // The Documents surface follows the list: Filed files move with their type.
-                        for document in data.documents.iter_mut() {
-                            if document.doc_type == DocumentType(id) {
-                                document.doc_type = DocumentType(moved_to);
-                            }
-                        }
-                        Ok(())
-                    })
+                let position = types::position(self.ledger.read(cx).ledger().document_types(), id)
+                    .unwrap_or(0);
+                self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, RemoveDocumentType { id, destination })
                 })?;
-                let rows = &self.documents.read(cx).types(cx);
+                let rows = self.ledger.read(cx).ledger().document_types();
                 let selected = rows
                     .get(position.min(rows.len().saturating_sub(1)))
                     .map(|row| row.id);
@@ -129,8 +113,7 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
-
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -145,8 +128,7 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        let documents = cx.new(|cx| DocumentsStore::new(ledger, cx));
-        DocumentTypesApply { documents }
+        DocumentTypesApply { ledger }
     }
 
     #[gpui::test]

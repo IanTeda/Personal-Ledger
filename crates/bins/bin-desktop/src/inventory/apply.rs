@@ -1,9 +1,10 @@
 //! The Inventory Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Inventory and Documents stores. When `LedgerStore` replaces
-//! the per-domain stores only [`InventoryApply`] changes.
+//! [`Apply`] that runs it against the Inventory store, and against the Ledger for the Document
+//! Links a removed Property drops.
 
 use gpui::{App, Entity};
 use lib_inventory::{PropertyDraft, PropertyError, RoomError};
+use lib_ledger::DropDocumentInventoryLinks;
 
 use super::{
     InventoryStore,
@@ -12,8 +13,8 @@ use super::{
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     chrome::dialog_host::Dialog,
-    documents,
-    view::{documents::state::DocumentsStore, settings::inventory::InventoryRow},
+    ledger_store::LedgerStore,
+    view::settings::inventory::InventoryRow,
 };
 
 /// What confirming an Inventory Dialog asks for.
@@ -127,10 +128,10 @@ impl DialogForm for InventoryDialog {
 }
 
 /// Runs [`InventoryCommand`]s against the Inventory store, dropping the Document Links of a
-/// removed Property's Items from the Documents store.
+/// removed Property's Items through the Ledger.
 pub struct InventoryApply {
     pub inventory: Entity<InventoryStore>,
-    pub documents: Entity<DocumentsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<InventoryCommand> for InventoryApply {
@@ -178,10 +179,8 @@ impl Apply<InventoryCommand> for InventoryApply {
                     .inventory
                     .update(cx, |store, cx| store.remove_property(cx, id))
                     .map_err(InventoryRefusal::Property)?;
-                self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| {
-                        documents::drop_inventory_links(data.documents, &removed.items)
-                    })
+                let Ok(_) = self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, DropDocumentInventoryLinks(removed.items.clone()))
                 });
                 let properties = &self.inventory.read(cx).inventory(cx).properties;
                 let selected = properties
@@ -270,11 +269,7 @@ mod tests {
             },
         );
         let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
-        let documents = cx.new(|cx| DocumentsStore::new(ledger, cx));
-        InventoryApply {
-            inventory,
-            documents,
-        }
+        InventoryApply { inventory, ledger }
     }
 
     #[gpui::test]

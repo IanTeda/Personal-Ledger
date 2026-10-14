@@ -10,7 +10,7 @@
 //! - Problems show inline and refuse Save: a missing file, an unsupported one, a path already in
 //!   the Library, a blank Title and a date the parser rejects.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::NaiveDate;
 use lib_core::DateStyle;
@@ -21,7 +21,8 @@ use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::types::DocumentTypeRow,
     documents::{
-        self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
+        self, Document, DocumentType, FileKind, ImportLine, KeyDate, KeyDateKind, LibraryScope,
+        NewDocument,
     },
     form::field::TextField,
     form::select::SelectState,
@@ -461,15 +462,6 @@ pub struct ImportForm {
     pub paths: TextField,
 }
 
-/// What an import made of one typed path.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImportOutcome {
-    Imported(u32),
-    NotFound(String),
-    Unsupported(String),
-    Already(String),
-}
-
 impl ImportForm {
     pub fn newline(&mut self) {
         let text = self.paths.text();
@@ -493,71 +485,16 @@ impl ImportForm {
     }
 }
 
-/// Imports every typed path that exists into the Inbox, reporting what became of each. A path
-/// repeated in the same batch is refused as already present, since the first copy was added.
-pub fn import_all(
-    types: &[DocumentTypeRow],
-    form: &ImportForm,
-    library: &mut Vec<Document>,
-    today: NaiveDate,
+/// Each typed or dropped path with whether it is on disk, for the Ledger's import to decide on.
+pub fn import_lines<'a>(
+    typed: impl IntoIterator<Item = &'a str>,
     exists: impl Fn(&Path) -> bool,
-) -> Vec<ImportOutcome> {
-    import_typed(
-        types,
-        form.lines(),
-        documents::Source::Import,
-        library,
-        today,
-        exists,
-    )
-}
-
-/// The same import for paths a drop delivered rather than typed, so a drop and `Import…` agree on
-/// what is refused and why.
-pub fn import_dropped(
-    types: &[DocumentTypeRow],
-    paths: &[PathBuf],
-    library: &mut Vec<Document>,
-    today: NaiveDate,
-    exists: impl Fn(&Path) -> bool,
-) -> Vec<ImportOutcome> {
-    let typed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
-    import_typed(
-        types,
-        typed.iter().map(String::as_str),
-        documents::Source::Dropped,
-        library,
-        today,
-        exists,
-    )
-}
-
-fn import_typed<'a>(
-    types: &[DocumentTypeRow],
-    lines: impl IntoIterator<Item = &'a str>,
-    source: documents::Source,
-    library: &mut Vec<Document>,
-    today: NaiveDate,
-    exists: impl Fn(&Path) -> bool,
-) -> Vec<ImportOutcome> {
-    lines
+) -> Vec<ImportLine> {
+    typed
         .into_iter()
-        .map(|typed| {
-            let path: PathBuf = documents::resolve_path(typed);
-            if FileKind::from_path(&path).is_none() {
-                return ImportOutcome::Unsupported(typed.to_string());
-            }
-            if let Some(existing) = documents::find_by_path(library, &path) {
-                return ImportOutcome::Already(existing.title.clone());
-            }
-            if !exists(&path) {
-                return ImportOutcome::NotFound(typed.to_string());
-            }
-            match documents::import_path(types, library, path, today, source) {
-                Ok(id) => ImportOutcome::Imported(id),
-                Err(documents::AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
-                Err(_) => ImportOutcome::Unsupported(typed.to_string()),
-            }
+        .map(|typed| ImportLine {
+            exists: exists(&documents::resolve_path(typed)),
+            typed: typed.to_string(),
         })
         .collect()
 }
@@ -961,6 +898,8 @@ pub fn parse_total(text: &str) -> Option<lib_core::Money> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -1103,40 +1042,6 @@ mod tests {
     }
 
     #[test]
-    fn import_reports_each_line() {
-        let mut library = Vec::new();
-        let form = ImportForm {
-            paths: TextField::new(
-                "/tmp/coles-receipt.jpg\n/tmp/none.pdf\n/tmp/readme.txt\n/tmp/coles-receipt.jpg\n",
-            ),
-        };
-        let outcomes = import_all(
-            &default_types(),
-            &form,
-            &mut library,
-            day(2026, 9, 12),
-            |path| !path.ends_with("none.pdf"),
-        );
-        assert_eq!(
-            outcomes,
-            vec![
-                ImportOutcome::Imported(1),
-                ImportOutcome::NotFound("/tmp/none.pdf".to_string()),
-                ImportOutcome::Unsupported("/tmp/readme.txt".to_string()),
-                ImportOutcome::Already("coles-receipt".to_string()),
-            ]
-        );
-        assert_eq!(library.len(), 1);
-        assert!(library[0].is_unfiled());
-        assert!(
-            library[0]
-                .intake
-                .as_ref()
-                .is_some_and(|intake| intake.facts.merchant.as_deref() == Some("Coles"))
-        );
-    }
-
-    #[test]
     fn a_typed_total_tolerates_symbols_commas_and_a_sign() {
         let cents = |text: &str| parse_total(text).map(|money| money.0.abs().with_scale(2));
         let expected = Some(bigdecimal::BigDecimal::new(21_240.into(), 2));
@@ -1153,29 +1058,22 @@ mod tests {
     }
 
     #[test]
-    fn dropped_paths_land_in_the_inbox_as_dropped() {
-        let mut library = Vec::new();
-        let paths = [
-            PathBuf::from("/tmp/coles-receipt.jpg"),
-            PathBuf::from("/tmp/x.txt"),
-        ];
-        let outcomes = import_dropped(
-            &default_types(),
-            &paths,
-            &mut library,
-            day(2026, 9, 12),
-            |_| true,
-        );
+    fn import_lines_ask_the_disk_about_each_resolved_path() {
+        let lines = import_lines(["/tmp/a.pdf", "/tmp/none.pdf"], |path| {
+            !path.ends_with("none.pdf")
+        });
         assert_eq!(
-            outcomes,
+            lines,
             vec![
-                ImportOutcome::Imported(1),
-                ImportOutcome::Unsupported("/tmp/x.txt".to_string()),
+                ImportLine {
+                    typed: "/tmp/a.pdf".to_string(),
+                    exists: true
+                },
+                ImportLine {
+                    typed: "/tmp/none.pdf".to_string(),
+                    exists: false
+                },
             ]
-        );
-        assert_eq!(
-            library[0].intake.as_ref().map(|intake| intake.source),
-            Some(documents::Source::Dropped)
         );
     }
 

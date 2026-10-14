@@ -1,7 +1,6 @@
 //! The Documents Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Documents store, reading the Transactions and Payees an
-//! Accept all matches against. When `LedgerStore` replaces the per-domain stores only
-//! [`DocumentsApply`] changes.
+//! [`Apply`] that runs it against the Ledger. Accept all reads the Transactions and Payees it
+//! matches against inside its own Ledger command.
 //!
 //! The link picker answers with a request that needs the live rows and may open another Dialog,
 //! so it stays `Shell`'s.
@@ -11,15 +10,17 @@ use std::path::Path;
 use chrono::NaiveDate;
 use gpui::{App, Entity};
 
+use lib_ledger::{
+    AcceptAllDocuments, AddDocument, DocumentEdit, EditDocument, ImportDocuments, SetDocumentFacts,
+};
+
 use super::{
-    self as documents, AddError, ExtractedFacts, FilingError, FilingUndo,
-    form::{self, DocumentForm, DocumentsDialog, ImportForm, ImportOutcome},
+    self as documents, AddError, ExtractedFacts, FilingError, FilingUndo, ImportOutcome, Source,
+    form::{self, DocumentForm, DocumentsDialog, ImportForm},
 };
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    payees::PayeesStore,
-    transactions::TransactionsStore,
-    view::documents::state::DocumentsStore,
+    ledger_store::LedgerStore,
 };
 
 /// Whether the path exists on disk, passed to the form checks so they stay testable.
@@ -112,12 +113,10 @@ impl DialogForm for DocumentsDialog {
     }
 }
 
-/// Runs [`DocumentCommand`]s against the Documents store. `focus` is the Inbox row Accept all
-/// keeps in view.
+/// Runs [`DocumentCommand`]s against the Ledger as Ledger commands. `focus` is the Inbox row
+/// Accept all keeps in view.
 pub struct DocumentsApply {
-    pub documents: Entity<DocumentsStore>,
-    pub transactions: Entity<TransactionsStore>,
-    pub payees: Entity<PayeesStore>,
+    pub ledger: Entity<LedgerStore>,
     pub today: NaiveDate,
     pub focus: Option<u32>,
 }
@@ -133,7 +132,8 @@ impl Apply<DocumentCommand> for DocumentsApply {
     ) -> Result<DocumentOutcome, DocumentRefusal> {
         match command {
             DocumentCommand::Save { editing, form } => {
-                let problems = form.problems(self.documents.read(cx).documents(cx), exists_on_disk);
+                let problems =
+                    form.problems(self.ledger.read(cx).ledger().documents(), exists_on_disk);
                 let new = form
                     .can_save(&problems)
                     .then(|| form.build())
@@ -143,59 +143,38 @@ impl Apply<DocumentCommand> for DocumentsApply {
                 match editing {
                     None => {
                         let id = self
-                            .documents
-                            .update(cx, |store, cx| {
-                                store.mutate(cx, |data| documents::add_filed(data.documents, new))
-                            })
+                            .ledger
+                            .update(cx, |store, cx| store.apply(cx, AddDocument(new)))
                             .map_err(DocumentRefusal::Add)?;
                         Ok(DocumentOutcome::Added { id, title })
                     }
                     Some(id) => {
-                        self.documents
-                            .update(cx, |store, cx| {
-                                store.mutate(cx, |data| {
-                                    documents::edit_metadata(
-                                        data.documents,
-                                        id,
-                                        &new.title,
-                                        new.doc_type,
-                                        new.date,
-                                        new.key_date,
-                                    )
-                                })
-                            })
+                        let edit = DocumentEdit {
+                            title: new.title,
+                            doc_type: new.doc_type,
+                            date: new.date,
+                            key_date: new.key_date,
+                        };
+                        self.ledger
+                            .update(cx, |store, cx| store.apply(cx, EditDocument { id, edit }))
                             .map_err(DocumentRefusal::Add)?;
                         Ok(DocumentOutcome::Saved { id, title })
                     }
                 }
             }
             DocumentCommand::Import(form) => {
-                let today = self.today;
-                let outcomes = self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| {
-                        form::import_all(data.types, &form, data.documents, today, exists_on_disk)
-                    })
-                });
+                let lines = form::import_lines(form.lines(), exists_on_disk);
+                let command = ImportDocuments {
+                    lines,
+                    today: self.today,
+                    source: Source::Import,
+                };
+                let Ok(outcomes) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
                 let imported = outcomes
                     .iter()
                     .filter(|outcome| matches!(outcome, ImportOutcome::Imported(_)))
                     .count();
-                let notes: Vec<String> = outcomes
-                    .iter()
-                    .filter_map(|outcome| match outcome {
-                        ImportOutcome::Imported(_) => None,
-                        ImportOutcome::NotFound(path) => {
-                            Some(crate::msg::desktop_documents_error_path_missing(path))
-                        }
-                        ImportOutcome::Unsupported(path) => Some(format!(
-                            "{path}: {}",
-                            crate::msg::desktop_documents_error_unsupported()
-                        )),
-                        ImportOutcome::Already(title) => {
-                            Some(crate::msg::desktop_documents_error_already(title))
-                        }
-                    })
-                    .collect();
+                let notes = import_notes(&outcomes);
                 if imported == 0 {
                     return Err(DocumentRefusal::Import(notes));
                 }
@@ -205,41 +184,48 @@ impl Apply<DocumentCommand> for DocumentsApply {
                 })
             }
             DocumentCommand::SetFacts { id, facts } => {
-                let title = documents::get(self.documents.read(cx).documents(cx), id)
+                let title = documents::get(self.ledger.read(cx).ledger().documents(), id)
                     .map(|document| document.title.clone())
                     .unwrap_or_default();
-                self.documents
+                self.ledger
                     .update(cx, |store, cx| {
-                        store.mutate(cx, |data| documents::edit_facts(data.documents, id, facts))
+                        store.apply(cx, SetDocumentFacts { id, facts })
                     })
                     .map_err(DocumentRefusal::Facts)?;
                 Ok(DocumentOutcome::FactsSaved { id, title })
             }
             DocumentCommand::AcceptAll => {
-                // Copied out so the Documents can be written while the others are read.
-                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
-                let payees = self.payees.read(cx).payees(cx).to_vec();
-                let focus = self.focus;
-                let batch = self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| {
-                        documents::accept_all_strong(
-                            data.types,
-                            data.documents,
-                            &transactions,
-                            &payees,
-                            focus,
-                        )
-                    })
-                });
+                let command = AcceptAllDocuments { focus: self.focus };
+                let Ok(batch) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
                 Ok(DocumentOutcome::Accepted(batch))
             }
         }
     }
 }
 
+/// Why each line of an import that didn't land didn't, worded for the Import dialog and Toast.
+pub fn import_notes(outcomes: &[ImportOutcome]) -> Vec<String> {
+    outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            ImportOutcome::Imported(_) => None,
+            ImportOutcome::NotFound(path) => {
+                Some(crate::msg::desktop_documents_error_path_missing(path))
+            }
+            ImportOutcome::Unsupported(path) => Some(format!(
+                "{path}: {}",
+                crate::msg::desktop_documents_error_unsupported()
+            )),
+            ImportOutcome::Already(title) => {
+                Some(crate::msg::desktop_documents_error_already(title))
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -255,9 +241,7 @@ mod tests {
             },
         );
         DocumentsApply {
-            documents: cx.new(|cx| DocumentsStore::new(ledger.clone(), cx)),
-            transactions: cx.new(|cx| TransactionsStore::new(ledger.clone(), cx)),
-            payees: cx.new(|cx| PayeesStore::new(ledger, cx)),
+            ledger,
             today: NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
             focus: None,
         }

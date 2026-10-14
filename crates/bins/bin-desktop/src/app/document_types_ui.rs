@@ -67,7 +67,7 @@ impl Shell {
     /// the removed row's place and drops a scope that was on the type back to All.
     pub(super) fn confirm_document_types_dialog(&mut self, cx: &mut gpui::App) {
         let mut apply = DocumentTypesApply {
-            documents: self.documents_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<DocumentTypesDialog>() else {
             return;

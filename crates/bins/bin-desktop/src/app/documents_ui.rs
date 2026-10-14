@@ -7,6 +7,7 @@
 use std::rc::Rc;
 
 use gpui::{Context, Window};
+use lib_ledger::{ImportDocuments, ToggleDocumentLink};
 use lib_toast::ToastKind;
 
 use super::{OpenDialog, Shell};
@@ -14,14 +15,14 @@ use crate::{
     chrome::dialog_apply,
     documents::apply::{DocumentOutcome, DocumentsApply, exists_on_disk},
     documents::form::{
-        DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm, ImportOutcome,
+        DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm, import_lines,
     },
     documents::model as view_model,
     documents::picker::{PickerRequest, PickerRow, PickerState, Purpose},
     documents::types::DocumentTypeRow,
-    documents::{self, Document, DocumentsMode, LibraryScope, LibrarySort},
+    documents::{Document, DocumentsMode, ImportOutcome, LibraryScope, LibrarySort, Source},
     navigation::nav::Noun,
-    view::documents::{dialogs, state::DocumentsData},
+    view::documents::dialogs,
 };
 
 impl Shell {
@@ -33,16 +34,6 @@ impl Shell {
     /// The Document Types in the user's order, read from the store Entity.
     pub(super) fn document_types<'a>(&self, cx: &'a gpui::App) -> &'a [DocumentTypeRow] {
         self.documents_store.read(cx).types(cx)
-    }
-
-    /// Applies `change` to the shared Documents and Types, notifying every reader.
-    pub(super) fn mutate_documents<R>(
-        &self,
-        cx: &mut gpui::App,
-        change: impl FnOnce(&mut DocumentsData<'_>) -> R,
-    ) -> R {
-        self.documents_store
-            .update(cx, |store, cx| store.mutate(cx, change))
     }
 
     pub(super) fn set_documents_persisted(
@@ -91,9 +82,9 @@ impl Shell {
                 let Some(link) = row.link else {
                     return;
                 };
-                let Some(added) = self
-                    .mutate_documents(cx, |data| documents::toggle_link(data.documents, id, link))
-                else {
+                let Ok(added) = self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, ToggleDocumentLink { id, link })
+                }) else {
                     return;
                 };
                 self.close_documents_dialog();
@@ -217,9 +208,7 @@ impl Shell {
             return;
         }
         let mut apply = DocumentsApply {
-            documents: self.documents_store.clone(),
-            transactions: self.transactions_store.clone(),
-            payees: self.payees_store.clone(),
+            ledger: self.ledger.clone(),
             today: self.today,
             focus: self
                 .views
@@ -326,15 +315,16 @@ impl Shell {
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
     /// where it is: the Toast and the rail badge say what arrived.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut gpui::App) {
-        let outcomes = self.mutate_documents(cx, |data| {
-            documents::form::import_dropped(
-                data.types,
-                paths,
-                data.documents,
-                self.today,
-                exists_on_disk,
-            )
-        });
+        let typed: Vec<String> = paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect();
+        let command = ImportDocuments {
+            lines: import_lines(typed.iter().map(String::as_str), exists_on_disk),
+            today: self.today,
+            source: Source::Dropped,
+        };
+        let Ok(outcomes) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
         let imported = outcomes
             .iter()
             .filter(|outcome| matches!(outcome, ImportOutcome::Imported(_)))

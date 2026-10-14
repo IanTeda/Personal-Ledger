@@ -737,3 +737,60 @@ fn a_missing_type_reads_as_the_default() {
     assert_eq!(DocumentType::TAX.or_fallback(&types), DocumentType::OTHER);
     assert_eq!(DocumentType::BILLS.or_fallback(&types), DocumentType::BILLS);
 }
+
+fn line(typed: &str, exists: bool) -> ImportLine {
+    ImportLine {
+        typed: typed.to_string(),
+        exists,
+    }
+}
+
+#[test]
+fn an_import_batch_reports_each_line() {
+    let mut documents = Vec::new();
+    let lines = [
+        line("/tmp/coles-receipt.jpg", true),
+        line("/tmp/none.pdf", false),
+        line("/tmp/readme.txt", true),
+        line("/tmp/coles-receipt.jpg", true),
+    ];
+    let outcomes = import_batch(&types(), &mut documents, &lines, today(), Source::Import);
+    assert_eq!(
+        outcomes,
+        vec![
+            ImportOutcome::Imported(1),
+            ImportOutcome::NotFound("/tmp/none.pdf".to_string()),
+            ImportOutcome::Unsupported("/tmp/readme.txt".to_string()),
+            ImportOutcome::Already("coles-receipt".to_string()),
+        ]
+    );
+    assert_eq!(documents.len(), 1);
+    assert!(documents[0].is_unfiled());
+    assert!(
+        documents[0]
+            .intake
+            .as_ref()
+            .is_some_and(|intake| intake.facts.merchant.as_deref() == Some("Coles"))
+    );
+}
+
+#[test]
+fn a_dropped_batch_lands_in_the_inbox_as_dropped() {
+    let mut documents = Vec::new();
+    let lines = [
+        line("/tmp/coles-receipt.jpg", true),
+        line("/tmp/x.txt", true),
+    ];
+    let outcomes = import_batch(&types(), &mut documents, &lines, today(), Source::Dropped);
+    assert_eq!(
+        outcomes,
+        vec![
+            ImportOutcome::Imported(1),
+            ImportOutcome::Unsupported("/tmp/x.txt".to_string()),
+        ]
+    );
+    assert_eq!(
+        documents[0].intake.as_ref().map(|intake| intake.source),
+        Some(Source::Dropped)
+    );
+}

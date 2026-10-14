@@ -1157,6 +1157,55 @@ pub fn import_path(
     Ok(id)
 }
 
+/// A path typed or dropped for import, with whether the file is on disk. The Client answers that,
+/// so what a batch refuses stays decided by the rules here and testable without a disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportLine {
+    pub typed: String,
+    pub exists: bool,
+}
+
+/// What an import made of one line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportOutcome {
+    Imported(u32),
+    NotFound(String),
+    Unsupported(String),
+    Already(String),
+}
+
+/// Imports every line that exists into the Inbox, reporting what became of each. A path repeated
+/// in the same batch is refused as already present, since the first copy was added. A drop and
+/// `Import…` share this, so they agree on what is refused and why.
+pub fn import_batch(
+    types: &[DocumentTypeRow],
+    documents: &mut Vec<Document>,
+    lines: &[ImportLine],
+    today: NaiveDate,
+    source: Source,
+) -> Vec<ImportOutcome> {
+    lines
+        .iter()
+        .map(|line| {
+            let path = resolve_path(&line.typed);
+            if FileKind::from_path(&path).is_none() {
+                return ImportOutcome::Unsupported(line.typed.clone());
+            }
+            if let Some(existing) = find_by_path(documents, &path) {
+                return ImportOutcome::Already(existing.title.clone());
+            }
+            if !line.exists {
+                return ImportOutcome::NotFound(line.typed.clone());
+            }
+            match import_path(types, documents, path, today, source) {
+                Ok(id) => ImportOutcome::Imported(id),
+                Err(AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
+                Err(_) => ImportOutcome::Unsupported(line.typed.clone()),
+            }
+        })
+        .collect()
+}
+
 /// The Library's `e`: replaces a Filed Document's Title, Document Type, document date and Key Date.
 /// The Financial Year follows the date, since it is never stored.
 pub fn edit_metadata(
@@ -1211,15 +1260,17 @@ pub struct DocumentsSeed {
 }
 
 /// Drops every Link to the given Items, as removing a Property does. The Documents themselves
-/// stay, whatever Links they have left; returns how many lost a Link.
-pub fn drop_inventory_links(documents: &mut [Document], removed_items: &[u32]) -> usize {
-    let mut affected = 0;
+/// stay, whatever Links they have left; returns the ids of those that lost a Link.
+pub fn drop_inventory_links(documents: &mut [Document], removed_items: &[u32]) -> Vec<u32> {
+    let mut affected = Vec::new();
     for document in documents {
         let before = document.links.len();
         document.links.retain(
             |link| !matches!(link, DocumentLink::InventoryItem(id) if removed_items.contains(id)),
         );
-        affected += usize::from(document.links.len() != before);
+        if document.links.len() != before {
+            affected.push(document.id);
+        }
     }
     affected
 }

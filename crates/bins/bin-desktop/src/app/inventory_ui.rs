@@ -207,7 +207,7 @@ impl Shell {
     pub(super) fn confirm_inventory_dialog(&mut self, cx: &mut App) {
         let mut apply = InventoryApply {
             inventory: self.inventory.clone(),
-            documents: self.documents_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<InventoryDialog>() else {
             return;
