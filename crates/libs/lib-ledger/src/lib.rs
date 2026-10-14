@@ -9,6 +9,7 @@ mod category_commands;
 mod change;
 mod document_commands;
 mod hatch;
+mod inventory_commands;
 mod payee_commands;
 pub mod query;
 pub mod seed;
@@ -37,6 +38,10 @@ pub use document_commands::{
     ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
 pub use hatch::LedgerHatch;
+pub use inventory_commands::{
+    AddProperty, AddRoom, EditProperty, EditRoom, MoveRoom, MoveRoomRefusal, RemoveProperty,
+    RemoveRoom,
+};
 pub use payee_commands::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,
     SetPayeeActiveRefusal,

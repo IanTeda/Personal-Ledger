@@ -13,6 +13,7 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_documents::{Document, types::DocumentTypeRow};
+use lib_inventory::{Item, Property, Room};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
@@ -57,6 +58,16 @@ pub enum LedgerChange {
     UpsertDocument(Document),
     UpsertDocumentType(DocumentTypeRow),
     DeleteDocumentType(u32),
+    UpsertProperty(Property),
+    DeleteProperty(u32),
+    /// A Room names its Property, since a Room row is keyed by its own id.
+    UpsertRoom {
+        property: u32,
+        room: Room,
+    },
+    DeleteRoom(u32),
+    UpsertItem(Item),
+    DeleteItem(u32),
 }
 
 impl LedgerChange {
@@ -71,6 +82,12 @@ impl LedgerChange {
             Self::UpsertBudget(_) => Domain::Budgets,
             Self::UpsertDocument(_) => Domain::Documents,
             Self::UpsertDocumentType(_) | Self::DeleteDocumentType(_) => Domain::DocumentTypes,
+            Self::UpsertProperty(_)
+            | Self::DeleteProperty(_)
+            | Self::UpsertRoom { .. }
+            | Self::DeleteRoom(_)
+            | Self::UpsertItem(_)
+            | Self::DeleteItem(_) => Domain::Inventory,
         }
     }
 }

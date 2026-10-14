@@ -217,8 +217,11 @@ impl Shell {
             _ => return false,
         };
         if let Some(InventoryRow::Room(id)) = self.settings_inventory_selected_row(cx) {
-            self.inventory
-                .update(cx, |store, cx| store.move_room(cx, id, delta));
+            self.ledger
+                .update(cx, |store, cx| {
+                    store.apply(cx, lib_ledger::MoveRoom { room: id, delta })
+                })
+                .ok();
         }
         true
     }

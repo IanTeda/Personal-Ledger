@@ -125,7 +125,7 @@ mod tests {
     fn removing_a_property_drops_only_its_items_links() {
         let mut world = world();
         let elm = world.inventory.properties[0].id;
-        let removed = crate::inventory::remove_property(&mut world.inventory, elm).unwrap();
+        let removed = world.inventory.remove_property(elm).unwrap();
         let lost = drop_inventory_links(&mut world.documents, &removed.items);
         assert!(!lost.is_empty());
         for document in &world.documents {

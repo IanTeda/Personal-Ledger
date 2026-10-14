@@ -505,10 +505,10 @@ impl Shell {
             .iter()
             .map(|property| property.id)
             .collect();
-        self.inventory.update(cx, |store, cx| {
+        self.ledger.update(cx, |store, cx| {
             for id in ids {
                 assert!(
-                    store.remove_property(cx, id).is_ok(),
+                    store.apply(cx, lib_ledger::RemoveProperty(id)).is_ok(),
                     "a Property listed a moment ago must still be removable"
                 );
             }

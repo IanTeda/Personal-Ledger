@@ -391,8 +391,10 @@ impl PropertyForm {
         };
         let mut scratch = inventory.clone();
         let result = match self.own_id {
-            Some(id) => inventory::edit_property(&mut scratch, id, &draft),
-            None => inventory::add_property(&mut scratch, &draft, unit.unwrap_or("-")).map(|_| ()),
+            Some(id) => scratch.edit_property(id, &draft),
+            None => scratch
+                .add_property(&draft, unit.unwrap_or("-"))
+                .map(|_| ()),
         };
         match result {
             Ok(()) => self.unit_problem(unit),
@@ -597,8 +599,8 @@ impl RoomForm {
         let mut scratch = self.inventory.clone();
         let name = self.name.text();
         let result = match self.own_id {
-            Some(id) => inventory::edit_room(&mut scratch, id, name),
-            None => inventory::add_room(&mut scratch, self.property, name).map(|_| ()),
+            Some(id) => scratch.edit_room(id, name),
+            None => scratch.add_room(self.property, name).map(|_| ()),
         };
         match result {
             Err(inventory::RoomError::Name(error)) => Some(error),

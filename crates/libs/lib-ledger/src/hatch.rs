@@ -12,7 +12,6 @@ use lib_budgets::Budgets;
 use lib_categories::Category;
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
-use lib_inventory::Inventory;
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
@@ -33,7 +32,6 @@ pub struct LedgerHatch<'a> {
     pub budgets: &'a mut Budgets,
     pub documents: &'a mut Vec<Document>,
     pub document_types: &'a mut Vec<DocumentTypeRow>,
-    pub inventory: &'a mut Inventory,
     pub institutions: &'a mut Vec<InstitutionRow>,
     pub units: &'a mut Vec<UnitRow>,
     pub price_sources: &'a mut Vec<PriceSourceRow>,
@@ -56,7 +54,6 @@ impl Ledger {
             budgets: &mut self.budgets,
             documents: &mut self.documents,
             document_types: &mut self.document_types,
-            inventory: &mut self.inventory,
             institutions: &mut self.institutions,
             units: &mut self.units,
             price_sources: &mut self.price_sources,

@@ -4,7 +4,7 @@
 
 use gpui::{App, Entity};
 use lib_inventory::{PropertyDraft, PropertyError, RoomError};
-use lib_ledger::DropDocumentInventoryLinks;
+use lib_ledger::{AddProperty, AddRoom, EditProperty, EditRoom, RemoveProperty, RemoveRoom};
 
 use super::{
     InventoryStore,
@@ -145,23 +145,27 @@ impl Apply<InventoryCommand> for InventoryApply {
     ) -> Result<InventoryOutcome, InventoryRefusal> {
         match command {
             InventoryCommand::AddProperty { draft, unit } => {
+                let name = draft.name.trim().to_string();
                 let id = self
-                    .inventory
-                    .update(cx, |store, cx| store.add_property(cx, &draft, &unit))
+                    .ledger
+                    .update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            AddProperty {
+                                draft: draft.clone(),
+                                unit,
+                            },
+                        )
+                    })
                     .map_err(InventoryRefusal::Property)?;
-                Ok(InventoryOutcome::PropertyAdded {
-                    id,
-                    name: draft.name.trim().to_string(),
-                })
+                Ok(InventoryOutcome::PropertyAdded { id, name })
             }
             InventoryCommand::EditProperty(id, draft) => {
-                self.inventory
-                    .update(cx, |store, cx| store.edit_property(cx, id, &draft))
+                let name = draft.name.trim().to_string();
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, EditProperty { id, draft }))
                     .map_err(InventoryRefusal::Property)?;
-                Ok(InventoryOutcome::PropertySaved {
-                    id,
-                    name: draft.name.trim().to_string(),
-                })
+                Ok(InventoryOutcome::PropertySaved { id, name })
             }
             InventoryCommand::RemoveProperty(id) => {
                 let inventory = self.inventory.read(cx).inventory(cx);
@@ -175,13 +179,10 @@ impl Apply<InventoryCommand> for InventoryApply {
                     .iter()
                     .position(|property| property.id == id)
                     .unwrap_or(0);
-                let removed = self
-                    .inventory
-                    .update(cx, |store, cx| store.remove_property(cx, id))
+                // The command also drops the Document Links to the Property's Items.
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, RemoveProperty(id)))
                     .map_err(InventoryRefusal::Property)?;
-                let Ok(_) = self.ledger.update(cx, |store, cx| {
-                    store.apply(cx, DropDocumentInventoryLinks(removed.items.clone()))
-                });
                 let properties = &self.inventory.read(cx).inventory(cx).properties;
                 let selected = properties
                     .get(position.min(properties.len().saturating_sub(1)))
@@ -190,14 +191,30 @@ impl Apply<InventoryCommand> for InventoryApply {
             }
             InventoryCommand::AddRoom { property, name } => {
                 let id = self
-                    .inventory
-                    .update(cx, |store, cx| store.add_room(cx, property, &name))
+                    .ledger
+                    .update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            AddRoom {
+                                property,
+                                name: name.clone(),
+                            },
+                        )
+                    })
                     .map_err(InventoryRefusal::Room)?;
                 Ok(InventoryOutcome::RoomAdded { property, id, name })
             }
             InventoryCommand::EditRoom { id, name } => {
-                self.inventory
-                    .update(cx, |store, cx| store.edit_room(cx, id, &name))
+                self.ledger
+                    .update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            EditRoom {
+                                room: id,
+                                name: name.clone(),
+                            },
+                        )
+                    })
                     .map_err(InventoryRefusal::Room)?;
                 Ok(InventoryOutcome::RoomSaved { id, name })
             }
@@ -220,9 +237,16 @@ impl Apply<InventoryCommand> for InventoryApply {
                         .find(|room| room.id != id && room.name == chosen)
                         .map(|room| (room.id, room.name.clone()))
                 });
-                self.inventory
+                let destination_id = destination.as_ref().map(|(id, _)| *id);
+                self.ledger
                     .update(cx, |store, cx| {
-                        store.remove_room(cx, id, destination.as_ref().map(|(id, _)| *id))
+                        store.apply(
+                            cx,
+                            RemoveRoom {
+                                room: id,
+                                destination: destination_id,
+                            },
+                        )
                     })
                     .map_err(InventoryRefusal::Room)?;
                 // The cursor lands on the Room that takes the removed row's place, else the Property.
