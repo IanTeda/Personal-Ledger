@@ -34,6 +34,8 @@ mod settings_inventory_keyboard;
 mod settings_inventory_mouse;
 mod settings_keyboard;
 mod settings_mouse;
+mod settings_payees_keyboard;
+mod settings_payees_mouse;
 mod settings_sync_tracing_keyboard;
 mod settings_sync_tracing_mouse;
 mod settings_tags_keyboard;

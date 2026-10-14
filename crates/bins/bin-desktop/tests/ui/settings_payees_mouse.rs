@@ -1,0 +1,95 @@
+//! The Settings Payees page driven by clicks: the add button, row selection, the row actions and
+//! the dialogs' buttons. Only elements tagged with `debug_selector` are clicked.
+
+use super::common;
+
+use bin_desktop::navigation::nav::InputMode;
+use common::Harness;
+use gpui::TestAppContext;
+
+fn on_payees(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = Harness::new(app);
+    ui.press("g s");
+    ui.click("settings-index-Payees");
+    assert_eq!(ui.settings().page, "Payees");
+    ui
+}
+
+#[gpui::test]
+fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+
+    ui.click("settings-payees-add");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Dialog);
+    ui.click("add-payee-cancel");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+}
+
+#[gpui::test]
+fn the_add_dialog_confirm_adds_and_selects_the_payee(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+    let before = ui.settings_payees().payee_names.len();
+
+    ui.click("settings-payees-add");
+    ui.click("add-payee-confirm");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    ui.press("z o o");
+    ui.click("add-payee-confirm");
+    let payees_page = ui.settings_payees();
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(payees_page.payee_names.len(), before + 1);
+    assert_eq!(payees_page.selected_payee.as_deref(), Some("zoo"));
+}
+
+#[gpui::test]
+fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+    assert!(!ui.settings().page_focused);
+
+    ui.click("settings-payees-row-8");
+    assert_eq!(
+        ui.settings_payees().selected_payee.as_deref(),
+        Some("J Smith")
+    );
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn the_edit_action_selects_the_row_and_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+
+    ui.click("settings-payees-edit-8");
+    let page = ui.settings();
+    assert_eq!(page.dialog.as_deref(), Some("EditPayee"));
+    assert_eq!(page.dialog_name.as_deref(), Some("J Smith"));
+    assert_eq!(
+        ui.settings_payees().selected_payee.as_deref(),
+        Some("J Smith")
+    );
+    ui.click("edit-payee-cancel");
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn the_delete_action_deactivates_a_used_payee_once_its_name_is_typed(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+    let before = ui.settings_payees().payee_names;
+
+    ui.click("settings-payees-delete-1");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    ui.click("delete-payee-cancel");
+    assert_eq!(ui.settings().dialog, None);
+    ui.click("settings-payees-delete-1");
+    ui.click("delete-payee-confirm");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    ui.press("W o o l w o r t h s");
+    ui.click("delete-payee-confirm");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.settings_payees().payee_names, before);
+    assert_eq!(
+        ui.toasts().history.first().map(|toast| toast.text.clone()),
+        Some("Deactivated payee Woolworths".to_string())
+    );
+}

@@ -1,5 +1,5 @@
-//! The Settings pages driven by clicks: the index rail, the Accounts, Categories, Payees and
-//! Units pages' add button and row actions, and the dialogs' buttons. Only elements tagged with
+//! The Settings pages driven by clicks: the index rail, the Accounts, Categories and Units
+//! pages' add button and row actions, and the dialogs' buttons. Only elements tagged with
 //! `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
@@ -83,37 +83,6 @@ fn an_accounts_delete_action_needs_the_name_typed_back(app: &mut TestAppContext)
     assert_eq!(ui.settings_accounts().account_names.len(), before);
     ui.click("delete-account-cancel");
     assert_eq!(ui.settings().dialog, None);
-}
-
-#[gpui::test]
-fn the_payees_add_button_and_row_actions_open_their_dialogs(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Payees");
-
-    ui.click("settings-payees-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
-    ui.click("add-payee-cancel");
-    assert_eq!(ui.settings().dialog, None);
-
-    ui.click("settings-payees-edit-1");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditPayee"));
-    ui.press("escape");
-    ui.click("settings-payees-delete-1");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
-    ui.click("delete-payee-cancel");
-    assert_eq!(ui.settings().dialog, None);
-}
-
-#[gpui::test]
-fn clicking_a_payee_row_selects_it(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Payees");
-
-    let first = ui.settings_payees().selected_payee;
-    ui.click("settings-payees-row-2");
-    let payees_page = ui.settings_payees();
-    assert!(payees_page.selected_payee.is_some());
-    assert_ne!(first, payees_page.selected_payee);
 }
 
 #[gpui::test]

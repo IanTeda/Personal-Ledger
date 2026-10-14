@@ -1,5 +1,5 @@
 //! The Settings pages driven by keys: the index rail's paged navigation, focus stepping into and
-//! out of a page, the Accounts, Categories and Payees lists with their add, edit and delete
+//! out of a page, the Accounts and Categories lists with their add, edit and delete
 //! dialogs, and the About page. State is read back from `Shell`.
 
 use super::common;
@@ -195,49 +195,6 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
     assert_eq!(page.dialog, None);
     assert_eq!(accounts_page.account_names.len(), before - 1);
     assert!(!accounts_page.account_names.contains(&name));
-}
-
-#[gpui::test]
-fn payees_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 7, "Payees");
-
-    let payees_page = ui.settings_payees();
-    assert_eq!(
-        payees_page.selected_payee.as_ref(),
-        payees_page.payee_names.first()
-    );
-    ui.press("j");
-    let payees_page = ui.settings_payees();
-    assert_eq!(
-        payees_page.selected_payee.as_ref(),
-        payees_page.payee_names.get(1)
-    );
-    ui.press("e");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditPayee"));
-    ui.press("escape");
-    ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
-    ui.press("escape");
-    ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
-    ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
-}
-
-#[gpui::test]
-fn a_new_payee_is_added_by_typing_its_name(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 7, "Payees");
-    let before = ui.settings_payees().payee_names.len();
-
-    ui.press("n");
-    ui.press("z o o");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("zoo"));
-    ui.press("enter");
-    let payees_page = ui.settings_payees();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
-    assert_eq!(payees_page.payee_names.len(), before + 1);
-    assert!(payees_page.payee_names.iter().any(|name| name == "zoo"));
 }
 
 #[gpui::test]
