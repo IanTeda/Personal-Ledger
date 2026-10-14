@@ -1,10 +1,13 @@
 dictionaries = ["en_gb"]
 words = [
     "ADR",
+    "AFK",
     "Esc",
     "Focusable",
+    "TUI",
     "Teda",
     "Wayfinder",
+    "Wayfinding",
     "cli",
     "clippy",
     "dialogs",
@@ -15,5 +18,7 @@ words = [
     "mockup",
     "mockup's",
     "mockups",
+    "modeling",
     "readback",
+    "repo's",
 ]
