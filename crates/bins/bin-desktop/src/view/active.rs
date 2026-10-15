@@ -26,9 +26,9 @@ pub enum ActiveViewEntity {
     /// The Transactions page, and the Import step that takes it over while it is open.
     Transactions(Entity<TransactionsView>),
     Documents(Entity<DocumentsView>),
-    /// Settings: the index and every page. A page with its own Entity (Accounts) is forwarded to
-    /// by the View; `Shell` still draws the other pages with Ledger data and handles their keys
-    /// first (`app/settings_ui.rs`) until each moves into the View.
+    /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
+    /// forwarded to by the View; `Shell` still draws the other pages with Ledger data and handles
+    /// their keys first (`app/settings_ui.rs`) until each moves into the View.
     Settings(Entity<SettingsView>),
     /// A View whose rendering and input are still `Shell`'s.
     Shell(ShellView),

@@ -102,7 +102,6 @@ impl Shell {
         let section = [
             SettingsSection::Categories,
             SettingsSection::Tags,
-            SettingsSection::Payees,
             SettingsSection::Documents,
             SettingsSection::Inventory,
         ]
@@ -113,7 +112,6 @@ impl Shell {
                 self.apply_settings_categories_movement(movement, cx);
             }
             Some(SettingsSection::Tags) => self.apply_settings_tags_movement(movement, cx),
-            Some(SettingsSection::Payees) => self.apply_settings_payees_movement(movement, cx),
             Some(SettingsSection::Documents) => {
                 self.apply_settings_documents_movement(movement, cx);
             }

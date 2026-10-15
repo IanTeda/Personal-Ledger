@@ -90,7 +90,7 @@ use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{DocumentsSources, DocumentsStore, DocumentsView};
 use crate::view::event::ViewMode;
-use crate::view::payees::state::PayeesView;
+use crate::view::payees::state::{PayeesSources, PayeesView};
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
     bills::BillsStore,
@@ -179,8 +179,6 @@ pub struct Shell {
     /// The Payees rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
     payees_store: Entity<PayeesStore>,
-    /// The Payees page's and Settings Payees list's selections, owned by their view Entity.
-    payees_view: Entity<PayeesView>,
     /// The Tags rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
@@ -244,33 +242,40 @@ impl Shell {
         let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let accounts_view_observer = cx.observe(&accounts_view, |_, _, cx| cx.notify());
+        let payees_store = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
+        let payees_subscription = cx
+            .subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| {
+                cx.notify()
+            });
+        let payees_view = cx.new(|_| {
+            PayeesView::new(PayeesSources {
+                payees: payees_store.clone(),
+                categories: categories_store.clone(),
+            })
+        });
+        let payees_view_subscription = Self::view_event_subscription(&payees_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
         // A private, empty capture until `set_log_capture` hands over the real one.
-        let settings_view = cx.new(|_| {
+        let settings_view = cx.new(|cx| {
             SettingsView::new(
                 SettingsSources {
                     units: units_store.clone(),
                     institutions: institutions_store.clone(),
                     accounts: accounts_view,
+                    payees: payees_view,
                 },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
                     TracingLevel::default(),
                 ),
                 ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
+                cx,
             )
         });
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let payees_store = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
-        let payees_view = cx.new(|_| PayeesView::new());
-        let payees_subscription = cx
-            .subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| {
-                cx.notify()
-            });
-        // The Payees View's selections live in their own Entity, so a selection change repaints
-        // Shell too, not just the View that moved.
-        let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
         let tags_store = cx.new(|cx| TagsStore::new(ledger.clone(), cx));
         let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
         let tags_subscription =
@@ -388,7 +393,6 @@ impl Shell {
             categories_view,
             budgets_store,
             payees_store,
-            payees_view,
             tags_store,
             tags_view,
             transactions_store,
@@ -415,6 +419,7 @@ impl Shell {
                 documents_view_observer,
                 tags_subscription,
                 payees_subscription,
+                payees_view_subscription,
                 payees_view_observer,
                 categories_subscription,
                 units_subscription,

@@ -292,19 +292,6 @@ impl Render for Shell {
                 });
             })
         };
-        let payee_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: settings_view::payees::OnPayeeClick = Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| handler(shell, id, cx));
-            });
-            on_click
-        };
-        let on_payees_add_click: crate::dialog::OnClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_payees_add_click(cx));
-            })
-        };
         let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -360,15 +347,6 @@ impl Render for Shell {
                 on_cancel: plain(Shell::handle_dialog_cancel),
                 on_confirm: plain(Shell::handle_dialog_confirm),
             }
-        };
-        let settings_payees_page = settings_view::payees::PayeesPageProps {
-            payees: self.payees_list(cx),
-            categories: self.categories(cx),
-            selected: self.settings_payees_selected_id(cx),
-            on_add_click: on_payees_add_click,
-            on_row_click: payee_click(Shell::handle_settings_payees_row_click),
-            on_edit_click: payee_click(Shell::handle_payees_edit_click),
-            on_delete_click: payee_click(Shell::handle_payees_delete_click),
         };
         let document_type_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
@@ -603,7 +581,6 @@ impl Render for Shell {
                 &settings_view::DataPageProps {
                     categories: settings_categories_page,
                     tags: settings_tags_page,
-                    payees: settings_payees_page,
                     documents: settings_documents_page,
                     inventory: settings_inventory_page,
                 },

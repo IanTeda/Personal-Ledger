@@ -348,6 +348,13 @@ impl Dialog for PayeesDialog {
     fn close_open_select(&mut self) -> bool {
         self.form_mut().is_some_and(PayeeForm::close_open_select)
     }
+
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        Some(match self {
+            Self::Delete(..) => crate::view::settings::hints::confirm_dialog_hints(),
+            Self::Add(_) | Self::Edit(..) => crate::view::settings::hints::payee_dialog_hints(),
+        })
+    }
 }
 
 /// What the 6d dialog does to a Payee (#283): an unreferenced one is hard-deleted, a referenced

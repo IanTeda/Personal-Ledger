@@ -6,16 +6,18 @@
 //! [`ViewEvent`]. It builds the Units, Institutions and Clear logs dialogs, which `Shell`'s Dialog
 //! host draws and confirms.
 //!
-//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`]) is
-//! drawn by that Entity, and this View forwards the page's keys, movement and status to it while
-//! the page has focus. The rest (Categories, Tags, Payees, Documents, Inventory) are still
+//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`];
+//! Payees, [`PayeesView`]) is drawn by that Entity, and this View forwards the page's keys,
+//! movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
+//! Inventory) are still
 //! `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their keys
 //! before forwarding to this Entity, until each moves in its own ticket.
 
 use std::collections::HashSet;
 
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ListOffset, ListState, ScrollHandle, px,
+    App, Context, Entity, EventEmitter, Keystroke, ListOffset, ListState, ScrollHandle,
+    Subscription, px,
 };
 use lib_colour_theme::ColourTheme;
 
@@ -45,6 +47,7 @@ use crate::{
     view::{
         accounts::state::AccountsView,
         event::{Reveal, ViewEvent},
+        payees::state::{PayeesView, RowClicked},
         settings::inventory::InventoryRow,
     },
 };
@@ -57,6 +60,65 @@ pub struct SettingsSources {
     pub units: Entity<UnitsStore>,
     pub institutions: Entity<InstitutionsStore>,
     pub accounts: Entity<AccountsView>,
+    pub payees: Entity<PayeesView>,
+}
+
+/// The open page's own Entity, while it has focus.
+#[derive(Clone)]
+enum FocusedPage {
+    Accounts(Entity<AccountsView>),
+    Payees(Entity<PayeesView>),
+}
+
+impl FocusedPage {
+    fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+        }
+    }
+
+    fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+        }
+    }
+
+    fn apply_movement(&self, movement: Movement, cx: &mut App) {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
+        }
+    }
+
+    fn escape(&self, cx: &mut App) -> bool {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
+        }
+    }
+
+    fn start_search(&self, cx: &mut App) -> bool {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
+        }
+    }
+
+    fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        match self {
+            Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+        }
+    }
+
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        match self {
+            Self::Accounts(page) => page.read(cx).page_status(cx),
+            Self::Payees(page) => page.read(cx).page_status(cx),
+        }
+    }
 }
 
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
@@ -81,12 +143,23 @@ pub struct SettingsView {
     pub(super) zone_focused: bool,
     /// The page `Shell` still draws, handed in for the frame it is drawn in.
     pub(super) data_page: Option<DataPage>,
+    /// Keeps the Payees page's row clicks reaching this View, which owns the page's focus.
+    _payees_row_clicked: Subscription,
 }
 
 impl SettingsView {
     /// `log` mirrors the live capture; `log_list` is the virtualised list that shows it, and must
     /// be kept in step with `log` by [`Self::pull_log`] and [`Self::replace_log`].
-    pub fn new(sources: SettingsSources, log: LogView, log_list: ListState) -> Self {
+    pub fn new(
+        sources: SettingsSources,
+        log: LogView,
+        log_list: ListState,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let _payees_row_clicked = cx
+            .subscribe(&sources.payees, |view, _page, _event: &RowClicked, cx| {
+                view.focus_page_from_click(cx)
+            });
         Self {
             sources,
             selected_section: SettingsSection::default(),
@@ -102,6 +175,7 @@ impl SettingsView {
             scroll_handle: ScrollHandle::new(),
             zone_focused: false,
             data_page: None,
+            _payees_row_clicked,
         }
     }
 
@@ -114,11 +188,22 @@ impl SettingsView {
         &self.sources.accounts
     }
 
+    /// The Payees page's Entity, for `Shell`'s Dialog host.
+    pub fn payees(&self) -> &Entity<PayeesView> {
+        &self.sources.payees
+    }
+
     /// The open page's own Entity while it has focus: the page, rather than this View, then takes
     /// its keys, movement and status. `None` on the index and on a page this View drives.
-    fn focused_page(&self) -> Option<&Entity<AccountsView>> {
-        (self.focus == SettingsFocus::Page && self.selected_section == SettingsSection::Accounts)
-            .then_some(&self.sources.accounts)
+    fn focused_page(&self) -> Option<FocusedPage> {
+        if self.focus != SettingsFocus::Page {
+            return None;
+        }
+        match self.selected_section {
+            SettingsSection::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
+            SettingsSection::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
+            _ => None,
+        }
     }
 
     pub fn set_zone_focused(&mut self, focused: bool) {
@@ -148,8 +233,7 @@ impl SettingsView {
             || self.colour_theme_grid_key(keystroke, cx)
             || self
                 .focused_page()
-                .cloned()
-                .is_some_and(|page| page.update(cx, |page, cx| page.key_ahead(keystroke, cx)));
+                .is_some_and(|page| page.key_ahead(keystroke, cx));
         if taken {
             cx.notify();
         }
@@ -160,15 +244,14 @@ impl SettingsView {
     /// ahead of the router.
     pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         self.focused_page()
-            .cloned()
-            .is_some_and(|page| page.update(cx, |page, cx| page.handle_key(keystroke, cx)))
+            .is_some_and(|page| page.handle_key(keystroke, cx))
     }
 
     /// `j`/`k`/`g g`/`G` on the index step through the pages and swap the page live, like an index
     /// click. A page with its own Entity moves its own selection; any other page scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
-        if let Some(page) = self.focused_page().cloned() {
-            page.update(cx, |page, cx| page.apply_movement(movement, cx));
+        if let Some(page) = self.focused_page() {
+            page.apply_movement(movement, cx);
             return;
         }
         // A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
@@ -189,8 +272,8 @@ impl SettingsView {
     /// `Esc` closes what the open page has open, then leaves the Colour Theme grid for the
     /// control above it, or the page for the index.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if let Some(page) = self.focused_page().cloned()
-            && page.update(cx, |page, cx| page.escape(cx))
+        if let Some(page) = self.focused_page()
+            && page.escape(cx)
         {
             return true;
         }
@@ -210,14 +293,12 @@ impl SettingsView {
     /// where it has none rather than opening a mode with no box.
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
         self.focused_page()
-            .cloned()
-            .is_some_and(|page| page.update(cx, |page, cx| page.start_search(cx)))
+            .is_some_and(|page| page.start_search(cx))
     }
 
     pub fn search_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         self.focused_page()
-            .cloned()
-            .is_some_and(|page| page.update(cx, |page, cx| page.search_key(keystroke, cx)))
+            .is_some_and(|page| page.search_key(keystroke, cx))
     }
 
     /// Settings has just become the destination: focus goes back to the index (`g s` "lands on
@@ -237,9 +318,14 @@ impl SettingsView {
                     .accounts
                     .update(cx, |page, cx| page.reveal(reveal, cx));
             }
-            // `Shell` still reveals a Payee itself; the rest belong to other Views.
-            Reveal::Payee(_)
-            | Reveal::AccountTransactions(_)
+            Reveal::Payee(_) => {
+                self.open_page(SettingsSection::Payees, cx);
+                self.sources
+                    .payees
+                    .update(cx, |page, cx| page.reveal(reveal, cx));
+            }
+            // The rest belong to other Views.
+            Reveal::AccountTransactions(_)
             | Reveal::Transaction(_)
             | Reveal::BillEntry(_)
             | Reveal::BillPlan(_)
@@ -254,7 +340,7 @@ impl SettingsView {
             return None;
         }
         if let Some(page) = self.focused_page() {
-            return page.read(cx).page_status(cx);
+            return page.page_status(cx);
         }
         Some(PageStatus {
             hints: self.hints(),

@@ -3,7 +3,7 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::InputMode;
+use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -138,4 +138,48 @@ fn d_on_a_used_payee_deactivates_it_and_keeps_it_listed(app: &mut TestAppContext
         last_toast(&mut ui).as_deref(),
         Some("Deactivated payee Woolworths")
     );
+}
+
+#[gpui::test]
+fn enter_has_no_hand_off_and_keeps_the_row_selected(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    ui.press("j");
+    let selected = ui.settings_payees().selected_payee;
+
+    ui.press("enter");
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_payees().selected_payee, selected);
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn h_steps_back_to_the_index_and_the_page_keys_stop(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    ui.press("h");
+    assert!(!ui.settings().page_focused);
+    ui.press("n");
+    assert_eq!(ui.settings().dialog, None);
+    ui.press("j");
+    assert_eq!(ui.settings().page, "Documents", "j walks the index again");
+}
+
+#[gpui::test]
+fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    ui.press("/");
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn a_selection_survives_leaving_the_page_and_coming_back(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    ui.press("j j");
+    let selected = ui.settings_payees().selected_payee;
+
+    ui.press("h");
+    ui.press("l");
+    assert_eq!(ui.settings_payees().selected_payee, selected);
 }

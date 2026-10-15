@@ -1,25 +1,19 @@
-//! The Payees destination's wiring: keys, clicks, the Add, Edit and Delete dialogs, and the Settings Payees list. The pure rules live in `lib_payees`; the chrome in `view::payees` and `view::settings::payees`, and its View state in the `PayeesView` Entity.
+//! The Payees dialogs' side of the Dialog host. The Settings page, its keys and the dialogs it
+//! opens are the `PayeesView` Entity's (`view::payees::state`); the pure rules live in `lib_payees`
+//! and the dialogs' drawing in `view::payees`.
 
 use super::Shell;
 use crate::{
     chrome::dialog_apply,
     payees::{
+        self, Payee,
         apply::{PayeeOutcome, PayeesApply},
         form::PayeesDialog,
     },
+    view::payees::state::PayeesView,
 };
 
-use crate::{
-    chrome::dialog_host::OpenDialog,
-    navigation::{
-        key_router::Movement,
-        nav::{FocusZone, Noun},
-    },
-    payees::{self, Payee},
-    settings::{SettingsFocus, SettingsSection},
-};
-
-use gpui::{App, Context, Keystroke};
+use gpui::{App, Context, Entity};
 use lib_toast::ToastKind;
 
 impl Shell {
@@ -28,114 +22,15 @@ impl Shell {
         self.payees_store.read(cx).payees(cx)
     }
 
-    /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.
-    pub(super) fn settings_payees_page_has_focus(&self, cx: &App) -> bool {
-        self.nav.noun() == Noun::Settings
-            && self.nav.focus() == FocusZone::View
-            && self.views.settings.read(cx).focus() == SettingsFocus::Page
-            && self.views.settings.read(cx).selected_section() == SettingsSection::Payees
-    }
-
-    /// The Settings Payees page's selected Payee: the stored id while it still exists, else the
-    /// first row, so a deleted Payee never leaves the page with nothing under the cursor.
-    pub(super) fn settings_payees_selected_id(&self, cx: &App) -> Option<u32> {
-        let sorted = payees::sorted_by_name(self.payees_list(cx));
-        lib_list_cursor::resolve(
-            sorted.iter().map(|payee| payee.id),
-            self.payees_view.read(cx).settings_selected(),
-        )
-    }
-
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Payees list A–Z. `enter` has no hand-off here.
-    pub(super) fn apply_settings_payees_movement(&mut self, movement: Movement, cx: &mut App) {
-        let Some(step) = movement.step() else {
-            return;
-        };
-        let current_id = self.settings_payees_selected_id(cx);
-        let ids: Vec<u32> = payees::sorted_by_name(self.payees_list(cx))
-            .iter()
-            .map(|payee| payee.id)
-            .collect();
-        let next_id = lib_list_cursor::step_id(&ids, current_id, step);
-        self.payees_view
-            .update(cx, |view, cx| view.set_settings_selected(next_id, cx));
-    }
-
-    /// The selected Payee: the Payees page's row, or the Settings list's when that owns the
-    /// keyboard.
-    pub(super) fn selected_payee_id(&self, cx: &App) -> Option<u32> {
-        if self.settings_payees_page_has_focus(cx) {
-            return self.settings_payees_selected_id(cx);
-        }
-        let payees = self.payees_list(cx);
-        payees
-            .get(
-                self.payees_view
-                    .read(cx)
-                    .selected()
-                    .min(payees.len().saturating_sub(1)),
-            )
-            .map(|payee| payee.id)
-    }
-
-    /// Selects the Payee with `id`, if it still exists.
-    pub(super) fn select_payee(&mut self, id: u32, cx: &mut App) {
-        self.payees_view
-            .update(cx, |view, cx| view.set_settings_selected(Some(id), cx));
-        let index = self.payees_list(cx).iter().position(|payee| payee.id == id);
-        if let Some(index) = index {
-            self.payees_view
-                .update(cx, |view, cx| view.set_selected(index, cx));
-        }
-    }
-
-    /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
-    /// in `Normal` mode): the Add, Edit and Delete dialogs.
-    pub(super) fn handle_payees_key(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
-        if !self.settings_payees_page_has_focus(cx) {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
-            return false;
-        }
-        match keystroke.key.as_str() {
-            "n" => self.open_add_payee_dialog(cx),
-            "e" => {
-                if let Some(id) = self.selected_payee_id(cx) {
-                    self.open_edit_payee_dialog(id, cx);
-                }
-            }
-            "d" => {
-                if let Some(id) = self.selected_payee_id(cx) {
-                    self.open_delete_payee_dialog(id, cx);
-                }
-            }
-            _ => return false,
-        }
-        true
-    }
-
-    fn payee_dialog_options(&self, cx: &App) -> payees::form::PayeeOptions {
-        payees::form::PayeeOptions::new(
-            self.categories(cx),
-            crate::msg::desktop_payees_category_none(),
-        )
-    }
-
-    pub(super) fn open_add_payee_dialog(&mut self, cx: &App) {
-        let form =
-            payees::form::PayeeForm::new(&self.payee_dialog_options(cx), self.payees_list(cx));
-        self.open_dialog(OpenDialog::Payees(PayeesDialog::Add(form)));
+    /// The Payees page's Entity, which the Settings View owns.
+    fn payees_page(&self, cx: &App) -> Entity<PayeesView> {
+        self.views.settings.read(cx).payees().clone()
     }
 
     /// Confirms the open Payees dialog through the host's cycle: the form's command runs against
     /// the Ledger, a refusal stays on the form, and a landed one closes the dialog. Add and
-    /// Edit then select the Payee; Delete toasts the outcome and keeps the selection in range.
+    /// Edit then select the Payee; Delete toasts the outcome, and the page's selection falls back
+    /// to its first row if the Payee is gone.
     pub(super) fn confirm_payees_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = PayeesApply {
             ledger: self.ledger.clone(),
@@ -148,7 +43,10 @@ impl Shell {
         };
         self.close_dialog();
         match outcome {
-            PayeeOutcome::Saved(id) => self.select_payee(id, cx),
+            PayeeOutcome::Saved(id) => {
+                self.payees_page(cx)
+                    .update(cx, |page, cx| page.select_id(id, cx));
+            }
             PayeeOutcome::Removed { name, action } => {
                 self.raise_toast(
                     ToastKind::Success,
@@ -164,34 +62,8 @@ impl Shell {
                         }
                     },
                 );
-                let last = self.payees_list(cx).len().saturating_sub(1);
-                let selected = self.payees_view.read(cx).selected().min(last);
-                self.payees_view
-                    .update(cx, |view, cx| view.set_selected(selected, cx));
             }
         }
-    }
-
-    /// Opens the Edit dialog pre-filled from Payee `id`.
-    pub(super) fn open_edit_payee_dialog(&mut self, id: u32, cx: &App) {
-        let rows = self.payees_list(cx);
-        let Some(payee) = payees::get(rows, id) else {
-            return;
-        };
-        let form = payees::form::PayeeForm::from_payee(payee, &self.payee_dialog_options(cx), rows);
-        self.open_dialog(OpenDialog::Payees(PayeesDialog::Edit(id, form)));
-    }
-
-    /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
-    /// without `Shell`. A no-op if the Payee is gone.
-    pub(super) fn open_delete_payee_dialog(&mut self, id: u32, cx: &App) {
-        let Some(payee) = payees::get(self.payees_list(cx), id) else {
-            return;
-        };
-        let payee_use = self.ledger.read(cx).ledger().payee_use(id);
-        let action = payees::form::DeleteAction::for_payee(payee, payee_use);
-        let form = payees::form::DeletePayeeForm::new(payee, action);
-        self.open_dialog(OpenDialog::Payees(PayeesDialog::Delete(id, form)));
     }
 
     /// The Payee the Delete dialog is open on and what confirming it would do (#283).
@@ -203,29 +75,5 @@ impl Shell {
             return None;
         };
         Some((payees::get(self.payees_list(cx), *id)?, form.action()))
-    }
-
-    pub(super) fn handle_payees_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_payee_dialog(cx);
-        cx.notify();
-    }
-
-    /// A click on a row of Settings' Payees list: selects it and moves focus into the page.
-    pub(super) fn handle_settings_payees_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_payee(id, cx);
-        self.focus_settings_page(cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_payees_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_payee(id, cx);
-        self.open_edit_payee_dialog(id, cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_payees_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_payee(id, cx);
-        self.open_delete_payee_dialog(id, cx);
-        cx.notify();
     }
 }

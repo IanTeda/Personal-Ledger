@@ -6,6 +6,8 @@ use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
 pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
+pub use crate::view::payees::snapshot::SettingsPayeesSnapshot;
+#[doc(hidden)]
 pub use crate::view::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot,
@@ -14,7 +16,7 @@ use crate::{
     accounts::form::AccountsDialog,
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
-    payees::{self, form::PayeesDialog},
+    payees::form::PayeesDialog,
     settings::SettingsDialog,
     tags::{self, form::TagsDialog},
 };
@@ -25,14 +27,6 @@ use crate::{
 pub struct SettingsCategoriesSnapshot {
     pub category_names: Vec<String>,
     pub selected_category: Option<String>,
-}
-
-/// The Payees page: names A-Z, and the selected row's name.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsPayeesSnapshot {
-    pub payee_names: Vec<String>,
-    pub selected_payee: Option<String>,
 }
 
 /// The Document Types page: names in the user's order, the selected row's name, filed files per
@@ -306,19 +300,7 @@ impl Shell {
     /// The Settings Payees page for a test.
     #[doc(hidden)]
     pub fn settings_payees_snapshot(&self, cx: &gpui::App) -> SettingsPayeesSnapshot {
-        let selected_payee = self.settings_payees_selected_id(cx).and_then(|id| {
-            self.payees_list(cx)
-                .iter()
-                .find(|payee| payee.id == id)
-                .map(|payee| payee.name.clone())
-        });
-        SettingsPayeesSnapshot {
-            payee_names: payees::sorted_by_name(self.payees_list(cx))
-                .into_iter()
-                .map(|payee| payee.name.clone())
-                .collect(),
-            selected_payee,
-        }
+        self.views.settings.read(cx).payees().read(cx).snapshot(cx)
     }
 
     /// The Settings Document Types page for a test.

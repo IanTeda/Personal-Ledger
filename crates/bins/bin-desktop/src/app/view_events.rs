@@ -5,10 +5,7 @@
 use gpui::{Context, Entity, EventEmitter, Subscription};
 
 use super::Shell;
-use crate::{
-    settings::SettingsSection,
-    view::event::{Reveal, ViewEvent},
-};
+use crate::view::event::{Reveal, ViewEvent};
 
 impl Shell {
     /// Subscribes `Shell` to a View Entity's events. The subscription is kept on `Shell`, since
@@ -69,27 +66,7 @@ impl Shell {
     pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         self.nav.set_noun(reveal.noun());
         self.reset_view_scroll(cx);
-        match reveal {
-            Reveal::Payee(_) => self.reveal_on_settings_data_page(reveal, cx),
-            _ => self.active_view_entity(cx).reveal(reveal, cx),
-        }
-    }
-
-    /// A reveal whose page `Shell` still draws: the Settings pages with Ledger data.
-    fn reveal_on_settings_data_page(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        match reveal {
-            Reveal::Payee(id) => {
-                self.open_settings_page(SettingsSection::Payees, cx);
-                self.select_payee(id, cx);
-            }
-            // Their View reveals them itself.
-            Reveal::Account(_)
-            | Reveal::AccountTransactions(_)
-            | Reveal::Transaction(_)
-            | Reveal::BillEntry(_)
-            | Reveal::BillPlan(_)
-            | Reveal::BillsPeriod(_) => {}
-        }
+        self.active_view_entity(cx).reveal(reveal, cx);
     }
 
     /// Whether the current mode is one the active View entered itself, so its keys are the View's.

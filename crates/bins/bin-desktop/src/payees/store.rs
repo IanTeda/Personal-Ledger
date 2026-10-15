@@ -3,7 +3,7 @@
 //! [`PayeesEvent::Changed`] when a write touches them.
 
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
-use lib_ledger::Domain;
+use lib_ledger::{Domain, PayeeUse};
 use lib_payees::Payee;
 
 use crate::ledger_store::{LedgerChanged, LedgerStore};
@@ -41,6 +41,11 @@ impl PayeesStore {
 
     pub fn payees<'a>(&self, cx: &'a App) -> &'a [Payee] {
         self.ledger.read(cx).ledger().payees()
+    }
+
+    /// What names Payee `id`, for the Delete dialog's choice of delete, deactivate or reactivate.
+    pub fn payee_use(&self, id: u32, cx: &App) -> PayeeUse {
+        self.ledger.read(cx).ledger().payee_use(id)
     }
 }
 

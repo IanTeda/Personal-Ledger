@@ -3,7 +3,6 @@
 
 use crate::documents::types::DocumentTypesDialog;
 use crate::inventory::form::InventoryDialog;
-use crate::payees::form::PayeesDialog;
 use crate::tags::form::TagsDialog;
 use gpui::Context;
 
@@ -11,9 +10,8 @@ use super::{Shell, document_types_ui, inventory_ui};
 use crate::view::{
     active::ActiveViewEntity,
     settings::hints::{
-        confirm_dialog_hints, merge_tags_dialog_hints, payee_dialog_hints,
-        settings_categories_hints, settings_documents_hints, settings_inventory_hints,
-        settings_payees_hints, settings_tags_hints, tag_dialog_hints,
+        confirm_dialog_hints, merge_tags_dialog_hints, settings_categories_hints,
+        settings_documents_hints, settings_inventory_hints, settings_tags_hints, tag_dialog_hints,
     },
 };
 use crate::{
@@ -92,15 +90,6 @@ impl Shell {
                     self.tags_list(cx),
                     &tags::duplicate_groups(self.tags_list(cx), self.transactions(cx)),
                 ),
-            })
-        } else if focused(SettingsSection::Payees) {
-            Some(PageStatus {
-                hints: match self.dialog::<PayeesDialog>() {
-                    Some(PayeesDialog::Delete(..)) => confirm_dialog_hints(),
-                    Some(_) => payee_dialog_hints(),
-                    None => settings_payees_hints(),
-                },
-                right: settings_view::payees::scope_text(self.payees_list(cx)),
             })
         } else if focused(SettingsSection::Documents) {
             Some(PageStatus {

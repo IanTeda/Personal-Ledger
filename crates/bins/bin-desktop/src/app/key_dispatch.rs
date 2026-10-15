@@ -344,8 +344,6 @@ impl Shell {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
         if focused(SettingsSection::Categories) {
             self.handle_categories_key(keystroke, cx)
-        } else if focused(SettingsSection::Payees) {
-            self.handle_payees_key(keystroke, cx)
         } else if focused(SettingsSection::Documents) {
             self.handle_settings_documents_key(keystroke, cx)
         } else if focused(SettingsSection::Inventory) {

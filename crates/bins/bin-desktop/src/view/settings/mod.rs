@@ -53,7 +53,6 @@ pub struct DataPage {
 pub struct DataPageProps<'a> {
     pub categories: categories::CategoriesPageProps<'a>,
     pub tags: tags::TagsPageProps<'a>,
-    pub payees: payees::PayeesPageProps<'a>,
     pub documents: documents::DocumentsPageProps<'a>,
     pub inventory: inventory::InventoryPageProps<'a>,
 }
@@ -74,10 +73,6 @@ pub fn data_page(
             tags::scope_note(props.tags.tags, props.tags.groups, cx),
             tags::render(&props.tags, page_focused, cx),
         ),
-        SettingsSection::Payees => (
-            payees::scope_note(props.payees.payees, cx),
-            payees::render(&props.payees, page_focused, cx),
-        ),
         SettingsSection::Documents => (
             documents::scope_text(props.documents.types).into_any_element(),
             documents::render(&props.documents, page_focused, cx),
@@ -88,6 +83,7 @@ pub fn data_page(
         ),
         SettingsSection::General
         | SettingsSection::Accounts
+        | SettingsSection::Payees
         | SettingsSection::Display
         | SettingsSection::Units
         | SettingsSection::Institutions
@@ -113,12 +109,17 @@ impl Render for SettingsView {
         };
         let accounts = self.sources().accounts.clone();
         accounts.update(cx, |page, _| page.set_page_focused(page_focused));
+        let payees = self.sources().payees.clone();
+        payees.update(cx, |page, _| page.set_page_focused(page_focused));
         let (meta, content) = match self.data_page.take() {
             Some(page) => (page.meta, page.content),
             None if selected == SettingsSection::Accounts => (
                 accounts.read(cx).scope_note(cx).into_any_element(),
                 accounts.into_any_element(),
             ),
+            None if selected == SettingsSection::Payees => {
+                (payees.read(cx).scope_note(cx), payees.into_any_element())
+            }
             None => (
                 self.scope_note(cx).into_any_element(),
                 self.page_content(&entity, cx),
@@ -289,8 +290,8 @@ impl SettingsView {
                 cx,
             ),
             SettingsSection::About => about::render(cx),
-            // Accounts draws itself; `Shell` hands the rest in as a `DataPage`, and a frame
-            // without one draws nothing there.
+            // Accounts and Payees draw themselves; `Shell` hands the rest in as a `DataPage`, and
+            // a frame without one draws nothing there.
             SettingsSection::Accounts
             | SettingsSection::Categories
             | SettingsSection::Tags
