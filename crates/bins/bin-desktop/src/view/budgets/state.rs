@@ -5,7 +5,7 @@
 //! `Shell` asks it for the ones the palette and the other dialogs open.
 
 use chrono::NaiveDate;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_core::CategoryTypes;
 use lib_ledger::{CycleBudgetRollover, SaveBudgetCell};
 use lib_toast::ToastKind;
@@ -20,7 +20,7 @@ use crate::{
     },
     categories,
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
-    ledger_store::LedgerStore,
+    ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     period::Period,
     view::{
@@ -28,6 +28,7 @@ use crate::{
         event::{Reveal, ViewEvent, ViewMode},
     },
 };
+use lib_ledger::Domain;
 
 /// The file name the History export's save dialog suggests.
 const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
@@ -88,16 +89,25 @@ pub struct BudgetsView {
     /// another Budget is shown.
     pub(super) scroll: ScrollHandle,
     pub(super) state: BudgetsState,
+    /// Repaints the page when the Accounts its rows and filters name change.
+    _accounts_changed: Subscription,
 }
 
 impl BudgetsView {
     /// The page on `current`, as of `today`.
-    pub fn new(sources: BudgetsSources, current: u32, today: NaiveDate) -> Self {
+    pub fn new(
+        sources: BudgetsSources,
+        current: u32,
+        today: NaiveDate,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         Self {
             sources,
             today,
             scroll: ScrollHandle::new(),
             state: BudgetsState::new(current, today),
+            _accounts_changed,
         }
     }
 
@@ -1105,7 +1115,7 @@ mod tests {
             ledger: ledger.clone(),
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
         };
-        let view = cx.new(|_| BudgetsView::new(sources, current, today()));
+        let view = cx.new(|cx| BudgetsView::new(sources, current, today(), cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
         cx.update(|cx| {

@@ -8,7 +8,7 @@
 
 use chrono::NaiveDate;
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy,
+    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle,
 };
 use lib_core::DateStyle;
@@ -32,11 +32,12 @@ use crate::{
         types::DocumentTypeRow,
     },
     inventory::store::InventoryStore,
-    ledger_store::LedgerStore,
+    ledger_store::{LedgerStore, notify_on},
     navigation::{key_router::Movement, nav::Noun},
     payees::PayeesStore,
     view::event::{Reveal, ViewEvent, ViewMode},
 };
+use lib_ledger::Domain;
 
 impl EventEmitter<ViewEvent> for DocumentsView {}
 
@@ -101,6 +102,8 @@ pub struct DocumentsView {
     /// Whether the Library's Search is open (`InputMode::Search`, which the View entered).
     pub(super) searching: bool,
     pub(super) state: DocumentsState,
+    /// Repaints the page when the Accounts its rows and filters name change.
+    _accounts_changed: Subscription,
 }
 
 /// The Key date select's label for each kind.
@@ -115,7 +118,8 @@ fn key_label_for_options(kind: Option<KeyDateKind>) -> String {
 }
 
 impl DocumentsView {
-    pub fn new(sources: DocumentsSources, today: NaiveDate) -> Self {
+    pub fn new(sources: DocumentsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+        let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         Self {
             sources,
             today,
@@ -123,6 +127,7 @@ impl DocumentsView {
             zone_focused: false,
             searching: false,
             state: DocumentsState::default(),
+            _accounts_changed,
         }
     }
 

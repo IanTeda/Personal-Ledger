@@ -260,7 +260,7 @@ impl Shell {
             .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
                 cx.notify()
             });
-        let transactions_view = cx.new(|_| {
+        let transactions_view = cx.new(|cx| {
             TransactionsView::new(
                 TransactionsSources {
                     ledger: ledger.clone(),
@@ -269,6 +269,7 @@ impl Shell {
                     tags: tags_store.clone(),
                 },
                 today,
+                cx,
             )
         });
         let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
@@ -280,7 +281,7 @@ impl Shell {
             .budgets()
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
-        let budgets_view = cx.new(|_| {
+        let budgets_view = cx.new(|cx| {
             BudgetsView::new(
                 BudgetsSources {
                     ledger: ledger.clone(),
@@ -288,6 +289,7 @@ impl Shell {
                 },
                 budgets_current,
                 today,
+                cx,
             )
         });
         let budgets_subscription = Self::view_event_subscription(&budgets_view, cx);
@@ -307,7 +309,7 @@ impl Shell {
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
-        let documents_view = cx.new(|_| {
+        let documents_view = cx.new(|cx| {
             DocumentsView::new(
                 DocumentsSources {
                     ledger: ledger.clone(),
@@ -315,6 +317,7 @@ impl Shell {
                     inventory: inventory.clone(),
                 },
                 today,
+                cx,
             )
         });
         let documents_subscription = Self::view_event_subscription(&documents_view, cx);

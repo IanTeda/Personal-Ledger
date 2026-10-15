@@ -7,7 +7,7 @@
 
 use chrono::NaiveDate;
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy,
+    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle,
 };
 
@@ -21,7 +21,7 @@ use super::{
 use crate::{
     chrome::statusline::PageStatus,
     import::ImportState,
-    ledger_store::LedgerStore,
+    ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     payees::{Payee, PayeesStore},
     settings::display::{RowDensity, StatusGlyphs},
@@ -40,6 +40,7 @@ use crate::{
         tags::state::TagsStore,
     },
 };
+use lib_ledger::Domain;
 
 impl EventEmitter<ViewEvent> for TransactionsView {}
 
@@ -104,10 +105,13 @@ pub struct TransactionsView {
     /// The Import step's own scroll, reset as it opens and as the page becomes the destination.
     pub(super) import_scroll: ScrollHandle,
     pub(super) state: TransactionsState,
+    /// Repaints the page when the Accounts its rows and filters name change.
+    _accounts_changed: Subscription,
 }
 
 impl TransactionsView {
-    pub fn new(sources: TransactionsSources, today: NaiveDate) -> Self {
+    pub fn new(sources: TransactionsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+        let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         Self {
             sources,
             today,
@@ -117,6 +121,7 @@ impl TransactionsView {
             searching: false,
             import_scroll: ScrollHandle::new(),
             state: TransactionsState::new(today),
+            _accounts_changed,
         }
     }
 
