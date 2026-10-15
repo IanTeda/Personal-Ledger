@@ -13,7 +13,6 @@ pub mod event;
 pub(crate) mod format;
 pub mod help;
 pub mod import;
-pub mod institutions;
 pub mod inventory;
 pub mod payees;
 pub mod placeholder;

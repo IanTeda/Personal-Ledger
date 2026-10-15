@@ -17,7 +17,6 @@ mod error;
 mod form;
 mod help;
 mod import;
-mod institutions;
 mod inventory;
 mod ledger_data;
 mod ledger_store;

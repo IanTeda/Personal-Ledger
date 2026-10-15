@@ -8,9 +8,9 @@ use crate::tags::form::TagsDialog;
 use std::rc::Rc;
 
 use crate::settings as settings_view;
+use crate::settings::institutions::dialogs::{InstitutionsDialog, InstitutionsDialogHandlers};
 use crate::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
-use crate::view::institutions as institutions_view;
 
 use gpui::{
     Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, SharedString, Window, div,
@@ -184,22 +184,6 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
-            })
-        };
-        let on_add_institution_account_type_click: institutions_view::add_dialog::OnAccountTypeClick = {
-            let entity = entity.clone();
-            Rc::new(move |account_type, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_add_institution_account_type_click(account_type, cx)
-                });
-            })
-        };
-        let on_add_institution_unit_click: institutions_view::add_dialog::OnUnitClick = {
-            let entity = entity.clone();
-            Rc::new(move |code, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_add_institution_unit_click(code, cx)
-                });
             })
         };
         let on_empty_state_command_click: OnEmptyStateCommandClick = {
@@ -1052,15 +1036,26 @@ impl Render for Shell {
                     on_settings_dialog_confirm.clone(),
                     cx,
                 ),
-                SettingsDialog::AddInstitution(form) => institutions_view::add_dialog::render(
-                    form,
+            }))
+            .children(self.dialog::<InstitutionsDialog>().map(|dialog| {
+                dialog.render(
                     self.ledger.read(cx).ledger().units(),
-                    on_add_institution_account_type_click,
-                    on_add_institution_unit_click,
-                    on_settings_dialog_cancel.clone(),
-                    on_settings_dialog_confirm.clone(),
+                    InstitutionsDialogHandlers {
+                        on_change: {
+                            let entity = entity.clone();
+                            Rc::new(move |change, _window, cx| {
+                                entity.update(cx, |shell, cx| {
+                                    shell.edit_dialog(cx, |dialog: &mut InstitutionsDialog| {
+                                        dialog.apply_change(change)
+                                    })
+                                });
+                            })
+                        },
+                        on_cancel: on_settings_dialog_cancel.clone(),
+                        on_confirm: on_settings_dialog_confirm.clone(),
+                    },
                     cx,
-                ),
+                )
             }))
             .children(self.dialog::<UnitsDialog>().map(|dialog| {
                 dialog.render(

@@ -1,10 +1,41 @@
-//! The Add institution dialog's live form state -- pure, `gpui`-free; `Shell` owns it and
-//! `settings` renders it.
+//! The Add institution dialog's live form state -- pure, `gpui`-free; the Dialog host holds it and
+//! `dialogs/add.rs` renders it.
 
-use super::InstitutionProduct;
 use lib_units::UnitRow;
 
 use crate::form::field::TextField;
+
+/// The Add institution dialog's own product multi-select chips (not `lib_core::AccountType`, which classes an Account)
+/// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2e — Add institution": savings / credit card /
+/// offset / loan / investment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstitutionProduct {
+    Savings,
+    CreditCard,
+    Offset,
+    Loan,
+    Investment,
+}
+
+impl InstitutionProduct {
+    pub const ALL: [InstitutionProduct; 5] = [
+        Self::Savings,
+        Self::CreditCard,
+        Self::Offset,
+        Self::Loan,
+        Self::Investment,
+    ];
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Savings => crate::msg::desktop_settings_account_type_savings(),
+            Self::CreditCard => lib_locale::msg::account_kind_credit_card(),
+            Self::Offset => crate::msg::desktop_settings_account_type_offset(),
+            Self::Loan => lib_locale::msg::account_kind_loan(),
+            Self::Investment => lib_locale::msg::account_kind_investment(),
+        }
+    }
+}
 
 /// The Add institution dialog's own live form state (issue #187) -- pure, `gpui`-free.
 /// Institution name is a real text field with no `focused_field`, mirroring
@@ -85,21 +116,9 @@ mod tests {
         assert!(form.account_types.contains(&InstitutionProduct::Loan));
     }
 
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{Dialog as _, OpenDialog};
-    use crate::settings::SettingsDialog;
-
     #[test]
-    fn add_institution_needs_a_name_an_account_type_and_a_unit() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::AddInstitution(
-            AddInstitutionForm::new(&default_units()),
-        ));
-        assert!(!dialog.is_valid());
-        type_text(&mut dialog, "ANZ");
-        assert!(dialog.is_valid());
-        if let OpenDialog::Settings(SettingsDialog::AddInstitution(form)) = &mut dialog {
-            form.toggle_account_type(InstitutionProduct::Savings);
-        }
-        assert!(!dialog.is_valid());
+    fn account_type_labels_come_from_the_catalogue() {
+        crate::locale::init_for_tests();
+        assert_eq!(InstitutionProduct::CreditCard.label(), "Credit card");
     }
 }

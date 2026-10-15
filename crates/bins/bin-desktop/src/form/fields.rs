@@ -76,7 +76,7 @@ pub(crate) fn text_field(
 /// selected option taking `background: var(--color-accent); color: var(--color-bg)` -- the
 /// segmented control's own named exception to the shell's "accent never a background" rule (see
 /// `theme::color::accent`'s own doc). Only usable for `&'static [T]` option lists --
-/// `view::institutions::add_dialog`'s own Default unit field needs a runtime `&[UnitRow]`
+/// `settings::institutions::dialogs::add`'s own Default unit field needs a runtime `&[UnitRow]`
 /// instead, so it builds its own bespoke row rather than reusing this one (see that module's
 /// own doc).
 pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedString>>(

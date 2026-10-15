@@ -4,9 +4,10 @@
 use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
+pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
+#[doc(hidden)]
 pub use crate::settings::snapshot::{
-    SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
-    SettingsTracingSnapshot,
+    SettingsDisplaySnapshot, SettingsSnapshot, SettingsTracingSnapshot,
 };
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
@@ -19,7 +20,9 @@ use crate::{
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     payees::form::PayeesDialog,
-    settings::{SettingsDialog, units::dialogs::UnitsDialog},
+    settings::{
+        SettingsDialog, institutions::dialogs::InstitutionsDialog, units::dialogs::UnitsDialog,
+    },
     tags::{self, form::TagsDialog},
 };
 
@@ -215,21 +218,16 @@ impl Shell {
             open_dialog.confirm = confirm;
         } else if let Some(open) = self.dialog::<SettingsDialog>() {
             let (label, name, confirm) = match open {
-                SettingsDialog::AddInstitution(form) => {
-                    open_dialog.institution = Some((
-                        form.account_types
-                            .iter()
-                            .map(|product| format!("{product:?}"))
-                            .collect(),
-                        form.default_unit_code.clone(),
-                    ));
-                    ("AddInstitution", Some(form.name.text().to_string()), None)
-                }
                 SettingsDialog::ClearLogs => ("ClearLogs", None, None),
             };
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
+        } else if let Some(open) = self.dialog::<InstitutionsDialog>() {
+            let open = open.snapshot();
+            open_dialog.label = Some(open.label);
+            open_dialog.name = Some(open.name);
+            open_dialog.institution = Some(open.form);
         } else if let Some(open) = self.dialog::<UnitsDialog>() {
             let open = open.snapshot();
             open_dialog.label = Some(open.label);
@@ -425,7 +423,13 @@ impl Shell {
         SettingsInstitutionsSnapshot {
             institution_dialog_types: institution_form.as_ref().map(|(types, _)| types.clone()),
             institution_dialog_unit: institution_form.and_then(|(_, unit)| unit),
-            ..self.views.settings.read(cx).institutions_snapshot(cx)
+            ..self
+                .views
+                .settings
+                .read(cx)
+                .institutions()
+                .read(cx)
+                .snapshot(cx)
         }
     }
 

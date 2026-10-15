@@ -21,33 +21,38 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_units::UnitRow;
 
+use super::{Change, InstitutionsDialogHandlers};
 use crate::{
     dialog,
-    institutions::{InstitutionProduct, form::AddInstitutionForm},
+    form::fields::{field_label, text_field},
+    settings::institutions::form::{AddInstitutionForm, InstitutionProduct},
     theme::color,
 };
 
-use crate::form::fields::{field_label, text_field};
-
 const WIDTH: gpui::Pixels = px(460.0);
 
-pub type OnAccountTypeClick = Rc<dyn Fn(InstitutionProduct, &mut Window, &mut App)>;
-/// Passes the clicked unit's own code -- `Shell::settings_units` is a live `Vec` the dialog
-/// doesn't own, so an index would need re-deriving against it anyway; the code is what
-/// `AddInstitutionForm::default_unit_code` actually stores (see that field's own doc).
-pub type OnUnitClick = Rc<dyn Fn(String, &mut Window, &mut App)>;
-pub type OnCancel = dialog::OnClick;
-pub type OnConfirm = dialog::OnClick;
+type OnAccountTypeClick = Rc<dyn Fn(InstitutionProduct, &mut Window, &mut App)>;
+/// Passes the clicked unit's own code, which is what `AddInstitutionForm::default_unit_code`
+/// stores.
+type OnUnitClick = Rc<dyn Fn(String, &mut Window, &mut App)>;
 
 pub fn render(
     form: &AddInstitutionForm,
     units: &[UnitRow],
-    on_account_type_click: OnAccountTypeClick,
-    on_unit_click: OnUnitClick,
-    on_cancel: OnCancel,
-    on_confirm: OnConfirm,
+    handlers: InstitutionsDialogHandlers,
     cx: &App,
 ) -> AnyElement {
+    let on_account_type_click: OnAccountTypeClick = {
+        let on_change = handlers.on_change.clone();
+        Rc::new(move |account_type, window, cx| {
+            on_change(Change::AccountType(account_type), window, cx)
+        })
+    };
+    let on_unit_click: OnUnitClick = {
+        let on_change = handlers.on_change.clone();
+        Rc::new(move |code, window, cx| on_change(Change::Unit(code), window, cx))
+    };
+    let (on_cancel, on_confirm) = (handlers.on_cancel, handlers.on_confirm);
     let card = div()
         .flex()
         .flex_col()

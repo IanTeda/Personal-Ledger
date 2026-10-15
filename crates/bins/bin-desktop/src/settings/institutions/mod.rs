@@ -1,196 +1,174 @@
-//! The **Institutions** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
-//! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::institutions::default_institutions()`,
-//! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
-//! `settings::units`, just a two-column table instead of three.
-//!
-//! "+ Add institution" opens the real Add institution dialog (issue #187). Row edit/delete have
-//! **no dialog ticket anywhere on this map** -- unlike Units, whose `2c`/`2d` dialogs are named
-//! tickets (#185/#186), the README's own "Dialog lifecycle" table and `State` block only ever
-//! mention `AddInstitution`, never an `EditInstitution`/`DeleteInstitution` variant. So these two
-//! stubs flash a plain "not yet built" message with no issue number to point at, rather than
-//! inventing one.
+//! The **Institutions** Settings page (ADR-0037, and its amendment's one folder per page): the
+//! Institutions table. [`InstitutionsPage`] reads it straight from [`LedgerStore`], renders itself
+//! (`render.rs`), builds the Add institution Dialog (`dialogs/`) and reaches `Shell` only through
+//! [`ViewEvent`]; `Shell`'s Dialog host draws it and confirms it through `apply.rs`. The Settings
+//! View forwards the page's keys and status to it while the page has focus.
 
-use std::rc::Rc;
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+mod render;
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_institutions::InstitutionRow;
+use lib_ledger::Domain;
 
-use crate::{institutions::InstitutionRow, theme::color};
+use crate::{
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::Movement,
+    settings::{SettingsPage, hints::settings_plain_page_hints},
+    view::event::ViewEvent,
+};
+use dialogs::InstitutionsDialog;
+use form::AddInstitutionForm;
 
-pub type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// A plain, index-less click handler -- what a [`row_action_button`] is bound to after its own
-/// row index has already been curried in.
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+impl EventEmitter<ViewEvent> for InstitutionsPage {}
 
-pub fn render(
-    institutions: &[InstitutionRow],
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    on_add_click: OnAddClick,
-    cx: &App,
-) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(table(institutions, on_edit_click, on_delete_click, cx))
-        .child(add_button(on_add_click, cx))
-        .into_any_element()
+/// The Institutions page. It has no selection of its own: every row is reached by its buttons.
+pub struct InstitutionsPage {
+    ledger: Entity<LedgerStore>,
+    _institutions_changed: Subscription,
 }
 
-const ACCOUNT_TYPE_WIDTH: gpui::Pixels = px(140.0);
-const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
+impl InstitutionsPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _institutions_changed = notify_on(&ledger, Domain::Institutions, cx);
+        Self {
+            ledger,
+            _institutions_changed,
+        }
+    }
 
-fn table(
-    institutions: &[InstitutionRow],
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    let last_index = institutions.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .border_1()
-        .border_color(color::border(cx))
-        .child(table_header(cx))
-        .children(institutions.iter().enumerate().map(|(index, institution)| {
-            row(
-                institution,
-                index == last_index,
-                index,
-                on_edit_click.clone(),
-                on_delete_click.clone(),
-                cx,
-            )
-        }))
-}
+    fn institutions<'a>(&self, cx: &'a App) -> &'a [InstitutionRow] {
+        self.ledger.read(cx).ledger().institutions()
+    }
 
-fn table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(div().flex_1().child(lib_locale::format::upper(
-            &lib_locale::msg::column_institution(),
-        )))
-        .child(div().w(ACCOUNT_TYPE_WIDTH).child(lib_locale::format::upper(
-            &crate::msg::desktop_settings_institutions_column_account_types(),
-        )))
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
-        )
-}
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page has focus (ADR-0037)
+    // -----------------------------------------------------------------------------------------
 
-fn row(
-    institution: &InstitutionRow,
-    last: bool,
-    index: usize,
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
+    /// The page has no keys of its own: its Dialog opens from its button.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// With no selection to move, the page takes no movement and the Settings View scrolls its
+    /// body instead.
+    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The plain page legend and the page's fixed note.
+    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_plain_page_hints(),
+            right: SettingsPage::Institutions.scope_note(),
         })
-        .child(
-            div()
-                .flex_1()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(institution.name.clone()),
-        )
-        .child(
-            div()
-                .w(ACCOUNT_TYPE_WIDTH)
-                .text_color(color::faint_text(cx))
-                .child(institution.account_type.clone()),
-        )
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .flex()
-                .justify_end()
-                .gap(px(10.0))
-                .child(row_action_button(
-                    SharedString::from(format!("institution-edit-{index}")),
-                    crate::msg::desktop_hint_edit(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_edit_click(index, window, cx)
-                    }),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("institution-delete-{index}")),
-                    crate::msg::desktop_hint_delete(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_delete_click(index, window, cx)
-                    }),
-                    cx,
-                )),
-        )
+    }
+
+    /// The heading's meta: how many Institutions the table holds.
+    pub fn scope_note(&self, cx: &App) -> String {
+        let count = i64::try_from(self.institutions(cx).len()).unwrap_or(i64::MAX);
+        crate::msg::desktop_settings_scope_institutions(count)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// **+ Add institution** opens the Add institution dialog, its Default unit seeded from the
+    /// Units table's first row.
+    fn click_add(&mut self, cx: &mut Context<'_, Self>) {
+        let form = AddInstitutionForm::new(self.ledger.read(cx).ledger().units());
+        open_dialog(InstitutionsDialog::Add(form), cx);
+    }
+
+    /// Institutions' edit and delete have no Dialog yet, so they say so on the status line.
+    fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
+        cx.emit(ViewEvent::SetStatus(Some(message)));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------------------------
+
+    /// The Institutions rows. The open Dialog's fields are `Shell`'s, which fills them in.
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &App) -> SettingsInstitutionsSnapshot {
+        SettingsInstitutionsSnapshot {
+            institutions: self
+                .institutions(cx)
+                .iter()
+                .map(|row| (row.name.clone(), row.account_type.clone()))
+                .collect(),
+            institution_dialog_types: None,
+            institution_dialog_unit: None,
+        }
+    }
 }
 
-/// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
-/// background:transparent; font-size:11px`.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .py(px(4.0))
-        .px(px(10.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .text_size(px(11.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(label)
+/// The Institutions page: `(name, account type)` rows in table order, and the Add institution
+/// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsInstitutionsSnapshot {
+    pub institutions: Vec<(String, String)>,
+    pub institution_dialog_types: Option<Vec<String>>,
+    pub institution_dialog_unit: Option<String>,
 }
 
-/// The "+ Add institution" button: `padding:10px 16px; border:1px solid rgba(32,30,29,.30);
-/// background:#eae9e9; font-weight:800; width:fit-content; margin-top:16px` -- the mockup's own
-/// markup for this button already uses `margin-top:16px` (not the table's own inline
-/// `margin-bottom:48px` slip `settings::units`' `add_button`'s doc calls out), so this one needs no
-/// deviation from the raw markup.
-fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
-    // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
-    // `items_start`/etc.) -- without it, this button stretches to the full width of its column
-    // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
-    let mut button = div()
-        .debug_selector(|| "settings-add-institution".to_string())
-        .id("settings-add-institution")
-        .cursor_pointer()
-        .mt(px(16.0))
-        .py(px(10.0))
-        .px(px(16.0))
-        .bg(color::chrome(cx))
-        .border_1()
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_settings_institutions_add_button("+"));
-    button.style().align_self = Some(gpui::AlignItems::FlexStart);
-    button
+/// What the open Institutions Dialog shows, for the Settings snapshots.
+#[doc(hidden)]
+pub struct InstitutionsDialogSnapshot {
+    /// `AddInstitution`.
+    pub label: &'static str,
+    /// The Name draft.
+    pub name: String,
+    /// The checked products (`InstitutionProduct` variant names) and the chosen Default unit code.
+    pub form: (Vec<String>, Option<String>),
+}
+
+impl InstitutionsDialog {
+    #[doc(hidden)]
+    pub fn snapshot(&self) -> InstitutionsDialogSnapshot {
+        let Self::Add(form) = self;
+        InstitutionsDialogSnapshot {
+            label: "AddInstitution",
+            name: form.name.text().to_string(),
+            form: (
+                form.account_types
+                    .iter()
+                    .map(|product| format!("{product:?}"))
+                    .collect(),
+                form.default_unit_code.clone(),
+            ),
+        }
+    }
+}
+
+/// Asks `Shell`'s Dialog host to open an Institutions Dialog.
+fn open_dialog(dialog: InstitutionsDialog, cx: &mut Context<'_, InstitutionsPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Institutions(
+        dialog,
+    ))));
 }

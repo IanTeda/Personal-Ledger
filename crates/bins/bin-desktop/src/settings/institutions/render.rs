@@ -1,0 +1,224 @@
+//! The **Institutions** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
+//! table (INSTITUTION / ACCOUNT TYPE) read from the Ledger,
+//! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
+//! `settings::units`, just a two-column table instead of three.
+//!
+//! "+ Add institution" opens the real Add institution dialog (issue #187). Row edit/delete have
+//! **no dialog ticket anywhere on this map** -- unlike Units, whose `2c`/`2d` dialogs are named
+//! tickets (#185/#186), the README's own "Dialog lifecycle" table and `State` block only ever
+//! mention `AddInstitution`, never an `EditInstitution`/`DeleteInstitution` variant. So these two
+//! stubs flash a plain "not yet built" message with no issue number to point at, rather than
+//! inventing one.
+
+use std::rc::Rc;
+
+use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
+use lib_institutions::InstitutionRow;
+
+use super::InstitutionsPage;
+use crate::theme::color;
+
+type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
+/// A plain, index-less click handler -- what a [`row_action_button`] is bound to after its own
+/// row index has already been curried in.
+type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+
+impl Render for InstitutionsPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let cx: &App = cx;
+        div()
+            .flex()
+            .flex_col()
+            .child(table(
+                self.institutions(cx),
+                row_stub(
+                    &entity,
+                    crate::msg::desktop_status_edit_institution_not_yet_built,
+                ),
+                row_stub(
+                    &entity,
+                    crate::msg::desktop_status_delete_institution_not_yet_built,
+                ),
+                cx,
+            ))
+            .child(add_button(
+                on_plain(&entity, InstitutionsPage::click_add),
+                cx,
+            ))
+    }
+}
+
+/// As the Units page's: runs `act` on the page for a click that carries no row.
+fn on_plain(
+    entity: &Entity<InstitutionsPage>,
+    act: fn(&mut InstitutionsPage, &mut Context<'_, InstitutionsPage>),
+) -> OnAddClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| entity.update(cx, act))
+}
+
+/// A row's button with nothing behind it yet: it says so on the status line, whichever row.
+fn row_stub(entity: &Entity<InstitutionsPage>, message: fn() -> String) -> OnRowIndexClick {
+    let entity = entity.clone();
+    Rc::new(move |_index, _window, cx| entity.update(cx, |page, cx| page.not_built(message(), cx)))
+}
+
+const ACCOUNT_TYPE_WIDTH: gpui::Pixels = px(140.0);
+const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
+
+fn table(
+    institutions: &[InstitutionRow],
+    on_edit_click: OnRowIndexClick,
+    on_delete_click: OnRowIndexClick,
+    cx: &App,
+) -> impl IntoElement {
+    let last_index = institutions.len().saturating_sub(1);
+    div()
+        .flex()
+        .flex_col()
+        .border_1()
+        .border_color(color::border(cx))
+        .child(table_header(cx))
+        .children(institutions.iter().enumerate().map(|(index, institution)| {
+            row(
+                institution,
+                index == last_index,
+                index,
+                on_edit_click.clone(),
+                on_delete_click.clone(),
+                cx,
+            )
+        }))
+}
+
+fn table_header(cx: &App) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .px(px(16.0))
+        .py(px(12.0))
+        .bg(color::chrome(cx))
+        .border_b(px(1.0))
+        .border_color(color::border(cx))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(10.0))
+        .text_color(color::muted(cx))
+        .child(div().flex_1().child(lib_locale::format::upper(
+            &lib_locale::msg::column_institution(),
+        )))
+        .child(div().w(ACCOUNT_TYPE_WIDTH).child(lib_locale::format::upper(
+            &crate::msg::desktop_settings_institutions_column_account_types(),
+        )))
+        .child(
+            div()
+                .w(ACTIONS_WIDTH)
+                .text_align(gpui::TextAlign::Right)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
+        )
+}
+
+fn row(
+    institution: &InstitutionRow,
+    last: bool,
+    index: usize,
+    on_edit_click: OnRowIndexClick,
+    on_delete_click: OnRowIndexClick,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .px(px(16.0))
+        .py(px(12.0))
+        .when(!last, |this| {
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
+        })
+        .child(
+            div()
+                .flex_1()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .child(institution.name.clone()),
+        )
+        .child(
+            div()
+                .w(ACCOUNT_TYPE_WIDTH)
+                .text_color(color::faint_text(cx))
+                .child(institution.account_type.clone()),
+        )
+        .child(
+            div()
+                .w(ACTIONS_WIDTH)
+                .flex()
+                .justify_end()
+                .gap(px(10.0))
+                .child(row_action_button(
+                    SharedString::from(format!("institution-edit-{index}")),
+                    crate::msg::desktop_hint_edit(),
+                    Rc::new(move |window: &mut Window, cx: &mut App| {
+                        on_edit_click(index, window, cx)
+                    }),
+                    cx,
+                ))
+                .child(row_action_button(
+                    SharedString::from(format!("institution-delete-{index}")),
+                    crate::msg::desktop_hint_delete(),
+                    Rc::new(move |window: &mut Window, cx: &mut App| {
+                        on_delete_click(index, window, cx)
+                    }),
+                    cx,
+                )),
+        )
+}
+
+/// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
+/// background:transparent; font-size:11px`.
+fn row_action_button(
+    id: SharedString,
+    label: String,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
+        .id(id)
+        .cursor_pointer()
+        .py(px(4.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .text_size(px(11.0))
+        .on_click(move |_event, window, cx| on_click(window, cx))
+        .child(label)
+}
+
+/// The "+ Add institution" button: `padding:10px 16px; border:1px solid rgba(32,30,29,.30);
+/// background:#eae9e9; font-weight:800; width:fit-content; margin-top:16px` -- the mockup's own
+/// markup for this button already uses `margin-top:16px` (not the table's own inline
+/// `margin-bottom:48px` slip `settings::units`' `add_button`'s doc calls out), so this one needs no
+/// deviation from the raw markup.
+fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
+    // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
+    // `items_start`/etc.) -- without it, this button stretches to the full width of its column
+    // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
+    let mut button = div()
+        .debug_selector(|| "settings-add-institution".to_string())
+        .id("settings-add-institution")
+        .cursor_pointer()
+        .mt(px(16.0))
+        .py(px(10.0))
+        .px(px(16.0))
+        .bg(color::chrome(cx))
+        .border_1()
+        .border_color(color::border(cx))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .whitespace_nowrap()
+        .on_click(move |_event, window, cx| on_click(window, cx))
+        .child(crate::msg::desktop_settings_institutions_add_button("+"));
+    button.style().align_self = Some(gpui::AlignItems::FlexStart);
+    button
+}

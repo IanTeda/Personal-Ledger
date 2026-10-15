@@ -33,7 +33,6 @@ use gpui::{AnyElement, App, Context, Entity, Window, div, prelude::*, px};
 use crate::{
     chrome::{dialog_host::Dialog, rail::settings_index::SettingsIndexRail},
     form::field::TextField,
-    institutions::form::AddInstitutionForm,
     navigation::nav::Noun,
     theme::color,
 };
@@ -118,6 +117,7 @@ impl Render for SettingsView {
         let payees = self.sources().payees.clone();
         payees.update(cx, |page, _| page.set_page_focused(page_focused));
         let units = self.sources().units.clone();
+        let institutions = self.sources().institutions.clone();
         let (meta, content) = match self.data_page.take() {
             Some(page) => (page.meta, page.content),
             None if selected == SettingsPage::Accounts => (
@@ -131,8 +131,12 @@ impl Render for SettingsView {
                 units.read(cx).scope_note(cx).into_any_element(),
                 units.into_any_element(),
             ),
+            None if selected == SettingsPage::Institutions => (
+                institutions.read(cx).scope_note(cx).into_any_element(),
+                institutions.into_any_element(),
+            ),
             None => (
-                self.scope_note(cx).into_any_element(),
+                self.scope_note().into_any_element(),
                 self.page_content(&entity, cx),
             ),
         };
@@ -171,15 +175,9 @@ impl Render for SettingsView {
 }
 
 impl SettingsView {
-    /// The heading's scope note for a page this View draws: Institutions counts its rows; the
-    /// others have a fixed note.
-    fn scope_note(&self, cx: &App) -> String {
-        match self.selected_section() {
-            SettingsPage::Institutions => crate::msg::desktop_settings_scope_institutions(count(
-                self.sources().institutions.read(cx).institutions(cx).len(),
-            )),
-            other => other.scope_note(),
-        }
+    /// The heading's scope note for a page this View draws: a fixed note.
+    fn scope_note(&self) -> String {
+        self.selected_section().scope_note()
     }
 
     /// The content of a page this View draws, its clicks bound to `entity`.
@@ -234,19 +232,6 @@ impl SettingsView {
                     cx,
                 )
             }
-            SettingsPage::Institutions => institutions::render(
-                self.sources().institutions.read(cx).institutions(cx),
-                row_stub(
-                    entity,
-                    crate::msg::desktop_status_edit_institution_not_yet_built,
-                ),
-                row_stub(
-                    entity,
-                    crate::msg::desktop_status_delete_institution_not_yet_built,
-                ),
-                plain(entity, SettingsView::click_add_institution),
-                cx,
-            ),
             SettingsPage::SyncServer => sync_server::render(
                 stub(entity, crate::msg::desktop_status_sync_now_not_implemented),
                 cx,
@@ -274,10 +259,11 @@ impl SettingsView {
                 cx,
             ),
             SettingsPage::About => about::render(cx),
-            // Accounts, Payees and Units draw themselves; `Shell` hands the rest in as a
+            // Accounts, Payees, Units and Institutions draw themselves; `Shell` hands the rest in as a
             // `DataPage`, and a frame without one draws nothing there.
             SettingsPage::Accounts
             | SettingsPage::Units
+            | SettingsPage::Institutions
             | SettingsPage::Categories
             | SettingsPage::Tags
             | SettingsPage::Payees
@@ -330,11 +316,6 @@ fn section_block(
         .child(content)
 }
 
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
-}
-
 /// A page that isn't rebuilt yet.
 fn placeholder(cx: &App) -> AnyElement {
     div()
@@ -370,36 +351,26 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
     choices[position.saturating_add_signed(delta).min(last)]
 }
 
-/// The Settings dialogs no page owns yet: each page's own Dialogs leave this enum as the page
-/// moves into its folder (ADR-0037's amendment).
+/// The Settings dialogs no page owns: each page's own Dialogs live in its folder (ADR-0037's
+/// amendment), so only Tracing's Clear logs confirm is left.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsDialog {
-    AddInstitution(AddInstitutionForm),
     /// Tracing's Clear logs confirm: nothing to fill in.
     ClearLogs,
 }
 
 impl Dialog for SettingsDialog {
     fn focused_text(&mut self) -> Option<&mut TextField> {
-        match self {
-            Self::AddInstitution(form) => Some(&mut form.name),
-            Self::ClearLogs => None,
-        }
+        None
     }
 
     fn is_valid(&self) -> bool {
-        match self {
-            Self::AddInstitution(form) => form.is_valid(),
-            Self::ClearLogs => true,
-        }
+        true
     }
 
-    /// Clear logs is a confirm; the Institutions dialog leaves the page's own legend.
+    /// Clear logs is a confirm.
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        match self {
-            Self::ClearLogs => Some(hints::confirm_dialog_hints()),
-            Self::AddInstitution(_) => None,
-        }
+        Some(hints::confirm_dialog_hints())
     }
 }
 

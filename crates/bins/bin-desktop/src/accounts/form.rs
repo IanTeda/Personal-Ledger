@@ -484,7 +484,7 @@ mod tests {
 
     fn add_options() -> AccountOptions {
         AccountOptions::new(
-            crate::institutions::default_institutions()
+            lib_institutions::default_institutions()
                 .into_iter()
                 .map(|institution| institution.name)
                 .collect(),

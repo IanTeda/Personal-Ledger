@@ -14,7 +14,6 @@ use crate::{
     accounts::form::{AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     form::field::TextField,
-    institutions::InstitutionsStore,
     ledger_store::{LedgerChanged, LedgerStore, notify_on},
     navigation::{command::AccountsVerb, key_router::Movement},
     view::event::{Reveal, ViewEvent},
@@ -48,15 +47,12 @@ impl AccountsStore {
 
 /// The three selects' option lists, read live from Settings (so an institution added there
 /// appears in the Accounts dialogs) and the fixed type order.
-pub fn dialog_options(
-    institutions: &Entity<InstitutionsStore>,
-    ledger: &Entity<LedgerStore>,
-    cx: &App,
-) -> AccountOptions {
+pub fn dialog_options(ledger: &Entity<LedgerStore>, cx: &App) -> AccountOptions {
     AccountOptions::new(
-        institutions
+        ledger
             .read(cx)
-            .institutions(cx)
+            .ledger()
+            .institutions()
             .iter()
             .map(|institution| institution.name.clone())
             .collect(),
@@ -70,12 +66,11 @@ pub fn dialog_options(
     )
 }
 
-/// The stores the Accounts page reads: its rows, the Ledger (the Units its heading and dialogs
-/// read), and the Institutions its dialogs offer.
+/// The stores the Accounts page reads: its rows, and the Ledger (the Units its heading reads and
+/// the Units and Institutions its dialogs offer).
 pub struct AccountsSources {
     pub accounts: Entity<AccountsStore>,
     pub ledger: Entity<LedgerStore>,
-    pub institutions: Entity<InstitutionsStore>,
 }
 
 impl EventEmitter<ViewEvent> for AccountsView {}
@@ -267,7 +262,7 @@ impl AccountsView {
     // -----------------------------------------------------------------------------------------
 
     fn dialog_options(&self, cx: &App) -> AccountOptions {
-        dialog_options(&self.sources.institutions, &self.sources.ledger, cx)
+        dialog_options(&self.sources.ledger, cx)
     }
 
     /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),

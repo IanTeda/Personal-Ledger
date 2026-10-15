@@ -8,7 +8,10 @@ use crate::{
         dialog_host::{Dialog, DialogVariant, OpenDialog},
     },
     navigation::nav::InputMode,
-    settings::units::{apply::UnitsApply, dialogs::UnitsDialog},
+    settings::{
+        institutions::{apply::InstitutionsApply, dialogs::InstitutionsDialog},
+        units::{apply::UnitsApply, dialogs::UnitsDialog},
+    },
 };
 
 impl Shell {
@@ -44,6 +47,12 @@ impl Shell {
                 if let Some((kind, message)) = toast {
                     self.raise_toast(kind, message);
                 }
+            }
+            Some(OpenDialog::Institutions(_)) => {
+                let mut apply = InstitutionsApply {
+                    ledger: self.ledger.clone(),
+                };
+                self.confirm_dialog::<InstitutionsDialog, _>(&mut apply, cx);
             }
             Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
             Some(OpenDialog::Categories(_)) => self.confirm_categories_dialog(cx),

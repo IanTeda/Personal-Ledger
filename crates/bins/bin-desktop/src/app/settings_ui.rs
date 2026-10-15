@@ -6,7 +6,6 @@
 
 use super::Shell;
 use crate::chrome::dialog_apply;
-use crate::institutions::InstitutionProduct;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, Noun};
 use crate::settings::apply::{SettingsApply, SettingsOutcome};
@@ -456,9 +455,7 @@ impl Shell {
     /// Confirms the open Settings dialog through the host's cycle: the form's command runs
     /// through the Ledger, and a landed one closes the dialog. Clear logs toasts.
     pub(super) fn confirm_settings_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        let mut apply = SettingsApply {
-            ledger: self.ledger.clone(),
-        };
+        let mut apply = SettingsApply;
         let Some(dialog) = self.dialog_mut::<SettingsDialog>() else {
             return;
         };
@@ -467,7 +464,6 @@ impl Shell {
         };
         self.close_dialog();
         match outcome {
-            SettingsOutcome::Saved => {}
             SettingsOutcome::LogsConfirmed => {
                 self.views
                     .settings
@@ -477,28 +473,6 @@ impl Shell {
                     crate::msg::desktop_settings_tracing_toast_cleared(),
                 );
             }
-        }
-    }
-
-    pub(super) fn handle_add_institution_account_type_click(
-        &mut self,
-        account_type: InstitutionProduct,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.dialog_mut::<SettingsDialog>() {
-            form.toggle_account_type(account_type);
-            cx.notify();
-        }
-    }
-
-    pub(super) fn handle_add_institution_unit_click(
-        &mut self,
-        code: String,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.dialog_mut::<SettingsDialog>() {
-            form.default_unit_code = Some(code);
-            cx.notify();
         }
     }
 }

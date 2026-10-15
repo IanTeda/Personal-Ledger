@@ -21,7 +21,8 @@ use crate::{
     categories::form::CategoriesDialog, documents::form::DocumentsDialog,
     documents::types::DocumentTypesDialog, form::field::TextField,
     inventory::form::InventoryDialog, payees::form::PayeesDialog, settings::SettingsDialog,
-    settings::units::dialogs::UnitsDialog, tags::form::TagsDialog,
+    settings::institutions::dialogs::InstitutionsDialog, settings::units::dialogs::UnitsDialog,
+    tags::form::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -105,6 +106,7 @@ impl Dialog for ToastHistoryDialog {
 pub enum OpenDialog {
     Settings(SettingsDialog),
     Units(UnitsDialog),
+    Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
     Payees(PayeesDialog),
@@ -124,6 +126,7 @@ impl OpenDialog {
         match self {
             Self::Settings(dialog) => dialog,
             Self::Units(dialog) => dialog,
+            Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
@@ -141,6 +144,7 @@ impl OpenDialog {
         match self {
             Self::Settings(dialog) => dialog,
             Self::Units(dialog) => dialog,
+            Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
@@ -186,6 +190,7 @@ macro_rules! dialog_variant {
 
 dialog_variant!(Settings, SettingsDialog);
 dialog_variant!(Units, UnitsDialog);
+dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
 dialog_variant!(Payees, PayeesDialog);

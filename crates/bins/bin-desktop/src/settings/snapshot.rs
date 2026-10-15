@@ -2,8 +2,6 @@
 //! the Settings Entity from its own state (ADR-0037). The open dialog and the status message are
 //! `Shell`'s, so its accessors fill them in.
 
-use gpui::App;
-
 use super::state::SettingsView;
 use crate::settings::SettingsFocus;
 
@@ -24,16 +22,6 @@ pub struct SettingsSnapshot {
     pub dialog_confirm: Option<String>,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
-}
-
-/// The Institutions page: `(name, account type)` rows in table order, and the Add institution
-/// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsInstitutionsSnapshot {
-    pub institutions: Vec<(String, String)>,
-    pub institution_dialog_types: Option<Vec<String>>,
-    pub institution_dialog_unit: Option<String>,
 }
 
 /// The Display page: the focused control above the Colour Theme grid and the focused card, then
@@ -73,22 +61,6 @@ impl SettingsView {
             dialog_name: None,
             dialog_confirm: None,
             status_message: None,
-        }
-    }
-
-    /// The Institutions rows. The dialog's fields are left empty.
-    pub fn institutions_snapshot(&self, cx: &App) -> SettingsInstitutionsSnapshot {
-        SettingsInstitutionsSnapshot {
-            institutions: self
-                .sources()
-                .institutions
-                .read(cx)
-                .institutions(cx)
-                .iter()
-                .map(|row| (row.name.clone(), row.account_type.clone()))
-                .collect(),
-            institution_dialog_types: None,
-            institution_dialog_unit: None,
         }
     }
 

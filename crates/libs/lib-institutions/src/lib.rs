@@ -1,6 +1,6 @@
 //! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`GLOSSARY.md`'s
-//! Institution). Pure and I/O-free: the desktop's Settings › Institutions page reads them through
-//! `InstitutionsStore`, and the Account Type labels stay in the desktop, which owns the Message
+//! Institution). Pure and I/O-free: the desktop's Settings › Institutions page reads them from the
+//! `LedgerStore`, and the Account Type labels stay in the desktop, which owns the Message
 //! catalogue.
 
 /// One row of the **Institutions** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a
@@ -68,6 +68,25 @@ pub fn add_institution(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_institutions_matches_the_mockups_own_six_seeded_rows() {
+        let names: Vec<_> = default_institutions()
+            .into_iter()
+            .map(|institution| institution.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "ANZ Banking Group",
+                "American Express",
+                "Vanguard Investments",
+                "Westpac Banking",
+                "Cryptocurrency Exchange",
+                "Superannuation Fund",
+            ]
+        );
+    }
 
     #[test]
     fn an_added_institution_is_appended_with_its_joined_account_types() {

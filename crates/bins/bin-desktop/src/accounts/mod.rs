@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(ids.len(), accounts.len(), "ids must be unique");
 
         let units = lib_units::default_units();
-        let institutions = crate::institutions::default_institutions();
+        let institutions = lib_institutions::default_institutions();
         for account in &accounts {
             assert!(
                 units.iter().any(|unit| unit.code == account.unit),

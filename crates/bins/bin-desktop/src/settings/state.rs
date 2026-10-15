@@ -3,12 +3,11 @@
 //! focused control and Preferences, the Tracing page's log, and the Documents and Inventory
 //! pages' selections. It renders itself (`impl Render` in `super`), handles the index, its focus
 //! keys and the static pages' keys, movement and `Esc`, and reaches `Shell` only through
-//! [`ViewEvent`]. It builds the Institutions and Clear logs dialogs, which `Shell`'s Dialog host
-//! draws and confirms.
+//! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`];
-//! Payees, [`PayeesView`]; Units, [`UnitsPage`]) is drawn by that Entity, and this View forwards the page's keys,
-//! movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
+//! Payees, [`PayeesView`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by that Entity, and this
+//! View forwards the page's keys, movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
 //! Inventory) are still
 //! `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their keys
 //! before forwarding to this Entity, until each moves in its own ticket.
@@ -31,9 +30,8 @@ use super::{
 };
 use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
-    institutions::{InstitutionsStore, form::AddInstitutionForm},
-    ledger_store::LedgerStore,
     navigation::key_router::Movement,
+    settings::institutions::InstitutionsPage,
     settings::units::UnitsPage,
     settings::{
         DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsPage,
@@ -52,11 +50,9 @@ use crate::{
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
-/// What the Settings pages read: the Ledger (the Units the Add institution dialog offers), the
-/// Institutions table, and the Entity of each page with Ledger data that draws itself.
+/// What the Settings pages read: the Entity of each page with Ledger data that draws itself.
 pub struct SettingsSources {
-    pub ledger: Entity<LedgerStore>,
-    pub institutions: Entity<InstitutionsStore>,
+    pub institutions: Entity<InstitutionsPage>,
     pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsView>,
     pub payees: Entity<PayeesView>,
@@ -68,6 +64,7 @@ enum FocusedPage {
     Accounts(Entity<AccountsView>),
     Payees(Entity<PayeesView>),
     Units(Entity<UnitsPage>),
+    Institutions(Entity<InstitutionsPage>),
 }
 
 impl FocusedPage {
@@ -76,6 +73,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Institutions(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
         }
     }
 
@@ -84,6 +82,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Institutions(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
         }
     }
 
@@ -99,6 +98,9 @@ impl FocusedPage {
                 true
             }
             Self::Units(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
+            Self::Institutions(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx))
+            }
         }
     }
 
@@ -107,6 +109,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Institutions(page) => page.update(cx, |page, cx| page.escape(cx)),
         }
     }
 
@@ -115,6 +118,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Institutions(page) => page.update(cx, |page, cx| page.start_search(cx)),
         }
     }
 
@@ -123,6 +127,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Institutions(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
         }
     }
 
@@ -131,6 +136,7 @@ impl FocusedPage {
             Self::Accounts(page) => page.read(cx).page_status(cx),
             Self::Payees(page) => page.read(cx).page_status(cx),
             Self::Units(page) => page.read(cx).page_status(cx),
+            Self::Institutions(page) => page.read(cx).page_status(cx),
         }
     }
 }
@@ -212,6 +218,11 @@ impl SettingsView {
         &self.sources.units
     }
 
+    /// The Institutions page's Entity, for the Settings snapshots.
+    pub fn institutions(&self) -> &Entity<InstitutionsPage> {
+        &self.sources.institutions
+    }
+
     /// The open page's own Entity while it has focus: the page, rather than this View, then takes
     /// its keys, movement and status. `None` on the index and on a page this View drives.
     fn focused_page(&self) -> Option<FocusedPage> {
@@ -222,6 +233,9 @@ impl SettingsView {
             SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
             SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
             SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
+            SettingsPage::Institutions => {
+                Some(FocusedPage::Institutions(self.sources.institutions.clone()))
+            }
             _ => None,
         }
     }
@@ -670,19 +684,8 @@ impl SettingsView {
         self.display_field = Some(DISPLAY_FIELD_COUNT - 1);
     }
 
-    // -----------------------------------------------------------------------------------------
-    // Institutions
-    // -----------------------------------------------------------------------------------------
-
-    /// **+ Add institution** opens the Add institution dialog, its Default unit seeded from the
-    /// Units table's first row.
-    pub(super) fn click_add_institution(&mut self, cx: &mut Context<'_, Self>) {
-        let form = AddInstitutionForm::new(self.sources.ledger.read(cx).ledger().units());
-        open_dialog(SettingsDialog::AddInstitution(form), cx);
-    }
-
-    /// The buttons with no dialog or behaviour yet (Institutions' edit and delete, Sync now,
-    /// Backup now, Export ledger) say so on the status line.
+    /// The buttons with no dialog or behaviour yet (Sync now, Backup now, Export
+    /// ledger) say so on the status line.
     pub(super) fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
         cx.emit(ViewEvent::SetStatus(Some(message)));
     }
