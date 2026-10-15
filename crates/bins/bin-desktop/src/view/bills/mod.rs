@@ -273,9 +273,10 @@ impl Render for BillsView {
         let accounts = self.sources.accounts.read(cx).accounts(cx);
         let base_unit = self
             .sources
-            .units
+            .ledger
             .read(cx)
-            .units(cx)
+            .ledger()
+            .units()
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());

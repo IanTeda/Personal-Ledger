@@ -120,7 +120,7 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), accounts.len(), "ids must be unique");
 
-        let units = crate::units::default_units();
+        let units = lib_units::default_units();
         let institutions = crate::institutions::default_institutions();
         for account in &accounts {
             assert!(
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn seeded_base_unit_rows_sum_to_the_mockups_net_worth() {
-        let base = crate::units::default_units()
+        let base = lib_units::default_units()
             .into_iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code)

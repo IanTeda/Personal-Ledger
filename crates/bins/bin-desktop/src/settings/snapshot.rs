@@ -26,18 +26,6 @@ pub struct SettingsSnapshot {
     pub status_message: Option<String>,
 }
 
-/// The Units page: codes in table order, `(code, name, kind)` rows, and the Add/Edit unit dialog's
-/// Name draft, Type (`UnitKind` variant name) and focused field (`Code` or `Name`).
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsUnitsSnapshot {
-    pub unit_codes: Vec<String>,
-    pub unit_rows: Vec<(String, String, String)>,
-    pub unit_dialog_name: Option<String>,
-    pub unit_dialog_kind: Option<String>,
-    pub unit_dialog_field: Option<String>,
-}
-
 /// The Institutions page: `(name, account type)` rows in table order, and the Add institution
 /// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
 #[doc(hidden)]
@@ -85,27 +73,6 @@ impl SettingsView {
             dialog_name: None,
             dialog_confirm: None,
             status_message: None,
-        }
-    }
-
-    /// The Units rows. The dialog's fields are left empty.
-    pub fn units_snapshot(&self, cx: &App) -> SettingsUnitsSnapshot {
-        let units = self.sources().units.read(cx).units(cx);
-        SettingsUnitsSnapshot {
-            unit_codes: units.iter().map(|unit| unit.code.clone()).collect(),
-            unit_rows: units
-                .iter()
-                .map(|unit| {
-                    (
-                        unit.code.clone(),
-                        unit.name.clone(),
-                        unit.kind.as_str().to_string(),
-                    )
-                })
-                .collect(),
-            unit_dialog_name: None,
-            unit_dialog_kind: None,
-            unit_dialog_field: None,
         }
     }
 

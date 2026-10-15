@@ -15,7 +15,6 @@ use lib_locale::{Label, format::upper};
 use crate::{
     accounts::{self, Account},
     theme::color,
-    units::UnitRow,
     view::accounts::state::AccountsView,
 };
 
@@ -24,7 +23,7 @@ type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// The section heading's meta: `7 accounts · net worth 83,995.87 aud · vas, btc held
 /// separately`. One net figure in the base Unit only, then every other Unit held named rather
 /// than summed or dropped.
-pub fn scope_note(accounts: &[Account], units: &[UnitRow]) -> String {
+pub fn scope_note(accounts: &[Account], units: &[lib_units::UnitRow]) -> String {
     if accounts.is_empty() {
         return crate::msg::desktop_accounts_summary_empty();
     }
@@ -75,7 +74,10 @@ impl Render for AccountsView {
 impl AccountsView {
     /// The section heading's meta, over the page's live rows and Settings' Units.
     pub(crate) fn scope_note(&self, cx: &App) -> String {
-        scope_note(self.accounts(cx), self.sources().units.read(cx).units(cx))
+        scope_note(
+            self.accounts(cx),
+            self.sources().ledger.read(cx).ledger().units(),
+        )
     }
 }
 
@@ -334,10 +336,7 @@ mod tests {
     #[test]
     fn scope_note_reads_count_net_worth_and_held_units() {
         crate::locale::init_for_tests();
-        let note = scope_note(
-            &accounts::default_accounts(),
-            &crate::units::default_units(),
-        );
+        let note = scope_note(&accounts::default_accounts(), &lib_units::default_units());
         assert_eq!(
             note,
             "7 accounts \u{b7} net worth 83,995.87 aud \u{b7} vas, btc held separately"
@@ -348,7 +347,7 @@ mod tests {
     fn scope_note_with_no_accounts_says_so() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_note(&[], &crate::units::default_units()),
+            scope_note(&[], &lib_units::default_units()),
             "no accounts yet"
         );
     }

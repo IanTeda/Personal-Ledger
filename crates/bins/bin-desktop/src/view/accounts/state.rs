@@ -15,9 +15,8 @@ use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     form::field::TextField,
     institutions::InstitutionsStore,
-    ledger_store::{LedgerChanged, LedgerStore},
+    ledger_store::{LedgerChanged, LedgerStore, notify_on},
     navigation::{command::AccountsVerb, key_router::Movement},
-    units::UnitsStore,
     view::event::{Reveal, ViewEvent},
 };
 
@@ -51,7 +50,7 @@ impl AccountsStore {
 /// appears in the Accounts dialogs) and the fixed type order.
 pub fn dialog_options(
     institutions: &Entity<InstitutionsStore>,
-    units: &Entity<UnitsStore>,
+    ledger: &Entity<LedgerStore>,
     cx: &App,
 ) -> AccountOptions {
     AccountOptions::new(
@@ -61,19 +60,21 @@ pub fn dialog_options(
             .iter()
             .map(|institution| institution.name.clone())
             .collect(),
-        units
+        ledger
             .read(cx)
-            .units(cx)
+            .ledger()
+            .units()
             .iter()
             .map(|unit| unit.code.clone())
             .collect(),
     )
 }
 
-/// The stores the Accounts page reads: its rows, and the Units and Institutions its dialogs offer.
+/// The stores the Accounts page reads: its rows, the Ledger (the Units its heading and dialogs
+/// read), and the Institutions its dialogs offer.
 pub struct AccountsSources {
     pub accounts: Entity<AccountsStore>,
-    pub units: Entity<UnitsStore>,
+    pub ledger: Entity<LedgerStore>,
     pub institutions: Entity<InstitutionsStore>,
 }
 
@@ -87,14 +88,18 @@ pub struct AccountsView {
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
+    /// Repaints the page when the Units its heading reads change.
+    _units_changed: Subscription,
 }
 
 impl AccountsView {
-    pub fn new(sources: AccountsSources) -> Self {
+    pub fn new(sources: AccountsSources, cx: &mut Context<'_, Self>) -> Self {
+        let _units_changed = notify_on(&sources.ledger, Domain::Units, cx);
         Self {
             sources,
             selected: 0,
             page_focused: false,
+            _units_changed,
         }
     }
 
@@ -262,7 +267,7 @@ impl AccountsView {
     // -----------------------------------------------------------------------------------------
 
     fn dialog_options(&self, cx: &App) -> AccountOptions {
-        dialog_options(&self.sources.institutions, &self.sources.units, cx)
+        dialog_options(&self.sources.institutions, &self.sources.ledger, cx)
     }
 
     /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
@@ -272,9 +277,10 @@ impl AccountsView {
         let options = self.dialog_options(cx);
         let default_unit = self
             .sources
-            .units
+            .ledger
             .read(cx)
-            .units(cx)
+            .ledger()
+            .units()
             .iter()
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());

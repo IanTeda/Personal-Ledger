@@ -16,15 +16,13 @@ use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point,
 
 use crate::{
     dialog,
+    form::fields::segmented_control,
     theme::color,
     transactions::filter_form::{FilterForm, FormField, FormOptions},
     transactions::query::StatusFilter,
-    view::{
-        accounts::{
-            add_dialog::{label, text_field, two_up},
-            select_field::{self, SelectFieldProps},
-        },
-        form_fields::segmented_control,
+    view::accounts::{
+        add_dialog::{label, text_field, two_up},
+        select_field::{self, SelectFieldProps},
     },
 };
 

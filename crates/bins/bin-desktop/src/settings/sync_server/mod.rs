@@ -24,7 +24,7 @@ const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 /// mockup markup draws a circular status indicator and no square rendering of "connected" reads
 /// as the intended design (same "concrete mockup over general prose" precedent issue #176 used
 /// for its own segmented control). Set via `Styled::style` directly, mirroring
-/// `units::add_button`'s `align_self` -- `Corners`/`CornersRefinement` has no dedicated `Styled`
+/// `settings::units`' `add_button`'s `align_self` -- `Corners`/`CornersRefinement` has no dedicated `Styled`
 /// builder method.
 const DOT_RADIUS: gpui::Pixels = px(3.0);
 

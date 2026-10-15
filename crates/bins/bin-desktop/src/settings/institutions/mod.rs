@@ -171,7 +171,7 @@ fn row_action_button(
 /// The "+ Add institution" button: `padding:10px 16px; border:1px solid rgba(32,30,29,.30);
 /// background:#eae9e9; font-weight:800; width:fit-content; margin-top:16px` -- the mockup's own
 /// markup for this button already uses `margin-top:16px` (not the table's own inline
-/// `margin-bottom:48px` slip `units::add_button`'s doc calls out), so this one needs no
+/// `margin-bottom:48px` slip `settings::units`' `add_button`'s doc calls out), so this one needs no
 /// deviation from the raw markup.
 fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level

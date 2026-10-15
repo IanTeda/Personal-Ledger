@@ -26,7 +26,7 @@ impl Shell {
 
     /// The Accounts dialogs' select options, for the Dialog host to draw them with.
     pub(super) fn account_dialog_options(&self, cx: &App) -> AccountOptions {
-        dialog_options(&self.institutions_store, &self.units_store, cx)
+        dialog_options(&self.institutions_store, &self.ledger, cx)
     }
 
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select

@@ -6,8 +6,10 @@ use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
 pub use crate::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot,
+    SettingsTracingSnapshot,
 };
+#[doc(hidden)]
+pub use crate::settings::units::SettingsUnitsSnapshot;
 #[doc(hidden)]
 pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
@@ -17,7 +19,7 @@ use crate::{
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     payees::form::PayeesDialog,
-    settings::SettingsDialog,
+    settings::{SettingsDialog, units::dialogs::UnitsDialog},
     tags::{self, form::TagsDialog},
 };
 
@@ -213,27 +215,6 @@ impl Shell {
             open_dialog.confirm = confirm;
         } else if let Some(open) = self.dialog::<SettingsDialog>() {
             let (label, name, confirm) = match open {
-                SettingsDialog::AddUnit(form) => {
-                    open_dialog.unit = Some((
-                        form.name.text().to_string(),
-                        format!("{:?}", form.kind),
-                        format!("{:?}", form.focused_field),
-                    ));
-                    ("AddUnit", Some(form.code.text().to_string()), None)
-                }
-                SettingsDialog::EditUnit(_, form) => {
-                    open_dialog.unit = Some((
-                        form.name.text().to_string(),
-                        format!("{:?}", form.kind),
-                        format!("{:?}", form.focused_field),
-                    ));
-                    ("EditUnit", Some(form.code.text().to_string()), None)
-                }
-                SettingsDialog::DeleteUnit(_, form) => (
-                    "DeleteUnit",
-                    None,
-                    Some(form.confirm_input.text().to_string()),
-                ),
                 SettingsDialog::AddInstitution(form) => {
                     open_dialog.institution = Some((
                         form.account_types
@@ -249,6 +230,12 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
+        } else if let Some(open) = self.dialog::<UnitsDialog>() {
+            let open = open.snapshot();
+            open_dialog.label = Some(open.label);
+            open_dialog.name = open.code;
+            open_dialog.confirm = open.confirm;
+            open_dialog.unit = open.form;
         }
         open_dialog
     }
@@ -426,7 +413,7 @@ impl Shell {
             unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
             unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),
             unit_dialog_field: unit_form.map(|(.., field)| field),
-            ..self.views.settings.read(cx).units_snapshot(cx)
+            ..self.views.settings.read(cx).units().read(cx).snapshot(cx)
         }
     }
 

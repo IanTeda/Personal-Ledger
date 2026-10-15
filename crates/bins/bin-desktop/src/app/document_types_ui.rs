@@ -224,7 +224,7 @@ impl Shell {
                 });
             })
         };
-        let on_tracks_click: crate::view::form_fields::OnSegmentClick<Option<TracksDate>> = {
+        let on_tracks_click: crate::form::fields::OnSegmentClick<Option<TracksDate>> = {
             let entity = entity.clone();
             Rc::new(move |option, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -235,7 +235,7 @@ impl Shell {
                 });
             })
         };
-        let on_remind_click: crate::view::form_fields::OnSegmentClick<Option<RemindLead>> = {
+        let on_remind_click: crate::form::fields::OnSegmentClick<Option<RemindLead>> = {
             let entity = entity.clone();
             Rc::new(move |option, _window, cx| {
                 entity.update(cx, |shell, cx| {

@@ -9,7 +9,8 @@ use std::rc::Rc;
 
 use crate::settings as settings_view;
 use crate::settings::inventory::{self as inventory_view, InventoryRow};
-use crate::view::{institutions as institutions_view, units as units_view};
+use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
+use crate::view::institutions as institutions_view;
 
 use gpui::{
     Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, SharedString, Window, div,
@@ -173,32 +174,13 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
         };
-        // Shared by the Add unit (issue #184) and Edit unit (issue #185) dialogs -- both wrap
-        // the same `UnitForm`, and `Shell`'s own handlers already dispatch on whichever
-        // `SettingsDialog` variant is actually open, so one set of closures serves both renders.
-        let on_unit_dialog_field_click: units_view::add_dialog::OnFieldClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_unit_dialog_field_click(field, cx)
-                });
-            })
-        };
-        let on_unit_dialog_kind_click: units_view::add_dialog::OnKindClick = {
-            let entity = entity.clone();
-            Rc::new(move |kind, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_unit_dialog_kind_click(kind, cx)
-                });
-            })
-        };
-        let on_settings_dialog_cancel: units_view::add_dialog::OnCancel = {
+        let on_settings_dialog_cancel: crate::dialog::OnClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
             })
         };
-        let on_settings_dialog_confirm: units_view::add_dialog::OnConfirm = {
+        let on_settings_dialog_confirm: crate::dialog::OnClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
@@ -456,9 +438,10 @@ impl Render for Shell {
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
         let bills_base_unit = self
-            .units_store
+            .ledger
             .read(cx)
-            .units(cx)
+            .ledger()
+            .units()
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
@@ -1064,37 +1047,6 @@ impl Render for Shell {
                     }),
             )
             .children(self.dialog::<SettingsDialog>().map(|dialog| match dialog {
-                SettingsDialog::AddUnit(form) => units_view::add_dialog::render(
-                    form,
-                    on_unit_dialog_field_click.clone(),
-                    on_unit_dialog_kind_click.clone(),
-                    on_settings_dialog_cancel.clone(),
-                    on_settings_dialog_confirm.clone(),
-                    cx,
-                ),
-                SettingsDialog::EditUnit(_, form) => units_view::edit_dialog::render(
-                    form,
-                    on_unit_dialog_field_click,
-                    on_unit_dialog_kind_click,
-                    on_settings_dialog_cancel.clone(),
-                    on_settings_dialog_confirm.clone(),
-                    cx,
-                ),
-                SettingsDialog::DeleteUnit(index, form) => {
-                    match self.units_store.read(cx).unit(cx, *index) {
-                        Some(row) => units_view::delete_dialog::render(
-                            row,
-                            form,
-                            on_settings_dialog_cancel.clone(),
-                            on_settings_dialog_confirm.clone(),
-                            cx,
-                        ),
-                        // Defensive only: `index` should always be in bounds (it's only ever
-                        // set from a real row's own click handler) -- an empty overlay is a
-                        // safer failure than panicking mid-render.
-                        None => div().into_any_element(),
-                    }
-                }
                 SettingsDialog::ClearLogs => settings_view::clear_logs_dialog::render(
                     on_settings_dialog_cancel.clone(),
                     on_settings_dialog_confirm.clone(),
@@ -1102,13 +1054,33 @@ impl Render for Shell {
                 ),
                 SettingsDialog::AddInstitution(form) => institutions_view::add_dialog::render(
                     form,
-                    self.units_store.read(cx).units(cx),
+                    self.ledger.read(cx).ledger().units(),
                     on_add_institution_account_type_click,
                     on_add_institution_unit_click,
-                    on_settings_dialog_cancel,
-                    on_settings_dialog_confirm,
+                    on_settings_dialog_cancel.clone(),
+                    on_settings_dialog_confirm.clone(),
                     cx,
                 ),
+            }))
+            .children(self.dialog::<UnitsDialog>().map(|dialog| {
+                dialog.render(
+                    self.ledger.read(cx).ledger().units(),
+                    UnitsDialogHandlers {
+                        on_change: {
+                            let entity = entity.clone();
+                            Rc::new(move |change, _window, cx| {
+                                entity.update(cx, |shell, cx| {
+                                    shell.edit_dialog(cx, |dialog: &mut UnitsDialog| {
+                                        dialog.apply_change(change)
+                                    })
+                                });
+                            })
+                        },
+                        on_cancel: on_settings_dialog_cancel,
+                        on_confirm: on_settings_dialog_confirm,
+                    },
+                    cx,
+                )
             }))
             // Last: above every dialog, the palette and their scrim, never over the status line.
             .children(toast_layer)

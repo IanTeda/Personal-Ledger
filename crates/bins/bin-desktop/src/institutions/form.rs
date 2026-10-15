@@ -2,7 +2,9 @@
 //! `settings` renders it.
 
 use super::InstitutionProduct;
-use crate::{form::field::TextField, units::UnitRow};
+use lib_units::UnitRow;
+
+use crate::form::field::TextField;
 
 /// The Add institution dialog's own live form state (issue #187) -- pure, `gpui`-free.
 /// Institution name is a real text field with no `focused_field`, mirroring
@@ -57,7 +59,7 @@ impl AddInstitutionForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::units::default_units;
+    use lib_units::default_units;
 
     #[test]
     fn add_institution_form_new_seeds_savings_and_the_first_unit() {

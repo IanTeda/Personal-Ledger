@@ -6,8 +6,9 @@
 //! reaches `Shell` only through [`ViewEvent`].
 
 use chrono::NaiveDate;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_core::DateStyle;
+use lib_ledger::Domain;
 
 use super::{
     filters::FilterField,
@@ -22,12 +23,12 @@ use crate::{
     },
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     form::select::SelectState,
+    ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     payees::PayeesStore,
     period::Period,
     settings::display::StatusGlyphs,
     transactions::TransactionsStore,
-    units::UnitsStore,
     view::{
         accounts::state::AccountsStore,
         categories::state::CategoriesStore,
@@ -75,7 +76,8 @@ pub struct BillsSources {
     pub categories: Entity<CategoriesStore>,
     pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
-    pub units: Entity<UnitsStore>,
+    /// The Ledger, for the base Unit the summary totals in.
+    pub ledger: Entity<LedgerStore>,
 }
 
 /// The Bills Entity.
@@ -89,10 +91,13 @@ pub struct BillsView {
     /// The page's own scroll, reset as it becomes the destination and as its tab changes.
     pub(super) scroll: ScrollHandle,
     pub(super) state: BillsState,
+    /// Repaints the page when the Units it reads its base Unit from change.
+    _units_changed: Subscription,
 }
 
 impl BillsView {
-    pub fn new(sources: BillsSources, today: NaiveDate) -> Self {
+    pub fn new(sources: BillsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+        let _units_changed = notify_on(&sources.ledger, Domain::Units, cx);
         Self {
             sources,
             today,
@@ -100,6 +105,7 @@ impl BillsView {
             glyphs: StatusGlyphs::default(),
             scroll: ScrollHandle::new(),
             state: BillsState::new(today),
+            _units_changed,
         }
     }
 
@@ -697,8 +703,6 @@ mod tests {
     use super::*;
     use lib_ledger::Ledger;
 
-    use crate::ledger_store::LedgerStore;
-
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a valid date")
     }
@@ -746,9 +750,9 @@ mod tests {
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
             accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
             payees: cx.new(|cx| PayeesStore::new(ledger.clone(), cx)),
-            units: cx.new(|cx| UnitsStore::new(ledger, cx)),
+            ledger,
         };
-        let view = cx.new(|_| BillsView::new(sources, today()));
+        let view = cx.new(|cx| BillsView::new(sources, today(), cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
         cx.update(|cx| {

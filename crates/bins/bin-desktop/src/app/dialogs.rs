@@ -3,8 +3,12 @@
 
 use super::Shell;
 use crate::{
-    chrome::dialog_host::{Dialog, DialogVariant, OpenDialog},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm},
+        dialog_host::{Dialog, DialogVariant, OpenDialog},
+    },
     navigation::nav::InputMode,
+    settings::units::{apply::UnitsApply, dialogs::UnitsDialog},
 };
 
 impl Shell {
@@ -30,6 +34,17 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Settings(_)) => self.confirm_settings_dialog(cx),
+            Some(OpenDialog::Units(_)) => {
+                let mut apply = UnitsApply {
+                    ledger: self.ledger.clone(),
+                };
+                let toast = self
+                    .confirm_dialog::<UnitsDialog, _>(&mut apply, cx)
+                    .and_then(|outcome| outcome.toast());
+                if let Some((kind, message)) = toast {
+                    self.raise_toast(kind, message);
+                }
+            }
             Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
             Some(OpenDialog::Categories(_)) => self.confirm_categories_dialog(cx),
             Some(OpenDialog::Payees(_)) => self.confirm_payees_dialog(cx),
@@ -43,6 +58,19 @@ impl Shell {
             Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
             None => {}
         }
+    }
+
+    /// Confirms the open `T` Dialog through the host's cycle (ADR-0037): the form's command runs
+    /// through `apply`, and a landed one closes the Dialog. `None` while the form is invalid or
+    /// the command was refused, leaving the Dialog open.
+    fn confirm_dialog<T, A>(&mut self, apply: &mut A, cx: &mut gpui::App) -> Option<A::Outcome>
+    where
+        T: DialogVariant + DialogForm,
+        A: Apply<T::Command, Refusal = T::Refusal>,
+    {
+        let outcome = dialog_apply::confirm(self.dialog_mut::<T>()?, apply, cx)?;
+        self.close_dialog();
+        Some(outcome)
     }
 
     /// The cancel button: closes the Dialog without applying it.

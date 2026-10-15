@@ -21,7 +21,7 @@ use crate::{
     categories::form::CategoriesDialog, documents::form::DocumentsDialog,
     documents::types::DocumentTypesDialog, form::field::TextField,
     inventory::form::InventoryDialog, payees::form::PayeesDialog, settings::SettingsDialog,
-    tags::form::TagsDialog,
+    settings::units::dialogs::UnitsDialog, tags::form::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -104,6 +104,7 @@ impl Dialog for ToastHistoryDialog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Settings(SettingsDialog),
+    Units(UnitsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
     Payees(PayeesDialog),
@@ -122,6 +123,7 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Settings(dialog) => dialog,
+            Self::Units(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
@@ -138,6 +140,7 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Settings(dialog) => dialog,
+            Self::Units(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
@@ -182,6 +185,7 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Settings, SettingsDialog);
+dialog_variant!(Units, UnitsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
 dialog_variant!(Payees, PayeesDialog);
@@ -271,7 +275,7 @@ pub(crate) fn type_text(dialog: &mut impl Dialog, text: &str) {
 mod tests {
     use super::*;
 
-    use crate::units::form::UnitForm;
+    use crate::settings::units::form::UnitForm;
 
     #[test]
     fn a_dialog_without_text_fields_ignores_typing_but_swallows_tab() {
@@ -296,7 +300,7 @@ mod tests {
 
     #[test]
     fn other_keys_fall_through() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::AddUnit(UnitForm::default()));
+        let mut dialog = OpenDialog::Units(UnitsDialog::Add(UnitForm::default()));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Other),
             DialogOutcome::Ignored

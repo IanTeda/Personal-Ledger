@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use gpui::{Context, EventEmitter};
+use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_ledger::{Domain, Ledger, LedgerCommand, LedgerHatch, domains};
 
 /// Emitted after a write lands, naming every domain it touched.
@@ -82,12 +82,26 @@ impl LedgerStore {
     }
 }
 
+/// Repaints the subscribing Entity whenever a landed write touches `domain`: how an Entity that
+/// reads the Ledger straight from `ledger` follows the rows it shows (ADR-0038).
+pub fn notify_on<T: 'static>(
+    ledger: &Entity<LedgerStore>,
+    domain: Domain,
+    cx: &mut Context<'_, T>,
+) -> Subscription {
+    cx.subscribe(ledger, move |_, _, event: &LedgerChanged, cx| {
+        if event.what.contains(&domain) {
+            cx.notify();
+        }
+    })
+}
+
 /// A `LedgerStore` over `parts`, for a test that needs only some collections.
 #[cfg(test)]
 pub(crate) fn test_ledger(
     cx: &mut gpui::TestAppContext,
     parts: lib_ledger::LedgerParts,
-) -> gpui::Entity<LedgerStore> {
+) -> Entity<LedgerStore> {
     use gpui::AppContext;
     cx.new(|_| LedgerStore::new(Ledger::from_parts(parts)))
 }

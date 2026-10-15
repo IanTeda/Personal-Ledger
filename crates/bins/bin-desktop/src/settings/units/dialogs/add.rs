@@ -1,11 +1,11 @@
 //! Renders the **Add unit** dialog (issue #184's own "2b"), on the shared `crate::dialog`
-//! chrome. `Shell` owns the live form state (`units::form::UnitForm`) and every keystroke while
-//! it's open (`InputMode::Dialog`, `Shell::handle_dialog_key`) -- this module is a pure
-//! render-helper, the same split every other `settings` submodule already uses.
+//! chrome. `Shell`'s Dialog host holds the live form state (`super::super::form::UnitForm`) and
+//! takes every keystroke while it's open (`InputMode::Dialog`) -- this module is a pure
+//! render-helper.
 //!
-//! `field_click`/`text_field`/`type_field` are `pub(super)`: the Edit unit dialog (issue #185)
-//! wraps the same `UnitForm` and reuses them verbatim rather than duplicating this module's own
-//! field rendering -- see `super::edit_dialog`'s own doc.
+//! `type_field` is `pub(super)`: the Edit unit dialog (issue #185) wraps the same `UnitForm` and
+//! reuses it verbatim rather than duplicating this module's own field rendering -- see
+//! `super::edit`'s own doc.
 //!
 //! Code/Name are this crate's **first real editable text fields** -- every other "field" built
 //! so far (`general::field_value`) is deliberately static per that module's own doc, since
@@ -27,33 +27,18 @@
 
 use std::rc::Rc;
 
-use lib_locale::Label;
-
 use gpui::{AnyElement, App, Window, div, prelude::*};
+use lib_locale::Label;
+use lib_units::UnitKind;
 
+use super::{Change, UnitsDialogHandlers, on_change};
 use crate::{
     dialog,
-    units::{
-        UnitKind,
-        form::{AddUnitField, UnitForm},
-    },
+    form::fields::{field_label, segmented_control, text_field},
+    settings::units::form::{AddUnitField, UnitForm},
 };
 
-use crate::view::form_fields::{field_label, segmented_control, text_field};
-
-pub type OnFieldClick = Rc<dyn Fn(AddUnitField, &mut Window, &mut App)>;
-pub type OnKindClick = Rc<dyn Fn(UnitKind, &mut Window, &mut App)>;
-pub type OnCancel = dialog::OnClick;
-pub type OnConfirm = dialog::OnClick;
-
-pub fn render(
-    form: &UnitForm,
-    on_field_click: OnFieldClick,
-    on_kind_click: OnKindClick,
-    on_cancel: OnCancel,
-    on_confirm: OnConfirm,
-    cx: &App,
-) -> AnyElement {
+pub fn render(form: &UnitForm, handlers: UnitsDialogHandlers, cx: &App) -> AnyElement {
     let card = div()
         .flex()
         .flex_col()
@@ -69,7 +54,7 @@ pub fn render(
                 form.code.text(),
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
-                field_click(AddUnitField::Code, on_field_click.clone()),
+                on_change(&handlers, Change::Field(AddUnitField::Code)),
                 cx,
             )
             .into_any_element(),
@@ -79,21 +64,22 @@ pub fn render(
                 form.name.text(),
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
-                field_click(AddUnitField::Name, on_field_click),
+                on_change(&handlers, Change::Field(AddUnitField::Name)),
                 cx,
             )
             .into_any_element(),
-            type_field("add-unit-type", form.kind, on_kind_click, cx).into_any_element(),
+            type_field("add-unit-type", form.kind, &handlers, cx).into_any_element(),
         ]))
         .child(dialog::action_row(
             [
-                dialog::cancel_button("add-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::cancel_button("add-unit-cancel", handlers.on_cancel.clone(), cx)
+                    .into_any_element(),
                 dialog::confirm_button(
                     "add-unit-confirm",
                     crate::msg::desktop_settings_units_add_submit(),
                     form.is_valid(),
                     false,
-                    on_confirm,
+                    handlers.on_confirm.clone(),
                     cx,
                 )
                 .into_any_element(),
@@ -104,20 +90,19 @@ pub fn render(
     dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
-/// Curries `field` into a plain click handler -- what [`text_field`] binds its own `on_click` to.
-pub(super) fn field_click(field: AddUnitField, on_click: OnFieldClick) -> dialog::OnClick {
-    Rc::new(move |window: &mut Window, cx: &mut App| on_click(field, window, cx))
-}
-
-/// The Type field: `crate::view::form_fields::field_label` above a segmented control (see the module doc for why
+/// The Type field: [`field_label`] above a segmented control (see the module doc for why
 /// this isn't the raw markup's own `<select>`). `id_prefix` keeps the Add/Edit dialogs' own
 /// segmented controls element-id-distinct, even though only one is ever mounted at a time.
 pub(super) fn type_field(
     id_prefix: &'static str,
     selected: UnitKind,
-    on_click: OnKindClick,
+    handlers: &UnitsDialogHandlers,
     cx: &App,
 ) -> impl IntoElement {
+    let on_change = handlers.on_change.clone();
+    let on_kind_click = Rc::new(move |kind, window: &mut Window, cx: &mut App| {
+        on_change(Change::Kind(kind), window, cx)
+    });
     div()
         .child(field_label(lib_locale::msg::column_type()))
         .child(segmented_control(
@@ -125,7 +110,7 @@ pub(super) fn type_field(
             UnitKind::all(),
             selected,
             |kind| kind.label(),
-            on_click,
+            on_kind_click,
             cx,
         ))
 }

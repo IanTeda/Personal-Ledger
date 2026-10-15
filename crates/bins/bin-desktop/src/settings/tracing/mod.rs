@@ -28,7 +28,7 @@ use crate::{
 pub type OnLevelClick = Rc<dyn Fn(TracingLevel, &mut Window, &mut App)>;
 pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// A plain, level-less click handler -- what a [`radio_option`] is bound to after its own level
-/// has already been curried in (mirrors `units::OnPlainClick`).
+/// has already been curried in (mirrors the Units page's `OnPlainClick`).
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const DOT_SIZE: gpui::Pixels = px(16.0);
@@ -117,7 +117,7 @@ fn radio_option(
 /// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
 /// concentric circles reproduce the same "accent ring around a punched-out centre" look.
 /// `pub(super)`: reused by `super::display`'s own "Status glyphs" radio group (issue #179) --
-/// its second consumer, promoted the same way `form_fields::segmented_control` was.
+/// its second consumer, promoted the same way `form::fields::segmented_control` was.
 pub(super) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
     div()
         .w(DOT_SIZE)

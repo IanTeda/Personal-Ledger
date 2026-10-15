@@ -12,13 +12,11 @@ use crate::{
     bills::form::{BillPlanField, BillPlanForm, BillPlanOptions, FieldError, FormErrors},
     bills::{AmountKind, BillError},
     dialog,
+    form::fields::segmented_control,
     theme::color,
-    view::{
-        accounts::{
-            add_dialog::{label, suffixed_label, text_field, two_up},
-            select_field::{self, SelectFieldProps},
-        },
-        form_fields::segmented_control,
+    view::accounts::{
+        add_dialog::{label, suffixed_label, text_field, two_up},
+        select_field::{self, SelectFieldProps},
     },
 };
 

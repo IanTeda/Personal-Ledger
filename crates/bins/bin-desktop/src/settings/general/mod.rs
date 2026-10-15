@@ -8,7 +8,7 @@ use gpui::{AnyElement, App, div, prelude::*, px};
 use crate::theme::color;
 
 use super::field_value;
-use crate::view::form_fields::field_label;
+use crate::form::fields::field_label;
 
 /// One ledger's worth of "THIS LEDGER" summary figures -- representative content matching the
 /// mockup's own row order (accounts, transactions, units, institutions), not real

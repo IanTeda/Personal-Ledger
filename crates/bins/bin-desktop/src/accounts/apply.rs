@@ -122,8 +122,8 @@ mod tests {
             cx,
             LedgerParts {
                 accounts: crate::accounts::default_accounts(),
-                units: crate::units::default_units(),
-                price_sources: crate::units::default_price_sources(),
+                units: lib_units::default_units(),
+                price_sources: lib_units::default_price_sources(),
                 ..LedgerParts::default()
             },
         );

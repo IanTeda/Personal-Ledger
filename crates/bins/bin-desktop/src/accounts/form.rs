@@ -488,7 +488,7 @@ mod tests {
                 .into_iter()
                 .map(|institution| institution.name)
                 .collect(),
-            crate::units::default_units()
+            lib_units::default_units()
                 .into_iter()
                 .map(|unit| unit.code)
                 .collect(),

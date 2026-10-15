@@ -26,14 +26,14 @@ use lib_core::DateStyle;
 use crate::{settings::DISPLAY_FIELD_SIDEBAR, theme::color};
 
 use super::{colour_theme, tracing::radio_dot};
-use crate::view::form_fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
+use crate::form::fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
 
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
 pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
 pub type OnToastsClick = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 /// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
-/// own option has already been curried in (mirrors `units::OnPlainClick`).
+/// own option has already been curried in (mirrors the Units page's `OnPlainClick`).
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// As wide as the widest control, Date format's uniform bar (one option per choice plus its 1px
@@ -281,7 +281,7 @@ fn start_sidebar_minimised_toggle(
 
 /// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
 /// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
-/// (issue #189), distinct from General's bold `crate::view::form_fields::field_label`
+/// (issue #189), distinct from General's bold `crate::form::fields::field_label`
 /// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
 fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()

@@ -4,30 +4,30 @@
 //!
 //! Three field shapes, none reused verbatim from the Unit dialogs:
 //! - **Institution name**: a real text field, but the dialog's only one -- reuses
-//!   `form_fields::text_field` with `focused: true` and a no-op click handler, the same
-//!   "implicitly focused, nothing to click into" shape `units::delete_dialog`'s own confirm field
+//!   `form::fields::text_field` with `focused: true` and a no-op click handler, the same
+//!   "implicitly focused, nothing to click into" shape `settings::units::dialogs::delete`'s own confirm field
 //!   uses.
 //! - **Account types**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s
 //!   `.chip` role) -- the first *multi*-select control in this crate; every other "pick one"
 //!   control (segmented controls, dot radios) only ever holds one selection at a time.
 //! - **Default unit**: a single-select built from `Shell::settings_units`' own live `Vec`, not a
-//!   compile-time enum -- `ledger_units::segmented_control`'s `&'static [T]` bound can't take a
+//!   compile-time enum -- `form::fields::segmented_control`'s `&'static [T]` bound can't take a
 //!   runtime slice, so this module builds its own segmented-style row instead of reusing that
 //!   function. Still a segmented control rather than the raw mockup's own `<select>`, same
-//!   reasoning as `units::add_dialog`'s own Type field.
+//!   reasoning as `settings::units::dialogs::add`'s own Type field.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use lib_units::UnitRow;
 
 use crate::{
     dialog,
     institutions::{InstitutionProduct, form::AddInstitutionForm},
     theme::color,
-    units::UnitRow,
 };
 
-use crate::view::form_fields::{field_label, text_field};
+use crate::form::fields::{field_label, text_field};
 
 const WIDTH: gpui::Pixels = px(460.0);
 
@@ -150,7 +150,7 @@ fn chip(
 }
 
 /// The Default unit field: a segmented-style row built from a runtime `&[UnitRow]` (see the
-/// module doc for why `ledger_units::segmented_control` doesn't fit here). Falls back to a plain
+/// module doc for why `form::fields::segmented_control` doesn't fit here). Falls back to a plain
 /// "No units available" note if `units` is empty -- `AddInstitutionForm::is_valid` already keeps
 /// the Add button disabled in that case, so this is purely the field's own empty-state message.
 fn default_unit_field(

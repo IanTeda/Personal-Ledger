@@ -1,10 +1,10 @@
 //! Renders the **Delete unit** destructive-confirm dialog (issue #186's own "2d"), on the shared
 //! `crate::dialog` chrome's destructive variant (`overlay(true, ...)`/`header(_, true)`).
 //! References are named, and the unit's own code must be typed back exactly
-//! (`units::form::DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
+//! (`DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
 //! deletion can't happen by muscle memory.
 //!
-//! Reuses `form_fields::text_field` for the confirm input, but always `focused: true` with a
+//! Reuses `form::fields::text_field` for the confirm input, but always `focused: true` with a
 //! no-op click handler: unlike Code/Name in the Add/Edit dialogs, there's only one field here, so
 //! nothing to click into or `Tab` between (`chrome::dialog_host::handle_key` swallows `Tab` for every
 //! Dialog).
@@ -19,19 +19,15 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use lib_units::UnitRow;
 
-use crate::{
-    dialog,
-    units::{UnitRow, form::DeleteUnitForm},
-};
-
-use crate::view::form_fields::text_field;
+use super::UnitsDialogHandlers;
+use crate::{dialog, form::fields::text_field, settings::units::form::DeleteUnitForm};
 
 pub fn render(
     row: &UnitRow,
     form: &DeleteUnitForm,
-    on_cancel: dialog::OnClick,
-    on_confirm: dialog::OnClick,
+    handlers: UnitsDialogHandlers,
     cx: &App,
 ) -> AnyElement {
     let code = row.code.as_str();
@@ -54,13 +50,14 @@ pub fn render(
         ]))
         .child(dialog::action_row(
             [
-                dialog::cancel_button("delete-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::cancel_button("delete-unit-cancel", handlers.on_cancel, cx)
+                    .into_any_element(),
                 dialog::confirm_button(
                     "delete-unit-confirm",
                     crate::msg::desktop_settings_units_delete_submit(),
                     form.is_valid(),
                     true,
-                    on_confirm,
+                    handlers.on_confirm,
                     cx,
                 )
                 .into_any_element(),

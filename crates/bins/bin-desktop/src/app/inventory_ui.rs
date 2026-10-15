@@ -44,9 +44,10 @@ pub(super) fn dialog_hints(dialog: &InventoryDialog) -> Vec<(&'static str, Strin
 impl Shell {
     /// The fiat Units a Property can be kept in, as option labels, with each one's code.
     fn property_unit_choices(&self, cx: &App) -> Vec<(String, String)> {
-        self.units_store
+        self.ledger
             .read(cx)
-            .units(cx)
+            .ledger()
+            .units()
             .iter()
             .filter(|unit| unit.kind == lib_core::UnitKind::Fiat)
             .map(|unit| {

@@ -36,7 +36,6 @@ use crate::{
     institutions::form::AddInstitutionForm,
     navigation::nav::Noun,
     theme::color,
-    units::form::{DeleteUnitForm, UnitForm},
 };
 
 use state::SettingsView;
@@ -118,6 +117,7 @@ impl Render for SettingsView {
         accounts.update(cx, |page, _| page.set_page_focused(page_focused));
         let payees = self.sources().payees.clone();
         payees.update(cx, |page, _| page.set_page_focused(page_focused));
+        let units = self.sources().units.clone();
         let (meta, content) = match self.data_page.take() {
             Some(page) => (page.meta, page.content),
             None if selected == SettingsPage::Accounts => (
@@ -127,6 +127,10 @@ impl Render for SettingsView {
             None if selected == SettingsPage::Payees => {
                 (payees.read(cx).scope_note(cx), payees.into_any_element())
             }
+            None if selected == SettingsPage::Units => (
+                units.read(cx).scope_note(cx).into_any_element(),
+                units.into_any_element(),
+            ),
             None => (
                 self.scope_note(cx).into_any_element(),
                 self.page_content(&entity, cx),
@@ -167,13 +171,10 @@ impl Render for SettingsView {
 }
 
 impl SettingsView {
-    /// The heading's scope note for a page this View draws: Units and Institutions count their
-    /// rows; the others have a fixed note.
+    /// The heading's scope note for a page this View draws: Institutions counts its rows; the
+    /// others have a fixed note.
     fn scope_note(&self, cx: &App) -> String {
         match self.selected_section() {
-            SettingsPage::Units => crate::msg::desktop_settings_scope_units(count(
-                self.sources().units.read(cx).units(cx).len(),
-            )),
             SettingsPage::Institutions => crate::msg::desktop_settings_scope_institutions(count(
                 self.sources().institutions.read(cx).institutions(cx).len(),
             )),
@@ -233,30 +234,6 @@ impl SettingsView {
                     cx,
                 )
             }
-            SettingsPage::Units => units::render(
-                self.sources().units.read(cx).units(cx),
-                bind(entity, SettingsView::click_edit_unit),
-                bind(entity, SettingsView::click_delete_unit),
-                plain(entity, SettingsView::click_add_unit),
-                self.sources().units.read(cx).price_sources(cx),
-                row_stub(
-                    entity,
-                    crate::msg::desktop_status_test_price_source_not_yet_built,
-                ),
-                row_stub(
-                    entity,
-                    crate::msg::desktop_status_edit_price_source_not_yet_built,
-                ),
-                row_stub(
-                    entity,
-                    crate::msg::desktop_status_delete_price_source_not_yet_built,
-                ),
-                stub(
-                    entity,
-                    crate::msg::desktop_status_add_price_source_not_yet_built,
-                ),
-                cx,
-            ),
             SettingsPage::Institutions => institutions::render(
                 self.sources().institutions.read(cx).institutions(cx),
                 row_stub(
@@ -297,9 +274,10 @@ impl SettingsView {
                 cx,
             ),
             SettingsPage::About => about::render(cx),
-            // Accounts and Payees draw themselves; `Shell` hands the rest in as a `DataPage`, and
-            // a frame without one draws nothing there.
+            // Accounts, Payees and Units draw themselves; `Shell` hands the rest in as a
+            // `DataPage`, and a frame without one draws nothing there.
             SettingsPage::Accounts
+            | SettingsPage::Units
             | SettingsPage::Categories
             | SettingsPage::Tags
             | SettingsPage::Payees
@@ -418,15 +396,10 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
     choices[position.saturating_add_signed(delta).min(last)]
 }
 
-/// Every Settings dialog `Shell` can have open, `None` when none is -- the README's own `State`
-/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; `EditUnit`/`DeleteUnit`'s own
-/// `usize` is the row's index in `Shell::settings_units` -- `Shell::confirm_settings_dialog`
-/// needs it to know which row to overwrite/remove.
+/// The Settings dialogs no page owns yet: each page's own Dialogs leave this enum as the page
+/// moves into its folder (ADR-0037's amendment).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsDialog {
-    AddUnit(UnitForm),
-    EditUnit(usize, UnitForm),
-    DeleteUnit(usize, DeleteUnitForm),
     AddInstitution(AddInstitutionForm),
     /// Tracing's Clear logs confirm: nothing to fill in.
     ClearLogs,
@@ -435,36 +408,23 @@ pub enum SettingsDialog {
 impl Dialog for SettingsDialog {
     fn focused_text(&mut self) -> Option<&mut TextField> {
         match self {
-            Self::AddUnit(form) | Self::EditUnit(_, form) => Some(form.focused_mut()),
-            Self::DeleteUnit(_, form) => Some(&mut form.confirm_input),
             Self::AddInstitution(form) => Some(&mut form.name),
             Self::ClearLogs => None,
         }
     }
 
-    fn cycle_field(&mut self) {
-        if let Self::AddUnit(form) | Self::EditUnit(_, form) = self {
-            form.cycle_field();
-        }
-    }
-
     fn is_valid(&self) -> bool {
         match self {
-            Self::AddUnit(form) | Self::EditUnit(_, form) => form.is_valid(),
-            Self::DeleteUnit(_, form) => form.is_valid(),
             Self::AddInstitution(form) => form.is_valid(),
             Self::ClearLogs => true,
         }
     }
 
-    /// Clear logs is a confirm; the Units and Institutions dialogs leave the page's own legend.
+    /// Clear logs is a confirm; the Institutions dialog leaves the page's own legend.
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         match self {
             Self::ClearLogs => Some(hints::confirm_dialog_hints()),
-            Self::AddUnit(_)
-            | Self::EditUnit(..)
-            | Self::DeleteUnit(..)
-            | Self::AddInstitution(_) => None,
+            Self::AddInstitution(_) => None,
         }
     }
 }

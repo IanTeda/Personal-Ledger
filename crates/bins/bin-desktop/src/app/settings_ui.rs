@@ -17,8 +17,6 @@ use crate::settings::hints::{
 };
 use crate::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::settings::{SettingsDialog, SettingsFocus, SettingsPage};
-use crate::units::UnitKind;
-use crate::units::form::AddUnitField;
 use crate::view::accounts::hints::accounts_hints;
 use gpui::{App, Context, Keystroke};
 use lib_toast::ToastKind;
@@ -455,51 +453,8 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shared by the Add/Edit unit dialogs' own field-focus clicks (issues #184/#185) -- which
-    /// field a click targets doesn't depend on which dialog variant is open.
-    pub(super) fn handle_unit_dialog_field_click(
-        &mut self,
-        field: AddUnitField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(dialog) = self.dialog_mut::<SettingsDialog>() {
-            match dialog {
-                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
-                    form.focused_field = field;
-                    cx.notify();
-                }
-                // Neither has more than one text field, always implicitly focused -- nothing to
-                // click into.
-                SettingsDialog::DeleteUnit(..)
-                | SettingsDialog::AddInstitution(_)
-                | SettingsDialog::ClearLogs => {}
-            }
-        }
-    }
-
-    /// Shared by the Add/Edit unit dialogs' own Type segmented control (issues #184/#185).
-    pub(super) fn handle_unit_dialog_kind_click(
-        &mut self,
-        kind: UnitKind,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(dialog) = self.dialog_mut::<SettingsDialog>() {
-            match dialog {
-                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
-                    form.kind = kind;
-                    cx.notify();
-                }
-                // Neither has a Type selector at all.
-                SettingsDialog::DeleteUnit(..)
-                | SettingsDialog::AddInstitution(_)
-                | SettingsDialog::ClearLogs => {}
-            }
-        }
-    }
-
     /// Confirms the open Settings dialog through the host's cycle: the form's command runs
-    /// through the Ledger, and a landed one closes the dialog. Deleting a
-    /// Unit and Clear logs toast.
+    /// through the Ledger, and a landed one closes the dialog. Clear logs toasts.
     pub(super) fn confirm_settings_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = SettingsApply {
             ledger: self.ledger.clone(),
@@ -513,12 +468,6 @@ impl Shell {
         self.close_dialog();
         match outcome {
             SettingsOutcome::Saved => {}
-            SettingsOutcome::UnitDeleted { code } => {
-                self.raise_toast(
-                    ToastKind::Success,
-                    lib_locale::msg::toast_unit_deleted(&code),
-                );
-            }
             SettingsOutcome::LogsConfirmed => {
                 self.views
                     .settings

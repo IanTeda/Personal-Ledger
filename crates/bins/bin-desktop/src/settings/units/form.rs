@@ -1,7 +1,8 @@
-//! The Add, Edit and Delete unit dialogs' live form state -- pure, `gpui`-free; `Shell` owns it
-//! and `settings` renders it.
+//! The Add, Edit and Delete unit dialogs' live form state -- pure, `gpui`-free; `Shell`'s Dialog
+//! host holds it inside [`UnitsDialog`](super::dialogs::UnitsDialog) and `dialogs/` draws it.
 
-use super::{UnitKind, UnitRow};
+use lib_units::{UnitKind, UnitRow};
+
 use crate::form::field::TextField;
 
 /// Which text field currently receives typed characters in the Add/Edit unit dialogs -- Type
@@ -16,7 +17,7 @@ pub enum AddUnitField {
 
 /// The Add/Edit unit dialogs' own live form state (issues #184/#185) -- pure, `gpui`-free,
 /// mirroring `navigation/nav.rs`/`chrome/palette.rs`'s "state here, chrome renders it" split. `Shell` owns
-/// `Option<Self>` wrapped in [`SettingsDialog`]; `None` means no dialog is open. Shared between
+/// it wrapped in [`UnitsDialog`](super::dialogs::UnitsDialog) while the dialog is open. Shared between
 /// both dialogs rather than a separate `EditUnitForm` -- issue #185's own body: "same form as
 /// Add unit" -- so [`Self::is_valid`]/[`Self::cycle_field`] only need writing once.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -133,65 +134,5 @@ mod tests {
         assert_eq!(form.focused_field, AddUnitField::Name);
         form.cycle_field();
         assert_eq!(form.focused_field, AddUnitField::Code);
-    }
-
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
-    use crate::settings::SettingsDialog;
-
-    fn unit_form(dialog: &OpenDialog) -> &UnitForm {
-        match dialog {
-            OpenDialog::Settings(SettingsDialog::AddUnit(form)) => form,
-            other => panic!("expected Add unit, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn typing_and_backspace_edit_the_focused_field_only() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::AddUnit(UnitForm::default()));
-        type_text(&mut dialog, "aud");
-        handle_key(&mut dialog, DialogKey::Backspace);
-        assert_eq!(unit_form(&dialog).code.text(), "au");
-
-        handle_key(&mut dialog, DialogKey::Tab);
-        assert_eq!(unit_form(&dialog).focused_field, AddUnitField::Name);
-        type_text(&mut dialog, "x");
-        assert_eq!(unit_form(&dialog).name.text(), "x");
-        assert_eq!(unit_form(&dialog).code.text(), "au");
-    }
-
-    #[test]
-    fn enter_confirms_only_once_the_form_is_valid() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::AddUnit(UnitForm::default()));
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        type_text(&mut dialog, "aud");
-        handle_key(&mut dialog, DialogKey::Tab);
-        type_text(&mut dialog, "Australian dollar");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
-    }
-
-    #[test]
-    fn delete_unit_confirms_only_on_the_exact_case_sensitive_code() {
-        let mut dialog =
-            OpenDialog::Settings(SettingsDialog::DeleteUnit(0, DeleteUnitForm::new("btc")));
-        type_text(&mut dialog, "BTC");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        for _ in 0..3 {
-            handle_key(&mut dialog, DialogKey::Backspace);
-        }
-        type_text(&mut dialog, "btc");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
     }
 }

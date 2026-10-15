@@ -10,7 +10,6 @@ pub mod categories;
 pub mod dashboard;
 pub mod documents;
 pub mod event;
-pub mod form_fields;
 pub(crate) mod format;
 pub mod help;
 pub mod import;
@@ -20,7 +19,6 @@ pub mod payees;
 pub mod placeholder;
 pub mod tags;
 pub mod transactions;
-pub mod units;
 
 use gpui::{ScrollHandle, point, px};
 

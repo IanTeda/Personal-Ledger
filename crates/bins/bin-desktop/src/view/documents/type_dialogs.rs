@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
+use crate::form::fields::{OnSegmentClick, field_label, segmented_control, text_field};
 use crate::settings::documents::tracks_label;
-use crate::view::form_fields::{OnSegmentClick, field_label, segmented_control, text_field};
 use crate::{
     dialog, documents,
     documents::types::{

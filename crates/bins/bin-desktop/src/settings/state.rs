@@ -3,11 +3,11 @@
 //! focused control and Preferences, the Tracing page's log, and the Documents and Inventory
 //! pages' selections. It renders itself (`impl Render` in `super`), handles the index, its focus
 //! keys and the static pages' keys, movement and `Esc`, and reaches `Shell` only through
-//! [`ViewEvent`]. It builds the Units, Institutions and Clear logs dialogs, which `Shell`'s Dialog
-//! host draws and confirms.
+//! [`ViewEvent`]. It builds the Institutions and Clear logs dialogs, which `Shell`'s Dialog host
+//! draws and confirms.
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`];
-//! Payees, [`PayeesView`]) is drawn by that Entity, and this View forwards the page's keys,
+//! Payees, [`PayeesView`]; Units, [`UnitsPage`]) is drawn by that Entity, and this View forwards the page's keys,
 //! movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
 //! Inventory) are still
 //! `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their keys
@@ -32,7 +32,9 @@ use super::{
 use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     institutions::{InstitutionsStore, form::AddInstitutionForm},
+    ledger_store::LedgerStore,
     navigation::key_router::Movement,
+    settings::units::UnitsPage,
     settings::{
         DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsPage,
         display::{DATE_STYLE_CHOICES, DisplayPreferences, RowDensity, StatusGlyphs},
@@ -41,10 +43,6 @@ use crate::{
         tracing_log::{LogChange, LogView, TracingLevel},
     },
     theme::colours::ColourChange,
-    units::{
-        UnitsStore,
-        form::{DeleteUnitForm, UnitForm},
-    },
     view::{
         accounts::state::AccountsView,
         event::{Reveal, ViewEvent},
@@ -54,11 +52,12 @@ use crate::{
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
-/// What the Settings pages read: the Units, Price Sources and Institutions tables, and the Entity
-/// of each page with Ledger data that draws itself.
+/// What the Settings pages read: the Ledger (the Units the Add institution dialog offers), the
+/// Institutions table, and the Entity of each page with Ledger data that draws itself.
 pub struct SettingsSources {
-    pub units: Entity<UnitsStore>,
+    pub ledger: Entity<LedgerStore>,
     pub institutions: Entity<InstitutionsStore>,
+    pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsView>,
     pub payees: Entity<PayeesView>,
 }
@@ -68,6 +67,7 @@ pub struct SettingsSources {
 enum FocusedPage {
     Accounts(Entity<AccountsView>),
     Payees(Entity<PayeesView>),
+    Units(Entity<UnitsPage>),
 }
 
 impl FocusedPage {
@@ -75,6 +75,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
         }
     }
 
@@ -82,13 +83,22 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
         }
     }
 
-    fn apply_movement(&self, movement: Movement, cx: &mut App) {
+    /// Whether the page took the movement; one without a selection leaves Settings to scroll.
+    fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool {
         match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
+            Self::Accounts(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx));
+                true
+            }
+            Self::Payees(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx));
+                true
+            }
+            Self::Units(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
         }
     }
 
@@ -96,6 +106,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
         }
     }
 
@@ -103,6 +114,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
         }
     }
 
@@ -110,6 +122,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
         }
     }
 
@@ -117,6 +130,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.read(cx).page_status(cx),
             Self::Payees(page) => page.read(cx).page_status(cx),
+            Self::Units(page) => page.read(cx).page_status(cx),
         }
     }
 }
@@ -193,6 +207,11 @@ impl SettingsView {
         &self.sources.payees
     }
 
+    /// The Units page's Entity, for the Settings snapshots.
+    pub fn units(&self) -> &Entity<UnitsPage> {
+        &self.sources.units
+    }
+
     /// The open page's own Entity while it has focus: the page, rather than this View, then takes
     /// its keys, movement and status. `None` on the index and on a page this View drives.
     fn focused_page(&self) -> Option<FocusedPage> {
@@ -202,6 +221,7 @@ impl SettingsView {
         match self.selected_section {
             SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
             SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
+            SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
             _ => None,
         }
     }
@@ -248,10 +268,11 @@ impl SettingsView {
     }
 
     /// `j`/`k`/`g g`/`G` on the index step through the pages and swap the page live, like an index
-    /// click. A page with its own Entity moves its own selection; any other page scrolls.
+    /// click. A page with its own selection moves it; any other page scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
-        if let Some(page) = self.focused_page() {
-            page.apply_movement(movement, cx);
+        if let Some(page) = self.focused_page()
+            && page.apply_movement(movement, cx)
+        {
             return;
         }
         // A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
@@ -650,42 +671,18 @@ impl SettingsView {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Units, Price Sources and Institutions
+    // Institutions
     // -----------------------------------------------------------------------------------------
-
-    /// **+ Add unit** opens the Add unit dialog.
-    pub(super) fn click_add_unit(&mut self, cx: &mut Context<'_, Self>) {
-        open_dialog(SettingsDialog::AddUnit(UnitForm::default()), cx);
-    }
-
-    /// A Units row's **edit** opens the Edit unit dialog filled from the row.
-    pub(super) fn click_edit_unit(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.sources.units.read(cx).unit(cx, index) else {
-            return;
-        };
-        let form = UnitForm::from_row(row);
-        open_dialog(SettingsDialog::EditUnit(index, form), cx);
-    }
-
-    /// A Units row's **delete** opens the destructive Delete unit confirm dialog.
-    pub(super) fn click_delete_unit(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.sources.units.read(cx).unit(cx, index) else {
-            return;
-        };
-        let form = DeleteUnitForm::new(row.code.as_str());
-        open_dialog(SettingsDialog::DeleteUnit(index, form), cx);
-    }
 
     /// **+ Add institution** opens the Add institution dialog, its Default unit seeded from the
     /// Units table's first row.
     pub(super) fn click_add_institution(&mut self, cx: &mut Context<'_, Self>) {
-        let form = AddInstitutionForm::new(self.sources.units.read(cx).units(cx));
+        let form = AddInstitutionForm::new(self.sources.ledger.read(cx).ledger().units());
         open_dialog(SettingsDialog::AddInstitution(form), cx);
     }
 
-    /// The buttons with no dialog or behaviour yet (Price Sources' test, edit, delete and add,
-    /// Institutions' edit and delete, Sync now, Backup now, Export ledger) say so on the status
-    /// line.
+    /// The buttons with no dialog or behaviour yet (Institutions' edit and delete, Sync now,
+    /// Backup now, Export ledger) say so on the status line.
     pub(super) fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
         cx.emit(ViewEvent::SetStatus(Some(message)));
     }

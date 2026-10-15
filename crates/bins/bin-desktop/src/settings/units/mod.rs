@@ -1,474 +1,216 @@
-//! The **Units** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", revised by
-//! issue #189): a "UNITS" table title, a table (CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS)
-//! seeded from `crate::units::default_units()`, per-row edit/delete buttons, a "+ Add unit"
-//! button, and (new in #189) a **Price Sources** subsection with its own NAME/SOURCE/LAST
-//! UPDATED/ACTIONS table and "+ Add price source" button. This section absorbed the removed
-//! "Ledger & units" section's own "Default unit for new entries" control, now the FLAGS
-//! column's `default` pill on whichever row carries it, rather than a separate standalone
-//! control.
-//!
-//! Row edit/delete/"+ Add unit" open the real Add/Edit/Delete unit dialogs (issues #184-#186).
-//! Price Sources' own test/edit/delete/"+ Add price source" have **no dialog ticket anywhere on
-//! this map** -- same reasoning as Institutions' own row edit/delete (issue #178's own doc):
-//! nothing in the README's "Dialog lifecycle" table names one, so these flash a plain "not yet
-//! built" status message with no issue number to point at.
-//!
-//! The table's own outer `margin-bottom:48px` in the raw mockup markup is **not** replicated --
-//! it would put a 48px gap between the table and its own "+ Add unit" button, contradicting the
-//! README's own implementation note 4 ("Section gap is 48px, uniformly... carried on a single
-//! edge") and the Institutions section's own markup a few lines later, which uses a plain
-//! `margin-top:16px` on its "+ Add institution" button instead. Treated as a mockup-authoring
-//! slip, not the intended spacing -- built to the 16px gap that's consistent both with
-//! Institutions' own button and with the stated rule.
+//! The **Units** Settings page (ADR-0037, and its amendment's one folder per page): the Units
+//! table and its Price Sources. [`UnitsPage`] reads both straight from [`LedgerStore`], renders
+//! itself (`render.rs`), builds the Add, Edit and Delete unit Dialogs (`dialogs/`) and reaches
+//! `Shell` only through [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms them through
+//! `apply.rs`. The Settings View forwards the page's keys and status to it while the page has
+//! focus.
 
-use std::rc::Rc;
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+mod render;
 
-use lib_locale::Label;
-
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_ledger::Domain;
+use lib_units::{PriceSourceRow, UnitRow};
 
 use crate::{
-    settings::SettingsPage,
-    theme::color,
-    units::{PriceSourceRow, UnitRow},
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::Movement,
+    settings::{SettingsPage, hints::settings_plain_page_hints},
+    view::event::ViewEvent,
 };
+use dialogs::UnitsDialog;
+use form::{DeleteUnitForm, UnitForm};
 
-pub type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// A plain, index-less click handler -- what a [`row_action_button`] is bound to after its own
-/// row index has already been curried in.
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+impl EventEmitter<ViewEvent> for UnitsPage {}
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
-)]
-pub fn render(
-    units: &[UnitRow],
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    on_add_click: OnAddClick,
-    price_sources: &[PriceSourceRow],
-    on_price_source_test_click: OnRowIndexClick,
-    on_price_source_edit_click: OnRowIndexClick,
-    on_price_source_delete_click: OnRowIndexClick,
-    on_add_price_source_click: OnAddClick,
-    cx: &App,
-) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(subsection_label(lib_locale::format::upper(
-            &SettingsPage::Units.label(),
-        ), cx))
-        .child(table(units, on_edit_click, on_delete_click, cx))
-        .child(add_button(
-            "settings-add-unit",
-            crate::msg::desktop_settings_units_add_button("+"),
-            on_add_click,
-
-            cx,
-        ))
-        .child(
-            div()
-                .mt(px(32.0))
-                .flex()
-                .flex_col()
-                .child(subsection_label(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_price_sources_heading(),
-                ), cx))
-                .child(price_source_table(
-                    price_sources,
-                    on_price_source_test_click,
-                    on_price_source_edit_click,
-                    on_price_source_delete_click,
-
-                    cx,
-                ))
-                .child(add_button(
-                    "settings-add-price-source",
-                    crate::msg::desktop_settings_price_sources_add("+"),
-                    on_add_price_source_click,
-
-                    cx,
-                )),
-        )
-        .into_any_element()
+/// The Units page. It has no selection of its own: every row is reached by its buttons.
+pub struct UnitsPage {
+    ledger: Entity<LedgerStore>,
+    _units_changed: Subscription,
 }
 
-/// `font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#9b9797; margin-bottom:10px` -- the
-/// same treatment "PRICE SOURCES" and General's own "THIS LEDGER" label use.
-fn subsection_label(text: String, cx: &App) -> impl IntoElement {
-    div()
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::faint_text(cx))
-        .mb(px(10.0))
-        .child(text)
-}
+impl UnitsPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _units_changed = notify_on(&ledger, Domain::Units, cx);
+        Self {
+            ledger,
+            _units_changed,
+        }
+    }
 
-const CODE_WIDTH: gpui::Pixels = px(100.0);
-const NAME_WIDTH: gpui::Pixels = px(180.0);
-const SOURCE_WIDTH: gpui::Pixels = px(130.0);
-const TYPE_WIDTH: gpui::Pixels = px(80.0);
-const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
+    fn units<'a>(&self, cx: &'a App) -> &'a [UnitRow] {
+        self.ledger.read(cx).ledger().units()
+    }
 
-fn table(
-    units: &[UnitRow],
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    let last_index = units.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .mb(px(16.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .child(table_header(cx))
-        .children(units.iter().enumerate().map(|(index, unit)| {
-            row(
-                unit,
-                index == last_index,
-                index,
-                on_edit_click.clone(),
-                on_delete_click.clone(),
-                cx,
-            )
-        }))
-}
+    fn price_sources<'a>(&self, cx: &'a App) -> &'a [PriceSourceRow] {
+        self.ledger.read(cx).ledger().price_sources()
+    }
 
-fn table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(
-            div()
-                .w(CODE_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_code())),
-        )
-        .child(
-            div()
-                .w(NAME_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_name())),
-        )
-        .child(div().flex_1().child(lib_locale::format::upper(
-            &crate::msg::desktop_settings_units_column_flags(),
-        )))
-        .child(div().w(SOURCE_WIDTH).child(lib_locale::format::upper(
-            &crate::msg::desktop_settings_units_column_source(),
-        )))
-        .child(
-            div()
-                .w(TYPE_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_type())),
-        )
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
-        )
-}
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page has focus (ADR-0037)
+    // -----------------------------------------------------------------------------------------
 
-fn row(
-    unit: &UnitRow,
-    last: bool,
-    index: usize,
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
+    /// The page has no keys of its own: each Dialog opens from its button.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// With no selection to move, the page takes no movement and the Settings View scrolls its
+    /// body instead.
+    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The plain page legend and the page's fixed note.
+    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_plain_page_hints(),
+            right: SettingsPage::Units.scope_note(),
         })
-        .child(
-            div()
-                .w(CODE_WIDTH)
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(unit.code.clone()),
-        )
-        .child(div().w(NAME_WIDTH).child(unit.name.clone()))
-        .child(flags_cell(unit, cx))
-        .child(
-            div()
-                .w(SOURCE_WIDTH)
-                .text_color(color::faint_text(cx))
-                .child(unit.source.clone()),
-        )
-        .child(
-            div()
-                .w(TYPE_WIDTH)
-                .text_color(color::faint_text(cx))
-                .child(unit.kind.label()),
-        )
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .flex()
-                .justify_end()
-                .gap(px(10.0))
-                .child(row_action_button(
-                    SharedString::from(format!("unit-edit-{index}")),
-                    crate::msg::desktop_hint_edit(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_edit_click(index, window, cx)
-                    }),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("unit-delete-{index}")),
-                    crate::msg::desktop_hint_delete(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_delete_click(index, window, cx)
-                    }),
-                    cx,
-                )),
-        )
+    }
+
+    /// The heading's meta: how many Units the table holds.
+    pub fn scope_note(&self, cx: &App) -> String {
+        let count = i64::try_from(self.units(cx).len()).unwrap_or(i64::MAX);
+        crate::msg::desktop_settings_scope_units(count)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// **+ Add unit** opens the Add unit dialog.
+    fn click_add(&mut self, cx: &mut Context<'_, Self>) {
+        open_dialog(UnitsDialog::Add(UnitForm::default()), cx);
+    }
+
+    /// A Units row's **edit** opens the Edit unit dialog filled from the row.
+    fn click_edit(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        let Some(row) = self.units(cx).get(index) else {
+            return;
+        };
+        let form = UnitForm::from_row(row);
+        open_dialog(UnitsDialog::Edit(index, form), cx);
+    }
+
+    /// A Units row's **delete** opens the destructive Delete unit confirm dialog.
+    fn click_delete(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        let Some(row) = self.units(cx).get(index) else {
+            return;
+        };
+        let form = DeleteUnitForm::new(row.code.as_str());
+        open_dialog(UnitsDialog::Delete(index, form), cx);
+    }
+
+    /// Price Sources' test, edit, delete and add have no Dialog yet, so they say so on the status
+    /// line.
+    fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
+        cx.emit(ViewEvent::SetStatus(Some(message)));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------------------------
+
+    /// The Units rows. The open Dialog's fields are `Shell`'s, which fills them in.
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &App) -> SettingsUnitsSnapshot {
+        let units = self.units(cx);
+        SettingsUnitsSnapshot {
+            unit_codes: units.iter().map(|unit| unit.code.clone()).collect(),
+            unit_rows: units
+                .iter()
+                .map(|unit| {
+                    (
+                        unit.code.clone(),
+                        unit.name.clone(),
+                        unit.kind.as_str().to_string(),
+                    )
+                })
+                .collect(),
+            unit_dialog_name: None,
+            unit_dialog_kind: None,
+            unit_dialog_field: None,
+        }
+    }
 }
 
-/// The FLAGS cell: `base`/`default` tag pills, left-aligned next to NAME (NAME is a fixed
-/// 180px column, not flex, so flags never drift into empty middle space) -- empty for every row
-/// but the ledger's own base/default unit.
-fn flags_cell(unit: &UnitRow, cx: &App) -> impl IntoElement {
-    div()
-        .flex_1()
-        .flex()
-        .gap(px(6.0))
-        .justify_start()
-        .when(unit.is_base, |this| {
-            this.child(tag_accent(
-                crate::msg::desktop_settings_units_flag_base(),
-                cx,
-            ))
-        })
-        .when(unit.is_default, |this| {
-            this.child(tag_outline(
-                crate::msg::desktop_settings_units_flag_default(),
-                cx,
-            ))
-        })
+/// The Units page: codes in table order, `(code, name, kind)` rows, and the Add/Edit unit dialog's
+/// Name draft, Type (`UnitKind` variant name) and focused field (`Code` or `Name`).
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsUnitsSnapshot {
+    pub unit_codes: Vec<String>,
+    pub unit_rows: Vec<(String, String, String)>,
+    pub unit_dialog_name: Option<String>,
+    pub unit_dialog_kind: Option<String>,
+    pub unit_dialog_field: Option<String>,
 }
 
-/// `.tag.tag-accent`: `background: var(--color-accent-100); color: var(--color-accent-800)`.
-/// Square corners, not the shared design system's own rounded pill -- this crate's "Radius 0
-/// everywhere" rule (`theme::color::accent_tint`'s own doc) has no exception for a general tag
-/// shape.
-fn tag_accent(label: String, cx: &App) -> impl IntoElement {
-    div()
-        .bg(color::accent_tint(cx))
-        .text_color(color::accent_tint_text(cx))
-        .text_size(px(11.0))
-        .px(px(10.0))
-        .py(px(3.0))
-        .child(label)
+/// What the open Units Dialog shows, for the Settings snapshots.
+#[doc(hidden)]
+pub struct UnitsDialogSnapshot {
+    /// `AddUnit`, `EditUnit` or `DeleteUnit`.
+    pub label: &'static str,
+    /// The Code draft, on Add and Edit.
+    pub code: Option<String>,
+    /// The typed-back confirmation, on Delete.
+    pub confirm: Option<String>,
+    /// The Add/Edit form's Name draft, Type and focused field.
+    pub form: Option<(String, String, String)>,
 }
 
-/// `.tag.tag-outline`: `border: 1px solid var(--color-accent); color: var(--color-accent)`.
-fn tag_outline(label: String, cx: &App) -> impl IntoElement {
-    div()
-        .border_1()
-        .border_color(color::accent(cx))
-        .text_color(color::accent(cx))
-        .text_size(px(11.0))
-        .px(px(10.0))
-        .py(px(3.0))
-        .child(label)
+impl UnitsDialog {
+    #[doc(hidden)]
+    pub fn snapshot(&self) -> UnitsDialogSnapshot {
+        let (label, form) = match self {
+            Self::Add(form) => ("AddUnit", form),
+            Self::Edit(_, form) => ("EditUnit", form),
+            Self::Delete(_, form) => {
+                return UnitsDialogSnapshot {
+                    label: "DeleteUnit",
+                    code: None,
+                    confirm: Some(form.confirm_input.text().to_string()),
+                    form: None,
+                };
+            }
+        };
+        UnitsDialogSnapshot {
+            label,
+            code: Some(form.code.text().to_string()),
+            confirm: None,
+            form: Some((
+                form.name.text().to_string(),
+                format!("{:?}", form.kind),
+                format!("{:?}", form.focused_field),
+            )),
+        }
+    }
 }
 
-const PRICE_SOURCE_NAME_WIDTH: gpui::Pixels = px(130.0);
-const PRICE_SOURCE_LAST_UPDATED_WIDTH: gpui::Pixels = px(130.0);
-const PRICE_SOURCE_ACTIONS_WIDTH: gpui::Pixels = px(170.0);
-
-fn price_source_table(
-    rows: &[PriceSourceRow],
-    on_test_click: OnRowIndexClick,
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    let last_index = rows.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .mb(px(16.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .child(price_source_table_header(cx))
-        .children(rows.iter().enumerate().map(|(index, source)| {
-            price_source_row(
-                source,
-                index == last_index,
-                index,
-                on_test_click.clone(),
-                on_edit_click.clone(),
-                on_delete_click.clone(),
-                cx,
-            )
-        }))
-}
-
-fn price_source_table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(
-            div()
-                .w(PRICE_SOURCE_NAME_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_name())),
-        )
-        .child(div().flex_1().child(lib_locale::format::upper(
-            &crate::msg::desktop_settings_units_column_source(),
-        )))
-        .child(
-            div()
-                .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
-                .child(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_units_column_last_updated(),
-                )),
-        )
-        .child(
-            div()
-                .w(PRICE_SOURCE_ACTIONS_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
-        )
-}
-
-/// One Price Sources row -- keyed by the unit's own `name`, not `code` (the README's own "the
-/// one place the unit is referenced by name rather than code" callout, since this table is
-/// about the relationship to an external source, not the unit record itself).
-fn price_source_row(
-    source: &PriceSourceRow,
-    last: bool,
-    index: usize,
-    on_test_click: OnRowIndexClick,
-    on_edit_click: OnRowIndexClick,
-    on_delete_click: OnRowIndexClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(12.0))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(
-            div()
-                .w(PRICE_SOURCE_NAME_WIDTH)
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(source.unit_name.clone()),
-        )
-        .child(div().flex_1().child(source.source.clone()))
-        .child(
-            div()
-                .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
-                .text_color(color::faint_text(cx))
-                .child(source.last_updated.clone()),
-        )
-        .child(
-            div()
-                .w(PRICE_SOURCE_ACTIONS_WIDTH)
-                .flex()
-                .justify_end()
-                .gap(px(10.0))
-                .child(row_action_button(
-                    SharedString::from(format!("price-source-test-{index}")),
-                    crate::msg::desktop_settings_units_test(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_test_click(index, window, cx)
-                    }),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("price-source-edit-{index}")),
-                    crate::msg::desktop_hint_edit(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_edit_click(index, window, cx)
-                    }),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("price-source-delete-{index}")),
-                    crate::msg::desktop_hint_delete(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_delete_click(index, window, cx)
-                    }),
-                    cx,
-                )),
-        )
-}
-
-/// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
-/// background:transparent; font-size:11px`.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .py(px(4.0))
-        .px(px(10.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .text_size(px(11.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(label)
-}
-
-/// A section button: `padding:10px 16px; border:1px solid rgba(32,30,29,.30);
-/// background:#eae9e9; font-weight:800; width:fit-content` -- see the module doc for why this
-/// sits `mt(16px)` below its own table rather than replicating the table's own inline
-/// `margin-bottom:48px`.
-fn add_button(id: &'static str, label: String, on_click: OnAddClick, cx: &App) -> impl IntoElement {
-    // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
-    // `items_start`/etc.) -- without it, this button stretches to the full width of its column
-    // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
-    let mut button = div()
-        .debug_selector(move || id.to_string())
-        .id(id)
-        .cursor_pointer()
-        .mt(px(16.0))
-        .py(px(10.0))
-        .px(px(16.0))
-        .bg(color::chrome(cx))
-        .border_1()
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(label);
-    button.style().align_self = Some(gpui::AlignItems::FlexStart);
-    button
+/// Asks `Shell`'s Dialog host to open a Units Dialog.
+fn open_dialog(dialog: UnitsDialog, cx: &mut Context<'_, UnitsPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Units(dialog))));
 }
