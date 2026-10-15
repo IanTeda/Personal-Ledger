@@ -8,7 +8,6 @@ mod budgets_seed_tests;
 mod category_commands;
 mod change;
 mod document_commands;
-mod hatch;
 mod institution_commands;
 mod inventory_commands;
 mod payee_commands;
@@ -39,7 +38,6 @@ pub use document_commands::{
     ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, SkipDocument,
     ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
-pub use hatch::LedgerHatch;
 pub use institution_commands::AddInstitution;
 pub use inventory_commands::{
     AddProperty, AddRoom, EditProperty, EditRoom, MoveRoom, MoveRoomRefusal, RemoveProperty,
@@ -72,8 +70,7 @@ use lib_transactions::Transaction;
 use lib_units::{PriceSourceRow, UnitRow, default_price_sources, default_units};
 
 /// Every domain collection the Clients read, owned in one place. Every write is a
-/// [`LedgerCommand`] that records what it changed, except the temporary
-/// [`hatch`](Ledger::hatch) the migration onto commands still needs.
+/// [`LedgerCommand`] that records what it changed.
 #[derive(Debug, Clone)]
 pub struct Ledger {
     accounts: Vec<Account>,
@@ -277,17 +274,6 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A hatch write skips the change list, so the repository never sees it: that's why every
-    /// write has to move onto a command before persistence is wired.
-    #[test]
-    #[expect(deprecated, reason = "tests the hatch itself")]
-    fn a_hatch_write_records_no_change() {
-        let mut ledger = Ledger::stub();
-        ledger.hatch().payees.clear();
-        assert!(ledger.payees().is_empty());
-        assert!(ledger.drain_changes().is_empty());
-    }
 
     /// Every id a Transaction names must resolve in the stub, or a View would render a dangling row.
     #[test]

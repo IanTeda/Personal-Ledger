@@ -28,7 +28,6 @@ pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod history;
 pub(crate) mod pay_form;
-pub(crate) mod store;
 
 use crate::{
     bills::form::BillPlanForm,
@@ -38,7 +37,6 @@ use crate::{
 };
 
 pub use lib_bills::*;
-pub use store::BillsStore;
 
 /// Which tab of the Bills surface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -1,6 +1,6 @@
 //! The Bills destination's Entity (ADR-0032, ADR-0037). [`BillsView`] owns the page's own state:
 //! the tab, the selected row, the Schedule's period (or All), its filters and which filter select
-//! has focus. It reads the Plans and entries through [`BillsStore`], and the Categories, Accounts,
+//! has focus. It reads the Plans and entries through `LedgerStore`, and the Categories, Accounts,
 //! Payees, Transactions and Units its filter choices, dialogs and columns draw on through theirs.
 //! It renders itself (`impl Render` in `super`), handles its own keys, `Esc` and movement, and
 //! reaches `Shell` only through [`ViewEvent`].
@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     bills::{
-        self, BillsDialog, BillsStore, BillsTab, EntryId, ScheduleRow,
+        self, BillsDialog, BillsTab, EntryId, ScheduleRow,
         form::{BillPlanForm, BillPlanSource},
         history::BillFilters,
         pay_form::PayForm,
@@ -28,7 +28,6 @@ use crate::{
     payees::PayeesStore,
     period::Period,
     settings::display::StatusGlyphs,
-    transactions::TransactionsStore,
     view::{
         accounts::state::AccountsStore,
         categories::state::CategoriesStore,
@@ -71,8 +70,6 @@ impl BillsState {
 /// none of them, since a confirmed dialog is applied by the Dialog host.
 #[derive(Clone)]
 pub struct BillsSources {
-    pub bills: Entity<BillsStore>,
-    pub transactions: Entity<TransactionsStore>,
     pub categories: Entity<CategoriesStore>,
     pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
@@ -127,10 +124,10 @@ impl BillsView {
 
     /// The Schedule tab's rows for the shown period (or All), before its filters.
     pub fn unfiltered_rows(&self, cx: &App) -> Vec<ScheduleRow> {
-        let store = self.sources.bills.read(cx);
+        let ledger = self.sources.ledger.read(cx).ledger();
         bills::schedule_rows(
-            store.plans(cx),
-            store.entries(cx),
+            ledger.bill_plans(),
+            ledger.bill_entries(),
             (!self.state.all).then_some(self.state.period),
             self.today,
         )
@@ -140,7 +137,7 @@ impl BillsView {
     pub fn schedule_rows(&self, cx: &App) -> Vec<ScheduleRow> {
         self.state.filters.apply(
             &self.unfiltered_rows(cx),
-            self.sources.bills.read(cx).plans(cx),
+            self.sources.ledger.read(cx).ledger().bill_plans(),
         )
     }
 
@@ -153,7 +150,7 @@ impl BillsView {
 
     /// The Planner tab's selected Bill Plan's id, its stored position clamped to the Plans.
     pub fn selected_plan(&self, cx: &App) -> Option<u32> {
-        let plans = bills::planner_order(self.sources.bills.read(cx).plans(cx));
+        let plans = bills::planner_order(self.sources.ledger.read(cx).ledger().bill_plans());
         plans
             .get(self.state.selected.min(plans.len().saturating_sub(1)))
             .map(|plan| plan.id)
@@ -223,7 +220,7 @@ impl BillsView {
         }
         let len = match self.state.tab {
             BillsTab::Schedule => self.schedule_rows(cx).len(),
-            BillsTab::Planner => self.sources.bills.read(cx).plans(cx).len(),
+            BillsTab::Planner => self.sources.ledger.read(cx).ledger().bill_plans().len(),
         };
         let selected = self.state.selected.min(len.saturating_sub(1));
         self.state.selected = match movement.step() {
@@ -284,7 +281,9 @@ impl BillsView {
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         match reveal {
             Reveal::BillEntry(id) => {
-                let Some(entry) = bills::entry(self.sources.bills.read(cx).entries(cx), id) else {
+                let Some(entry) =
+                    bills::entry(self.sources.ledger.read(cx).ledger().bill_entries(), id)
+                else {
                     return;
                 };
                 let period = bills::schedule_period(entry, self.today);
@@ -296,9 +295,10 @@ impl BillsView {
                     .unwrap_or(0);
             }
             Reveal::BillPlan(id) => {
-                let Some(at) = bills::planner_order(self.sources.bills.read(cx).plans(cx))
-                    .iter()
-                    .position(|plan| plan.id == id)
+                let Some(at) =
+                    bills::planner_order(self.sources.ledger.read(cx).ledger().bill_plans())
+                        .iter()
+                        .position(|plan| plan.id == id)
                 else {
                     return;
                 };
@@ -327,10 +327,11 @@ impl BillsView {
         if self.state.tab != BillsTab::Planner {
             return;
         }
-        self.state.selected = bills::planner_order(self.sources.bills.read(cx).plans(cx))
-            .iter()
-            .position(|plan| plan.id == id)
-            .unwrap_or(0);
+        self.state.selected =
+            bills::planner_order(self.sources.ledger.read(cx).ledger().bill_plans())
+                .iter()
+                .position(|plan| plan.id == id)
+                .unwrap_or(0);
         cx.notify();
     }
 
@@ -338,7 +339,8 @@ impl BillsView {
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         let plans_count = || {
             crate::msg::desktop_bills_status_plans(
-                i64::try_from(self.sources.bills.read(cx).plans(cx).len()).unwrap_or(i64::MAX),
+                i64::try_from(self.sources.ledger.read(cx).ledger().bill_plans().len())
+                    .unwrap_or(i64::MAX),
             )
         };
         Some(match self.state.tab {
@@ -438,7 +440,7 @@ impl BillsView {
     /// The Bill Plan, Category or Account choices behind a scope select (after its "All" option),
     /// as `(id, name)`.
     fn filter_choices(&self, field: FilterField, cx: &App) -> Vec<(u32, String)> {
-        let plans = self.sources.bills.read(cx).plans(cx);
+        let plans = self.sources.ledger.read(cx).ledger().bill_plans();
         let mut choices: Vec<(u32, String)> = match field {
             FilterField::Plan => {
                 return bills::planner_order(plans)
@@ -597,7 +599,7 @@ impl BillsView {
 
     /// The Edit dialog, pre-filled from Bill Plan `id`.
     fn open_edit_plan(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(plan) = bills::get(self.sources.bills.read(cx).plans(cx), id) else {
+        let Some(plan) = bills::get(self.sources.ledger.read(cx).ledger().bill_plans(), id) else {
             return;
         };
         let form = BillPlanForm::from_plan(plan, self.plan_source(plan.payee_id, cx));
@@ -622,12 +624,13 @@ impl BillsView {
 
     /// The Pay form for `row`, or `None` when the row has nothing to pay.
     fn pay_form(&self, row: ScheduleRow, cx: &App) -> Option<PayForm> {
-        let store = self.sources.bills.read(cx);
-        let plan = bills::get(store.plans(cx), row.id.plan_id).filter(|_| row.is_actionable())?;
-        let transactions = self.sources.transactions.read(cx).transactions(cx);
+        let ledger = self.sources.ledger.read(cx).ledger();
+        let plan =
+            bills::get(ledger.bill_plans(), row.id.plan_id).filter(|_| row.is_actionable())?;
+        let transactions = self.sources.ledger.read(cx).ledger().transactions();
         let candidates = bills::match_candidates(
-            store.plans(cx),
-            store.entries(cx),
+            ledger.bill_plans(),
+            ledger.bill_entries(),
             transactions,
             self.sources.accounts.read(cx).accounts(cx),
             self.sources.categories.read(cx).categories(cx),
@@ -647,7 +650,11 @@ impl BillsView {
     /// The Skip dialog (8e) on an open Schedule row; a row with nothing to skip says so instead.
     fn open_skip(&mut self, row: ScheduleRow, cx: &mut Context<'_, Self>) {
         if !row.is_actionable()
-            || bills::get(self.sources.bills.read(cx).plans(cx), row.id.plan_id).is_none()
+            || bills::get(
+                self.sources.ledger.read(cx).ledger().bill_plans(),
+                row.id.plan_id,
+            )
+            .is_none()
         {
             Self::nothing_to_settle(cx);
             return;
@@ -658,7 +665,7 @@ impl BillsView {
     /// A Paid Schedule row's hand-off: its Matched Transaction. A no-op for any other row.
     fn open_transaction(&mut self, id: EntryId, cx: &mut Context<'_, Self>) {
         let Some(bills::Resolution::Paid(split)) =
-            bills::entry(self.sources.bills.read(cx).entries(cx), id)
+            bills::entry(self.sources.ledger.read(cx).ledger().bill_entries(), id)
                 .map(|entry| entry.resolution.clone())
         else {
             return;
@@ -746,8 +753,6 @@ mod tests {
         crate::locale::init_for_tests();
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
         let sources = BillsSources {
-            bills: cx.new(|cx| BillsStore::new(ledger.clone(), cx)),
-            transactions: cx.new(|cx| TransactionsStore::new(ledger.clone(), cx)),
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
             accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
             payees: cx.new(|cx| PayeesStore::new(ledger.clone(), cx)),
@@ -825,7 +830,7 @@ mod tests {
     fn revealing_a_plan_selects_it_on_the_planner(cx: &mut TestAppContext) {
         let (view, _) = seeded_view(cx);
         let last = view.read_with(cx, |view, cx| {
-            bills::planner_order(view.sources.bills.read(cx).plans(cx))
+            bills::planner_order(view.sources.ledger.read(cx).ledger().bill_plans())
                 .last()
                 .map(|plan| plan.id)
                 .expect("the seed has Bill Plans")

@@ -1,7 +1,7 @@
 //! The Transactions destination's Entity (ADR-0032, ADR-0037). [`TransactionsView`] owns the page's
 //! own state: the selected row, the table's scroll, the filters, the search, the filter popover's
 //! draft and the Import step that takes the page over while it is open. It reads the rows through
-//! [`TransactionsStore`], and the Accounts, Categories, Payees and Tags its chips, filter choices
+//! `LedgerStore`, and the Accounts, Categories, Payees and Tags its chips, filter choices
 //! and Import selects draw on through theirs. It renders itself (`impl Render` in `super`), handles
 //! its own keys, `Esc`, Search and movement, and reaches `Shell` only through [`ViewEvent`].
 
@@ -26,7 +26,7 @@ use crate::{
     payees::{Payee, PayeesStore},
     settings::display::{RowDensity, StatusGlyphs},
     transactions::{
-        self, Transaction, TransactionsStore,
+        self, Transaction,
         chips::FilterField,
         filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
         query::{Ledger, StatusFilter, TransactionFilters},
@@ -86,7 +86,6 @@ impl TransactionsState {
 #[derive(Clone)]
 pub struct TransactionsSources {
     pub ledger: Entity<LedgerStore>,
-    pub transactions: Entity<TransactionsStore>,
     pub accounts: Entity<AccountsStore>,
     pub categories: Entity<CategoriesStore>,
     pub payees: Entity<PayeesStore>,
@@ -154,7 +153,7 @@ impl TransactionsView {
     }
 
     pub fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
-        self.sources.transactions.read(cx).transactions(cx)
+        self.sources.ledger.read(cx).ledger().transactions()
     }
 
     pub(super) fn payees<'a>(&self, cx: &'a App) -> &'a [Payee] {

@@ -36,7 +36,7 @@ pub(super) const BUDGETS_SWITCHER_TOP: gpui::Pixels = px(122.0);
 impl Shell {
     /// The shared Budgets, read from their store Entity.
     pub(super) fn budgets<'a>(&self, cx: &'a gpui::App) -> &'a budgets::Budgets {
-        self.budgets_store.read(cx).budgets(cx)
+        self.ledger.read(cx).ledger().budgets()
     }
 
     /// Runs a Budgets command on the Ledger, which announces the change to every reader.
@@ -391,7 +391,7 @@ impl Shell {
             Some(OpenDialog::Budgets(dialog)) if matches!(**dialog, BudgetsDialog::Manage(_)) => {
                 if let BudgetsDialog::Manage(manage) = &mut **dialog {
                     // Archiving or restoring moves the row between the two sections: follow it.
-                    manage.refresh(self.budgets_store.read(cx).budgets(cx), id);
+                    manage.refresh(self.ledger.read(cx).ledger().budgets(), id);
                     manage.error = refused;
                 }
             }

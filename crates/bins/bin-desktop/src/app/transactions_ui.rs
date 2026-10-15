@@ -14,7 +14,7 @@ use gpui::App;
 impl Shell {
     /// The Transactions, read through their store (ADR-0032).
     pub(super) fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
-        self.transactions_store.read(cx).transactions(cx)
+        self.ledger.read(cx).ledger().transactions()
     }
 
     /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions

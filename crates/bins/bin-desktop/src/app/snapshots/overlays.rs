@@ -71,11 +71,11 @@ impl Shell {
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
-        let store = self.bills_store.read(cx);
-        bills::attention_entries(store.plans(cx), store.entries(cx), self.today)
+        let ledger = self.ledger.read(cx).ledger();
+        bills::attention_entries(ledger.bill_plans(), ledger.bill_entries(), self.today)
             .into_iter()
             .filter_map(|id| {
-                let plan = bills::get(store.plans(cx), id.plan_id)?;
+                let plan = bills::get(ledger.bill_plans(), id.plan_id)?;
                 Some(DashboardBillSnapshot {
                     plan: plan.name.clone(),
                     selector: format!("dashboard-bill-{}-{}", id.plan_id, id.due),

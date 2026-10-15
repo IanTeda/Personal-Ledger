@@ -25,12 +25,12 @@ use gpui::{App, Context, Entity};
 impl Shell {
     /// The Bill Plans, read through their store.
     pub(super) fn bill_plans<'a>(&self, cx: &'a App) -> &'a [bills::BillPlan] {
-        self.bills_store.read(cx).plans(cx)
+        self.ledger.read(cx).ledger().bill_plans()
     }
 
     /// The Bill Schedule entries, read through their store.
     pub(super) fn bill_entries<'a>(&self, cx: &'a App) -> &'a [bills::BillScheduleEntry] {
-        self.bills_store.read(cx).entries(cx)
+        self.ledger.read(cx).ledger().bill_entries()
     }
 
     /// The form behind the open Add or Edit bill plan dialog, if that is what's open.

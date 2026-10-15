@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
-use lib_ledger::{Domain, Ledger, LedgerCommand, LedgerHatch, domains};
+use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 /// Emitted after a write lands, naming every domain it touched.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,38 +42,6 @@ impl LedgerStore {
             self.announce(cx, domains(&changes));
         }
         Ok(outcome)
-    }
-
-    /// Writes through the Ledger's hatch and announces `what`, which the caller names because a
-    /// hatch write records no changes to derive it from.
-    #[deprecated(note = "a write that skips the change list; move it onto a Ledger command")]
-    pub fn write<R>(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        what: &[Domain],
-        change: impl FnOnce(LedgerHatch<'_>) -> R,
-    ) -> R {
-        #[expect(deprecated, reason = "the store's own hatch forwards to the Ledger's")]
-        let result = change(self.ledger.hatch());
-        self.announce(cx, what.iter().copied().collect());
-        result
-    }
-
-    /// [`Self::write`] for a write that can be refused: announces `what` only when it lands, so a
-    /// refusal emits nothing.
-    #[deprecated(note = "a write that skips the change list; move it onto a Ledger command")]
-    pub fn try_write<T, E>(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        what: &[Domain],
-        change: impl FnOnce(LedgerHatch<'_>) -> Result<T, E>,
-    ) -> Result<T, E> {
-        #[expect(deprecated, reason = "the store's own hatch forwards to the Ledger's")]
-        let result = change(self.ledger.hatch());
-        if result.is_ok() {
-            self.announce(cx, what.iter().copied().collect());
-        }
-        result
     }
 
     fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
@@ -163,31 +131,5 @@ mod tests {
         cx.run_until_parked();
 
         assert!(events.borrow().is_empty());
-    }
-
-    #[gpui::test]
-    #[expect(deprecated, reason = "tests the hatch itself")]
-    fn a_refused_hatch_write_emits_nothing_and_a_landed_one_names_its_domains(
-        cx: &mut TestAppContext,
-    ) {
-        let (store, events) = store(cx);
-
-        store.update(cx, |store, cx| {
-            let refused: Result<(), ()> = store.try_write(cx, &[Domain::Payees], |_| Err(()));
-            assert!(refused.is_err());
-        });
-        cx.run_until_parked();
-        assert!(events.borrow().is_empty());
-
-        store.update(cx, |store, cx| {
-            store.write(cx, &[Domain::Bills, Domain::Transactions], |_| ())
-        });
-        cx.run_until_parked();
-        assert_eq!(
-            *events.borrow(),
-            vec![LedgerChanged {
-                what: BTreeSet::from([Domain::Transactions, Domain::Bills])
-            }]
-        );
     }
 }

@@ -1,5 +1,5 @@
-//! The Documents destination's Entities (ADR-0032, ADR-0037). [`DocumentsStore`] reads the Documents
-//! and the Document Types through `LedgerStore`; Settings › Documents edits the Types too.
+//! The Documents destination's Entities (ADR-0032, ADR-0037). The Documents and the Document Types
+//! are read through `LedgerStore`; Settings › Documents edits the Types too.
 //! [`DocumentsView`] owns the page's own state: mode, scope, sort, search, focus zone, selections
 //! and the last filing for `u`. It renders itself (`impl Render` in `super`), handles its own keys,
 //! `Esc`, Search and movement, files Documents, hands files to the OS, and reaches `Shell` only
@@ -8,13 +8,12 @@
 
 use chrono::NaiveDate;
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
+    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy,
     UniformListScrollHandle,
 };
 use lib_core::DateStyle;
 use lib_ledger::{
-    AcceptDocument, Domain, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink,
-    UndoFiling,
+    AcceptDocument, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink, UndoFiling,
 };
 use lib_toast::ToastKind;
 
@@ -23,7 +22,6 @@ use super::{
     hints::{inbox_hints, index_hints, library_hints},
 };
 use crate::{
-    bills::BillsStore,
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     documents::{
         self, Document, DocumentLink, DocumentsMode, FilingUndo, KeyDateKind, LibraryScope,
@@ -34,48 +32,14 @@ use crate::{
         types::DocumentTypeRow,
     },
     inventory::store::InventoryStore,
-    ledger_store::{LedgerChanged, LedgerStore},
+    ledger_store::LedgerStore,
     navigation::{key_router::Movement, nav::Noun},
     payees::PayeesStore,
-    transactions::TransactionsStore,
     view::{
         accounts::state::AccountsStore,
         event::{Reveal, ViewEvent, ViewMode},
     },
 };
-
-/// The shared Documents and Document Types, read through [`LedgerStore`]. The Documents page,
-/// Settings › Documents, the rail badge and the Inventory removal all read them from here, so a
-/// change is seen everywhere on the next render.
-pub struct DocumentsStore {
-    ledger: Entity<LedgerStore>,
-    _ledger_changed: Subscription,
-}
-
-impl DocumentsStore {
-    /// A store over `ledger`'s Documents and Document Types.
-    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
-        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
-            if event.what.contains(&Domain::Documents)
-                || event.what.contains(&Domain::DocumentTypes)
-            {
-                cx.notify();
-            }
-        });
-        Self {
-            ledger,
-            _ledger_changed,
-        }
-    }
-
-    pub fn documents<'a>(&self, cx: &'a App) -> &'a [Document] {
-        self.ledger.read(cx).ledger().documents()
-    }
-
-    pub fn types<'a>(&self, cx: &'a App) -> &'a [DocumentTypeRow] {
-        self.ledger.read(cx).ledger().document_types()
-    }
-}
 
 impl EventEmitter<ViewEvent> for DocumentsView {}
 
@@ -123,12 +87,9 @@ impl Default for DocumentsState {
 #[derive(Clone)]
 pub struct DocumentsSources {
     pub ledger: Entity<LedgerStore>,
-    pub documents: Entity<DocumentsStore>,
     pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
-    pub bills: Entity<BillsStore>,
     pub inventory: Entity<InventoryStore>,
-    pub transactions: Entity<TransactionsStore>,
 }
 
 /// The Documents Entity.
@@ -204,11 +165,11 @@ impl DocumentsView {
     }
 
     pub(super) fn documents<'a>(&self, cx: &'a App) -> &'a [Document] {
-        self.sources.documents.read(cx).documents(cx)
+        self.sources.ledger.read(cx).ledger().documents()
     }
 
     pub(super) fn types<'a>(&self, cx: &'a App) -> &'a [DocumentTypeRow] {
-        self.sources.documents.read(cx).types(cx)
+        self.sources.ledger.read(cx).ledger().document_types()
     }
 
     /// Runs `command` through the Ledger, which announces the Documents it changed.
@@ -223,10 +184,10 @@ impl DocumentsView {
         Lookups {
             accounts: self.sources.accounts.read(cx).accounts(cx),
             payees: self.sources.payees.read(cx).payees(cx),
-            plans: self.sources.bills.read(cx).plans(cx),
+            plans: self.sources.ledger.read(cx).ledger().bill_plans(),
             types: self.types(cx),
             inventory: self.sources.inventory.read(cx).inventory(cx),
-            transactions: self.sources.transactions.read(cx).transactions(cx),
+            transactions: self.sources.ledger.read(cx).ledger().transactions(),
             today: self.today,
             date_style: self.date_style,
         }
@@ -820,7 +781,7 @@ impl DocumentsView {
         documents::suggestion(
             document,
             self.documents(cx),
-            self.sources.transactions.read(cx).transactions(cx),
+            self.sources.ledger.read(cx).ledger().transactions(),
             self.sources.payees.read(cx).payees(cx),
         )
         .best()
@@ -1009,7 +970,7 @@ impl DocumentsView {
     pub fn open_accept_all(&mut self, cx: &mut Context<'_, Self>) {
         let count = documents::strong_count(
             self.documents(cx),
-            self.sources.transactions.read(cx).transactions(cx),
+            self.sources.ledger.read(cx).ledger().transactions(),
             self.sources.payees.read(cx).payees(cx),
         );
         if count == 0 {

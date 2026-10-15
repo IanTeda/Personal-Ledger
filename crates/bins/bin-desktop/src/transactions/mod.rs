@@ -27,6 +27,3 @@ pub(crate) mod rows;
 #[cfg(test)]
 pub use lib_ledger::default_transactions;
 pub use lib_transactions::{Transaction, takes_transactions};
-pub use store::TransactionsStore;
-
-pub mod store;

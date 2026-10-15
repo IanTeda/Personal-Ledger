@@ -267,9 +267,9 @@ impl Render for BillsView {
         };
 
         let cx: &App = cx;
-        let store = self.sources.bills.read(cx);
-        let (plans, entries) = (store.plans(cx), store.entries(cx));
-        let transactions = self.sources.transactions.read(cx).transactions(cx);
+        let ledger = self.sources.ledger.read(cx).ledger();
+        let (plans, entries) = (ledger.bill_plans(), ledger.bill_entries());
+        let transactions = self.sources.ledger.read(cx).ledger().transactions();
         let accounts = self.sources.accounts.read(cx).accounts(cx);
         let units = self.sources.ledger.read(cx).ledger().units();
         let base_unit = units

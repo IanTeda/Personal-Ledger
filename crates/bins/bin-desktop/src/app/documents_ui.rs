@@ -28,12 +28,12 @@ use crate::{
 impl Shell {
     /// The Documents, read from their store Entity.
     pub(super) fn documents<'a>(&self, cx: &'a gpui::App) -> &'a [Document] {
-        self.documents_store.read(cx).documents(cx)
+        self.ledger.read(cx).ledger().documents()
     }
 
     /// The Document Types in the user's order, read from the store Entity.
     pub(super) fn document_types<'a>(&self, cx: &'a gpui::App) -> &'a [DocumentTypeRow] {
-        self.documents_store.read(cx).types(cx)
+        self.ledger.read(cx).ledger().document_types()
     }
 
     pub(super) fn set_documents_persisted(

@@ -86,14 +86,13 @@ use crate::payees::{PayeesEvent, PayeesStore};
 use crate::view::accounts::state::{AccountsSources, AccountsStore, AccountsView};
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
-use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
+use crate::view::budgets::state::{BudgetsSources, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
-use crate::view::documents::state::{DocumentsSources, DocumentsStore, DocumentsView};
+use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
 use crate::view::payees::state::{PayeesSources, PayeesView};
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
-    bills::BillsStore,
     budgets,
     categories::Category,
     chrome::dialog_host::OpenDialog,
@@ -105,7 +104,6 @@ use crate::{
     navigation::nav::NavState,
     settings::tracing_log::LogView,
     settings::{SettingsPage, display::DisplayPreferences, tracing_log::TracingLevel},
-    transactions::TransactionsStore,
     view::format,
     view::{
         budgets::{self as budgets_view},
@@ -169,7 +167,6 @@ pub struct Shell {
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
-    budgets_store: Entity<BudgetsStore>,
     /// The Payees rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
     payees_store: Entity<PayeesStore>,
@@ -181,16 +178,13 @@ pub struct Shell {
     /// The Transactions, read through their store Entity (ADR-0032): saved-in-memory state that
     /// survives leaving and re-entering the page. Deleting an account deletes its transactions
     /// with it.
-    transactions_store: Entity<TransactionsStore>,
     /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
-    bills_store: Entity<BillsStore>,
     /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets,
     /// Transactions with its Import step, Documents, and Settings. Each reaches `Shell` only
     /// through `ViewEvent`.
     views: ViewEntities,
     /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
-    documents_store: Entity<DocumentsStore>,
     /// The Inventory, read through its store Entity (ADR-0032). Shared: Settings' Inventory page
     /// edits it, and Documents resolve their Links against it.
     inventory: Entity<InventoryStore>,
@@ -278,12 +272,10 @@ impl Shell {
             .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
                 cx.notify()
             });
-        let transactions_store = cx.new(|cx| TransactionsStore::new(ledger.clone(), cx));
         let transactions_view = cx.new(|_| {
             TransactionsView::new(
                 TransactionsSources {
                     ledger: ledger.clone(),
-                    transactions: transactions_store.clone(),
                     accounts: accounts.clone(),
                     categories: categories_store.clone(),
                     payees: payees_store.clone(),
@@ -301,17 +293,12 @@ impl Shell {
             .budgets()
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
-        let budgets_store = cx.new(|cx| BudgetsStore::new(ledger.clone(), cx));
-        let bills_store = cx.new(|cx| BillsStore::new(ledger.clone(), cx));
         let budgets_view = cx.new(|_| {
             BudgetsView::new(
                 BudgetsSources {
                     ledger: ledger.clone(),
-                    budgets: budgets_store.clone(),
                     categories: categories_store.clone(),
                     accounts: accounts.clone(),
-                    transactions: transactions_store.clone(),
-                    bills: bills_store.clone(),
                 },
                 budgets_current,
                 today,
@@ -323,8 +310,6 @@ impl Shell {
         let bills_view = cx.new(|cx| {
             BillsView::new(
                 BillsSources {
-                    bills: bills_store.clone(),
-                    transactions: transactions_store.clone(),
                     categories: categories_store.clone(),
                     accounts: accounts.clone(),
                     payees: payees_store.clone(),
@@ -337,17 +322,13 @@ impl Shell {
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
-        let documents_store = cx.new(|cx| DocumentsStore::new(ledger.clone(), cx));
         let documents_view = cx.new(|_| {
             DocumentsView::new(
                 DocumentsSources {
                     ledger: ledger.clone(),
-                    documents: documents_store.clone(),
                     accounts: accounts.clone(),
                     payees: payees_store.clone(),
-                    bills: bills_store.clone(),
                     inventory: inventory.clone(),
-                    transactions: transactions_store.clone(),
                 },
                 today,
             )
@@ -383,12 +364,9 @@ impl Shell {
             today,
             categories_store,
             categories_view,
-            budgets_store,
             payees_store,
             tags_store,
             tags_view,
-            transactions_store,
-            bills_store,
             views: ViewEntities {
                 bills: bills_view,
                 budgets: budgets_view,
@@ -396,7 +374,6 @@ impl Shell {
                 documents: documents_view,
                 settings: settings_view,
             },
-            documents_store,
             inventory,
             view_subscriptions: vec![
                 accounts_subscription,

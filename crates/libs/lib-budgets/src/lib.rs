@@ -23,7 +23,7 @@
 //! Category ids and Account ids are the stubs' `u32`s, like every other desktop stub.
 //!
 //! This file holds the Category Limit chain itself; each surface's figures sit in their own
-//! section module, re-exported here. The Desktop reads it through its `BudgetsStore` Entity.
+//! section module, re-exported here. The Desktop reads it through `LedgerStore`.
 
 mod detail;
 mod figures;

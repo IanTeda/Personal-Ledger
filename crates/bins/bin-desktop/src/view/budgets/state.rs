@@ -1,31 +1,28 @@
-//! The Budgets destination's Entities (ADR-0032, ADR-0037). [`BudgetsStore`] reads the Budgets
-//! through [`LedgerStore`], which holds the only copy. Categories 5c and the Dashboard read them
-//! too. [`BudgetsView`] owns the page's own state: which Budget, tab, month and cell it is
+//! The Budgets destination's Entities (ADR-0032, ADR-0037). The Budgets are read through
+//! [`LedgerStore`], which holds the only copy. Categories 5c and the Dashboard read them
 //! showing. It renders itself (`impl Render` in `super`), handles its own keys, `Esc` and
 //! movement, and reaches `Shell` only through [`ViewEvent`]. It builds the Budgets dialogs, and
 //! `Shell` asks it for the ones the palette and the other dialogs open.
 
 use chrono::NaiveDate;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle};
 use lib_core::CategoryTypes;
-use lib_ledger::{CycleBudgetRollover, Domain, SaveBudgetCell};
+use lib_ledger::{CycleBudgetRollover, SaveBudgetCell};
 use lib_toast::ToastKind;
 
 use super::hints::{
     budgets_history_hints, budgets_plan_hints, budgets_plan_insert_hints, budgets_progress_hints,
 };
 use crate::{
-    bills::BillsStore,
     budgets::{
         self, BudgetsDialog, BudgetsTab, PlanEdit, default_plan_start,
         limit_form::{LimitForm, LimitOptions, StopForm},
     },
     categories,
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
-    ledger_store::{LedgerChanged, LedgerStore},
+    ledger_store::LedgerStore,
     navigation::key_router::Movement,
     period::Period,
-    transactions::TransactionsStore,
     view::{
         accounts::state::AccountsStore,
         categories::state::CategoriesStore,
@@ -35,32 +32,6 @@ use crate::{
 
 /// The file name the History export's save dialog suggests.
 const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
-
-/// The shared Budgets. Every reader (the Budgets page, Categories 5c and the Dashboard) reads
-/// them from here, so a change is seen everywhere on the next render.
-pub struct BudgetsStore {
-    ledger: Entity<LedgerStore>,
-    _ledger_changed: Subscription,
-}
-
-impl BudgetsStore {
-    /// A store over `ledger`'s Budgets.
-    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
-        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
-            if event.what.contains(&Domain::Budgets) {
-                cx.notify();
-            }
-        });
-        Self {
-            ledger,
-            _ledger_changed,
-        }
-    }
-
-    pub fn budgets<'a>(&self, cx: &'a App) -> &'a budgets::Budgets {
-        self.ledger.read(cx).ledger().budgets()
-    }
-}
 
 impl EventEmitter<ViewEvent> for BudgetsView {}
 
@@ -107,11 +78,8 @@ impl BudgetsState {
 #[derive(Clone)]
 pub struct BudgetsSources {
     pub ledger: Entity<LedgerStore>,
-    pub budgets: Entity<BudgetsStore>,
     pub categories: Entity<CategoriesStore>,
     pub accounts: Entity<AccountsStore>,
-    pub transactions: Entity<TransactionsStore>,
-    pub bills: Entity<BillsStore>,
 }
 
 /// The Budgets Entity.
@@ -145,7 +113,7 @@ impl BudgetsView {
     }
 
     pub fn budgets<'a>(&self, cx: &'a App) -> &'a budgets::Budgets {
-        self.sources.budgets.read(cx).budgets(cx)
+        self.sources.ledger.read(cx).ledger().budgets()
     }
 
     /// The Budget on show, or `None` once it has gone.
@@ -159,13 +127,13 @@ impl BudgetsView {
 
     /// Everything the Budgets figures are worked out from.
     pub fn budget_sources<'a>(&self, cx: &'a App) -> budgets::BudgetSources<'a> {
-        let bills = self.sources.bills.read(cx);
+        let ledger = self.sources.ledger.read(cx).ledger();
         budgets::BudgetSources {
             categories: self.categories(cx),
             accounts: self.sources.accounts.read(cx).accounts(cx),
-            transactions: self.sources.transactions.read(cx).transactions(cx),
-            plans: bills.plans(cx),
-            entries: bills.entries(cx),
+            transactions: self.sources.ledger.read(cx).ledger().transactions(),
+            plans: ledger.bill_plans(),
+            entries: ledger.bill_entries(),
         }
     }
 
@@ -1137,11 +1105,8 @@ mod tests {
         });
         let sources = BudgetsSources {
             ledger: ledger.clone(),
-            budgets: cx.new(|cx| BudgetsStore::new(ledger.clone(), cx)),
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
             accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
-            transactions: cx.new(|cx| TransactionsStore::new(ledger.clone(), cx)),
-            bills: cx.new(|cx| BillsStore::new(ledger, cx)),
         };
         let view = cx.new(|_| BudgetsView::new(sources, current, today()));
         let events = Rc::new(RefCell::new(Vec::new()));
