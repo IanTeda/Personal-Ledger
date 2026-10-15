@@ -243,10 +243,21 @@ impl Shell {
     #[doc(hidden)]
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
         let dialog = self.open_settings_dialog(cx);
+        let parent_id = match self.dialog::<CategoriesDialog>() {
+            Some(CategoriesDialog::Add { parent_id, .. }) => *parent_id,
+            _ => None,
+        };
+        let dialog_parent = parent_id.and_then(|id| {
+            self.categories(cx)
+                .iter()
+                .find(|category| category.id == id)
+                .map(|category| category.name.clone())
+        });
         SettingsSnapshot {
             dialog: dialog.label.map(str::to_string),
             dialog_name: dialog.name,
             dialog_confirm: dialog.confirm,
+            dialog_parent,
             status_message: self.chrome.status_message.clone(),
             ..self.views.settings.read(cx).snapshot()
         }

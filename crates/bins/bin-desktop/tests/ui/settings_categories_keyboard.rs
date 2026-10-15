@@ -82,6 +82,30 @@ fn typing_a_name_and_pressing_enter_adds_the_category(app: &mut TestAppContext) 
 }
 
 #[gpui::test]
+fn shift_n_opens_add_under_the_selected_row(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+
+    // Housing is the first row and a top-level Category, so it can take a sub-category.
+    ui.press("j shift-n");
+    let page = ui.settings();
+    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(page.dialog_parent.as_deref(), Some("Housing"));
+    ui.press("escape");
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn n_opens_a_top_level_add_with_no_parent(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+
+    ui.press("j n");
+    let page = ui.settings();
+    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(page.dialog_parent, None);
+    ui.press("escape");
+}
+
+#[gpui::test]
 fn enter_on_a_blank_name_keeps_the_add_dialog_open(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
     let before = ui.settings_categories().category_names.len();
@@ -135,7 +159,12 @@ fn d_on_a_parent_is_refused_and_a_leaf_opens_the_delete_dialog(app: &mut TestApp
     let mut ui = in_categories(app);
 
     ui.press("j d");
-    assert_eq!(ui.settings().dialog, None);
+    let page = ui.settings();
+    assert_eq!(page.dialog, None);
+    assert_eq!(
+        page.status_message.as_deref(),
+        Some("delete or move its children first")
+    );
     // Right opens Housing and lands on its first child, Rent, a leaf.
     ui.press("right");
     assert_eq!(

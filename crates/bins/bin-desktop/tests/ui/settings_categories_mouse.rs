@@ -61,7 +61,9 @@ fn the_sub_button_opens_add_under_its_row(app: &mut TestAppContext) {
 
     // Housing is a top-level row, so it can take a sub-category.
     ui.click("settings-categories-sub-1");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddCategory"));
+    let page = ui.settings();
+    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(page.dialog_parent.as_deref(), Some("Housing"));
     ui.click("add-category-cancel");
     assert_eq!(ui.settings().dialog, None);
 }
