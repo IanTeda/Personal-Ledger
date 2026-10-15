@@ -1,6 +1,5 @@
 //! The Settings pages driven by keys: the index rail's paged navigation, focus stepping into and
-//! out of a page, the Accounts and Categories lists with their add, edit and delete
-//! dialogs, and the About page. State is read back from `Shell`.
+//! out of a page, the Categories list with its add, edit and delete dialogs, and the About page. State is read back from `Shell`.
 
 use super::common;
 
@@ -85,116 +84,6 @@ fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
     let page = ui.settings();
     assert_eq!(page.page, "Accounts");
     assert!(!page.page_focused);
-}
-
-#[gpui::test]
-fn accounts_rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
-
-    let first = ui.settings_accounts().selected_account;
-    assert_eq!(
-        first.as_deref(),
-        ui.settings_accounts()
-            .account_names
-            .first()
-            .map(String::as_str)
-    );
-    ui.press("j");
-    assert_eq!(
-        ui.settings_accounts().selected_account,
-        Some(ui.settings_accounts().account_names[1].clone())
-    );
-    ui.press("shift-g");
-    let accounts_page = ui.settings_accounts();
-    assert_eq!(
-        accounts_page.selected_account.as_ref(),
-        accounts_page.account_names.last()
-    );
-    ui.press("g g");
-    assert_eq!(ui.settings_accounts().selected_account, first);
-}
-
-#[gpui::test]
-fn n_opens_add_account_and_escape_cancels_it(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
-
-    ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
-    assert_eq!(mode(&mut ui), InputMode::Dialog);
-    ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
-    assert_eq!(mode(&mut ui), InputMode::Normal);
-}
-
-#[gpui::test]
-fn typing_a_name_and_pressing_enter_adds_the_account(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
-    let before = ui.settings_accounts().account_names.len();
-
-    ui.press("n");
-    ui.press("r a i n y");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("rainy"));
-    ui.press("enter");
-    let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
-    assert_eq!(accounts_page.account_names.len(), before + 1);
-    assert!(
-        accounts_page
-            .account_names
-            .iter()
-            .any(|name| name == "rainy")
-    );
-}
-
-#[gpui::test]
-fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
-    let name = ui
-        .settings_accounts()
-        .selected_account
-        .expect("seeded accounts");
-
-    ui.press("e");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
-    assert_eq!(page.dialog_name.as_deref(), Some(name.as_str()));
-    ui.press("x");
-    ui.press("enter");
-    let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
-    assert!(accounts_page.account_names.contains(&format!("{name}x")));
-}
-
-#[gpui::test]
-fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
-    let before = ui.settings_accounts().account_names.len();
-    let name = ui
-        .settings_accounts()
-        .selected_account
-        .expect("seeded accounts");
-
-    ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
-    ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
-    assert_eq!(ui.settings_accounts().account_names.len(), before);
-    for ch in name.chars() {
-        ui.press(&if ch == ' ' {
-            "space".to_string()
-        } else {
-            ch.to_string()
-        });
-    }
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(name.as_str()));
-    ui.press("enter");
-    let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
-    assert_eq!(accounts_page.account_names.len(), before - 1);
-    assert!(!accounts_page.account_names.contains(&name));
 }
 
 #[gpui::test]

@@ -300,7 +300,10 @@ impl BillsView {
                 self.state.selected = at;
             }
             Reveal::BillsPeriod(period) => self.show_schedule_period(period, cx),
-            Reveal::Transaction(_) | Reveal::Account(_) | Reveal::Payee(_) => return,
+            Reveal::Transaction(_)
+            | Reveal::Account(_)
+            | Reveal::AccountTransactions(_)
+            | Reveal::Payee(_) => return,
         }
         cx.notify();
     }

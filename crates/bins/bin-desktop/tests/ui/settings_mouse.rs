@@ -1,5 +1,5 @@
-//! The Settings pages driven by clicks: the index rail, the Accounts, Categories and Units
-//! pages' add button and row actions, and the dialogs' buttons. Only elements tagged with
+//! The Settings pages driven by clicks: the index rail, the Categories and Units pages' add
+//! button and row actions, and the dialogs' buttons. Only elements tagged with
 //! `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
@@ -29,60 +29,6 @@ fn clicking_an_index_entry_swaps_the_page(app: &mut TestAppContext) {
     assert_eq!(ui.settings().page, "About");
     ui.click("settings-index-General");
     assert_eq!(ui.settings().page, "General");
-}
-
-#[gpui::test]
-fn the_accounts_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Accounts");
-
-    ui.click("settings-accounts-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
-    assert_eq!(mode(&mut ui), InputMode::Dialog);
-    ui.click("add-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
-    assert_eq!(mode(&mut ui), InputMode::Normal);
-}
-
-#[gpui::test]
-fn clicking_an_account_row_selects_it(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Accounts");
-
-    let first = ui.settings_accounts().selected_account;
-    ui.click("settings-accounts-row-2");
-    let second = ui.settings_accounts().selected_account;
-    assert!(second.is_some());
-    assert_ne!(first, second);
-}
-
-#[gpui::test]
-fn an_accounts_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Accounts");
-
-    ui.click("settings-accounts-edit-2");
-    let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
-    assert_eq!(page.dialog_name, accounts_page.selected_account);
-    ui.click("edit-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
-}
-
-#[gpui::test]
-fn an_accounts_delete_action_needs_the_name_typed_back(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Accounts");
-    let before = ui.settings_accounts().account_names.len();
-
-    ui.click("settings-accounts-delete-2");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
-    ui.click("delete-account-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
-    assert_eq!(ui.settings_accounts().account_names.len(), before);
-    ui.click("delete-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
 }
 
 #[gpui::test]

@@ -4,26 +4,20 @@
 use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
+pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
+#[doc(hidden)]
 pub use crate::view::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot,
 };
 use crate::{
-    accounts::{self, form::AccountsDialog},
+    accounts::form::AccountsDialog,
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     payees::{self, form::PayeesDialog},
     settings::SettingsDialog,
     tags::{self, form::TagsDialog},
 };
-
-/// The Accounts page: names in the order the page lists them, and the selected row's name.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsAccountsSnapshot {
-    pub account_names: Vec<String>,
-    pub selected_account: Option<String>,
-}
 
 /// The Categories page: names in storage order, and the selected row's name.
 #[doc(hidden)]
@@ -282,21 +276,12 @@ impl Shell {
     /// The Settings Accounts page for a test.
     #[doc(hidden)]
     pub fn settings_accounts_snapshot(&self, cx: &gpui::App) -> SettingsAccountsSnapshot {
-        let account_names = accounts::display_order(self.accounts.read(cx).accounts(cx))
-            .into_iter()
-            .filter_map(|index| self.accounts.read(cx).accounts(cx).get(index))
-            .map(|account| account.name.clone())
-            .collect::<Vec<_>>();
-        let selected_account = self
-            .accounts_view
+        self.views
+            .settings
             .read(cx)
-            .selected_index(cx)
-            .and_then(|index| self.accounts.read(cx).accounts(cx).get(index))
-            .map(|account| account.name.clone());
-        SettingsAccountsSnapshot {
-            account_names,
-            selected_account,
-        }
+            .accounts()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Categories page for a test.

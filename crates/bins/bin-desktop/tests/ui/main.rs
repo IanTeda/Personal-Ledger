@@ -20,6 +20,8 @@ mod palette_keyboard;
 mod palette_mouse;
 mod placeholders_keyboard;
 mod placeholders_mouse;
+mod settings_accounts_keyboard;
+mod settings_accounts_mouse;
 mod settings_backup_keyboard;
 mod settings_backup_mouse;
 mod settings_display_keyboard;

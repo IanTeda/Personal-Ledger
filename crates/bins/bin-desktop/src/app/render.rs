@@ -229,30 +229,6 @@ impl Render for Shell {
             })
         };
 
-        let on_accounts_add_click: accounts_view::OnAddClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_add_click(cx));
-            })
-        };
-        let on_accounts_row_click: accounts_view::OnAccountClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_row_click(id, cx));
-            })
-        };
-        let on_accounts_edit_click: accounts_view::OnAccountClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_edit_click(id, cx));
-            })
-        };
-        let on_accounts_delete_click: accounts_view::OnAccountClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_accounts_delete_click(id, cx));
-            })
-        };
         let on_accounts_dialog_field_click: accounts_view::add_dialog::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
@@ -282,16 +258,6 @@ impl Render for Shell {
             })
         };
         let account_options = self.account_dialog_options(cx);
-        let selected_account = self.accounts_view.read(cx).selected_index(cx);
-        let accounts_page = accounts_view::AccountsPageProps {
-            accounts: self.accounts.read(cx).accounts(cx),
-            units: self.units_store.read(cx).units(cx),
-            selected: selected_account,
-            on_add_click: on_accounts_add_click,
-            on_row_click: on_accounts_row_click,
-            on_edit_click: on_accounts_edit_click,
-            on_delete_click: on_accounts_delete_click,
-        };
         let on_categories_add_click: categories_view::OnAddClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -635,15 +601,6 @@ impl Render for Shell {
                 settings.selected_section(),
                 focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
                 &settings_view::DataPageProps {
-                    accounts: settings_view::accounts::AccountsPageProps {
-                        accounts: accounts_page.accounts,
-                        units: accounts_page.units,
-                        selected: accounts_page.selected,
-                        on_add_click: accounts_page.on_add_click,
-                        on_row_click: accounts_page.on_row_click,
-                        on_edit_click: accounts_page.on_edit_click,
-                        on_delete_click: accounts_page.on_delete_click,
-                    },
                     categories: settings_categories_page,
                     tags: settings_tags_page,
                     payees: settings_payees_page,

@@ -1,142 +1,32 @@
-//! The Accounts destination's wiring: keys, clicks, the Add, Edit and Delete dialogs, and the `accounts` command. The pure rules live in `accounts`; the chrome in `view::accounts`, and its View state in the `AccountsView` Entity.
+//! The Accounts dialogs' side of the Dialog host, and the `accounts` command. The page itself, its
+//! keys and the dialogs it opens are the `AccountsView` Entity's (`view::accounts::state`); the
+//! pure rules live in `accounts`.
 
 use super::Shell;
 
 use crate::{
     accounts::{
-        self, NameLookup,
         apply::{AccountOutcome, AccountsApply},
-        form::{AccountField, AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
+        form::{AccountField, AccountOptions, AccountsDialog},
     },
-    chrome::{dialog_apply, dialog_host::OpenDialog},
-    form::field::TextField,
+    chrome::dialog_apply,
     navigation::command::AccountsVerb,
-    navigation::key_router::Movement,
-    navigation::nav::{FocusZone, Noun},
-    settings::{SettingsFocus, SettingsSection},
-    transactions::query::TransactionFilters,
-    view::accounts::state::AccountsEvent,
+    settings::SettingsSection,
+    view::accounts::state::{AccountsView, dialog_options},
 };
 
-use gpui::{App, Context, Keystroke};
+use gpui::{App, Context, Entity};
 use lib_toast::ToastKind;
 
 impl Shell {
-    /// Whether the Accounts rows own the keyboard: Settings' Accounts page with focus in the page
-    /// rather than on the index.
-    pub(super) fn accounts_page_has_focus(&self, cx: &App) -> bool {
-        self.nav.noun() == Noun::Settings
-            && self.nav.focus() == FocusZone::View
-            && self.views.settings.read(cx).focus() == SettingsFocus::Page
-            && self.views.settings.read(cx).selected_section() == SettingsSection::Accounts
+    /// The Accounts page's Entity, which the Settings View owns.
+    fn accounts_page(&self, cx: &App) -> Entity<AccountsView> {
+        self.views.settings.read(cx).accounts().clone()
     }
 
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Accounts page's row selection instead of
-    /// scrolling it; `Enter` opens the account's ledger (Transactions filtered to it).
-    pub(super) fn apply_accounts_movement(
-        &mut self,
-        movement: Movement,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.accounts_view
-            .update(cx, |view, cx| view.apply_movement(movement, cx));
-    }
-
-    /// Carries out what the Accounts page asked for. The page holds only its selection; the
-    /// dialogs and the ledger jump are `Shell`'s.
-    pub(super) fn handle_accounts_event(
-        &mut self,
-        event: AccountsEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
-        match event {
-            AccountsEvent::Add => self.open_add_account_dialog("", cx),
-            AccountsEvent::Edit(id) => self.open_edit_account_dialog(id, cx),
-            AccountsEvent::Delete(id) => self.open_delete_account_dialog(id, cx),
-            AccountsEvent::OpenLedger(id) => self.open_account_ledger(id, cx),
-        }
-        cx.notify();
-    }
-
-    /// The Accounts page's own `n`/`e`/`d` (only while it is the active noun and the view has
-    /// focus, in `Normal` mode -- `route_key` hands back `NoOp` for these bare keys). Each goes
-    /// through the same handler its button does.
-    pub(super) fn handle_accounts_key(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
-        if !self.accounts_page_has_focus(cx) {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
-            return false;
-        }
-        self.accounts_view
-            .update(cx, |view, cx| view.handle_key(&keystroke.key, cx))
-    }
-
-    /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
-    /// search cleared and the table back on its first row. The Accounts selection is untouched, so
-    /// returning to Accounts finds the same row selected.
-    pub(super) fn open_account_ledger(&mut self, id: u32, cx: &mut App) {
-        self.open_transactions_filtered(TransactionFilters::for_account(self.today, id), cx);
-    }
-
-    /// Selects the account with `id`, if it still exists.
-    pub(super) fn select_account(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.accounts_view
-            .update(cx, |view, cx| view.select_id(id, cx));
-    }
-
-    /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
-    pub(super) fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id, cx);
-        self.open_account_ledger(id, cx);
-        cx.notify();
-    }
-
-    /// The page's **+ Add account** button: the same handler `n` reaches.
-    pub(super) fn handle_accounts_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_account_dialog("", cx);
-        cx.notify();
-    }
-
-    /// The three selects' option lists, read live from Settings (so an institution added there
-    /// appears here) and the fixed type order.
+    /// The Accounts dialogs' select options, for the Dialog host to draw them with.
     pub(super) fn account_dialog_options(&self, cx: &App) -> AccountOptions {
-        AccountOptions::new(
-            self.institutions_store
-                .read(cx)
-                .institutions(cx)
-                .iter()
-                .map(|institution| institution.name.clone())
-                .collect(),
-            self.units_store
-                .read(cx)
-                .units(cx)
-                .iter()
-                .map(|unit| unit.code.clone())
-                .collect(),
-        )
-    }
-
-    /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
-    /// with Name pre-filled from `name` -- empty for `n` and the button, the typed argument for
-    /// `accounts new <account name>`.
-    pub(super) fn open_add_account_dialog(&mut self, name: &str, cx: &App) {
-        let options = self.account_dialog_options(cx);
-        let default_unit = self
-            .units_store
-            .read(cx)
-            .units(cx)
-            .iter()
-            .find(|unit| unit.is_default)
-            .map(|unit| unit.code.as_str());
-        let mut form = AccountForm::new(&options, default_unit);
-        form.name = TextField::new(name.trim());
-        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Add(form)));
+        dialog_options(&self.institutions_store, &self.units_store, cx)
     }
 
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select
@@ -191,8 +81,9 @@ impl Shell {
             return;
         };
         self.close_dialog();
+        let page = self.accounts_page(cx);
         match outcome {
-            AccountOutcome::Saved(id) => self.select_account(id, cx),
+            AccountOutcome::Saved(id) => page.update(cx, |page, cx| page.select_id(id, cx)),
             AccountOutcome::Deleted { name, transactions } => {
                 self.raise_toast(
                     ToastKind::Success,
@@ -201,60 +92,13 @@ impl Shell {
                         i64::try_from(transactions).unwrap_or(i64::MAX),
                     ),
                 );
-                self.accounts_view
-                    .update(cx, |view, cx| view.clamp_selection(cx));
+                page.update(cx, |page, cx| page.clamp_selection(cx));
             }
         }
     }
 
-    /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
-    pub(super) fn open_delete_account_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(account) = self
-            .accounts
-            .read(cx)
-            .accounts(cx)
-            .iter()
-            .find(|account| account.id == id)
-        else {
-            return;
-        };
-        let form = DeleteAccountForm::new(account.name.as_str());
-        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Delete(id, form)));
-    }
-
-    /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
-    pub(super) fn open_edit_account_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let options = self.account_dialog_options(cx);
-        let Some(account) = self
-            .accounts
-            .read(cx)
-            .accounts(cx)
-            .iter()
-            .find(|account| account.id == id)
-        else {
-            return;
-        };
-        let form = AccountForm::from_account(account, &options);
-        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Edit(id, form)));
-    }
-
-    pub(super) fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id, cx);
-        self.open_edit_account_dialog(id, cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id, cx);
-        self.open_delete_account_dialog(id, cx);
-        cx.notify();
-    }
-
-    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, then opens the
-    /// same dialog the page's `n`/`e`/`d` and buttons do. `new` pre-fills Name with the argument.
-    /// `edit` and `delete` resolve the typed name ([`accounts::find_by_name`]), or use the
-    /// selected row when none is given; a name that fits nothing or several accounts flashes a
-    /// status-line message naming the problem rather than guessing.
+    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, whose Entity then
+    /// opens the same dialog its `n`/`e`/`d` and buttons do.
     pub(super) fn run_accounts_command(
         &mut self,
         command_name: &str,
@@ -263,48 +107,8 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.open_settings_page(SettingsSection::Accounts, cx);
-        if verb == AccountsVerb::New {
-            self.open_add_account_dialog(argument, cx);
-            return;
-        }
-
-        let index = if argument.is_empty() {
-            match self.accounts_view.read(cx).selected_index(cx) {
-                Some(index) => index,
-                None => {
-                    self.chrome.status_message = Some(crate::msg::desktop_status_no_accounts(
-                        &format!(":{command_name}"),
-                    ));
-                    return;
-                }
-            }
-        } else {
-            match accounts::find_by_name(self.accounts.read(cx).accounts(cx), argument) {
-                NameLookup::Found(index) => index,
-                NameLookup::NotFound => {
-                    self.chrome.status_message = Some(crate::msg::desktop_status_no_account_named(
-                        &format!(":{command_name}"),
-                        argument,
-                    ));
-                    return;
-                }
-                NameLookup::Ambiguous(names) => {
-                    self.chrome.status_message =
-                        Some(crate::msg::desktop_status_account_ambiguous(
-                            &format!(":{command_name}"),
-                            argument,
-                            &names.join(", "),
-                        ));
-                    return;
-                }
-            }
-        };
-        let id = self.accounts.read(cx).accounts(cx)[index].id;
-        self.select_account(id, cx);
-        match verb {
-            AccountsVerb::Edit => self.open_edit_account_dialog(id, cx),
-            AccountsVerb::Delete => self.open_delete_account_dialog(id, cx),
-            AccountsVerb::New => {}
-        }
+        self.accounts_page(cx).update(cx, |page, cx| {
+            page.run_command(command_name, verb, argument, cx);
+        });
     }
 }

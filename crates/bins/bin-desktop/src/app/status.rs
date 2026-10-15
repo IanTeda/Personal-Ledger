@@ -9,7 +9,6 @@ use gpui::Context;
 
 use super::{Shell, document_types_ui, inventory_ui};
 use crate::view::{
-    accounts::hints::accounts_hints,
     active::ActiveViewEntity,
     settings::hints::{
         confirm_dialog_hints, merge_tags_dialog_hints, payee_dialog_hints,
@@ -80,14 +79,7 @@ impl Shell {
     /// `None` when no such page has focus.
     fn settings_data_page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsSection::Accounts) {
-            Some(PageStatus {
-                hints: accounts_hints(),
-                right: crate::msg::desktop_accounts_count(
-                    i64::try_from(self.accounts.read(cx).accounts(cx).len()).unwrap_or(i64::MAX),
-                ),
-            })
-        } else if focused(SettingsSection::Tags) {
+        if focused(SettingsSection::Tags) {
             Some(PageStatus {
                 hints: match self.dialog::<TagsDialog>() {
                     Some(TagsDialog::Add(_)) => tag_dialog_hints(false),

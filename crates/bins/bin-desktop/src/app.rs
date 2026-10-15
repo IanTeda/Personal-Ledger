@@ -83,7 +83,7 @@ use lib_ledger::{Ledger, MoveDocumentType};
 use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
-use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
+use crate::view::accounts::state::{AccountsSources, AccountsStore, AccountsView};
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
@@ -163,9 +163,6 @@ pub struct Shell {
     /// The Accounts rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Budgets, Bills and Documents read the same rows.
     accounts: Entity<AccountsStore>,
-    /// The Accounts page's state: its selected row. Its events are handled in
-    /// `handle_accounts_event`.
-    accounts_view: Entity<AccountsView>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -220,11 +217,6 @@ impl Shell {
     ) -> Self {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
         let accounts = cx.new(|cx| AccountsStore::new(ledger.clone(), cx));
-        let accounts_view = cx.new(|_| AccountsView::new(accounts.clone()));
-        let accounts_subscription =
-            cx.subscribe(&accounts_view, |shell, _view, event: &AccountsEvent, cx| {
-                shell.handle_accounts_event(*event, cx);
-            });
         let categories_store = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
         let categories_view = cx.new(|_| CategoriesView::new());
         let units_store = cx.new(|cx| UnitsStore::new(ledger.clone(), cx));
@@ -242,12 +234,23 @@ impl Shell {
             |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
         );
         let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
+        let accounts_view = cx.new(|_| {
+            AccountsView::new(AccountsSources {
+                accounts: accounts.clone(),
+                units: units_store.clone(),
+                institutions: institutions_store.clone(),
+            })
+        });
+        let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let accounts_view_observer = cx.observe(&accounts_view, |_, _, cx| cx.notify());
         // A private, empty capture until `set_log_capture` hands over the real one.
         let settings_view = cx.new(|_| {
             SettingsView::new(
                 SettingsSources {
                     units: units_store.clone(),
                     institutions: institutions_store.clone(),
+                    accounts: accounts_view,
                 },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -380,7 +383,6 @@ impl Shell {
             units_store,
             institutions_store,
             accounts,
-            accounts_view,
             today,
             categories_store,
             categories_view,
@@ -402,6 +404,7 @@ impl Shell {
             inventory,
             view_subscriptions: vec![
                 accounts_subscription,
+                accounts_view_observer,
                 budgets_subscription,
                 budgets_view_observer,
                 bills_subscription,

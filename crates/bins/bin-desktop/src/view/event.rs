@@ -71,6 +71,8 @@ pub enum Reveal {
     BillsPeriod(Period),
     /// An Account, by id, selected on Settings › Accounts.
     Account(u32),
+    /// An Account's ledger: Transactions filtered to the Account, from their first row.
+    AccountTransactions(u32),
     /// A Payee, by id, selected on Settings › Payees.
     Payee(u32),
 }
@@ -79,7 +81,7 @@ impl Reveal {
     /// The destination that owns the record.
     pub fn noun(self) -> Noun {
         match self {
-            Self::Transaction(_) => Noun::Transactions,
+            Self::Transaction(_) | Self::AccountTransactions(_) => Noun::Transactions,
             Self::BillEntry(_) | Self::BillPlan(_) | Self::BillsPeriod(_) => Noun::Bills,
             Self::Account(_) | Self::Payee(_) => Noun::Settings,
         }

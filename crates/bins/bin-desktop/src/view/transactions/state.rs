@@ -351,10 +351,14 @@ impl TransactionsView {
         cx.notify();
     }
 
-    /// Shows a Transaction handed off from another View: selected, with the date range widened to
-    /// reach it when it falls outside this year's and nothing else filtering it out. A no-op when
-    /// the Transaction has gone.
+    /// Shows what another View handed off: an Account's ledger (the table filtered to it), or a
+    /// Transaction, selected, with the date range widened to reach it when it falls outside this
+    /// year's and nothing else filtering it out. A no-op when the Transaction has gone.
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+        if let Reveal::AccountTransactions(account_id) = reveal {
+            self.show_filtered(TransactionFilters::for_account(self.today, account_id), cx);
+            return;
+        }
         let Reveal::Transaction(transaction_id) = reveal else {
             return;
         };

@@ -100,7 +100,6 @@ impl Shell {
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
         let section = [
-            SettingsSection::Accounts,
             SettingsSection::Categories,
             SettingsSection::Tags,
             SettingsSection::Payees,
@@ -110,7 +109,6 @@ impl Shell {
         .into_iter()
         .find(|section| focused(*section));
         match section {
-            Some(SettingsSection::Accounts) => self.apply_accounts_movement(movement, cx),
             Some(SettingsSection::Categories) => {
                 self.apply_settings_categories_movement(movement, cx);
             }

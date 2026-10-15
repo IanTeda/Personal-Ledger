@@ -51,7 +51,6 @@ pub struct DataPage {
 
 /// What `Shell` draws the pages with Ledger data from, until each moves into this View.
 pub struct DataPageProps<'a> {
-    pub accounts: accounts::AccountsPageProps<'a>,
     pub categories: categories::CategoriesPageProps<'a>,
     pub tags: tags::TagsPageProps<'a>,
     pub payees: payees::PayeesPageProps<'a>,
@@ -67,10 +66,6 @@ pub fn data_page(
     cx: &App,
 ) -> Option<DataPage> {
     let (meta, content) = match section {
-        SettingsSection::Accounts => (
-            accounts::scope_note(props.accounts.accounts, props.accounts.units).into_any_element(),
-            accounts::render(&props.accounts, page_focused, cx),
-        ),
         SettingsSection::Categories => (
             categories::scope_note(props.categories.categories).into_any_element(),
             categories::render(&props.categories, page_focused, cx),
@@ -92,6 +87,7 @@ pub fn data_page(
             inventory::render(&props.inventory, page_focused, cx),
         ),
         SettingsSection::General
+        | SettingsSection::Accounts
         | SettingsSection::Display
         | SettingsSection::Units
         | SettingsSection::Institutions
@@ -115,8 +111,14 @@ impl Render for SettingsView {
                 entity.update(cx, |view, cx| view.click_index(section, cx));
             })
         };
+        let accounts = self.sources().accounts.clone();
+        accounts.update(cx, |page, _| page.set_page_focused(page_focused));
         let (meta, content) = match self.data_page.take() {
             Some(page) => (page.meta, page.content),
+            None if selected == SettingsSection::Accounts => (
+                accounts.read(cx).scope_note(cx).into_any_element(),
+                accounts.into_any_element(),
+            ),
             None => (
                 self.scope_note(cx).into_any_element(),
                 self.page_content(&entity, cx),
@@ -287,7 +289,8 @@ impl SettingsView {
                 cx,
             ),
             SettingsSection::About => about::render(cx),
-            // `Shell` hands these in as a `DataPage`; a frame without one draws nothing there.
+            // Accounts draws itself; `Shell` hands the rest in as a `DataPage`, and a frame
+            // without one draws nothing there.
             SettingsSection::Accounts
             | SettingsSection::Categories
             | SettingsSection::Tags

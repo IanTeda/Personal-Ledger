@@ -6,9 +6,11 @@
 //! [`ViewEvent`]. It builds the Units, Institutions and Clear logs dialogs, which `Shell`'s Dialog
 //! host draws and confirms.
 //!
-//! The pages with Ledger data (Accounts, Categories, Tags, Payees, Documents, Inventory) are
-//! still `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their
-//! keys before forwarding to this Entity, until each moves in its own ticket.
+//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`]) is
+//! drawn by that Entity, and this View forwards the page's keys, movement and status to it while
+//! the page has focus. The rest (Categories, Tags, Payees, Documents, Inventory) are still
+//! `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their keys
+//! before forwarding to this Entity, until each moves in its own ticket.
 
 use std::collections::HashSet;
 
@@ -41,6 +43,7 @@ use crate::{
         form::{DeleteUnitForm, UnitForm},
     },
     view::{
+        accounts::state::AccountsView,
         event::{Reveal, ViewEvent},
         settings::inventory::InventoryRow,
     },
@@ -48,10 +51,12 @@ use crate::{
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
-/// The stores the Settings pages read: the Units, Price Sources and Institutions tables.
+/// What the Settings pages read: the Units, Price Sources and Institutions tables, and the Entity
+/// of each page with Ledger data that draws itself.
 pub struct SettingsSources {
     pub units: Entity<UnitsStore>,
     pub institutions: Entity<InstitutionsStore>,
+    pub accounts: Entity<AccountsView>,
 }
 
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
@@ -104,6 +109,18 @@ impl SettingsView {
         &self.sources
     }
 
+    /// The Accounts page's Entity, for `Shell`'s Dialog host and the `accounts` command.
+    pub fn accounts(&self) -> &Entity<AccountsView> {
+        &self.sources.accounts
+    }
+
+    /// The open page's own Entity while it has focus: the page, rather than this View, then takes
+    /// its keys, movement and status. `None` on the index and on a page this View drives.
+    fn focused_page(&self) -> Option<&Entity<AccountsView>> {
+        (self.focus == SettingsFocus::Page && self.selected_section == SettingsSection::Accounts)
+            .then_some(&self.sources.accounts)
+    }
+
     pub fn set_zone_focused(&mut self, focused: bool) {
         self.zone_focused = focused;
     }
@@ -128,22 +145,32 @@ impl SettingsView {
         let taken = self.display_form_key(keystroke, cx)
             || self.tracing_key(keystroke, cx)
             || self.focus_key(keystroke, cx)
-            || self.colour_theme_grid_key(keystroke, cx);
+            || self.colour_theme_grid_key(keystroke, cx)
+            || self
+                .focused_page()
+                .cloned()
+                .is_some_and(|page| page.update(cx, |page, cx| page.key_ahead(keystroke, cx)));
         if taken {
             cx.notify();
         }
         taken
     }
 
-    /// No Settings key waits for the router's leftovers: the static pages claim theirs ahead of
-    /// it.
-    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    /// A router leftover goes to the open page's own Entity; the static pages claim their keys
+    /// ahead of the router.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        self.focused_page()
+            .cloned()
+            .is_some_and(|page| page.update(cx, |page, cx| page.handle_key(keystroke, cx)))
     }
 
     /// `j`/`k`/`g g`/`G` on the index step through the pages and swap the page live, like an index
-    /// click. On a page, movement scrolls it.
+    /// click. A page with its own Entity moves its own selection; any other page scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        if let Some(page) = self.focused_page().cloned() {
+            page.update(cx, |page, cx| page.apply_movement(movement, cx));
+            return;
+        }
         // A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
         self.colour_theme_focus = None;
         if self.focus == SettingsFocus::Index
@@ -159,8 +186,14 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// `Esc` leaves the Colour Theme grid for the control above it, or the page for the index.
+    /// `Esc` closes what the open page has open, then leaves the Colour Theme grid for the
+    /// control above it, or the page for the index.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if let Some(page) = self.focused_page().cloned()
+            && page.update(cx, |page, cx| page.escape(cx))
+        {
+            return true;
+        }
         if self.colour_theme_focus.is_some() {
             cx.emit(ViewEvent::SetStatus(None));
             self.leave_colour_theme_grid();
@@ -173,13 +206,18 @@ impl SettingsView {
         true
     }
 
-    /// Settings has no Search: `/` is inert there rather than opening a mode with no box.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    /// Settings has no Search of its own: `/` goes to the open page's Entity, and is inert
+    /// where it has none rather than opening a mode with no box.
+    pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        self.focused_page()
+            .cloned()
+            .is_some_and(|page| page.update(cx, |page, cx| page.start_search(cx)))
     }
 
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    pub fn search_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        self.focused_page()
+            .cloned()
+            .is_some_and(|page| page.update(cx, |page, cx| page.search_key(keystroke, cx)))
     }
 
     /// Settings has just become the destination: focus goes back to the index (`g s` "lands on
@@ -190,14 +228,33 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// No other View hands a record to the pages this View draws yet.
-    pub fn reveal(&mut self, _reveal: Reveal, _cx: &mut Context<'_, Self>) {}
+    /// Opens the page that owns the record, with focus in it, and has its Entity show it.
+    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+        match reveal {
+            Reveal::Account(_) => {
+                self.open_page(SettingsSection::Accounts, cx);
+                self.sources
+                    .accounts
+                    .update(cx, |page, cx| page.reveal(reveal, cx));
+            }
+            // `Shell` still reveals a Payee itself; the rest belong to other Views.
+            Reveal::Payee(_)
+            | Reveal::AccountTransactions(_)
+            | Reveal::Transaction(_)
+            | Reveal::BillEntry(_)
+            | Reveal::BillPlan(_)
+            | Reveal::BillsPeriod(_) => {}
+        }
+    }
 
-    /// The status line's legend for the index or the open page, and the page's scope note. `None`
-    /// while the View zone doesn't have focus.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+    /// The status line's legend for the index or the open page, and the page's scope note, or
+    /// the open page's own Entity's status. `None` while the View zone doesn't have focus.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         if !self.zone_focused {
             return None;
+        }
+        if let Some(page) = self.focused_page() {
+            return page.read(cx).page_status(cx);
         }
         Some(PageStatus {
             hints: self.hints(),

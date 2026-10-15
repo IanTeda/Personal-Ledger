@@ -70,7 +70,7 @@ impl Shell {
         self.nav.set_noun(reveal.noun());
         self.reset_view_scroll(cx);
         match reveal {
-            Reveal::Account(_) | Reveal::Payee(_) => self.reveal_on_settings_data_page(reveal, cx),
+            Reveal::Payee(_) => self.reveal_on_settings_data_page(reveal, cx),
             _ => self.active_view_entity(cx).reveal(reveal, cx),
         }
     }
@@ -78,16 +78,14 @@ impl Shell {
     /// A reveal whose page `Shell` still draws: the Settings pages with Ledger data.
     fn reveal_on_settings_data_page(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         match reveal {
-            Reveal::Account(id) => {
-                self.open_settings_page(SettingsSection::Accounts, cx);
-                self.select_account(id, cx);
-            }
             Reveal::Payee(id) => {
                 self.open_settings_page(SettingsSection::Payees, cx);
                 self.select_payee(id, cx);
             }
             // Their View reveals them itself.
-            Reveal::Transaction(_)
+            Reveal::Account(_)
+            | Reveal::AccountTransactions(_)
+            | Reveal::Transaction(_)
             | Reveal::BillEntry(_)
             | Reveal::BillPlan(_)
             | Reveal::BillsPeriod(_) => {}

@@ -3,12 +3,12 @@
 //! (NAME / INSTITUTION / UNIT / ACTIONS). It reuses the Accounts model and dialogs;
 //! only the table is reduced to the handoff's columns and `padding:8px 16px` rows.
 //!
-//! Every action (row click, edit, delete, add) is a callback into `Shell`, so the keyboard
-//! (`n`/`e`/`d`/`enter`) and the mouse reach the same handlers.
+//! [`AccountsView`] draws it, and every click is bound to the same handler its key reaches
+//! (`n`/`e`/`d`/`enter`).
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
 
 use lib_locale::{Label, format::upper};
 
@@ -16,25 +16,10 @@ use crate::{
     accounts::{self, Account},
     theme::color,
     units::UnitRow,
+    view::accounts::state::AccountsView,
 };
 
-/// Called with an account's [`Account::id`].
-pub type OnAccountClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
-pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-
-pub struct AccountsPageProps<'a> {
-    pub accounts: &'a [Account],
-    /// Settings' live units: which are currencies (every other kind reads as a quantity,
-    /// `1,240 u`), and the base Unit the section meta's net worth is summed in.
-    pub units: &'a [UnitRow],
-    /// Index into `accounts` of the selected row.
-    pub selected: Option<usize>,
-    pub on_add_click: OnAddClick,
-    pub on_row_click: OnAccountClick,
-    pub on_edit_click: OnAccountClick,
-    pub on_delete_click: OnAccountClick,
-}
 
 /// The section heading's meta: `7 accounts · net worth 83,995.87 aud · vas, btc held
 /// separately`. One net figure in the base Unit only, then every other Unit held named rather
@@ -62,27 +47,49 @@ pub fn scope_note(accounts: &[Account], units: &[UnitRow]) -> String {
     parts.join(" \u{b7} ")
 }
 
-pub fn render(props: &AccountsPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(kicker_row(props.on_add_click.clone(), cx))
-        .children(
-            accounts::group_accounts(props.accounts)
-                .iter()
-                .map(|group| group_block(group, focused, props, cx)),
-        )
-        .when(props.accounts.is_empty(), |this| {
-            this.child(
-                div()
-                    .text_color(color::muted(cx))
-                    .child(crate::msg::desktop_accounts_empty("n")),
+impl Render for AccountsView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let accounts = self.accounts(cx);
+        let selected = self.selected_index(cx);
+        let focused = self.page_focused;
+        div()
+            .flex()
+            .flex_col()
+            .child(kicker_row(&entity, cx))
+            .children(
+                accounts::group_accounts(accounts)
+                    .iter()
+                    .map(|group| group_block(group, accounts, selected, focused, &entity, cx)),
             )
-        })
-        .into_any_element()
+            .when(accounts.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_color(color::muted(cx))
+                        .child(crate::msg::desktop_accounts_empty("n")),
+                )
+            })
+    }
 }
 
-fn kicker_row(on_add_click: OnAddClick, cx: &App) -> impl IntoElement {
+impl AccountsView {
+    /// The section heading's meta, over the page's live rows and Settings' Units.
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
+        scope_note(self.accounts(cx), self.sources().units.read(cx).units(cx))
+    }
+}
+
+/// A click handler that runs `act` on the page with the clicked account's id.
+fn on_account(
+    entity: &Entity<AccountsView>,
+    id: u32,
+    act: fn(&mut AccountsView, u32, &mut Context<'_, AccountsView>),
+) -> OnPlainClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| entity.update(cx, |view, cx| act(view, id, cx)))
+}
+
+fn kicker_row(entity: &Entity<AccountsView>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -95,11 +102,11 @@ fn kicker_row(on_add_click: OnAddClick, cx: &App) -> impl IntoElement {
                 .text_color(color::muted(cx))
                 .child(upper(&crate::msg::desktop_settings_accounts_kicker())),
         )
-        .child(add_button(on_add_click, cx))
+        .child(add_button(entity.clone(), cx))
 }
 
 /// `padding:8px 14px; background:#201e1d; color:#f3f2f2; font-weight:800`.
-fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
+fn add_button(entity: Entity<AccountsView>, cx: &App) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .debug_selector(|| "settings-accounts-add".to_string())
@@ -113,7 +120,7 @@ fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(move |_event, _window, cx| entity.update(cx, AccountsView::click_add))
         .child(crate::msg::desktop_accounts_add_button("+"))
 }
 
@@ -128,8 +135,10 @@ const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
 
 fn group_block(
     group: &accounts::AccountGroup,
+    accounts: &[Account],
+    selected: Option<usize>,
     focused: bool,
-    props: &AccountsPageProps<'_>,
+    entity: &Entity<AccountsView>,
     cx: &App,
 ) -> impl IntoElement {
     let last = group.indices.len().saturating_sub(1);
@@ -157,13 +166,13 @@ fn group_block(
                         .iter()
                         .enumerate()
                         .filter_map(|(position, &index)| {
-                            let account = props.accounts.get(index)?;
+                            let account = accounts.get(index)?;
                             Some(row(
                                 account,
                                 position == last,
-                                props.selected == Some(index),
+                                selected == Some(index),
                                 focused,
-                                props,
+                                entity,
                                 cx,
                             ))
                         }),
@@ -215,14 +224,12 @@ fn row(
     last: bool,
     selected: bool,
     focused: bool,
-    props: &AccountsPageProps<'_>,
+    entity: &Entity<AccountsView>,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     let id = account.id;
-    let on_row_click = props.on_row_click.clone();
-    let on_edit_click = props.on_edit_click.clone();
-    let on_delete_click = props.on_delete_click.clone();
+    let on_row_click = on_account(entity, id, AccountsView::click_row);
 
     div()
         .debug_selector(move || format!("settings-accounts-row-{id}"))
@@ -237,7 +244,7 @@ fn row(
         })
         .when(selected, |this| this.bg(color::chrome(cx)))
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_row_click(id, window, cx))
+        .on_click(move |_event, window, cx| on_row_click(window, cx))
         // The selection bar is drawn only while the page has focus -- the tint alone still marks
         // the row when focus is on the index.
         .child(
@@ -279,15 +286,13 @@ fn row(
                 .child(row_action_button(
                     SharedString::from(format!("settings-accounts-edit-{id}")),
                     crate::msg::desktop_accounts_row_edit(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| on_edit_click(id, window, cx)),
+                    on_account(entity, id, AccountsView::click_edit),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-accounts-delete-{id}")),
                     crate::msg::desktop_accounts_row_delete(),
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_delete_click(id, window, cx)
-                    }),
+                    on_account(entity, id, AccountsView::click_delete),
                     cx,
                 )),
         )

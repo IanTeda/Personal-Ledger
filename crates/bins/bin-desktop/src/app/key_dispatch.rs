@@ -342,9 +342,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsSection::Accounts) {
-            self.handle_accounts_key(keystroke, cx)
-        } else if focused(SettingsSection::Categories) {
+        if focused(SettingsSection::Categories) {
             self.handle_categories_key(keystroke, cx)
         } else if focused(SettingsSection::Payees) {
             self.handle_payees_key(keystroke, cx)
