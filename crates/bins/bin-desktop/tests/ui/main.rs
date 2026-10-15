@@ -24,6 +24,8 @@ mod settings_accounts_keyboard;
 mod settings_accounts_mouse;
 mod settings_backup_keyboard;
 mod settings_backup_mouse;
+mod settings_categories_keyboard;
+mod settings_categories_mouse;
 mod settings_display_keyboard;
 mod settings_display_mouse;
 mod settings_documents_keyboard;
