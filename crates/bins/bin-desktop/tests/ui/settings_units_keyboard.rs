@@ -1,0 +1,187 @@
+//! The Settings Units page driven by keys: reaching the page down the index, and the Add, Edit
+//! and Delete unit dialogs' keys once open: typing, `tab` between the Code and Name fields,
+//! `enter` to save or confirm, and `escape` to cancel. The page has no keys of its own, so each
+//! dialog is opened with its row button or Add button. State is read back from `Shell`.
+
+use super::common;
+
+use bin_desktop::navigation::nav::{InputMode, Noun};
+use common::Harness;
+use gpui::TestAppContext;
+
+fn on_units(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = Harness::new(app);
+    ui.press("g s");
+    assert_eq!(ui.noun(), Noun::Settings);
+    ui.press("j j");
+    assert_eq!(ui.settings().page, "Units");
+    ui
+}
+
+fn mode(ui: &mut Harness<'_>) -> InputMode {
+    ui.read(|shell| shell.nav().mode())
+}
+
+#[gpui::test]
+fn j_j_from_the_index_swaps_to_units_and_l_steps_into_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    assert!(!ui.settings().page_focused);
+
+    ui.press("l");
+    assert!(ui.settings().page_focused);
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn add_unit_types_into_code_then_tab_moves_to_name_and_enter_saves(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_rows.len();
+
+    ui.click("settings-add-unit");
+    assert_eq!(
+        ui.settings_units().unit_dialog_field.as_deref(),
+        Some("Code")
+    );
+    ui.press("x y z");
+    ui.press("tab");
+    assert_eq!(
+        ui.settings_units().unit_dialog_field.as_deref(),
+        Some("Name")
+    );
+    ui.press("t e s t");
+    assert_eq!(ui.settings().dialog_name.as_deref(), Some("xyz"));
+    assert_eq!(
+        ui.settings_units().unit_dialog_name.as_deref(),
+        Some("test")
+    );
+    ui.press("enter");
+    let units_page = ui.settings_units();
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(units_page.unit_rows.len(), before + 1);
+    assert_eq!(
+        units_page.unit_rows.last(),
+        Some(&("xyz".to_string(), "test".to_string(), "fiat".to_string()))
+    );
+}
+
+#[gpui::test]
+fn tab_cycles_back_to_code_and_backspace_trims_the_focused_field(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    ui.press("a b");
+    ui.press("tab tab");
+    assert_eq!(
+        ui.settings_units().unit_dialog_field.as_deref(),
+        Some("Code")
+    );
+    ui.press("backspace");
+    assert_eq!(ui.settings().dialog_name.as_deref(), Some("a"));
+}
+
+#[gpui::test]
+fn add_unit_enter_does_nothing_until_code_and_name_are_filled(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_rows.len();
+
+    ui.click("settings-add-unit");
+    ui.press("a enter");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.settings_units().unit_rows.len(), before);
+}
+
+#[gpui::test]
+fn escape_discards_an_add_unit_draft(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_rows.len();
+
+    ui.click("settings-add-unit");
+    ui.press("a tab b");
+    ui.press("escape");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.settings_units().unit_rows.len(), before);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
+
+    ui.click("unit-edit-0");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
+    ui.press("tab");
+    ui.press("x");
+    ui.press("enter");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(
+        ui.settings_units().unit_rows[0],
+        (code, format!("{name}x"), kind)
+    );
+}
+
+#[gpui::test]
+fn escape_discards_an_edit_unit_change(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_rows.clone();
+
+    ui.click("unit-edit-0");
+    ui.press("tab");
+    ui.press("x");
+    ui.press("escape");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.settings_units().unit_rows, before);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn delete_unit_enter_refuses_until_the_code_is_typed_back(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_codes.clone();
+    let code = before[0].clone();
+
+    ui.click("unit-delete-0");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    ui.press("enter");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.settings_units().unit_codes, before);
+
+    // A partial code is still refused, so the row stays until the whole code matches.
+    ui.press(
+        &code
+            .chars()
+            .next()
+            .expect("seeded units have codes")
+            .to_string(),
+    );
+    ui.press("enter");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.settings_units().unit_codes, before);
+
+    for ch in code.chars().skip(1) {
+        ui.press(&ch.to_string());
+    }
+    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(code.as_str()));
+    ui.press("enter");
+    let after = ui.settings_units().unit_codes;
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(after.len(), before.len() - 1);
+    assert!(!after.contains(&code));
+}
+
+#[gpui::test]
+fn escape_closes_the_delete_unit_dialog_without_a_write(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_codes.clone();
+    let code = before[0].clone();
+
+    ui.click("unit-delete-0");
+    for ch in code.chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.press("escape");
+    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.settings_units().unit_codes, before);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}

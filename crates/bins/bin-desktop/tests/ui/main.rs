@@ -44,6 +44,8 @@ mod settings_tags_keyboard;
 mod settings_tags_mouse;
 mod settings_tracing_keyboard;
 mod settings_tracing_mouse;
+mod settings_units_keyboard;
+mod settings_units_mouse;
 mod shell_keyboard;
 mod shell_mouse;
 mod transactions_keyboard;
