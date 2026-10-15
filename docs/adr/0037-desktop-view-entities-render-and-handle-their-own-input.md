@@ -28,3 +28,15 @@ We're making each View Entity render itself and handle its own input. `Shell` ke
 - **A statically dispatched `ViewEntity` trait behind the enum.** Rejected, as in ADR-0016's #538 update: the enum already makes every View handle every method, and the trait would add nothing but uniform signatures.
 - **Keep the per-View intent events and delete `ViewEvent`.** Rejected: `Shell` would keep a View-specific match that turns each intent into a Dialog. This reverses the reasoning in ADR-0016's #538 update that a View's handling needs `Shell`'s shared state. A View reads the stores itself and asks `Shell` only for what `Shell` owns.
 - **Make each Dialog a gpui Entity.** Rejected (#596): a Dialog lives only while it is open and watches nothing, so an Entity would add `update(cx, …)` plumbing for no gain.
+
+## Amendment: a Settings page lives in one folder
+
+The Settings page moves (#618, #620) met every rule above but left each page's files spread over four or five roots: `src/<domain>/` for forms and apply, `src/view/<domain>/` for the Entity and Dialogs, `src/view/settings/<page>.rs` for the render, `app/<domain>_ui.rs` for wiring, and its variants in the Settings-wide `SettingsDialog`, `SettingsCommand` and `SettingsApply`. Units alone was 13 files in 6 directories. Decided in the 2026-10-15 architecture review, applying section 3 of `docs/development/desktop-structure-2026-10-12.html` to Settings first ([#666](https://github.com/IanTeda/Personal-Ledger/issues/666)). The interface above is unchanged; this decides where a Settings page's files live.
+
+- **One tree.** `src/settings/` holds `SettingsView`, the page enum `SettingsPage` (GLOSSARY **Settings page**) and one folder per page. `src/view/settings/` and the separate pure `src/settings/` merge into it.
+- **One folder per page.** `src/settings/<page>/` holds `mod.rs` (the page Entity: keys, movement, Esc, page status, snapshot), `render.rs`, `form.rs`, `apply.rs` (`DialogForm` and `Apply` against `LedgerStore`) and `dialogs/` (`mod.rs` holds the page's Dialog enum, which `OpenDialog` wraps in one variant, then one file per Dialog). A file the page has nothing for is left out. Static pages are folders too.
+- **A page owns its Dialogs and commands.** There is no Settings-wide Dialog, command or apply type.
+- **Pages never import each other.** A field widget more than one page uses lives in the top-level `form/`. Where a domain is also a main-rail destination (Documents, Inventory), only the Settings page's own code moves, and code both use stays with the destination.
+- **A page reads `LedgerStore` directly** and filters `LedgerChanged` on `what`; there are no per-domain stores (ADR-0038).
+- **Tests keep their names.** A page's headless tests stay `tests/ui/settings_<page>_keyboard.rs` and `_mouse.rs`, and a page without them gets them before it moves.
+- **Destinations are not yet decided.** Whether destination Views copy this layout is decided on [#588](https://github.com/IanTeda/Personal-Ledger/issues/588) once it has been tested on the Settings pages.

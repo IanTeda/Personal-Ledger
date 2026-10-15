@@ -19,6 +19,10 @@ tracked locally, without a cloud dependency or subscription.
 The fixed thing a balance, principal, or holding quantity is denominated in — either fiat money (e.g. AUD) or a tradeable non-currency instrument (e.g. a stock ticker like AAPL, or bitcoin). Every Account, of any Account Kind (see below), has exactly one Unit, fixed at creation. Personal Ledger does not convert between Units in V1: a Transaction Account or Credit Card Account only ever holds Transactions in its own Unit, and a Transaction may only move to another Transaction Account or Credit Card Account sharing that same Unit (see `docs/product-requirements.md`, Constraints) — Trade (see below) is the deliberate exception, crossing from a Transaction Account into a differently-Unit-denominated Investment Account by design, not by relaxing this rule; a Repayment still crosses from Transaction Account into Loan Account as a different Account Kind, but typically stays within one Unit since a Loan Account and the Transaction Account repaying it are usually the same currency.
 _Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
 
+**Price Source**:
+Where a Unit's prices come from, listed under the Units on the Units Settings page. It has no stored data and no writes yet, and pricing never converts between Units.
+_Avoid_: feed, provider, exchange.
+
 **Ledger**:
 The complete set of Accounts, Institutions, Units, Categories, Payees, Tags,
 Transactions, Bills, Budgets, Documents, and Inventory owned by one self-hoster — a
@@ -98,6 +102,10 @@ _Avoid_: shell (the whole application, not just its frame), frame, layout.
 **View**:
 The content the Desktop Client shows inside the Chrome for where the user is: one destination's page, or one Settings page. A destination can have more than one View: Transactions shows either the list or an Import.
 _Avoid_: screen, page (alone), tab.
+
+**Settings page**:
+One entry in the Desktop Client's Settings index rail and the View it opens, such as Units or Display. Each Settings page owns its rendering, keys, Dialogs and commands, and on the Desktop it lives in its own folder under `settings/`.
+_Avoid_: section, tab, settings screen.
 
 **Colour Theme**:
 A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
