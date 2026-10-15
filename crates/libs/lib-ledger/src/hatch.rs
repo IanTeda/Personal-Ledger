@@ -11,11 +11,9 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budgets;
 use lib_categories::Category;
 use lib_documents::{Document, types::DocumentTypeRow};
-use lib_institutions::InstitutionRow;
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
-use lib_units::{PriceSourceRow, UnitRow};
 
 use crate::Ledger;
 
@@ -32,9 +30,6 @@ pub struct LedgerHatch<'a> {
     pub budgets: &'a mut Budgets,
     pub documents: &'a mut Vec<Document>,
     pub document_types: &'a mut Vec<DocumentTypeRow>,
-    pub institutions: &'a mut Vec<InstitutionRow>,
-    pub units: &'a mut Vec<UnitRow>,
-    pub price_sources: &'a mut Vec<PriceSourceRow>,
 }
 
 impl Ledger {
@@ -54,9 +49,6 @@ impl Ledger {
             budgets: &mut self.budgets,
             documents: &mut self.documents,
             document_types: &mut self.document_types,
-            institutions: &mut self.institutions,
-            units: &mut self.units,
-            price_sources: &mut self.price_sources,
         }
     }
 }

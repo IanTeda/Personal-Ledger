@@ -1,6 +1,5 @@
 //! The Settings Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Units and Institutions stores. When `LedgerStore` replaces
-//! the per-domain stores only [`SettingsApply`] changes.
+//! [`Apply`] that runs it through [`LedgerStore::apply`] as a `lib_ledger` command.
 //!
 //! The README's own "Dialog lifecycle" rows: Add "validate -> append to Units table -> close",
 //! Edit "Save -> update the in-memory row -> close" (a changed code just relabels the row here;
@@ -8,6 +7,7 @@
 
 use gpui::{App, Entity};
 
+use lib_ledger::{AddInstitution, AddUnit, DeleteUnit, EditUnit, UnitGone};
 use lib_units::UnitKind;
 
 use super::SettingsDialog;
@@ -16,8 +16,7 @@ use crate::{
         dialog_apply::{Apply, DialogForm, FormError},
         dialog_host::Dialog,
     },
-    institutions::InstitutionsStore,
-    units::UnitsStore,
+    ledger_store::LedgerStore,
 };
 
 /// What confirming a Settings Dialog asks for.
@@ -107,10 +106,9 @@ impl DialogForm for SettingsDialog {
     fn refuse(&mut self, _refusal: SettingsRefusal) {}
 }
 
-/// Runs [`SettingsCommand`]s against the Units and Institutions stores.
+/// Runs [`SettingsCommand`]s as `lib_ledger` commands.
 pub struct SettingsApply {
-    pub units: Entity<UnitsStore>,
-    pub institutions: Entity<InstitutionsStore>,
+    pub ledger: Entity<LedgerStore>,
 }
 
 impl Apply<SettingsCommand> for SettingsApply {
@@ -124,8 +122,9 @@ impl Apply<SettingsCommand> for SettingsApply {
     ) -> Result<SettingsOutcome, SettingsRefusal> {
         match command {
             SettingsCommand::AddUnit { code, name, kind } => {
-                self.units
-                    .update(cx, |store, cx| store.add_unit(cx, code, name, kind));
+                let Ok(()) = self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, AddUnit { code, name, kind })
+                });
                 Ok(SettingsOutcome::Saved)
             }
             SettingsCommand::EditUnit {
@@ -134,18 +133,29 @@ impl Apply<SettingsCommand> for SettingsApply {
                 name,
                 kind,
             } => self
-                .units
-                .update(cx, |store, cx| store.edit_unit(cx, index, code, name, kind))
-                .then_some(SettingsOutcome::Saved)
-                .ok_or(SettingsRefusal::UnitGone),
+                .ledger
+                .update(cx, |store, cx| {
+                    store.apply(
+                        cx,
+                        EditUnit {
+                            index,
+                            code,
+                            name,
+                            kind,
+                        },
+                    )
+                })
+                .map(|()| SettingsOutcome::Saved)
+                .map_err(|UnitGone| SettingsRefusal::UnitGone),
             SettingsCommand::DeleteUnit { index, code } => self
-                .units
-                .update(cx, |store, cx| store.remove_unit(cx, index, &code))
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, DeleteUnit { index, code }))
                 .map(|unit| SettingsOutcome::UnitDeleted { code: unit.code })
-                .ok_or(SettingsRefusal::UnitGone),
+                .map_err(|UnitGone| SettingsRefusal::UnitGone),
             SettingsCommand::AddInstitution { name, account_type } => {
-                self.institutions
-                    .update(cx, |store, cx| store.add(cx, name, account_type));
+                let Ok(()) = self.ledger.update(cx, |store, cx| {
+                    store.apply(cx, AddInstitution { name, account_type })
+                });
                 Ok(SettingsOutcome::Saved)
             }
             SettingsCommand::ClearLogs => Ok(SettingsOutcome::LogsConfirmed),
@@ -155,7 +165,7 @@ impl Apply<SettingsCommand> for SettingsApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -171,24 +181,13 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        SettingsApply {
-            units: cx.new(|cx| UnitsStore::new(ledger.clone(), cx)),
-            institutions: cx.new(|cx| InstitutionsStore::new(ledger, cx)),
-        }
+        SettingsApply { ledger }
     }
 
     #[gpui::test]
     fn deleting_a_unit_needs_its_code_typed_and_reports_it(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let code = cx.read(|cx| {
-            apply
-                .units
-                .read(cx)
-                .unit(cx, 0)
-                .expect("a seeded Unit")
-                .code
-                .clone()
-        });
+        let code = cx.read(|cx| apply.ledger.read(cx).ledger().units()[0].code.clone());
         let mut dialog = SettingsDialog::DeleteUnit(0, DeleteUnitForm::new(code.as_str()));
         assert_eq!(
             dialog.command(),
@@ -201,6 +200,77 @@ mod tests {
         }
         let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
         assert_eq!(outcome, Some(SettingsOutcome::UnitDeleted { code }));
+    }
+
+    #[gpui::test]
+    fn adding_and_editing_a_unit_land_in_the_ledger_and_keep_its_source(cx: &mut TestAppContext) {
+        let mut apply = apply(cx);
+        let landed = cx.update(|cx| {
+            apply.apply(
+                SettingsCommand::AddUnit {
+                    code: "eth".into(),
+                    name: "Ethereum".into(),
+                    kind: UnitKind::Crypto,
+                },
+                cx,
+            )
+        });
+        assert_eq!(landed, Ok(SettingsOutcome::Saved));
+        let edited = cx.update(|cx| {
+            apply.apply(
+                SettingsCommand::EditUnit {
+                    index: 0,
+                    code: "aud".into(),
+                    name: "Aussie".into(),
+                    kind: UnitKind::Fiat,
+                },
+                cx,
+            )
+        });
+        assert_eq!(edited, Ok(SettingsOutcome::Saved));
+
+        cx.read(|cx| {
+            let units = apply.ledger.read(cx).ledger().units();
+            assert_eq!(units.last().expect("the added Unit").code, "eth");
+            assert_eq!(units[0].name, "Aussie");
+            assert_eq!(units[0].source, "USD");
+        });
+    }
+
+    #[gpui::test]
+    fn an_edit_of_a_unit_that_vanished_is_refused(cx: &mut TestAppContext) {
+        let mut apply = apply(cx);
+        let refused = cx.update(|cx| {
+            apply.apply(
+                SettingsCommand::EditUnit {
+                    index: 999,
+                    code: "x".into(),
+                    name: "x".into(),
+                    kind: UnitKind::Fiat,
+                },
+                cx,
+            )
+        });
+        assert_eq!(refused, Err(SettingsRefusal::UnitGone));
+    }
+
+    #[gpui::test]
+    fn adding_an_institution_lands_in_the_ledger(cx: &mut TestAppContext) {
+        let mut apply = apply(cx);
+        let landed = cx.update(|cx| {
+            apply.apply(
+                SettingsCommand::AddInstitution {
+                    name: "Bank X".into(),
+                    account_type: "savings".into(),
+                },
+                cx,
+            )
+        });
+        assert_eq!(landed, Ok(SettingsOutcome::Saved));
+        cx.read(|cx| {
+            let institutions = apply.ledger.read(cx).ledger().institutions();
+            assert_eq!(institutions.last().expect("the added row").name, "Bank X");
+        });
     }
 
     #[gpui::test]

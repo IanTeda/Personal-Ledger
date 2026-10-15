@@ -53,30 +53,16 @@ pub fn default_institutions() -> Vec<InstitutionRow> {
     ]
 }
 
-/// The Institutions table's rows, read and appended through this service.
-pub struct InstitutionService {
-    institutions: Vec<InstitutionRow>,
-}
-
-impl InstitutionService {
-    pub fn new(institutions: Vec<InstitutionRow>) -> Self {
-        Self { institutions }
-    }
-
-    pub fn institutions(&self) -> &[InstitutionRow] {
-        &self.institutions
-    }
-
-    /// Appends an institution from the Add institution dialog; see [`add_institution`].
-    pub fn add(&mut self, name: String, account_type: String) {
-        add_institution(&mut self.institutions, name, account_type);
-    }
-}
-
 /// Appends an institution from the Add institution dialog. `account_type` is the joined label the
-/// dialog built, so it is stored as given.
-pub fn add_institution(institutions: &mut Vec<InstitutionRow>, name: String, account_type: String) {
-    institutions.push(InstitutionRow { name, account_type });
+/// dialog built, so it is stored as given. Returns the row it appended.
+pub fn add_institution(
+    institutions: &mut Vec<InstitutionRow>,
+    name: String,
+    account_type: String,
+) -> InstitutionRow {
+    let row = InstitutionRow { name, account_type };
+    institutions.push(row.clone());
+    row
 }
 
 #[cfg(test)]
@@ -85,12 +71,15 @@ mod tests {
 
     #[test]
     fn an_added_institution_is_appended_with_its_joined_account_types() {
-        let mut service = InstitutionService::new(default_institutions());
-        let before = service.institutions().len();
-        service.add("Bank X".into(), "savings \u{b7} offset".into());
-        assert_eq!(service.institutions().len(), before + 1);
-        let added = service.institutions().last().expect("appended");
+        let mut institutions = default_institutions();
+        let before = institutions.len();
+        let added = add_institution(
+            &mut institutions,
+            "Bank X".into(),
+            "savings \u{b7} offset".into(),
+        );
         assert_eq!(added.name, "Bank X");
         assert_eq!(added.account_type, "savings \u{b7} offset");
+        assert_eq!(institutions.len(), before + 1);
     }
 }

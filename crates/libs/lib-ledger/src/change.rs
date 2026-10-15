@@ -13,10 +13,12 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_documents::{Document, types::DocumentTypeRow};
+use lib_institutions::InstitutionRow;
 use lib_inventory::{Item, Property, Room};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
+use lib_units::UnitRow;
 
 use crate::Ledger;
 
@@ -68,6 +70,16 @@ pub enum LedgerChange {
     DeleteRoom(u32),
     UpsertItem(Item),
     DeleteItem(u32),
+    UpsertInstitution(InstitutionRow),
+    /// A Unit row has no id yet, so a change names its position in the Units, as the Desktop
+    /// addresses it; a delete shifts the rows after it.
+    UpsertUnit {
+        index: usize,
+        unit: UnitRow,
+    },
+    DeleteUnit {
+        index: usize,
+    },
 }
 
 impl LedgerChange {
@@ -88,6 +100,8 @@ impl LedgerChange {
             | Self::DeleteRoom(_)
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
+            Self::UpsertInstitution(_) => Domain::Institutions,
+            Self::UpsertUnit { .. } | Self::DeleteUnit { .. } => Domain::Units,
         }
     }
 }
@@ -120,6 +134,24 @@ mod tests {
         assert_eq!(
             domains(&changes),
             BTreeSet::from([Domain::Payees, Domain::Categories])
+        );
+    }
+
+    #[test]
+    fn institution_and_unit_changes_name_their_own_domains() {
+        let unit = lib_units::default_units().remove(0);
+        assert_eq!(
+            LedgerChange::UpsertInstitution(lib_institutions::default_institutions().remove(0))
+                .domain(),
+            Domain::Institutions
+        );
+        assert_eq!(
+            LedgerChange::UpsertUnit { index: 0, unit }.domain(),
+            Domain::Units
+        );
+        assert_eq!(
+            LedgerChange::DeleteUnit { index: 0 }.domain(),
+            Domain::Units
         );
     }
 

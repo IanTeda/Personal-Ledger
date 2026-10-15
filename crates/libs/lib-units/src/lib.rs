@@ -93,75 +93,33 @@ pub fn default_price_sources() -> Vec<PriceSourceRow> {
     ]
 }
 
-/// The Units table and the Price Sources subsection, held together so one service answers both.
-pub struct UnitService {
-    units: Vec<UnitRow>,
-    price_sources: Vec<PriceSourceRow>,
-}
-
-impl UnitService {
-    pub fn new(units: Vec<UnitRow>, price_sources: Vec<PriceSourceRow>) -> Self {
-        Self {
-            units,
-            price_sources,
-        }
-    }
-
-    pub fn units(&self) -> &[UnitRow] {
-        &self.units
-    }
-
-    pub fn unit(&self, index: usize) -> Option<&UnitRow> {
-        self.units.get(index)
-    }
-
-    pub fn price_sources(&self) -> &[PriceSourceRow] {
-        &self.price_sources
-    }
-
-    /// Appends a unit from the Add unit dialog; see [`add_unit`].
-    pub fn add_unit(&mut self, code: String, name: String, kind: UnitKind) {
-        add_unit(&mut self.units, code, name, kind);
-    }
-
-    /// Rewrites the row at `index` from the Edit unit dialog; see [`edit_unit`].
-    pub fn edit_unit(&mut self, index: usize, code: String, name: String, kind: UnitKind) -> bool {
-        edit_unit(&mut self.units, index, code, name, kind)
-    }
-
-    /// Removes the row at `index` if it still holds `code`; see [`remove_unit`].
-    pub fn remove_unit(&mut self, index: usize, code: &str) -> Option<UnitRow> {
-        remove_unit(&mut self.units, index, code)
-    }
-}
-
 /// Appends a unit from the Add unit dialog. It has no price-source integration yet, so its source
 /// is "Manual entry", and it can't be the base or default unit: nothing lets a user change which
-/// one that is.
-pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: UnitKind) {
-    units.push(UnitRow {
+/// one that is. Returns the row it appended.
+pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: UnitKind) -> UnitRow {
+    let row = UnitRow {
         code,
         name,
         kind,
         source: MANUAL_SOURCE.to_string(),
         is_base: false,
         is_default: false,
-    });
+    };
+    units.push(row.clone());
+    row
 }
 
 /// Rewrites the row at `index` from the Edit unit dialog. The dialog has no field for the source
-/// or the base and default flags, so those are kept from the row being edited. Returns `false` when
-/// `index` is out of bounds.
+/// or the base and default flags, so those are kept from the row being edited. Returns the row it
+/// wrote, or `None` when `index` is out of bounds.
 pub fn edit_unit(
     units: &mut [UnitRow],
     index: usize,
     code: String,
     name: String,
     kind: UnitKind,
-) -> bool {
-    let Some(existing) = units.get_mut(index) else {
-        return false;
-    };
+) -> Option<&UnitRow> {
+    let existing = units.get_mut(index)?;
     *existing = UnitRow {
         code,
         name,
@@ -170,7 +128,7 @@ pub fn edit_unit(
         is_base: existing.is_base,
         is_default: existing.is_default,
     };
-    true
+    Some(existing)
 }
 
 /// Removes the row at `index` if it still holds `code`, the code the confirm dialog opened on. The
@@ -190,25 +148,32 @@ const MANUAL_SOURCE: &str = "Manual entry";
 mod tests {
     use super::*;
 
-    fn service() -> UnitService {
-        UnitService::new(default_units(), default_price_sources())
-    }
-
     #[test]
     fn a_dialog_added_unit_is_manual_and_neither_base_nor_default() {
-        let mut service = service();
-        service.add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto);
-        let added = service.units().last().expect("the unit was appended");
+        let mut units = default_units();
+        let added = add_unit(
+            &mut units,
+            "eth".into(),
+            "Ethereum".into(),
+            UnitKind::Crypto,
+        );
         assert_eq!(added.code, "eth");
         assert_eq!(added.source, "Manual entry");
         assert!(!added.is_base && !added.is_default);
+        assert_eq!(units.len(), 4);
     }
 
     #[test]
     fn editing_keeps_the_source_and_the_base_and_default_flags() {
-        let mut service = service();
-        assert!(service.edit_unit(0, "aud2".into(), "Aussie".into(), UnitKind::Fiat));
-        let edited = service.unit(0).expect("row 0 exists");
+        let mut units = default_units();
+        let edited = edit_unit(
+            &mut units,
+            0,
+            "aud2".into(),
+            "Aussie".into(),
+            UnitKind::Fiat,
+        )
+        .expect("row 0 exists");
         assert_eq!(edited.code, "aud2");
         assert_eq!(edited.source, "USD");
         assert!(edited.is_base && edited.is_default);
@@ -216,28 +181,29 @@ mod tests {
 
     #[test]
     fn a_unit_kind_survives_an_edit_round_trip() {
-        let mut service = service();
+        let mut units = default_units();
         for kind in UnitKind::all() {
-            assert!(service.edit_unit(1, "btc".into(), "Bitcoin".into(), *kind));
-            assert_eq!(service.unit(1).expect("row 1 exists").kind, *kind);
+            let edited = edit_unit(&mut units, 1, "btc".into(), "Bitcoin".into(), *kind)
+                .expect("row 1 exists");
+            assert_eq!(edited.kind, *kind);
         }
     }
 
     #[test]
     fn editing_past_the_end_changes_nothing() {
-        let mut service = service();
-        let before = service.units().to_vec();
-        assert!(!service.edit_unit(99, "x".into(), "x".into(), UnitKind::Fiat));
-        assert_eq!(service.units(), before.as_slice());
+        let mut units = default_units();
+        let before = units.clone();
+        assert!(edit_unit(&mut units, 99, "x".into(), "x".into(), UnitKind::Fiat).is_none());
+        assert_eq!(units, before);
     }
 
     #[test]
     fn removing_checks_the_code_the_dialog_opened_on() {
-        let mut service = service();
-        assert!(service.remove_unit(1, "aud").is_none());
-        assert_eq!(service.units().len(), 3);
-        let removed = service.remove_unit(1, "btc").expect("btc is at row 1");
+        let mut units = default_units();
+        assert!(remove_unit(&mut units, 1, "aud").is_none());
+        assert_eq!(units.len(), 3);
+        let removed = remove_unit(&mut units, 1, "btc").expect("btc is at row 1");
         assert_eq!(removed.code, "btc");
-        assert_eq!(service.units().len(), 2);
+        assert_eq!(units.len(), 2);
     }
 }

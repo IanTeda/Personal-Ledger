@@ -155,7 +155,8 @@ pub struct Shell {
     /// holds no rows of its own.
     ledger: Entity<LedgerStore>,
     /// The Units table and Price Sources, read through their store Entity (ADR-0032). Shared:
-    /// Settings edits them, and Accounts and the Institutions dialog read the same rows.
+    /// Settings writes them through Ledger commands, and Accounts and the Institutions dialog
+    /// read the same rows.
     units_store: Entity<UnitsStore>,
     /// The Institutions table, read through its store Entity (ADR-0032). Shared:
     /// Settings edits it, and the Accounts form reads it.

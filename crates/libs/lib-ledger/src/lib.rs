@@ -9,12 +9,14 @@ mod category_commands;
 mod change;
 mod document_commands;
 mod hatch;
+mod institution_commands;
 mod inventory_commands;
 mod payee_commands;
 pub mod query;
 pub mod seed;
 mod tag_commands;
 mod transaction_commands;
+mod unit_commands;
 
 pub use account_commands::{
     AccountDeleted, AddAccount, CountImportedTransactions, DeleteAccount, EditAccount,
@@ -38,6 +40,7 @@ pub use document_commands::{
     ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
 pub use hatch::LedgerHatch;
+pub use institution_commands::AddInstitution;
 pub use inventory_commands::{
     AddProperty, AddRoom, EditProperty, EditRoom, MoveRoom, MoveRoomRefusal, RemoveProperty,
     RemoveRoom,
@@ -49,6 +52,7 @@ pub use payee_commands::{
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
 pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
+pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, UnitGone};
 
 use chrono::{Local, NaiveDate};
 use lib_accounts::{Account, default_accounts};

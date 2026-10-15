@@ -498,12 +498,11 @@ impl Shell {
     }
 
     /// Confirms the open Settings dialog through the host's cycle: the form's command runs
-    /// against the Units and Institutions stores, and a landed one closes the dialog. Deleting a
+    /// through the Ledger, and a landed one closes the dialog. Deleting a
     /// Unit and Clear logs toast.
     pub(super) fn confirm_settings_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = SettingsApply {
-            units: self.units_store.clone(),
-            institutions: self.institutions_store.clone(),
+            ledger: self.ledger.clone(),
         };
         let Some(dialog) = self.dialog_mut::<SettingsDialog>() else {
             return;
