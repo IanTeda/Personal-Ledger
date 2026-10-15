@@ -1,6 +1,6 @@
 # Ticket labels
 
-Every GitHub issue carries a `category:` label naming its intent, every open issue a `priority:` rank, and a `state:` label while something is happening to it, so the issue list shows what to work on next. This page is the one place the rules for choosing and changing them live; `CLAUDE.md`, the README and `docs/agents/triage-labels.md` point here. What each label means is defined in `docs/agents/triage-labels.md`. Everything specific to this repo is in [This project](#this-project), so porting the system means rewriting that section only.
+Every GitHub issue carries a `category:` label naming its intent, every open issue a `priority:` rank and a `flow:` label naming the Flow it goes down next, and a `state:` label while something is happening to it, so the issue list shows what to work on next. This page is the one place the rules for choosing and changing them live; `CLAUDE.md`, the README and `docs/agents/triage-labels.md` point here. What each label means is defined in `docs/agents/triage-labels.md`, and the `flow:` and `wayfinder:` labels in `docs/agents/flow-labels.md`. Everything specific to this repo is in [This project](#this-project), so porting the system means rewriting that section only.
 
 ## Labels
 
@@ -13,7 +13,7 @@ On finishing, `triage:ready-for-agent` is removed and the `agent:*` label is set
 
 ## Recording label decisions
 
-A label decision (the `category:`, the `priority:` rank and the `agent:` label) is recorded in a `## Labels` section at the end of the ticket body, one line per label with its reason, and updated in place when the decision changes. The body is the spec, so the reason travels with it. A `state:` change is an event rather than a decision: it is recorded as a comment, as [When labels change](#when-labels-change) says.
+A label decision (the `category:`, the `priority:` rank and the `agent:` label) is recorded in a `## Labels` section at the end of the ticket body, one line per label with its reason, and updated in place when the decision changes. The body is the spec, so the reason travels with it. A `state:` or `flow:` change is an event rather than a decision: it is recorded as a comment naming the step that caused it, as [When labels change](#when-labels-change) says, and never as a `## Labels` line.
 
 ```markdown
 ## Labels
@@ -65,12 +65,17 @@ A gated ticket closes when you close it, or when you tell Claude it's approved.
 
 | When                                   | Claude does                                                                                                       |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Creating a ticket                      | Gives it a `category:` (inherited from its parent if it has one) and a `priority:` rank, each with its reason in the `## Labels` section |
+| Creating a ticket                      | Gives it a `category:` (inherited from its parent if it has one) and a `priority:` rank, each with its reason in the `## Labels` section, and a `flow:` label: `flow:triage` for a raw issue someone else filed, `flow:grilling` for your own idea, or the Flow the creating step names below |
 | Re-categorising or re-ranking a ticket | Changes the label and updates its line in the `## Labels` section                                                 |
 | Claiming a ticket (assigning it)       | Adds `state:10-in-progress`                                                                                       |
 | About to action a ticket with a model other than its `agent:*` label | Asks the user, and waits for a yes before starting                                                 |
-| Finishing a ticket                     | In the same session as the commit: removes `triage:ready-for-agent`, sets its `agent:<model>-<effort>` label to the model and effort that actioned it and updates its `## Labels` line, then closes or gates it by [Closing or review](#closing-or-review). Closing comments with the commit and why no review was needed, removes its `priority:` rank and `state:` label, adds `state:90-done`, and closes it. Other labels stay |
-| You approve a `state:30-needs-review` ticket | Comments with your approval, removes its `priority:` rank, swaps `state:30-needs-review` for `state:90-done`, and closes it |
+| Finishing a ticket                     | In the same session as the commit: removes `triage:ready-for-agent`, sets its `agent:<model>-<effort>` label to the model and effort that actioned it and updates its `## Labels` line, then closes or gates it by [Closing or review](#closing-or-review). Closing comments with the commit and why no review was needed, removes its `priority:` rank, `flow:` and `state:` labels, adds `state:90-done`, and closes it. Other labels stay |
+| You approve a `state:30-needs-review` ticket | Comments with your approval, removes its `priority:` rank and `flow:` label, swaps `state:30-needs-review` for `state:90-done`, and closes it |
+| Triage finishes                        | Removes `triage:needs-evaluation` and swaps `flow:triage` for `flow:grilling` (it needs a spec) or `flow:implementation` (it's ready for an agent or a human), or closes it as `triage:wontfix`; comments with the outcome |
+| Grilling finds the effort too big for one session | Swaps `flow:grilling` for `flow:wayfinding`; the ticket becomes the map (`wayfinder:map`) and comments why |
+| `/to-tickets` charts a parent's tickets | Gives each new ticket `flow:implementation` and swaps the parent's `flow:` for `flow:implementation`; the parent closes by [Closing or review](#closing-or-review) once its tickets do |
+| A Wayfinder map clears                 | Swaps the map's `flow:wayfinding` for `flow:grilling`, so `/to-spec` and `/to-tickets` turn its decisions into a buildable plan |
+| Implementation hits a seam the ticket didn't decide | Swaps `flow:implementation` for `flow:grilling`, keeps the rank, and comments with the seam |
 | Releasing a ticket unfinished          | Swaps `state:10-in-progress` for `state:20-waiting`, and comments with where it stopped                          |
 | Anything else that blocks a ticket     | Adds `state:20-waiting`, and comments with what it's waiting on                                                  |
 | A parent ticket closes, or a Wayfinder session starts | Re-ranks the affected tickets, and checks open tickets against `git log`: closes or gates a finished one by [Closing or review](#closing-or-review) |

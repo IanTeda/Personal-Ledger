@@ -1,6 +1,6 @@
 # Triage Labels
 
-This file is the label vocabulary: what each label means, and how the skills' canonical roles map to the label strings in this repo's issue tracker. When labels are set and changed is in [Ticket labels](ticket-labels.md). A label on GitHub that isn't defined here shouldn't exist: delete it, or define it here first.
+This file is the label vocabulary: what each label means, and how the skills' canonical roles map to the label strings in this repo's issue tracker. The `flow:` and `wayfinder:` families are defined in [Flow labels](flow-labels.md). When labels are set and changed is in [Ticket labels](ticket-labels.md). A label on GitHub that isn't defined here or in [Flow labels](flow-labels.md) shouldn't exist: delete it, or define it first.
 
 ## Triage roles
 
@@ -53,7 +53,7 @@ An open ticket has exactly one `priority:` rank and at most one `state:` beside 
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `priority:10-now`     | Specified, and waiting costs: do these first                                                                     |
 | `priority:20-next`    | Specified and ready to start, with no compounding cost or leverage                                               |
-| `priority:99-backlog` | Not yet specified: an idea or parent ticket that needs grilling and Wayfinder charting before it can be ticketed |
+| `priority:99-backlog` | Not yet specified: an idea or parent ticket that can't be ticketed yet. Its `flow:` label says how it gets specified |
 
 | State                   | Means                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -70,6 +70,7 @@ Each family shares one colour, so a family reads at a glance in the issue list. 
 | ------------ | ------------------------------------------ |
 | `category:`  | `0E8A16`                                   |
 | `wayfinder:` | `5319E7`                                   |
+| `flow:`      | `006B75`                                   |
 | `agent:`     | `1D76DB`                                   |
 | `triage:`    | `D93F0B`                                   |
 | `state:`     | `D4C5F9`                                   |

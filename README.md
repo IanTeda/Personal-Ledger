@@ -126,7 +126,7 @@ Run `mise tasks` to see every available task, including docs (`docs-serve`) and 
 
 The repo is set up for AI coding agents like [Claude Code](https://claude.com/claude-code). Agent conventions live in [`CLAUDE.md`](CLAUDE.md) and project skills in [`.claude/skills/`](.claude/skills/). The workflow (idea → spec → tickets → TDD → review) follows [Matt Pocock's skills](https://github.com/mattpocock/skills).
 
-Every issue carries a `category:` label naming its intent (`enhancement`, `bug`, `architecture`, `tooling`, `docs`), every open issue a `priority:` rank (`10-now`, `20-next`, `99-backlog`) and, while something is happening to it, a `state:` label (`10-in-progress`, `20-waiting`, `30-needs-review`), so the [issue list](https://github.com/IanTeda/Personal-Ledger/issues) shows what to do next. How they are chosen, and when they change, is in [Ticket labels](docs/agents/ticket-labels.md).
+Every issue carries a `category:` label naming its intent (`enhancement`, `bug`, `architecture`, `tooling`, `docs`), every open issue a `priority:` rank (`10-now`, `20-next`, `99-backlog`) and a [`flow:` label](docs/agents/flow-labels.md) naming the skills it goes through next (`grilling`, `wayfinding`, `implementation`, `triage`) and, while something is happening to it, a `state:` label (`10-in-progress`, `20-waiting`, `30-needs-review`), so the [issue list](https://github.com/IanTeda/Personal-Ledger/issues) shows what to do next. How they are chosen, and when they change, is in [Ticket labels](docs/agents/ticket-labels.md).
 
 ## Roadmap
 
