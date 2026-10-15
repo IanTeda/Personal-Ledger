@@ -136,7 +136,7 @@ fn the_delete_confirm_is_inert_until_the_name_is_typed(app: &mut TestAppContext)
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.press("shift-h o u s e h o l d");
     ui.click("delete-category-confirm");
-    // Household has splits, so its rows move to Uncategorised: the count can stay level.
+    // Household is used by splits, so they move to Uncategorised: the count can stay level.
     let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog, None);

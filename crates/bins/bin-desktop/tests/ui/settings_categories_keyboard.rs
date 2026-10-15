@@ -36,7 +36,11 @@ fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     ui.press("k");
     assert_eq!(ui.settings_categories().selected_category, first);
     ui.press("shift-g");
-    assert_ne!(ui.settings_categories().selected_category, first);
+    // Interest is the last row: the Income tree sits below the Expense one.
+    assert_eq!(
+        ui.settings_categories().selected_category.as_deref(),
+        Some("Interest")
+    );
     ui.press("g g");
     assert_eq!(ui.settings_categories().selected_category, first);
 }
@@ -159,7 +163,7 @@ fn escape_closes_the_delete_dialog_without_removing(app: &mut TestAppContext) {
 fn typing_the_exact_name_and_pressing_enter_removes_the_leaf(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
-    // Rent has splits, so its rows move to Uncategorised: the count can stay level, so the
+    // Rent is used by splits, so they move to Uncategorised: the count can stay level, so the
     // check is on the name.
     ui.press("j right d");
     // The delete confirm is gated on the exact, case-sensitive name, so enter does nothing yet.
