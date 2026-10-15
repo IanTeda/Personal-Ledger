@@ -10,7 +10,7 @@ rust = { version = "1.98.0", components = "clippy,rustfmt" }
 protoc = "36.0"
 mdbook = "0.5.4"
 "cargo:sqlx-cli" = "0.9.0"
-"cargo:cargo-watch" = "8.5.3"
+"cargo:bacon" = "3.26.0"
 cargo-deny = "0.20.2"
 uv = "0.12.5"
 "pipx:graphifyy" = { version = "0.9.73", extras = "sql" }
@@ -20,18 +20,28 @@ RUST_BACKTRACE = "1"
 CARGO_TERM_COLOR = "always"
 
 
+# -------------------------------[WATCH]----------------------------------------
+
+# bacon owns the inner loop: `bacon` (the clippy job) checks on save, `bacon ui -- <view>` runs one
+# View's UI tests, and `bacon desktop` / `bacon tui` restart the app on save. Its jobs are in
+# bacon.toml.
+[tasks.watch]
+description = "Run clippy on save (bacon's default job)"
+run = "bacon"
+
+
 # -------------------------------[TUI DEVELOPMENT]------------------------------
 
 [tasks.watch-tui]
 description = "Rebuild and rerun the TUI on file changes"
-run = "cargo watch -c -x 'run --package bin_tui --bin tui'"
+run = "bacon tui"
 
 
 # -------------------------------[DESKTOP DEVELOPMENT]--------------------------
 
 [tasks.watch-desktop]
 description = "Rebuild and rerun the desktop GUI on file changes"
-run = "cargo watch -c -x 'run --package bin_desktop --bin desktop'"
+run = "bacon desktop"
 
 
 # -------------------------------[LINT]-----------------------------------------

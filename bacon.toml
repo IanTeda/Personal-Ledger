@@ -1,0 +1,36 @@
+# bacon jobs for the inner loop; `mise run watch` runs the default job, and `mise run watch-desktop`
+# / `watch-tui` run the two app jobs. Run `bacon <job>` directly for any other job below.
+#
+# Trailing arguments after `--` reach the job's command: `bacon ui -- settings_inventory` runs only
+# the UI tests whose module name contains that text, as `mise run end-to-end-ui <view>` does. The
+# `--` at the end of the `ui` command is the separator that receives them.
+
+default_job = "clippy"
+
+# Checks the whole workspace on save. No SQLX_OFFLINE: the live dev DB from `.env` gives the quickest
+# feedback, and `mise run lint` still catches a stale `.sqlx` cache before a push.
+[jobs.clippy]
+command = ["cargo", "clippy", "--workspace", "--all-targets"]
+need_stdout = false
+
+# Headless Desktop UI tests (ADR-0030), as `mise run end-to-end-ui` runs them.
+[jobs.ui]
+command = ["cargo", "test", "--package", "bin_desktop", "--features", "test-support", "--test", "ui", "--"]
+need_stdout = true
+allow_warnings = true
+
+# Runs the Desktop app, killing and restarting it on each save.
+[jobs.desktop]
+command = ["cargo", "run", "--package", "bin_desktop", "--bin", "desktop"]
+need_stdout = true
+allow_warnings = true
+background = false
+on_change_strategy = "kill_then_restart"
+
+# Runs the TUI, killing and restarting it on each save.
+[jobs.tui]
+command = ["cargo", "run", "--package", "bin_tui", "--bin", "tui"]
+need_stdout = true
+allow_warnings = true
+background = false
+on_change_strategy = "kill_then_restart"

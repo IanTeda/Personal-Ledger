@@ -8,7 +8,7 @@ Personal Ledger is a Rust Cargo workspace for a personal finance/accounting appl
 
 ## Setup
 
-Toolchain and dev tools (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-deny) are pinned in `mise.toml`. Run `mise install` once per checkout before `cargo`, or `protoc` and `sqlx-cli` won't be on `PATH`. Run `mise run install-hooks` once so `.githooks/pre-push` runs the lint.
+Toolchain and dev tools (Rust, protoc, mdBook, sqlx-cli, bacon, cargo-deny) are pinned in `mise.toml`. Run `mise install` once per checkout before `cargo`, or `protoc` and `sqlx-cli` won't be on `PATH`. Run `mise run install-hooks` once so `.githooks/pre-push` runs the lint.
 
 `lib-database` uses `sqlx` compile-time query macros, so the workspace won't build without a `DATABASE_URL` or `SQLX_OFFLINE=true`. For local dev (rust-analyzer included), create a gitignored `.env` at the repo root with `DATABASE_URL=sqlite:<absolute-path-to-repo>/.personal-ledger-dev.db`; `sqlx` and `sqlx-cli` auto-load it. Then:
 
@@ -24,12 +24,14 @@ Most work is plain `cargo`; `mise tasks` lists the rest.
 ```sh
 cargo build                                    # whole workspace
 cargo run --package bin_sync_server            # Sync Server
-mise run watch-tui                             # TUI, rebuilt on change
-mise run watch-desktop                         # Desktop, rebuilt on change
+mise run watch-tui                             # TUI, rebuilt on change (bacon tui)
+mise run watch-desktop                         # Desktop, rebuilt on change (bacon desktop)
+mise run watch                                 # clippy on save (bacon, the inner loop)
 
 cargo test --package lib_config                # one crate
 cargo test --package lib_config parse_with_explicit_config_file  # one test
 mise run end-to-end-ui <view>                  # Desktop UI tests for one View, e.g. settings_inventory
+bacon ui -- <view>                             # the same, re-run on each save
 
 mise run lint           # exactly what CI runs: fmt --check + SQLX_OFFLINE clippy -D warnings
 mise run lint-fix       # cargo fmt + clippy's machine-applicable fixes

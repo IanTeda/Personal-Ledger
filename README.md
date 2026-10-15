@@ -103,10 +103,12 @@ mise run db
 
 ```sh
 cargo build                          # build everything
-mise run watch-desktop               # run the desktop app, reloading on save
-mise run watch-tui                   # run the terminal app, reloading on save
+mise run watch-desktop               # run the desktop app, reloading on save (bacon desktop)
+mise run watch-tui                   # run the terminal app, reloading on save (bacon tui)
 cargo run --package bin_sync_server  # run the Sync Server
 ```
+
+[bacon](https://dings.org/bacon) is the file watcher for the inner loop. `mise run watch` (or plain `bacon`) runs clippy on each save, and `bacon ui -- settings_inventory` runs one View's UI tests.
 
 ### Test and lint
 
