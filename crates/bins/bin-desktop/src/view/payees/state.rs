@@ -1,5 +1,5 @@
 //! The Payees destination's Entity (ADR-0032, ADR-0037). [`PayeesView`] is Settings' Payees page:
-//! it owns the selection, renders itself (`impl Render` in `view::settings::payees`), handles the
+//! it owns the selection, renders itself (`impl Render` in `settings::payees`), handles the
 //! page's keys and movement, builds its dialogs and reaches `Shell` only through [`ViewEvent`]. The
 //! Settings View forwards to it while the page is open; `Shell`'s Dialog host draws and confirms
 //! the dialogs it builds.
@@ -15,11 +15,9 @@ use crate::{
         self, PayeesStore,
         form::{DeleteAction, DeletePayeeForm, PayeeForm, PayeeOptions, PayeesDialog},
     },
+    settings::{hints::settings_payees_hints, payees::scope_text},
     view::categories::state::CategoriesStore,
-    view::{
-        event::{Reveal, ViewEvent},
-        settings::{hints::settings_payees_hints, payees::scope_text},
-    },
+    view::event::{Reveal, ViewEvent},
 };
 
 /// The stores the Payees page reads: its rows, and the Categories its dialogs offer as a default.

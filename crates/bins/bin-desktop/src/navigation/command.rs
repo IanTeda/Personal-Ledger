@@ -27,7 +27,7 @@
 use lib_colour_theme::ColourAppearance;
 
 use crate::{
-    navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsSection,
+    navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsPage,
     theme::colours::ColourChange,
 };
 
@@ -41,7 +41,7 @@ pub enum CommandEffect {
     /// directly; there's no per-noun `fn(&mut NavState)` to indirect through any more.
     Navigate(Noun),
     /// `:settings <page>`: opens that Settings page with focus in it.
-    OpenSettingsPage(SettingsSection),
+    OpenSettingsPage(SettingsPage),
     /// Open the real "1e" file explorer dialog in this mode (`:open`/`:new`, issues #165/#167).
     OpenDialog(ExplorerMode),
     /// `:close`: returns to the "1a" empty state, same as cold start.
@@ -157,11 +157,11 @@ impl Domain {
     pub fn label(self) -> String {
         match self {
             Domain::Dashboard => Noun::Dashboard.label(),
-            Domain::Accounts => SettingsSection::Accounts.label(),
+            Domain::Accounts => SettingsPage::Accounts.label(),
             Domain::Bills => Noun::Bills.label(),
             Domain::Budgets => Noun::Budgets.label(),
             Domain::Cash => Noun::Cash.label(),
-            Domain::Categories => SettingsSection::Categories.label(),
+            Domain::Categories => SettingsPage::Categories.label(),
             Domain::CreditCards => Noun::CreditCards.label(),
             Domain::Documents => Noun::Documents.label(),
             Domain::Inventory => Noun::Inventory.label(),
@@ -169,10 +169,10 @@ impl Domain {
             Domain::Ledger => crate::msg::desktop_command_domain_ledger(),
             Domain::Loans => Noun::Loans.label(),
             Domain::Notifications => Noun::Notifications.label(),
-            Domain::Payees => SettingsSection::Payees.label(),
+            Domain::Payees => SettingsPage::Payees.label(),
             Domain::Reports => Noun::Reports.label(),
             Domain::Settings => Noun::Settings.label(),
-            Domain::Tags => SettingsSection::Tags.label(),
+            Domain::Tags => SettingsPage::Tags.label(),
             Domain::Toasts => crate::msg::desktop_command_domain_toasts(),
             Domain::Transactions => Noun::Transactions.label(),
         }
@@ -251,7 +251,7 @@ pub const COMMANDS: &[Command] = &[
         domain: Domain::Accounts,
         description: crate::msg::desktop_command_accounts_description,
         binding: None,
-        effect: CommandEffect::OpenSettingsPage(SettingsSection::Accounts),
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Accounts),
     },
     Command {
         name: "accounts new",
@@ -356,7 +356,7 @@ pub const COMMANDS: &[Command] = &[
         domain: Domain::Categories,
         description: crate::msg::desktop_command_categories_description,
         binding: None,
-        effect: CommandEffect::OpenSettingsPage(SettingsSection::Categories),
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Categories),
     },
     Command {
         name: "credit-cards",
@@ -461,7 +461,7 @@ pub const COMMANDS: &[Command] = &[
         domain: Domain::Payees,
         description: crate::msg::desktop_command_payees_description,
         binding: None,
-        effect: CommandEffect::OpenSettingsPage(SettingsSection::Payees),
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Payees),
     },
     Command {
         name: "reports",
@@ -477,20 +477,20 @@ pub const COMMANDS: &[Command] = &[
         binding: Some("g s"),
         effect: CommandEffect::Navigate(Noun::Settings),
     },
-    settings_page_command("settings general", SettingsSection::General),
-    settings_page_command("settings display", SettingsSection::Display),
-    settings_page_command("settings units", SettingsSection::Units),
-    settings_page_command("settings institutions", SettingsSection::Institutions),
-    settings_page_command("settings accounts", SettingsSection::Accounts),
-    settings_page_command("settings categories", SettingsSection::Categories),
-    settings_page_command("settings tags", SettingsSection::Tags),
-    settings_page_command("settings payees", SettingsSection::Payees),
-    settings_page_command("settings documents", SettingsSection::Documents),
-    settings_page_command("settings inventory", SettingsSection::Inventory),
-    settings_page_command("settings sync-server", SettingsSection::SyncServer),
-    settings_page_command("settings data-backup", SettingsSection::DataBackup),
-    settings_page_command("settings tracing", SettingsSection::Tracing),
-    settings_page_command("settings about", SettingsSection::About),
+    settings_page_command("settings general", SettingsPage::General),
+    settings_page_command("settings display", SettingsPage::Display),
+    settings_page_command("settings units", SettingsPage::Units),
+    settings_page_command("settings institutions", SettingsPage::Institutions),
+    settings_page_command("settings accounts", SettingsPage::Accounts),
+    settings_page_command("settings categories", SettingsPage::Categories),
+    settings_page_command("settings tags", SettingsPage::Tags),
+    settings_page_command("settings payees", SettingsPage::Payees),
+    settings_page_command("settings documents", SettingsPage::Documents),
+    settings_page_command("settings inventory", SettingsPage::Inventory),
+    settings_page_command("settings sync-server", SettingsPage::SyncServer),
+    settings_page_command("settings data-backup", SettingsPage::DataBackup),
+    settings_page_command("settings tracing", SettingsPage::Tracing),
+    settings_page_command("settings about", SettingsPage::About),
     colour_theme_command("theme modernist", "modernist", || {
         colour_theme_description(lib_locale::msg::colour_theme_modernist())
     }),
@@ -520,7 +520,7 @@ pub const COMMANDS: &[Command] = &[
         domain: Domain::Tags,
         description: crate::msg::desktop_command_tags_description,
         binding: None,
-        effect: CommandEffect::OpenSettingsPage(SettingsSection::Tags),
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Tags),
     },
     Command {
         name: "tags merge",
@@ -589,7 +589,7 @@ pub const COMMANDS: &[Command] = &[
     },
 ];
 
-const fn settings_page_command(name: &'static str, section: SettingsSection) -> Command {
+const fn settings_page_command(name: &'static str, section: SettingsPage) -> Command {
     Command {
         name,
         domain: Domain::Settings,
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn every_settings_page_has_a_command() {
-        for section in SettingsSection::ALL {
+        for section in SettingsPage::ALL {
             let name = format!("settings {}", section.id());
             let effect = all().find(|c| c.name == name).map(|c| c.effect);
             assert_eq!(
@@ -710,10 +710,10 @@ mod tests {
     #[test]
     fn the_moved_noun_commands_alias_their_settings_page_with_no_binding() {
         for (name, section) in [
-            ("accounts", SettingsSection::Accounts),
-            ("categories", SettingsSection::Categories),
-            ("payees", SettingsSection::Payees),
-            ("tags", SettingsSection::Tags),
+            ("accounts", SettingsPage::Accounts),
+            ("categories", SettingsPage::Categories),
+            ("payees", SettingsPage::Payees),
+            ("tags", SettingsPage::Tags),
         ] {
             let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
             assert_eq!(command.effect, CommandEffect::OpenSettingsPage(section));

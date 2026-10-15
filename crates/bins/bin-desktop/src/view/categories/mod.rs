@@ -1,5 +1,5 @@
 //! The Categories dialogs and the row-click contracts for Settings' Categories page (2i, drawn
-//! by `view::settings::categories`). The standalone 5a page left the primary rail for Settings
+//! by `settings::categories`). The standalone 5a page left the primary rail for Settings
 //! (#420).
 
 pub mod add_dialog;

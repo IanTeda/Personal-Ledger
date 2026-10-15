@@ -1,7 +1,7 @@
 //! Renders the **Add unit** dialog (issue #184's own "2b"), on the shared `crate::dialog`
 //! chrome. `Shell` owns the live form state (`units::form::UnitForm`) and every keystroke while
 //! it's open (`InputMode::Dialog`, `Shell::handle_dialog_key`) -- this module is a pure
-//! render-helper, the same split every other `view::settings` submodule already uses.
+//! render-helper, the same split every other `settings` submodule already uses.
 //!
 //! `field_click`/`text_field`/`type_field` are `pub(super)`: the Edit unit dialog (issue #185)
 //! wraps the same `UnitForm` and reuses them verbatim rather than duplicating this module's own

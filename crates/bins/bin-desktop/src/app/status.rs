@@ -7,21 +7,19 @@ use crate::tags::form::TagsDialog;
 use gpui::Context;
 
 use super::{Shell, document_types_ui, inventory_ui};
-use crate::view::{
-    active::ActiveViewEntity,
-    settings::hints::{
-        confirm_dialog_hints, merge_tags_dialog_hints, settings_categories_hints,
-        settings_documents_hints, settings_inventory_hints, settings_tags_hints, tag_dialog_hints,
-    },
+use crate::settings::hints::{
+    confirm_dialog_hints, merge_tags_dialog_hints, settings_categories_hints,
+    settings_documents_hints, settings_inventory_hints, settings_tags_hints, tag_dialog_hints,
 };
+use crate::view::active::ActiveViewEntity;
 use crate::{
     chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
     navigation::nav::InputMode,
-    settings::SettingsSection,
+    settings::SettingsPage,
+    settings::{self as settings_view, inventory as inventory_view},
     tags,
-    view::settings::{self as settings_view, inventory as inventory_view},
 };
 
 impl Shell {
@@ -77,7 +75,7 @@ impl Shell {
     /// `None` when no such page has focus.
     fn settings_data_page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsSection::Tags) {
+        if focused(SettingsPage::Tags) {
             Some(PageStatus {
                 hints: match self.dialog::<TagsDialog>() {
                     Some(TagsDialog::Add(_)) => tag_dialog_hints(false),
@@ -91,14 +89,14 @@ impl Shell {
                     &tags::duplicate_groups(self.tags_list(cx), self.transactions(cx)),
                 ),
             })
-        } else if focused(SettingsSection::Documents) {
+        } else if focused(SettingsPage::Documents) {
             Some(PageStatus {
                 hints: self
                     .dialog::<DocumentTypesDialog>()
                     .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
                 right: settings_view::documents::scope_text(self.document_types(cx)),
             })
-        } else if focused(SettingsSection::Inventory) {
+        } else if focused(SettingsPage::Inventory) {
             Some(PageStatus {
                 hints: self.dialog::<InventoryDialog>().map_or_else(
                     || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
@@ -106,7 +104,7 @@ impl Shell {
                 ),
                 right: inventory_view::scope_text(self.inventory(cx)),
             })
-        } else if focused(SettingsSection::Categories) {
+        } else if focused(SettingsPage::Categories) {
             Some(PageStatus {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(self.categories(cx)),

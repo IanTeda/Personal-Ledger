@@ -14,7 +14,7 @@ use crate::{
         key_router::{self, KeyOutcome, route_key},
         nav::{FocusZone, InputMode},
     },
-    settings::SettingsSection,
+    settings::SettingsPage,
     view::{
         active::{ActiveViewEntity, ShellView},
         event::ViewMode,
@@ -328,9 +328,9 @@ impl Shell {
         }
         let left_is_local = keystroke.key == "left"
             && !keystroke.modifiers.shift
-            && ((self.settings_data_page_has_focus(SettingsSection::Categories, cx)
+            && ((self.settings_data_page_has_focus(SettingsPage::Categories, cx)
                 && self.settings_categories_left_is_local(cx))
-                || (self.settings_data_page_has_focus(SettingsSection::Inventory, cx)
+                || (self.settings_data_page_has_focus(SettingsPage::Inventory, cx)
                     && self.settings_inventory_left_is_local(cx)));
         left_is_local.then_some(false)
     }
@@ -342,13 +342,13 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsSection::Categories) {
+        if focused(SettingsPage::Categories) {
             self.handle_categories_key(keystroke, cx)
-        } else if focused(SettingsSection::Documents) {
+        } else if focused(SettingsPage::Documents) {
             self.handle_settings_documents_key(keystroke, cx)
-        } else if focused(SettingsSection::Inventory) {
+        } else if focused(SettingsPage::Inventory) {
             self.handle_settings_inventory_key(keystroke, cx)
-        } else if focused(SettingsSection::Tags) {
+        } else if focused(SettingsPage::Tags) {
             self.handle_tags_key(keystroke, cx)
         } else {
             false

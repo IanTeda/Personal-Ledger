@@ -1,4 +1,4 @@
-//! The Categories destination's wiring: the Settings Categories tree's keys, clicks and folds, and the Add, Edit and Delete dialogs. The pure tree rules live in `lib_categories`, the chrome in `view::settings::categories` and `view::categories`, and the tree's rows and cursor are the `CategoriesStore` and `CategoriesView` Entities (ADR-0032).
+//! The Categories destination's wiring: the Settings Categories tree's keys, clicks and folds, and the Add, Edit and Delete dialogs. The pure tree rules live in `lib_categories`, the chrome in `settings::categories` and `view::categories`, and the tree's rows and cursor are the `CategoriesStore` and `CategoriesView` Entities (ADR-0032).
 
 use super::Shell;
 use crate::categories::{
@@ -14,7 +14,7 @@ use crate::{
         key_router::Movement,
         nav::{FocusZone, Noun},
     },
-    settings::{SettingsFocus, SettingsSection},
+    settings::{SettingsFocus, SettingsPage},
 };
 
 use gpui::{App, Context, Keystroke};
@@ -27,7 +27,7 @@ impl Shell {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
             && self.views.settings.read(cx).focus() == SettingsFocus::Page
-            && self.views.settings.read(cx).selected_section() == SettingsSection::Categories
+            && self.views.settings.read(cx).selected_section() == SettingsPage::Categories
     }
 
     /// Whether `left` has something to do inside the Categories tree: fold an open parent, or

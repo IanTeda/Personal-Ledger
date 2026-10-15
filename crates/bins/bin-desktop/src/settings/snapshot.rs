@@ -12,7 +12,7 @@ use crate::settings::SettingsFocus;
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsSnapshot {
-    /// The page on show, as its `SettingsSection` variant name.
+    /// The page on show, as its `SettingsPage` variant name.
     pub page: String,
     /// Whether the page, not the index rail, holds keyboard focus.
     pub page_focused: bool,

@@ -102,7 +102,7 @@ pub fn build_shell(
     let settings_page = persisted
         .settings_page
         .as_deref()
-        .map(settings::SettingsSection::from_id)
+        .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
     let mut shell = Shell::with_today(nav, focus_handle, today, cx);

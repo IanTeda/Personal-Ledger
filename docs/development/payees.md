@@ -82,7 +82,7 @@ Neither Client reads Payees from `lib-database`.
   - `src/shell.rs` — `handle_payees_key` (`n`/`e`/`d`) and `enter` on a Payee row opening Transactions filtered by Payee id (mirrors `open_category_transactions`).
   - Messages in `i18n/en-US/payees.ftl` and `import.ftl`.
 
-> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `view/settings/payees.rs`, mounted by the paged Settings surface (`SettingsSection::Payees`); the dialogs and models stay in `view/payees/`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `settings/payees/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Payees`); the dialogs and models stay in `view/payees/`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 
 ## Traceability
 

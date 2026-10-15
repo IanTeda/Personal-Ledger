@@ -44,7 +44,7 @@ pub struct PersistedState {
     /// the primary rail collapsed regardless of [`Self::primary_rail`].
     #[serde(default)]
     pub start_sidebar_minimised: bool,
-    /// The Settings page last visited, as [`crate::settings::SettingsSection::id`]. A stale or
+    /// The Settings page last visited, as [`crate::settings::SettingsPage::id`]. A stale or
     /// unknown id loads as the default page.
     #[serde(default)]
     pub settings_page: Option<String>,

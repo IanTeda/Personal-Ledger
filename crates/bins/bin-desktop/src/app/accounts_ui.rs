@@ -11,7 +11,7 @@ use crate::{
     },
     chrome::dialog_apply,
     navigation::command::AccountsVerb,
-    settings::SettingsSection,
+    settings::SettingsPage,
     view::accounts::state::{AccountsView, dialog_options},
 };
 
@@ -106,7 +106,7 @@ impl Shell {
         argument: &str,
         cx: &mut Context<'_, Self>,
     ) {
-        self.open_settings_page(SettingsSection::Accounts, cx);
+        self.open_settings_page(SettingsPage::Accounts, cx);
         self.accounts_page(cx).update(cx, |page, cx| {
             page.run_command(command_name, verb, argument, cx);
         });

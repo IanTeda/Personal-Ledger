@@ -14,7 +14,7 @@ use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     chrome::dialog_host::Dialog,
     ledger_store::LedgerStore,
-    view::settings::inventory::InventoryRow,
+    settings::inventory::InventoryRow,
 };
 
 /// What confirming an Inventory Dialog asks for.

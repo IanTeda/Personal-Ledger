@@ -6,7 +6,7 @@ use crate::{
     chrome::rail as chrome_rail,
     navigation::key_router::Movement,
     navigation::nav::FocusZone,
-    settings::SettingsSection,
+    settings::SettingsPage,
     view::active::{ActiveViewEntity, ShellView},
 };
 
@@ -100,22 +100,22 @@ impl Shell {
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
         let section = [
-            SettingsSection::Categories,
-            SettingsSection::Tags,
-            SettingsSection::Documents,
-            SettingsSection::Inventory,
+            SettingsPage::Categories,
+            SettingsPage::Tags,
+            SettingsPage::Documents,
+            SettingsPage::Inventory,
         ]
         .into_iter()
         .find(|section| focused(*section));
         match section {
-            Some(SettingsSection::Categories) => {
+            Some(SettingsPage::Categories) => {
                 self.apply_settings_categories_movement(movement, cx);
             }
-            Some(SettingsSection::Tags) => self.apply_settings_tags_movement(movement, cx),
-            Some(SettingsSection::Documents) => {
+            Some(SettingsPage::Tags) => self.apply_settings_tags_movement(movement, cx),
+            Some(SettingsPage::Documents) => {
                 self.apply_settings_documents_movement(movement, cx);
             }
-            Some(SettingsSection::Inventory) => {
+            Some(SettingsPage::Inventory) => {
                 self.apply_settings_inventory_movement(movement, cx);
             }
             _ => return false,

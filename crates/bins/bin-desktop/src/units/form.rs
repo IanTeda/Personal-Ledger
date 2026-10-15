@@ -1,5 +1,5 @@
 //! The Add, Edit and Delete unit dialogs' live form state -- pure, `gpui`-free; `Shell` owns it
-//! and `view::settings` renders it.
+//! and `settings` renders it.
 
 use super::{UnitKind, UnitRow};
 use crate::form::field::TextField;

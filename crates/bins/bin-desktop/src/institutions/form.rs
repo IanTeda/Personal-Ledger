@@ -1,5 +1,5 @@
 //! The Add institution dialog's live form state -- pure, `gpui`-free; `Shell` owns it and
-//! `view::settings` renders it.
+//! `settings` renders it.
 
 use super::InstitutionProduct;
 use crate::{form::field::TextField, units::UnitRow};

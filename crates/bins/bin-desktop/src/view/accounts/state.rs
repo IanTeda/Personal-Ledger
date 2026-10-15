@@ -1,6 +1,6 @@
 //! The Accounts destination's Entities (ADR-0032, ADR-0037). [`AccountsStore`] reads the rows
 //! through [`LedgerStore`], which holds the only copy. [`AccountsView`] is Settings' Accounts page:
-//! it owns the selection, renders itself (`impl Render` in `view::settings::accounts`), handles the
+//! it owns the selection, renders itself (`impl Render` in `settings::accounts`), handles the
 //! page's keys and movement, builds its dialogs and reaches `Shell` only through [`ViewEvent`]. The
 //! Settings View forwards to it while the page is open; `Shell`'s Dialog host draws and confirms
 //! the dialogs it builds.

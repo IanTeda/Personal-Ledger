@@ -1,4 +1,4 @@
-//! Settings' Accounts page (2o): its Entity, which renders the page (`view::settings::accounts`)
+//! Settings' Accounts page (2o): its Entity, which renders the page (`settings::accounts`)
 //! and builds the Add, Edit and Delete dialogs drawn here. The standalone 3a page left the primary
 //! rail for Settings (#420).
 

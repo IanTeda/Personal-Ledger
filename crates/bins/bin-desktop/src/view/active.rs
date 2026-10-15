@@ -11,8 +11,9 @@ use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
     bills::state::BillsView, budgets::state::BudgetsView, documents::state::DocumentsView,
-    event::Reveal, settings::state::SettingsView, transactions::state::TransactionsView,
+    event::Reveal, transactions::state::TransactionsView,
 };
+use crate::settings::state::SettingsView;
 use crate::{
     chrome::statusline::PageStatus,
     navigation::{active_view::ActiveView, key_router::Movement, nav::Noun},

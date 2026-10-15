@@ -351,8 +351,8 @@ impl Dialog for PayeesDialog {
 
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         Some(match self {
-            Self::Delete(..) => crate::view::settings::hints::confirm_dialog_hints(),
-            Self::Add(_) | Self::Edit(..) => crate::view::settings::hints::payee_dialog_hints(),
+            Self::Delete(..) => crate::settings::hints::confirm_dialog_hints(),
+            Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
         })
     }
 }

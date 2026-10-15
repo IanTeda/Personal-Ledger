@@ -8,24 +8,24 @@ use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px};
 
-use crate::{settings::SettingsSection, theme::color};
+use crate::{settings::SettingsPage, theme::color};
 
 /// Fixed column width: `docs/ux/desktop-mockups/16-settings/README.md`'s "Components" table.
 pub const WIDTH: gpui::Pixels = px(214.0);
 
 /// An index-entry click: swaps the body to that page; the entry takes the active dark treatment.
-pub type OnEntryClick = Rc<dyn Fn(SettingsSection, &mut Window, &mut App)>;
+pub type OnEntryClick = Rc<dyn Fn(SettingsPage, &mut Window, &mut App)>;
 
 #[derive(IntoElement)]
 pub struct SettingsIndexRail {
-    selected: SettingsSection,
+    selected: SettingsPage,
     /// Whether keyboard focus is on the index rather than the page.
     focused: bool,
     on_click: OnEntryClick,
 }
 
 impl SettingsIndexRail {
-    pub fn new(selected: SettingsSection, focused: bool, on_click: OnEntryClick) -> Self {
+    pub fn new(selected: SettingsPage, focused: bool, on_click: OnEntryClick) -> Self {
         Self {
             selected,
             focused,
@@ -58,7 +58,7 @@ impl RenderOnce for SettingsIndexRail {
                         &lib_locale::format::upper(&crate::navigation::nav::Noun::Settings.label()),
                         cx,
                     ))
-                    .children(SettingsSection::ALL.into_iter().map(|section| {
+                    .children(SettingsPage::ALL.into_iter().map(|section| {
                         entry_row(section, section == self.selected, self.on_click.clone(), cx)
                     })),
             )
@@ -79,7 +79,7 @@ fn rail_label(label: &str, cx: &App) -> impl IntoElement {
 }
 
 fn entry_row(
-    section: SettingsSection,
+    section: SettingsPage,
     active: bool,
     on_click: OnEntryClick,
     cx: &App,

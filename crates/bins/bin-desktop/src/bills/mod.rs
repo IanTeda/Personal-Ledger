@@ -121,7 +121,7 @@ impl Dialog for BillsDialog {
 
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         Some(match self {
-            Self::Add(_) | Self::Edit(..) => crate::view::settings::hints::payee_dialog_hints(),
+            Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
             Self::Pay(_) => crate::view::bills::hints::pay_bill_dialog_hints(),
             Self::Skip(_) => crate::view::bills::hints::skip_bill_dialog_hints(),
         })

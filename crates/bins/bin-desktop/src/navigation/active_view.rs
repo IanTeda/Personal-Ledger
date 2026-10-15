@@ -4,7 +4,7 @@
 //! at every exhaustive `match` until it is handled (ADR-0016).
 
 use super::nav::Noun;
-use crate::settings::SettingsSection;
+use crate::settings::SettingsPage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
@@ -16,7 +16,7 @@ pub enum ActiveView {
     Bills,
     Budgets,
     /// Settings' index-versus-page focus stays in Settings domain code, not in this enum.
-    Settings(SettingsSection),
+    Settings(SettingsPage),
     /// A Noun whose surface is a later map's work (#420).
     Placeholder(Noun),
 }
@@ -73,7 +73,7 @@ impl ActiveView {
         }
     }
 
-    pub fn derive(noun: Noun, settings_section: SettingsSection, import_open: bool) -> Self {
+    pub fn derive(noun: Noun, settings_section: SettingsPage, import_open: bool) -> Self {
         match noun {
             Noun::Dashboard => Self::Dashboard,
             Noun::Transactions if import_open => Self::Import,
@@ -97,7 +97,7 @@ impl ActiveView {
 mod tests {
     use super::*;
 
-    const GENERAL: SettingsSection = SettingsSection::General;
+    const GENERAL: SettingsPage = SettingsPage::General;
 
     #[test]
     fn import_only_takes_over_transactions() {
@@ -124,7 +124,7 @@ mod tests {
             assert_eq!(ActiveView::Transactions.title(), Noun::Transactions.label());
             assert_eq!(ActiveView::Dashboard.title(), Noun::Dashboard.label());
             assert_eq!(
-                ActiveView::Settings(SettingsSection::Tags).title(),
+                ActiveView::Settings(SettingsPage::Tags).title(),
                 Noun::Settings.label()
             );
             assert_eq!(
@@ -137,20 +137,20 @@ mod tests {
     #[test]
     fn settings_carries_each_section() {
         for section in [
-            SettingsSection::General,
-            SettingsSection::Display,
-            SettingsSection::Units,
-            SettingsSection::Institutions,
-            SettingsSection::Accounts,
-            SettingsSection::Categories,
-            SettingsSection::Tags,
-            SettingsSection::Payees,
-            SettingsSection::Documents,
-            SettingsSection::Inventory,
-            SettingsSection::SyncServer,
-            SettingsSection::DataBackup,
-            SettingsSection::Tracing,
-            SettingsSection::About,
+            SettingsPage::General,
+            SettingsPage::Display,
+            SettingsPage::Units,
+            SettingsPage::Institutions,
+            SettingsPage::Accounts,
+            SettingsPage::Categories,
+            SettingsPage::Tags,
+            SettingsPage::Payees,
+            SettingsPage::Documents,
+            SettingsPage::Inventory,
+            SettingsPage::SyncServer,
+            SettingsPage::DataBackup,
+            SettingsPage::Tracing,
+            SettingsPage::About,
         ] {
             assert_eq!(
                 ActiveView::derive(Noun::Settings, section, false),

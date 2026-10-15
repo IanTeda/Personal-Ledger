@@ -1,7 +1,7 @@
 //! The **Institutions** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
 //! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::institutions::default_institutions()`,
 //! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
-//! `view::settings::units`, just a two-column table instead of three.
+//! `settings::units`, just a two-column table instead of three.
 //!
 //! "+ Add institution" opens the real Add institution dialog (issue #187). Row edit/delete have
 //! **no dialog ticket anywhere on this map** -- unlike Units, whose `2c`/`2d` dialogs are named

@@ -34,8 +34,9 @@ use crate::{
     institutions::{InstitutionsStore, form::AddInstitutionForm},
     navigation::key_router::Movement,
     settings::{
-        DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsSection,
+        DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsPage,
         display::{DATE_STYLE_CHOICES, DisplayPreferences, RowDensity, StatusGlyphs},
+        inventory::InventoryRow,
         step_choice,
         tracing_log::{LogChange, LogView, TracingLevel},
     },
@@ -48,7 +49,6 @@ use crate::{
         accounts::state::AccountsView,
         event::{Reveal, ViewEvent},
         payees::state::{PayeesView, RowClicked},
-        settings::inventory::InventoryRow,
     },
 };
 
@@ -126,7 +126,7 @@ impl FocusedPage {
 /// too: the capture feed in `Shell` pushes into them, and only this page reads them.
 pub struct SettingsView {
     sources: SettingsSources,
-    selected_section: SettingsSection,
+    selected_section: SettingsPage,
     focus: SettingsFocus,
     display_field: Option<usize>,
     display: DisplayPreferences,
@@ -162,7 +162,7 @@ impl SettingsView {
             });
         Self {
             sources,
-            selected_section: SettingsSection::default(),
+            selected_section: SettingsPage::default(),
             focus: SettingsFocus::default(),
             display_field: None,
             display: DisplayPreferences::default(),
@@ -200,8 +200,8 @@ impl SettingsView {
             return None;
         }
         match self.selected_section {
-            SettingsSection::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
-            SettingsSection::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
+            SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
+            SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
             _ => None,
         }
     }
@@ -313,13 +313,13 @@ impl SettingsView {
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         match reveal {
             Reveal::Account(_) => {
-                self.open_page(SettingsSection::Accounts, cx);
+                self.open_page(SettingsPage::Accounts, cx);
                 self.sources
                     .accounts
                     .update(cx, |page, cx| page.reveal(reveal, cx));
             }
             Reveal::Payee(_) => {
-                self.open_page(SettingsSection::Payees, cx);
+                self.open_page(SettingsPage::Payees, cx);
                 self.sources
                     .payees
                     .update(cx, |page, cx| page.reveal(reveal, cx));
@@ -355,11 +355,11 @@ impl SettingsView {
             return settings_index_hints();
         }
         match self.selected_section {
-            SettingsSection::Display if self.colour_theme_focus.is_some() => {
+            SettingsPage::Display if self.colour_theme_focus.is_some() => {
                 settings_colour_grid_hints()
             }
-            SettingsSection::Display => settings_display_hints(),
-            SettingsSection::Tracing => settings_tracing_hints(),
+            SettingsPage::Display => settings_display_hints(),
+            SettingsPage::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         }
     }
@@ -368,7 +368,7 @@ impl SettingsView {
     // Pages and focus
     // -----------------------------------------------------------------------------------------
 
-    pub fn selected_section(&self) -> SettingsSection {
+    pub fn selected_section(&self) -> SettingsPage {
         self.selected_section
     }
 
@@ -385,7 +385,7 @@ impl SettingsView {
     }
 
     /// Restores the last-visited page at launch, without moving focus.
-    pub fn set_selected_section(&mut self, cx: &mut Context<'_, Self>, section: SettingsSection) {
+    pub fn set_selected_section(&mut self, cx: &mut Context<'_, Self>, section: SettingsPage) {
         self.selected_section = section;
         cx.notify();
     }
@@ -393,7 +393,7 @@ impl SettingsView {
     /// Opens a page with focus in it -- what `:settings <page>`, the old `:accounts` /
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on (the
     /// keyboard model's "commands and hand-offs land in the page").
-    pub fn open_page(&mut self, section: SettingsSection, cx: &mut Context<'_, Self>) {
+    pub fn open_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
         self.select_page(section);
         self.focus_page();
         cx.notify();
@@ -406,7 +406,7 @@ impl SettingsView {
     }
 
     /// Swaps the page on show. A new page starts at its top, with no control focused.
-    fn select_page(&mut self, section: SettingsSection) {
+    fn select_page(&mut self, section: SettingsPage) {
         if self.selected_section != section {
             self.scroll_handle.set_offset(gpui::Point::default());
         }
@@ -422,7 +422,7 @@ impl SettingsView {
             return;
         }
         self.focus = SettingsFocus::Page;
-        self.display_field = (self.selected_section == SettingsSection::Display).then_some(0);
+        self.display_field = (self.selected_section == SettingsPage::Display).then_some(0);
     }
 
     fn focus_index(&mut self) {
@@ -432,7 +432,7 @@ impl SettingsView {
     }
 
     fn apply_section_movement(&mut self, movement: Movement, _cx: &mut Context<'_, Self>) {
-        let pages = SettingsSection::ALL;
+        let pages = SettingsPage::ALL;
         let last = pages.len() - 1;
         let current = pages
             .iter()
@@ -448,7 +448,7 @@ impl SettingsView {
     }
 
     /// An index entry's click: swaps the body to that page and leaves focus on the index.
-    pub(super) fn click_index(&mut self, section: SettingsSection, cx: &mut Context<'_, Self>) {
+    pub(super) fn click_index(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
         self.select_page(section);
         self.focus = SettingsFocus::Index;
         cx.notify();
@@ -543,7 +543,7 @@ impl SettingsView {
             return false;
         };
         if self.focus != SettingsFocus::Page
-            || self.selected_section != SettingsSection::Display
+            || self.selected_section != SettingsPage::Display
             || keystroke.modifiers.shift
         {
             return false;
@@ -607,7 +607,7 @@ impl SettingsView {
         let Some(index) = self.colour_theme_focus else {
             return false;
         };
-        if self.focus != SettingsFocus::Page || self.selected_section != SettingsSection::Display {
+        if self.focus != SettingsFocus::Page || self.selected_section != SettingsPage::Display {
             self.colour_theme_focus = None;
             return false;
         }
@@ -765,7 +765,7 @@ impl SettingsView {
     /// line, `J`/`K` a page, `G` the oldest entry, `c` Clear logs. Focus never enters the box
     /// itself.
     fn tracing_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if self.focus != SettingsFocus::Page || self.selected_section != SettingsSection::Tracing {
+        if self.focus != SettingsFocus::Page || self.selected_section != SettingsPage::Tracing {
             return false;
         }
         let list = self.log_list.clone();

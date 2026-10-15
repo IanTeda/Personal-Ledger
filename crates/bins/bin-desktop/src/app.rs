@@ -70,8 +70,8 @@ use crate::institutions::InstitutionsStore;
 use crate::inventory::InventoryStore;
 use crate::ledger_data::LedgerDataEvent;
 use crate::ledger_store::LedgerStore;
+use crate::settings::state::{SettingsSources, SettingsView};
 use crate::units::UnitsStore;
-use crate::view::settings::state::{SettingsSources, SettingsView};
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
@@ -104,7 +104,7 @@ use crate::{
     navigation::key_router::{self, Movement},
     navigation::nav::NavState,
     settings::tracing_log::LogView,
-    settings::{SettingsSection, display::DisplayPreferences, tracing_log::TracingLevel},
+    settings::{SettingsPage, display::DisplayPreferences, tracing_log::TracingLevel},
     transactions::TransactionsStore,
     view::format,
     view::{
@@ -450,11 +450,11 @@ impl Shell {
     }
 
     /// The last-visited Settings page, for persistence.
-    pub fn settings_page(&self, cx: &App) -> SettingsSection {
+    pub fn settings_page(&self, cx: &App) -> SettingsPage {
         self.views.settings.read(cx).selected_section()
     }
 
-    pub fn set_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
+    pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
         self.views
             .settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));
@@ -670,12 +670,12 @@ impl Focusable for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transactions::Transaction;
-    use crate::view::accounts::hints::accounts_hints;
-    use crate::view::settings::hints::{
+    use crate::settings::hints::{
         settings_colour_grid_hints, settings_display_hints, settings_index_hints,
         settings_plain_page_hints,
     };
+    use crate::transactions::Transaction;
+    use crate::view::accounts::hints::accounts_hints;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use crate::{accounts, categories, payees, tags, transactions};
     use chrono::Local;

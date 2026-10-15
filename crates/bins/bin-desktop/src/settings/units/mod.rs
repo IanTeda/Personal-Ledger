@@ -28,9 +28,9 @@ use lib_locale::Label;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
+    settings::SettingsPage,
     theme::color,
     units::{PriceSourceRow, UnitRow},
-    view::settings::SettingsSection,
 };
 
 pub type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -59,7 +59,7 @@ pub fn render(
         .flex()
         .flex_col()
         .child(subsection_label(lib_locale::format::upper(
-            &SettingsSection::Units.label(),
+            &SettingsPage::Units.label(),
         ), cx))
         .child(table(units, on_edit_click, on_delete_click, cx))
         .child(add_button(

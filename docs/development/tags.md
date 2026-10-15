@@ -42,7 +42,7 @@ Both Clients render Tags from in-memory fixtures.
   - `src/view/transactions/table.rs` draws a Tag's swatch on its chip.
   - Messages in `i18n/en-US/tags.ftl`.
 
-> **Desktop navigation:** `Tags` is no longer a rail noun and has no `g` binding. The page is `view/settings/tags.rs`, mounted by the paged Settings surface (`SettingsSection::Tags`); the dialogs and models stay in `view/tags/`. It is reached from the Settings index, `:settings tags` or the `:tags` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+> **Desktop navigation:** `Tags` is no longer a rail noun and has no `g` binding. The page is `settings/tags/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Tags`); the dialogs and models stay in `view/tags/`. It is reached from the Settings index, `:settings tags` or the `:tags` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 
 ## Traceability
 

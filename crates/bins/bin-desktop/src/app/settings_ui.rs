@@ -10,16 +10,16 @@ use crate::institutions::InstitutionProduct;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, Noun};
 use crate::settings::apply::{SettingsApply, SettingsOutcome};
-use crate::settings::{SettingsDialog, SettingsFocus, SettingsSection};
-use crate::units::UnitKind;
-use crate::units::form::AddUnitField;
-use crate::view::accounts::hints::accounts_hints;
-use crate::view::settings::hints::{
+use crate::settings::hints::{
     settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
     settings_documents_hints, settings_index_hints, settings_inventory_hints,
     settings_payees_hints, settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
 };
-use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::settings::{SettingsDialog, SettingsFocus, SettingsPage};
+use crate::units::UnitKind;
+use crate::units::form::AddUnitField;
+use crate::view::accounts::hints::accounts_hints;
 use gpui::{App, Context, Keystroke};
 use lib_toast::ToastKind;
 
@@ -27,7 +27,7 @@ impl Shell {
     /// Opens a Settings page with focus in it -- what `:settings <page>`, the old `:accounts` /
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on.
     /// Leaves the page's scroll alone when Settings is already showing.
-    pub(super) fn open_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
+    pub(super) fn open_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
         let noun_before = self.nav.noun();
         self.nav.set_noun(Noun::Settings);
         if noun_before != Noun::Settings {
@@ -47,7 +47,7 @@ impl Shell {
 
     /// Whether a Settings page with Ledger data, which `Shell` still draws, owns the keyboard:
     /// the page, not the index, has focus in the View zone.
-    pub(super) fn settings_data_page_has_focus(&self, section: SettingsSection, cx: &App) -> bool {
+    pub(super) fn settings_data_page_has_focus(&self, section: SettingsPage, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
             && self.views.settings.read(cx).focus() == SettingsFocus::Page
@@ -61,20 +61,20 @@ impl Shell {
             return Vec::new();
         }
         let page = match self.views.settings.read(cx).selected_section() {
-            SettingsSection::Accounts => accounts_hints(),
-            SettingsSection::Categories => settings_categories_hints(),
-            SettingsSection::Tags => settings_tags_hints(),
-            SettingsSection::Payees => settings_payees_hints(),
-            SettingsSection::Documents => settings_documents_hints(),
-            SettingsSection::Inventory => {
+            SettingsPage::Accounts => accounts_hints(),
+            SettingsPage::Categories => settings_categories_hints(),
+            SettingsPage::Tags => settings_tags_hints(),
+            SettingsPage::Payees => settings_payees_hints(),
+            SettingsPage::Documents => settings_documents_hints(),
+            SettingsPage::Inventory => {
                 settings_inventory_hints(self.settings_inventory_selected_row(cx))
             }
-            SettingsSection::Display => {
+            SettingsPage::Display => {
                 let mut keys = settings_display_hints();
                 keys.extend(settings_colour_grid_hints().into_iter().take(2));
                 keys
             }
-            SettingsSection::Tracing => settings_tracing_hints(),
+            SettingsPage::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         };
         settings_index_hints()
@@ -113,7 +113,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut App,
     ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsSection::Documents, cx) {
+        if !self.settings_data_page_has_focus(SettingsPage::Documents, cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -134,7 +134,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut App,
     ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsSection::Documents, cx) {
+        if !self.settings_data_page_has_focus(SettingsPage::Documents, cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -204,7 +204,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut App,
     ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsSection::Inventory, cx) {
+        if !self.settings_data_page_has_focus(SettingsPage::Inventory, cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -233,7 +233,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut App,
     ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsSection::Inventory, cx) {
+        if !self.settings_data_page_has_focus(SettingsPage::Inventory, cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;

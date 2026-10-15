@@ -2,16 +2,14 @@
 //! `crate::dialog` chrome. Add and Edit share one renderer: Name, Tracks date, Remind and Financial
 //! year stacked with a hint under each. Remove asks a destination only when the type has Filed
 //! files; Other gets a notice instead. `Shell` owns the live state and every key; this module is a
-//! pure render-helper, like the rest of `view::settings`.
+//! pure render-helper, like the rest of `settings`.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use crate::view::{
-    form_fields::{OnSegmentClick, field_label, segmented_control, text_field},
-    settings::documents::tracks_label,
-};
+use crate::settings::documents::tracks_label;
+use crate::view::form_fields::{OnSegmentClick, field_label, segmented_control, text_field};
 use crate::{
     dialog, documents,
     documents::types::{

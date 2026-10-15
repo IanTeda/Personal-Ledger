@@ -4,14 +4,14 @@
 use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
-pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
-#[doc(hidden)]
-pub use crate::view::payees::snapshot::SettingsPayeesSnapshot;
-#[doc(hidden)]
-pub use crate::view::settings::snapshot::{
+pub use crate::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot,
 };
+#[doc(hidden)]
+pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
+#[doc(hidden)]
+pub use crate::view::payees::snapshot::SettingsPayeesSnapshot;
 use crate::{
     accounts::form::AccountsDialog,
     categories::form::CategoriesDialog,
@@ -119,10 +119,10 @@ impl Shell {
     /// An Inventory row as `property:<name>` or `room:<name>`.
     fn inventory_row_label(
         &self,
-        row: crate::view::settings::inventory::InventoryRow,
+        row: crate::settings::inventory::InventoryRow,
         cx: &gpui::App,
     ) -> String {
-        use crate::view::settings::inventory::InventoryRow;
+        use crate::settings::inventory::InventoryRow;
         match row {
             InventoryRow::Property(id) => self
                 .inventory(cx)
@@ -343,7 +343,7 @@ impl Shell {
     #[doc(hidden)]
     pub fn settings_inventory_snapshot(&self, cx: &gpui::App) -> SettingsInventorySnapshot {
         SettingsInventorySnapshot {
-            inventory_rows: crate::view::settings::inventory::visible_rows(
+            inventory_rows: crate::settings::inventory::visible_rows(
                 self.inventory(cx),
                 self.views.settings.read(cx).inventory_expanded(),
             )

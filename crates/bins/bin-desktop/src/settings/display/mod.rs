@@ -15,21 +15,15 @@
 //! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
 //! not written to `personal-ledger.conf`.
 
+mod preferences;
+pub use preferences::*;
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::DateStyle;
 
-use crate::{
-    settings::{
-        DISPLAY_FIELD_SIDEBAR,
-        display::{
-            DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DisplayPreviewRow, PreviewStatus,
-            RowDensity, StatusGlyphs, date_style_label, format_preview_amount, format_preview_date,
-        },
-    },
-    theme::color,
-};
+use crate::{settings::DISPLAY_FIELD_SIDEBAR, theme::color};
 
 use super::{colour_theme, tracing::radio_dot};
 use crate::view::form_fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};

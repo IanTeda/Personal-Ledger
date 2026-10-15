@@ -18,7 +18,8 @@ use crate::{
         InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm, RemovePropertyForm,
         RemoveRoomForm, RoomForm,
     },
-    view::{inventory::dialogs as view, settings::inventory::InventoryRow},
+    settings::inventory::InventoryRow,
+    view::inventory::dialogs as view,
 };
 
 /// What Remove would take with it.

@@ -15,7 +15,7 @@ use crate::{
         key_router::Movement,
         nav::{FocusZone, Noun},
     },
-    settings::{SettingsFocus, SettingsSection},
+    settings::{SettingsFocus, SettingsPage},
     tags::{self, Tag},
 };
 
@@ -53,7 +53,7 @@ impl Shell {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
             && self.views.settings.read(cx).focus() == SettingsFocus::Page
-            && self.views.settings.read(cx).selected_section() == SettingsSection::Tags
+            && self.views.settings.read(cx).selected_section() == SettingsPage::Tags
     }
 
     /// The Settings Tags page's selected Tag: the stored id while it still exists, else the first

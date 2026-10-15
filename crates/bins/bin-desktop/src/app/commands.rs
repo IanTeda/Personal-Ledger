@@ -11,7 +11,7 @@ use crate::{
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
-    settings::SettingsSection,
+    settings::SettingsPage,
     view::budgets::manage_dialog::ManageAction,
 };
 
@@ -111,7 +111,7 @@ impl Shell {
             }
             CommandEffect::MergeTags => {
                 self.nav.exit_mode();
-                self.open_settings_page(SettingsSection::Tags, cx);
+                self.open_settings_page(SettingsPage::Tags, cx);
                 self.open_merge_tags_dialog(None, cx);
             }
             CommandEffect::Import => {

@@ -1,40 +1,394 @@
-//! Pure Settings-surface domain types (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
-//! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
-//! `navigation/nav.rs` uses between `NavState` and `Shell`'s render tree. `chrome::rail::settings_index::SettingsIndexRail`
-//! and `view::settings` are the chrome; this module only knows what pages exist, their index
-//! order, and their label/scope-note/search text.
+//! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): one page
+//! at a time, not a continuous scroll. The settings index rail (`chrome::rail::settings_index`) swaps the
+//! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
+//! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 
+mod about;
+pub mod accounts;
 pub(crate) mod apply;
+pub mod categories;
+pub mod clear_logs_dialog;
+pub mod colour_theme;
+pub mod data_backup;
 pub mod display;
+pub mod documents;
+mod general;
+pub(crate) mod hints;
+pub mod institutions;
+pub mod inventory;
+pub mod page;
+pub mod payees;
+pub mod snapshot;
+pub mod state;
+pub mod sync_server;
+pub mod tags;
+pub mod tracing;
 pub mod tracing_log;
+pub mod units;
+
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Context, Entity, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    chrome::dialog_host::Dialog,
+    chrome::{dialog_host::Dialog, rail::settings_index::SettingsIndexRail},
     form::field::TextField,
     institutions::form::AddInstitutionForm,
+    navigation::nav::Noun,
+    theme::color,
     units::form::{DeleteUnitForm, UnitForm},
 };
 
-/// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
-/// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
-/// Tags and Payees joined the original eight when they left the primary rail.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SettingsSection {
-    #[default]
-    General,
-    Display,
-    Units,
-    Institutions,
-    Accounts,
-    Categories,
-    Tags,
-    Payees,
-    Documents,
-    Inventory,
-    SyncServer,
-    DataBackup,
-    Tracing,
-    About,
+use state::SettingsView;
+
+pub use page::SettingsPage;
+
+/// A click handler the Settings View binds for a page, given the clicked value.
+type OnValue<A> = Rc<dyn Fn(A, &mut Window, &mut App)>;
+/// As [`OnValue`], for a click that carries no value.
+type OnPlain = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// A page `Shell` still draws (the pages with Ledger data, until each moves into this View):
+/// its heading's meta and its content, handed to [`SettingsView`] for the frame they are drawn
+/// in.
+pub struct DataPage {
+    pub meta: AnyElement,
+    pub content: AnyElement,
+}
+
+/// What `Shell` draws the pages with Ledger data from, until each moves into this View.
+pub struct DataPageProps<'a> {
+    pub categories: categories::CategoriesPageProps<'a>,
+    pub tags: tags::TagsPageProps<'a>,
+    pub documents: documents::DocumentsPageProps<'a>,
+    pub inventory: inventory::InventoryPageProps<'a>,
+}
+
+/// The page `section` as `Shell` draws it, or `None` for a page [`SettingsView`] draws itself.
+pub fn data_page(
+    section: SettingsPage,
+    page_focused: bool,
+    props: &DataPageProps<'_>,
+    cx: &App,
+) -> Option<DataPage> {
+    let (meta, content) = match section {
+        SettingsPage::Categories => (
+            categories::scope_note(props.categories.categories).into_any_element(),
+            categories::render(&props.categories, page_focused, cx),
+        ),
+        SettingsPage::Tags => (
+            tags::scope_note(props.tags.tags, props.tags.groups, cx),
+            tags::render(&props.tags, page_focused, cx),
+        ),
+        SettingsPage::Documents => (
+            documents::scope_text(props.documents.types).into_any_element(),
+            documents::render(&props.documents, page_focused, cx),
+        ),
+        SettingsPage::Inventory => (
+            inventory::scope_text(props.inventory.inventory).into_any_element(),
+            inventory::render(&props.inventory, page_focused, cx),
+        ),
+        SettingsPage::General
+        | SettingsPage::Accounts
+        | SettingsPage::Payees
+        | SettingsPage::Display
+        | SettingsPage::Units
+        | SettingsPage::Institutions
+        | SettingsPage::SyncServer
+        | SettingsPage::DataBackup
+        | SettingsPage::Tracing
+        | SettingsPage::About => return None,
+    };
+    Some(DataPage { meta, content })
+}
+
+impl Render for SettingsView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let selected = self.selected_section();
+        let index_focused = self.zone_focused && self.focus() == SettingsFocus::Index;
+        let page_focused = self.zone_focused && self.focus() == SettingsFocus::Page;
+        let on_index_click = {
+            let entity = entity.clone();
+            Rc::new(move |section, _window: &mut Window, cx: &mut App| {
+                entity.update(cx, |view, cx| view.click_index(section, cx));
+            })
+        };
+        let accounts = self.sources().accounts.clone();
+        accounts.update(cx, |page, _| page.set_page_focused(page_focused));
+        let payees = self.sources().payees.clone();
+        payees.update(cx, |page, _| page.set_page_focused(page_focused));
+        let (meta, content) = match self.data_page.take() {
+            Some(page) => (page.meta, page.content),
+            None if selected == SettingsPage::Accounts => (
+                accounts.read(cx).scope_note(cx).into_any_element(),
+                accounts.into_any_element(),
+            ),
+            None if selected == SettingsPage::Payees => {
+                (payees.read(cx).scope_note(cx), payees.into_any_element())
+            }
+            None => (
+                self.scope_note(cx).into_any_element(),
+                self.page_content(&entity, cx),
+            ),
+        };
+        // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
+        let fills = selected.fills_page();
+        let body = div()
+            .id("settings-body")
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .when(fills, |this| this.overflow_hidden())
+            .when(!fills, |this| {
+                this.overflow_y_scroll().track_scroll(&self.scroll_handle)
+            })
+            .when(page_focused, |this| {
+                this.border_l(px(2.0)).border_color(color::foreground(cx))
+            })
+            .py(px(22.0))
+            .px(px(28.0))
+            .flex()
+            .flex_col()
+            .child(section_block(selected, meta, content, cx));
+        div()
+            .id("settings")
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .flex()
+            .child(SettingsIndexRail::new(
+                selected,
+                index_focused,
+                on_index_click,
+            ))
+            .child(body)
+    }
+}
+
+impl SettingsView {
+    /// The heading's scope note for a page this View draws: Units and Institutions count their
+    /// rows; the others have a fixed note.
+    fn scope_note(&self, cx: &App) -> String {
+        match self.selected_section() {
+            SettingsPage::Units => crate::msg::desktop_settings_scope_units(count(
+                self.sources().units.read(cx).units(cx).len(),
+            )),
+            SettingsPage::Institutions => crate::msg::desktop_settings_scope_institutions(count(
+                self.sources().institutions.read(cx).institutions(cx).len(),
+            )),
+            other => other.scope_note(),
+        }
+    }
+
+    /// The content of a page this View draws, its clicks bound to `entity`.
+    fn page_content(&self, entity: &Entity<Self>, cx: &App) -> AnyElement {
+        // A click handler that runs `act` on this View with the clicked value.
+        fn bind<A: 'static>(
+            entity: &Entity<SettingsView>,
+            act: fn(&mut SettingsView, A, &mut Context<'_, SettingsView>),
+        ) -> OnValue<A> {
+            let entity = entity.clone();
+            Rc::new(move |value, _window, cx| entity.update(cx, |view, cx| act(view, value, cx)))
+        }
+        // As `bind`, for a click that carries no value.
+        fn plain(
+            entity: &Entity<SettingsView>,
+            act: fn(&mut SettingsView, &mut Context<'_, SettingsView>),
+        ) -> OnPlain {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| entity.update(cx, act))
+        }
+        // As `plain`, for a button with nothing behind it yet: it says so on the status line.
+        fn stub(entity: &Entity<SettingsView>, message: fn() -> String) -> OnPlain {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| entity.update(cx, |view, cx| view.not_built(message(), cx)))
+        }
+        // As `stub`, for a row's button, whose row it ignores.
+        fn row_stub(entity: &Entity<SettingsView>, message: fn() -> String) -> OnValue<usize> {
+            let entity = entity.clone();
+            Rc::new(move |_index, _window, cx| {
+                entity.update(cx, |view, cx| view.not_built(message(), cx))
+            })
+        }
+
+        match self.selected_section() {
+            SettingsPage::General => general::render(cx),
+            SettingsPage::Display => {
+                let display = self.display();
+                display::render(
+                    display.date_style,
+                    display.row_density,
+                    display.status_glyphs,
+                    display.start_sidebar_minimised,
+                    plain(entity, SettingsView::click_start_sidebar_minimised),
+                    bind(entity, SettingsView::click_date_style),
+                    bind(entity, SettingsView::click_row_density),
+                    bind(entity, SettingsView::click_status_glyphs),
+                    display.toasts_on,
+                    bind(entity, SettingsView::click_toasts),
+                    self.colour_theme_focus(),
+                    self.display_field(),
+                    bind(entity, SettingsView::click_colour_theme),
+                    cx,
+                )
+            }
+            SettingsPage::Units => units::render(
+                self.sources().units.read(cx).units(cx),
+                bind(entity, SettingsView::click_edit_unit),
+                bind(entity, SettingsView::click_delete_unit),
+                plain(entity, SettingsView::click_add_unit),
+                self.sources().units.read(cx).price_sources(cx),
+                row_stub(
+                    entity,
+                    crate::msg::desktop_status_test_price_source_not_yet_built,
+                ),
+                row_stub(
+                    entity,
+                    crate::msg::desktop_status_edit_price_source_not_yet_built,
+                ),
+                row_stub(
+                    entity,
+                    crate::msg::desktop_status_delete_price_source_not_yet_built,
+                ),
+                stub(
+                    entity,
+                    crate::msg::desktop_status_add_price_source_not_yet_built,
+                ),
+                cx,
+            ),
+            SettingsPage::Institutions => institutions::render(
+                self.sources().institutions.read(cx).institutions(cx),
+                row_stub(
+                    entity,
+                    crate::msg::desktop_status_edit_institution_not_yet_built,
+                ),
+                row_stub(
+                    entity,
+                    crate::msg::desktop_status_delete_institution_not_yet_built,
+                ),
+                plain(entity, SettingsView::click_add_institution),
+                cx,
+            ),
+            SettingsPage::SyncServer => sync_server::render(
+                stub(entity, crate::msg::desktop_status_sync_now_not_implemented),
+                cx,
+            ),
+            SettingsPage::DataBackup => data_backup::render(
+                stub(
+                    entity,
+                    crate::msg::desktop_status_backup_now_not_implemented,
+                ),
+                stub(
+                    entity,
+                    crate::msg::desktop_status_export_ledger_not_implemented,
+                ),
+                cx,
+            ),
+            SettingsPage::Tracing => tracing::render(
+                &tracing::LogBoxProps {
+                    level: self.log().level(),
+                    entries: self.log().visible(),
+                    hidden: self.log().hidden_count(),
+                    list: self.log_list().clone(),
+                },
+                bind(entity, SettingsView::set_tracing_level),
+                plain(entity, SettingsView::click_clear_logs),
+                cx,
+            ),
+            SettingsPage::About => about::render(cx),
+            // Accounts and Payees draw themselves; `Shell` hands the rest in as a `DataPage`, and
+            // a frame without one draws nothing there.
+            SettingsPage::Accounts
+            | SettingsPage::Categories
+            | SettingsPage::Tags
+            | SettingsPage::Payees
+            | SettingsPage::Documents
+            | SettingsPage::Inventory => gpui::Empty.into_any_element(),
+        }
+    }
+}
+
+/// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
+/// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
+/// margin ownership is how this gap goes missing, so it's carried on a single edge, here).
+fn section_block(
+    section: SettingsPage,
+    meta: AnyElement,
+    content: AnyElement,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .when(section.fills_page(), |this| this.flex_1().min_h(px(0.0)))
+        .mb(px(48.0))
+        .child(
+            div()
+                .flex()
+                .items_baseline()
+                .justify_between()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(28.0))
+                        .text_color(color::foreground(cx))
+                        .child(format!("{} - {}", Noun::Settings.label(), section.label())),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(color::faint_text(cx))
+                        .child(meta),
+                ),
+        )
+        .child(
+            div()
+                .h(px(2.0))
+                .bg(color::structural_rule(cx))
+                .mt(px(14.0))
+                .mb(px(18.0)),
+        )
+        .child(content)
+}
+
+/// A row count as the number a plural selector takes.
+fn count(len: usize) -> i64 {
+    i64::try_from(len).unwrap_or(i64::MAX)
+}
+
+/// A page that isn't rebuilt yet.
+fn placeholder(cx: &App) -> AnyElement {
+    div()
+        .text_color(color::faint_text(cx))
+        .child(crate::msg::desktop_settings_page_placeholder())
+        .into_any_element()
+}
+
+/// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;
+/// border:1px solid rgba(32,30,29,.30); font-size:13px` -- `select_style` adds the `select`
+/// row's own `background:#f3f2f2` (README: "selects add `background:#f3f2f2`").
+///
+/// Deliberately **not** a real editable text input or an openable dropdown -- see this map's own
+/// Destination: every section here is stubbed/dummy data, and free-text editing/dropdown-open
+/// behaviour is real interaction-pattern work with no existing precedent in this crate yet
+/// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
+/// decision than one section's ticket should make on its own -- left for whichever future
+/// ticket needs it first). "Save on change" therefore has nothing to save yet.
+pub(super) fn field_value(
+    value: impl Into<SharedString>,
+    select_style: bool,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .w_full()
+        .py(px(8.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .text_size(px(13.0))
+        .when(select_style, |this| this.bg(color::background(cx)))
+        .child(value.into())
 }
 
 /// Where keyboard focus sits within Settings: the index rail, or the page it has open. Only
@@ -62,149 +416,6 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
     };
     let last = choices.len() - 1;
     choices[position.saturating_add_signed(delta).min(last)]
-}
-
-impl SettingsSection {
-    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
-    /// rather than the body scrolling the whole page.
-    pub fn fills_page(self) -> bool {
-        self == Self::Tracing
-    }
-
-    /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
-    /// Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup ·
-    /// Tracing (Logs) · About`).
-    pub const ALL: [SettingsSection; 14] = [
-        SettingsSection::General,
-        SettingsSection::Display,
-        SettingsSection::Units,
-        SettingsSection::Institutions,
-        SettingsSection::Accounts,
-        SettingsSection::Categories,
-        SettingsSection::Tags,
-        SettingsSection::Payees,
-        SettingsSection::Documents,
-        SettingsSection::Inventory,
-        SettingsSection::SyncServer,
-        SettingsSection::DataBackup,
-        SettingsSection::Tracing,
-        SettingsSection::About,
-    ];
-
-    /// The index-rail label / section heading text.
-    pub fn label(self) -> String {
-        match self {
-            Self::General => crate::msg::desktop_settings_section_general(),
-            Self::Display => crate::msg::desktop_settings_section_display(),
-            Self::Units => crate::msg::desktop_settings_section_units(),
-            Self::Institutions => crate::msg::desktop_settings_section_institutions(),
-            Self::Accounts => lib_locale::msg::nav_accounts(),
-            Self::Categories => lib_locale::msg::nav_categories(),
-            Self::Tags => lib_locale::msg::nav_tags(),
-            Self::Payees => lib_locale::msg::nav_payees(),
-            Self::Documents => crate::msg::desktop_nav_documents(),
-            Self::Inventory => crate::msg::desktop_settings_section_inventory(),
-            Self::SyncServer => crate::msg::desktop_settings_section_sync_server(),
-            Self::DataBackup => crate::msg::desktop_settings_section_data_backup(),
-            Self::Tracing => crate::msg::desktop_settings_section_tracing(),
-            Self::About => crate::msg::desktop_settings_section_about(),
-        }
-    }
-
-    /// The section heading's right-aligned scope note -- the Configuration-vs-Preferences
-    /// distinction the README calls "the UI must make ... legible" (issue #63/#101/ADR-0014).
-    pub fn scope_note(self) -> String {
-        match self {
-            Self::General => crate::msg::desktop_settings_scope_general(),
-            Self::Units | Self::Institutions => {
-                crate::msg::desktop_settings_scope_synced_change_sets()
-            }
-            Self::Accounts
-            | Self::Categories
-            | Self::Tags
-            | Self::Payees
-            | Self::Documents
-            | Self::Inventory => crate::msg::desktop_settings_scope_ledger_data(),
-            Self::Display => crate::msg::desktop_settings_scope_display(),
-            Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
-            Self::DataBackup => crate::msg::desktop_settings_scope_data_backup("aud", "2.84 mb"),
-            Self::Tracing => crate::msg::desktop_settings_scope_tracing(
-                i64::try_from(lib_tracing::LOG_CAPACITY).unwrap_or(i64::MAX),
-            ),
-            Self::About => crate::msg::desktop_settings_scope_about(),
-        }
-    }
-
-    /// The Desktop Settings Surface ticket that builds this section's real content -- this
-    /// scaffold (issue #173) only lays out the frame, so every section is a placeholder until
-    /// its own ticket lands. `LedgerUnits`'s own #176 is gone along with the section it built
-    /// (issue #189).
-    pub fn placeholder_issue(self) -> u32 {
-        match self {
-            Self::General => 175,
-            Self::Units => 177,
-            Self::Institutions => 178,
-            Self::Accounts => 416,
-            Self::Categories => 417,
-            Self::Tags => 418,
-            Self::Payees => 419,
-            Self::Documents => 480,
-            Self::Inventory => 493,
-            Self::Display => 179,
-            Self::SyncServer => 180,
-            Self::DataBackup => 181,
-            Self::Tracing => 182,
-            Self::About => 183,
-        }
-    }
-
-    /// This section's position among [`Self::ALL`].
-    #[expect(
-        clippy::expect_used,
-        reason = "ALL is a fixed-length array of every SettingsSection, and index_round_trips_every_section checks each one is present exactly once"
-    )]
-    pub fn index(self) -> usize {
-        Self::ALL
-            .iter()
-            .position(|section| *section == self)
-            .expect("SettingsSection::ALL must list every SettingsSection")
-    }
-
-    /// A stable id for persistence, never translated and never reused: a renamed label must not
-    /// orphan a saved last-visited page.
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::General => "general",
-            Self::Display => "display",
-            Self::Units => "units",
-            Self::Institutions => "institutions",
-            Self::Accounts => "accounts",
-            Self::Categories => "categories",
-            Self::Tags => "tags",
-            Self::Payees => "payees",
-            Self::Documents => "documents",
-            Self::Inventory => "inventory",
-            Self::SyncServer => "sync-server",
-            Self::DataBackup => "data-backup",
-            Self::Tracing => "tracing",
-            Self::About => "about",
-        }
-    }
-
-    /// The page for a persisted id. An unknown id (a page since removed, a hand-edited file)
-    /// falls back to the default page rather than failing the load.
-    pub fn from_id(id: &str) -> Self {
-        Self::ALL
-            .into_iter()
-            .find(|section| section.id() == id)
-            .unwrap_or_default()
-    }
-
-    /// Whether this page holds anything the keyboard can move into. `l`/`enter` on the index is a
-    /// quiet no-op for a page with nothing to focus (the keyboard-model decision).
-    pub fn has_controls(self) -> bool {
-        !matches!(self, Self::About)
-    }
 }
 
 /// Every Settings dialog `Shell` can have open, `None` when none is -- the README's own `State`
@@ -249,7 +460,7 @@ impl Dialog for SettingsDialog {
     /// Clear logs is a confirm; the Units and Institutions dialogs leave the page's own legend.
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         match self {
-            Self::ClearLogs => Some(crate::view::settings::hints::confirm_dialog_hints()),
+            Self::ClearLogs => Some(hints::confirm_dialog_hints()),
             Self::AddUnit(_)
             | Self::EditUnit(..)
             | Self::DeleteUnit(..)
@@ -269,96 +480,5 @@ mod tests {
         assert_eq!(step_choice(&choices, 3, 1), 3);
         assert_eq!(step_choice(&choices, 1, -1), 1);
         assert_eq!(step_choice(&choices, 9, 1), 9);
-    }
-
-    #[test]
-    fn index_round_trips_every_section() {
-        for (index, section) in SettingsSection::ALL.into_iter().enumerate() {
-            assert_eq!(
-                section.index(),
-                index,
-                "{section:?} is listed more than once"
-            );
-        }
-    }
-
-    #[test]
-    fn every_section_id_round_trips_and_is_unique() {
-        let ids: std::collections::HashSet<_> = SettingsSection::ALL
-            .iter()
-            .map(|section| section.id())
-            .collect();
-        assert_eq!(ids.len(), SettingsSection::ALL.len());
-        for section in SettingsSection::ALL {
-            assert_eq!(SettingsSection::from_id(section.id()), section);
-        }
-    }
-
-    #[test]
-    fn an_unknown_id_falls_back_to_general() {
-        assert_eq!(SettingsSection::from_id("nope"), SettingsSection::General);
-    }
-
-    #[test]
-    fn the_index_runs_in_the_handoffs_canonical_order() {
-        let ids: Vec<_> = SettingsSection::ALL
-            .iter()
-            .map(|section| section.id())
-            .collect();
-        assert_eq!(
-            ids,
-            [
-                "general",
-                "display",
-                "units",
-                "institutions",
-                "accounts",
-                "categories",
-                "tags",
-                "payees",
-                "documents",
-                "inventory",
-                "sync-server",
-                "data-backup",
-                "tracing",
-                "about",
-            ]
-        );
-    }
-
-    #[test]
-    fn default_section_is_general() {
-        assert_eq!(SettingsSection::default(), SettingsSection::General);
-    }
-
-    #[test]
-    fn every_section_has_a_distinct_placeholder_issue() {
-        let issues: std::collections::HashSet<_> = SettingsSection::ALL
-            .iter()
-            .map(|section| section.placeholder_issue())
-            .collect();
-        assert_eq!(issues.len(), SettingsSection::ALL.len());
-    }
-
-    #[test]
-    fn scope_notes_keep_the_configuration_and_preference_terms_and_pluralise() {
-        crate::locale::init_for_tests();
-        assert_eq!(
-            SettingsSection::Display.scope_note(),
-            "client-scoped · never synced"
-        );
-        assert_eq!(SettingsSection::Units.scope_note(), "synced · change sets");
-        assert_eq!(
-            SettingsSection::SyncServer.scope_note(),
-            "synced · every 30 seconds"
-        );
-        assert_eq!(
-            crate::msg::desktop_settings_scope_units(1),
-            "1 unit · synced"
-        );
-        assert_eq!(
-            crate::msg::desktop_settings_scope_institutions(7),
-            "7 institutions · synced"
-        );
     }
 }

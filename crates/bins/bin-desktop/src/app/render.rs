@@ -7,7 +7,8 @@ use crate::payees::form::PayeesDialog;
 use crate::tags::form::TagsDialog;
 use std::rc::Rc;
 
-use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::settings as settings_view;
+use crate::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::view::{institutions as institutions_view, units as units_view};
 
 use gpui::{
@@ -40,8 +41,7 @@ use crate::{
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, payees as payees_view, placeholder, settings as settings_view,
-        tags as tags_view,
+        help as help_view, payees as payees_view, placeholder, tags as tags_view,
     },
 };
 

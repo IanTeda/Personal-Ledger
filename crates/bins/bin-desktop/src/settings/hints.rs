@@ -1,7 +1,7 @@
 //! The status-line legends of the Settings pages and of the dialogs they open, as `(key, action)`
 //! pairs. They live beside the Settings Views that own the keys, not in `Shell`.
 
-use crate::view::settings::inventory::InventoryRow;
+use crate::settings::inventory::InventoryRow;
 
 /// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
 /// hand-off, which stays on the old page.

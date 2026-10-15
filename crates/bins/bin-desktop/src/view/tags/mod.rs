@@ -1,4 +1,4 @@
-//! The Tags dialogs and the small pieces Settings' Tags page (2j, drawn by `view::settings::tags`)
+//! The Tags dialogs and the small pieces Settings' Tags page (2j, drawn by `settings::tags`)
 //! shares with them: the colour swatch and the likely-duplicate count. The standalone 7a page left
 //! the primary rail for Settings (#420).
 
