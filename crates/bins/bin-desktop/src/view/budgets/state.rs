@@ -24,7 +24,6 @@ use crate::{
     navigation::key_router::Movement,
     period::Period,
     view::{
-        accounts::state::AccountsStore,
         categories::state::CategoriesStore,
         event::{Reveal, ViewEvent, ViewMode},
     },
@@ -79,7 +78,6 @@ impl BudgetsState {
 pub struct BudgetsSources {
     pub ledger: Entity<LedgerStore>,
     pub categories: Entity<CategoriesStore>,
-    pub accounts: Entity<AccountsStore>,
 }
 
 /// The Budgets Entity.
@@ -130,7 +128,7 @@ impl BudgetsView {
         let ledger = self.sources.ledger.read(cx).ledger();
         budgets::BudgetSources {
             categories: self.categories(cx),
-            accounts: self.sources.accounts.read(cx).accounts(cx),
+            accounts: self.sources.ledger.read(cx).ledger().accounts(),
             transactions: self.sources.ledger.read(cx).ledger().transactions(),
             plans: ledger.bill_plans(),
             entries: ledger.bill_entries(),
@@ -295,7 +293,7 @@ impl BudgetsView {
     /// 11c, with the Budget on show as what "Copy categories from" names.
     pub fn new_budget_dialog(&self, cx: &App) -> BudgetsDialog {
         BudgetsDialog::Budget(budgets::form::BudgetForm::new(
-            self.sources.accounts.read(cx).accounts(cx),
+            self.sources.ledger.read(cx).ledger().accounts(),
             self.sources.ledger.read(cx).ledger().units(),
             self.budget(cx),
         ))
@@ -311,7 +309,7 @@ impl BudgetsView {
         Some(BudgetsDialog::Budget(
             budgets::form::BudgetForm::from_budget(
                 budget,
-                self.sources.accounts.read(cx).accounts(cx),
+                self.sources.ledger.read(cx).ledger().accounts(),
                 self.sources.ledger.read(cx).ledger().units(),
             ),
         ))
@@ -1106,7 +1104,6 @@ mod tests {
         let sources = BudgetsSources {
             ledger: ledger.clone(),
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
-            accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
         };
         let view = cx.new(|_| BudgetsView::new(sources, current, today()));
         let events = Rc::new(RefCell::new(Vec::new()));

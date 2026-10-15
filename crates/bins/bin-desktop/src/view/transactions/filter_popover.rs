@@ -4,7 +4,7 @@
 //! edits a draft (`transactions::filter_form::FilterForm`); nothing reaches the applied filters until
 //! **apply**.
 //!
-//! Account and Category are the shared dropdown (`view::accounts::select_field`); Payee and Tag are
+//! Account and Category are the shared dropdown (`form::select_field`); Payee and Tag are
 //! plain text; From and To are text dates that show an accent border and a hint while unparseable
 //! (which also disables **apply**); Status is the shared segmented control. The page behind is dimmed
 //! by the page itself (`opacity .55`, the map's blur-free replacement for the mockup's blur), not by
@@ -17,13 +17,13 @@ use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point,
 use crate::{
     dialog,
     form::fields::segmented_control,
+    form::{
+        dialog_fields::{label, text_field, two_up},
+        select_field::{self, SelectFieldProps},
+    },
     theme::color,
     transactions::filter_form::{FilterForm, FormField, FormOptions},
     transactions::query::StatusFilter,
-    view::accounts::{
-        add_dialog::{label, text_field, two_up},
-        select_field::{self, SelectFieldProps},
-    },
 };
 
 pub type OnFieldClick = Rc<dyn Fn(FormField, &mut Window, &mut App)>;

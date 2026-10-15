@@ -13,10 +13,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        accounts::default_accounts, categories::default_categories, tags::default_tags,
-        transactions::default_transactions,
+        categories::default_categories, tags::default_tags, transactions::default_transactions,
     };
     use form::DeleteAction;
+    use lib_accounts::default_accounts;
     use lib_ledger::PayeeUse;
     use lib_transactions::Transaction;
 

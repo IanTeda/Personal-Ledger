@@ -4,6 +4,8 @@
 use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
+pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
+#[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::snapshot::{
@@ -12,14 +14,12 @@ pub use crate::settings::snapshot::{
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 #[doc(hidden)]
-pub use crate::view::accounts::snapshot::SettingsAccountsSnapshot;
-#[doc(hidden)]
 pub use crate::view::payees::snapshot::SettingsPayeesSnapshot;
 use crate::{
-    accounts::form::AccountsDialog,
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     payees::form::PayeesDialog,
+    settings::accounts::dialogs::AccountsDialog,
     settings::{
         SettingsDialog, institutions::dialogs::InstitutionsDialog, units::dialogs::UnitsDialog,
     },

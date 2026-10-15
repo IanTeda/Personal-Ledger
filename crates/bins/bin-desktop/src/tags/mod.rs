@@ -45,9 +45,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        accounts::default_accounts, categories::default_categories, payees::default_payees,
-        transactions::default_transactions,
+        categories::default_categories, payees::default_payees, transactions::default_transactions,
     };
+    use lib_accounts::default_accounts;
     use lib_transactions::Split;
 
     fn today() -> NaiveDate {

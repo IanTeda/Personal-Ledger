@@ -12,10 +12,10 @@ use crate::form::fields::text_field;
 use crate::{
     dialog,
     form::select::SelectState,
+    form::select_field::{self, OnOptionClick, SelectFieldProps},
     inventory::NameError,
     inventory::form::{Problem, PropertyField, PropertyForm, RoomForm},
     theme::color,
-    view::accounts::select_field::{self, OnOptionClick, SelectFieldProps},
 };
 
 pub type OnFieldClick = Rc<dyn Fn(PropertyField, &mut Window, &mut App)>;

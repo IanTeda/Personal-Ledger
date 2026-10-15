@@ -5,7 +5,7 @@
 //! keys and the static pages' keys, movement and `Esc`, and reaches `Shell` only through
 //! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
 //!
-//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsView`];
+//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
 //! Payees, [`PayeesView`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by that Entity, and this
 //! View forwards the page's keys, movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
 //! Inventory) are still
@@ -31,6 +31,7 @@ use super::{
 use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     navigation::key_router::Movement,
+    settings::accounts::AccountsPage,
     settings::institutions::InstitutionsPage,
     settings::units::UnitsPage,
     settings::{
@@ -42,7 +43,6 @@ use crate::{
     },
     theme::colours::ColourChange,
     view::{
-        accounts::state::AccountsView,
         event::{Reveal, ViewEvent},
         payees::state::{PayeesView, RowClicked},
     },
@@ -54,14 +54,14 @@ impl EventEmitter<ViewEvent> for SettingsView {}
 pub struct SettingsSources {
     pub institutions: Entity<InstitutionsPage>,
     pub units: Entity<UnitsPage>,
-    pub accounts: Entity<AccountsView>,
+    pub accounts: Entity<AccountsPage>,
     pub payees: Entity<PayeesView>,
 }
 
 /// The open page's own Entity, while it has focus.
 #[derive(Clone)]
 enum FocusedPage {
-    Accounts(Entity<AccountsView>),
+    Accounts(Entity<AccountsPage>),
     Payees(Entity<PayeesView>),
     Units(Entity<UnitsPage>),
     Institutions(Entity<InstitutionsPage>),
@@ -204,7 +204,7 @@ impl SettingsView {
     }
 
     /// The Accounts page's Entity, for `Shell`'s Dialog host and the `accounts` command.
-    pub fn accounts(&self) -> &Entity<AccountsView> {
+    pub fn accounts(&self) -> &Entity<AccountsPage> {
         &self.sources.accounts
     }
 

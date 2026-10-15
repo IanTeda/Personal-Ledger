@@ -17,10 +17,10 @@
 //! on the [`OpenDialog`] variant to draw it.
 
 use crate::{
-    accounts::form::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
-    categories::form::CategoriesDialog, documents::form::DocumentsDialog,
-    documents::types::DocumentTypesDialog, form::field::TextField,
-    inventory::form::InventoryDialog, payees::form::PayeesDialog, settings::SettingsDialog,
+    bills::BillsDialog, budgets::BudgetsDialog, categories::form::CategoriesDialog,
+    documents::form::DocumentsDialog, documents::types::DocumentTypesDialog,
+    form::field::TextField, inventory::form::InventoryDialog, payees::form::PayeesDialog,
+    settings::SettingsDialog, settings::accounts::dialogs::AccountsDialog,
     settings::institutions::dialogs::InstitutionsDialog, settings::units::dialogs::UnitsDialog,
     tags::form::TagsDialog,
 };

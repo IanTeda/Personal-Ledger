@@ -23,7 +23,6 @@ use lib_locale::format::{
 };
 
 use crate::{
-    accounts::Account,
     categories::{self, Category},
     form::select::SelectState,
     payees::Payee,
@@ -31,6 +30,7 @@ use crate::{
     transactions::chips::FilterField,
     transactions::query::{StatusFilter, TransactionFilters},
 };
+use lib_accounts::Account;
 
 /// The Account select's first option, meaning no account filter.
 pub fn all_accounts() -> String {
@@ -481,10 +481,8 @@ impl FilterForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        accounts::default_accounts, categories::default_categories, payees::default_payees,
-        tags::default_tags,
-    };
+    use crate::{categories::default_categories, payees::default_payees, tags::default_tags};
+    use lib_accounts::default_accounts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

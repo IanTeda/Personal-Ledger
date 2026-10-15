@@ -6,8 +6,10 @@
 
 use super::Shell;
 use crate::chrome::dialog_apply;
+use crate::navigation::command::AccountsVerb;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, Noun};
+use crate::settings::accounts::{AccountsPage, hints::accounts_hints};
 use crate::settings::apply::{SettingsApply, SettingsOutcome};
 use crate::settings::hints::{
     settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
@@ -16,8 +18,7 @@ use crate::settings::hints::{
 };
 use crate::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::settings::{SettingsDialog, SettingsFocus, SettingsPage};
-use crate::view::accounts::hints::accounts_hints;
-use gpui::{App, Context, Keystroke};
+use gpui::{App, Context, Entity, Keystroke};
 use lib_toast::ToastKind;
 
 impl Shell {
@@ -474,5 +475,27 @@ impl Shell {
                 );
             }
         }
+    }
+}
+
+impl Shell {
+    /// The Accounts page's Entity, which the Settings View owns.
+    pub(super) fn accounts_page(&self, cx: &App) -> Entity<AccountsPage> {
+        self.views.settings.read(cx).accounts().clone()
+    }
+
+    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, whose Entity then
+    /// opens the same dialog its `n`/`e`/`d` and buttons do.
+    pub(super) fn run_accounts_command(
+        &mut self,
+        command_name: &str,
+        verb: AccountsVerb,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.open_settings_page(SettingsPage::Accounts, cx);
+        self.accounts_page(cx).update(cx, |page, cx| {
+            page.run_command(command_name, verb, argument, cx);
+        });
     }
 }

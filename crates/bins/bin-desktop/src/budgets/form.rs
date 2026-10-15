@@ -16,13 +16,14 @@ use lib_core::UnitId;
 use lib_units::UnitRow;
 
 use crate::{
-    accounts::{Account, form::SelectKey},
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
+    form::select::SelectKey,
     form::select::SelectState,
     transactions,
 };
+use lib_accounts::Account;
 
 /// The form's focus stops, in `Tab` order. Edit mode skips Unit and Start from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -470,10 +471,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        accounts::default_accounts,
         budgets::{self, Budgets},
         categories::default_categories,
     };
+    use lib_accounts::default_accounts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()

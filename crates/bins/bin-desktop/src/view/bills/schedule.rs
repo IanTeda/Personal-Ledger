@@ -14,7 +14,6 @@ use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::{format_month_day, upper};
 
 use crate::{
-    accounts::Account,
     bills::{
         self, AmountKind, BillPlan, BillScheduleEntry, BillStatus, PeriodSummary, ScheduleRow,
     },
@@ -24,6 +23,7 @@ use crate::{
     transactions::query::Total,
     transactions::rows::EMPTY_CELL,
 };
+use lib_accounts::Account;
 
 use super::{OnPlainClick, OnRowClick, filters};
 

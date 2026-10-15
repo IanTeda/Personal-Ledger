@@ -130,7 +130,6 @@ impl Dialog for BillsDialog {
 mod tests {
     use super::*;
     use crate::{
-        accounts::{Account, default_accounts},
         categories::{Category, default_categories},
         payees::default_payees,
         period::Period,
@@ -139,6 +138,7 @@ mod tests {
     };
     use bigdecimal::{BigDecimal, Signed};
     use chrono::{Datelike, NaiveDate};
+    use lib_accounts::{Account, default_accounts};
     use lib_core::{Money, Total, TransactionStatus};
 
     fn cents_money(cents: i64) -> Money {

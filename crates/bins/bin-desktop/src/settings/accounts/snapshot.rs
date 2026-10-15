@@ -4,7 +4,7 @@
 use gpui::App;
 use lib_accounts::display_order;
 
-use super::state::AccountsView;
+use super::AccountsPage;
 
 /// The Accounts page: names in the order the page lists them, and the selected row's name.
 #[doc(hidden)]
@@ -14,7 +14,7 @@ pub struct SettingsAccountsSnapshot {
     pub selected_account: Option<String>,
 }
 
-impl AccountsView {
+impl AccountsPage {
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsAccountsSnapshot {
         let accounts = self.accounts(cx);

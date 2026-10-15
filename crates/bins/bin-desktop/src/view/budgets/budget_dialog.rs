@@ -13,11 +13,11 @@ use crate::{
     budgets::BudgetError,
     budgets::form::{BudgetField, BudgetForm, BudgetOptions, START_CHOICES, StartChoice},
     dialog,
-    theme::color,
-    view::accounts::{
-        add_dialog::{label, text_field, two_up},
+    form::{
+        dialog_fields::{label, text_field, two_up},
         select_field::{self, SelectFieldProps},
     },
+    theme::color,
 };
 
 use super::limit_dialog::{error_line, error_text, segmented};

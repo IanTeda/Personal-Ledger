@@ -35,10 +35,7 @@ use crate::{
     ledger_store::LedgerStore,
     navigation::{key_router::Movement, nav::Noun},
     payees::PayeesStore,
-    view::{
-        accounts::state::AccountsStore,
-        event::{Reveal, ViewEvent, ViewMode},
-    },
+    view::event::{Reveal, ViewEvent, ViewMode},
 };
 
 impl EventEmitter<ViewEvent> for DocumentsView {}
@@ -87,7 +84,6 @@ impl Default for DocumentsState {
 #[derive(Clone)]
 pub struct DocumentsSources {
     pub ledger: Entity<LedgerStore>,
-    pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
     pub inventory: Entity<InventoryStore>,
 }
@@ -182,7 +178,7 @@ impl DocumentsView {
     /// Everything a Document's rows, detail and picker rows are worded from.
     pub fn lookups<'a>(&self, cx: &'a App) -> Lookups<'a> {
         Lookups {
-            accounts: self.sources.accounts.read(cx).accounts(cx),
+            accounts: self.sources.ledger.read(cx).ledger().accounts(),
             payees: self.sources.payees.read(cx).payees(cx),
             plans: self.sources.ledger.read(cx).ledger().bill_plans(),
             types: self.types(cx),

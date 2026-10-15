@@ -10,12 +10,12 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::swatch;
 use crate::{
     dialog,
+    form::dialog_fields::optional_label,
     tags::{
         self,
         form::{TagField, TagForm},
     },
     theme::color,
-    view::accounts::add_dialog::optional_label,
 };
 
 const SWATCH_SIZE: gpui::Pixels = px(26.0);

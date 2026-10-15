@@ -8,7 +8,7 @@ use gpui::{AnyElement, App, div, prelude::*, px};
 use crate::{
     budgets::limit_form::{LimitOptions, StopForm},
     dialog,
-    view::accounts::select_field::{self, SelectFieldProps},
+    form::select_field::{self, SelectFieldProps},
 };
 
 use super::limit_dialog::{error_line, error_text};

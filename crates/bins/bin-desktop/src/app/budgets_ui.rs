@@ -20,11 +20,8 @@ use crate::{
     payees::{self},
     period::Period,
     transactions::query::TransactionFilters,
+    view::budgets::{self as budgets_view, manage_dialog::ManageAction},
     view::format,
-    view::{
-        accounts as accounts_view,
-        budgets::{self as budgets_view, manage_dialog::ManageAction},
-    },
 };
 
 use gpui::{Context, px};
@@ -817,7 +814,7 @@ impl Shell {
             }
             BudgetsDialog::Stop(form) => {
                 let category = leaf_name(form.category_id)?;
-                let on_option_click: accounts_view::select_field::OnOptionClick = {
+                let on_option_click: crate::form::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
@@ -898,9 +895,10 @@ impl Shell {
                         payee.name.clone()
                     }),
                 account: self
-                    .accounts
+                    .ledger
                     .read(cx)
-                    .accounts(cx)
+                    .ledger()
+                    .accounts()
                     .iter()
                     .find(|account| account.id == line.account_id)
                     .map(|account| account.name.clone())

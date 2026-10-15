@@ -17,8 +17,8 @@ use crate::{
         TRACKS_OPTIONS, TracksDate,
     },
     form::select::SelectState,
+    form::select_field::{self, OnOptionClick, SelectFieldProps},
     theme::color,
-    view::accounts::select_field::{self, OnOptionClick, SelectFieldProps},
 };
 
 pub type OnFieldClick = Rc<dyn Fn(FormField, &mut Window, &mut App)>;

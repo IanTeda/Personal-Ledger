@@ -178,7 +178,7 @@ impl Shell {
             }
             DocumentTypesDialog::Remove(id, form) => {
                 let row = types.iter().find(|row| row.id == *id)?;
-                let on_option_click: crate::view::accounts::select_field::OnOptionClick = {
+                let on_option_click: crate::form::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {

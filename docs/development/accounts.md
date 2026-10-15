@@ -166,5 +166,5 @@ This document captures the entity and mechanism *shape* agreed so far — it is 
 - Trade's exact fields (fees, partial fills, dividend reinvestment).
 - Any dedicated screens/views for Loan Account, Investment Account, or Credit Card Account in the TUI or desktop app.
 
-> **Desktop navigation:** `Accounts` is no longer a rail noun and has no `g` binding. The page is `settings/accounts/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Accounts`); the dialogs and models stay in `view/accounts/`. It is reached from the Settings index, `:settings accounts` or the `:accounts` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+> **Desktop navigation:** `Accounts` is no longer a rail noun and has no `g` binding. The page is one folder, `settings/accounts/` (ADR-0037's amendment): `mod.rs` is the `AccountsPage` Entity, `render.rs` draws it, `form.rs` and `apply.rs` hold its forms and commands, and `dialogs/` holds the Add, Edit and Delete account Dialogs. It is mounted by the paged Settings surface (`SettingsPage::Accounts`), and its shared dropdown is `form/select_field.rs`. It is reached from the Settings index, `:settings accounts` or the `:accounts` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 

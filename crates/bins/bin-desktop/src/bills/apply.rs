@@ -176,7 +176,7 @@ mod tests {
         let ledger = test_ledger(
             cx,
             LedgerParts {
-                accounts: crate::accounts::default_accounts(),
+                accounts: lib_accounts::default_accounts(),
                 categories: lib_categories::default_categories(),
                 ..LedgerParts::default()
             },

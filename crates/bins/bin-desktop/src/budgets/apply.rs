@@ -194,7 +194,7 @@ mod tests {
 
     fn apply(cx: &mut TestAppContext) -> BudgetsApply {
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let accounts = crate::accounts::default_accounts();
+        let accounts = lib_accounts::default_accounts();
         let categories = lib_categories::default_categories();
         let seeded = crate::budgets::default_budgets(&accounts, &categories, today);
         let current = crate::budgets::PERSONAL_SPENDING_ID;
@@ -233,7 +233,7 @@ mod tests {
 
         let today = apply.today;
         let seeded = crate::budgets::default_budgets(
-            &crate::accounts::default_accounts(),
+            &lib_accounts::default_accounts(),
             &lib_categories::default_categories(),
             today,
         );

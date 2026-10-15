@@ -12,15 +12,15 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::rules_field::{self, OnRemoveRule, RulesFieldProps};
 use crate::{
     dialog,
+    form::{
+        dialog_fields::{label, text_field},
+        select_field::{self, SelectFieldProps},
+    },
     payees::{
         PayeeError,
         form::{PayeeField, PayeeForm, PayeeOptions},
     },
     theme::color,
-    view::accounts::{
-        add_dialog::{label, text_field},
-        select_field::{self, SelectFieldProps},
-    },
 };
 
 /// Which dialog to draw.

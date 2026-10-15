@@ -45,9 +45,10 @@ mod tests {
         types::default_types()
     }
     use crate::{
-        accounts::default_accounts, bills::default_bills, categories::default_categories,
-        payees::default_payees, tags::default_tags, transactions::default_transactions,
+        bills::default_bills, categories::default_categories, payees::default_payees,
+        tags::default_tags, transactions::default_transactions,
     };
+    use lib_accounts::default_accounts;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()

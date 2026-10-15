@@ -1,7 +1,7 @@
 //! Renders the **Delete account** destructive-confirm dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s
 //! 3d) on the shared `crate::dialog` chrome's destructive variant, following the Settings Delete
 //! unit dialog: the consequences are named and the account's own name must be typed back exactly
-//! (`accounts::form::DeleteAccountForm::is_valid`, case-sensitive) before **Delete account** enables.
+//! (`form::DeleteAccountForm::is_valid`, case-sensitive) before **Delete account** enables.
 //!
 //! The balance is the account's own; the transaction and budget counts are its stub figures
 //! (nothing real backs them in this map). Transfer-on-delete, which the TUI design makes the
@@ -12,11 +12,10 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
-use super::add_dialog::{WIDTH, text_field};
-use crate::{
-    accounts::{Account, form::DeleteAccountForm},
-    dialog,
-};
+use lib_accounts::Account;
+
+use super::WIDTH;
+use crate::{dialog, form::dialog_fields::text_field, settings::accounts::form::DeleteAccountForm};
 
 pub fn render(
     account: &Account,
@@ -121,7 +120,7 @@ mod tests {
     use super::*;
 
     fn seeded(name: &str) -> Account {
-        crate::accounts::default_accounts()
+        lib_accounts::default_accounts()
             .into_iter()
             .find(|account| account.name == name)
             .expect("seeded")

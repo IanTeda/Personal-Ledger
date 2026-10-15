@@ -174,7 +174,7 @@ mod tests {
             LedgerParts {
                 categories: lib_categories::default_categories(),
                 budgets: budgets::default_budgets(
-                    &crate::accounts::default_accounts(),
+                    &lib_accounts::default_accounts(),
                     &lib_categories::default_categories(),
                     today,
                 ),

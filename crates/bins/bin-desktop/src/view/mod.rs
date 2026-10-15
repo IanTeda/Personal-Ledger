@@ -2,7 +2,6 @@
 //! (issue #173), Accounts (issue #150), Categories (issue #272), Payees (issue #286), Tags (issue #357), Documents, Bills (issue #371) and Budgets (issue #402) exist so far -- the rest are
 //! placeholder views, a separate ticket (#153).
 
-pub mod accounts;
 pub mod active;
 pub mod bills;
 pub mod budgets;

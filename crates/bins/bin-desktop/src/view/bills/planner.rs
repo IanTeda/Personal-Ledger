@@ -11,12 +11,12 @@ use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
 use crate::{
-    accounts::Account,
     bills::{AmountKind, BillPlan, Recurrence},
     categories::Category,
     theme::color,
     transactions::rows::EMPTY_CELL,
 };
+use lib_accounts::Account;
 
 use super::OnRowClick;
 

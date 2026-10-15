@@ -12,12 +12,12 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use super::colour_field::{self, ColourFieldProps, OnPick, error_line};
 use crate::{
     dialog,
+    form::dialog_fields::{label, text_field},
     tags::{
         TagError,
         form::{TagField, TagForm},
     },
     theme::color,
-    view::accounts::add_dialog::{label, text_field},
 };
 
 pub type OnFieldClick = Rc<dyn Fn(TagField, &mut Window, &mut App)>;

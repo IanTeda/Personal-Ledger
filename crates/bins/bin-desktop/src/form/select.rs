@@ -260,3 +260,12 @@ mod tests {
         assert!(!state.is_open());
     }
 }
+
+/// A key a focused select understands, parsed from a keystroke by `Shell`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectKey {
+    Up,
+    Down,
+    /// `Enter` or `Space`: open a closed list, commit an open one.
+    Activate,
+}

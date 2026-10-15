@@ -1,361 +1,500 @@
-//! The **Accounts** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 2o): a kicker (BY TYPE) with
-//! **+ Add account** over one bordered table per account type in `accounts::GROUP_ORDER`
-//! (NAME / INSTITUTION / UNIT / ACTIONS). It reuses the Accounts model and dialogs;
-//! only the table is reduced to the handoff's columns and `padding:8px 16px` rows.
-//!
-//! [`AccountsView`] draws it, and every click is bound to the same handler its key reaches
-//! (`n`/`e`/`d`/`enter`).
+//! The **Accounts** Settings page (ADR-0037's amendment: one folder per page). [`AccountsPage`] is
+//! the page's Entity: it owns the selection, renders itself (`render.rs`), handles the page's keys
+//! and movement, builds its Dialogs and reaches `Shell` only through [`ViewEvent`]. `Shell`'s Dialog
+//! host draws the Dialogs (`dialogs/`) and confirms them through `apply.rs`. The Settings View
+//! forwards to the page while it is open.
 
-use std::rc::Rc;
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+pub(crate) mod hints;
+mod render;
+pub mod snapshot;
 
-use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_accounts::{Account, NO_INSTITUTION, NameLookup, NetWorth, display_order, find_by_name};
+use lib_ledger::Domain;
+use lib_locale::Label;
 
-use lib_locale::{Label, format::upper};
+use dialogs::AccountsDialog;
+use form::{AccountForm, AccountOptions, DeleteAccountForm};
+use hints::accounts_hints;
 
 use crate::{
-    accounts::{self, Account},
-    theme::color,
-    view::accounts::state::AccountsView,
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    form::field::TextField,
+    ledger_store::{LedgerStore, notify_on},
+    navigation::{command::AccountsVerb, key_router::Movement},
+    view::event::{Reveal, ViewEvent},
 };
 
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-
-/// The section heading's meta: `7 accounts · net worth 83,995.87 aud · vas, btc held
-/// separately`. One net figure in the base Unit only, then every other Unit held named rather
-/// than summed or dropped.
-pub fn scope_note(accounts: &[Account], units: &[lib_units::UnitRow]) -> String {
-    if accounts.is_empty() {
-        return crate::msg::desktop_accounts_summary_empty();
-    }
-    let base_unit = units.iter().find(|unit| unit.is_base).map(|unit| unit.id);
-    let net = accounts::net_worth(accounts, base_unit);
-
-    let mut parts = vec![accounts::count_text(&net)];
-    if let Some(base) = net
-        .base_unit
-        .and_then(|id| units.iter().find(|unit| unit.id == id))
-    {
-        let base = &base.code;
-        let (negative, figure) = crate::view::format::amount(&net.base_net);
-        let sign = if negative { "-" } else { "" };
-        parts.push(format!(
-            "{} {sign}{figure} {base}",
-            crate::msg::desktop_accounts_net_worth()
-        ));
-    }
-    parts.extend(accounts::held_separately_text(&net, units));
-    parts.join(" \u{b7} ")
-}
-
-impl Render for AccountsView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let accounts = self.accounts(cx);
-        let units = self.sources().ledger.read(cx).ledger().units();
-        let selected = self.selected_index(cx);
-        let focused = self.page_focused;
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(&entity, cx))
-            .children(
-                accounts::group_accounts(accounts).iter().map(|group| {
-                    group_block(group, accounts, units, selected, focused, &entity, cx)
-                }),
-            )
-            .when(accounts.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_color(color::muted(cx))
-                        .child(crate::msg::desktop_accounts_empty("n")),
-                )
-            })
+/// What to show for an account's `institution`: the placeholder's Message in the Locale in
+/// effect, or a user-managed Institution's name unchanged (Ledger data, not a Message).
+pub fn institution_label(institution: &str) -> String {
+    if institution == NO_INSTITUTION {
+        lib_locale::msg::institution_none()
+    } else {
+        institution.to_string()
     }
 }
 
-impl AccountsView {
-    /// The section heading's meta, over the page's live rows and Settings' Units.
-    pub(crate) fn scope_note(&self, cx: &App) -> String {
-        scope_note(
-            self.accounts(cx),
-            self.sources().ledger.read(cx).ledger().units(),
-        )
-    }
+/// `"7 accounts"`, or `"1 account"`.
+pub fn count_text(net: &NetWorth) -> String {
+    crate::msg::desktop_accounts_count(i64::try_from(net.account_count).unwrap_or(i64::MAX))
 }
 
-/// A click handler that runs `act` on the page with the clicked account's id.
-fn on_account(
-    entity: &Entity<AccountsView>,
-    id: u32,
-    act: fn(&mut AccountsView, u32, &mut Context<'_, AccountsView>),
-) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| entity.update(cx, |view, cx| act(view, id, cx)))
-}
-
-fn kicker_row(entity: &Entity<AccountsView>, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .mb(px(14.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::muted(cx))
-                .child(upper(&crate::msg::desktop_settings_accounts_kicker())),
-        )
-        .child(add_button(entity.clone(), cx))
-}
-
-/// `padding:8px 14px; background:#201e1d; color:#f3f2f2; font-weight:800`.
-fn add_button(entity: Entity<AccountsView>, cx: &App) -> impl IntoElement {
-    let hover = color::muted(cx);
-    div()
-        .debug_selector(|| "settings-accounts-add".to_string())
-        .id("settings-accounts-add")
-        .cursor_pointer()
-        .flex_none()
-        .py(px(8.0))
-        .px(px(14.0))
-        .bg(color::foreground(cx))
-        .text_color(color::selection_text(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .whitespace_nowrap()
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, _window, cx| entity.update(cx, AccountsView::click_add))
-        .child(crate::msg::desktop_accounts_add_button("+"))
-}
-
-/// The NAME column's floor: without one, the fixed columns beside it can squeeze it to nothing
-/// in a narrow window, and the other cells shrink (and truncate) instead.
-const NAME_MIN_WIDTH: gpui::Pixels = px(140.0);
-/// Includes [`INSTITUTION_GAP`], so the text keeps its 130px and the Unit column starts clear of it.
-const INSTITUTION_WIDTH: gpui::Pixels = px(154.0);
-const INSTITUTION_GAP: gpui::Pixels = px(24.0);
-const UNIT_WIDTH: gpui::Pixels = px(90.0);
-const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
-
-fn group_block(
-    group: &accounts::AccountGroup,
-    accounts: &[Account],
-    units: &[lib_units::UnitRow],
-    selected: Option<usize>,
-    focused: bool,
-    entity: &Entity<AccountsView>,
-    cx: &App,
-) -> impl IntoElement {
-    let last = group.indices.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .mb(px(24.0))
-        .child(
-            div()
-                .mb(px(10.0))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(14.0))
-                .child(upper(&group.account_type.label())),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .border_1()
-                .border_color(color::border(cx))
-                .child(table_header(cx))
-                .children(
-                    group
-                        .indices
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(position, &index)| {
-                            let account = accounts.get(index)?;
-                            Some(row(
-                                account,
-                                units,
-                                position == last,
-                                selected == Some(index),
-                                focused,
-                                entity,
-                                cx,
-                            ))
-                        }),
-                ),
-        )
-}
-
-/// `padding:10px 16px; background:#eae9e9; font:800 10px; color:#605d5d`. The row's own 2px
-/// selection bar sits inside its 16px padding, so the header reserves the same 2px.
-fn table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .py(px(10.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w(NAME_MIN_WIDTH)
-                .child(upper(&lib_locale::msg::column_name())),
-        )
-        .child(
-            div()
-                .w(INSTITUTION_WIDTH)
-                .pr(INSTITUTION_GAP)
-                .child(upper(&lib_locale::msg::column_institution())),
-        )
-        .child(
-            div()
-                .w(UNIT_WIDTH)
-                .child(upper(&lib_locale::msg::column_unit())),
-        )
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(upper(&lib_locale::msg::column_actions())),
-        )
-}
-
-fn row(
-    account: &Account,
-    units: &[lib_units::UnitRow],
-    last: bool,
-    selected: bool,
-    focused: bool,
-    entity: &Entity<AccountsView>,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    let id = account.id;
-    let on_row_click = on_account(entity, id, AccountsView::click_row);
-
-    div()
-        .debug_selector(move || format!("settings-accounts-row-{id}"))
-        .id(SharedString::from(format!("settings-accounts-row-{id}")))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .pr(px(16.0))
-        .py(px(8.0))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .when(selected, |this| this.bg(color::chrome(cx)))
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_row_click(window, cx))
-        // The selection bar is drawn only while the page has focus -- the tint alone still marks
-        // the row when focus is on the index.
-        .child(
-            div()
-                .w(px(2.0))
-                .h(px(20.0))
-                .flex_none()
-                .when(selected && focused, |this| this.bg(color::foreground(cx))),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w(NAME_MIN_WIDTH)
-                .pl(px(14.0))
-                .truncate()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(account.name.clone()),
-        )
-        .child(
-            div()
-                .w(INSTITUTION_WIDTH)
-                .pr(INSTITUTION_GAP)
-                .truncate()
-                .text_color(color::muted(cx))
-                .child(accounts::institution_label(&account.institution)),
-        )
-        .child(
-            div().w(UNIT_WIDTH).text_color(color::muted(cx)).child(
+/// `"vas, btc held separately"`, or `None` when every account is in the base Unit.
+pub fn held_separately_text(net: &NetWorth, units: &[lib_units::UnitRow]) -> Option<String> {
+    (!net.held_separately.is_empty()).then(|| {
+        let codes: Vec<&str> = net
+            .held_separately
+            .iter()
+            .map(|id| {
                 units
                     .iter()
-                    .find(|unit| unit.id == account.unit)
-                    .map_or_else(String::new, |unit| unit.code.clone()),
-            ),
-        )
-        .child(
-            div()
-                .w(ACTIONS_WIDTH)
-                .flex()
-                .justify_end()
-                .gap(px(10.0))
-                .child(row_action_button(
-                    SharedString::from(format!("settings-accounts-edit-{id}")),
-                    crate::msg::desktop_accounts_row_edit(),
-                    on_account(entity, id, AccountsView::click_edit),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("settings-accounts-delete-{id}")),
-                    crate::msg::desktop_accounts_row_delete(),
-                    on_account(entity, id, AccountsView::click_delete),
-                    cx,
-                )),
-        )
+                    .find(|unit| unit.id == *id)
+                    .map_or("", |unit| unit.code.as_str())
+            })
+            .collect();
+        crate::msg::desktop_accounts_held_separately(&codes.join(", "))
+    })
 }
 
-/// `padding:4px 10px; font-size:11px; border:1px solid rgba(32,30,29,.30); background:transparent`.
-/// Stops the click reaching the row's own handler, which would otherwise also open the ledger.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
+/// The Accounts group labels as Messages, in [`lib_accounts::GROUP_ORDER`]'s order.
+pub fn group_labels() -> Vec<String> {
+    lib_accounts::GROUP_ORDER.iter().map(Label::label).collect()
+}
+
+/// The three selects' option lists, read live from Settings (so an institution added there
+/// appears in the Accounts dialogs) and the fixed type order.
+pub fn dialog_options(ledger: &Entity<LedgerStore>, cx: &App) -> AccountOptions {
+    AccountOptions::new(
+        ledger
+            .read(cx)
+            .ledger()
+            .institutions()
+            .iter()
+            .map(|institution| institution.name.clone())
+            .collect(),
+        ledger
+            .read(cx)
+            .ledger()
+            .units()
+            .iter()
+            .map(|unit| (unit.id, unit.code.clone()))
+            .collect(),
+    )
+}
+
+impl EventEmitter<ViewEvent> for AccountsPage {}
+
+/// The Accounts page. Its rows and the Units its heading reads come from [`LedgerStore`], which
+/// holds the only copy. The selection is a position in [`display_order`], not an index into the
+/// rows, because the page groups accounts by type.
+pub struct AccountsPage {
+    ledger: Entity<LedgerStore>,
+    selected: usize,
+    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
+    /// draws the page.
+    pub(crate) page_focused: bool,
+    /// Repaint the page when the Accounts or the Units it reads change.
+    _accounts_changed: Subscription,
+    _units_changed: Subscription,
+}
+
+impl AccountsPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _accounts_changed = notify_on(&ledger, Domain::Accounts, cx);
+        let _units_changed = notify_on(&ledger, Domain::Units, cx);
+        Self {
+            ledger,
+            selected: 0,
+            page_focused: false,
+            _accounts_changed,
+            _units_changed,
+        }
+    }
+
+    pub(crate) fn accounts<'a>(&self, cx: &'a App) -> &'a [Account] {
+        self.ledger.read(cx).ledger().accounts()
+    }
+
+    pub fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page is open (ADR-0037)
+    // -----------------------------------------------------------------------------------------
+
+    /// The page claims no key ahead of the router: its `n`/`e`/`d` are router leftovers.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page's bare `n`, `e` and `d`, each through the same handler its button uses. Returns
+    /// whether the key was one of them.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_dialog("", cx),
+            "e" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_edit_dialog(id, cx);
+                }
+            }
+            "d" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_delete_dialog(id, cx);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the row selection. `enter` opens the selected
+    /// account's ledger: Transactions filtered to it.
+    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        let len = self.accounts(cx).len();
+        match movement.step() {
+            Some(step) => self.selected = lib_list_cursor::step(self.selected, len, step),
+            None => {
+                if let Some(id) = self.selected_id(cx) {
+                    open_ledger(id, cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// Opening the page keeps its selection, so returning finds the same row selected.
+    pub fn on_enter(&mut self, _cx: &mut Context<'_, Self>) {}
+
+    /// Selects an Account another View handed off.
+    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+        if let Reveal::Account(id) = reveal {
+            self.select_id(id, cx);
+        }
+    }
+
+    /// The page's legend and its account count.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: accounts_hints(),
+            right: crate::msg::desktop_accounts_count(
+                i64::try_from(self.accounts(cx).len()).unwrap_or(i64::MAX),
+            ),
         })
-        .id(id)
-        .cursor_pointer()
-        .py(px(4.0))
-        .px(px(10.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .text_size(px(11.0))
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
-            cx.stop_propagation();
-            on_click(window, cx)
-        })
-        .child(label)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Selection
+    // -----------------------------------------------------------------------------------------
+
+    /// The selected account's index in the store's rows, `None` when there are none. The stored
+    /// position is clamped, so removing accounts can never leave it pointing past the end.
+    pub fn selected_index(&self, cx: &App) -> Option<usize> {
+        let order = display_order(self.accounts(cx));
+        order
+            .get(self.selected.min(order.len().saturating_sub(1)))
+            .copied()
+    }
+
+    /// The selected account's id, or `None` when the page has no rows.
+    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+        let index = self.selected_index(cx)?;
+        self.accounts(cx).get(index).map(|account| account.id)
+    }
+
+    /// Selects the row for account `id`, if it still exists.
+    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let rows = self.accounts(cx);
+        let Some(index) = rows.iter().position(|account| account.id == id) else {
+            return;
+        };
+        if let Some(position) = display_order(rows).iter().position(|&i| i == index) {
+            self.selected = position;
+            cx.notify();
+        }
+    }
+
+    /// Keeps the selection in range after rows are removed, so it lands on the account that
+    /// slid into the deleted row's place (or the last one).
+    pub fn clamp_selection(&mut self, cx: &mut Context<'_, Self>) {
+        let len = self.accounts(cx).len();
+        self.selected = self.selected.min(len.saturating_sub(1));
+        cx.notify();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// A click on an account row: selects it and, as `enter` does, opens its ledger.
+    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        open_ledger(id, cx);
+    }
+
+    /// **+ Add account**: the same handler `n` reaches.
+    pub(crate) fn click_add(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_add_dialog("", cx);
+    }
+
+    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        self.open_edit_dialog(id, cx);
+    }
+
+    pub(crate) fn click_delete(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        self.open_delete_dialog(id, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Dialogs and the `accounts` command
+    // -----------------------------------------------------------------------------------------
+
+    fn dialog_options(&self, cx: &App) -> AccountOptions {
+        dialog_options(&self.ledger, cx)
+    }
+
+    /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
+    /// with Name pre-filled from `name` -- empty for `n` and the button, the typed argument for
+    /// `accounts new <account name>`.
+    fn open_add_dialog(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        let options = self.dialog_options(cx);
+        let default_unit = self
+            .ledger
+            .read(cx)
+            .ledger()
+            .units()
+            .iter()
+            .find(|unit| unit.is_default)
+            .map(|unit| unit.code.as_str());
+        let mut form = AccountForm::new(&options, default_unit);
+        form.name = TextField::new(name.trim());
+        open_dialog(AccountsDialog::Add(form), cx);
+    }
+
+    /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
+    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let options = self.dialog_options(cx);
+        let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
+            return;
+        };
+        let form = AccountForm::from_account(account, &options);
+        open_dialog(AccountsDialog::Edit(id, form), cx);
+    }
+
+    /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
+    fn open_delete_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
+            return;
+        };
+        let form = DeleteAccountForm::new(account.name.as_str());
+        open_dialog(AccountsDialog::Delete(id, form), cx);
+    }
+
+    /// `accounts new|edit|delete [<account name>]`, once `Shell` has opened the page: opens the
+    /// same dialog the page's `n`/`e`/`d` and buttons do. `new` pre-fills Name with the argument.
+    /// `edit` and `delete` resolve the typed name ([`find_by_name`]), or use the selected row when
+    /// none is given; a name that fits nothing or several accounts puts a status-line message
+    /// naming the problem rather than guessing.
+    pub fn run_command(
+        &mut self,
+        command_name: &str,
+        verb: AccountsVerb,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if verb == AccountsVerb::New {
+            self.open_add_dialog(argument, cx);
+            return;
+        }
+        let command = format!(":{command_name}");
+        let index = if argument.is_empty() {
+            self.selected_index(cx)
+                .ok_or_else(|| crate::msg::desktop_status_no_accounts(&command))
+        } else {
+            match find_by_name(self.accounts(cx), argument) {
+                NameLookup::Found(index) => Ok(index),
+                NameLookup::NotFound => Err(crate::msg::desktop_status_no_account_named(
+                    &command, argument,
+                )),
+                NameLookup::Ambiguous(names) => Err(crate::msg::desktop_status_account_ambiguous(
+                    &command,
+                    argument,
+                    &names.join(", "),
+                )),
+            }
+        };
+        let index = match index {
+            Ok(index) => index,
+            Err(message) => {
+                cx.emit(ViewEvent::SetStatus(Some(message)));
+                return;
+            }
+        };
+        let id = self.accounts(cx)[index].id;
+        self.select_id(id, cx);
+        match verb {
+            AccountsVerb::Edit => self.open_edit_dialog(id, cx),
+            AccountsVerb::Delete => self.open_delete_dialog(id, cx),
+            AccountsVerb::New => {}
+        }
+    }
+}
+
+/// Asks `Shell` for the account's ledger: Transactions filtered to it, from their first row. The
+/// selection is untouched, so returning to Accounts finds the same row selected.
+fn open_ledger(id: u32, cx: &mut Context<'_, AccountsPage>) {
+    cx.emit(ViewEvent::Reveal(Reveal::AccountTransactions(id)));
+}
+
+/// Asks `Shell`'s Dialog host to open an Accounts dialog.
+fn open_dialog(dialog: AccountsDialog, cx: &mut Context<'_, AccountsPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Accounts(
+        dialog,
+    ))));
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
+    use lib_accounts::{NO_INSTITUTION, default_accounts, net_worth};
+    use lib_core::{AccountType, Money};
+
     use super::*;
 
+    fn date(year: i32, month: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, 1).expect("test dates are valid")
+    }
+
+    fn account(id: u32, name: &str, account_type: AccountType) -> Account {
+        Account {
+            id,
+            name: name.to_string(),
+            institution: NO_INSTITUTION.to_string(),
+            account_type,
+            unit: lib_core::UnitId::SEED_AUD,
+            balance: money("0"),
+            account_number: None,
+            opened_at: date(2024, 1),
+            transaction_count: 0,
+            budget_count: 0,
+        }
+    }
+
+    fn money(text: &str) -> Money {
+        text.parse().expect("test amounts are valid decimals")
+    }
+
     #[test]
-    fn scope_note_reads_count_net_worth_and_held_units() {
-        crate::locale::init_for_tests();
-        let note = scope_note(&accounts::default_accounts(), &lib_units::default_units());
+    fn group_order_puts_loan_before_investment() {
+        let labels = group_labels();
         assert_eq!(
-            note,
-            "7 accounts \u{b7} net worth 83,995.87 aud \u{b7} vas, btc held separately"
+            labels,
+            vec!["Cash", "Bank", "Credit card", "Loan", "Investment"]
         );
     }
 
     #[test]
-    fn scope_note_with_no_accounts_says_so() {
+    fn seeded_net_worth_text_names_the_held_separately_units() {
         crate::locale::init_for_tests();
+        let net = net_worth(&default_accounts(), Some(lib_core::UnitId::SEED_AUD));
+        assert_eq!(count_text(&net), "7 accounts");
         assert_eq!(
-            scope_note(&[], &lib_units::default_units()),
-            "no accounts yet"
+            held_separately_text(&net, &lib_units::default_units()).as_deref(),
+            Some("vas, btc held separately")
         );
+    }
+
+    #[test]
+    fn account_type_is_still_in_scope_for_the_group_labels() {
+        assert_eq!(lib_accounts::GROUP_ORDER[0], AccountType::Cash);
+    }
+
+    #[test]
+    fn institution_label_renders_the_placeholder_and_passes_names_through() {
+        lib_locale::with_locale(lib_locale::Locale::EnUs, || {
+            assert_eq!(institution_label(NO_INSTITUTION), "No institution");
+            assert_eq!(institution_label("ANZ Banking Group"), "ANZ Banking Group");
+        });
+    }
+
+    #[test]
+    fn net_worth_count_text_is_singular_for_one_account() {
+        crate::locale::init_for_tests();
+        let net = net_worth(
+            &[account(1, "Only", AccountType::Cash)],
+            Some(lib_core::UnitId::SEED_AUD),
+        );
+        assert_eq!(count_text(&net), "1 account");
+        assert_eq!(
+            held_separately_text(&net, &lib_units::default_units()),
+            None
+        );
+    }
+
+    #[test]
+    fn seed_rows_parse_and_link() {
+        let accounts = default_accounts();
+        assert_eq!(accounts.len(), 7);
+
+        let mut ids: Vec<_> = accounts.iter().map(|a| a.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), accounts.len(), "ids must be unique");
+
+        let units = lib_units::default_units();
+        let institutions = lib_institutions::default_institutions();
+        for account in &accounts {
+            assert!(
+                units.iter().any(|unit| unit.id == account.unit),
+                "{} names an unknown unit {}",
+                account.name,
+                account.unit
+            );
+            assert!(
+                account.institution == NO_INSTITUTION
+                    || institutions.iter().any(|i| i.name == account.institution),
+                "{} names an unknown institution {}",
+                account.name,
+                account.institution
+            );
+        }
+    }
+
+    #[test]
+    fn seeded_base_unit_rows_sum_to_the_mockups_net_worth() {
+        let base = lib_units::default_units()
+            .into_iter()
+            .find(|unit| unit.is_base)
+            .map(|unit| unit.id);
+        let net = default_accounts()
+            .into_iter()
+            .filter(|account| Some(account.unit) == base)
+            .fold(money("0"), |sum, account| Money(sum.0 + account.balance.0));
+        assert_eq!(net, money("83995.87"));
     }
 }

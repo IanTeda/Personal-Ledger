@@ -12,8 +12,8 @@ use lib_locale::format::upper;
 use crate::{
     bills::pay_form::{MatchChoice, PAY_MODES, PayField, PayForm, PayMode},
     dialog,
+    form::dialog_fields::{label, text_field, two_up},
     theme::color,
-    view::accounts::add_dialog::{label, text_field, two_up},
 };
 
 /// The dialog's width: 8d's.

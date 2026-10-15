@@ -15,9 +15,9 @@ use crate::{
     bills::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod},
     bills::{BillPlan, BillStatus, Recurrence},
     form::select::SelectState,
+    form::select_field::{self, SelectFieldProps},
     theme::color,
     transactions::rows::EMPTY_CELL,
-    view::accounts::select_field::{self, SelectFieldProps},
 };
 
 use super::{

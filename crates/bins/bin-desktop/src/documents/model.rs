@@ -7,7 +7,6 @@ use lib_core::DateStyle;
 use lib_locale::format::{format_date, format_year_month, upper};
 
 use crate::{
-    accounts::Account,
     bills::BillPlan,
     documents,
     documents::types::DocumentTypeRow,
@@ -21,6 +20,7 @@ use crate::{
     transactions::Transaction,
     view::format,
 };
+use lib_accounts::Account;
 
 /// The shared stubs a Document's Links point into, and the clock they are read against.
 pub struct Lookups<'a> {
@@ -621,7 +621,6 @@ pub fn inbox_detail(
 mod tests {
     use super::*;
     use crate::{
-        accounts::default_accounts,
         bills::default_bills,
         categories::default_categories,
         documents::{self, DocumentsSeed, default_documents},
@@ -629,6 +628,7 @@ mod tests {
         tags::default_tags,
         transactions::default_transactions,
     };
+    use lib_accounts::default_accounts;
 
     struct World {
         types: Vec<DocumentTypeRow>,

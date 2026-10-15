@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use crate::{dialog, payees::PayeeError, theme::color, view::accounts::add_dialog};
+use crate::{dialog, form::dialog_fields, payees::PayeeError, theme::color};
 
 /// Called with the index of the chip whose `✕` was clicked.
 pub type OnRemoveRule = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -68,7 +68,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
     let hover = color::hover(cx);
 
     div()
-        .child(add_dialog::optional_label(
+        .child(dialog_fields::optional_label(
             crate::msg::desktop_payees_field_match_rules(),
             cx,
         ))

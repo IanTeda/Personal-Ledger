@@ -189,9 +189,10 @@ impl Shell {
             on_click
         };
         let account = self
-            .accounts
+            .ledger
             .read(cx)
-            .accounts(cx)
+            .ledger()
+            .accounts()
             .iter()
             .find(|a| a.id == plan.account_id)
             .map(|a| a.name.clone())
@@ -249,9 +250,10 @@ impl Shell {
                     .or_else(|| transaction.description.clone())
                     .unwrap_or_default();
                 let account = self
-                    .accounts
+                    .ledger
                     .read(cx)
-                    .accounts(cx)
+                    .ledger()
+                    .accounts()
                     .iter()
                     .find(|a| a.id == transaction.account_id)
                     .map(|a| a.name.clone())

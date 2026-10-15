@@ -33,7 +33,6 @@ use crate::{
         rows::DisplayPrefs,
     },
     view::{
-        accounts::state::AccountsStore,
         categories::state::CategoriesStore,
         event::{Reveal, ViewEvent, ViewMode},
         format,
@@ -86,7 +85,6 @@ impl TransactionsState {
 #[derive(Clone)]
 pub struct TransactionsSources {
     pub ledger: Entity<LedgerStore>,
-    pub accounts: Entity<AccountsStore>,
     pub categories: Entity<CategoriesStore>,
     pub payees: Entity<PayeesStore>,
     pub tags: Entity<TagsStore>,
@@ -163,7 +161,7 @@ impl TransactionsView {
     /// The reference data the Transactions engine reads, borrowed from the shared stores.
     pub(super) fn ledger<'a>(&self, cx: &'a App) -> Ledger<'a> {
         Ledger {
-            accounts: self.sources.accounts.read(cx).accounts(cx),
+            accounts: self.sources.ledger.read(cx).ledger().accounts(),
             categories: self.sources.categories.read(cx).categories(cx),
             payees: self.payees(cx),
             tags: self.sources.tags.read(cx).tags(cx),

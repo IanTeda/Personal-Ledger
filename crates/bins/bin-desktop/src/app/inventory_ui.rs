@@ -360,7 +360,7 @@ impl Shell {
             }
             InventoryDialog::RemoveRoom(id, form) => {
                 let (_, room) = self.inventory(cx).room(*id)?;
-                let on_option_click: crate::view::accounts::select_field::OnOptionClick = {
+                let on_option_click: crate::form::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
@@ -479,7 +479,7 @@ impl Shell {
                 });
             })
         };
-        let on_unit_option_click: crate::view::accounts::select_field::OnOptionClick = {
+        let on_unit_option_click: crate::form::select_field::OnOptionClick = {
             let entity = entity.clone();
             Rc::new(move |index, _window, cx| {
                 entity.update(cx, |shell, cx| {

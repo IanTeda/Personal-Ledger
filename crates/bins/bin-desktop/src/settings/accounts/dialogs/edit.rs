@@ -1,5 +1,5 @@
 //! Renders the **Edit account** dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3c) on the same
-//! form and chrome as Add (`super::add_dialog`), pre-filled from the account.
+//! form and chrome as Add (`super::add`), pre-filled from the account.
 //!
 //! **Editable**: Name, Institution, Type, and the UI-only Account number. **Shown read-only**:
 //! Unit and Opening balance -- the glossary fixes a Unit at creation, and an opening balance
@@ -11,19 +11,22 @@
 use chrono::Datelike;
 use gpui::{AnyElement, SharedString, div, prelude::*, px};
 
+use lib_accounts::{Account, NO_INSTITUTION};
+
 use super::{
-    add_dialog::{
-        self, OnCancel, OnConfirm, OnFieldClick, OnOptionClick, label, suffixed_label, text_field,
-        two_up,
-    },
-    select_field::{self, SelectFieldProps},
+    WIDTH,
+    add::{OnCancel, OnConfirm, OnFieldClick, OnOptionClick},
 };
 use crate::{
-    accounts::{
-        self, Account, NO_INSTITUTION,
-        form::{AccountField, AccountForm, AccountOptions},
-    },
     dialog,
+    form::{
+        dialog_fields::{label, optional_label, suffixed_label, text_field, two_up},
+        select_field::{self, SelectFieldProps},
+    },
+    settings::accounts::{
+        form::{AccountField, AccountForm, AccountOptions},
+        institution_label,
+    },
     theme::color,
 };
 
@@ -86,7 +89,7 @@ pub fn render(
                         accent: false,
                         read_only: form
                             .is_cash()
-                            .then(|| accounts::institution_label(NO_INSTITUTION).into()),
+                            .then(|| institution_label(NO_INSTITUTION).into()),
                         on_field_click: click(AccountField::Institution),
                         on_option_click: option_click(AccountField::Institution),
                     },
@@ -134,7 +137,7 @@ pub fn render(
             ]),
             text_field(
                 "edit-account-number",
-                add_dialog::optional_label(crate::msg::desktop_accounts_field_number(), cx),
+                optional_label(crate::msg::desktop_accounts_field_number(), cx),
                 form.account_number.text(),
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
@@ -159,7 +162,7 @@ pub fn render(
             cx,
         ));
 
-    dialog::overlay(add_dialog::WIDTH, false, card, cx)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
 /// `Opened Mar 2019 · 312 transactions. Renaming is safe. ...` -- the usage notice, with the
@@ -206,7 +209,7 @@ mod tests {
     #[test]
     fn usage_notice_names_the_month_the_count_and_the_reason() {
         crate::locale::init_for_tests();
-        let mut account = accounts::default_accounts()
+        let mut account = lib_accounts::default_accounts()
             .into_iter()
             .find(|a| a.name == "ANZ Everyday")
             .expect("seeded");

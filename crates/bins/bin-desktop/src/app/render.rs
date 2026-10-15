@@ -17,8 +17,8 @@ use gpui::{
     prelude::*, px,
 };
 
+use crate::settings::accounts::dialogs as accounts_dialogs;
 use crate::{
-    accounts::form::AccountsDialog,
     bills::{self},
     budgets,
     categories::{self},
@@ -31,12 +31,12 @@ use crate::{
     navigation::nav::{FocusZone, InputMode},
     payees::{self},
     period::Period,
+    settings::accounts::dialogs::AccountsDialog,
     settings::{SettingsDialog, SettingsFocus},
     tags::{self},
     theme::{color, type_scale},
     view::format,
     view::{
-        accounts as accounts_view,
         active::{ActiveViewEntity, ShellView},
         bills as bills_view, categories as categories_view,
         dashboard::{self, Dashboard},
@@ -195,35 +195,37 @@ impl Render for Shell {
             })
         };
 
-        let on_accounts_dialog_field_click: accounts_view::add_dialog::OnFieldClick = {
+        let on_accounts_dialog_field_click: accounts_dialogs::add::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.handle_accounts_dialog_field_click(field, cx)
+                    shell.edit_dialog(cx, |dialog: &mut AccountsDialog| dialog.click_field(field))
                 });
             })
         };
-        let on_accounts_dialog_option_click: accounts_view::add_dialog::OnOptionClick = {
+        let on_accounts_dialog_option_click: accounts_dialogs::add::OnOptionClick = {
             let entity = entity.clone();
             Rc::new(move |field, index, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.handle_accounts_dialog_option_click(field, index, cx)
+                    shell.edit_dialog(cx, |dialog: &mut AccountsDialog| {
+                        dialog.choose_option(field, index)
+                    })
                 });
             })
         };
-        let on_accounts_dialog_cancel: accounts_view::add_dialog::OnCancel = {
+        let on_accounts_dialog_cancel: accounts_dialogs::add::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
             })
         };
-        let on_accounts_dialog_confirm: accounts_view::add_dialog::OnConfirm = {
+        let on_accounts_dialog_confirm: accounts_dialogs::add::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
-        let account_options = self.account_dialog_options(cx);
+        let account_options = crate::settings::accounts::dialog_options(&self.ledger, cx);
         let on_categories_add_click: categories_view::OnAddClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -700,7 +702,7 @@ impl Render for Shell {
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
             .children(self.dialog::<AccountsDialog>().map(|dialog| match dialog {
-                AccountsDialog::Add(form) => accounts_view::add_dialog::render(
+                AccountsDialog::Add(form) => accounts_dialogs::add::render(
                     form,
                     &account_options,
                     on_accounts_dialog_field_click,
@@ -711,13 +713,14 @@ impl Render for Shell {
                 ),
                 AccountsDialog::Edit(id, form) => {
                     match self
-                        .accounts
+                        .ledger
                         .read(cx)
-                        .accounts(cx)
+                        .ledger()
+                        .accounts()
                         .iter()
                         .find(|account| account.id == *id)
                     {
-                        Some(account) => accounts_view::edit_dialog::render(
+                        Some(account) => accounts_dialogs::edit::render(
                             form,
                             account,
                             &account_options,
@@ -733,13 +736,14 @@ impl Render for Shell {
                 }
                 AccountsDialog::Delete(id, form) => {
                     match self
-                        .accounts
+                        .ledger
                         .read(cx)
-                        .accounts(cx)
+                        .ledger()
+                        .accounts()
                         .iter()
                         .find(|account| account.id == *id)
                     {
-                        Some(account) => accounts_view::delete_dialog::render(
+                        Some(account) => accounts_dialogs::delete::render(
                             account,
                             self.ledger.read(cx).ledger().unit_code(account.unit),
                             form,
@@ -776,7 +780,7 @@ impl Render for Shell {
                                 name: &payee.name,
                                 splits: payees::usage(
                                     self.transactions(cx),
-                                    self.accounts.read(cx).accounts(cx),
+                                    self.ledger.read(cx).ledger().accounts(),
                                     None,
                                     *id,
                                 )
@@ -800,7 +804,7 @@ impl Render for Shell {
                                 form,
                                 splits: payees::usage(
                                     self.transactions(cx),
-                                    self.accounts.read(cx).accounts(cx),
+                                    self.ledger.read(cx).ledger().accounts(),
                                     None,
                                     *id,
                                 )

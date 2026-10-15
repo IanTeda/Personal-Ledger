@@ -14,12 +14,12 @@ use super::{
 };
 use crate::{
     dialog,
+    form::dialog_fields::{label, text_field},
     tags::{
         TagError,
         form::{TagField, TagForm},
     },
     theme::color,
-    view::accounts::add_dialog::{label, text_field},
 };
 
 pub struct EditTagProps<'a> {

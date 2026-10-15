@@ -17,11 +17,11 @@ use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use lib_core::Money;
 
 use crate::{
-    accounts::form::SelectKey,
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
+    form::select::SelectKey,
     form::select::SelectState,
     period::Period,
 };
@@ -555,7 +555,8 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::{accounts::default_accounts, categories::default_categories};
+    use crate::categories::default_categories;
+    use lib_accounts::default_accounts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()

@@ -186,7 +186,6 @@ pub fn half_page_rows(viewport_px: f32, row_px: f32) -> usize {
 mod tests {
     use super::*;
     use crate::{
-        accounts::default_accounts,
         categories::default_categories,
         payees::default_payees,
         tags::default_tags,
@@ -194,6 +193,7 @@ mod tests {
         transactions::query::{TransactionFilters, query},
     };
     use chrono::NaiveDate;
+    use lib_accounts::default_accounts;
     use lib_core::TransactionStatus;
 
     fn today() -> NaiveDate {
@@ -208,7 +208,7 @@ mod tests {
     }
 
     struct World {
-        accounts: Vec<crate::accounts::Account>,
+        accounts: Vec<lib_accounts::Account>,
         categories: Vec<categories::Category>,
         payees: Vec<Payee>,
         tags: Vec<Tag>,

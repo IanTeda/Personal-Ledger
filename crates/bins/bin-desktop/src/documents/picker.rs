@@ -497,7 +497,6 @@ mod tests {
     use super::*;
     use crate::inventory::Inventory;
     use crate::{
-        accounts::{Account, default_accounts},
         bills::{BillPlan, default_bills},
         categories::default_categories,
         documents::{DocumentsSeed, default_documents},
@@ -505,6 +504,7 @@ mod tests {
         tags::default_tags,
         transactions::default_transactions,
     };
+    use lib_accounts::{Account, default_accounts};
     use lib_core::DateStyle;
 
     struct World {

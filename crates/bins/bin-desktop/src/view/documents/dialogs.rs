@@ -13,11 +13,11 @@ use crate::{
         FieldProblem, FormProblems, ImportForm,
     },
     documents::picker::{KindFilter, PickerRow, PickerState, Purpose},
-    theme::color,
-    view::accounts::{
-        add_dialog::{label, text_field, two_up},
+    form::{
+        dialog_fields::{label, text_field, two_up},
         select_field::{self, SelectFieldProps},
     },
+    theme::color,
 };
 
 pub type OnFieldClick = Rc<dyn Fn(DocumentField, &mut Window, &mut App)>;

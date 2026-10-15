@@ -4,7 +4,6 @@
 //! persistent-rail, command-palette-driven navigation chrome `docs/ux/desktop-mockups/README.md`
 //! specifies, in place of the feasibility cycle's flat `TabBar` screen-cycling (ADR-0016).
 
-mod accounts;
 pub mod app;
 mod assets;
 mod bills;

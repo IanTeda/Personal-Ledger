@@ -1,77 +1,19 @@
 //! The Accounts dialogs' form state: the Add, Edit and Delete account forms and the select
-//! options behind them. `gpui`-free, like the rest of this domain; `view::accounts` renders it.
+//! options behind them. `gpui`-free, like the rest of this domain; the page and its Dialogs render it.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_accounts::{AccountDraft, NewAccount};
+use lib_accounts::{Account, AccountDraft, GROUP_ORDER, NO_INSTITUTION, NewAccount};
 use lib_core::{AccountType, Money, UnitId};
 use lib_locale::Label;
 
-use super::{Account, GROUP_ORDER, NO_INSTITUTION};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    form::field::TextField,
-    form::select::SelectState,
+    chrome::dialog_host::{DialogKey, DialogOutcome},
+    form::{
+        field::TextField,
+        select::{SelectKey, SelectState},
+    },
 };
-
-/// Every Accounts dialog `Shell` can have open, `None` when none is -- the README's own `State`
-/// block (`dialog: Option<Dialog>`). The `u32` is the account's [`Account::id`]. Each dialog
-/// ticket attaches its own form state to its variant.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AccountsDialog {
-    Add(AccountForm),
-    /// Editing the account with this [`Account::id`].
-    Edit(u32, AccountForm),
-    /// Deleting the account with this [`Account::id`], once its name has been typed back.
-    Delete(u32, DeleteAccountForm),
-}
-
-impl AccountsDialog {
-    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
-    pub fn form(&self) -> Option<&AccountForm> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(..) => None,
-        }
-    }
-
-    pub fn form_mut(&mut self) -> Option<&mut AccountForm> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(..) => None,
-        }
-    }
-}
-
-impl Dialog for AccountsDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        self.form_mut()?.handle_own_key(key)
-    }
-
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form.focused_text(),
-            Self::Delete(_, form) => Some(&mut form.confirm_input),
-        }
-    }
-
-    fn cycle_field(&mut self) {
-        if let Some(form) = self.form_mut() {
-            form.cycle_focus(false);
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
-            Self::Delete(_, form) => form.is_valid(),
-        }
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        self.form_mut().is_some_and(AccountForm::close_open_select)
-    }
-}
 
 /// The Delete account dialog's live form state -- pure, `gpui`-free. Just the typed-back
 /// confirmation: there is nothing to `Tab` between, so the input is implicitly always focused
@@ -169,15 +111,6 @@ impl AccountOptions {
             _ => &[],
         }
     }
-}
-
-/// A key a focused select understands, parsed from a keystroke by `Shell`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectKey {
-    Up,
-    Down,
-    /// `Enter` or `Space`: open a closed list, commit an open one.
-    Activate,
 }
 
 /// The type a [`Label::label`] names in the Locale in effect.
@@ -385,7 +318,7 @@ impl AccountForm {
     }
 
     /// The text field typing and `Backspace` edit, `None` while a select has focus.
-    fn focused_text(&mut self) -> Option<&mut TextField> {
+    pub(super) fn focused_text(&mut self) -> Option<&mut TextField> {
         match self.focused {
             AccountField::Name => Some(&mut self.name),
             AccountField::AccountNumber => Some(&mut self.account_number),
@@ -398,7 +331,7 @@ impl AccountForm {
     /// opening balance's own filter -- it only takes what can be part of a decimal amount: digits,
     /// one `.`, and a `-` at the start. A select swallows typed characters rather than letting
     /// them fall through to the shell.
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+    pub(super) fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         let on_select = self.focused.is_select();
         match key {
             DialogKey::Up => {
@@ -493,7 +426,10 @@ mod tests {
     use lib_accounts::edit_account;
 
     use super::*;
-    use crate::accounts::{default_accounts, group_accounts};
+    use lib_accounts::{default_accounts, group_accounts};
+
+    use super::super::dialogs::AccountsDialog;
+    use crate::chrome::dialog_host::Dialog;
 
     fn date(year: i32, month: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, 1).expect("test dates are valid")

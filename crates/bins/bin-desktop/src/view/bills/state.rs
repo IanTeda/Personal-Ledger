@@ -29,7 +29,6 @@ use crate::{
     period::Period,
     settings::display::StatusGlyphs,
     view::{
-        accounts::state::AccountsStore,
         categories::state::CategoriesStore,
         event::{Reveal, ViewEvent},
     },
@@ -71,7 +70,6 @@ impl BillsState {
 #[derive(Clone)]
 pub struct BillsSources {
     pub categories: Entity<CategoriesStore>,
-    pub accounts: Entity<AccountsStore>,
     pub payees: Entity<PayeesStore>,
     /// The Ledger, for the base Unit the summary totals in.
     pub ledger: Entity<LedgerStore>,
@@ -88,13 +86,16 @@ pub struct BillsView {
     /// The page's own scroll, reset as it becomes the destination and as its tab changes.
     pub(super) scroll: ScrollHandle,
     pub(super) state: BillsState,
-    /// Repaints the page when the Units it reads its base Unit from change.
+    /// Repaints the page when the Units it reads its base Unit from change, and the Accounts its
+    /// plans and filters name.
     _units_changed: Subscription,
+    _accounts_changed: Subscription,
 }
 
 impl BillsView {
     pub fn new(sources: BillsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _units_changed = notify_on(&sources.ledger, Domain::Units, cx);
+        let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         Self {
             sources,
             today,
@@ -103,6 +104,7 @@ impl BillsView {
             scroll: ScrollHandle::new(),
             state: BillsState::new(today),
             _units_changed,
+            _accounts_changed,
         }
     }
 
@@ -459,9 +461,10 @@ impl BillsView {
                 .collect(),
             FilterField::Account => self
                 .sources
-                .accounts
+                .ledger
                 .read(cx)
-                .accounts(cx)
+                .ledger()
+                .accounts()
                 .iter()
                 .filter(|a| plans.iter().any(|p| p.account_id == a.id))
                 .map(|a| (a.id, a.name.clone()))
@@ -574,7 +577,7 @@ impl BillsView {
     fn plan_source(&self, keep_payee: Option<u32>, cx: &App) -> BillPlanSource {
         BillPlanSource::new(
             self.sources.categories.read(cx).categories(cx),
-            self.sources.accounts.read(cx).accounts(cx),
+            self.sources.ledger.read(cx).ledger().accounts(),
             self.sources.ledger.read(cx).ledger().units(),
             self.sources.payees.read(cx).payees(cx),
             keep_payee,
@@ -632,7 +635,7 @@ impl BillsView {
             ledger.bill_plans(),
             ledger.bill_entries(),
             transactions,
-            self.sources.accounts.read(cx).accounts(cx),
+            self.sources.ledger.read(cx).ledger().accounts(),
             self.sources.categories.read(cx).categories(cx),
             row.id,
         );
@@ -754,7 +757,6 @@ mod tests {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
         let sources = BillsSources {
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
-            accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
             payees: cx.new(|cx| PayeesStore::new(ledger.clone(), cx)),
             ledger,
         };

@@ -288,7 +288,6 @@ pub fn footer(visible: &Visible<'_>, filters: &TransactionFilters, ledger: &Ledg
 mod tests {
     use super::*;
     use crate::{
-        accounts::default_accounts,
         categories::default_categories,
         payees::default_payees,
         tags::default_tags,
@@ -296,13 +295,14 @@ mod tests {
         transactions::query::{StatusFilter, query},
     };
     use chrono::Duration;
+    use lib_accounts::default_accounts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
     }
 
     struct World {
-        accounts: Vec<crate::accounts::Account>,
+        accounts: Vec<lib_accounts::Account>,
         categories: Vec<categories::Category>,
         payees: Vec<crate::payees::Payee>,
         tags: Vec<crate::tags::Tag>,

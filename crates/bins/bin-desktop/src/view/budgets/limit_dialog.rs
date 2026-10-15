@@ -13,12 +13,12 @@ use crate::{
     budgets::limit_form::{LimitField, LimitForm, LimitOptions, LimitPreview, ROLLOVERS, SPANS},
     budgets::{BudgetError, Rollover, Span},
     dialog,
-    theme::color,
-    transactions::rows::EMPTY_CELL,
-    view::accounts::{
-        add_dialog::{label, text_field},
+    form::{
+        dialog_fields::{label, text_field},
         select_field::{self, SelectFieldProps},
     },
+    theme::color,
+    transactions::rows::EMPTY_CELL,
     view::format::amount,
 };
 

@@ -1,28 +1,30 @@
 //! Renders the **Add account** dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3b) on the shared
-//! `crate::dialog` chrome. `Shell` owns the live form (`accounts::form::AccountForm`) and every
+//! `crate::dialog` chrome. `Shell` owns the live form (`settings::accounts::form::AccountForm`) and every
 //! keystroke while it is open (`InputMode::Dialog`); this module only draws it.
 //!
 //! Width is 440px rather than `dialog::WIDTH`'s 420px, the README's own note: only because the
 //! two-up field rows need the room. Text fields follow the Settings dialogs' append/pop-only
-//! model. Institution, Type and Unit are the shared dropdown (`super::select_field`); Institution
+//! model. Institution, Type and Unit are the shared dropdown (`crate::form::select_field`); Institution
 //! reads as the read-only placeholder while Type is Cash.
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
-use super::select_field::{self, SelectFieldProps};
+use lib_accounts::NO_INSTITUTION;
+
+use super::WIDTH;
 use crate::{
-    accounts::{
-        self, NO_INSTITUTION,
-        form::{AccountField, AccountForm, AccountOptions},
-    },
     dialog,
-    theme::color,
+    form::{
+        dialog_fields::{label, optional_label, text_field, two_up},
+        select_field::{self, SelectFieldProps},
+    },
+    settings::accounts::{
+        form::{AccountField, AccountForm, AccountOptions},
+        institution_label,
+    },
 };
-
-/// The dialog's width: `docs/ux/desktop-mockups/17-accounts/README.md`'s "Dialog" row.
-pub const WIDTH: gpui::Pixels = px(440.0);
 
 pub type OnFieldClick = Rc<dyn Fn(AccountField, &mut Window, &mut App)>;
 pub type OnOptionClick = Rc<dyn Fn(AccountField, usize, &mut Window, &mut App)>;
@@ -79,7 +81,7 @@ pub fn render(
                         accent: false,
                         read_only: form
                             .is_cash()
-                            .then(|| accounts::institution_label(NO_INSTITUTION).into()),
+                            .then(|| institution_label(NO_INSTITUTION).into()),
                         on_field_click: click(AccountField::Institution),
                         on_option_click: option_click(AccountField::Institution),
                     },
@@ -156,99 +158,4 @@ pub fn render(
         ));
 
     dialog::overlay(WIDTH, false, card, cx)
-}
-
-/// Two fields side by side: `gap:16px`, each `flex:1`.
-pub(crate) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
-    div()
-        .flex()
-        .items_start()
-        .gap(px(16.0))
-        .children(fields)
-        .into_any_element()
-}
-
-/// A field label: `font-weight:800; font-size:12px; margin-bottom:6px`.
-pub(crate) fn label(text: impl Into<SharedString>) -> AnyElement {
-    div()
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(12.0))
-        .mb(px(6.0))
-        .child(text.into())
-        .into_any_element()
-}
-
-/// A label suffixed `(optional)` in the tertiary ink.
-pub(crate) fn optional_label(text: impl Into<SharedString>, cx: &App) -> AnyElement {
-    suffixed_label(text, crate::msg::desktop_field_optional(), cx)
-}
-
-/// A label followed by a `suffix` in the tertiary ink, at regular weight.
-pub(crate) fn suffixed_label(
-    text: impl Into<SharedString>,
-    suffix: impl Into<SharedString>,
-    cx: &App,
-) -> AnyElement {
-    div()
-        .flex()
-        .gap(px(4.0))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(12.0))
-        .mb(px(6.0))
-        .child(text.into())
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::NORMAL)
-                .text_color(color::faint_text(cx))
-                .child(suffix.into()),
-        )
-        .into_any_element()
-}
-
-/// A label above a clickable text box whose border turns `accent` with a trailing caret while
-/// focused -- the same look as the Settings dialogs' text fields.
-pub(crate) fn text_field(
-    id: &'static str,
-    label: AnyElement,
-    value: &str,
-    placeholder: &str,
-    focused: bool,
-    on_click: dialog::OnClick,
-    cx: &App,
-) -> AnyElement {
-    let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if value.is_empty() {
-        (
-            SharedString::from(format!("{placeholder}{caret}")),
-            color::faint_text(cx),
-        )
-    } else {
-        (
-            SharedString::from(format!("{value}{caret}")),
-            color::foreground(cx),
-        )
-    };
-
-    div()
-        .child(label)
-        .child(
-            div()
-                .id(id)
-                .debug_selector(move || id.to_string())
-                .cursor_pointer()
-                .w_full()
-                .py(px(8.0))
-                .px(px(10.0))
-                .border_1()
-                .border_color(if focused {
-                    color::accent(cx)
-                } else {
-                    color::border(cx)
-                })
-                .text_size(px(13.0))
-                .text_color(text_color)
-                .on_click(move |_event, window, cx| on_click(window, cx))
-                .child(text),
-        )
-        .into_any_element()
 }

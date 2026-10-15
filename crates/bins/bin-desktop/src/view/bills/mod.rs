@@ -270,7 +270,7 @@ impl Render for BillsView {
         let ledger = self.sources.ledger.read(cx).ledger();
         let (plans, entries) = (ledger.bill_plans(), ledger.bill_entries());
         let transactions = self.sources.ledger.read(cx).ledger().transactions();
-        let accounts = self.sources.accounts.read(cx).accounts(cx);
+        let accounts = self.sources.ledger.read(cx).ledger().accounts();
         let units = self.sources.ledger.read(cx).ledger().units();
         let base_unit = units
             .iter()

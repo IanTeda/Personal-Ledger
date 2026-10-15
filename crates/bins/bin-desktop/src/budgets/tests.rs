@@ -5,8 +5,8 @@
 use chrono::NaiveDate;
 
 use super::*;
-use crate::accounts::{Account, default_accounts};
 use crate::categories::{Category, default_categories};
+use lib_accounts::{Account, default_accounts};
 
 fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 9, 21).unwrap_or_default()

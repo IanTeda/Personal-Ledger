@@ -12,12 +12,12 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
+    form::select_field::{self, SelectFieldProps},
     tags::{
         Tag,
         form::{MergeField, MergeTagsForm},
     },
     theme::color,
-    view::accounts::select_field::{self, SelectFieldProps},
 };
 
 /// The dialog's width: the handoff's 7e.

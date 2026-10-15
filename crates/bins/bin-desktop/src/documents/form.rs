@@ -17,7 +17,6 @@ use lib_core::DateStyle;
 use lib_locale::format::format_date_input;
 
 use crate::{
-    accounts::form::SelectKey,
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::types::DocumentTypeRow,
     documents::{
@@ -25,6 +24,7 @@ use crate::{
         NewDocument,
     },
     form::field::TextField,
+    form::select::SelectKey,
     form::select::SelectState,
     transactions::filter_form::parse_date,
 };

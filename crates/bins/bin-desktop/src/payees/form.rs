@@ -6,10 +6,10 @@ use lib_ledger::PayeeUse;
 
 use super::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
 use crate::{
-    accounts::form::SelectKey,
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
+    form::select::SelectKey,
     form::select::SelectState,
 };
 

@@ -13,11 +13,11 @@ use crate::{
     bills::{AmountKind, BillError},
     dialog,
     form::fields::segmented_control,
-    theme::color,
-    view::accounts::{
-        add_dialog::{label, suffixed_label, text_field, two_up},
+    form::{
+        dialog_fields::{label, suffixed_label, text_field, two_up},
         select_field::{self, SelectFieldProps},
     },
+    theme::color,
 };
 
 /// The dialog's width: 8c's, wider than the other dialogs for its field count.

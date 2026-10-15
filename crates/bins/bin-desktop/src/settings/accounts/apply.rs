@@ -6,7 +6,7 @@ use gpui::{App, Entity};
 use lib_accounts::{AccountDraft, AccountError, NewAccount};
 use lib_ledger::{AddAccount, DeleteAccount, EditAccount};
 
-use super::form::{AccountForm, AccountsDialog};
+use super::{dialogs::AccountsDialog, form::AccountForm};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     ledger_store::LedgerStore,
@@ -114,14 +114,14 @@ mod tests {
 
     use super::*;
     use crate::ledger_store::test_ledger;
-    use crate::{accounts::form::DeleteAccountForm, chrome::dialog_apply::confirm};
+    use crate::{chrome::dialog_apply::confirm, settings::accounts::form::DeleteAccountForm};
 
     #[gpui::test]
     fn a_confirmed_delete_removes_the_account_and_reports_its_name(cx: &mut TestAppContext) {
         let ledger = test_ledger(
             cx,
             LedgerParts {
-                accounts: crate::accounts::default_accounts(),
+                accounts: lib_accounts::default_accounts(),
                 units: lib_units::default_units(),
                 price_sources: lib_units::default_price_sources(),
                 ..LedgerParts::default()

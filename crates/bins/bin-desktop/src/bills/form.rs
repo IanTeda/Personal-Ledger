@@ -23,16 +23,17 @@ use lib_core::{CategoryTypes, DateStyle, Money, UnitId};
 use lib_locale::format::format_date_input;
 
 use crate::{
-    accounts::{Account, form::SelectKey},
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
+    form::select::SelectKey,
     form::select::SelectState,
     payees::Payee,
     transactions,
     transactions::filter_form::parse_date,
 };
+use lib_accounts::Account;
 
 /// The dialog's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -700,10 +701,10 @@ impl Dialog for BillPlanForm {
 mod tests {
     use super::*;
     use crate::{
-        accounts::default_accounts, bills, categories::default_categories,
-        chrome::dialog_host::handle_key, payees::default_payees, tags::default_tags,
-        transactions::default_transactions,
+        bills, categories::default_categories, chrome::dialog_host::handle_key,
+        payees::default_payees, tags::default_tags, transactions::default_transactions,
     };
+    use lib_accounts::default_accounts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -938,7 +939,8 @@ mod tests {
     use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, type_text};
 
     fn bill_plan_form() -> BillPlanForm {
-        use crate::{accounts::default_accounts, categories::default_categories};
+        use crate::categories::default_categories;
+        use lib_accounts::default_accounts;
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let source = BillPlanSource::new(
             &default_categories(),

@@ -26,7 +26,6 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
-mod accounts_ui;
 mod bills_ui;
 mod budgets_ui;
 mod categories_ui;
@@ -83,7 +82,7 @@ use lib_ledger::{Ledger, MoveDocumentType};
 use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
-use crate::view::accounts::state::{AccountsSources, AccountsStore, AccountsView};
+use crate::settings::accounts::AccountsPage;
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
@@ -152,9 +151,6 @@ pub struct Shell {
     /// The only copy of the Ledger (ADR-0038). Every per-domain store below reads through it and
     /// holds no rows of its own.
     ledger: Entity<LedgerStore>,
-    /// The Accounts rows, read through their store Entity (ADR-0032). Shared:
-    /// Transactions, Budgets, Bills and Documents read the same rows.
-    accounts: Entity<AccountsStore>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -202,26 +198,18 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
-        let accounts = cx.new(|cx| AccountsStore::new(ledger.clone(), cx));
         let categories_store = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
         let categories_view = cx.new(|_| CategoriesView::new());
         // The Dialogs and the Dashboard read the Units and Institutions straight from the Ledger.
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
+        let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
         let categories_subscription = cx.subscribe(
             &categories_store,
             |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
         );
         let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
-        let accounts_view = cx.new(|cx| {
-            AccountsView::new(
-                AccountsSources {
-                    accounts: accounts.clone(),
-                    ledger: ledger.clone(),
-                },
-                cx,
-            )
-        });
+        let accounts_view = cx.new(|cx| AccountsPage::new(ledger.clone(), cx));
         let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let accounts_view_observer = cx.observe(&accounts_view, |_, _, cx| cx.notify());
@@ -276,7 +264,6 @@ impl Shell {
             TransactionsView::new(
                 TransactionsSources {
                     ledger: ledger.clone(),
-                    accounts: accounts.clone(),
                     categories: categories_store.clone(),
                     payees: payees_store.clone(),
                     tags: tags_store.clone(),
@@ -298,7 +285,6 @@ impl Shell {
                 BudgetsSources {
                     ledger: ledger.clone(),
                     categories: categories_store.clone(),
-                    accounts: accounts.clone(),
                 },
                 budgets_current,
                 today,
@@ -311,7 +297,6 @@ impl Shell {
             BillsView::new(
                 BillsSources {
                     categories: categories_store.clone(),
-                    accounts: accounts.clone(),
                     payees: payees_store.clone(),
                     ledger: ledger.clone(),
                 },
@@ -326,7 +311,6 @@ impl Shell {
             DocumentsView::new(
                 DocumentsSources {
                     ledger: ledger.clone(),
-                    accounts: accounts.clone(),
                     payees: payees_store.clone(),
                     inventory: inventory.clone(),
                 },
@@ -360,7 +344,6 @@ impl Shell {
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
             ledger,
-            accounts,
             today,
             categories_store,
             categories_view,
@@ -392,6 +375,7 @@ impl Shell {
                 payees_view_observer,
                 categories_subscription,
                 units_subscription,
+                accounts_changed,
                 units_page_subscription,
                 institutions_subscription,
                 institutions_page_subscription,
@@ -640,19 +624,19 @@ impl Focusable for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::accounts::hints::accounts_hints;
     use crate::settings::hints::{
         settings_colour_grid_hints, settings_display_hints, settings_index_hints,
         settings_plain_page_hints,
     };
     use crate::transactions::Transaction;
-    use crate::view::accounts::hints::accounts_hints;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
-    use crate::{accounts, categories, payees, tags, transactions};
+    use crate::{categories, payees, tags, transactions};
     use chrono::Local;
     use lib_accounts::Account;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
-        let accounts = accounts::default_accounts();
+        let accounts = lib_accounts::default_accounts();
         let categories = categories::default_categories();
         let transactions = transactions::default_transactions(
             &accounts,
