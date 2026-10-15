@@ -54,6 +54,7 @@ pub fn overlay(
 ) -> AnyElement {
     div()
         .id("dialog-overlay")
+        .occlude()
         .absolute()
         .inset_0()
         .flex()
