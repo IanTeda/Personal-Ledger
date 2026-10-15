@@ -21,6 +21,12 @@ jobs:
       - name: Install mise-pinned toolchain
         uses: jdx/mise-action@v4
 
+      # The committed .cargo/config.toml links x86_64 Linux builds with mold through clang, and
+      # GitHub's Linux runners ship clang but not mold.
+      # https://github.com/rui314/setup-mold
+      - name: Install mold
+        uses: rui314/setup-mold@v1
+
       - name: Check formatting
         run: cargo fmt --check
 

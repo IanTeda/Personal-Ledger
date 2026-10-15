@@ -23,3 +23,6 @@ docs/
 
 # Claude Code / agent scratch state, never relevant to a container build
 .claude/
+
+# Linker config for host builds (clang + mold); the Rust image has neither
+.cargo/

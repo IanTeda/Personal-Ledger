@@ -36,6 +36,12 @@ jobs:
       - name: Install mise-pinned toolchain
         uses: jdx/mise-action@v4
 
+      # The committed .cargo/config.toml links x86_64 Linux builds with mold through clang, and
+      # GitHub's Linux runners ship clang but not mold.
+      # https://github.com/rui314/setup-mold
+      - name: Install mold
+        uses: rui314/setup-mold@v1
+
       # The tests run through gpui's in-process test platform (ADR-0030), so there is no window,
       # GPU or X server and no Xvfb here, unlike build-publish-desktop.yaml's real-window smoke
       # test. gpui still links against the system windowing libraries at build time, so those

@@ -19,6 +19,8 @@
 !.sqlx
 # Needed so the Sync Server's Docker build context trimming actually ships (#48)
 !.dockerignore
+# Shared linker config (clang + mold on x86_64 Linux); CI installs mold
+!.cargo
 
 
 # ---------------------------[ UNDERSCORE FILES ]--------------------------------
@@ -176,6 +178,3 @@ mise.local.toml
 
 # graphify knowledge graph (derived output)
 graphify-out/
-
-# Local linker choice (mold); CI runners do not have it.
-/.cargo/config.toml

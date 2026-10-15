@@ -1,0 +1,6 @@
+# Committed: CI installs mold on its x86_64 Linux jobs (rui314/setup-mold), so local and CI builds share this.
+# Link with mold through clang: the Desktop's test binaries carry all of gpui, and the default
+# linker dominates their build time. Linux only; other hosts keep their default linker.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

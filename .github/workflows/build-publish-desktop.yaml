@@ -67,6 +67,13 @@ jobs:
       - name: Install mise-pinned toolchain
         uses: jdx/mise-action@v4
 
+      # The committed .cargo/config.toml links x86_64 Linux builds with mold through clang, and
+      # GitHub's Linux runners ship clang but not mold.
+      # https://github.com/rui314/setup-mold
+      - name: Install mold
+        if: runner.os == 'Linux'
+        uses: rui314/setup-mold@v1
+
       # GPUI (ADR-0007) renders via Metal on macOS and DirectX on Windows -- both already
       # present on GitHub-hosted runners -- but on Linux it needs real windowing/graphics
       # dev headers that TUI's crossterm never touched. This list is scoped down from
