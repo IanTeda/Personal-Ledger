@@ -8,6 +8,7 @@
 [tools]
 rust = { version = "1.98.0", components = "clippy,rustfmt" }
 protoc = "36.0"
+node = "26.7.0"
 mdbook = "0.5.4"
 "cargo:sqlx-cli" = "0.9.0"
 "cargo:bacon" = "3.26.0"

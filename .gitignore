@@ -178,3 +178,10 @@ mise.local.toml
 
 # graphify knowledge graph (derived output)
 graphify-out/
+
+# Archify finalize receipts: build evidence beside each rendered diagram, not its source
+docs/diagrams/*.finalize.json
+docs/diagrams/*.finalize-summary.json
+docs/diagrams/*.browser-check.json
+docs/diagrams/*.delivery.json
+docs/diagrams/*.delivery-pending.json

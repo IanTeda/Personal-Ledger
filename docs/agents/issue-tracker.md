@@ -15,6 +15,14 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Diagrams
+
+- A diagram in a spec ticket, Wayfinder map or Wayfinder ticket is optional. Add one when the ticket describes a flow across three or more components, or a migration's halfway state.
+- Inside an issue body a diagram is Mermaid, which GitHub renders.
+- Richer diagrams (reviews, ADRs, a map's destination) are Archify (`/archify`), committed as `docs/diagrams/<slug>.json` with the rendered `<slug>.html` beside it. The folder is flat and the kind (architecture, sequence, workflow, ...) lives only in the JSON, so a redraw as another kind doesn't break links. The slug names the subject; a diagram owned by an ADR or review is prefixed with it, e.g. `adr-0030-...`.
+- Render from the repo root with the skill's `finalize` command (`node .claude/skills/archify/bin/archify.mjs finalize <type> docs/diagrams/<slug>.json docs/diagrams/<slug>.html --repo-root . --quality showcase --json`). The receipts it writes beside the HTML are gitignored. The skill is a copy of Archify's `v3.1.0` tag, not an `npx skills add` install, so upgrading means copying a newer tag over `.claude/skills/archify/`.
+- An issue links to the diagram's repo path (`docs/diagrams/<slug>.html`). The inline Mermaid is what GitHub shows; the link is the full interactive view, opened locally or via `mise run docs-serve` (mdBook copies `docs/diagrams/` into the book; GitHub Pages only updates on release).
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

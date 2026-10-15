@@ -76,6 +76,7 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 
 - `/rust-style` — error handling, persistence, secrets, comments (Australian English, why not what), `expect` messages. `/tracing` — spans and log levels. `/unit-tests` — `fake` and `sqlx::test`. `/ui-tests` — Desktop headless tests. `/end-user-docs` — `docs/<domain>.md` and its `docs/development/<domain>.md`.
 - Issues are GitHub issues on `IanTeda/Personal-Ledger` via `gh` (`docs/agents/issue-tracker.md`); triage labels in `docs/agents/triage-labels.md`.
+- `/archify` — architecture and flow diagrams for reviews, ADRs and maps; where diagrams live and how issues link to them is in the Diagrams section of `docs/agents/issue-tracker.md`.
 - Domain language is in `GLOSSARY.md`, decisions in `docs/adr/` (`docs/agents/domain.md`).
 - Markdown: blank line around headings; paragraphs and list items are single unwrapped lines (`docs/agents/markdown-style.md`).
 
