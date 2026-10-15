@@ -135,3 +135,29 @@ pub(crate) fn segmented_control_sized<T: Copy + PartialEq + 'static, L: Into<Sha
                 .child(label(option).into())
         }))
 }
+
+/// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;
+/// border:1px solid rgba(32,30,29,.30); font-size:13px` -- `select_style` adds the `select`
+/// row's own `background:#f3f2f2` (README: "selects add `background:#f3f2f2`").
+///
+/// Deliberately **not** a real editable text input or an openable dropdown -- see this map's own
+/// Destination: every section here is stubbed/dummy data, and free-text editing/dropdown-open
+/// behaviour is real interaction-pattern work with no existing precedent in this crate yet
+/// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
+/// decision than one section's ticket should make on its own -- left for whichever future
+/// ticket needs it first). "Save on change" therefore has nothing to save yet.
+pub(crate) fn field_value(
+    value: impl Into<SharedString>,
+    select_style: bool,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .w_full()
+        .py(px(8.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .text_size(px(13.0))
+        .when(select_style, |this| this.bg(color::background(cx)))
+        .child(value.into())
+}

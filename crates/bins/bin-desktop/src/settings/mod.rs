@@ -28,7 +28,7 @@ pub mod units;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, Entity, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, Entity, Window, div, prelude::*, px};
 
 use crate::{
     chrome::{dialog_host::Dialog, rail::settings_index::SettingsIndexRail},
@@ -341,32 +341,6 @@ fn placeholder(cx: &App) -> AnyElement {
         .text_color(color::faint_text(cx))
         .child(crate::msg::desktop_settings_page_placeholder())
         .into_any_element()
-}
-
-/// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;
-/// border:1px solid rgba(32,30,29,.30); font-size:13px` -- `select_style` adds the `select`
-/// row's own `background:#f3f2f2` (README: "selects add `background:#f3f2f2`").
-///
-/// Deliberately **not** a real editable text input or an openable dropdown -- see this map's own
-/// Destination: every section here is stubbed/dummy data, and free-text editing/dropdown-open
-/// behaviour is real interaction-pattern work with no existing precedent in this crate yet
-/// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
-/// decision than one section's ticket should make on its own -- left for whichever future
-/// ticket needs it first). "Save on change" therefore has nothing to save yet.
-pub(super) fn field_value(
-    value: impl Into<SharedString>,
-    select_style: bool,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .w_full()
-        .py(px(8.0))
-        .px(px(10.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .text_size(px(13.0))
-        .when(select_style, |this| this.bg(color::background(cx)))
-        .child(value.into())
 }
 
 /// Where keyboard focus sits within Settings: the index rail, or the page it has open. Only

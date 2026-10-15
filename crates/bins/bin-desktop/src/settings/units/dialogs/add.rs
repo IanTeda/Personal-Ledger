@@ -8,7 +8,7 @@
 //! `super::edit`'s own doc.
 //!
 //! Code/Name are this crate's **first real editable text fields** -- every other "field" built
-//! so far (`general::field_value`) is deliberately static per that module's own doc, since
+//! so far (`form::fields::field_value`) is deliberately static per that module's own doc, since
 //! nothing needed to change it yet. There's still no real text cursor or selection here: a
 //! clicked field becomes "focused" (its border turns `ACCENT`, and a trailing `\u{2502}` caret
 //! shows), typed characters append to the end, `Backspace` pops the last one -- append/pop-only
