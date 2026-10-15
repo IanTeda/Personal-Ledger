@@ -213,6 +213,7 @@ mod tests {
         payees: Vec<Payee>,
         tags: Vec<Tag>,
         transactions: Vec<Transaction>,
+        units: Vec<lib_units::UnitRow>,
     }
 
     fn world() -> World {
@@ -227,6 +228,7 @@ mod tests {
             payees,
             tags,
             transactions,
+            units: lib_units::default_units(),
         }
     }
 
@@ -244,6 +246,7 @@ mod tests {
             categories: &world.categories,
             payees: &world.payees,
             tags: &world.tags,
+            units: &world.units,
         };
         let visible = query(&ledger, &world.transactions, filters, search);
         build_rows(&visible, &ledger, &prefs())
@@ -336,6 +339,7 @@ mod tests {
             categories: &w.categories,
             payees: &w.payees,
             tags: &w.tags,
+            units: &w.units,
         };
         let filters = open_filters();
         let visible = query(
@@ -400,7 +404,7 @@ mod tests {
         let mut w = world();
         for account in &mut w.accounts {
             if account.name == "Amex Platinum" {
-                account.unit = "usd".to_string();
+                account.unit = lib_core::UnitId::SEED_BTC;
             }
         }
         let rows = rows_for(&w, &open_filters(), "");

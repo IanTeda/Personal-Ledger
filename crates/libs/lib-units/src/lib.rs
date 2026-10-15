@@ -3,7 +3,7 @@
 //! them through `LedgerStore`, and the Type selector's labels come from `lib_locale::Label`, which owns the
 //! Message catalogue.
 
-pub use lib_core::UnitKind;
+pub use lib_core::{UnitId, UnitKind};
 
 /// One row of the **Units** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 /// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
@@ -14,6 +14,8 @@ pub use lib_core::UnitKind;
 /// time, so a Locale switch can't change what an Edit then saves back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitRow {
+    /// Addresses the row across edits; `code` can change, so nothing else holds it as a key.
+    pub id: UnitId,
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
@@ -38,6 +40,7 @@ pub struct UnitRow {
 pub fn default_units() -> Vec<UnitRow> {
     vec![
         UnitRow {
+            id: UnitId::SEED_AUD,
             code: "aud".to_string(),
             name: "Australian Dollar".to_string(),
             kind: UnitKind::Fiat,
@@ -46,6 +49,7 @@ pub fn default_units() -> Vec<UnitRow> {
             is_default: true,
         },
         UnitRow {
+            id: UnitId::SEED_BTC,
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
             kind: UnitKind::Crypto,
@@ -54,6 +58,7 @@ pub fn default_units() -> Vec<UnitRow> {
             is_default: false,
         },
         UnitRow {
+            id: UnitId::SEED_VAS,
             code: "vas".to_string(),
             name: "Vanguard Aus Shares".to_string(),
             kind: UnitKind::Stock,
@@ -98,6 +103,7 @@ pub fn default_price_sources() -> Vec<PriceSourceRow> {
 /// one that is. Returns the row it appended.
 pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: UnitKind) -> UnitRow {
     let row = UnitRow {
+        id: UnitId::new(),
         code,
         name,
         kind,
@@ -109,18 +115,19 @@ pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: Unit
     row
 }
 
-/// Rewrites the row at `index` from the Edit unit dialog. The dialog has no field for the source
+/// Rewrites the row `id` from the Edit unit dialog. The dialog has no field for the source
 /// or the base and default flags, so those are kept from the row being edited. Returns the row it
-/// wrote, or `None` when `index` is out of bounds.
+/// wrote, or `None` when no row has `id`.
 pub fn edit_unit(
     units: &mut [UnitRow],
-    index: usize,
+    id: UnitId,
     code: String,
     name: String,
     kind: UnitKind,
 ) -> Option<&UnitRow> {
-    let existing = units.get_mut(index)?;
+    let existing = units.iter_mut().find(|row| row.id == id)?;
     *existing = UnitRow {
+        id,
         code,
         name,
         kind,
@@ -131,14 +138,10 @@ pub fn edit_unit(
     Some(existing)
 }
 
-/// Removes the row at `index` if it still holds `code`, the code the confirm dialog opened on. The
-/// dialog is modal, so this is a defensive check, not a normal path.
-pub fn remove_unit(units: &mut Vec<UnitRow>, index: usize, code: &str) -> Option<UnitRow> {
-    if units.get(index).is_some_and(|row| row.code == code) {
-        Some(units.remove(index))
-    } else {
-        None
-    }
+/// Removes the row `id` and returns it, or `None` when no row has `id`.
+pub fn remove_unit(units: &mut Vec<UnitRow>, id: UnitId) -> Option<UnitRow> {
+    let index = units.iter().position(|row| row.id == id)?;
+    Some(units.remove(index))
 }
 
 /// The SOURCE a dialog-created unit gets, the same fallback the seeded `vas` row uses.
@@ -194,12 +197,12 @@ mod tests {
         let mut units = default_units();
         let edited = edit_unit(
             &mut units,
-            0,
+            UnitId::SEED_AUD,
             "aud2".into(),
             "Aussie".into(),
             UnitKind::Fiat,
         )
-        .expect("row 0 exists");
+        .expect("aud is seeded");
         assert_eq!(edited.code, "aud2");
         assert_eq!(edited.source, "USD");
         assert!(edited.is_base && edited.is_default);
@@ -209,27 +212,56 @@ mod tests {
     fn a_unit_kind_survives_an_edit_round_trip() {
         let mut units = default_units();
         for kind in UnitKind::all() {
-            let edited = edit_unit(&mut units, 1, "btc".into(), "Bitcoin".into(), *kind)
-                .expect("row 1 exists");
+            let edited = edit_unit(
+                &mut units,
+                UnitId::SEED_BTC,
+                "btc".into(),
+                "Bitcoin".into(),
+                *kind,
+            )
+            .expect("btc is seeded");
             assert_eq!(edited.kind, *kind);
         }
     }
 
     #[test]
-    fn editing_past_the_end_changes_nothing() {
+    fn editing_an_unknown_id_changes_nothing() {
         let mut units = default_units();
         let before = units.clone();
-        assert!(edit_unit(&mut units, 99, "x".into(), "x".into(), UnitKind::Fiat).is_none());
+        assert!(
+            edit_unit(
+                &mut units,
+                UnitId::new(),
+                "x".into(),
+                "x".into(),
+                UnitKind::Fiat
+            )
+            .is_none()
+        );
         assert_eq!(units, before);
     }
 
     #[test]
-    fn removing_checks_the_code_the_dialog_opened_on() {
+    fn removing_takes_the_row_with_that_id() {
         let mut units = default_units();
-        assert!(remove_unit(&mut units, 1, "aud").is_none());
+        assert!(remove_unit(&mut units, UnitId::new()).is_none());
         assert_eq!(units.len(), 3);
-        let removed = remove_unit(&mut units, 1, "btc").expect("btc is at row 1");
+        let removed = remove_unit(&mut units, UnitId::SEED_BTC).expect("btc is seeded");
         assert_eq!(removed.code, "btc");
         assert_eq!(units.len(), 2);
+    }
+
+    #[test]
+    fn editing_the_code_keeps_the_id() {
+        let mut units = default_units();
+        let edited = edit_unit(
+            &mut units,
+            UnitId::SEED_BTC,
+            "xbt".into(),
+            "Bitcoin".into(),
+            UnitKind::Crypto,
+        )
+        .expect("btc is seeded");
+        assert_eq!(edited.id, UnitId::SEED_BTC);
     }
 }

@@ -347,7 +347,7 @@ impl RowID {
     ///
     /// **Warning**: This does not validate that the UUID is version 7.
     /// Using non-v7 UUIDs will break ordering guarantees.
-    pub fn from_uuid(uuid: uuid::Uuid) -> Self {
+    pub const fn from_uuid(uuid: uuid::Uuid) -> Self {
         RowID(uuid)
     }
 

@@ -42,6 +42,8 @@ pub struct ScheduleProps<'a> {
     pub transactions: &'a [Transaction],
     /// The base Unit's code: an amount in it shows no Unit code.
     pub base_unit: Option<&'a str>,
+    /// Turns a Plan's Unit id into the code shown.
+    pub units: &'a [lib_units::UnitRow],
     pub glyphs: StatusGlyphs,
     /// Index into `rows` of the selected row.
     pub selected: Option<usize>,
@@ -176,6 +178,14 @@ fn total_text(total: &Total, base_unit: Option<&str>) -> Option<String> {
     }
 }
 
+/// The code of Unit `id`, empty when the Unit is gone.
+pub(crate) fn unit_code(units: &[lib_units::UnitRow], id: lib_units::UnitId) -> &str {
+    units
+        .iter()
+        .find(|unit| unit.id == id)
+        .map_or("", |unit| unit.code.as_str())
+}
+
 /// An amount's text, naming its Unit only when that isn't the base Unit.
 pub(crate) fn with_unit(text: String, unit: &str, base_unit: Option<&str>) -> String {
     if Some(unit) == base_unit {
@@ -194,7 +204,7 @@ fn planned_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) -
     };
     let text = with_unit(
         crate::view::format::amount(&amount).1,
-        &plan.unit,
+        unit_code(props.units, plan.unit),
         props.base_unit,
     );
     if plan.amount_kind == AmountKind::Estimated && row.status != BillStatus::Paid {
@@ -215,7 +225,7 @@ fn actual_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) ->
             |amount| {
                 with_unit(
                     crate::view::format::amount(&amount).1,
-                    &plan.unit,
+                    unit_code(props.units, plan.unit),
                     props.base_unit,
                 )
             },

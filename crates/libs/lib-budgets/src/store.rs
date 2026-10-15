@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money, Period};
+use lib_core::{CategoryTypes, Money, Period, UnitId};
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
@@ -58,7 +58,7 @@ pub enum StartFrom {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewBudget {
     pub name: String,
-    pub unit: String,
+    pub unit: UnitId,
     pub account_ids: Vec<u32>,
     pub start_from: StartFrom,
 }
@@ -143,7 +143,7 @@ impl Budgets {
         if self.name_taken(name, None) {
             return Err(BudgetError::NameTaken);
         }
-        check_accounts(ledger.accounts, &new.unit, &new.account_ids)?;
+        check_accounts(ledger.accounts, new.unit, &new.account_ids)?;
         let copy_from = match &new.start_from {
             StartFrom::Copy(source) => {
                 Some(self.get(*source).ok_or(BudgetError::NotFound)?.clone())
@@ -155,7 +155,7 @@ impl Budgets {
             id: self.next_id(),
             name: name.to_string(),
             method: Method::Limits,
-            unit: new.unit.clone(),
+            unit: new.unit,
             account_ids: new.account_ids.clone(),
             is_default: self.list.is_empty(),
             archived_at: None,
@@ -214,7 +214,7 @@ impl Budgets {
             return Err(BudgetError::NameTaken);
         }
         let budget = self.editable_mut(id)?;
-        check_accounts(accounts, &budget.unit, &account_ids)?;
+        check_accounts(accounts, budget.unit, &account_ids)?;
         budget.name = name.to_string();
         budget.account_ids = account_ids;
         Ok(())
@@ -584,7 +584,7 @@ fn check_open_month(month: Period, today: NaiveDate) -> Result<(), BudgetError> 
     }
 }
 
-pub fn check_accounts(accounts: &[Account], unit: &str, ids: &[u32]) -> Result<(), BudgetError> {
+pub fn check_accounts(accounts: &[Account], unit: UnitId, ids: &[u32]) -> Result<(), BudgetError> {
     for id in ids {
         let account = accounts
             .iter()

@@ -12,6 +12,7 @@ use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
+use lib_core::UnitId;
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
 use lib_inventory::{Item, Property, Room};
@@ -71,15 +72,8 @@ pub enum LedgerChange {
     UpsertItem(Item),
     DeleteItem(u32),
     UpsertInstitution(InstitutionRow),
-    /// A Unit row has no id yet, so a change names its position in the Units, as the Desktop
-    /// addresses it; a delete shifts the rows after it.
-    UpsertUnit {
-        index: usize,
-        unit: UnitRow,
-    },
-    DeleteUnit {
-        index: usize,
-    },
+    UpsertUnit(UnitRow),
+    DeleteUnit(UnitId),
 }
 
 impl LedgerChange {
@@ -101,7 +95,7 @@ impl LedgerChange {
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
             Self::UpsertInstitution(_) => Domain::Institutions,
-            Self::UpsertUnit { .. } | Self::DeleteUnit { .. } => Domain::Units,
+            Self::UpsertUnit(_) | Self::DeleteUnit(_) => Domain::Units,
         }
     }
 }
@@ -145,12 +139,9 @@ mod tests {
                 .domain(),
             Domain::Institutions
         );
+        assert_eq!(LedgerChange::UpsertUnit(unit).domain(), Domain::Units);
         assert_eq!(
-            LedgerChange::UpsertUnit { index: 0, unit }.domain(),
-            Domain::Units
-        );
-        assert_eq!(
-            LedgerChange::DeleteUnit { index: 0 }.domain(),
+            LedgerChange::DeleteUnit(UnitId::SEED_AUD).domain(),
             Domain::Units
         );
     }

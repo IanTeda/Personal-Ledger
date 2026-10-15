@@ -252,6 +252,7 @@ impl LedgerCommand for UnskipBill {
 mod tests {
     use bigdecimal::BigDecimal;
     use lib_bills::{AmountKind, Recurrence, Resolution};
+    use lib_core::UnitId;
 
     use super::*;
 
@@ -269,7 +270,7 @@ mod tests {
         BillPlanDraft {
             name: "Water".to_owned(),
             category_id: 5,
-            unit: "aud".to_owned(),
+            unit: UnitId::SEED_AUD,
             account_id: 2,
             payee_id: None,
             planned_amount: Money(BigDecimal::new(9_000.into(), 2)),
@@ -350,7 +351,7 @@ mod tests {
         let edit = BillPlanDraft {
             name: "Renamed".to_owned(),
             category_id: base.category_id,
-            unit: base.unit.clone(),
+            unit: base.unit,
             account_id: base.account_id,
             payee_id: base.payee_id,
             planned_amount: base.planned_amount.clone(),

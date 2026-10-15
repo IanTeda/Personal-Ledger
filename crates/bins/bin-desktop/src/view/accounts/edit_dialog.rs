@@ -115,7 +115,10 @@ pub fn render(
                         crate::msg::desktop_field_fixed(),
                         cx,
                     ),
-                    account.unit.clone(),
+                    options
+                        .unit_code(account.unit)
+                        .unwrap_or_default()
+                        .to_string(),
                     cx,
                 ),
                 read_only_field(

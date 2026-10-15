@@ -30,7 +30,7 @@ pub mod seed;
 pub use seed::*;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
-use lib_core::Money;
+use lib_core::{Money, UnitId};
 
 /// How often a Bill Plan falls due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,8 +99,8 @@ pub struct BillPlan {
     pub name: String,
     /// A leaf Expense Category id.
     pub category_id: u32,
-    /// The Unit code (e.g. `"aud"`), always the Account's; locked after creation.
-    pub unit: String,
+    /// The Unit, always the Account's; locked after creation.
+    pub unit: UnitId,
     /// The Account id it's paid from; one that takes Transactions.
     pub account_id: u32,
     pub payee_id: Option<u32>,

@@ -271,19 +271,17 @@ impl Render for BillsView {
         let (plans, entries) = (store.plans(cx), store.entries(cx));
         let transactions = self.sources.transactions.read(cx).transactions(cx);
         let accounts = self.sources.accounts.read(cx).accounts(cx);
-        let base_unit = self
-            .sources
-            .ledger
-            .read(cx)
-            .ledger()
-            .units()
+        let units = self.sources.ledger.read(cx).ledger().units();
+        let base_unit = units
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
         let state = &self.state;
         let unfiltered = self.unfiltered_rows(cx);
         let rows = state.filters.apply(&unfiltered, plans);
-        let summary = bills::period_summary(&rows, plans, entries, transactions);
+        let summary = bills::period_summary(&rows, plans, entries, transactions, |id| {
+            schedule::unit_code(units, id).to_string()
+        });
         let planner_plans = bills::planner_order(plans);
         let selects = filters::FilterField::ORDER
             .into_iter()
@@ -325,6 +323,7 @@ impl Render for BillsView {
                     selects,
                     stats,
                     base_unit,
+                    units,
                     on_chip_click: indexed(BillsView::toggle_filter_chip),
                     on_field_click,
                     on_option_click,
@@ -335,6 +334,7 @@ impl Render for BillsView {
                 accounts,
                 transactions,
                 base_unit,
+                units,
                 glyphs: self.glyphs,
                 selected: (!rows.is_empty()).then(|| state.selected.min(rows.len() - 1)),
                 on_row_click: indexed(BillsView::select),
@@ -348,6 +348,7 @@ impl Render for BillsView {
                 categories: self.sources.categories.read(cx).categories(cx),
                 accounts,
                 base_unit,
+                units,
                 selected: (!planner_plans.is_empty())
                     .then(|| state.selected.min(planner_plans.len() - 1)),
                 on_row_click: indexed(BillsView::select),

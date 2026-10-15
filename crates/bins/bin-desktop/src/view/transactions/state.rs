@@ -168,6 +168,7 @@ impl TransactionsView {
             categories: self.sources.categories.read(cx).categories(cx),
             payees: self.payees(cx),
             tags: self.sources.tags.read(cx).tags(cx),
+            units: self.sources.ledger.read(cx).ledger().units(),
         }
     }
 

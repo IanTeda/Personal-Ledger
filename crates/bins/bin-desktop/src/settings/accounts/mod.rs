@@ -27,14 +27,15 @@ pub fn scope_note(accounts: &[Account], units: &[lib_units::UnitRow]) -> String 
     if accounts.is_empty() {
         return crate::msg::desktop_accounts_summary_empty();
     }
-    let base_unit = units
-        .iter()
-        .find(|unit| unit.is_base)
-        .map(|unit| unit.code.as_str());
+    let base_unit = units.iter().find(|unit| unit.is_base).map(|unit| unit.id);
     let net = accounts::net_worth(accounts, base_unit);
 
     let mut parts = vec![accounts::count_text(&net)];
-    if let Some(base) = &net.base_unit {
+    if let Some(base) = net
+        .base_unit
+        .and_then(|id| units.iter().find(|unit| unit.id == id))
+    {
+        let base = &base.code;
         let (negative, figure) = crate::view::format::amount(&net.base_net);
         let sign = if negative { "-" } else { "" };
         parts.push(format!(
@@ -42,7 +43,7 @@ pub fn scope_note(accounts: &[Account], units: &[lib_units::UnitRow]) -> String 
             crate::msg::desktop_accounts_net_worth()
         ));
     }
-    parts.extend(accounts::held_separately_text(&net));
+    parts.extend(accounts::held_separately_text(&net, units));
     parts.join(" \u{b7} ")
 }
 
@@ -50,6 +51,7 @@ impl Render for AccountsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
         let accounts = self.accounts(cx);
+        let units = self.sources().ledger.read(cx).ledger().units();
         let selected = self.selected_index(cx);
         let focused = self.page_focused;
         div()
@@ -57,9 +59,9 @@ impl Render for AccountsView {
             .flex_col()
             .child(kicker_row(&entity, cx))
             .children(
-                accounts::group_accounts(accounts)
-                    .iter()
-                    .map(|group| group_block(group, accounts, selected, focused, &entity, cx)),
+                accounts::group_accounts(accounts).iter().map(|group| {
+                    group_block(group, accounts, units, selected, focused, &entity, cx)
+                }),
             )
             .when(accounts.is_empty(), |this| {
                 this.child(
@@ -138,6 +140,7 @@ const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
 fn group_block(
     group: &accounts::AccountGroup,
     accounts: &[Account],
+    units: &[lib_units::UnitRow],
     selected: Option<usize>,
     focused: bool,
     entity: &Entity<AccountsView>,
@@ -171,6 +174,7 @@ fn group_block(
                             let account = accounts.get(index)?;
                             Some(row(
                                 account,
+                                units,
                                 position == last,
                                 selected == Some(index),
                                 focused,
@@ -223,6 +227,7 @@ fn table_header(cx: &App) -> impl IntoElement {
 
 fn row(
     account: &Account,
+    units: &[lib_units::UnitRow],
     last: bool,
     selected: bool,
     focused: bool,
@@ -274,10 +279,12 @@ fn row(
                 .child(accounts::institution_label(&account.institution)),
         )
         .child(
-            div()
-                .w(UNIT_WIDTH)
-                .text_color(color::muted(cx))
-                .child(account.unit.clone()),
+            div().w(UNIT_WIDTH).text_color(color::muted(cx)).child(
+                units
+                    .iter()
+                    .find(|unit| unit.id == account.unit)
+                    .map_or_else(String::new, |unit| unit.code.clone()),
+            ),
         )
         .child(
             div()

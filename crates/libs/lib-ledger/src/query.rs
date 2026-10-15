@@ -28,13 +28,14 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, NaiveDate};
-use lib_core::{Money, TransactionStatus};
+use lib_core::{Money, TransactionStatus, UnitId};
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::{Split, Transaction};
+use lib_units::UnitRow;
 
 /// The Status filter: all, or exactly one of the three Transaction Statuses. (Flagged is not a
 /// status and has no filter here; see the map's fog.)
@@ -178,6 +179,8 @@ pub struct Ledger<'a> {
     pub categories: &'a [Category],
     pub payees: &'a [Payee],
     pub tags: &'a [Tag],
+    /// Read to turn an Account's Unit id into the code the total names.
+    pub units: &'a [UnitRow],
 }
 
 /// One row of the table.
@@ -386,13 +389,12 @@ pub fn query<'a>(
         });
     }
 
-    let unit_of = |account_id: u32| -> &str {
+    let unit_of = |account_id: u32| -> Option<UnitId> {
         ledger
             .accounts
             .iter()
             .find(|account| account.id == account_id)
-            .map(|account| account.unit.as_str())
-            .unwrap_or("")
+            .map(|account| account.unit)
     };
     let first_unit = rows.first().map(|row| unit_of(row.transaction.account_id));
     let single_unit = first_unit
@@ -400,7 +402,10 @@ pub fn query<'a>(
             rows.iter()
                 .all(|row| unit_of(row.transaction.account_id) == *unit)
         })
-        .map(str::to_string);
+        .map(|unit| {
+            unit.and_then(|id| ledger.units.iter().find(|row| row.id == id))
+                .map_or_else(String::new, |row| row.code.clone())
+        });
 
     let total = match (&single_unit, rows.is_empty()) {
         (_, true) => Total::Empty,
@@ -434,6 +439,7 @@ mod tests {
     use lib_categories::default_categories;
     use lib_payees::{self as payees, default_payees};
     use lib_tags::{self as tags, default_tags};
+    use lib_units::default_units;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -445,6 +451,7 @@ mod tests {
         payees: Vec<Payee>,
         tags: Vec<Tag>,
         transactions: Vec<Transaction>,
+        units: Vec<UnitRow>,
     }
 
     impl World {
@@ -461,6 +468,7 @@ mod tests {
                 payees,
                 tags,
                 transactions,
+                units: default_units(),
             }
         }
 
@@ -470,6 +478,7 @@ mod tests {
                 categories: &self.categories,
                 payees: &self.payees,
                 tags: &self.tags,
+                units: &self.units,
             }
         }
 
@@ -896,12 +905,12 @@ mod tests {
         assert!(row.partial);
     }
 
-    fn one_account_world(units: [&str; 2]) -> World {
+    fn one_account_world(units: [UnitId; 2]) -> World {
         let mut world = World::seeded();
         for account in &mut world.accounts {
             match account.name.as_str() {
-                "ANZ Everyday" => account.unit = units[0].to_string(),
-                "Amex Platinum" => account.unit = units[1].to_string(),
+                "ANZ Everyday" => account.unit = units[0],
+                "Amex Platinum" => account.unit = units[1],
                 _ => {}
             }
         }
@@ -946,7 +955,7 @@ mod tests {
 
     #[test]
     fn rows_in_two_units_have_no_running_total_and_the_total_is_mixed() {
-        let world = one_account_world(["aud", "usd"]);
+        let world = one_account_world([UnitId::SEED_AUD, UnitId::SEED_BTC]);
         let mut filters = world.open();
         filters.account = None;
         let visible = world.run(&filters, "");
@@ -957,12 +966,12 @@ mod tests {
 
     #[test]
     fn narrowing_to_one_unit_brings_the_running_total_back() {
-        let world = one_account_world(["aud", "usd"]);
+        let world = one_account_world([UnitId::SEED_AUD, UnitId::SEED_BTC]);
         let mut filters = world.open();
         filters.account = Some(world.account("Amex Platinum"));
         let visible = world.run(&filters, "");
         match visible.total {
-            Total::Single { unit, .. } => assert_eq!(unit, "usd"),
+            Total::Single { unit, .. } => assert_eq!(unit, "btc"),
             other => panic!("expected a single-Unit total, got {other:?}"),
         }
         assert!(visible.rows.iter().all(|r| r.running.is_some()));
@@ -970,7 +979,7 @@ mod tests {
 
     #[test]
     fn two_accounts_sharing_a_unit_still_get_one_running_total() {
-        let world = one_account_world(["aud", "aud"]);
+        let world = one_account_world([UnitId::SEED_AUD, UnitId::SEED_AUD]);
         let visible = world.run(&world.open(), "");
         assert!(matches!(visible.total, Total::Single { .. }));
     }

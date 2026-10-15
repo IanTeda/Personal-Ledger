@@ -29,9 +29,20 @@ pub fn count_text(net: &NetWorth) -> String {
 }
 
 /// `"vas, btc held separately"`, or `None` when every account is in the base Unit.
-pub fn held_separately_text(net: &NetWorth) -> Option<String> {
-    (!net.held_separately.is_empty())
-        .then(|| crate::msg::desktop_accounts_held_separately(&net.held_separately.join(", ")))
+pub fn held_separately_text(net: &NetWorth, units: &[lib_units::UnitRow]) -> Option<String> {
+    (!net.held_separately.is_empty()).then(|| {
+        let codes: Vec<&str> = net
+            .held_separately
+            .iter()
+            .map(|id| {
+                units
+                    .iter()
+                    .find(|unit| unit.id == *id)
+                    .map_or("", |unit| unit.code.as_str())
+            })
+            .collect();
+        crate::msg::desktop_accounts_held_separately(&codes.join(", "))
+    })
 }
 
 /// The Accounts group labels as Messages, in [`GROUP_ORDER`]'s order.
@@ -56,7 +67,7 @@ mod tests {
             name: name.to_string(),
             institution: NO_INSTITUTION.to_string(),
             account_type,
-            unit: "aud".to_string(),
+            unit: lib_core::UnitId::SEED_AUD,
             balance: money("0"),
             account_number: None,
             opened_at: date(2024, 1),
@@ -81,10 +92,10 @@ mod tests {
     #[test]
     fn seeded_net_worth_text_names_the_held_separately_units() {
         crate::locale::init_for_tests();
-        let net = net_worth(&default_accounts(), Some("aud"));
+        let net = net_worth(&default_accounts(), Some(lib_core::UnitId::SEED_AUD));
         assert_eq!(count_text(&net), "7 accounts");
         assert_eq!(
-            held_separately_text(&net).as_deref(),
+            held_separately_text(&net, &lib_units::default_units()).as_deref(),
             Some("vas, btc held separately")
         );
     }
@@ -105,9 +116,15 @@ mod tests {
     #[test]
     fn net_worth_count_text_is_singular_for_one_account() {
         crate::locale::init_for_tests();
-        let net = net_worth(&[account(1, "Only", AccountType::Cash)], Some("aud"));
+        let net = net_worth(
+            &[account(1, "Only", AccountType::Cash)],
+            Some(lib_core::UnitId::SEED_AUD),
+        );
         assert_eq!(count_text(&net), "1 account");
-        assert_eq!(held_separately_text(&net), None);
+        assert_eq!(
+            held_separately_text(&net, &lib_units::default_units()),
+            None
+        );
     }
 
     #[test]
@@ -124,7 +141,7 @@ mod tests {
         let institutions = lib_institutions::default_institutions();
         for account in &accounts {
             assert!(
-                units.iter().any(|unit| unit.code == account.unit),
+                units.iter().any(|unit| unit.id == account.unit),
                 "{} names an unknown unit {}",
                 account.name,
                 account.unit
@@ -144,11 +161,10 @@ mod tests {
         let base = lib_units::default_units()
             .into_iter()
             .find(|unit| unit.is_base)
-            .map(|unit| unit.code)
-            .unwrap_or_default();
+            .map(|unit| unit.id);
         let net = default_accounts()
             .into_iter()
-            .filter(|account| account.unit == base)
+            .filter(|account| Some(account.unit) == base)
             .fold(money("0"), |sum, account| Money(sum.0 + account.balance.0));
         assert_eq!(net, money("83995.87"));
     }

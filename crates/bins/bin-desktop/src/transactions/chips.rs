@@ -307,6 +307,7 @@ mod tests {
         payees: Vec<crate::payees::Payee>,
         tags: Vec<crate::tags::Tag>,
         transactions: Vec<Transaction>,
+        units: Vec<lib_units::UnitRow>,
     }
 
     fn world() -> World {
@@ -322,6 +323,7 @@ mod tests {
             payees,
             tags,
             transactions,
+            units: lib_units::default_units(),
         }
     }
 
@@ -332,6 +334,7 @@ mod tests {
                 categories: &self.categories,
                 payees: &self.payees,
                 tags: &self.tags,
+                units: &self.units,
             }
         }
 
@@ -591,7 +594,7 @@ mod tests {
         let mut w = world();
         for account in &mut w.accounts {
             if account.name == "Amex Platinum" {
-                account.unit = "usd".to_string();
+                account.unit = lib_core::UnitId::SEED_BTC;
             }
         }
         let filters = TransactionFilters::defaults(today());

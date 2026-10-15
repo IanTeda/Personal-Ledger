@@ -2,13 +2,13 @@
 //! that runs it through [`LedgerStore::apply`] as a `lib_ledger` command.
 //!
 //! The README's own "Dialog lifecycle" rows: Add "validate -> append to Units table -> close",
-//! Edit "Save -> update the in-memory row -> close" (a changed code just relabels the row here;
-//! rewriting real references is out of scope), Delete "confirm -> remove + close".
+//! Edit "Save -> update the in-memory row -> close" (a changed code keeps the row's id, so the Accounts
+//! on it stay on it), Delete "confirm -> remove + close".
 
 use gpui::{App, Entity};
 use lib_ledger::{AddUnit, DeleteUnit, EditUnit, UnitGone};
 use lib_toast::ToastKind;
-use lib_units::UnitKind;
+use lib_units::{UnitId, UnitKind};
 
 use super::dialogs::UnitsDialog;
 use crate::{
@@ -28,14 +28,13 @@ pub enum UnitsCommand {
         kind: UnitKind,
     },
     Edit {
-        index: usize,
+        id: UnitId,
         code: String,
         name: String,
         kind: UnitKind,
     },
     Delete {
-        index: usize,
-        code: String,
+        id: UnitId,
     },
 }
 
@@ -79,16 +78,13 @@ impl DialogForm for UnitsDialog {
             },
             // Source and the base and default flags aren't Edit unit fields either, so the Ledger
             // keeps them from the row being edited.
-            Self::Edit(index, form) => UnitsCommand::Edit {
-                index: *index,
+            Self::Edit(id, form) => UnitsCommand::Edit {
+                id: *id,
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
                 kind: form.kind,
             },
-            Self::Delete(index, form) => UnitsCommand::Delete {
-                index: *index,
-                code: form.code.clone(),
-            },
+            Self::Delete(id, _) => UnitsCommand::Delete { id: *id },
         })
     }
 
@@ -115,7 +111,7 @@ impl Apply<UnitsCommand> for UnitsApply {
                 Ok(UnitsOutcome::Saved)
             }
             UnitsCommand::Edit {
-                index,
+                id,
                 code,
                 name,
                 kind,
@@ -125,7 +121,7 @@ impl Apply<UnitsCommand> for UnitsApply {
                     store.apply(
                         cx,
                         EditUnit {
-                            index,
+                            id,
                             code,
                             name,
                             kind,
@@ -133,9 +129,9 @@ impl Apply<UnitsCommand> for UnitsApply {
                     )
                 })
                 .map(|()| UnitsOutcome::Saved),
-            UnitsCommand::Delete { index, code } => self
+            UnitsCommand::Delete { id } => self
                 .ledger
-                .update(cx, |store, cx| store.apply(cx, DeleteUnit { index, code }))
+                .update(cx, |store, cx| store.apply(cx, DeleteUnit { id }))
                 .map(|unit| UnitsOutcome::Deleted { code: unit.code }),
         }
     }
@@ -168,7 +164,7 @@ mod tests {
     fn deleting_a_unit_needs_its_code_typed_and_reports_it(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
         let code = cx.read(|cx| apply.ledger.read(cx).ledger().units()[0].code.clone());
-        let mut dialog = UnitsDialog::Delete(0, DeleteUnitForm::new(code.as_str()));
+        let mut dialog = UnitsDialog::Delete(UnitId::SEED_AUD, DeleteUnitForm::new(code.as_str()));
         assert_eq!(
             dialog.command(),
             Err(FormError),
@@ -199,7 +195,7 @@ mod tests {
         let edited = cx.update(|cx| {
             apply.apply(
                 UnitsCommand::Edit {
-                    index: 0,
+                    id: UnitId::SEED_AUD,
                     code: "aud".into(),
                     name: "Aussie".into(),
                     kind: UnitKind::Fiat,
@@ -223,7 +219,7 @@ mod tests {
         let refused = cx.update(|cx| {
             apply.apply(
                 UnitsCommand::Edit {
-                    index: 999,
+                    id: UnitId::new(),
                     code: "x".into(),
                     name: "x".into(),
                     kind: UnitKind::Fiat,
@@ -237,15 +233,7 @@ mod tests {
     #[gpui::test]
     fn a_delete_of_a_unit_that_vanished_is_refused(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let refused = cx.update(|cx| {
-            apply.apply(
-                UnitsCommand::Delete {
-                    index: 999,
-                    code: "XXX".into(),
-                },
-                cx,
-            )
-        });
+        let refused = cx.update(|cx| apply.apply(UnitsCommand::Delete { id: UnitId::new() }, cx));
         assert_eq!(refused, Err(UnitGone));
     }
 

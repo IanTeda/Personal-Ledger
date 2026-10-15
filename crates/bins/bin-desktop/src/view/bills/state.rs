@@ -573,6 +573,7 @@ impl BillsView {
         BillPlanSource::new(
             self.sources.categories.read(cx).categories(cx),
             self.sources.accounts.read(cx).accounts(cx),
+            self.sources.ledger.read(cx).ledger().units(),
             self.sources.payees.read(cx).payees(cx),
             keep_payee,
             crate::msg::desktop_payees_category_none(),

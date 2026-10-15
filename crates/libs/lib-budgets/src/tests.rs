@@ -8,7 +8,7 @@ use lib_bills::{
     self as bills, AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, Recurrence,
 };
 use lib_categories::{self as categories, Category, default_categories};
-use lib_core::{CategoryTypes, Money, Period, TransactionStatus};
+use lib_core::{CategoryTypes, Money, Period, TransactionStatus, UnitId};
 use lib_transactions::{Split, Transaction};
 
 use super::*;
@@ -101,7 +101,7 @@ impl World {
         let draft = BillPlanDraft {
             name: format!("{category} bill"),
             category_id: self.category(category),
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             account_id: self.account(account),
             payee_id: None,
             planned_amount: money(amount),
@@ -129,7 +129,7 @@ impl World {
             .create(
                 &NewBudget {
                     name: "Test".to_string(),
-                    unit: "aud".to_string(),
+                    unit: UnitId::SEED_AUD,
                     account_ids: vec![self.account("ANZ Everyday"), self.account("ANZ Offset")],
                     start_from: StartFrom::Empty,
                 },
@@ -283,7 +283,7 @@ fn unreachable_budget() -> Budget {
         id: 0,
         name: String::new(),
         method: Method::Limits,
-        unit: String::new(),
+        unit: UnitId::SEED_AUD,
         account_ids: Vec::new(),
         is_default: false,
         archived_at: None,
@@ -1635,7 +1635,7 @@ fn a_deleted_categorys_records_go_with_it_in_every_budget() {
 fn new_budget(world: &World, name: &str, start_from: StartFrom) -> NewBudget {
     NewBudget {
         name: name.to_string(),
-        unit: "aud".to_string(),
+        unit: UnitId::SEED_AUD,
         account_ids: vec![world.account("ANZ Everyday")],
         start_from,
     }
@@ -1818,7 +1818,7 @@ fn duplicating_copies_the_chains_and_numbers_a_taken_name() {
         .cloned()
         .unwrap_or_else(unreachable_budget);
     assert!(!copy.is_default && !copy.is_archived());
-    assert_eq!(copy.unit, "aud");
+    assert_eq!(copy.unit, UnitId::SEED_AUD);
     assert_eq!(
         copy.chain(world.category("Dining")),
         budgets

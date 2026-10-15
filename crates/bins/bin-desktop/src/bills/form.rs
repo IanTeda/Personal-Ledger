@@ -19,7 +19,7 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, DateStyle, Money};
+use lib_core::{CategoryTypes, DateStyle, Money, UnitId};
 use lib_locale::format::format_date_input;
 
 use crate::{
@@ -77,6 +77,8 @@ pub struct BillPlanSource {
     category_ids: Vec<u32>,
     /// Unit codes: every Unit some Account taking Transactions is kept in.
     units: Vec<String>,
+    /// The id of each of `units`, in the same order.
+    unit_ids: Vec<UnitId>,
     /// Every Account taking Transactions, as (Unit code, id, name).
     accounts: Vec<(String, u32, String)>,
     /// "none" first, then the active Payees by name.
@@ -99,6 +101,7 @@ impl BillPlanSource {
     pub fn new(
         categories: &[Category],
         accounts: &[Account],
+        unit_rows: &[lib_units::UnitRow],
         payees: &[Payee],
         keep_payee: Option<u32>,
         none_label: String,
@@ -117,9 +120,17 @@ impl BillPlanSource {
             .iter()
             .filter(|a| transactions::takes_transactions(&a.account_type))
             .collect();
-        let mut units: Vec<String> = takes.iter().map(|a| a.unit.clone()).collect();
-        units.sort();
-        units.dedup();
+        let code_of = |id: UnitId| {
+            unit_rows
+                .iter()
+                .find(|unit| unit.id == id)
+                .map_or_else(String::new, |unit| unit.code.clone())
+        };
+        let mut unit_pairs: Vec<(String, UnitId)> =
+            takes.iter().map(|a| (code_of(a.unit), a.unit)).collect();
+        unit_pairs.sort();
+        unit_pairs.dedup();
+        let (units, unit_ids) = unit_pairs.into_iter().unzip();
         let mut listed: Vec<&Payee> = payees
             .iter()
             .filter(|p| p.is_active || Some(p.id) == keep_payee)
@@ -129,9 +140,10 @@ impl BillPlanSource {
             category_labels: leaves.iter().map(|c| c.name.clone()).collect(),
             category_ids: leaves.iter().map(|c| c.id).collect(),
             units,
+            unit_ids,
             accounts: takes
                 .iter()
-                .map(|a| (a.unit.clone(), a.id, a.name.clone()))
+                .map(|a| (code_of(a.unit), a.id, a.name.clone()))
                 .collect(),
             payee_labels: std::iter::once(none_label)
                 .chain(listed.iter().map(|p| p.name.clone()))
@@ -146,6 +158,18 @@ impl BillPlanSource {
             today,
             date_style,
         }
+    }
+
+    /// The code the Unit select stores for `id`.
+    fn unit_code(&self, id: UnitId) -> Option<&str> {
+        let index = self.unit_ids.iter().position(|unit| *unit == id)?;
+        self.units.get(index).map(String::as_str)
+    }
+
+    /// The Unit the select's `code` names.
+    fn unit_id(&self, code: &str) -> Option<UnitId> {
+        let index = self.units.iter().position(|unit| unit == code)?;
+        self.unit_ids.get(index).copied()
     }
 
     /// The selects' options for `unit`, which scopes the Account list.
@@ -300,12 +324,13 @@ impl BillPlanForm {
 
     /// A form pre-filled from `plan`, for the Edit dialog. `source` must keep the Plan's Payee.
     pub fn from_plan(plan: &BillPlan, source: BillPlanSource) -> Self {
-        let options = source.options(Some(&plan.unit));
+        let unit_code = source.unit_code(plan.unit).map(str::to_string);
+        let options = source.options(unit_code.as_deref());
         let date_style = source.date_style;
         Self {
             name: TextField::new(plan.name.clone()),
             category: SelectState::new(options.category_label(plan.category_id)),
-            unit: SelectState::new(Some(plan.unit.clone())),
+            unit: SelectState::new(unit_code),
             account: SelectState::new(options.account_label(plan.account_id)),
             payee: SelectState::new(options.payee_label(plan.payee_id)),
             amount: TextField::new(plan.planned_amount.0.to_string()),
@@ -568,7 +593,7 @@ impl BillPlanForm {
         Some(BillPlanDraft {
             name: self.name.text().to_string(),
             category_id: options.category_ids[category],
-            unit: self.unit.value()?.to_string(),
+            unit: self.source.unit_id(self.unit.value()?)?,
             account_id: options.account_ids[account],
             payee_id: options.payee_ids[payee],
             planned_amount: self.amount_money()?,
@@ -692,10 +717,12 @@ mod tests {
         accounts: Vec<Account>,
         categories: Vec<Category>,
         payees: Vec<Payee>,
+        units: Vec<lib_units::UnitRow>,
     }
 
     fn stubs() -> Stubs {
         Stubs {
+            units: lib_units::default_units(),
             accounts: default_accounts(),
             categories: default_categories(),
             payees: default_payees(),
@@ -707,6 +734,7 @@ mod tests {
             BillPlanSource::new(
                 &self.categories,
                 &self.accounts,
+                &self.units,
                 &self.payees,
                 keep_payee,
                 "none".to_string(),
@@ -915,6 +943,7 @@ mod tests {
         let source = BillPlanSource::new(
             &default_categories(),
             &default_accounts(),
+            &lib_units::default_units(),
             &default_payees(),
             None,
             "none".to_string(),

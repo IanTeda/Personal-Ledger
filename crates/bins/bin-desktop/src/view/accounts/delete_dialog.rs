@@ -20,6 +20,7 @@ use crate::{
 
 pub fn render(
     account: &Account,
+    unit_code: &str,
     form: &DeleteAccountForm,
     on_cancel: dialog::OnClick,
     on_confirm: dialog::OnClick,
@@ -34,7 +35,7 @@ pub fn render(
             cx,
         ))
         .child(dialog::body([
-            warning_copy(account),
+            warning_copy(account, unit_code),
             dialog::info_panel(reference_notice(account), cx).into_any_element(),
             text_field(
                 "delete-account-confirm-input",
@@ -66,11 +67,11 @@ pub fn render(
 }
 
 /// `-2,318.44 aud`, the balance in the account's own Unit.
-fn balance_text(account: &Account) -> String {
+fn balance_text(account: &Account, unit_code: &str) -> String {
     format!(
         "{} {}",
         crate::view::format::amount(&account.balance).1,
-        account.unit
+        unit_code
     )
 }
 
@@ -84,14 +85,14 @@ fn reference_notice(account: &Account) -> String {
 
 /// `This account has a balance of **−2,318.44 aud** and **204 transactions**. Deleting it cannot
 /// be undone.` -- the two figures bold, as in the mockup.
-fn warning_copy(account: &Account) -> AnyElement {
+fn warning_copy(account: &Account, unit_code: &str) -> AnyElement {
     div()
         .flex()
         .flex_wrap()
         .text_size(px(13.0))
         .children(
             crate::msg::desktop_accounts_delete_warning(
-                &balance_text(account),
+                &balance_text(account, unit_code),
                 i64::from(account.transaction_count),
             )
             .into_iter()
@@ -152,10 +153,10 @@ mod tests {
     #[test]
     fn the_balance_is_stated_in_the_accounts_own_unit_with_a_real_minus() {
         assert_eq!(
-            balance_text(&seeded("Amex Platinum")),
+            balance_text(&seeded("Amex Platinum"), "aud"),
             "\u{2212}2,318.44 aud"
         );
-        assert_eq!(balance_text(&seeded("Bitcoin")), "0.4120 btc");
+        assert_eq!(balance_text(&seeded("Bitcoin"), "btc"), "0.4120 btc");
     }
 
     #[test]

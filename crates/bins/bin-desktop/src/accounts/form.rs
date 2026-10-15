@@ -4,7 +4,7 @@
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_accounts::{AccountDraft, NewAccount};
-use lib_core::{AccountType, Money};
+use lib_core::{AccountType, Money, UnitId};
 use lib_locale::Label;
 
 use super::{Account, GROUP_ORDER, NO_INSTITUTION};
@@ -133,15 +133,31 @@ pub struct AccountOptions {
     pub institutions: Vec<String>,
     pub types: Vec<String>,
     pub units: Vec<String>,
+    /// The id of each of `units`, in the same order: the select stores the code, the Account the id.
+    unit_ids: Vec<UnitId>,
 }
 
 impl AccountOptions {
-    pub fn new(institutions: Vec<String>, units: Vec<String>) -> Self {
+    pub fn new(institutions: Vec<String>, units: Vec<(UnitId, String)>) -> Self {
+        let (unit_ids, units) = units.into_iter().unzip();
         Self {
             institutions,
             types: GROUP_ORDER.iter().map(Label::label).collect(),
             units,
+            unit_ids,
         }
+    }
+
+    /// The code the Unit select stores for `id`.
+    pub fn unit_code(&self, id: UnitId) -> Option<&str> {
+        let index = self.unit_ids.iter().position(|unit| *unit == id)?;
+        self.units.get(index).map(String::as_str)
+    }
+
+    /// The Unit the select's `code` names.
+    pub fn unit_id(&self, code: &str) -> Option<UnitId> {
+        let index = self.units.iter().position(|unit| unit == code)?;
+        self.unit_ids.get(index).copied()
     }
 
     /// The options behind `field`; empty for a text field.
@@ -232,7 +248,7 @@ impl AccountForm {
             name: TextField::new(account.name.clone()),
             institution: SelectState::new(institution),
             account_type: SelectState::new(Some(account.account_type.label())),
-            unit: SelectState::new(Some(account.unit.clone())),
+            unit: SelectState::new(options.unit_code(account.unit).map(str::to_string)),
             opening_balance: TextField::default(),
             account_number: TextField::new(account.account_number.clone().unwrap_or_default()),
             focused: AccountField::Name,
@@ -457,6 +473,7 @@ impl AccountForm {
     /// amount to two places (`1000` becomes `1000.00`); other Units keep what was typed. `None`
     /// while invalid.
     pub fn into_new_account(self, opened_at: NaiveDate, is_currency: bool) -> Option<NewAccount> {
+        let unit = self.options.unit_id(self.unit.value()?)?;
         let draft = self.draft()?;
         let mut balance = self.opening_balance_money()?;
         if is_currency && balance.0.fractional_digit_count() < 2 {
@@ -464,7 +481,7 @@ impl AccountForm {
         }
         Some(NewAccount {
             draft,
-            unit: self.unit.value()?.to_string(),
+            unit,
             balance,
             opened_at,
         })
@@ -490,7 +507,7 @@ mod tests {
                 .collect(),
             lib_units::default_units()
                 .into_iter()
-                .map(|unit| unit.code)
+                .map(|unit| (unit.id, unit.code))
                 .collect(),
         )
     }
@@ -708,7 +725,7 @@ mod tests {
         assert_eq!(new.draft.name, "Rainy Day");
         assert_eq!(new.draft.account_type, AccountType::Bank);
         assert_eq!(new.draft.institution, "ANZ Banking Group");
-        assert_eq!(new.unit, "aud");
+        assert_eq!(new.unit, UnitId::SEED_AUD);
         assert_eq!(new.draft.account_number, None);
         assert_eq!(crate::view::format::amount(&new.balance).1, "1,500.00");
     }
@@ -902,7 +919,10 @@ mod tests {
     fn account_options() -> AccountOptions {
         AccountOptions::new(
             vec!["ANZ".to_string(), "CBA".to_string()],
-            vec!["aud".to_string(), "btc".to_string()],
+            vec![
+                (UnitId::SEED_AUD, "aud".to_string()),
+                (UnitId::SEED_BTC, "btc".to_string()),
+            ],
         )
     }
 

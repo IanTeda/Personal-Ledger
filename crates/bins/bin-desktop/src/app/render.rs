@@ -421,11 +421,8 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
-        let bills_base_unit = self
-            .ledger
-            .read(cx)
-            .ledger()
-            .units()
+        let ledger_units = self.ledger.read(cx).ledger().units();
+        let bills_base_unit = ledger_units
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
@@ -461,7 +458,7 @@ impl Render for Shell {
                         due: format::date(id.due, display.date_style),
                         amount: bills_view::schedule::with_unit(
                             format::amount(&amount).1,
-                            &plan.unit,
+                            bills_view::schedule::unit_code(ledger_units, plan.unit),
                             bills_base_unit,
                         ),
                     })
@@ -744,6 +741,7 @@ impl Render for Shell {
                     {
                         Some(account) => accounts_view::delete_dialog::render(
                             account,
+                            self.ledger.read(cx).ledger().unit_code(account.unit),
                             form,
                             on_accounts_dialog_cancel,
                             on_accounts_dialog_confirm,

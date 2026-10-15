@@ -66,14 +66,24 @@ mod tests {
         let accounts = default_accounts();
         let transactions = seeded_transactions(&payees);
         let j_smith = id_of(&payees, "J Smith");
-        let j_smith_usage = usage(&transactions, &accounts, Some("aud"), j_smith);
+        let j_smith_usage = usage(
+            &transactions,
+            &accounts,
+            Some(lib_core::UnitId::SEED_AUD),
+            j_smith,
+        );
         assert_eq!(j_smith_usage.splits, 4);
         assert_eq!(
             j_smith_usage.total,
             Money(BigDecimal::new((-64_000).into(), 2))
         );
 
-        let other_unit = usage(&transactions, &accounts, Some("xyz"), j_smith);
+        let other_unit = usage(
+            &transactions,
+            &accounts,
+            Some(lib_core::UnitId::new()),
+            j_smith,
+        );
         assert_eq!(other_unit.splits, 4);
         assert_eq!(other_unit.total, Money(BigDecimal::new(0.into(), 2)));
     }

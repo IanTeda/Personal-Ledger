@@ -272,7 +272,7 @@ pub fn default_bills(
         let draft = BillPlanDraft {
             name: seed.name.to_string(),
             category_id,
-            unit: account.unit.clone(),
+            unit: account.unit,
             account_id: account.id,
             payee_id,
             planned_amount: cents_money(seed.cents),

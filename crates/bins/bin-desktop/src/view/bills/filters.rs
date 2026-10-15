@@ -20,7 +20,10 @@ use crate::{
     view::accounts::select_field::{self, SelectFieldProps},
 };
 
-use super::{OnRowClick, schedule::with_unit};
+use super::{
+    OnRowClick,
+    schedule::{unit_code, with_unit},
+};
 
 /// Called with a select's field and the chosen option's index.
 pub type OnOptionClick = Rc<dyn Fn(FilterField, usize, &mut Window, &mut App)>;
@@ -70,6 +73,8 @@ pub struct FilterProps<'a> {
     pub stats: Option<(&'a BillPlan, PlanStats)>,
     /// The base Unit's code: an amount in it shows no Unit code.
     pub base_unit: Option<&'a str>,
+    /// Turns a Plan's Unit id into the code shown.
+    pub units: &'a [lib_units::UnitRow],
     /// Called with the chip's index in `STATUS_CHIPS`.
     pub on_chip_click: OnRowClick,
     pub on_field_click: OnFieldClick,
@@ -95,7 +100,7 @@ pub fn render(props: &FilterProps<'_>, cx: &App) -> AnyElement {
         .flex_col()
         .child(filter_row(props, cx))
         .when_some(props.stats.as_ref(), |this, (plan, stats)| {
-            this.child(stat_callout(plan, stats, props.base_unit, cx))
+            this.child(stat_callout(plan, stats, props.units, props.base_unit, cx))
         })
         .into_any_element()
 }
@@ -189,11 +194,16 @@ fn chip(
 fn stat_callout(
     plan: &BillPlan,
     stats: &PlanStats,
+    units: &[lib_units::UnitRow],
     base_unit: Option<&str>,
     cx: &App,
 ) -> impl IntoElement {
     let money = |amount: &lib_core::Money| {
-        with_unit(crate::view::format::amount(amount).1, &plan.unit, base_unit)
+        with_unit(
+            crate::view::format::amount(amount).1,
+            unit_code(units, plan.unit),
+            base_unit,
+        )
     };
     let stat = |label: String, figure: Option<String>, note: Option<String>| {
         div()

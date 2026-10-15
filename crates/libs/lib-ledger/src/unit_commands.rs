@@ -2,15 +2,16 @@
 //! anything is written so a refusal leaves the Ledger untouched, and recording the row it wrote
 //! (ADR-0039).
 //!
-//! A Unit row has no id yet, so a command addresses it by its position and a change records that
-//! position; it takes an id with the UUIDv7 newtypes (ADR-0040). Price Sources have no write yet.
+//! A command addresses a Unit by its [`UnitId`] (ADR-0040), so editing its code leaves the Accounts
+//! on it alone. Price Sources have no write yet.
 
+use lib_core::UnitId;
 use lib_units::{UnitKind, UnitRow, add_unit, edit_unit, remove_unit};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
-/// The Unit row a command addressed is no longer at that position (or no longer holds that code),
-/// which only happens when it was removed or moved while its Dialog was open.
+/// The Unit a command addressed is gone, which only happens when it was removed while its Dialog
+/// was open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("unit not found")]
 pub struct UnitGone;
@@ -18,28 +19,26 @@ pub struct UnitGone;
 impl Ledger {
     pub fn add_unit(&mut self, code: String, name: String, kind: UnitKind) {
         let unit = add_unit(&mut self.units, code, name, kind);
-        let index = self.units.len() - 1;
-        self.pending.push(LedgerChange::UpsertUnit { index, unit });
+        self.pending.push(LedgerChange::UpsertUnit(unit));
     }
 
     pub fn edit_unit(
         &mut self,
-        index: usize,
+        id: UnitId,
         code: String,
         name: String,
         kind: UnitKind,
     ) -> Result<(), UnitGone> {
-        let unit = edit_unit(&mut self.units, index, code, name, kind)
+        let unit = edit_unit(&mut self.units, id, code, name, kind)
             .ok_or(UnitGone)?
             .clone();
-        self.pending.push(LedgerChange::UpsertUnit { index, unit });
+        self.pending.push(LedgerChange::UpsertUnit(unit));
         Ok(())
     }
 
-    /// Removes the Unit at `index` if it still holds `code`, the code the confirm dialog opened on.
-    pub fn delete_unit(&mut self, index: usize, code: &str) -> Result<UnitRow, UnitGone> {
-        let unit = remove_unit(&mut self.units, index, code).ok_or(UnitGone)?;
-        self.pending.push(LedgerChange::DeleteUnit { index });
+    pub fn delete_unit(&mut self, id: UnitId) -> Result<UnitRow, UnitGone> {
+        let unit = remove_unit(&mut self.units, id).ok_or(UnitGone)?;
+        self.pending.push(LedgerChange::DeleteUnit(id));
         Ok(unit)
     }
 }
@@ -65,7 +64,7 @@ impl LedgerCommand for AddUnit {
 /// [`Ledger::edit_unit`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditUnit {
-    pub index: usize,
+    pub id: UnitId,
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
@@ -75,22 +74,21 @@ impl LedgerCommand for EditUnit {
     type Outcome = ();
     type Refusal = UnitGone;
     fn run(self, ledger: &mut Ledger) -> Result<(), UnitGone> {
-        ledger.edit_unit(self.index, self.code, self.name, self.kind)
+        ledger.edit_unit(self.id, self.code, self.name, self.kind)
     }
 }
 
 /// [`Ledger::delete_unit`] as a value; the outcome is the Unit removed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteUnit {
-    pub index: usize,
-    pub code: String,
+    pub id: UnitId,
 }
 
 impl LedgerCommand for DeleteUnit {
     type Outcome = UnitRow;
     type Refusal = UnitGone;
     fn run(self, ledger: &mut Ledger) -> Result<UnitRow, UnitGone> {
-        ledger.delete_unit(self.index, &self.code)
+        ledger.delete_unit(self.id)
     }
 }
 
@@ -99,8 +97,8 @@ mod tests {
     use super::*;
     use crate::LedgerChange;
 
-    fn code_at(ledger: &Ledger, index: usize) -> String {
-        ledger.units()[index].code.clone()
+    fn id_at(ledger: &Ledger, index: usize) -> UnitId {
+        ledger.units()[index].id
     }
 
     #[test]
@@ -122,7 +120,7 @@ mod tests {
         assert!(!added.is_base && !added.is_default);
         assert_eq!(
             ledger.drain_changes(),
-            vec![LedgerChange::UpsertUnit { index, unit: added }]
+            vec![LedgerChange::UpsertUnit(added)]
         );
     }
 
@@ -133,7 +131,7 @@ mod tests {
         assert!(before.is_base && before.is_default);
 
         EditUnit {
-            index: 0,
+            id: UnitId::SEED_AUD,
             code: "aud2".into(),
             name: "Aussie".into(),
             kind: UnitKind::Fiat,
@@ -150,10 +148,7 @@ mod tests {
         assert!(edited.is_base && edited.is_default);
         assert_eq!(
             ledger.drain_changes(),
-            vec![LedgerChange::UpsertUnit {
-                index: 0,
-                unit: edited
-            }]
+            vec![LedgerChange::UpsertUnit(edited)]
         );
     }
 
@@ -164,7 +159,7 @@ mod tests {
 
         assert_eq!(
             EditUnit {
-                index: 99,
+                id: UnitId::new(),
                 code: "x".into(),
                 name: "x".into(),
                 kind: UnitKind::Fiat
@@ -179,39 +174,25 @@ mod tests {
     #[test]
     fn deleting_a_unit_removes_it_returns_it_and_records_the_delete() {
         let mut ledger = Ledger::stub();
-        let code = code_at(&ledger, 1);
+        let id = id_at(&ledger, 1);
         let count = ledger.units().len();
 
-        let removed = DeleteUnit {
-            index: 1,
-            code: code.clone(),
-        }
-        .run(&mut ledger)
-        .unwrap();
+        let removed = DeleteUnit { id }.run(&mut ledger).unwrap();
 
-        assert_eq!(removed.code, code);
+        assert_eq!(removed.id, id);
         assert_eq!(ledger.units().len(), count - 1);
-        assert_eq!(
-            ledger.drain_changes(),
-            vec![LedgerChange::DeleteUnit { index: 1 }]
-        );
+        assert_eq!(ledger.drain_changes(), vec![LedgerChange::DeleteUnit(id)]);
     }
 
     #[test]
-    fn deleting_with_the_wrong_code_or_index_is_refused_and_the_ledger_is_untouched() {
+    fn deleting_an_unknown_id_is_refused_and_the_ledger_is_untouched() {
         let mut ledger = Ledger::stub();
         let before = ledger.units().to_vec();
 
-        let wrong_code = DeleteUnit {
-            index: 1,
-            code: code_at(&ledger, 0),
-        };
-        assert_eq!(wrong_code.run(&mut ledger), Err(UnitGone));
-        let past_end = DeleteUnit {
-            index: 99,
-            code: "x".into(),
-        };
-        assert_eq!(past_end.run(&mut ledger), Err(UnitGone));
+        assert_eq!(
+            DeleteUnit { id: UnitId::new() }.run(&mut ledger),
+            Err(UnitGone)
+        );
 
         assert_eq!(ledger.units(), before);
         assert!(ledger.drain_changes().is_empty());
@@ -221,13 +202,41 @@ mod tests {
     fn a_refused_unit_write_leaves_earlier_recorded_changes_alone() {
         let mut ledger = Ledger::stub();
         ledger.add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto);
-        assert!(ledger.delete_unit(99, "x").is_err());
+        assert!(ledger.delete_unit(UnitId::new()).is_err());
         assert!(
             ledger
-                .edit_unit(99, "x".into(), "x".into(), UnitKind::Fiat)
+                .edit_unit(UnitId::new(), "x".into(), "x".into(), UnitKind::Fiat)
                 .is_err()
         );
         assert_eq!(ledger.drain_changes().len(), 1);
+    }
+
+    #[test]
+    fn editing_a_units_code_keeps_its_accounts_on_that_unit() {
+        let mut ledger = Ledger::stub();
+        let on_btc: Vec<u32> = ledger
+            .accounts()
+            .iter()
+            .filter(|account| account.unit == UnitId::SEED_BTC)
+            .map(|account| account.id)
+            .collect();
+        assert!(!on_btc.is_empty(), "the seed has an Account in btc");
+
+        EditUnit {
+            id: UnitId::SEED_BTC,
+            code: "xbt".into(),
+            name: "Bitcoin".into(),
+            kind: UnitKind::Crypto,
+        }
+        .run(&mut ledger)
+        .unwrap();
+
+        for id in on_btc {
+            let account = ledger.accounts().iter().find(|a| a.id == id).unwrap();
+            assert_eq!(account.unit, UnitId::SEED_BTC);
+            let unit = ledger.unit(account.unit).expect("the Unit still exists");
+            assert_eq!(unit.code, "xbt");
+        }
     }
 
     #[test]
@@ -235,8 +244,7 @@ mod tests {
         let mut ledger = Ledger::stub();
         let before = ledger.price_sources().to_vec();
         DeleteUnit {
-            index: 1,
-            code: code_at(&ledger, 1),
+            id: id_at(&ledger, 1),
         }
         .run(&mut ledger)
         .unwrap();

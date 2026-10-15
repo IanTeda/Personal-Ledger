@@ -12,6 +12,9 @@
 //! - Edit mode locks Unit and Method and has no Start from: it is the one place to rename a
 //!   Budget or change its Accounts.
 
+use lib_core::UnitId;
+use lib_units::UnitRow;
+
 use crate::{
     accounts::{Account, form::SelectKey},
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
@@ -57,17 +60,31 @@ pub struct BudgetOptions {
 /// An Account that takes Transactions, as the form needs it: id, name and Unit.
 type Candidate = (u32, String, String);
 
-fn candidates(accounts: &[Account]) -> Vec<Candidate> {
+fn unit_code_of(units: &[UnitRow], id: UnitId) -> String {
+    units
+        .iter()
+        .find(|unit| unit.id == id)
+        .map_or_else(String::new, |unit| unit.code.clone())
+}
+
+fn candidates(accounts: &[Account], units: &[UnitRow]) -> Vec<Candidate> {
     accounts
         .iter()
         .filter(|a| transactions::takes_transactions(&a.account_type))
-        .map(|a| (a.id, a.name.clone(), a.unit.clone()))
+        .map(|a| (a.id, a.name.clone(), unit_code_of(units, a.unit)))
+        .collect()
+}
+
+fn unit_ids(units: &[UnitRow]) -> Vec<(String, UnitId)> {
+    units
+        .iter()
+        .map(|unit| (unit.code.clone(), unit.id))
         .collect()
 }
 
 impl BudgetOptions {
-    pub fn new(accounts: &[Account], unit: Option<&str>) -> Self {
-        Self::of(&candidates(accounts), unit)
+    pub fn new(accounts: &[Account], units: &[UnitRow], unit: Option<&str>) -> Self {
+        Self::of(&candidates(accounts, units), unit)
     }
 
     fn of(takes: &[Candidate], unit: Option<&str>) -> Self {
@@ -117,6 +134,9 @@ pub struct BudgetForm {
     /// The Accounts that take Transactions, copied in as the Dialog opens: the Unit select's
     /// options and the Accounts on offer are worked out from them as the Unit changes.
     takes_transactions: Vec<Candidate>,
+    /// Every Unit's code and id, copied in as the Dialog opens: the Unit select stores the code,
+    /// the Budget the id.
+    unit_ids: Vec<(String, UnitId)>,
     pub focused: BudgetField,
     /// A refused save, shown until the next change.
     pub error: Option<BudgetError>,
@@ -124,13 +144,13 @@ pub struct BudgetForm {
 
 impl BudgetForm {
     /// A new Budget in `source`'s Unit (or the first Unit on offer), every Account preselected.
-    pub fn new(accounts: &[Account], source: Option<&Budget>) -> Self {
-        let units = BudgetOptions::new(accounts, None).units;
+    pub fn new(accounts: &[Account], unit_rows: &[UnitRow], source: Option<&Budget>) -> Self {
+        let units = BudgetOptions::new(accounts, unit_rows, None).units;
         let unit = source
-            .map(|budget| budget.unit.clone())
+            .map(|budget| unit_code_of(unit_rows, budget.unit))
             .filter(|unit| units.contains(unit))
             .or_else(|| units.first().cloned());
-        let options = BudgetOptions::new(accounts, unit.as_deref());
+        let options = BudgetOptions::new(accounts, unit_rows, unit.as_deref());
         Self {
             editing: None,
             name: TextField::default(),
@@ -138,24 +158,26 @@ impl BudgetForm {
             account_ids: options.account_ids(),
             account_cursor: 0,
             start_from: StartChoice::Empty,
-            copy_source: source.map(|budget| (budget.id, budget.unit.clone())),
-            takes_transactions: candidates(accounts),
+            copy_source: source.map(|budget| (budget.id, unit_code_of(unit_rows, budget.unit))),
+            takes_transactions: candidates(accounts, unit_rows),
+            unit_ids: unit_ids(unit_rows),
             focused: BudgetField::Name,
             error: None,
         }
     }
 
     /// Edit mode, prefilled from `budget`.
-    pub fn from_budget(budget: &Budget, accounts: &[Account]) -> Self {
+    pub fn from_budget(budget: &Budget, accounts: &[Account], unit_rows: &[UnitRow]) -> Self {
         Self {
             editing: Some(budget.id),
             name: TextField::new(budget.name.clone()),
-            unit: SelectState::new(Some(budget.unit.clone())),
+            unit: SelectState::new(Some(unit_code_of(unit_rows, budget.unit))),
             account_ids: budget.account_ids.clone(),
             account_cursor: 0,
             start_from: StartChoice::Empty,
             copy_source: None,
-            takes_transactions: candidates(accounts),
+            takes_transactions: candidates(accounts, unit_rows),
+            unit_ids: unit_ids(unit_rows),
             focused: BudgetField::Name,
             error: None,
         }
@@ -167,6 +189,14 @@ impl BudgetForm {
 
     pub fn unit_code(&self) -> Option<&str> {
         self.unit.value()
+    }
+
+    fn unit_id(&self) -> Option<UnitId> {
+        let code = self.unit_code()?;
+        self.unit_ids
+            .iter()
+            .find(|(unit, _)| unit == code)
+            .map(|(_, id)| *id)
     }
 
     /// The Unit select's options and the Accounts on offer for the form's Unit.
@@ -362,7 +392,7 @@ impl BudgetForm {
             },
             None => BudgetDraft::Create(NewBudget {
                 name,
-                unit: self.unit_code()?.to_string(),
+                unit: self.unit_id()?,
                 account_ids: self.account_ids.clone(),
                 start_from: match (self.start_from, &self.copy_source) {
                     (StartChoice::Copy, Some((source, _))) if self.can_copy() => {
@@ -455,6 +485,14 @@ mod tests {
         (accounts, budgets)
     }
 
+    fn unit_code(id: UnitId) -> &'static str {
+        match id {
+            UnitId::SEED_AUD => "aud",
+            UnitId::SEED_BTC => "btc",
+            _ => "vas",
+        }
+    }
+
     fn personal(budgets: &Budgets) -> &Budget {
         budgets.get(budgets::PERSONAL_SPENDING_ID).unwrap()
     }
@@ -462,9 +500,13 @@ mod tests {
     #[test]
     fn a_new_form_takes_the_source_unit_and_preselects_its_accounts() {
         let (accounts, budgets) = seeded();
-        let form = BudgetForm::new(&accounts, Some(personal(&budgets)));
+        let form = BudgetForm::new(
+            &accounts,
+            &lib_units::default_units(),
+            Some(personal(&budgets)),
+        );
         let options = form.options();
-        assert_eq!(form.unit_code(), Some(personal(&budgets).unit.as_str()));
+        assert_eq!(form.unit_code(), Some(unit_code(personal(&budgets).unit)));
         assert!(!options.accounts.is_empty());
         let mut selected = form.account_ids.clone();
         selected.sort_unstable();
@@ -474,7 +516,7 @@ mod tests {
         for (id, _) in &options.accounts {
             let account = accounts.iter().find(|a| a.id == *id).unwrap();
             assert!(transactions::takes_transactions(&account.account_type));
-            assert_eq!(Some(account.unit.as_str()), form.unit_code());
+            assert_eq!(Some(unit_code(account.unit)), form.unit_code());
         }
         assert!(form.can_copy());
         assert!(!form.is_valid(), "no name yet");
@@ -483,7 +525,11 @@ mod tests {
     #[test]
     fn the_draft_carries_the_name_accounts_and_start_from() {
         let (accounts, budgets) = seeded();
-        let mut form = BudgetForm::new(&accounts, Some(personal(&budgets)));
+        let mut form = BudgetForm::new(
+            &accounts,
+            &lib_units::default_units(),
+            Some(personal(&budgets)),
+        );
         form.name = TextField::new("  Holiday ");
         form.focus(BudgetField::StartFrom);
         form.step(true);
@@ -510,7 +556,11 @@ mod tests {
     #[test]
     fn accounts_toggle_by_cursor_and_an_empty_set_is_invalid() {
         let (accounts, budgets) = seeded();
-        let mut form = BudgetForm::new(&accounts, Some(personal(&budgets)));
+        let mut form = BudgetForm::new(
+            &accounts,
+            &lib_units::default_units(),
+            Some(personal(&budgets)),
+        );
         let options = form.options();
         form.name = TextField::new("Holiday");
         form.focus(BudgetField::Accounts);
@@ -539,8 +589,12 @@ mod tests {
     #[test]
     fn changing_the_unit_reselects_accounts_and_drops_copy() {
         let (accounts, budgets) = seeded();
-        let mut form = BudgetForm::new(&accounts, Some(personal(&budgets)));
-        let all = BudgetOptions::new(&accounts, None);
+        let mut form = BudgetForm::new(
+            &accounts,
+            &lib_units::default_units(),
+            Some(personal(&budgets)),
+        );
+        let all = BudgetOptions::new(&accounts, &lib_units::default_units(), None);
         let Some(other) = all
             .units
             .iter()
@@ -571,7 +625,7 @@ mod tests {
     fn edit_mode_locks_the_unit_and_drafts_a_rename() {
         let (accounts, budgets) = seeded();
         let budget = personal(&budgets);
-        let mut form = BudgetForm::from_budget(budget, &accounts);
+        let mut form = BudgetForm::from_budget(budget, &accounts, &lib_units::default_units());
         assert!(form.is_edit());
         assert_eq!(form.name.text(), budget.name);
         assert_eq!(form.account_ids, budget.account_ids);
@@ -631,7 +685,11 @@ mod tests {
     fn new_budget() -> OpenDialog {
         let (accounts, _, budgets) = budgets_world();
         let source = budgets.get(budgets::PERSONAL_SPENDING_ID);
-        budgets_dialog(BudgetsDialog::Budget(BudgetForm::new(&accounts, source)))
+        budgets_dialog(BudgetsDialog::Budget(BudgetForm::new(
+            &accounts,
+            &lib_units::default_units(),
+            source,
+        )))
     }
 
     #[test]

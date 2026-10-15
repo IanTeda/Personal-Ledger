@@ -328,6 +328,7 @@ impl BudgetsView {
     pub fn new_budget_dialog(&self, cx: &App) -> BudgetsDialog {
         BudgetsDialog::Budget(budgets::form::BudgetForm::new(
             self.sources.accounts.read(cx).accounts(cx),
+            self.sources.ledger.read(cx).ledger().units(),
             self.budget(cx),
         ))
     }
@@ -343,6 +344,7 @@ impl BudgetsView {
             budgets::form::BudgetForm::from_budget(
                 budget,
                 self.sources.accounts.read(cx).accounts(cx),
+                self.sources.ledger.read(cx).ledger().units(),
             ),
         ))
     }

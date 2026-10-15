@@ -183,7 +183,7 @@ mod tests {
         BillPlanDraft {
             name: "Water".to_string(),
             category_id: 5,
-            unit: "aud".to_string(),
+            unit: lib_core::UnitId::SEED_AUD,
             account_id: 2,
             payee_id: Some(15),
             planned_amount: cents_money(9_000),
@@ -509,7 +509,9 @@ mod tests {
             today(),
         );
         assert!(own.iter().any(|r| r.id == august && !r.carried));
-        let summary = period_summary(&september, &w.plans, &w.entries, &w.transactions);
+        let summary = period_summary(&september, &w.plans, &w.entries, &w.transactions, |_| {
+            "aud".to_string()
+        });
         assert_eq!(summary.overdue, 3);
     }
 
@@ -596,7 +598,9 @@ mod tests {
     fn the_period_summary_counts_and_totals_its_own_rows() {
         let w = world();
         let rows = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
-        let summary = period_summary(&rows, &w.plans, &w.entries, &w.transactions);
+        let summary = period_summary(&rows, &w.plans, &w.entries, &w.transactions, |_| {
+            "aud".to_string()
+        });
         assert_eq!((summary.due, summary.overdue, summary.paid), (3, 2, 1));
         // 29.99 + 25.00 + 64.00 + 22.99 + 89.00 + 150.00 + 1180.00
         assert_eq!(

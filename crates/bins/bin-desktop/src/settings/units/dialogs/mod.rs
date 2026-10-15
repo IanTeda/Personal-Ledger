@@ -9,18 +9,18 @@ pub mod edit;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*};
-use lib_units::{UnitKind, UnitRow};
+use lib_units::{UnitId, UnitKind, UnitRow};
 
 use super::form::{AddUnitField, DeleteUnitForm, UnitForm};
 use crate::{chrome::dialog_host::Dialog, dialog, form::field::TextField};
 
-/// The open Units Dialog. Edit and Delete carry the row's index in the Units table, so the
-/// confirm knows which row to overwrite or remove.
+/// The open Units Dialog. Edit and Delete carry the row's [`UnitId`], so the confirm knows which
+/// row to overwrite or remove even if the table shifts under the open Dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitsDialog {
     Add(UnitForm),
-    Edit(usize, UnitForm),
-    Delete(usize, DeleteUnitForm),
+    Edit(UnitId, UnitForm),
+    Delete(UnitId, DeleteUnitForm),
 }
 
 /// Applies a [`Change`] to the open Units Dialog where the Dialog host holds it
@@ -49,7 +49,7 @@ impl UnitsDialog {
         match self {
             Self::Add(form) => add::render(form, handlers, cx),
             Self::Edit(_, form) => edit::render(form, handlers, cx),
-            Self::Delete(index, form) => match units.get(*index) {
+            Self::Delete(id, form) => match units.iter().find(|row| row.id == *id) {
                 Some(row) => delete::render(row, form, handlers, cx),
                 None => div().into_any_element(),
             },
@@ -140,7 +140,10 @@ mod tests {
 
     #[test]
     fn delete_unit_confirms_only_on_the_exact_case_sensitive_code() {
-        let mut dialog = OpenDialog::Units(UnitsDialog::Delete(0, DeleteUnitForm::new("btc")));
+        let mut dialog = OpenDialog::Units(UnitsDialog::Delete(
+            UnitId::SEED_BTC,
+            DeleteUnitForm::new("btc"),
+        ));
         type_text(&mut dialog, "BTC");
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
@@ -158,7 +161,7 @@ mod tests {
 
     #[test]
     fn a_click_change_reaches_add_and_edit_but_not_delete() {
-        let mut dialog = UnitsDialog::Edit(0, UnitForm::default());
+        let mut dialog = UnitsDialog::Edit(UnitId::SEED_AUD, UnitForm::default());
         dialog.apply_change(Change::Field(AddUnitField::Name));
         dialog.apply_change(Change::Kind(UnitKind::Crypto));
         let UnitsDialog::Edit(_, form) = &dialog else {
@@ -167,7 +170,7 @@ mod tests {
         assert_eq!(form.focused_field, AddUnitField::Name);
         assert_eq!(form.kind, UnitKind::Crypto);
 
-        let mut delete = UnitsDialog::Delete(0, DeleteUnitForm::new("btc"));
+        let mut delete = UnitsDialog::Delete(UnitId::SEED_BTC, DeleteUnitForm::new("btc"));
         let before = delete.clone();
         delete.apply_change(Change::Kind(UnitKind::Crypto));
         assert_eq!(delete, before);

@@ -11,7 +11,7 @@ use lib_budgets::{
     PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
 };
 use lib_categories::{self as categories, Category, default_categories};
-use lib_core::{Money, Period};
+use lib_core::{Money, Period, UnitId};
 use lib_payees::default_payees;
 use lib_tags::default_tags;
 use lib_transactions::Transaction;
@@ -78,7 +78,7 @@ fn unreachable_budget() -> Budget {
         id: 0,
         name: String::new(),
         method: Method::Limits,
-        unit: String::new(),
+        unit: UnitId::SEED_AUD,
         account_ids: Vec::new(),
         is_default: false,
         archived_at: None,
@@ -129,7 +129,7 @@ fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
             assert_eq!(check_leaf(&world.categories, id), Ok(()));
         }
         assert_eq!(
-            check_accounts(&world.accounts, &budget.unit, &budget.account_ids),
+            check_accounts(&world.accounts, budget.unit, &budget.account_ids),
             Ok(())
         );
         assert!(!budget.account_ids.is_empty());

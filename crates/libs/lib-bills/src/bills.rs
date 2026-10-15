@@ -6,7 +6,7 @@ use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{CategoryTypes, Money, Period, Total, TransactionStatus};
+use lib_core::{CategoryTypes, Money, Period, Total, TransactionStatus, UnitId};
 use lib_transactions::{self as transactions, Split, Transaction};
 
 use super::*;
@@ -29,7 +29,7 @@ pub enum BillError {
     UnitMismatch,
     /// Carries the locked Unit.
     #[error("the unit is locked at {0}")]
-    UnitLocked(String),
+    UnitLocked(UnitId),
     #[error("the planned amount must be greater than zero")]
     AmountNotPositive,
     #[error("ends on can't be before first due")]
@@ -56,7 +56,7 @@ pub enum BillError {
 pub struct BillPlanDraft {
     pub name: String,
     pub category_id: u32,
-    pub unit: String,
+    pub unit: UnitId,
     pub account_id: u32,
     pub payee_id: Option<u32>,
     pub planned_amount: Money,
@@ -117,7 +117,7 @@ pub fn insert_plan(
         id,
         name,
         category_id: draft.category_id,
-        unit: draft.unit.clone(),
+        unit: draft.unit,
         account_id: draft.account_id,
         payee_id: draft.payee_id,
         planned_amount: draft.planned_amount.clone(),
@@ -151,7 +151,7 @@ pub fn edit_plan(
         .find(|p| p.id == id)
         .ok_or(BillError::PlanNotFound)?;
     if draft.unit != plan.unit {
-        return Err(BillError::UnitLocked(plan.unit.clone()));
+        return Err(BillError::UnitLocked(plan.unit));
     }
     let name = validate(draft, categories, accounts)?;
     let reschedules = (draft.recurrence, draft.first_due, draft.ends_on)
@@ -290,12 +290,7 @@ pub fn match_candidates(
     let Ok(plan) = open_entry(plans, entries, id) else {
         return Vec::new();
     };
-    let unit_of = |account_id: u32| {
-        accounts
-            .iter()
-            .find(|a| a.id == account_id)
-            .map(|a| a.unit.as_str())
-    };
+    let unit_of = |account_id: u32| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
     let is_expense = |category_id: u32| {
         categories
             .iter()
@@ -304,7 +299,7 @@ pub fn match_candidates(
     let mut found: Vec<(bool, bool, BigDecimal, i64, SplitRef)> = Vec::new();
     for transaction in transactions {
         let days = (transaction.date - id.due).num_days().abs();
-        if days > MATCH_WINDOW_DAYS || unit_of(transaction.account_id) != Some(plan.unit.as_str()) {
+        if days > MATCH_WINDOW_DAYS || unit_of(transaction.account_id) != Some(plan.unit) {
             continue;
         }
         for (split_index, split) in transaction.splits.iter().enumerate() {
@@ -581,9 +576,11 @@ pub fn period_summary(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
     transactions: &[Transaction],
+    unit_code: impl Fn(UnitId) -> String,
 ) -> PeriodSummary {
     let count = |status| rows.iter().filter(|r| r.status == status).count();
     let mut planned = Total::Empty;
+    let mut planned_unit: Option<UnitId> = None;
     for row in rows.iter().filter(|r| !r.carried) {
         let Some(plan) = get(plans, row.id.plan_id) else {
             continue;
@@ -596,11 +593,14 @@ pub fn period_summary(
             continue;
         };
         planned = match planned {
-            Total::Empty => Total::Single {
-                unit: plan.unit.clone(),
-                amount: figure,
-            },
-            Total::Single { unit, amount } if unit == plan.unit => Total::Single {
+            Total::Empty => {
+                planned_unit = Some(plan.unit);
+                Total::Single {
+                    unit: unit_code(plan.unit),
+                    amount: figure,
+                }
+            }
+            Total::Single { unit, amount } if planned_unit == Some(plan.unit) => Total::Single {
                 unit,
                 amount: Money(amount.0 + figure.0),
             },
@@ -651,7 +651,7 @@ mod tests {
         BillPlanDraft {
             name: "Water".to_string(),
             category_id: 5,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             account_id: 2,
             payee_id: Some(15),
             planned_amount: cents_money(9_000),
@@ -912,7 +912,10 @@ mod tests {
         // Home Loan takes no Transactions.
         assert_eq!(refused(|d| d.account_id = 5), BillError::AccountRequired);
         assert_eq!(refused(|d| d.account_id = 99), BillError::AccountRequired);
-        assert_eq!(refused(|d| d.unit = "usd".into()), BillError::UnitMismatch);
+        assert_eq!(
+            refused(|d| d.unit = UnitId::SEED_BTC),
+            BillError::UnitMismatch
+        );
         assert_eq!(
             refused(|d| d.planned_amount = cents_money(0)),
             BillError::AmountNotPositive
@@ -935,11 +938,11 @@ mod tests {
         let mut w = empty();
         let pid = add(&mut w, &draft(Recurrence::Monthly, today()));
         let mut edit = draft(Recurrence::Monthly, today());
-        edit.unit = "usd".into();
+        edit.unit = UnitId::SEED_BTC;
         let (c, a) = (w.categories.clone(), w.accounts.clone());
         assert_eq!(
             edit_plan(&mut w.plans, &mut w.entries, pid, &edit, &c, &a, today()),
-            Err(BillError::UnitLocked("aud".into()))
+            Err(BillError::UnitLocked(UnitId::SEED_AUD))
         );
     }
 

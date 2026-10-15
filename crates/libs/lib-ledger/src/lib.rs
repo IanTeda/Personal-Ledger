@@ -59,6 +59,7 @@ use lib_accounts::{Account, default_accounts};
 use lib_bills::{BillPlan, BillScheduleEntry, default_bills};
 use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
+use lib_core::UnitId;
 use lib_documents::{
     Document, default_documents,
     types::{DocumentTypeRow, default_types, first_free_id},
@@ -250,6 +251,16 @@ impl Ledger {
 
     pub fn units(&self) -> &[UnitRow] {
         &self.units
+    }
+
+    /// The Unit `id`, if it exists: how an Account's Unit reference becomes a code to show.
+    pub fn unit(&self, id: UnitId) -> Option<&UnitRow> {
+        self.units.iter().find(|unit| unit.id == id)
+    }
+
+    /// The code of Unit `id` for display, empty when the Unit is gone.
+    pub fn unit_code(&self, id: UnitId) -> &str {
+        self.unit(id).map_or("", |unit| unit.code.as_str())
     }
 
     pub fn price_sources(&self) -> &[PriceSourceRow] {

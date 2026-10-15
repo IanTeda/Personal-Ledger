@@ -8,7 +8,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountType, Money};
+use lib_core::{AccountType, Money, UnitId};
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
 /// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
 /// deliberately absent from `institutions::default_institutions()`: it is not a user-managed row.
@@ -28,17 +28,17 @@ pub const GROUP_ORDER: [AccountType; 5] = [
     AccountType::Investment,
 ];
 
-/// One row of the Accounts page. `institution` and `unit` are the Institution's name and the
-/// Unit's code -- the same value keys the select control stores (issue: select control for the
-/// Add/Edit dialogs), so a row survives the Settings lists changing underneath it.
+/// One row of the Accounts page. `institution` is the Institution's name -- the same value key the
+/// select control stores -- and `unit` is the Unit's id, so editing a Unit's code leaves the
+/// Account on that Unit; the code is looked up through the Ledger when shown.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Account {
     pub id: u32,
     pub name: String,
     pub institution: String,
     pub account_type: AccountType,
-    /// Unit code (e.g. `"aud"`). Fixed at creation.
-    pub unit: String,
+    /// The Unit this Account counts in. Fixed at creation.
+    pub unit: UnitId,
     /// In `unit`, at whatever precision the Unit carries (`0.4120` for btc). Its opening value is
     /// fixed at creation; nothing in this map moves it afterwards.
     pub balance: Money,
@@ -66,7 +66,7 @@ pub struct AccountDraft {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewAccount {
     pub draft: AccountDraft,
-    pub unit: String,
+    pub unit: UnitId,
     pub balance: Money,
     pub opened_at: NaiveDate,
 }
@@ -195,27 +195,27 @@ pub fn next_account_id(accounts: &[Account]) -> u32 {
 pub struct NetWorth {
     pub account_count: usize,
     /// `None` when Settings has no base Unit, in which case there is no net figure at all.
-    pub base_unit: Option<String>,
+    pub base_unit: Option<UnitId>,
     /// Signed sum of the base-Unit accounts' balances (loans and cards negative).
     pub base_net: Money,
-    /// Other Unit codes held, in first-seen order, each once.
-    pub held_separately: Vec<String>,
+    /// Other Units held, in first-seen order, each once.
+    pub held_separately: Vec<UnitId>,
 }
 
 /// Computes the header's [`NetWorth`] for `accounts` against the Settings base Unit.
-pub fn net_worth(accounts: &[Account], base_unit: Option<&str>) -> NetWorth {
+pub fn net_worth(accounts: &[Account], base_unit: Option<UnitId>) -> NetWorth {
     let mut base_net = Money(BigDecimal::from(0));
-    let mut held_separately: Vec<String> = Vec::new();
+    let mut held_separately: Vec<UnitId> = Vec::new();
     for account in accounts {
-        if base_unit == Some(account.unit.as_str()) {
+        if base_unit == Some(account.unit) {
             base_net = Money(base_net.0 + account.balance.0.clone());
         } else if !held_separately.contains(&account.unit) {
-            held_separately.push(account.unit.clone());
+            held_separately.push(account.unit);
         }
     }
     NetWorth {
         account_count: accounts.len(),
-        base_unit: base_unit.map(str::to_string),
+        base_unit,
         base_net,
         held_separately,
     }
@@ -305,7 +305,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "Wallet".to_string(),
             institution: NO_INSTITUTION.to_string(),
             account_type: AccountType::Cash,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("240.00"),
             account_number: None,
             opened_at: date(2021, 2),
@@ -317,7 +317,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "ANZ Everyday".to_string(),
             institution: "ANZ Banking Group".to_string(),
             account_type: AccountType::Bank,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("4182.55"),
             account_number: Some("1234 5678".to_string()),
             opened_at: date(2019, 3),
@@ -329,7 +329,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "ANZ Offset".to_string(),
             institution: "ANZ Banking Group".to_string(),
             account_type: AccountType::Bank,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("463203.10"),
             account_number: None,
             opened_at: date(2019, 3),
@@ -341,7 +341,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "Amex Platinum".to_string(),
             institution: "American Express".to_string(),
             account_type: AccountType::CreditCard,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("-2318.44"),
             account_number: None,
             opened_at: date(2020, 8),
@@ -353,7 +353,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "Home Loan".to_string(),
             institution: "Westpac Banking".to_string(),
             account_type: AccountType::Loan,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("-381311.34"),
             account_number: None,
             opened_at: date(2019, 6),
@@ -365,7 +365,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "Vanguard VAS".to_string(),
             institution: "Vanguard Investments".to_string(),
             account_type: AccountType::Investment,
-            unit: "vas".to_string(),
+            unit: UnitId::SEED_VAS,
             balance: money("1240"),
             account_number: None,
             opened_at: date(2022, 1),
@@ -377,7 +377,7 @@ pub fn default_accounts() -> Vec<Account> {
             name: "Bitcoin".to_string(),
             institution: "Cryptocurrency Exchange".to_string(),
             account_type: AccountType::Investment,
-            unit: "btc".to_string(),
+            unit: UnitId::SEED_BTC,
             balance: money("0.4120"),
             account_number: None,
             opened_at: date(2021, 11),
@@ -397,7 +397,7 @@ mod tests {
             name: name.to_string(),
             institution: NO_INSTITUTION.to_string(),
             account_type,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             balance: money("0"),
             account_number: None,
             opened_at: date(2024, 1),
@@ -481,24 +481,24 @@ mod tests {
 
     #[test]
     fn net_worth_sums_base_unit_only_and_names_the_rest() {
-        let net = net_worth(&default_accounts(), Some("aud"));
+        let net = net_worth(&default_accounts(), Some(UnitId::SEED_AUD));
         assert_eq!(net.account_count, 7);
         assert_eq!(net.base_net, money("83995.87"));
         assert_eq!(
             net.held_separately,
-            vec!["vas".to_string(), "btc".to_string()]
+            vec![UnitId::SEED_VAS, UnitId::SEED_BTC]
         );
     }
 
     #[test]
     fn net_worth_with_no_base_unit_accounts_is_zero_and_lists_every_unit() {
         let accounts = vec![Account {
-            unit: "btc".to_string(),
+            unit: UnitId::SEED_BTC,
             ..account(1, "Coins", AccountType::Investment)
         }];
-        let net = net_worth(&accounts, Some("aud"));
+        let net = net_worth(&accounts, Some(UnitId::SEED_AUD));
         assert_eq!(net.base_net, money("0"));
-        assert_eq!(net.held_separately, vec!["btc".to_string()]);
+        assert_eq!(net.held_separately, vec![UnitId::SEED_BTC]);
     }
 
     #[test]
@@ -591,7 +591,7 @@ mod tests {
             &mut accounts,
             NewAccount {
                 draft: draft("Card"),
-                unit: "aud".to_string(),
+                unit: UnitId::SEED_AUD,
                 balance: money("5"),
                 opened_at: date(2026, 2),
             },
@@ -610,7 +610,7 @@ mod tests {
         assert_eq!(edited.name, "New");
         assert_eq!(edited.account_type, AccountType::CreditCard);
         assert_eq!(edited.account_number.as_deref(), Some("42"));
-        assert_eq!(edited.unit, "aud");
+        assert_eq!(edited.unit, UnitId::SEED_AUD);
         assert_eq!(
             edit_account(&mut accounts, 8, &draft("x")),
             Err(AccountError::NotFound)

@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{Money, Period};
+use lib_core::{Money, Period, UnitId};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
 /// rename changes nothing (ADR-0029).
@@ -110,7 +110,7 @@ pub struct Budget {
     pub name: String,
     pub method: Method,
     /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
-    pub unit: String,
+    pub unit: UnitId,
     /// The [`Account::id`]s whose Splits this Budget counts.
     pub account_ids: Vec<u32>,
     pub is_default: bool,

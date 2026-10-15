@@ -133,7 +133,7 @@ impl LedgerCommand for CountImportedTransactions {
 mod tests {
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
-    use lib_core::{AccountType, Money};
+    use lib_core::{AccountType, Money, UnitId};
 
     use super::*;
 
@@ -149,7 +149,7 @@ mod tests {
     fn new_account(name: &str) -> NewAccount {
         NewAccount {
             draft: draft(name),
-            unit: "aud".to_owned(),
+            unit: UnitId::SEED_AUD,
             balance: Money(BigDecimal::from(10)),
             opened_at: NaiveDate::from_ymd_opt(2026, 1, 1).expect("a valid date"),
         }

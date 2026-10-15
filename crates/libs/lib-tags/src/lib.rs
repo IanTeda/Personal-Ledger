@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{HexColor, Money};
+use lib_core::{HexColor, Money, UnitId};
 
 use lib_accounts::Account;
 use lib_core::Total;
@@ -276,16 +276,18 @@ pub struct TagUsage {
     pub last_used: Option<NaiveDate>,
 }
 
-pub fn usage(transactions: &[Transaction], accounts: &[Account], id: u32) -> TagUsage {
-    let unit_of = |account_id: u32| {
-        accounts
-            .iter()
-            .find(|a| a.id == account_id)
-            .map(|a| a.unit.as_str())
-    };
+/// `unit_code` turns an Account's Unit id into the code the [`Total`] names, since this crate
+/// never sees the Units themselves.
+pub fn usage(
+    transactions: &[Transaction],
+    accounts: &[Account],
+    id: u32,
+    unit_code: impl Fn(UnitId) -> String,
+) -> TagUsage {
+    let unit_of = |account_id: u32| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
     let mut count = 0;
     let mut last_used: Option<NaiveDate> = None;
-    let mut unit: Option<&str> = None;
+    let mut unit: Option<UnitId> = None;
     let mut mixed = false;
     let mut sum = BigDecimal::new(0.into(), 2);
     for transaction in transactions.iter().filter(|t| carries(t, id)) {
@@ -309,7 +311,7 @@ pub fn usage(transactions: &[Transaction], accounts: &[Account], id: u32) -> Tag
         _ if count == 0 => Total::Empty,
         _ if mixed => Total::Mixed,
         Some(unit) => Total::Single {
-            unit: unit.to_string(),
+            unit: unit_code(unit),
             amount: Money(sum),
         },
         // Carrying Transactions whose Account is gone: no Unit to name, so no sum either.
@@ -522,7 +524,7 @@ mod tests {
     #[test]
     fn an_unused_tag_has_no_total_and_no_last_used_date() {
         let accounts = default_accounts();
-        let usage = usage(&[], &accounts, 1);
+        let usage = usage(&[], &accounts, 1, |_| String::new());
 
         assert_eq!(usage.transactions, 0);
         assert_eq!(usage.total, Total::Empty);

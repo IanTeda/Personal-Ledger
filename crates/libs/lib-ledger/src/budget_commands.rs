@@ -348,7 +348,7 @@ mod tests {
             .expect("the seeded Budget");
         NewBudget {
             name: name.to_string(),
-            unit: budget.unit.clone(),
+            unit: budget.unit,
             account_ids: budget.account_ids.clone(),
             start_from: lib_budgets::StartFrom::Empty,
         }

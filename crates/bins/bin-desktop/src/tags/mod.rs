@@ -343,7 +343,7 @@ mod tests {
             ),
             transaction(3, everyday, day, vec![split(-700, &[6])]),
         ];
-        let used = usage(&transactions, &accounts, 5);
+        let used = usage(&transactions, &accounts, 5, |_| "aud".to_string());
         assert_eq!(used.transactions, 2);
         assert_eq!(
             used.total,
@@ -373,8 +373,11 @@ mod tests {
                 vec![split(-500, &[5])],
             ),
         ];
-        assert_eq!(usage(&transactions, &accounts, 5).total, Total::Mixed);
-        let unused = usage(&transactions, &accounts, 6);
+        assert_eq!(
+            usage(&transactions, &accounts, 5, |_| "aud".to_string()).total,
+            Total::Mixed
+        );
+        let unused = usage(&transactions, &accounts, 6, |_| "aud".to_string());
         assert_eq!(
             (unused.transactions, unused.total, unused.last_used),
             (0, Total::Empty, None)

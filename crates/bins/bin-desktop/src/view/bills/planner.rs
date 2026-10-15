@@ -28,6 +28,8 @@ pub struct PlannerProps<'a> {
     pub accounts: &'a [Account],
     /// The base Unit's code: an amount in it shows no Unit code.
     pub base_unit: Option<&'a str>,
+    /// Turns a Plan's Unit id into the code shown.
+    pub units: &'a [lib_units::UnitRow],
     /// Index into `plans` of the selected row.
     pub selected: Option<usize>,
     pub on_row_click: OnRowClick,
@@ -305,7 +307,7 @@ fn render_row(
                 .whitespace_nowrap()
                 .child(planned_text(
                     &plan.planned_amount,
-                    &plan.unit,
+                    super::schedule::unit_code(props.units, plan.unit),
                     plan.amount_kind,
                     props.base_unit,
                 )),

@@ -99,6 +99,7 @@ mod tests {
     #[test]
     fn unit_form_from_row_prefills_every_field() {
         let row = UnitRow {
+            id: lib_units::UnitId::SEED_BTC,
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
             kind: UnitKind::Crypto,

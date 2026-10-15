@@ -112,7 +112,7 @@ impl UnitsPage {
             return;
         };
         let form = UnitForm::from_row(row);
-        open_dialog(UnitsDialog::Edit(index, form), cx);
+        open_dialog(UnitsDialog::Edit(row.id, form), cx);
     }
 
     /// A Units row's **delete** opens the destructive Delete unit confirm dialog.
@@ -121,7 +121,7 @@ impl UnitsPage {
             return;
         };
         let form = DeleteUnitForm::new(row.code.as_str());
-        open_dialog(UnitsDialog::Delete(index, form), cx);
+        open_dialog(UnitsDialog::Delete(row.id, form), cx);
     }
 
     /// Price Sources' test, edit, delete and add have no Dialog yet, so they say so on the status

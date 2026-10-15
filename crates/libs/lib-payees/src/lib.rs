@@ -15,7 +15,7 @@
 //! - A default Category is an optional leaf that only pre-fills new Splits.
 
 use bigdecimal::BigDecimal;
-use lib_core::Money;
+use lib_core::{Money, UnitId};
 
 use lib_accounts::Account;
 use lib_transactions::Transaction;
@@ -301,14 +301,14 @@ pub struct PayeeUsage {
 pub fn usage(
     transactions: &[Transaction],
     accounts: &[Account],
-    base_unit: Option<&str>,
+    base_unit: Option<UnitId>,
     id: u32,
 ) -> PayeeUsage {
     let in_base_unit = |account_id: u32| {
         accounts
             .iter()
             .find(|a| a.id == account_id)
-            .is_some_and(|a| base_unit == Some(a.unit.as_str()))
+            .is_some_and(|a| base_unit == Some(a.unit))
     };
     let mut splits = 0;
     let mut total = BigDecimal::new(0.into(), 2);

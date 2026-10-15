@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::Period;
+use lib_core::{Period, UnitId};
 use lib_transactions as transactions;
 
 use super::store::Budgets;
@@ -108,7 +108,9 @@ pub fn default_budgets(accounts: &[Account], categories: &[Category], today: Nai
     let on_budget = |names: Option<&[&str]>| -> Vec<u32> {
         accounts
             .iter()
-            .filter(|a| a.unit == "aud" && transactions::takes_transactions(&a.account_type))
+            .filter(|a| {
+                a.unit == UnitId::SEED_AUD && transactions::takes_transactions(&a.account_type)
+            })
             .filter(|a| names.is_none_or(|names| names.contains(&a.name.as_str())))
             .map(|a| a.id)
             .collect()
@@ -118,7 +120,7 @@ pub fn default_budgets(accounts: &[Account], categories: &[Category], today: Nai
             id: PERSONAL_SPENDING_ID,
             name: "Personal spending".to_string(),
             method: Method::Limits,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             account_ids: on_budget(None),
             is_default: true,
             archived_at: None,
@@ -128,7 +130,7 @@ pub fn default_budgets(accounts: &[Account], categories: &[Category], today: Nai
             id: 2,
             name: "Joint household".to_string(),
             method: Method::Limits,
-            unit: "aud".to_string(),
+            unit: UnitId::SEED_AUD,
             account_ids: on_budget(Some(&["ANZ Everyday", "ANZ Offset"])),
             is_default: false,
             archived_at: None,

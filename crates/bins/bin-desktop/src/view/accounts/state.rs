@@ -61,7 +61,7 @@ pub fn dialog_options(ledger: &Entity<LedgerStore>, cx: &App) -> AccountOptions 
             .ledger()
             .units()
             .iter()
-            .map(|unit| unit.code.clone())
+            .map(|unit| (unit.id, unit.code.clone()))
             .collect(),
     )
 }
