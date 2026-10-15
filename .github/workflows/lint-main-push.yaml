@@ -27,6 +27,13 @@ jobs:
       - name: Install mold
         uses: rui314/setup-mold@v1
 
+      # A cache saved on a branch or PR ref isn't readable by `main` or other PRs, so only `main`
+      # saves; PRs restore what `main` saved.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Check formatting
         run: cargo fmt --check
 

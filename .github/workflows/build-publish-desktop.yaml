@@ -97,9 +97,12 @@ jobs:
             libvulkan1 mesa-vulkan-drivers vulkan-tools \
             xvfb
 
-      # Caches dependency builds (gpui is the slow part, most of all on Windows).
+      # Caches dependency builds (gpui is the slow part, most of all on Windows). Only `main` saves:
+      # a cache saved on a release or dispatch ref isn't readable by `main` or PRs.
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build desktop
         run: cargo build --locked --package bin_desktop

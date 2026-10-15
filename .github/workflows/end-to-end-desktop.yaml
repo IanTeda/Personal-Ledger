@@ -42,6 +42,14 @@ jobs:
       - name: Install mold
         uses: rui314/setup-mold@v1
 
+      # A cache saved on a branch or PR ref isn't readable by `main` or other PRs, so only `main`
+      # saves; PRs restore what `main` saved.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
       # The tests run through gpui's in-process test platform (ADR-0030), so there is no window,
       # GPU or X server and no Xvfb here, unlike build-publish-desktop.yaml's real-window smoke
       # test. gpui still links against the system windowing libraries at build time, so those
