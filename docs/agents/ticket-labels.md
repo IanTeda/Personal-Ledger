@@ -23,7 +23,9 @@ A label decision (the `category:`, the `priority:` rank and the `agent:` label) 
 - `agent:sonnet-low`: repeats the pattern set in <commit>.
 ```
 
-A label you set by hand is final. Claude records every label it sets in the `## Labels` section, so a label missing from it is yours.
+A label you set by hand is final, except `agent:*`. Claude records every label it sets in the `## Labels` section, so a label missing from it is yours.
+
+The `agent:*` label names the model and effort that action the ticket. Before a ticket is actioned with a model other than its label, Claude asks the user and waits for a yes. On closing, Claude sets the label to the model and effort that actually ran it and updates its `## Labels` line. If Claude cannot establish the effort, it asks the user rather than guessing.
 
 ## Ranking
 
@@ -66,6 +68,7 @@ A gated ticket closes when you close it, or when you tell Claude it's approved.
 | Creating a ticket                      | Gives it a `category:` (inherited from its parent if it has one) and a `priority:` rank, each with its reason in the `## Labels` section |
 | Re-categorising or re-ranking a ticket | Changes the label and updates its line in the `## Labels` section                                                 |
 | Claiming a ticket (assigning it)       | Adds `state:10-in-progress`                                                                                       |
+| About to action a ticket with a model other than its `agent:*` label | Asks the user, and waits for a yes before starting                                                 |
 | Finishing a ticket                     | In the same session as the commit: removes `triage:ready-for-agent`, sets its `agent:<model>-<effort>` label to the model and effort that actioned it and updates its `## Labels` line, then closes or gates it by [Closing or review](#closing-or-review). Closing comments with the commit and why no review was needed, removes its `priority:` rank and `state:` label, adds `state:90-done`, and closes it. Other labels stay |
 | You approve a `state:30-needs-review` ticket | Comments with your approval, removes its `priority:` rank, swaps `state:30-needs-review` for `state:90-done`, and closes it |
 | Releasing a ticket unfinished          | Swaps `state:10-in-progress` for `state:20-waiting`, and comments with where it stopped                          |
