@@ -4,5 +4,6 @@
 pub mod dialog_fields;
 pub mod field;
 pub mod fields;
+pub mod rules_field;
 pub mod select;
 pub mod select_field;

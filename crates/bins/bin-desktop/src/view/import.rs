@@ -14,10 +14,12 @@ use gpui::{AnyElement, App, Rgba, ScrollHandle, SharedString, Window, div, prelu
 
 use lib_locale::format::upper;
 
+use crate::settings::payees::form::PayeeOptions;
+use lib_payees::{self, Payee};
+
 use crate::{
     form::select::SelectState,
     import::{self, ImportRow, ImportState, PayeeChoices, RowPayee, RowSelect, RowStatus},
-    payees::{self, Payee, form::PayeeOptions},
     theme::color,
 };
 
@@ -184,7 +186,7 @@ fn table_header(cx: &App) -> impl IntoElement {
 fn payee_text(row: &ImportRow, payees: &[Payee]) -> Option<String> {
     match row.payee.as_ref()? {
         RowPayee::Rule(id) | RowPayee::Existing(id) => {
-            payees::get(payees, *id).map(|p| p.name.clone())
+            lib_payees::get(payees, *id).map(|p| p.name.clone())
         }
         RowPayee::Create(name) => Some(create_label(name)),
     }

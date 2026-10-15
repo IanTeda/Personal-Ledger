@@ -22,10 +22,11 @@ use lib_locale::format::{
     DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
 };
 
+use lib_payees::Payee;
+
 use crate::{
     categories::{self, Category},
     form::select::SelectState,
-    payees::Payee,
     tags::Tag,
     transactions::chips::FilterField,
     transactions::query::{StatusFilter, TransactionFilters},
@@ -481,8 +482,9 @@ impl FilterForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{categories::default_categories, payees::default_payees, tags::default_tags};
+    use crate::{categories::default_categories, tags::default_tags};
     use lib_accounts::default_accounts;
+    use lib_payees::default_payees;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

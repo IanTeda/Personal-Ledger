@@ -5,15 +5,14 @@ use gpui::{App, Entity};
 use lib_ledger::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, SetPayeeActive, SetPayeeActiveRefusal,
 };
+use lib_toast::ToastKind;
 
-use super::{
-    Payee, PayeeDraft, PayeeError,
-    form::{DeleteAction, PayeesDialog},
-};
+use lib_payees::{Payee, PayeeDraft, PayeeError};
+
+use super::{dialogs::PayeesDialog, form::DeleteAction};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     ledger_store::LedgerStore,
-    payees,
 };
 
 /// What confirming a Payees Dialog asks for.
@@ -56,6 +55,24 @@ impl DialogForm for PayeesDialog {
     }
 }
 
+impl PayeeOutcome {
+    /// The Toast `Shell` raises once the Dialog has closed: only a removal has one, since a save
+    /// selects its Payee instead.
+    pub fn toast(&self) -> Option<(ToastKind, String)> {
+        match self {
+            Self::Saved(_) => None,
+            Self::Removed { name, action } => Some((
+                ToastKind::Success,
+                match action {
+                    DeleteAction::Delete => lib_locale::msg::toast_payee_deleted(name),
+                    DeleteAction::Deactivate => lib_locale::msg::toast_payee_deactivated(name),
+                    DeleteAction::Reactivate => lib_locale::msg::toast_payee_reactivated(name),
+                },
+            )),
+        }
+    }
+}
+
 /// Runs [`PayeeCommand`]s against the Ledger as Ledger commands. A Payee the Ledger refuses to
 /// delete because a Split or Bill Plan names it comes back as [`PayeeError::InUse`], the refusal
 /// the forms already show as a Message.
@@ -78,7 +95,7 @@ impl Apply<PayeeCommand> for PayeesApply {
                 .update(cx, |store, cx| store.apply(cx, EditPayee { id, draft }))
                 .map(|()| PayeeOutcome::Saved(id)),
             PayeeCommand::Remove(id, action) => {
-                let name = payees::get(self.ledger.read(cx).ledger().payees(), id)
+                let name = lib_payees::get(self.ledger.read(cx).ledger().payees(), id)
                     .map(|payee: &Payee| payee.name.clone())
                     .ok_or(PayeeError::NotFound)?;
                 self.ledger.update(cx, |store, cx| match action {
@@ -116,7 +133,7 @@ mod tests {
     use crate::ledger_store::test_ledger;
     use crate::{
         chrome::dialog_apply::confirm,
-        payees::form::{PayeeForm, PayeeOptions},
+        settings::payees::form::{PayeeForm, PayeeOptions},
     };
 
     #[gpui::test]

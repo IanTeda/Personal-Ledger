@@ -19,10 +19,10 @@
 use crate::{
     bills::BillsDialog, budgets::BudgetsDialog, categories::form::CategoriesDialog,
     documents::form::DocumentsDialog, documents::types::DocumentTypesDialog,
-    form::field::TextField, inventory::form::InventoryDialog, payees::form::PayeesDialog,
-    settings::SettingsDialog, settings::accounts::dialogs::AccountsDialog,
-    settings::institutions::dialogs::InstitutionsDialog, settings::units::dialogs::UnitsDialog,
-    tags::form::TagsDialog,
+    form::field::TextField, inventory::form::InventoryDialog, settings::SettingsDialog,
+    settings::accounts::dialogs::AccountsDialog,
+    settings::institutions::dialogs::InstitutionsDialog, settings::payees::dialogs::PayeesDialog,
+    settings::units::dialogs::UnitsDialog, tags::form::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.

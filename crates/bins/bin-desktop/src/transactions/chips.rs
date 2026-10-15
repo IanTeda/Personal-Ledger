@@ -289,13 +289,13 @@ mod tests {
     use super::*;
     use crate::{
         categories::default_categories,
-        payees::default_payees,
         tags::default_tags,
         transactions::default_transactions,
         transactions::query::{StatusFilter, query},
     };
     use chrono::Duration;
     use lib_accounts::default_accounts;
+    use lib_payees::default_payees;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -304,7 +304,7 @@ mod tests {
     struct World {
         accounts: Vec<lib_accounts::Account>,
         categories: Vec<categories::Category>,
-        payees: Vec<crate::payees::Payee>,
+        payees: Vec<lib_payees::Payee>,
         tags: Vec<crate::tags::Tag>,
         transactions: Vec<Transaction>,
         units: Vec<lib_units::UnitRow>,

@@ -15,7 +15,6 @@ use crate::{
     },
     categories,
     chrome::dialog_apply,
-    payees,
     view::bills as bills_view,
     view::format,
 };
@@ -199,7 +198,7 @@ impl Shell {
             .unwrap_or_default();
         let payee = plan
             .payee_id
-            .and_then(|id| payees::get(self.payees_list(cx), id))
+            .and_then(|id| lib_payees::get(self.ledger.read(cx).ledger().payees(), id))
             .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
         let category = categories::path(self.categories(cx), plan.category_id).unwrap_or_default();
         Some(bills_view::pay_dialog::render(
@@ -245,7 +244,7 @@ impl Shell {
                 let split = transaction.splits.get(split_ref.split_index)?;
                 let payee = split
                     .payee_id
-                    .and_then(|id| payees::get(self.payees_list(cx), id))
+                    .and_then(|id| lib_payees::get(self.ledger.read(cx).ledger().payees(), id))
                     .map(|p| p.name.clone())
                     .or_else(|| transaction.description.clone())
                     .unwrap_or_default();

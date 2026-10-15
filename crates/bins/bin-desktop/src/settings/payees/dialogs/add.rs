@@ -1,25 +1,24 @@
-//! Renders the **Add payee** and **Edit payee** dialogs (`docs/ux/desktop-mockups/20-payees/README.md`'s 6b
+//! Renders the **Add payee** dialog, and the form the Edit dialog (`edit.rs`) shares with it (`docs/ux/desktop-mockups/20-payees/README.md`'s 6b
 //! and 6c) on the shared `crate::dialog` chrome: Name, Default category (the shared `select_field`
 //! dropdown, "none" then the leaf Categories), the shared Match rules field, and a callout. The two
 //! differ only in title, rule placeholder, submit label and callout, so they share one renderer
-//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`payees::form::PayeeForm`) and every
+//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`settings::payees::form::PayeeForm`) and every
 //! keystroke while it is open.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use super::rules_field::{self, OnRemoveRule, RulesFieldProps};
+use lib_payees::PayeeError;
+
 use crate::{
     dialog,
     form::{
         dialog_fields::{label, text_field},
+        rules_field::{self, OnRemoveRule, RulesFieldProps},
         select_field::{self, SelectFieldProps},
     },
-    payees::{
-        PayeeError,
-        form::{PayeeField, PayeeForm, PayeeOptions},
-    },
+    settings::payees::form::{PayeeField, PayeeForm, PayeeOptions},
     theme::color,
 };
 

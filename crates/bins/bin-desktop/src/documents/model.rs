@@ -6,6 +6,8 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::DateStyle;
 use lib_locale::format::{format_date, format_year_month, upper};
 
+use lib_payees::Payee;
+
 use crate::{
     bills::BillPlan,
     documents,
@@ -16,7 +18,6 @@ use crate::{
         band, scope_count, tracks_financial_year,
     },
     inventory::Inventory,
-    payees::Payee,
     transactions::Transaction,
     view::format,
 };
@@ -204,8 +205,9 @@ fn link_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<(ChipKind, Str
             .iter()
             .find(|account| account.id == id)
             .map(|account| (ChipKind::Account, account.name.clone())),
-        DocumentLink::Payee(id) => crate::payees::get(lookups.payees, id)
-            .map(|payee| (ChipKind::Payee, payee.name.clone())),
+        DocumentLink::Payee(id) => {
+            lib_payees::get(lookups.payees, id).map(|payee| (ChipKind::Payee, payee.name.clone()))
+        }
         DocumentLink::BillPlan(id) => {
             crate::bills::get(lookups.plans, id).map(|plan| (ChipKind::Bill, plan.name.clone()))
         }
@@ -228,7 +230,7 @@ fn link_row_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<String> {
                         .splits
                         .first()
                         .and_then(|split| split.payee_id)
-                        .and_then(|id| crate::payees::get(lookups.payees, id))
+                        .and_then(|id| lib_payees::get(lookups.payees, id))
                         .map(|payee| payee.name.clone())
                 })
                 .unwrap_or_default();
@@ -624,11 +626,11 @@ mod tests {
         bills::default_bills,
         categories::default_categories,
         documents::{self, DocumentsSeed, default_documents},
-        payees::default_payees,
         tags::default_tags,
         transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
+    use lib_payees::default_payees;
 
     struct World {
         types: Vec<DocumentTypeRow>,

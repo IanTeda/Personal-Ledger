@@ -8,18 +8,18 @@ pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
+pub use crate::settings::payees::SettingsPayeesSnapshot;
+#[doc(hidden)]
 pub use crate::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsSnapshot, SettingsTracingSnapshot,
 };
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
-#[doc(hidden)]
-pub use crate::view::payees::snapshot::SettingsPayeesSnapshot;
 use crate::{
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
-    payees::form::PayeesDialog,
     settings::accounts::dialogs::AccountsDialog,
+    settings::payees::dialogs::PayeesDialog,
     settings::{
         SettingsDialog, institutions::dialogs::InstitutionsDialog, units::dialogs::UnitsDialog,
     },

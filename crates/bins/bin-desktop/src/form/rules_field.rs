@@ -7,7 +7,9 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use crate::{dialog, form::dialog_fields, payees::PayeeError, theme::color};
+use lib_payees::PayeeError;
+
+use crate::{dialog, form::dialog_fields, theme::color};
 
 /// Called with the index of the chip whose `✕` was clicked.
 pub type OnRemoveRule = Rc<dyn Fn(usize, &mut Window, &mut App)>;

@@ -9,9 +9,10 @@
 
 use lib_core::{DateStyle, HexColor};
 
+use lib_payees::Payee;
+
 use crate::{
     categories,
-    payees::Payee,
     settings::display::StatusGlyphs,
     tags::Tag,
     transactions::Transaction,
@@ -187,7 +188,6 @@ mod tests {
     use super::*;
     use crate::{
         categories::default_categories,
-        payees::default_payees,
         tags::default_tags,
         transactions::default_transactions,
         transactions::query::{TransactionFilters, query},
@@ -195,6 +195,7 @@ mod tests {
     use chrono::NaiveDate;
     use lib_accounts::default_accounts;
     use lib_core::TransactionStatus;
+    use lib_payees::default_payees;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

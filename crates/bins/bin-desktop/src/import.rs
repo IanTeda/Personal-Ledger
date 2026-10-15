@@ -14,10 +14,10 @@ use chrono::{Duration, NaiveDate};
 use lib_core::Money;
 use lib_ledger::{BookingPayee, ImportBooking};
 
-use crate::{
-    form::select::SelectState,
-    payees::{self, Payee, form::PayeeOptions},
-};
+use crate::settings::payees::form::PayeeOptions;
+use lib_payees::{self, Payee};
+
+use crate::form::select::SelectState;
 
 /// The statement's file name, shown in the title-bar context and the subline.
 pub const STATEMENT_FILE: &str = "statement.csv";
@@ -138,7 +138,7 @@ pub fn cleaned_name(raw: &str) -> Option<String> {
 /// The Payee Alias "remember new payees' rules" adds for a raw description: its cleaned words as
 /// an alias is stored (`AUSSIE CANDLE CO`).
 pub fn cleaned_token(raw: &str) -> Option<String> {
-    payees::normalise_alias(&cleaned_words(raw).join(" "))
+    lib_payees::normalise_alias(&cleaned_words(raw).join(" "))
 }
 
 /// What a row's Payee resolves to.
@@ -212,23 +212,23 @@ fn active_named(payees: &[Payee], name: &str) -> Option<u32> {
 /// Matches `raw`: an alias gives the Payee and its default Category; otherwise the cleaned name
 /// picks the active Payee already so named, or else suggests creating it when that name is free.
 pub fn match_row(payees: &[Payee], raw: &str, amount: Money, date: NaiveDate) -> ImportRow {
-    if let Some(id) = payees::match_alias(payees, raw) {
+    if let Some(id) = lib_payees::match_alias(payees, raw) {
         return ImportRow {
             raw: raw.to_string(),
             amount,
             date,
             payee: Some(RowPayee::Rule(id)),
-            category: payees::get(payees, id).and_then(|p| p.default_category),
+            category: lib_payees::get(payees, id).and_then(|p| p.default_category),
         };
     }
     let payee = cleaned_name(raw).and_then(|name| match active_named(payees, &name) {
         Some(id) => Some(RowPayee::Existing(id)),
-        None => payees::name_available(payees, &name).then_some(RowPayee::Create(name)),
+        None => lib_payees::name_available(payees, &name).then_some(RowPayee::Create(name)),
     });
     let category = payee
         .as_ref()
         .and_then(RowPayee::id)
-        .and_then(|id| payees::get(payees, id))
+        .and_then(|id| lib_payees::get(payees, id))
         .and_then(|p| p.default_category);
     ImportRow {
         raw: raw.to_string(),
@@ -299,7 +299,9 @@ impl PayeeChoices {
     pub fn new(payees: &[Payee], raw: &str, create_label: impl Fn(&str) -> String) -> Self {
         let mut labels = Vec::new();
         let mut choices = Vec::new();
-        if let Some(name) = cleaned_name(raw).filter(|name| payees::name_available(payees, name)) {
+        if let Some(name) =
+            cleaned_name(raw).filter(|name| lib_payees::name_available(payees, name))
+        {
             labels.push(create_label(&name));
             choices.push(RowPayee::Create(name));
         }
@@ -379,7 +381,7 @@ impl ImportState {
     pub fn create_new_payee(&mut self, payees: &[Payee]) {
         if let Some(row) = self.rows.get_mut(self.selected)
             && let Some(name) =
-                cleaned_name(&row.raw).filter(|name| payees::name_available(payees, name))
+                cleaned_name(&row.raw).filter(|name| lib_payees::name_available(payees, name))
         {
             row.payee = Some(RowPayee::Create(name));
         }
@@ -487,7 +489,7 @@ impl ImportState {
                         .payee
                         .as_ref()
                         .and_then(RowPayee::id)
-                        .and_then(|id| payees::get(payees, id))
+                        .and_then(|id| lib_payees::get(payees, id))
                         .and_then(|p| p.default_category);
                 }
             }
@@ -544,8 +546,9 @@ pub fn bookings(rows: &[ImportRow], remember: bool) -> Result<Vec<ImportBooking>
 mod tests {
     use super::*;
     use lib_ledger::{CommitImport, Ledger, LedgerCommand};
+    use lib_payees::default_payees;
 
-    use crate::{categories::default_categories, payees::default_payees};
+    use crate::categories::default_categories;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 28).unwrap()
@@ -622,11 +625,13 @@ mod tests {
     fn a_rule_match_takes_the_payee_and_its_default_category() {
         let (payees, state) = state();
         let row = &state.rows[0];
-        let woolworths = payees::find_by_name(&payees, "Woolworths").unwrap();
+        let woolworths = lib_payees::find_by_name(&payees, "Woolworths").unwrap();
         assert_eq!(row.payee, Some(RowPayee::Rule(woolworths)));
         assert_eq!(
             row.category,
-            payees::get(&payees, woolworths).unwrap().default_category
+            lib_payees::get(&payees, woolworths)
+                .unwrap()
+                .default_category
         );
         assert_eq!(row.status(), RowStatus::RuleMatch);
     }
@@ -655,7 +660,7 @@ mod tests {
             .iter()
             .find(|r| r.raw.contains("J SMITH"))
             .unwrap();
-        let j_smith = payees::find_by_name(&payees, "J Smith").unwrap();
+        let j_smith = lib_payees::find_by_name(&payees, "J Smith").unwrap();
         assert_eq!(row.payee, Some(RowPayee::Existing(j_smith)));
         // J Smith has no default Category, so it still needs review.
         assert!(row.needs_review());
@@ -664,7 +669,7 @@ mod tests {
     #[test]
     fn inactive_payees_neither_match_nor_are_offered() {
         let mut payees = default_payees();
-        payees::set_active(&mut payees, 1, false).unwrap();
+        lib_payees::set_active(&mut payees, 1, false).unwrap();
         let row = match_row(&payees, "WOOLWORTHS 99", cents_money(-100), today());
         assert_eq!(row.payee, None);
         let offered = choices(&payees, "WOOLWORTHS 99");
@@ -814,14 +819,14 @@ mod tests {
         assert_eq!(ledger.transactions().len(), before + 18);
 
         let payees = ledger.payees();
-        let candle = payees::find_by_name(payees, "Aussie Candle Co").unwrap();
+        let candle = lib_payees::find_by_name(payees, "Aussie Candle Co").unwrap();
         assert_eq!(
-            payees::get(payees, candle).unwrap().aliases,
+            lib_payees::get(payees, candle).unwrap().aliases,
             vec!["AUSSIE CANDLE CO"]
         );
         // The next import matches it by rule.
         assert_eq!(
-            payees::match_alias(payees, "SP AUSSIE CANDLE CO"),
+            lib_payees::match_alias(payees, "SP AUSSIE CANDLE CO"),
             Some(candle)
         );
 
@@ -850,8 +855,8 @@ mod tests {
         let mut ledger = Ledger::stub_on(today());
         book(&mut ledger, &state.rows, false).unwrap();
         let payees = ledger.payees();
-        let candle = payees::find_by_name(payees, "Aussie Candle Co").unwrap();
-        assert!(payees::get(payees, candle).unwrap().aliases.is_empty());
+        let candle = lib_payees::find_by_name(payees, "Aussie Candle Co").unwrap();
+        assert!(lib_payees::get(payees, candle).unwrap().aliases.is_empty());
     }
 
     #[test]

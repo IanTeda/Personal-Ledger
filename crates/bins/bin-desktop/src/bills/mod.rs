@@ -131,7 +131,6 @@ mod tests {
     use super::*;
     use crate::{
         categories::{Category, default_categories},
-        payees::default_payees,
         period::Period,
         tags::default_tags,
         transactions::{Transaction, default_transactions},
@@ -140,6 +139,7 @@ mod tests {
     use chrono::{Datelike, NaiveDate};
     use lib_accounts::{Account, default_accounts};
     use lib_core::{Money, Total, TransactionStatus};
+    use lib_payees::default_payees;
 
     fn cents_money(cents: i64) -> Money {
         Money(BigDecimal::new(cents.into(), 2))

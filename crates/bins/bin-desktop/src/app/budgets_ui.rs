@@ -17,7 +17,6 @@ use crate::{
     categories::{self},
     chrome::rail::{self as chrome_rail},
     chrome::{dialog_apply, dialog_host::OpenDialog},
-    payees::{self},
     period::Period,
     transactions::query::TransactionFilters,
     view::budgets::{self as budgets_view, manage_dialog::ManageAction},
@@ -890,7 +889,7 @@ impl Shell {
                 date: lib_locale::format::format_month_day(line.date),
                 payee: line
                     .payee_id
-                    .and_then(|id| payees::get(self.payees_list(cx), id))
+                    .and_then(|id| lib_payees::get(self.ledger.read(cx).ledger().payees(), id))
                     .map_or_else(crate::msg::desktop_budgets_detail_no_payee, |payee| {
                         payee.name.clone()
                     }),

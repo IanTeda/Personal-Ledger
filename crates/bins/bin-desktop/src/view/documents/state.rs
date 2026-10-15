@@ -34,7 +34,6 @@ use crate::{
     inventory::store::InventoryStore,
     ledger_store::{LedgerStore, notify_on},
     navigation::{key_router::Movement, nav::Noun},
-    payees::PayeesStore,
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use lib_ledger::Domain;
@@ -85,7 +84,6 @@ impl Default for DocumentsState {
 #[derive(Clone)]
 pub struct DocumentsSources {
     pub ledger: Entity<LedgerStore>,
-    pub payees: Entity<PayeesStore>,
     pub inventory: Entity<InventoryStore>,
 }
 
@@ -104,6 +102,8 @@ pub struct DocumentsView {
     pub(super) state: DocumentsState,
     /// Repaints the page when the Accounts its rows and filters name change.
     _accounts_changed: Subscription,
+    /// Repaints the page when the Payees its rows and filters name change.
+    _payees_changed: Subscription,
 }
 
 /// The Key date select's label for each kind.
@@ -120,6 +120,7 @@ fn key_label_for_options(kind: Option<KeyDateKind>) -> String {
 impl DocumentsView {
     pub fn new(sources: DocumentsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
+        let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
         Self {
             sources,
             today,
@@ -128,6 +129,7 @@ impl DocumentsView {
             searching: false,
             state: DocumentsState::default(),
             _accounts_changed,
+            _payees_changed,
         }
     }
 
@@ -184,7 +186,7 @@ impl DocumentsView {
     pub fn lookups<'a>(&self, cx: &'a App) -> Lookups<'a> {
         Lookups {
             accounts: self.sources.ledger.read(cx).ledger().accounts(),
-            payees: self.sources.payees.read(cx).payees(cx),
+            payees: self.sources.ledger.read(cx).ledger().payees(),
             plans: self.sources.ledger.read(cx).ledger().bill_plans(),
             types: self.types(cx),
             inventory: self.sources.inventory.read(cx).inventory(cx),
@@ -783,7 +785,7 @@ impl DocumentsView {
             document,
             self.documents(cx),
             self.sources.ledger.read(cx).ledger().transactions(),
-            self.sources.payees.read(cx).payees(cx),
+            self.sources.ledger.read(cx).ledger().payees(),
         )
         .best()
         .map(|best| best.transaction_id)
@@ -972,7 +974,7 @@ impl DocumentsView {
         let count = documents::strong_count(
             self.documents(cx),
             self.sources.ledger.read(cx).ledger().transactions(),
-            self.sources.payees.read(cx).payees(cx),
+            self.sources.ledger.read(cx).ledger().payees(),
         );
         if count == 0 {
             self.status(crate::msg::desktop_documents_status_no_strong(), cx);

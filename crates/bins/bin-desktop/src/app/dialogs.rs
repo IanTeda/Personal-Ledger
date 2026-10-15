@@ -2,6 +2,7 @@
 //! accessors. An `impl Shell` block, not the Dialog host itself (`chrome::dialog_host`).
 
 use super::Shell;
+use crate::settings::payees::PayeesPage;
 use crate::{
     chrome::{
         dialog_apply::{self, Apply, DialogForm},
@@ -14,6 +15,10 @@ use crate::{
             dialogs::AccountsDialog,
         },
         institutions::{apply::InstitutionsApply, dialogs::InstitutionsDialog},
+        payees::{
+            apply::{PayeeOutcome, PayeesApply},
+            dialogs::PayeesDialog,
+        },
         units::{apply::UnitsApply, dialogs::UnitsDialog},
     },
 };
@@ -61,7 +66,19 @@ impl Shell {
             }
             Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
             Some(OpenDialog::Categories(_)) => self.confirm_categories_dialog(cx),
-            Some(OpenDialog::Payees(_)) => self.confirm_payees_dialog(cx),
+            Some(OpenDialog::Payees(_)) => {
+                let mut apply = PayeesApply {
+                    ledger: self.ledger.clone(),
+                };
+                let outcome = self.confirm_dialog::<PayeesDialog, _>(&mut apply, cx);
+                if let Some(PayeeOutcome::Saved(id)) = outcome {
+                    self.payees_page(cx)
+                        .update(cx, |page, cx| page.select_id(id, cx));
+                }
+                if let Some((kind, message)) = outcome.as_ref().and_then(PayeeOutcome::toast) {
+                    self.raise_toast(kind, message);
+                }
+            }
             Some(OpenDialog::DocumentTypes(_)) => self.confirm_document_types_dialog(cx),
             Some(OpenDialog::Inventory(_)) => self.confirm_inventory_dialog(cx),
             Some(OpenDialog::Tags(_)) => self.confirm_tags_dialog(cx),
@@ -72,6 +89,11 @@ impl Shell {
             Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
             None => {}
         }
+    }
+
+    /// The Payees page's Entity, which the Settings View owns.
+    pub(super) fn payees_page(&self, cx: &gpui::App) -> gpui::Entity<PayeesPage> {
+        self.views.settings.read(cx).payees().clone()
     }
 
     /// Confirms the open `T` Dialog through the host's cycle (ADR-0037): the form's command runs

@@ -21,7 +21,6 @@ mod ledger_data;
 mod ledger_store;
 pub mod locale;
 pub mod navigation;
-mod payees;
 mod period;
 pub mod persistence;
 mod settings;

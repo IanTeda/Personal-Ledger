@@ -22,13 +22,14 @@ mod tests {
     use bigdecimal::BigDecimal;
     use chrono::{Datelike, NaiveDate};
     use lib_core::Money;
+    use lib_payees::default_payees;
     use lib_transactions::Transaction;
 
     use super::*;
     use crate::bills::{self, BillPlan, BillScheduleEntry, BillStatus, Resolution};
     use crate::{
-        bills::default_bills, categories::default_categories, payees::default_payees,
-        tags::default_tags, transactions::default_transactions,
+        bills::default_bills, categories::default_categories, tags::default_tags,
+        transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
 

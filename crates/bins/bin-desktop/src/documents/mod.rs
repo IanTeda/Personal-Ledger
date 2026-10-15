@@ -19,6 +19,7 @@ mod tests {
     use chrono::NaiveDate;
     use lib_core::Money;
     use lib_payees::Payee;
+    use lib_payees::default_payees;
     use lib_transactions::Transaction;
     use std::path::PathBuf;
     use types::DocumentTypeRow;
@@ -45,8 +46,8 @@ mod tests {
         types::default_types()
     }
     use crate::{
-        bills::default_bills, categories::default_categories, payees::default_payees,
-        tags::default_tags, transactions::default_transactions,
+        bills::default_bills, categories::default_categories, tags::default_tags,
+        transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
 

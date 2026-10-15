@@ -25,7 +25,6 @@ use crate::{
     form::select::SelectState,
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
-    payees::PayeesStore,
     period::Period,
     settings::display::StatusGlyphs,
     view::{
@@ -70,7 +69,6 @@ impl BillsState {
 #[derive(Clone)]
 pub struct BillsSources {
     pub categories: Entity<CategoriesStore>,
-    pub payees: Entity<PayeesStore>,
     /// The Ledger, for the base Unit the summary totals in.
     pub ledger: Entity<LedgerStore>,
 }
@@ -90,12 +88,15 @@ pub struct BillsView {
     /// plans and filters name.
     _units_changed: Subscription,
     _accounts_changed: Subscription,
+    /// Repaints the page when the Payees its rows and plans name change.
+    _payees_changed: Subscription,
 }
 
 impl BillsView {
     pub fn new(sources: BillsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _units_changed = notify_on(&sources.ledger, Domain::Units, cx);
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
+        let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
         Self {
             sources,
             today,
@@ -105,6 +106,7 @@ impl BillsView {
             state: BillsState::new(today),
             _units_changed,
             _accounts_changed,
+            _payees_changed,
         }
     }
 
@@ -579,7 +581,7 @@ impl BillsView {
             self.sources.categories.read(cx).categories(cx),
             self.sources.ledger.read(cx).ledger().accounts(),
             self.sources.ledger.read(cx).ledger().units(),
-            self.sources.payees.read(cx).payees(cx),
+            self.sources.ledger.read(cx).ledger().payees(),
             keep_payee,
             crate::msg::desktop_payees_category_none(),
             super::planner::recurrence_label,
@@ -757,7 +759,6 @@ mod tests {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
         let sources = BillsSources {
             categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
-            payees: cx.new(|cx| PayeesStore::new(ledger.clone(), cx)),
             ledger,
         };
         let view = cx.new(|cx| BillsView::new(sources, today(), cx));

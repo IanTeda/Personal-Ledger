@@ -1,17 +1,17 @@
 //! The Payees dialogs' form state: the Add, Edit and Delete payee forms, the Default category
 //! select's options and the dialog they sit behind. `gpui`-free, like the rest of this domain;
-//! `view::payees` renders it.
+//! `settings::payees::dialogs` renders it.
 
 use lib_ledger::PayeeUse;
 
-use super::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
 use crate::{
     categories::{self, Category},
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
 };
+use lib_payees::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
 
 /// The Default category select's options: "none" first, then every leaf Category. `labels` are
 /// what the select shows and stores; `ids` runs parallel to it.
@@ -253,7 +253,7 @@ impl PayeeForm {
     }
 
     /// The text field typing and `Backspace` edit; the select has none.
-    fn focused_text(&mut self) -> Option<&mut TextField> {
+    pub(super) fn focused_text(&mut self) -> Option<&mut TextField> {
         match self.focused {
             PayeeField::Name => Some(&mut self.name),
             PayeeField::Rule => Some(&mut self.rule_input),
@@ -264,7 +264,7 @@ impl PayeeForm {
     /// The keys the form takes before `dialog_host`'s shared typing: the select's, `Enter` adding
     /// the typed rule as a chip, and `Backspace` in an empty rule input removing the last chip.
     /// Typing and `Backspace` that fall through to the shared handling clear a shown error first.
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+    pub(super) fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         let on_select = self.focused == PayeeField::DefaultCategory;
         match key {
             DialogKey::Up => {
@@ -297,63 +297,6 @@ impl PayeeForm {
             _ => return None,
         }
         Some(DialogOutcome::Handled)
-    }
-}
-
-/// Which Payees dialog is open, following `AccountsDialog`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PayeesDialog {
-    Add(PayeeForm),
-    /// Editing the Payee with this [`Payee::id`].
-    Edit(u32, PayeeForm),
-    /// Deleting (or, when referenced, deactivating) the Payee with this [`Payee::id`].
-    Delete(u32, DeletePayeeForm),
-}
-
-impl PayeesDialog {
-    /// The form behind the Add and Edit dialogs.
-    pub fn form_mut(&mut self) -> Option<&mut PayeeForm> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(..) => None,
-        }
-    }
-}
-
-impl Dialog for PayeesDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        self.form_mut()?.handle_own_key(key)
-    }
-
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form.focused_text(),
-            Self::Delete(_, form) => Some(&mut form.confirmation_name),
-        }
-    }
-
-    fn cycle_field(&mut self) {
-        if let Some(form) = self.form_mut() {
-            form.cycle_focus(false);
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
-            Self::Delete(_, form) => form.is_valid(),
-        }
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        self.form_mut().is_some_and(PayeeForm::close_open_select)
-    }
-
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(match self {
-            Self::Delete(..) => crate::settings::hints::confirm_dialog_hints(),
-            Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
-        })
     }
 }
 
@@ -418,10 +361,14 @@ impl DeletePayeeForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        categories::default_categories,
-        payees::{default_payees, find_by_name, get},
-    };
+    use crate::categories::default_categories;
+    use crate::{tags::default_tags, transactions::default_transactions};
+    use bigdecimal::BigDecimal;
+    use chrono::NaiveDate;
+    use lib_accounts::default_accounts;
+    use lib_core::Money;
+    use lib_payees::{default_payees, find_by_name, get, set_active, usage};
+    use lib_transactions::Transaction;
 
     fn id_of(payees: &[Payee], name: &str) -> u32 {
         find_by_name(payees, name).unwrap()
@@ -590,146 +537,68 @@ mod tests {
         assert_eq!(form.draft().default_category, Some(7));
     }
 
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
-
-    fn payee_options() -> PayeeOptions {
-        PayeeOptions::new(&default_categories(), "none".into())
+    // The page's usage and delete-action tests.
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
     }
 
-    fn add_payee() -> OpenDialog {
-        OpenDialog::Payees(PayeesDialog::Add(PayeeForm::new(
-            &payee_options(),
-            &default_payees(),
-        )))
-    }
-
-    fn payee_form(dialog: &OpenDialog) -> &PayeeForm {
-        match dialog {
-            OpenDialog::Payees(PayeesDialog::Add(form) | PayeesDialog::Edit(_, form)) => form,
-            other => panic!("expected a payee form, got {other:?}"),
-        }
+    fn seeded_transactions(payees: &[Payee]) -> Vec<Transaction> {
+        default_transactions(
+            &default_accounts(),
+            &default_categories(),
+            payees,
+            &default_tags(),
+            today(),
+        )
     }
 
     #[test]
-    fn payee_typing_edits_the_focused_text_field_and_tab_moves_on() {
-        let mut dialog = add_payee();
-        type_text(&mut dialog, "Aussie");
-        handle_key(&mut dialog, DialogKey::Backspace);
-        assert_eq!(payee_form(&dialog).name.text(), "Aussi");
+    fn the_delete_action_follows_references_and_activity() {
+        let mut payees = default_payees();
+        let netflix = id_of(&payees, "Netflix");
+        let j_smith = id_of(&payees, "J Smith");
+        let used = PayeeUse {
+            splits: 1,
+            bill_plans: 0,
+        };
+        let action = |payees: &[Payee], id, payee_use| {
+            DeleteAction::for_payee(get(payees, id).unwrap(), payee_use)
+        };
 
-        handle_key(&mut dialog, DialogKey::Tab);
-        assert_eq!(payee_form(&dialog).focused, PayeeField::DefaultCategory);
-        handle_key(&mut dialog, DialogKey::Tab);
-        type_text(&mut dialog, "aussie");
-        assert_eq!(payee_form(&dialog).rule_input.text(), "aussie");
-        assert_eq!(payee_form(&dialog).name.text(), "Aussi");
-        handle_key(&mut dialog, DialogKey::BackTab);
-        assert_eq!(payee_form(&dialog).focused, PayeeField::DefaultCategory);
+        assert_eq!(
+            action(&payees, netflix, PayeeUse::default()),
+            DeleteAction::Delete
+        );
+        assert_eq!(action(&payees, j_smith, used), DeleteAction::Deactivate);
+        set_active(&mut payees, j_smith, false).unwrap();
+        assert_eq!(action(&payees, j_smith, used), DeleteAction::Reactivate);
     }
 
     #[test]
-    fn payee_enter_confirms_only_with_a_free_name() {
-        let mut dialog = add_payee();
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        type_text(&mut dialog, "coles");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        for _ in 0..5 {
-            handle_key(&mut dialog, DialogKey::Backspace);
-        }
-        type_text(&mut dialog, "Aussie Candle Co");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
-    }
-
-    #[test]
-    fn payee_enter_in_the_rule_input_adds_a_chip_instead_of_confirming() {
-        let mut dialog = add_payee();
-        type_text(&mut dialog, "Aussie Candle Co");
-        handle_key(&mut dialog, DialogKey::BackTab);
-        assert_eq!(payee_form(&dialog).focused, PayeeField::Rule);
-        type_text(&mut dialog, "candle");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        assert_eq!(payee_form(&dialog).rules, vec!["CANDLE".to_string()]);
-        // With the input empty again, Enter submits.
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
-        // Backspace in the empty input removes the last chip.
-        handle_key(&mut dialog, DialogKey::Backspace);
-        assert!(payee_form(&dialog).rules.is_empty());
-    }
-
-    #[test]
-    fn payee_typing_clears_a_refused_rules_error() {
-        let mut dialog = add_payee();
-        handle_key(&mut dialog, DialogKey::BackTab);
-        type_text(&mut dialog, "woolies");
-        handle_key(&mut dialog, DialogKey::Enter);
-        assert!(payee_form(&dialog).error.is_some());
-        type_text(&mut dialog, "!");
-        assert_eq!(payee_form(&dialog).error, None);
-    }
-
-    #[test]
-    fn payee_select_takes_arrows_and_swallows_typing_and_first_esc_closes_it() {
-        let mut dialog = add_payee();
-        handle_key(&mut dialog, DialogKey::Tab);
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Char('x')),
-            DialogOutcome::Handled
-        );
-        assert_eq!(payee_form(&dialog).name.text(), "");
-        handle_key(&mut dialog, DialogKey::Enter);
-        assert!(payee_form(&dialog).default_category.is_open());
-        handle_key(&mut dialog, DialogKey::Down);
-        assert!(dialog.close_open_select());
-        assert!(!dialog.close_open_select());
-        // The dialog itself is still there for the second Esc to close.
-        assert!(matches!(dialog, OpenDialog::Payees(_)));
-    }
-
-    #[test]
-    fn delete_payee_needs_the_exact_name_except_to_reactivate() {
+    fn usage_counts_every_split_and_totals_base_unit_ones() {
         let payees = default_payees();
-        let j_smith = payees.iter().find(|p| p.name == "J Smith").unwrap();
-        let mut dialog = OpenDialog::Payees(PayeesDialog::Delete(
-            j_smith.id,
-            DeletePayeeForm::new(j_smith, DeleteAction::Delete),
-        ));
-        type_text(&mut dialog, "j smith");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
+        let accounts = default_accounts();
+        let transactions = seeded_transactions(&payees);
+        let j_smith = id_of(&payees, "J Smith");
+        let j_smith_usage = usage(
+            &transactions,
+            &accounts,
+            Some(lib_core::UnitId::SEED_AUD),
+            j_smith,
         );
-        for _ in 0..7 {
-            handle_key(&mut dialog, DialogKey::Backspace);
-        }
-        type_text(&mut dialog, "J Smith");
+        assert_eq!(j_smith_usage.splits, 4);
         assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
+            j_smith_usage.total,
+            Money(BigDecimal::new((-64_000).into(), 2))
         );
 
-        let mut reactivate = OpenDialog::Payees(PayeesDialog::Delete(
-            j_smith.id,
-            DeletePayeeForm::new(j_smith, DeleteAction::Reactivate),
-        ));
-        assert_eq!(
-            handle_key(&mut reactivate, DialogKey::Enter),
-            DialogOutcome::Confirm
+        let other_unit = usage(
+            &transactions,
+            &accounts,
+            Some(lib_core::UnitId::new()),
+            j_smith,
         );
+        assert_eq!(other_unit.splits, 4);
+        assert_eq!(other_unit.total, Money(BigDecimal::new(0.into(), 2)));
     }
 }

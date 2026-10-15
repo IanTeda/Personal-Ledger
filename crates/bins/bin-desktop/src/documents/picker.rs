@@ -371,7 +371,7 @@ fn describe(
                 .splits
                 .iter()
                 .find_map(|split| split.payee_id)
-                .and_then(|id| crate::payees::get(lookups.payees, id));
+                .and_then(|id| lib_payees::get(lookups.payees, id));
             let what = payee
                 .map(|payee| payee.name.clone())
                 .or_else(|| transaction.description.clone())
@@ -400,7 +400,7 @@ fn describe(
             ))
         }
         DocumentLink::Payee(id) => {
-            let payee = crate::payees::get(lookups.payees, id)?;
+            let payee = lib_payees::get(lookups.payees, id)?;
             let haystack = std::iter::once(payee.name.as_str())
                 .chain(payee.aliases.iter().map(String::as_str))
                 .collect::<Vec<_>>()
@@ -417,7 +417,7 @@ fn describe(
             let cadence = crate::view::bills::planner::recurrence_label(plan.recurrence);
             let payee = plan
                 .payee_id
-                .and_then(|id| crate::payees::get(lookups.payees, id))
+                .and_then(|id| lib_payees::get(lookups.payees, id))
                 .map(|payee| payee.name.as_str())
                 .unwrap_or_default();
             let text = format!("{} \u{b7} {cadence}", plan.name);
@@ -447,7 +447,7 @@ fn transaction_haystack(
     for split in &transaction.splits {
         if let Some(payee) = split
             .payee_id
-            .and_then(|id| crate::payees::get(lookups.payees, id))
+            .and_then(|id| lib_payees::get(lookups.payees, id))
         {
             parts.push(payee.name.clone());
             parts.extend(payee.aliases.iter().cloned());
@@ -500,12 +500,12 @@ mod tests {
         bills::{BillPlan, default_bills},
         categories::default_categories,
         documents::{DocumentsSeed, default_documents},
-        payees::{Payee, default_payees},
         tags::default_tags,
         transactions::default_transactions,
     };
     use lib_accounts::{Account, default_accounts};
     use lib_core::DateStyle;
+    use lib_payees::{Payee, default_payees};
 
     struct World {
         types: Vec<crate::documents::types::DocumentTypeRow>,

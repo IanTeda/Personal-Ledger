@@ -6,11 +6,11 @@
 //! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
-//! Payees, [`PayeesView`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by that Entity, and this
-//! View forwards the page's keys, movement and status to it while the page has focus. The rest (Categories, Tags, Documents,
-//! Inventory) are still
-//! `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their keys
-//! before forwarding to this Entity, until each moves in its own ticket.
+//! Payees, [`PayeesPage`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by
+//! that Entity, and this View forwards the page's keys, movement and status to it while the page
+//! has focus. The rest (Categories, Tags, Documents, Inventory) are still `Shell`'s: it hands their
+//! drawn page in as a [`DataPage`] each frame, and handles their keys before forwarding to this
+//! Entity, until each moves in its own ticket.
 
 use std::collections::HashSet;
 
@@ -28,6 +28,7 @@ use super::{
     },
     tracing::LOG_LINE_STEP,
 };
+use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     navigation::key_router::Movement,
@@ -42,10 +43,7 @@ use crate::{
         tracing_log::{LogChange, LogView, TracingLevel},
     },
     theme::colours::ColourChange,
-    view::{
-        event::{Reveal, ViewEvent},
-        payees::state::{PayeesView, RowClicked},
-    },
+    view::event::{Reveal, ViewEvent},
 };
 
 impl EventEmitter<ViewEvent> for SettingsView {}
@@ -55,14 +53,14 @@ pub struct SettingsSources {
     pub institutions: Entity<InstitutionsPage>,
     pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsPage>,
-    pub payees: Entity<PayeesView>,
+    pub payees: Entity<PayeesPage>,
 }
 
 /// The open page's own Entity, while it has focus.
 #[derive(Clone)]
 enum FocusedPage {
     Accounts(Entity<AccountsPage>),
-    Payees(Entity<PayeesView>),
+    Payees(Entity<PayeesPage>),
     Units(Entity<UnitsPage>),
     Institutions(Entity<InstitutionsPage>),
 }
@@ -209,7 +207,7 @@ impl SettingsView {
     }
 
     /// The Payees page's Entity, for `Shell`'s Dialog host.
-    pub fn payees(&self) -> &Entity<PayeesView> {
+    pub fn payees(&self) -> &Entity<PayeesPage> {
         &self.sources.payees
     }
 

@@ -18,12 +18,13 @@ use super::{
     header::ChipBounds,
     hints::{filter_hints, transactions_hints},
 };
+use lib_payees::Payee;
+
 use crate::{
     chrome::statusline::PageStatus,
     import::ImportState,
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
-    payees::{Payee, PayeesStore},
     settings::display::{RowDensity, StatusGlyphs},
     transactions::{
         self, Transaction,
@@ -87,7 +88,6 @@ impl TransactionsState {
 pub struct TransactionsSources {
     pub ledger: Entity<LedgerStore>,
     pub categories: Entity<CategoriesStore>,
-    pub payees: Entity<PayeesStore>,
     pub tags: Entity<TagsStore>,
 }
 
@@ -107,11 +107,14 @@ pub struct TransactionsView {
     pub(super) state: TransactionsState,
     /// Repaints the page when the Accounts its rows and filters name change.
     _accounts_changed: Subscription,
+    /// Repaints the page when the Payees its rows and filters name change.
+    _payees_changed: Subscription,
 }
 
 impl TransactionsView {
     pub fn new(sources: TransactionsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
+        let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
         Self {
             sources,
             today,
@@ -122,6 +125,7 @@ impl TransactionsView {
             import_scroll: ScrollHandle::new(),
             state: TransactionsState::new(today),
             _accounts_changed,
+            _payees_changed,
         }
     }
 
@@ -160,7 +164,7 @@ impl TransactionsView {
     }
 
     pub(super) fn payees<'a>(&self, cx: &'a App) -> &'a [Payee] {
-        self.sources.payees.read(cx).payees(cx)
+        self.sources.ledger.read(cx).ledger().payees()
     }
 
     /// The reference data the Transactions engine reads, borrowed from the shared stores.

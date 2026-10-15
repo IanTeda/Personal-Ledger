@@ -22,6 +22,8 @@ use chrono::NaiveDate;
 use lib_core::{CategoryTypes, DateStyle, Money, UnitId};
 use lib_locale::format::format_date_input;
 
+use lib_payees::Payee;
+
 use crate::{
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
     categories::{self, Category},
@@ -29,7 +31,6 @@ use crate::{
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
-    payees::Payee,
     transactions,
     transactions::filter_form::parse_date,
 };
@@ -701,10 +702,11 @@ impl Dialog for BillPlanForm {
 mod tests {
     use super::*;
     use crate::{
-        bills, categories::default_categories, chrome::dialog_host::handle_key,
-        payees::default_payees, tags::default_tags, transactions::default_transactions,
+        bills, categories::default_categories, chrome::dialog_host::handle_key, tags::default_tags,
+        transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
+    use lib_payees::default_payees;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

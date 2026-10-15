@@ -38,7 +38,6 @@ mod focus;
 mod inventory_ui;
 mod key_dispatch;
 mod log_feed;
-mod payees_ui;
 mod rail;
 mod render;
 mod settings_ui;
@@ -81,15 +80,14 @@ use gpui::{
 use lib_ledger::{Ledger, MoveDocumentType};
 use lib_toast::Toasts;
 
-use crate::payees::{PayeesEvent, PayeesStore};
 use crate::settings::accounts::AccountsPage;
+use crate::settings::payees::{PayeesPage, PayeesSources};
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
-use crate::view::payees::state::{PayeesSources, PayeesView};
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
     budgets,
@@ -163,9 +161,6 @@ pub struct Shell {
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
-    /// The Payees rows, read through their store Entity (ADR-0032). Shared:
-    /// Transactions, Bills, Documents and Budgets read the same rows.
-    payees_store: Entity<PayeesStore>,
     /// The Tags rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
@@ -213,16 +208,15 @@ impl Shell {
         let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let accounts_view_observer = cx.observe(&accounts_view, |_, _, cx| cx.notify());
-        let payees_store = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
-        let payees_subscription = cx
-            .subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| {
-                cx.notify()
-            });
-        let payees_view = cx.new(|_| {
-            PayeesView::new(PayeesSources {
-                payees: payees_store.clone(),
-                categories: categories_store.clone(),
-            })
+        let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
+        let payees_view = cx.new(|cx| {
+            PayeesPage::new(
+                PayeesSources {
+                    ledger: ledger.clone(),
+                    categories: categories_store.clone(),
+                },
+                cx,
+            )
         });
         let payees_view_subscription = Self::view_event_subscription(&payees_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
@@ -265,7 +259,6 @@ impl Shell {
                 TransactionsSources {
                     ledger: ledger.clone(),
                     categories: categories_store.clone(),
-                    payees: payees_store.clone(),
                     tags: tags_store.clone(),
                 },
                 today,
@@ -299,7 +292,6 @@ impl Shell {
             BillsView::new(
                 BillsSources {
                     categories: categories_store.clone(),
-                    payees: payees_store.clone(),
                     ledger: ledger.clone(),
                 },
                 today,
@@ -313,7 +305,6 @@ impl Shell {
             DocumentsView::new(
                 DocumentsSources {
                     ledger: ledger.clone(),
-                    payees: payees_store.clone(),
                     inventory: inventory.clone(),
                 },
                 today,
@@ -350,7 +341,6 @@ impl Shell {
             today,
             categories_store,
             categories_view,
-            payees_store,
             tags_store,
             tags_view,
             views: ViewEntities {
@@ -373,7 +363,7 @@ impl Shell {
                 documents_subscription,
                 documents_view_observer,
                 tags_subscription,
-                payees_subscription,
+                payees_changed,
                 payees_view_subscription,
                 payees_view_observer,
                 categories_subscription,
@@ -634,7 +624,7 @@ mod tests {
     };
     use crate::transactions::Transaction;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
-    use crate::{categories, payees, tags, transactions};
+    use crate::{categories, tags, transactions};
     use chrono::Local;
     use lib_accounts::Account;
 
@@ -644,7 +634,7 @@ mod tests {
         let transactions = transactions::default_transactions(
             &accounts,
             &categories,
-            &payees::default_payees(),
+            &lib_payees::default_payees(),
             &tags::default_tags(),
             Local::now().date_naive(),
         );

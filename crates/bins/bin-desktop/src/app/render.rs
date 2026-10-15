@@ -3,7 +3,10 @@
 
 use super::Shell;
 use crate::categories::form::CategoriesDialog;
-use crate::payees::form::PayeesDialog;
+use crate::settings::payees::{
+    dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
+    form,
+};
 use crate::tags::form::TagsDialog;
 use std::rc::Rc;
 
@@ -29,7 +32,6 @@ use crate::{
     documents::{self},
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
-    payees::{self},
     period::Period,
     settings::accounts::dialogs::AccountsDialog,
     settings::{SettingsDialog, SettingsFocus},
@@ -42,7 +44,7 @@ use crate::{
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, payees as payees_view, placeholder, tags as tags_view,
+        help as help_view, placeholder, tags as tags_view,
     },
 };
 
@@ -269,27 +271,26 @@ impl Render for Shell {
         };
         let payees_dialog_handlers = {
             let plain = plain_payees;
-            let form_edit = |change: fn(&mut payees::form::PayeeForm, usize)| {
+            let form_edit = |change: fn(&mut form::PayeeForm, usize)| {
                 let entity = entity.clone();
-                let on_click: payees_view::add_dialog::OnOptionClick =
-                    Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
-                                if let Some(form) = dialog.form_mut() {
-                                    change(form, index);
-                                }
-                            });
+                let on_click: OnOptionClick = Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
+                            if let Some(form) = dialog.form_mut() {
+                                change(form, index);
+                            }
                         });
                     });
+                });
                 on_click
             };
-            let on_field_click: payees_view::add_dialog::OnFieldClick = {
+            let on_field_click: OnFieldClick = {
                 let entity = entity.clone();
                 Rc::new(move |field, _window, cx| {
                     entity.update(cx, |shell, cx| {
                         shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
                             if let Some(form) = dialog.form_mut() {
-                                if field == payees::form::PayeeField::DefaultCategory {
+                                if field == form::PayeeField::DefaultCategory {
                                     form.click_select();
                                 } else {
                                     form.focus(field);
@@ -302,16 +303,16 @@ impl Render for Shell {
             let add_rule = |shell: &mut Shell, cx: &mut Context<'_, Shell>| {
                 shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
                     if let Some(form) = dialog.form_mut() {
-                        form.focus(payees::form::PayeeField::Rule);
+                        form.focus(form::PayeeField::Rule);
                         form.add_rule();
                     }
                 });
             };
-            payees_view::add_dialog::PayeeDialogHandlers {
+            PayeeDialogHandlers {
                 on_field_click,
-                on_option_click: form_edit(payees::form::PayeeForm::choose_category),
+                on_option_click: form_edit(form::PayeeForm::choose_category),
                 on_add_rule: plain(add_rule),
-                on_remove_rule: form_edit(payees::form::PayeeForm::remove_rule),
+                on_remove_rule: form_edit(form::PayeeForm::remove_rule),
                 on_cancel: plain(Shell::handle_dialog_cancel),
                 on_confirm: plain(Shell::handle_dialog_confirm),
             }
@@ -763,61 +764,15 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(match self.dialog::<PayeesDialog>() {
-                Some(PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
-                    payees_view::add_dialog::PayeeDialogMode::Add,
-                    form,
-                    form.options(),
-                    form.name_error(),
-                    form.is_valid(),
+            .children(self.dialog::<PayeesDialog>().and_then(|dialog| {
+                dialog.render(
+                    self.ledger.read(cx).ledger().payees(),
+                    self.transactions(cx),
+                    self.ledger.read(cx).ledger().accounts(),
                     payees_dialog_handlers,
                     cx,
-                )),
-                Some(PayeesDialog::Edit(id, form)) => {
-                    payees::get(self.payees_list(cx), *id).map(|payee| {
-                        payees_view::add_dialog::render(
-                            payees_view::add_dialog::PayeeDialogMode::Edit {
-                                name: &payee.name,
-                                splits: payees::usage(
-                                    self.transactions(cx),
-                                    self.ledger.read(cx).ledger().accounts(),
-                                    None,
-                                    *id,
-                                )
-                                .splits,
-                            },
-                            form,
-                            form.options(),
-                            form.name_error(),
-                            form.is_valid(),
-                            payees_dialog_handlers,
-                            cx,
-                        )
-                    })
-                }
-                Some(PayeesDialog::Delete(id, form)) => {
-                    self.delete_payee_target(cx).map(|(payee, action)| {
-                        payees_view::delete_dialog::render(
-                            payees_view::delete_dialog::DeletePayeeProps {
-                                payee,
-                                action,
-                                form,
-                                splits: payees::usage(
-                                    self.transactions(cx),
-                                    self.ledger.read(cx).ledger().accounts(),
-                                    None,
-                                    *id,
-                                )
-                                .splits,
-                                on_cancel: plain_payees(Shell::handle_dialog_cancel),
-                                on_confirm: plain_payees(Shell::handle_dialog_confirm),
-                            },
-                            cx,
-                        )
-                    })
-                }
-                None => None,
-            })
+                )
+            }))
             .children(self.render_document_types_dialog(&entity, cx))
             .children(self.render_inventory_dialog(&entity, cx))
             .children(match self.dialog::<TagsDialog>() {

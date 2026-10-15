@@ -75,14 +75,14 @@ Neither Client reads Payees from `lib-database`.
 
 - **TUI** — `crates/bins/bin-tui/src/payee/` (`mod.rs`, `fixture.rs`) supplies in-memory Payees; the screen is `view/payees.rs`. Spec: `docs/ux/tui-mockups/04-payees/README.md`.
 - **Desktop** — the Payees surface (handoff `docs/ux/desktop-mockups/20-payees/`, screens 6a–6e), all on in-memory stubs:
-  - `src/payees/mod.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: u32`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee`/`set_active`, `usage` (Split count and base-Unit total, computed live from the Transactions stub), and the counts. The dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/payees/form.rs`. Start here; it is unit-tested without a window.
-  - `src/view/payees/` — `mod.rs` the list (6a), `add_dialog.rs` the Add and Edit dialogs (6b, 6c), `rules_field.rs` the match-rule chips and input, `delete_dialog.rs` the Delete/Deactivate/Reactivate dialog (6d).
+  - `crates/libs/lib-payees/src/lib.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: u32`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee`/`set_active`, `usage` (Split count and base-Unit total, computed live from the Transactions stub), and the counts. The Desktop dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/settings/payees/form.rs`. Start here; it is unit-tested without a window.
+  - `src/settings/payees/` — `mod.rs` the `PayeesPage` Entity, `render.rs` the list (6a), `apply.rs` the confirm cycle, `dialogs/` the Add and Edit dialogs (`add.rs`, 6b and 6c) and the Delete/Deactivate/Reactivate dialog (`delete.rs`, 6d); the match-rule chips and input are `src/form/rules_field.rs`.
   - `src/import.rs` and `src/view/import.rs` — the stubbed Import "match payees" step (6e), opened by the `:import` palette verb: an 18-row seeded statement, `cleaned_name`/`cleaned_token` (the suggested Payee name and remembered alias), `match_row`, `summary` and `commit`, which creates new Payees, remembered aliases and one-Split Transactions in the stubs.
   - `src/view/transactions/import_step.rs` — the step's keys, clicks and commit on the `TransactionsView` Entity, which shows it in place of the Transactions page (ADR-0037).
   - `src/shell.rs` — `handle_payees_key` (`n`/`e`/`d`) and `enter` on a Payee row opening Transactions filtered by Payee id (mirrors `open_category_transactions`).
   - Messages in `i18n/en-US/payees.ftl` and `import.ftl`.
 
-> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `settings/payees/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Payees`); the dialogs and models stay in `view/payees/`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `settings/payees/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Payees`); its dialogs and forms sit beside it in `settings/payees/dialogs/` and `settings/payees/form.rs`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 
 ## Traceability
 
@@ -90,14 +90,14 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 
 | Requirement | Desktop location |
 | --- | --- |
-| PAY-001 | `payees::insert_payee`, `view/payees/add_dialog.rs` |
-| PAY-002 | `view/payees/mod.rs` (inactive rows dimmed); Transactions payee filter |
-| PAY-003 | `payees::edit_payee` |
-| PAY-004 | `payees::set_active`, `view/payees/delete_dialog.rs` |
-| PAY-005 | `view/payees/mod.rs`, `payees::usage` |
+| PAY-001 | `lib_payees::insert_payee`, `settings/payees/dialogs/add.rs` |
+| PAY-002 | `settings/payees/render.rs` (inactive rows dimmed); Transactions payee filter |
+| PAY-003 | `lib_payees::edit_payee` |
+| PAY-004 | `lib_payees::set_active`, `settings/payees/dialogs/delete.rs` |
+| PAY-005 | `settings/payees/render.rs`, `lib_payees::usage` |
 | PAY-007 | `Payee::default_category`, `PayeeOptions` |
-| PAY-008 | `view/payees/rules_field.rs`, `payees::match_alias` |
-| PAY-009 | `payees::delete_payee`, `DeleteAction` |
+| PAY-008 | `form/rules_field.rs`, `lib_payees::match_alias` |
+| PAY-009 | `lib_payees::delete_payee`, `DeleteAction` |
 | PAY-010 | `import.rs`, `view/import.rs` |
 
 ## Decisions

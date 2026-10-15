@@ -10,7 +10,7 @@ use lib_toast::ToastKind;
 use super::state::TransactionsView;
 use crate::{
     import::{self, ImportState, RowSelect},
-    payees::form::PayeeOptions,
+    settings::payees::form::PayeeOptions,
     view::{event::ViewEvent, import as import_view},
 };
 

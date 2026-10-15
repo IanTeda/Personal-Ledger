@@ -25,6 +25,7 @@ pub use lib_tags::*;
 
 #[cfg(test)]
 mod tests {
+    use lib_payees::default_payees;
     #[test]
     fn sorted_by_name_ignores_case() {
         let tags = default_tags();
@@ -44,9 +45,7 @@ mod tests {
     use lib_transactions::Transaction;
 
     use super::*;
-    use crate::{
-        categories::default_categories, payees::default_payees, transactions::default_transactions,
-    };
+    use crate::{categories::default_categories, transactions::default_transactions};
     use lib_accounts::default_accounts;
     use lib_transactions::Split;
 

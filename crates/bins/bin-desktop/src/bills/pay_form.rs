@@ -252,9 +252,10 @@ mod tests {
     use super::*;
     use crate::{
         bills::default_bills, categories::default_categories, chrome::dialog_host::handle_key,
-        payees::default_payees, tags::default_tags, transactions::default_transactions,
+        tags::default_tags, transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
+    use lib_payees::default_payees;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
