@@ -18,7 +18,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 | Folder | Destination | Frames | Rail / key |
 | --- | --- | --- | --- |
 | `../Logo` | App icon & wordmark (shared by Desktop, TUI and Sync Server) | light / dark assets | — |
-| `01-shell` | Shell & navigation | 1a–1f | header, rail, status bar, palette |
+| `01-shell` | Chrome & Navigation | 1a–1f | header, rail, status bar, palette |
 | `02-dashboard` | Dashboard: Today, Net worth, This month | 2a–2d | LEDGER · `g d` |
 | `03-transactions` | Transactions: cross-account ledger | 3a–3c | LEDGER · `g l` |
 | `04-documents` | Documents library (pick 4c/4d **or** 4e) | 4c–4e | LEDGER · `g f` |

@@ -1,6 +1,6 @@
-# Handoff: Desktop Shell & Navigation
+# Handoff: Desktop Chrome & Navigation
 
-> **Package 01 of 20 · Shell & navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f). Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f). Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
@@ -32,7 +32,7 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
   - Title: "No ledger open" (800 26px/1.1, letter-spacing −.01em)
   - Body: "Run `:open` to load a ledger file, or `:new` to start one." (13px, #605d5d, max-width 380px, `text-wrap: pretty`) — the two command names are set 800 weight in #201e1d
   - Stack gap: 14px, `text-align: center`, pane padding 24px
-- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned context label
+- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned "No ledger open…" (the right-hand slot shows the open `.pldb` file path once a ledger is loaded, e.g. `~/documents/ledgers/teda.pldb`)
 
 **Why it matters**: The rail stays fully populated and legible with no ledger loaded — navigation is app structure, not document content. Only the main pane and the header's file label are empty.
 
@@ -237,3 +237,7 @@ fileExplorer
 - **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, breadcrumb, sync status, window controls.
 - **1b** is now the Dashboard (see above).
 - **Settings rail** lists Backup, History and Logs in place of Data & backup and Tracing (Logs).
+
+## Changes (16 October 2026)
+- **Deck** renamed from "Shell & navigation" to **Chrome & Navigation**.
+- **Status bar right-hand slot** now shows the file path of the open `.pldb` ledger (`~/documents/ledgers/teda.pldb`) in every frame with a ledger loaded (1b, 1c, 1d, 1f), replacing the context labels and `esc close …` hints. The no-ledger frames (1a, 1e) show "No ledger open…".
