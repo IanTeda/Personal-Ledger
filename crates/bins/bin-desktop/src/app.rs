@@ -100,7 +100,11 @@ use crate::{
     navigation::key_router::{self, Movement},
     navigation::nav::NavState,
     settings::tracing_log::LogView,
-    settings::{SettingsPage, display::DisplayPreferences, tracing_log::TracingLevel},
+    settings::{
+        SettingsPage,
+        display::{DisplayPage, DisplayPreferences},
+        tracing_log::TracingLevel,
+    },
     view::format,
     view::{
         budgets::{self as budgets_view},
@@ -221,6 +225,10 @@ impl Shell {
         let payees_view_subscription = Self::view_event_subscription(&payees_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
+        let display_page = cx.new(|_| DisplayPage::default());
+        let display_page_subscription = Self::view_event_subscription(&display_page, cx);
+        // The status line reads the page's focus, so a change in it repaints `Shell` too.
+        let display_page_observer = cx.observe(&display_page, |_, _, cx| cx.notify());
         let units_page = cx.new(|cx| UnitsPage::new(ledger.clone(), cx));
         let units_page_subscription = Self::view_event_subscription(&units_page, cx);
         let institutions_page = cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx));
@@ -229,6 +237,7 @@ impl Shell {
         let settings_view = cx.new(|cx| {
             SettingsView::new(
                 SettingsSources {
+                    display: display_page,
                     institutions: institutions_page,
                     units: units_page,
                     accounts: accounts_view,
@@ -370,6 +379,8 @@ impl Shell {
                 units_subscription,
                 accounts_changed,
                 units_page_subscription,
+                display_page_subscription,
+                display_page_observer,
                 institutions_subscription,
                 institutions_page_subscription,
                 inventory_subscription,
@@ -431,7 +442,7 @@ impl Shell {
 
     /// The Display Preferences, which the Settings View owns (ADR-0037).
     fn display(&self, cx: &App) -> DisplayPreferences {
-        self.views.settings.read(cx).display()
+        self.views.settings.read(cx).display(cx)
     }
 
     pub fn set_dismiss_toasts_binding(&mut self, spec: String) {

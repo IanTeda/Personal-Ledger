@@ -1,473 +1,279 @@
-//! The **Display** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", moved
-//! directly after General by issue #189's own reorder): a column of three segmented
-//! controls (Date format, Row density) plus a read-only Locale and a dot-style Status
-//! glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
-//! seeded transaction rows under whichever combination is currently selected.
-//!
-//! Unlike every other section built so far, this one is genuinely reactive across *all* its
-//! fields at once -- General's/Units' own interactive bits (issues #175/#177) are either static
-//! or scoped to one table, but here every field click re-formats the PREVIEW table's date,
-//! amount, and glyph columns, and shifts its row padding (see
-//! `crate::settings::display::RowDensity::preview_row_padding_y`'s own doc for why row density gets a
-//! real visual effect here despite this map's data otherwise being static/dummy).
-//!
-//! Configuration, not Preferences (`docs/ux/desktop-mockups/16-settings/README.md`'s Overview) -- like
-//! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
-//! not written to `personal-ledger.conf`.
+//! The Settings › Display page (ADR-0037's amendment, one folder per page). [`DisplayPage`] owns the
+//! Display Preferences (`preferences.rs`), the keyboard focus on its controls and on the Colour Theme
+//! grid (`colour_theme.rs`), and renders itself (`render.rs`). Each change reaches `Shell` as
+//! [`ViewEvent::DisplayChanged`]; the Settings View forwards the page's keys and focus to it while
+//! the page has focus.
 
+pub mod colour_theme;
 mod preferences;
+mod render;
+
 pub use preferences::*;
 
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{Context, EventEmitter, Keystroke};
+use lib_colour_theme::ColourTheme;
 use lib_core::DateStyle;
 
-use crate::{settings::DISPLAY_FIELD_SIDEBAR, theme::color};
+use crate::{settings::step_choice, theme::colours::ColourChange, view::event::ViewEvent};
 
-use super::{colour_theme, tracing::radio_dot};
-use crate::form::fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
+/// The Display page's keyboard-reachable controls above the Colour Theme grid, top to bottom:
+/// Date format, Row density, Status glyphs, Start sidebar minimised, Toasts. The grid is the stop
+/// after the last one.
+pub const DISPLAY_FIELD_COUNT: usize = 5;
 
-pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
-pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
-pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
-pub type OnToastsClick = Rc<dyn Fn(bool, &mut Window, &mut App)>;
-/// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
-/// own option has already been curried in (mirrors the Units page's `OnPlainClick`).
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+/// The Display field that is a checkbox rather than a segmented or radio control.
+pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
 
-/// As wide as the widest control, Date format's uniform bar (one option per choice plus its 1px
-/// border each side): any narrower and the bar overflows the `flex_none` column into the
-/// PREVIEW beside it.
-const FIELD_COLUMN_WIDTH: gpui::Pixels =
-    px(DATE_STYLE_CHOICES.len() as f32 * UNIFORM_OPTION_WIDTH + 2.0);
-const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
-const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
-const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
+/// What a key did on the page. [`DisplayKey::FocusIndex`] is the grid's `h` at its first column,
+/// which steps focus out to the index rail: a focus change only Settings can make.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayKey {
+    Unhandled,
+    Handled,
+    FocusIndex,
+}
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
-)]
-pub fn render(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    start_sidebar_minimised: bool,
-    on_start_sidebar_minimised_click: OnPlainClick,
-    on_date_style_click: OnDateStyleClick,
-    on_row_density_click: OnRowDensityClick,
-    on_status_glyphs_click: OnStatusGlyphsClick,
-    toasts_on: bool,
-    on_toasts_click: OnToastsClick,
+impl EventEmitter<ViewEvent> for DisplayPage {}
+
+/// The Display page: the Display Preferences its controls set and the other Views and the Chrome
+/// read, and the keyboard focus on its controls and Colour Theme grid. Only one of the two is
+/// focused at a time, and neither while focus is elsewhere in Settings.
+#[derive(Debug, Default)]
+pub struct DisplayPage {
+    preferences: DisplayPreferences,
+    /// The control the keyboard is on, by its `DISPLAY_FIELD_*` index.
+    field_focus: Option<usize>,
+    /// The Colour Theme card the keyboard is on, while the grid has focus.
     colour_theme_focus: Option<usize>,
-    field_focus: Option<usize>,
-    on_colour_theme_click: colour_theme::OnColourThemeClick,
-    cx: &App,
-) -> AnyElement {
-    let columns = div()
-        .flex()
-        .gap(px(40.0))
-        .child(field_column(
-            date_style,
-            row_density,
-            status_glyphs,
-            start_sidebar_minimised,
-            on_start_sidebar_minimised_click,
-            on_date_style_click,
-            on_row_density_click,
-            on_status_glyphs_click,
-            field_focus,
-            cx,
-        ))
-        .child(preview_column(date_style, row_density, status_glyphs, cx));
-    div()
-        .flex()
-        .flex_col()
-        .child(columns)
-        .child(toasts_field(
-            toasts_on,
-            on_toasts_click,
-            field_focus == Some(4),
-            cx,
-        ))
-        .child(colour_theme::render(
-            colour_theme_focus,
-            on_colour_theme_click,
-            cx,
-        ))
-        .into_any_element()
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
-)]
-fn field_column(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    start_sidebar_minimised: bool,
-    on_start_sidebar_minimised_click: OnPlainClick,
-    on_date_style_click: OnDateStyleClick,
-    on_row_density_click: OnRowDensityClick,
-    on_status_glyphs_click: OnStatusGlyphsClick,
-    field_focus: Option<usize>,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .w(FIELD_COLUMN_WIDTH)
-        .flex_none()
-        .flex()
-        .flex_col()
-        .gap(px(18.0))
-        .child(locale_field(cx))
-        .child(
-            focus_mark(field_focus == Some(0), cx)
-                .child(field_label(
-                    crate::msg::desktop_display_date_style_label(),
-                    cx,
-                ))
-                .child(segmented_control_sized(
-                    "display-date-style",
-                    &DATE_STYLE_CHOICES,
-                    date_style,
-                    date_style_label,
-                    on_date_style_click,
-                    Some(px(UNIFORM_OPTION_WIDTH)),
-                    cx,
-                )),
-        )
-        .child(
-            focus_mark(field_focus == Some(1), cx)
-                .child(field_label(
-                    crate::msg::desktop_settings_display_row_density(),
-                    cx,
-                ))
-                .child(segmented_control_sized(
-                    "display-row-density",
-                    &RowDensity::ALL,
-                    row_density,
-                    RowDensity::label,
-                    on_row_density_click,
-                    Some(px(UNIFORM_OPTION_WIDTH)),
-                    cx,
-                )),
-        )
-        .child(status_glyphs_field(
-            status_glyphs,
-            on_status_glyphs_click,
-            field_focus == Some(2),
-            cx,
-        ))
-        .child(
-            focus_mark(field_focus == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
-                start_sidebar_minimised_toggle(
-                    start_sidebar_minimised,
-                    on_start_sidebar_minimised_click,
-                    cx,
-                ),
-            ),
-        )
-}
+impl DisplayPage {
+    pub fn preferences(&self) -> DisplayPreferences {
+        self.preferences
+    }
 
-/// The keyboard-focus mark for one control: an accent rule down its left edge, drawn on every
-/// control so the column does not shift as focus moves.
-fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
-    div()
-        .pl(px(8.0))
-        .ml(px(-10.0))
-        .border_l(px(2.0))
-        .border_color(if focused {
-            gpui::Hsla::from(color::accent(cx))
+    pub fn field_focus(&self) -> Option<usize> {
+        self.field_focus
+    }
+
+    pub fn colour_theme_focus(&self) -> Option<usize> {
+        self.colour_theme_focus
+    }
+
+    /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
+    /// `Shell`, which made the change itself.
+    pub fn set_preferences(&mut self, preferences: DisplayPreferences, cx: &mut Context<'_, Self>) {
+        self.preferences = preferences;
+        cx.notify();
+    }
+
+    /// Focus arrives on the page's first control, as `l`/`enter` from the index does.
+    pub fn focus_first(&mut self, cx: &mut Context<'_, Self>) {
+        self.field_focus = Some(0);
+        cx.notify();
+    }
+
+    /// Focus leaves the page's controls and grid, as it does for the index or another page.
+    pub fn clear_focus(&mut self, cx: &mut Context<'_, Self>) {
+        self.field_focus = None;
+        self.colour_theme_focus = None;
+        cx.notify();
+    }
+
+    /// A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
+    pub fn leave_grid(&mut self, cx: &mut Context<'_, Self>) {
+        self.colour_theme_focus = None;
+        cx.notify();
+    }
+
+    /// `Esc` leaves the Colour Theme grid for the control above it. `false` when the grid has no
+    /// focus, so the page is left to Settings.
+    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.colour_theme_focus.is_none() {
+            return false;
+        }
+        cx.emit(ViewEvent::SetStatus(None));
+        self.leave_colour_theme_grid();
+        cx.notify();
+        true
+    }
+
+    /// The page's keys while it has focus: the Colour Theme grid's when it holds focus, else the
+    /// controls'. `body_width` is the page body's width, which sets the grid's columns.
+    pub fn key(
+        &mut self,
+        keystroke: &Keystroke,
+        body_width: f32,
+        cx: &mut Context<'_, Self>,
+    ) -> DisplayKey {
+        let outcome = if self.colour_theme_focus.is_some() {
+            self.colour_theme_key(keystroke, body_width, cx)
         } else {
-            gpui::transparent_black()
-        })
-}
+            self.field_key(keystroke, cx)
+        };
+        cx.notify();
+        outcome
+    }
 
-/// The "Toasts" On/Off row (ADR-0027), above the Colour Theme group, noting that Errors still
-/// show when off.
-fn toasts_field(
-    toasts_on: bool,
-    on_click: OnToastsClick,
-    focused: bool,
-    cx: &App,
-) -> impl IntoElement {
-    fn label(on: bool) -> String {
-        if on {
-            lib_locale::msg::toast_setting_on()
-        } else {
-            lib_locale::msg::toast_setting_off()
+    /// The Display page's form keys: `j`/`k` walk the controls and on past the last into the
+    /// Colour Theme grid, `h`/`l` change a segmented or radio control (or clear/tick the
+    /// checkbox) in place, `enter`/`space` toggles the checkbox.
+    fn field_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> DisplayKey {
+        let Some(field) = self.field_focus else {
+            return DisplayKey::Unhandled;
+        };
+        if keystroke.modifiers.shift {
+            return DisplayKey::Unhandled;
+        }
+        let delta = match keystroke.key.as_str() {
+            "h" | "left" => -1,
+            "l" | "right" => 1,
+            _ => 0,
+        };
+        match keystroke.key.as_str() {
+            "j" | "down" => {
+                if field + 1 >= DISPLAY_FIELD_COUNT {
+                    self.field_focus = None;
+                    self.colour_theme_focus = Some(colour_theme::chosen_index(cx));
+                } else {
+                    self.field_focus = Some(field + 1);
+                }
+                DisplayKey::Handled
+            }
+            "k" | "up" => {
+                self.field_focus = Some(field.saturating_sub(1));
+                DisplayKey::Handled
+            }
+            "h" | "left" | "l" | "right" => {
+                self.change_display(
+                    |display| match field {
+                        0 => {
+                            display.date_style =
+                                step_choice(&DATE_STYLE_CHOICES, display.date_style, delta);
+                        }
+                        1 => {
+                            display.row_density =
+                                step_choice(&RowDensity::ALL, display.row_density, delta);
+                        }
+                        2 => {
+                            display.status_glyphs =
+                                step_choice(&StatusGlyphs::ALL, display.status_glyphs, delta);
+                        }
+                        DISPLAY_FIELD_SIDEBAR => display.start_sidebar_minimised = delta > 0,
+                        _ => display.toasts_on = delta < 0,
+                    },
+                    cx,
+                );
+                DisplayKey::Handled
+            }
+            "enter" | "space" => {
+                if field == DISPLAY_FIELD_SIDEBAR {
+                    self.click_start_sidebar_minimised(cx);
+                }
+                DisplayKey::Handled
+            }
+            _ => DisplayKey::Unhandled,
         }
     }
-    focus_mark(focused, cx)
-        .id("display-toasts")
-        .mt(px(24.0))
-        .w(FIELD_COLUMN_WIDTH)
-        .child(field_label(lib_locale::msg::toast_setting_label(), cx))
-        .child(segmented_control_sized(
-            "display-toasts",
-            &[true, false],
-            toasts_on,
-            label,
-            on_click,
-            Some(px(UNIFORM_OPTION_WIDTH)),
-            cx,
-        ))
-        .child(
-            div()
-                .mt(px(3.0))
-                .text_size(px(12.0))
-                .text_color(color::muted(cx))
-                .child(lib_locale::msg::toast_setting_note()),
-        )
-}
 
-/// The effective Locale, read-only, with where it came from. There is no control: the Locale is
-/// Configuration, changed by the `locale` setting or `--locale` and a restart.
-fn locale_field(cx: &App) -> impl IntoElement {
-    let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
-    let note = |text: String| {
-        div()
-            .mt(px(3.0))
-            .text_size(px(12.0))
-            .text_color(color::muted(cx))
-            .child(text)
-    };
-    div()
-        .id("display-locale")
-        .child(field_label(crate::msg::desktop_display_locale_label(), cx))
-        .child(div().text_size(px(13.0)).child(line))
-        .children(fallback_note.map(note))
-        .child(note(crate::msg::desktop_display_locale_hint()))
-}
-
-fn start_sidebar_minimised_toggle(
-    checked: bool,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector(|| "display-start-sidebar-minimised".to_string())
-        .id("display-start-sidebar-minimised")
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(
-            div()
-                .w(px(14.0))
-                .h(px(14.0))
-                .flex_none()
-                .border_1()
-                .border_color(if checked {
-                    color::accent(cx)
+    /// The Colour Theme grid (`docs/colour-themes-design.md` "Settings"): arrows or `h`/`j`/`k`/`l`
+    /// move focus, `Enter` selects, and `Tab` leaves it, going on to the next zone. Moving focus
+    /// never previews. Any key the grid does not take leaves it.
+    fn colour_theme_key(
+        &mut self,
+        keystroke: &Keystroke,
+        body_width: f32,
+        cx: &mut Context<'_, Self>,
+    ) -> DisplayKey {
+        let Some(index) = self.colour_theme_focus else {
+            return DisplayKey::Unhandled;
+        };
+        let key = keystroke.key.as_str();
+        match key {
+            "tab" => {
+                self.colour_theme_focus = None;
+                DisplayKey::Unhandled
+            }
+            "enter" => {
+                if let Some(theme) = ColourTheme::built_in().get(index) {
+                    apply_colour(ColourChange::Theme(theme.id), cx);
+                }
+                DisplayKey::Handled
+            }
+            _ => {
+                let columns = colour_theme::grid_columns(body_width);
+                let len = ColourTheme::built_in().len();
+                // `k` on the top row climbs back to the last control above the grid.
+                if matches!(key, "k" | "up") && index < columns {
+                    self.leave_colour_theme_grid();
+                    return DisplayKey::Handled;
+                }
+                // `h` at the first column steps back out to the index.
+                if matches!(key, "h" | "left") && index % columns.max(1) == 0 {
+                    return DisplayKey::FocusIndex;
+                }
+                self.colour_theme_focus = colour_theme::grid_move(index, len, columns, key);
+                if self.colour_theme_focus.is_some() {
+                    DisplayKey::Handled
                 } else {
-                    color::divider(cx)
-                })
-                .bg(if checked {
-                    color::accent(cx)
-                } else {
-                    color::background(cx)
-                }),
-        )
-        .child(
-            div()
-                .text_size(px(12.0))
-                .child(crate::msg::desktop_settings_display_start_minimised()),
-        )
-}
+                    DisplayKey::Unhandled
+                }
+            }
+        }
+    }
 
-/// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
-/// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
-/// (issue #189), distinct from General's bold `crate::form::fields::field_label`
-/// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
-fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    div()
-        .text_size(px(12.0))
-        .mb(px(5.0))
-        .text_color(color::muted(cx))
-        .child(label.into())
-}
+    /// Steps from the Colour Theme grid back up to the page's last control.
+    fn leave_colour_theme_grid(&mut self) {
+        self.colour_theme_focus = None;
+        self.field_focus = Some(DISPLAY_FIELD_COUNT - 1);
+    }
 
-fn status_glyphs_field(
-    selected: StatusGlyphs,
-    on_click: OnStatusGlyphsClick,
-    focused: bool,
-    cx: &App,
-) -> impl IntoElement {
-    focus_mark(focused, cx)
-        .child(field_label(
-            crate::msg::desktop_settings_display_status_glyphs(),
+    /// Applies a change made on the page and hands the result to `Shell`.
+    fn change_display(
+        &mut self,
+        change: impl FnOnce(&mut DisplayPreferences),
+        cx: &mut Context<'_, Self>,
+    ) {
+        change(&mut self.preferences);
+        cx.emit(ViewEvent::DisplayChanged(self.preferences));
+        cx.notify();
+    }
+
+    fn click_date_style(&mut self, style: Option<DateStyle>, cx: &mut Context<'_, Self>) {
+        self.change_display(|display| display.date_style = style, cx);
+    }
+
+    fn click_row_density(&mut self, density: RowDensity, cx: &mut Context<'_, Self>) {
+        self.change_display(|display| display.row_density = density, cx);
+    }
+
+    fn click_status_glyphs(&mut self, glyphs: StatusGlyphs, cx: &mut Context<'_, Self>) {
+        self.change_display(|display| display.status_glyphs = glyphs, cx);
+    }
+
+    /// "Start Sidebar minimised" takes effect at the next launch, so the current rail is left
+    /// alone.
+    fn click_start_sidebar_minimised(&mut self, cx: &mut Context<'_, Self>) {
+        self.change_display(
+            |display| display.start_sidebar_minimised = !display.start_sidebar_minimised,
             cx,
-        ))
-        .child(
-            div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
-                StatusGlyphs::ALL
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, option)| {
-                        let checked = option == selected;
-                        let on_click = on_click.clone();
-                        status_glyphs_option(
-                            index,
-                            option,
-                            checked,
-                            Rc::new(move |window: &mut Window, cx: &mut App| {
-                                on_click(option, window, cx)
-                            }),
-                            cx,
-                        )
-                    }),
-            ),
-        )
+        );
+    }
+
+    fn click_toasts(&mut self, on: bool, cx: &mut Context<'_, Self>) {
+        self.change_display(|display| display.toasts_on = on, cx);
+    }
+
+    /// A card click selects its Colour Theme and clears any keyboard focus left on the grid.
+    fn click_colour_theme(&mut self, id: &'static str, cx: &mut Context<'_, Self>) {
+        self.colour_theme_focus = None;
+        apply_colour(ColourChange::Theme(id), cx);
+        cx.notify();
+    }
 }
 
-fn status_glyphs_option(
-    index: usize,
-    option: StatusGlyphs,
-    checked: bool,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector(move || format!("display-status-glyphs-{index}"))
-        .id(SharedString::from(format!("display-status-glyphs-{index}")))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(radio_dot(checked, cx))
-        .child(div().text_size(px(12.0)).child(option.label()))
-}
-
-fn preview_column(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex_1()
-        .min_w(px(0.0))
-        .max_w(px(460.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::faint_text(cx))
-                .mb(px(10.0))
-                .child(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_display_preview(),
-                )),
-        )
-        .child(preview_table(date_style, row_density, status_glyphs, cx))
-        .child(
-            div()
-                .mt(px(14.0))
-                .text_size(px(12.0))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_settings_display_note()),
-        )
-}
-
-fn preview_table(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
-    let last_index = DEFAULT_DISPLAY_PREVIEW_ROWS.len().saturating_sub(1);
-    div()
-        .border_1()
-        .border_color(color::border(cx))
-        .bg(color::chrome(cx))
-        .flex()
-        .flex_col()
-        .child(preview_table_header(cx))
-        .children(
-            DEFAULT_DISPLAY_PREVIEW_ROWS
-                .iter()
-                .enumerate()
-                .map(|(index, row)| {
-                    preview_row(
-                        row,
-                        index == last_index,
-                        date_style,
-                        row_density,
-                        status_glyphs,
-                        cx,
-                    )
-                }),
-        )
-}
-
-fn preview_table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .px(px(12.0))
-        .py(px(7.0))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .border_b(px(1.0))
-        .border_color(color::hairline(cx))
-        .child(div().w(PREVIEW_GLYPH_WIDTH))
-        .child(
-            div()
-                .w(PREVIEW_DATE_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_date())),
-        )
-        .child(
-            div()
-                .flex_1()
-                .child(lib_locale::format::upper(&lib_locale::msg::column_payee())),
-        )
-        .child(
-            div()
-                .w(PREVIEW_AMOUNT_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_amount())),
-        )
-}
-
-/// One PREVIEW row -- the glyph column takes `color::accent(cx)` only for a flagged row, matching
-/// the mockup's own `<span style="color:#ec3013">\u{2691}</span>` (the only coloured glyph among
-/// the three seeded rows).
-fn preview_row(
-    row: &DisplayPreviewRow,
-    last: bool,
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(12.0))
-        .py(px(row_density.preview_row_padding_y()))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(
-            div()
-                .w(PREVIEW_GLYPH_WIDTH)
-                .when(row.status == PreviewStatus::Flagged, |this| {
-                    this.text_color(color::accent_text(cx))
-                })
-                .child(row.status.glyph(status_glyphs)),
-        )
-        .child(div().w(PREVIEW_DATE_WIDTH).child(format_preview_date(
-            row.year, row.month, row.day, date_style,
-        )))
-        .child(div().flex_1().child(row.payee))
-        .child(
-            div()
-                .w(PREVIEW_AMOUNT_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(format_preview_amount(row.amount_cents)),
-        )
+/// Applies a Colour Theme once the current update is done: the change refreshes every window,
+/// which must not happen while `Shell` is mid-update.
+fn apply_colour(change: ColourChange, cx: &mut Context<'_, DisplayPage>) {
+    cx.defer(move |cx| change.apply(cx));
 }

@@ -21,6 +21,7 @@ use lib_tracing::LogEntry;
 use tracing::Level;
 
 use crate::{
+    form::fields::radio_dot,
     settings::tracing_log::{self, TracingLevel},
     theme::color,
 };
@@ -31,9 +32,6 @@ pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// has already been curried in (mirrors the Units page's `OnPlainClick`).
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const DOT_SIZE: gpui::Pixels = px(16.0);
-const DOT_INNER_SIZE: gpui::Pixels = px(8.0);
-const DOT_BORDER: gpui::Pixels = px(1.5);
 const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
 
 /// One `j`/`k` step in the Tracing log box: a line of its 11px/1.6 monospace.
@@ -110,38 +108,6 @@ fn radio_option(
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(radio_dot(checked, cx))
         .child(div().text_size(px(12.0)).child(level.label()))
-}
-
-/// The `.dot` control: a 16px circle, `border:1.5px solid` (`divider`, `accent` when checked),
-/// with a centred 8px accent-filled inner circle standing in for the mockup's own `box-shadow:
-/// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
-/// concentric circles reproduce the same "accent ring around a punched-out centre" look.
-/// `pub(super)`: reused by `super::display`'s own "Status glyphs" radio group (issue #179) --
-/// its second consumer, promoted the same way `form::fields::segmented_control` was.
-pub(super) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
-    div()
-        .w(DOT_SIZE)
-        .h(DOT_SIZE)
-        .rounded_full()
-        .border(DOT_BORDER)
-        .border_color(if checked {
-            color::accent(cx)
-        } else {
-            color::divider(cx)
-        })
-        .bg(color::background(cx))
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(checked, |this| {
-            this.child(
-                div()
-                    .w(DOT_INNER_SIZE)
-                    .h(DOT_INNER_SIZE)
-                    .rounded_full()
-                    .bg(color::accent(cx)),
-            )
-        })
 }
 
 /// The log box: `flex:1; min-height:0; border:1px solid rgba(32,30,29,.30); #eae9e9;

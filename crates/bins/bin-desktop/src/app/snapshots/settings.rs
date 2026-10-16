@@ -447,7 +447,7 @@ impl Shell {
     /// The Settings Display page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_display_snapshot(&self, cx: &gpui::App) -> SettingsDisplaySnapshot {
-        self.views.settings.read(cx).display_snapshot()
+        self.views.settings.read(cx).display_snapshot(cx)
     }
 
     /// The Settings Tracing page for a test, as the View builds it.

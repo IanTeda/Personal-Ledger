@@ -8,7 +8,6 @@ pub mod accounts;
 pub(crate) mod apply;
 pub mod categories;
 pub mod clear_logs_dialog;
-pub mod colour_theme;
 pub mod data_backup;
 pub mod display;
 pub mod documents;
@@ -116,6 +115,7 @@ impl Render for SettingsView {
         accounts.update(cx, |page, _| page.set_page_focused(page_focused));
         let payees = self.sources().payees.clone();
         payees.update(cx, |page, _| page.set_page_focused(page_focused));
+        let display = self.sources().display.clone();
         let units = self.sources().units.clone();
         let institutions = self.sources().institutions.clone();
         let (meta, content) = match self.data_page.take() {
@@ -127,6 +127,10 @@ impl Render for SettingsView {
             None if selected == SettingsPage::Payees => {
                 (payees.read(cx).scope_note(cx), payees.into_any_element())
             }
+            None if selected == SettingsPage::Display => (
+                self.scope_note().into_any_element(),
+                display.into_any_element(),
+            ),
             None if selected == SettingsPage::Units => (
                 units.read(cx).scope_note(cx).into_any_element(),
                 units.into_any_element(),
@@ -213,25 +217,6 @@ impl SettingsView {
 
         match self.selected_section() {
             SettingsPage::General => general::render(cx),
-            SettingsPage::Display => {
-                let display = self.display();
-                display::render(
-                    display.date_style,
-                    display.row_density,
-                    display.status_glyphs,
-                    display.start_sidebar_minimised,
-                    plain(entity, SettingsView::click_start_sidebar_minimised),
-                    bind(entity, SettingsView::click_date_style),
-                    bind(entity, SettingsView::click_row_density),
-                    bind(entity, SettingsView::click_status_glyphs),
-                    display.toasts_on,
-                    bind(entity, SettingsView::click_toasts),
-                    self.colour_theme_focus(),
-                    self.display_field(),
-                    bind(entity, SettingsView::click_colour_theme),
-                    cx,
-                )
-            }
             SettingsPage::SyncServer => sync_server::render(
                 stub(entity, crate::msg::desktop_status_sync_now_not_implemented),
                 cx,
@@ -259,9 +244,10 @@ impl SettingsView {
                 cx,
             ),
             SettingsPage::About => about::render(cx),
-            // Accounts, Payees, Units and Institutions draw themselves; `Shell` hands the rest in as a
-            // `DataPage`, and a frame without one draws nothing there.
+            // Accounts, Payees, Display, Units and Institutions draw themselves; `Shell` hands the rest
+            // in as a `DataPage`, and a frame without one draws nothing there.
             SettingsPage::Accounts
+            | SettingsPage::Display
             | SettingsPage::Units
             | SettingsPage::Institutions
             | SettingsPage::Categories
@@ -332,14 +318,6 @@ pub enum SettingsFocus {
     Index,
     Page,
 }
-
-/// The Display page's keyboard-reachable controls above the Colour Theme grid, top to bottom:
-/// Date format, Row density, Status glyphs, Start sidebar minimised, Toasts. The grid is the stop
-/// after the last one.
-pub const DISPLAY_FIELD_COUNT: usize = 5;
-
-/// The Display field that is a checkbox rather than a segmented or radio control.
-pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
 
 /// `delta` steps along a control's choices, stopping at either end rather than wrapping (the
 /// grid's own edge rule), for `h`/`l` on a segmented or radio control.

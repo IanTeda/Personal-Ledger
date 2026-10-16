@@ -2,6 +2,8 @@
 //! the Settings Entity from its own state (ADR-0037). The open dialog and the status message are
 //! `Shell`'s, so its accessors fill them in.
 
+use gpui::App;
+
 use super::state::SettingsView;
 use crate::settings::SettingsFocus;
 
@@ -67,11 +69,12 @@ impl SettingsView {
         }
     }
 
-    pub fn display_snapshot(&self) -> SettingsDisplaySnapshot {
-        let display = self.display();
+    pub fn display_snapshot(&self, cx: &App) -> SettingsDisplaySnapshot {
+        let page = self.display_page().read(cx);
+        let display = page.preferences();
         SettingsDisplaySnapshot {
-            display_field: self.display_field(),
-            colour_theme_focus: self.colour_theme_focus(),
+            display_field: page.field_focus(),
+            colour_theme_focus: page.colour_theme_focus(),
             date_style: display.date_style.map(|style| format!("{style:?}")),
             row_density: format!("{:?}", display.row_density),
             status_glyphs: format!("{:?}", display.status_glyphs),

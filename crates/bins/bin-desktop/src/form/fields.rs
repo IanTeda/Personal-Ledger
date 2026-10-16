@@ -161,3 +161,38 @@ pub(crate) fn field_value(
         .when(select_style, |this| this.bg(color::background(cx)))
         .child(value.into())
 }
+
+const DOT_SIZE: gpui::Pixels = px(16.0);
+const DOT_INNER_SIZE: gpui::Pixels = px(8.0);
+const DOT_BORDER: gpui::Pixels = px(1.5);
+
+/// The `.dot` control: a 16px circle, `border:1.5px solid` (`divider`, `accent` when checked),
+/// with a centred 8px accent-filled inner circle standing in for the mockup's own `box-shadow:
+/// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
+/// concentric circles reproduce the same "accent ring around a punched-out centre" look.
+/// Shared by the Tracing and Display pages' radio groups, so it lives with the other form widgets.
+pub(crate) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
+    div()
+        .w(DOT_SIZE)
+        .h(DOT_SIZE)
+        .rounded_full()
+        .border(DOT_BORDER)
+        .border_color(if checked {
+            color::accent(cx)
+        } else {
+            color::divider(cx)
+        })
+        .bg(color::background(cx))
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(checked, |this| {
+            this.child(
+                div()
+                    .w(DOT_INNER_SIZE)
+                    .h(DOT_INNER_SIZE)
+                    .rounded_full()
+                    .bg(color::accent(cx)),
+            )
+        })
+}

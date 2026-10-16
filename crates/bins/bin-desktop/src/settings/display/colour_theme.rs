@@ -4,8 +4,8 @@
 //! this Client's `[theme]` overrides so it shows what would actually appear.
 //!
 //! Reads and writes the `crate::theme::colours::Colours` Global directly: the Preferences live there,
-//! not on `Shell`. Only the keyboard focus inside the grid is `Shell` state, since `Shell` owns
-//! every keystroke; focus and hover never preview, only a click or Enter selects.
+//! not on the Display page. Only the keyboard focus inside the grid is the page's state (`super`),
+//! since the page owns its keystrokes; focus and hover never preview, only a click or Enter selects.
 
 use std::rc::Rc;
 

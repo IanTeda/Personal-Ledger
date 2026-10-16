@@ -27,7 +27,7 @@ impl Shell {
     pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
         let display = DisplayPreferences {
             toasts_on: on,
-            ..self.views.settings.read(cx).display()
+            ..self.views.settings.read(cx).display(cx)
         };
         self.views
             .settings
