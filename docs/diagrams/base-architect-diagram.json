@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Base Architect Diagram",
+    "output": "docs/diagrams/base-architect-diagram.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "View (gpui, renders)"
+        },
+        "backend": {
+          "label": "Logic: model, domain, port"
+        },
+        "database": {
+          "label": "Storage adapter"
+        },
+        "cloud": {
+          "label": "Global"
+        },
+        "messagebus": {
+          "label": "gpui runtime: dispatch, executor"
+        },
+        "external": {
+          "label": "Outside the app"
+        },
+        "security": {
+          "label": "Test harness"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "compose",
+      "type": "backend",
+      "label": "main + init(cx)",
+      "sublabel": "composition root",
+      "pos": [
+        300,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "globals",
+      "type": "cloud",
+      "label": "Settings + Theme",
+      "sublabel": "Globals, observe_global",
+      "pos": [
+        820,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "keyboard, mouse",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "window",
+      "type": "frontend",
+      "label": "Window root view",
+      "sublabel": "Shell / gpui-component Root",
+      "pos": [
+        300,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "keymap",
+      "type": "messagebus",
+      "label": "Actions + keymap",
+      "sublabel": "key_context, FocusHandle",
+      "pos": [
+        560,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "views",
+      "type": "frontend",
+      "label": "View Entities",
+      "sublabel": "impl Render, own UI state",
+      "pos": [
+        820,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "widgets",
+      "type": "frontend",
+      "label": "RenderOnce widgets",
+      "sublabel": "gpui-component, stateless",
+      "pos": [
+        1080,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "tests",
+      "type": "security",
+      "label": "Headless tests",
+      "sublabel": "#[gpui::test], no window",
+      "pos": [
+        300,
+        380
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "Domain crates",
+      "sublabel": "no gpui, no I/O",
+      "pos": [
+        560,
+        380
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "models",
+      "type": "backend",
+      "label": "Model Entities",
+      "sublabel": "stores, EventEmitter",
+      "pos": [
+        820,
+        380
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "executor",
+      "type": "messagebus",
+      "label": "Background executor",
+      "sublabel": "Task, cancel on drop",
+      "pos": [
+        1080,
+        380
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "port",
+      "type": "backend",
+      "label": "Repository port",
+      "sublabel": "trait + fake, no gpui",
+      "pos": [
+        820,
+        540
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "adapter",
+      "type": "database",
+      "label": "Storage adapter",
+      "sublabel": "SQLite / files",
+      "pos": [
+        1080,
+        540
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "UI layer (gpui views, main thread)",
+      "wraps": [
+        "window",
+        "keymap",
+        "views",
+        "widgets"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "I/O behind a port",
+      "wraps": [
+        "port",
+        "adapter"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "input",
+      "from": "user",
+      "to": "window",
+      "label": "keys, clicks",
+      "variant": "emphasis"
+    },
+    {
+      "id": "keystroke",
+      "from": "window",
+      "to": "keymap",
+      "label": "keystroke",
+      "variant": "emphasis"
+    },
+    {
+      "id": "action",
+      "from": "keymap",
+      "to": "views",
+      "label": "action",
+      "variant": "emphasis"
+    },
+    {
+      "id": "compose-window",
+      "from": "compose",
+      "to": "window",
+      "label": "open_window"
+    },
+    {
+      "id": "compose-globals",
+      "from": "compose",
+      "to": "globals",
+      "label": "set_global"
+    },
+    {
+      "id": "globals-views",
+      "from": "globals",
+      "to": "views",
+      "label": "read + observe"
+    },
+    {
+      "id": "views-widgets",
+      "from": "views",
+      "to": "widgets",
+      "label": "composes"
+    },
+    {
+      "id": "views-models",
+      "from": "views",
+      "to": "models",
+      "label": "read / update"
+    },
+    {
+      "id": "models-views",
+      "from": "models",
+      "to": "views",
+      "label": "notify / emit",
+      "variant": "dashed"
+    },
+    {
+      "id": "views-window",
+      "from": "views",
+      "to": "window",
+      "label": "cx.emit intent",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "models-domain",
+      "from": "models",
+      "to": "domain",
+      "label": "pure rules"
+    },
+    {
+      "id": "models-executor",
+      "from": "models",
+      "to": "executor",
+      "label": "spawn Task"
+    },
+    {
+      "id": "models-port",
+      "from": "models",
+      "to": "port",
+      "label": "load / apply"
+    },
+    {
+      "id": "executor-adapter",
+      "from": "executor",
+      "to": "adapter",
+      "label": "I/O off main"
+    },
+    {
+      "id": "adapter-port",
+      "from": "adapter",
+      "to": "port",
+      "label": "implements"
+    },
+    {
+      "id": "tests-window",
+      "from": "tests",
+      "to": "window",
+      "label": "simulate input",
+      "variant": "dashed"
+    },
+    {
+      "id": "tests-domain",
+      "from": "tests",
+      "to": "domain",
+      "label": "plain #[test]",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ownership and data flow",
+      "items": [
+        "App owns every Entity; handles are Rc-like, so parents hold strong Entity<T> and back-pointers are WeakEntity",
+        "Data flows down by read/update; intent flows up by cx.emit + subscribe, never a strong parent handle",
+        "notify/observe means re-read me; emit/subscribe carries a typed event; dropping a Subscription cancels it"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Layers",
+      "items": [
+        "Domain crates: pure rules, no gpui, no I/O, plain unit tests",
+        "Model Entities: app state and stores in a crate with no UI dependency (Zed: project, terminal, git)",
+        "View Entities: impl Render and own UI state (Zed: project_panel, terminal_view, git_ui)",
+        "Window root: Zed's Workspace or gpui-component's Root, the first view in the window"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Async and persistence",
+      "items": [
+        "Commands stay synchronous; I/O goes behind a port trait with a real and a fake adapter",
+        "Model spawns work on the background executor and keeps the Task: drop cancels it",
+        "Results come back through the WeakEntity the spawn hands over; async contexts are fallible"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Keyboard, settings and theme",
+      "items": [
+        "Every intent is an action, handled by on_action inside a key_context; keymaps are JSON data loaded by bind_keys",
+        "Focus (FocusHandle, Focusable) picks the dispatch path, so one key can mean different things per context",
+        "Settings and theme are Globals read everywhere and watched with observe_global; each crate registers its own in init(cx)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Testing seams",
+      "items": [
+        "Pure crates: plain #[test], no gpui linked",
+        "Models: #[gpui::test] with TestAppContext and fake adapters behind a test-support feature",
+        "Views: VisualTestContext simulate_keystrokes / simulate_click / run_until_parked, no window or GPU"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Sources (primary)",
+      "items": [
+        "Ideal design, not Personal Ledger's code; claims and reasons in docs/research/gpui-desktop-architecture.md",
+        "gpui at tag gpui-v0.2.2: github.com/zed-industries/zed/tree/gpui-v0.2.2/crates/gpui",
+        "Zed workspace at 28d0a35: github.com/zed-industries/zed/tree/28d0a3547f16b9609b301b48ab363bfca649c864/crates",
+        "gpui-component v0.5.1: github.com/longbridge/gpui-component/tree/v0.5.1/crates/ui",
+        "Nathan Sobo, Ownership and data flow in GPUI: zed.dev/blog/gpui-ownership"
+      ]
+    }
+  ]
+}
