@@ -15,6 +15,7 @@ pub fn render(cx: &App) -> AnyElement {
     let version = div()
         .flex()
         .gap(px(4.0))
+        .debug_selector(|| "settings-about-version".to_string())
         .child(div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(
             crate::msg::desktop_settings_about_version(env!("CARGO_PKG_VERSION")),
         ))
