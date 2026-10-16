@@ -66,7 +66,7 @@ pub fn render(props: DeletePayeeProps<'_>, cx: &App) -> AnyElement {
     }
 
     if let Some(error) = &form.error {
-        fields.push(crate::form::rules_field::error_line(error, cx));
+        fields.push(super::rules_field::error_line(error, cx));
     }
 
     let card = div()

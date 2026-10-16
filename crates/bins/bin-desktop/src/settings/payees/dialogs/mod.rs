@@ -5,6 +5,7 @@
 pub mod add;
 pub mod delete;
 pub mod edit;
+pub mod rules_field;
 
 use gpui::{AnyElement, App};
 use lib_accounts::Account;

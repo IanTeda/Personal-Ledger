@@ -15,9 +15,9 @@ use crate::{
     dialog,
     form::{
         dialog_fields::{label, text_field},
-        rules_field::{self, OnRemoveRule, RulesFieldProps},
         select_field::{self, SelectFieldProps},
     },
+    settings::payees::dialogs::rules_field::{self, OnRemoveRule, RulesFieldProps},
     settings::payees::form::{PayeeField, PayeeForm, PayeeOptions},
     theme::color,
 };
