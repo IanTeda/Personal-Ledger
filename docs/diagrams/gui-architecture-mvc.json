@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GUI Architecture: Model–View–Controller",
+    "output": "docs/diagrams/gui-architecture-mvc.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "legend": {
+      "entries": {
+        "external": { "label": "Outside the app" },
+        "backend": { "label": "Logic: controller, model" },
+        "frontend": { "label": "View (renders)" },
+        "database": { "label": "Persistence" }
+      }
+    }
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "keyboard, mouse", "pos": [40, 160], "size": [150, 64] },
+    { "id": "controller", "type": "backend", "label": "Controller", "sublabel": "interprets input", "pos": [320, 160], "size": [150, 64], "tag": "action handlers" },
+    { "id": "model", "type": "backend", "label": "Model", "sublabel": "state + domain rules", "pos": [580, 160], "size": [150, 64], "tag": "UI-agnostic" },
+    { "id": "view", "type": "frontend", "label": "View", "sublabel": "draws model state", "pos": [900, 160], "size": [150, 64], "tag": "widgets" },
+    { "id": "store", "type": "database", "label": "Repository", "sublabel": "database, files", "pos": [580, 340], "size": [150, 64] }
+  ],
+  "connections": [
+    { "id": "user-input", "from": "user", "to": "controller", "label": "input events", "variant": "emphasis" },
+    { "id": "controller-updates-model", "from": "controller", "to": "model", "label": "update", "variant": "emphasis" },
+    { "id": "model-notifies-view", "from": "model", "to": "view", "label": "change notification", "variant": "dashed" },
+    { "id": "model-persists", "from": "model", "to": "store", "label": "load / save", "fromSide": "bottom", "toSide": "top" },
+    { "id": "view-displays", "from": "view", "to": "user", "label": "redraws screen", "fromSide": "top", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "How it flows", "items": ["The Controller turns raw input into Model updates", "The Model knows nothing about the UI and publishes changes (Observer pattern)", "The View observes the Model, reads its state and redraws", "Variant MVP: a passive View, and a Presenter pushes data into it"] },
+    { "dot": "emerald", "title": "Where it is used", "items": ["Smalltalk-80 (origin), Apple Cocoa / AppKit, Java Swing", "Qt Model/View (view and controller merged into delegates)", "WinForms and GTK apps commonly use the MVP variant"] },
+    { "dot": "amber", "title": "Trade-offs", "items": ["+ Simple, well known; Model is testable without a UI", "− Controllers grow large (Massive View Controller)", "− View and Controller are tightly paired in practice", "− Observer webs get hard to trace as the app grows"] },
+    { "dot": "violet", "title": "In gpui terms", "items": ["Model ≈ an Entity<T> that calls cx.notify()", "View ≈ a type implementing Render that observes the Entity", "Controller ≈ Action handlers bound by the keymap (on_action)"] }
+  ]
+}

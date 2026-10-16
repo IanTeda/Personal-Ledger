@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GUI Architecture: Model–View–ViewModel",
+    "output": "docs/diagrams/gui-architecture-mvvm.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "legend": {
+      "entries": {
+        "external": { "label": "Outside the app" },
+        "frontend": { "label": "View (declarative markup)" },
+        "messagebus": { "label": "Data binding" },
+        "backend": { "label": "Logic: view model, model" },
+        "database": { "label": "Persistence" }
+      }
+    }
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "keyboard, mouse", "pos": [40, 40], "size": [150, 64] },
+    { "id": "view", "type": "frontend", "label": "View", "sublabel": "layout, no logic", "pos": [300, 40], "size": [150, 64], "tag": "XAML / declarative" },
+    { "id": "binder", "type": "messagebus", "label": "Binding engine", "sublabel": "framework-provided", "pos": [300, 220], "size": [150, 64] },
+    { "id": "viewmodel", "type": "backend", "label": "ViewModel", "sublabel": "observable UI state", "pos": [600, 40], "size": [150, 64], "tag": "properties + commands" },
+    { "id": "model", "type": "backend", "label": "Model", "sublabel": "domain + services", "pos": [900, 40], "size": [150, 64], "tag": "UI-agnostic" },
+    { "id": "store", "type": "database", "label": "Repository", "sublabel": "database, files", "pos": [900, 220], "size": [150, 64] }
+  ],
+  "connections": [
+    { "id": "user-input", "from": "user", "to": "view", "label": "input", "variant": "emphasis" },
+    { "id": "view-invokes-command", "from": "view", "to": "viewmodel", "label": "command / two-way bind", "variant": "emphasis" },
+    { "id": "view-uses-binder", "from": "view", "to": "binder", "label": "declares bindings", "fromSide": "bottom", "toSide": "top", "variant": "dashed" },
+    { "id": "binder-observes-viewmodel", "from": "binder", "to": "viewmodel", "label": "PropertyChanged", "fromSide": "right", "toSide": "bottom", "variant": "dashed" },
+    { "id": "viewmodel-calls-model", "from": "viewmodel", "to": "model", "label": "call / subscribe", "variant": "emphasis" },
+    { "id": "model-persists", "from": "model", "to": "store", "label": "load / save", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "How it flows", "items": ["The View binds declaratively to ViewModel properties and commands", "The binding engine copies values both ways and refreshes on change events", "The ViewModel shapes Model data for one screen and holds UI state (selection, validation)", "The ViewModel never references the View, so it is unit-testable"] },
+    { "dot": "emerald", "title": "Where it is used", "items": ["WPF, WinUI, .NET MAUI, Avalonia (origin: Microsoft, 2005)", "Android Jetpack ViewModel, SwiftUI with ObservableObject", "Slint and Qt Quick (QML) property bindings"] },
+    { "dot": "amber", "title": "Trade-offs", "items": ["+ Designers and developers work on View and logic apart", "+ Screen logic tested without rendering", "− Needs a binding engine; magic strings or codegen", "− Bindings can be hard to debug; overkill for simple screens"] },
+    { "dot": "violet", "title": "In gpui terms", "items": ["No binding engine: a View Entity reads its ViewModel in render()", "ViewModel ≈ a per-screen Entity that observes domain store Entities", "Changes propagate by cx.notify() and cx.observe / cx.subscribe"] }
+  ]
+}

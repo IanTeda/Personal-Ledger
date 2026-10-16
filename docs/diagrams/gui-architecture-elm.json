@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GUI Architecture: The Elm Architecture (Unidirectional)",
+    "output": "docs/diagrams/gui-architecture-elm.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "legend": {
+      "entries": {
+        "external": { "label": "Outside the app" },
+        "frontend": { "label": "view(): pure render" },
+        "messagebus": { "label": "Message / Action" },
+        "backend": { "label": "update(): pure reducer" },
+        "database": { "label": "Single state store" },
+        "cloud": { "label": "Side effects (async)" }
+      }
+    }
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "interacts with UI", "pos": [40, 200], "size": [150, 64] },
+    { "id": "message", "type": "messagebus", "label": "Message", "sublabel": "enum of events", "pos": [320, 200], "size": [150, 64], "tag": "Msg / Action" },
+    { "id": "update", "type": "backend", "label": "update", "sublabel": "(state, msg) → state", "pos": [620, 200], "size": [150, 64], "tag": "only mutation point" },
+    { "id": "state", "type": "database", "label": "State", "sublabel": "one source of truth", "pos": [900, 200], "size": [150, 64], "tag": "Model / Store" },
+    { "id": "view", "type": "frontend", "label": "view", "sublabel": "state → widget tree", "pos": [40, 400], "size": [150, 64], "tag": "no side effects" },
+    { "id": "effects", "type": "cloud", "label": "Command / Task", "sublabel": "returned by update", "pos": [620, 30], "size": [150, 64] },
+    { "id": "io", "type": "external", "label": "I/O", "sublabel": "database, network, timers", "pos": [900, 30], "size": [150, 64] }
+  ],
+  "connections": [
+    { "id": "user-emits-message", "from": "user", "to": "message", "label": "event → Msg", "variant": "emphasis" },
+    { "id": "message-dispatched", "from": "message", "to": "update", "label": "dispatch (queue)", "variant": "emphasis" },
+    { "id": "update-produces-state", "from": "update", "to": "state", "label": "new state", "variant": "emphasis" },
+    { "id": "state-rendered", "from": "state", "to": "view", "label": "view(&state)", "variant": "emphasis", "fromSide": "bottom", "toSide": "right" },
+    { "id": "view-shown", "from": "view", "to": "user", "label": "renders", "fromSide": "top", "toSide": "bottom" },
+    { "id": "update-returns-effect", "from": "update", "to": "effects", "label": "Command", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "effect-performs-io", "from": "effects", "to": "io", "label": "async I/O", "variant": "dashed" },
+    { "id": "effect-result-message", "from": "effects", "to": "message", "label": "result → Msg", "variant": "dashed", "fromSide": "left", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "How it flows", "items": ["Data moves one way: Msg → update → State → view → User → Msg", "update is the only place state changes, so every change is a logged, replayable Msg", "Async work is returned as a Command; its result comes back as another Msg", "view is a pure function of State, so the UI never drifts from it"] },
+    { "dot": "emerald", "title": "Where it is used", "items": ["Elm (origin), Redux / Flux, Bubble Tea (Go)", "Rust: iced, relm4 (on GTK 4), Ratatui apps by convention", "Swift: The Composable Architecture (TCA)"] },
+    { "dot": "amber", "title": "Trade-offs", "items": ["+ Predictable, easy to test (update is a pure function)", "+ Time-travel debugging and undo come cheap", "− Boilerplate: every interaction needs a Msg variant", "− One big state tree; needs nesting (child Msg) to scale", "− Re-rendering everything relies on diffing or retained caches"] },
+    { "dot": "violet", "title": "In gpui terms", "items": ["gpui is retained-Entity, not Elm, but can host it", "Store Entity ≈ State; an Action enum ≈ Msg; one handler ≈ update", "cx.spawn tasks ≈ Commands that send a result Action back"] }
+  ]
+}
