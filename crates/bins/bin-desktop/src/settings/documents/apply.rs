@@ -4,7 +4,9 @@
 use gpui::{App, Entity};
 use lib_ledger::{AddDocumentType, EditDocumentType, RemoveDocumentType};
 
-use super::types::{self, DocumentTypeForm, DocumentTypesDialog, RemoveError};
+use lib_documents::types::{self, RemoveError};
+
+use super::{dialogs::DocumentTypesDialog, form::DocumentTypeForm};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     ledger_store::LedgerStore,
@@ -117,8 +119,9 @@ mod tests {
     use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::chrome::dialog_apply::confirm;
     use crate::ledger_store::test_ledger;
-    use crate::{chrome::dialog_apply::confirm, documents::types::RemoveForm};
+    use crate::settings::documents::form::RemoveForm;
 
     fn apply(cx: &mut TestAppContext) -> DocumentTypesApply {
         let ledger = test_ledger(

@@ -68,8 +68,8 @@ impl Shell {
             SettingsPage::Accounts => accounts_hints(),
             SettingsPage::Categories => settings_categories_hints(),
             SettingsPage::Tags => settings_tags_hints(),
-            SettingsPage::Payees => settings_payees_hints(),
             SettingsPage::Documents => settings_documents_hints(),
+            SettingsPage::Payees => settings_payees_hints(),
             SettingsPage::Inventory => {
                 settings_inventory_hints(self.settings_inventory_selected_row(cx))
             }
@@ -86,76 +86,6 @@ impl Shell {
             .chain(page)
             .map(|(keys, action)| (action, keys))
             .collect()
-    }
-
-    /// The Documents page's selected type: the stored id while it still exists, else the first
-    /// row, so the cursor is never lost.
-    pub(super) fn settings_documents_selected_id(&self, cx: &App) -> Option<u32> {
-        lib_list_cursor::resolve(
-            self.document_types(cx).iter().map(|row| row.id),
-            self.views.settings.read(cx).documents_selected(),
-        )
-    }
-
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
-    pub(super) fn apply_settings_documents_movement(&mut self, movement: Movement, cx: &mut App) {
-        let Some(step) = movement.step() else {
-            return;
-        };
-        let current = self.settings_documents_selected_id(cx);
-        let ids: Vec<u32> = self.document_types(cx).iter().map(|row| row.id).collect();
-        let next = lib_list_cursor::step_id(&ids, current, step);
-        self.views
-            .settings
-            .update(cx, |v, cx| v.set_documents_selected(cx, next));
-    }
-
-    /// `J`/`K` on the Documents page move the selected type a place, which is also its place in
-    /// the Documents Type filter.
-    pub(super) fn handle_settings_documents_reorder_key(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut App,
-    ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsPage::Documents, cx) {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform || !modifiers.shift {
-            return false;
-        }
-        match keystroke.key.as_str() {
-            "j" => self.move_selected_document_type(1, cx),
-            "k" => self.move_selected_document_type(-1, cx),
-            _ => return false,
-        }
-        true
-    }
-
-    /// The Documents page's own `n`/`e`/`x`, which open the Add, Edit and Remove dialogs.
-    pub(super) fn handle_settings_documents_key(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut App,
-    ) -> bool {
-        if !self.settings_data_page_has_focus(SettingsPage::Documents, cx) {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform {
-            return false;
-        }
-        match (keystroke.key.as_str(), modifiers.shift) {
-            ("x", false) => self.remove_selected_document_type(cx),
-            ("n", false) => self.open_add_document_type_dialog(cx),
-            ("e", false) => {
-                if let Some(id) = self.settings_documents_selected_id(cx) {
-                    self.open_edit_document_type_dialog(id, cx);
-                }
-            }
-            _ => return false,
-        }
-        true
     }
 
     /// The Inventory page's selected row: the stored one while it is still on screen, else the
@@ -322,54 +252,6 @@ impl Shell {
             }
             None => {}
         }
-    }
-
-    /// A click on a row of Settings' Documents table: selects it and moves focus into the page.
-    pub(super) fn handle_settings_documents_row_click(
-        &mut self,
-        id: u32,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.views
-            .settings
-            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
-        self.focus_settings_page(cx);
-        cx.notify();
-    }
-
-    /// **edit** on a Documents row: selects it and opens the Edit dialog.
-    pub(super) fn handle_settings_documents_edit_click(
-        &mut self,
-        id: u32,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.views
-            .settings
-            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
-        self.focus_settings_page(cx);
-        self.open_edit_document_type_dialog(id, cx);
-        cx.notify();
-    }
-
-    /// **remove** on a Documents row: selects it and opens the Remove dialog.
-    pub(super) fn handle_settings_documents_remove_click(
-        &mut self,
-        id: u32,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.views
-            .settings
-            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
-        self.focus_settings_page(cx);
-        self.open_remove_document_type_dialog(id, cx);
-        cx.notify();
-    }
-
-    /// **+ Add document type**: opens the Add dialog.
-    pub(super) fn handle_settings_documents_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.focus_settings_page(cx);
-        self.open_add_document_type_dialog(cx);
-        cx.notify();
     }
 
     /// A click on a row of Settings' Inventory table: selects it and moves focus into the page.

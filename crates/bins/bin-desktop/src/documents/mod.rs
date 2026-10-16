@@ -6,7 +6,6 @@ pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod model;
 pub(crate) mod picker;
-pub(crate) mod type_apply;
 pub(crate) mod types;
 
 pub use lib_documents::*;

@@ -7,6 +7,8 @@ use crate::inventory::form::InventoryDialog;
 pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 use crate::settings::categories::dialogs::CategoriesDialog;
 #[doc(hidden)]
+pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
+#[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::payees::SettingsPayeesSnapshot;
@@ -19,8 +21,8 @@ pub use crate::settings::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
-    documents::types::DocumentTypesDialog,
     settings::accounts::dialogs::AccountsDialog,
+    settings::documents::dialogs::DocumentTypesDialog,
     settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog,
     settings::{
@@ -29,17 +31,6 @@ use crate::{
 };
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
-
-/// The Document Types page: names in the user's order, the selected row's name, filed files per
-/// type in the same order, and the open dialog (`add`, `edit`, `remove` or `notice`).
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsDocumentTypesSnapshot {
-    pub document_type_names: Vec<String>,
-    pub selected_document_type: Option<String>,
-    pub document_type_files: Vec<u32>,
-    pub document_type_dialog: Option<String>,
-}
 
 /// The Inventory page's visible rows and the selected one, as `property:<name>` or `room:<name>`,
 /// each Property's Rooms in order, and the dialog last asked for.
@@ -287,33 +278,18 @@ impl Shell {
         &self,
         cx: &gpui::App,
     ) -> SettingsDocumentTypesSnapshot {
-        let selected_document_type = self.settings_documents_selected_id(cx).and_then(|id| {
-            self.document_types(cx)
-                .iter()
-                .find(|row| row.id == id)
-                .map(|row| row.name.clone())
-        });
+        let page = self
+            .views
+            .settings
+            .read(cx)
+            .documents()
+            .read(cx)
+            .snapshot(cx);
         SettingsDocumentTypesSnapshot {
-            document_type_names: self
-                .document_types(cx)
-                .iter()
-                .map(|row| row.name.clone())
-                .collect(),
-            selected_document_type,
-            document_type_files: self
-                .document_types(cx)
-                .iter()
-                .map(|row| row.files)
-                .collect(),
-            document_type_dialog: self.dialog::<DocumentTypesDialog>().map(|dialog| {
-                match dialog {
-                    DocumentTypesDialog::Add(_) => "add",
-                    DocumentTypesDialog::Edit(..) => "edit",
-                    DocumentTypesDialog::Remove(..) => "remove",
-                    DocumentTypesDialog::DefaultNotice => "notice",
-                }
-                .to_string()
-            }),
+            document_type_dialog: self
+                .dialog::<DocumentTypesDialog>()
+                .map(|dialog| dialog.kind().to_string()),
+            ..page
         }
     }
 

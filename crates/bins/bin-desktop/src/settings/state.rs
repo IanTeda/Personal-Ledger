@@ -8,7 +8,7 @@
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
 //! Categories, [`CategoriesPage`]; Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`];
 //! Institutions, [`InstitutionsPage`]) is drawn by that Entity, and this View forwards the page's
-//! keys, movement and status to it while the page has focus. The rest (Documents, Inventory) are
+//! keys, movement and status to it while the page has focus. The rest (Inventory) is
 //! still `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their
 //! keys before forwarding to this Entity, until each moves in its own ticket.
 
@@ -23,6 +23,7 @@ use super::{
     tracing::LOG_LINE_STEP,
 };
 use crate::settings::categories::{CategoriesPage, CategoryRowClicked};
+use crate::settings::documents::{DocumentsPage, RowClicked as DocumentsRowClicked};
 use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
 use crate::{
@@ -56,6 +57,7 @@ pub struct SettingsSources {
     pub categories: Entity<CategoriesPage>,
     pub payees: Entity<PayeesPage>,
     pub tags: Entity<TagsPage>,
+    pub documents: Entity<DocumentsPage>,
 }
 
 /// The open page's own Entity, while it has focus.
@@ -65,6 +67,7 @@ enum FocusedPage {
     Categories(Entity<CategoriesPage>),
     Payees(Entity<PayeesPage>),
     Tags(Entity<TagsPage>),
+    Documents(Entity<DocumentsPage>),
     Units(Entity<UnitsPage>),
     Institutions(Entity<InstitutionsPage>),
 }
@@ -76,6 +79,7 @@ impl FocusedPage {
             Self::Categories(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Documents(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
         }
@@ -87,6 +91,7 @@ impl FocusedPage {
             Self::Categories(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Documents(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
         }
@@ -111,6 +116,10 @@ impl FocusedPage {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx));
                 true
             }
+            Self::Documents(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx));
+                true
+            }
             Self::Units(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
             Self::Institutions(page) => {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx))
@@ -124,6 +133,7 @@ impl FocusedPage {
             Self::Categories(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Documents(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.escape(cx)),
         }
@@ -135,6 +145,7 @@ impl FocusedPage {
             Self::Categories(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Documents(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.start_search(cx)),
         }
@@ -146,6 +157,7 @@ impl FocusedPage {
             Self::Categories(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Documents(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
         }
@@ -157,6 +169,7 @@ impl FocusedPage {
             Self::Categories(page) => page.read(cx).page_status(cx),
             Self::Payees(page) => page.read(cx).page_status(cx),
             Self::Tags(page) => page.read(cx).page_status(cx),
+            Self::Documents(page) => page.read(cx).page_status(cx),
             Self::Units(page) => page.read(cx).page_status(cx),
             Self::Institutions(page) => page.read(cx).page_status(cx),
         }
@@ -170,7 +183,6 @@ pub struct SettingsView {
     sources: SettingsSources,
     selected_section: SettingsPage,
     focus: SettingsFocus,
-    documents_selected: Option<u32>,
     inventory_selected: Option<InventoryRow>,
     inventory_expanded: HashSet<u32>,
     log: LogView,
@@ -186,6 +198,7 @@ pub struct SettingsView {
     _categories_row_clicked: Subscription,
     _payees_row_clicked: Subscription,
     _tags_row_clicked: Subscription,
+    _documents_row_clicked: Subscription,
 }
 
 impl SettingsView {
@@ -209,11 +222,14 @@ impl SettingsView {
             .subscribe(&sources.tags, |view, _page, _event: &TagsRowClicked, cx| {
                 view.focus_page_from_click(cx)
             });
+        let _documents_row_clicked = cx.subscribe(
+            &sources.documents,
+            |view, _page, _event: &DocumentsRowClicked, cx| view.focus_page_from_click(cx),
+        );
         Self {
             sources,
             selected_section: SettingsPage::default(),
             focus: SettingsFocus::default(),
-            documents_selected: None,
             inventory_selected: None,
             inventory_expanded: HashSet::new(),
             log,
@@ -224,6 +240,7 @@ impl SettingsView {
             _categories_row_clicked,
             _payees_row_clicked,
             _tags_row_clicked,
+            _documents_row_clicked,
         }
     }
 
@@ -249,6 +266,11 @@ impl SettingsView {
     /// The Tags page's Entity, for `Shell`'s Dialog host and the `tags merge` command.
     pub fn tags(&self) -> &Entity<TagsPage> {
         &self.sources.tags
+    }
+
+    /// The Document Types page's Entity, for `Shell`'s Dialog host and the Settings snapshots.
+    pub fn documents(&self) -> &Entity<DocumentsPage> {
+        &self.sources.documents
     }
 
     /// The Display page's Entity, for the Settings snapshots.
@@ -279,6 +301,7 @@ impl SettingsView {
             }
             SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
             SettingsPage::Tags => Some(FocusedPage::Tags(self.sources.tags.clone())),
+            SettingsPage::Documents => Some(FocusedPage::Documents(self.sources.documents.clone())),
             SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
             SettingsPage::Institutions => {
                 Some(FocusedPage::Institutions(self.sources.institutions.clone()))
@@ -712,12 +735,8 @@ impl SettingsView {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Documents and Inventory selections, which `Shell` still drives
+    // The Inventory selection, which `Shell` still drives
     // -----------------------------------------------------------------------------------------
-
-    pub fn documents_selected(&self) -> Option<u32> {
-        self.documents_selected
-    }
 
     pub fn inventory_selected(&self) -> Option<InventoryRow> {
         self.inventory_selected
@@ -726,11 +745,6 @@ impl SettingsView {
     /// The Properties shown open on the Inventory page.
     pub fn inventory_expanded(&self) -> &HashSet<u32> {
         &self.inventory_expanded
-    }
-
-    pub fn set_documents_selected(&mut self, cx: &mut Context<'_, Self>, id: Option<u32>) {
-        self.documents_selected = id;
-        cx.notify();
     }
 
     pub fn set_inventory_selected(

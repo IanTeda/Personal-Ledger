@@ -4,6 +4,10 @@
 use super::Shell;
 use crate::form::colour_field::OnPick;
 use crate::settings::categories::dialogs::{CategoriesDialog, CategoriesDialogHandlers};
+use crate::settings::documents::dialogs::{
+    DocumentTypesDialog, DocumentTypesDialogHandlers,
+    add_edit::OnFieldClick as DocumentTypeFieldClick,
+};
 use crate::settings::payees::{
     dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
     form,
@@ -16,6 +20,7 @@ use crate::settings::tags::{
     },
     form::TagField,
 };
+use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
 
 use crate::settings as settings_view;
@@ -289,28 +294,66 @@ impl Render for Shell {
                 on_confirm: plain(Shell::handle_dialog_confirm),
             }
         };
-        let document_type_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: settings_view::documents::OnTypeClick =
-                Rc::new(move |id, _window, cx| {
-                    entity.update(cx, |shell, cx| handler(shell, id, cx));
-                });
-            on_click
-        };
-        let settings_documents_page = settings_view::documents::DocumentsPageProps {
-            types: self.document_types(cx),
-            selected: self.settings_documents_selected_id(cx),
-            on_add_click: {
+        let documents_dialog_handlers = {
+            let on_field_click: DocumentTypeFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
+                            dialog.click_field(field)
+                        });
+                    });
+                })
+            };
+            let on_tracks_click: crate::form::fields::OnSegmentClick<Option<TracksDate>> = {
+                let entity = entity.clone();
+                Rc::new(move |option, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
+                            dialog.click_tracks(option)
+                        });
+                    });
+                })
+            };
+            let on_remind_click: crate::form::fields::OnSegmentClick<Option<RemindLead>> = {
+                let entity = entity.clone();
+                Rc::new(move |option, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
+                            dialog.click_remind(option)
+                        });
+                    });
+                })
+            };
+            let on_destination_field_click: crate::dialog::OnClick = {
                 let entity = entity.clone();
                 Rc::new(move |_window, cx| {
                     entity.update(cx, |shell, cx| {
-                        shell.handle_settings_documents_add_click(cx)
+                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
+                            dialog.click_destination_field()
+                        });
                     });
                 })
-            },
-            on_row_click: document_type_click(Shell::handle_settings_documents_row_click),
-            on_edit_click: document_type_click(Shell::handle_settings_documents_edit_click),
-            on_remove_click: document_type_click(Shell::handle_settings_documents_remove_click),
+            };
+            let on_destination_option_click: crate::form::select_field::OnOptionClick = {
+                let entity = entity.clone();
+                Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
+                            dialog.click_destination_option(index)
+                        });
+                    });
+                })
+            };
+            DocumentTypesDialogHandlers {
+                on_field_click,
+                on_tracks_click,
+                on_remind_click,
+                on_destination_field_click,
+                on_destination_option_click,
+                on_cancel: on_settings_dialog_cancel.clone(),
+                on_confirm: on_settings_dialog_confirm.clone(),
+            }
         };
         let inventory_row_click =
             |handler: fn(&mut Shell, InventoryRow, &mut Context<'_, Shell>)| {
@@ -538,7 +581,6 @@ impl Render for Shell {
                 settings.selected_section(),
                 focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
                 &settings_view::DataPageProps {
-                    documents: settings_documents_page,
                     inventory: settings_inventory_page,
                 },
                 cx,
@@ -763,7 +805,13 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(self.render_document_types_dialog(&entity, cx))
+            .children(self.dialog::<DocumentTypesDialog>().and_then(|dialog| {
+                dialog.render(
+                    self.ledger.read(cx).ledger().document_types(),
+                    documents_dialog_handlers,
+                    cx,
+                )
+            }))
             .children(self.render_inventory_dialog(&entity, cx))
             .children(self.dialog::<TagsDialog>().and_then(|dialog| {
                 dialog.render(

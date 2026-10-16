@@ -2,6 +2,11 @@
 //! accessors. An `impl Shell` block, not the Dialog host itself (`chrome::dialog_host`).
 
 use super::Shell;
+use crate::settings::documents::{
+    DocumentsPage,
+    apply::{DocumentTypeOutcome, DocumentTypesApply},
+    dialogs::DocumentTypesDialog,
+};
 use crate::settings::payees::PayeesPage;
 use crate::settings::tags::{
     TagsPage,
@@ -84,7 +89,28 @@ impl Shell {
                     self.raise_toast(kind, message);
                 }
             }
-            Some(OpenDialog::DocumentTypes(_)) => self.confirm_document_types_dialog(cx),
+            Some(OpenDialog::DocumentTypes(_)) => {
+                let mut apply = DocumentTypesApply {
+                    ledger: self.ledger.clone(),
+                };
+                let page = self.documents_page(cx);
+                match self.confirm_dialog::<DocumentTypesDialog, _>(&mut apply, cx) {
+                    Some(DocumentTypeOutcome::Saved(id)) => {
+                        page.update(cx, |page, cx| page.select_id(id, cx));
+                    }
+                    // A removed type's Filed files have moved, and a Documents scope that was
+                    // on the type drops back to All.
+                    Some(DocumentTypeOutcome::Removed { id, selected }) => {
+                        self.views
+                            .documents
+                            .update(cx, |view, cx| view.type_removed(id, cx));
+                        if let Some(selected) = selected {
+                            page.update(cx, |page, cx| page.select_id(selected, cx));
+                        }
+                    }
+                    Some(DocumentTypeOutcome::Dismissed) | None => {}
+                }
+            }
             Some(OpenDialog::Inventory(_)) => self.confirm_inventory_dialog(cx),
             Some(OpenDialog::Tags(_)) => {
                 let mut apply = TagsApply {
@@ -118,6 +144,11 @@ impl Shell {
     /// The Payees page's Entity, which the Settings View owns.
     pub(super) fn payees_page(&self, cx: &gpui::App) -> gpui::Entity<PayeesPage> {
         self.views.settings.read(cx).payees().clone()
+    }
+
+    /// The Document Types page's Entity, which the Settings View owns.
+    pub(super) fn documents_page(&self, cx: &gpui::App) -> gpui::Entity<DocumentsPage> {
+        self.views.settings.read(cx).documents().clone()
     }
 
     /// The Tags page's Entity, which the Settings View owns.

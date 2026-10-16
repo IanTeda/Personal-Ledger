@@ -31,7 +31,6 @@ mod budgets_ui;
 
 mod commands;
 mod dialogs;
-mod document_types_ui;
 mod documents_ui;
 mod explorer;
 mod focus;
@@ -76,11 +75,12 @@ use gpui::{
     ScrollHandle, Subscription,
 };
 
-use lib_ledger::{Ledger, MoveDocumentType};
+use lib_ledger::Ledger;
 use lib_toast::Toasts;
 
 use crate::settings::accounts::AccountsPage;
 use crate::settings::categories::CategoriesPage;
+use crate::settings::documents::DocumentsPage;
 use crate::settings::payees::{PayeesPage, PayeesSources};
 use crate::settings::tags::TagsPage;
 use crate::view::active::{ActiveViewEntity, ViewEntities};
@@ -92,7 +92,7 @@ use crate::{
     budgets,
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
-    documents::{self, DocumentsMode, LibraryScope, LibrarySort},
+    documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router::{self, Movement},
@@ -215,6 +215,10 @@ impl Shell {
         let tags_page_subscription = Self::view_event_subscription(&tags_page, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let tags_page_observer = cx.observe(&tags_page, |_, _, cx| cx.notify());
+        let documents_page = cx.new(|cx| DocumentsPage::new(ledger.clone(), cx));
+        let documents_page_subscription = Self::view_event_subscription(&documents_page, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let documents_page_observer = cx.observe(&documents_page, |_, _, cx| cx.notify());
         let display_page = cx.new(|_| DisplayPage::default());
         let display_page_subscription = Self::view_event_subscription(&display_page, cx);
         // The status line reads the page's focus, so a change in it repaints `Shell` too.
@@ -234,6 +238,7 @@ impl Shell {
                     categories: categories_page,
                     payees: payees_view,
                     tags: tags_page,
+                    documents: documents_page,
                 },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -357,6 +362,8 @@ impl Shell {
                 payees_view_observer,
                 tags_page_subscription,
                 tags_page_observer,
+                documents_page_subscription,
+                documents_page_observer,
                 categories_subscription,
                 units_subscription,
                 accounts_changed,
@@ -524,32 +531,6 @@ impl Shell {
 
     fn scroll_view(&mut self, movement: Movement) {
         crate::view::scroll_by_movement(&self.view_scroll_handle, movement);
-    }
-
-    fn move_selected_document_type(&mut self, delta: isize, cx: &mut App) {
-        if let Some(id) = self.settings_documents_selected_id(cx) {
-            let command = MoveDocumentType { id, delta };
-            let Ok(_moved) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
-            self.views
-                .settings
-                .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
-        }
-    }
-
-    /// The Remove action. Other, the Default, is never removed: it gets a notice dialog and says
-    /// so on the status line.
-    fn remove_selected_document_type(&mut self, cx: &mut App) {
-        let Some(id) = self.settings_documents_selected_id(cx) else {
-            return;
-        };
-        let is_default = documents::types::position(self.document_types(cx), id)
-            .and_then(|position| self.document_types(cx).get(position))
-            .is_some_and(|row| row.is_default);
-        if is_default {
-            self.chrome.status_message =
-                Some(crate::msg::desktop_document_types_hint_default_kept());
-        }
-        self.open_remove_document_type_dialog(id, cx);
     }
 
     /// The Dashboard's budget list, worded from the default Budget's current-month figures.

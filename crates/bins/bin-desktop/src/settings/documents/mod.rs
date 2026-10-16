@@ -1,402 +1,295 @@
-//! The **Documents** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16p, as amended by #479): a
-//! kicker with **+ Add document type** over one bordered table of the Ledger's Document Types in
-//! type-filter order, then four one-sentence notes. Other carries a `default` outline tag and no
-//! **remove** button.
+//! The **Document Types** Settings page (ADR-0037, and its amendment's one folder per page):
+//! `SettingsPage::Documents`, the Ledger's Document Types in type-filter order. [`DocumentsPage`]
+//! reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its keys and
+//! movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through [`ViewEvent`];
+//! `Shell`'s Dialog host draws them and confirms them through `apply.rs`. The Settings View
+//! forwards to it while the page is open.
 //!
-//! Every action is a callback into `Shell`, so the keyboard (`n`/`e`/`x`/`J`/`K`) and the mouse
-//! reach the same handlers.
+//! The Documents destination (`src/documents/`, `src/view/documents/`) is not part of the page:
+//! the page reads the rows it shares with the destination through `lib_documents::types`.
 
-use std::rc::Rc;
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+pub(crate) mod render;
 
-use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_locale::format::upper;
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_documents::types::{self as types, DocumentTypeRow};
+use lib_ledger::{Domain, MoveDocumentType};
 
 use crate::{
-    documents,
-    documents::types::{DocumentTypeRow, RemindLead, TracksDate},
-    theme::color,
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::Movement,
+    settings::hints::settings_documents_hints,
+    view::event::ViewEvent,
 };
+use dialogs::DocumentTypesDialog;
+use form::{DocumentTypeForm, RemoveForm};
+pub use render::scope_text;
 
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnTypeClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+impl EventEmitter<ViewEvent> for DocumentsPage {}
 
-pub struct DocumentsPageProps<'a> {
-    pub types: &'a [DocumentTypeRow],
-    /// The selected row's type id.
-    pub selected: Option<u32>,
-    pub on_add_click: OnPlainClick,
-    pub on_row_click: OnTypeClick,
-    pub on_edit_click: OnTypeClick,
-    pub on_remove_click: OnTypeClick,
+/// Emitted when a click lands on the page, so the Settings View, which owns the page's focus,
+/// moves it from the index into the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowClicked;
+
+impl EventEmitter<RowClicked> for DocumentsPage {}
+
+/// The Document Types page's own state: the type id under the cursor.
+pub struct DocumentsPage {
+    ledger: Entity<LedgerStore>,
+    /// It may name a type that no longer exists, so read it through [`Self::selected_id`].
+    selected: Option<u32>,
+    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
+    /// draws the page.
+    pub(crate) page_focused: bool,
+    /// Repaints the page when the Document Types its rows read change.
+    _types_changed: Subscription,
 }
 
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
-}
-
-/// The heading's meta as plain text, for the status line: `9 types · 392 of 412 files typed`.
-pub fn scope_text(types: &[DocumentTypeRow]) -> String {
-    crate::msg::desktop_document_types_scope(
-        &crate::msg::desktop_document_types_count(count(types.len())),
-        &crate::msg::desktop_document_types_files_typed(
-            &documents::types::typed_files(types).to_string(),
-            &documents::types::all_files(types).to_string(),
-        ),
-    )
-}
-
-/// The text of a Tracks date cell.
-pub(crate) fn tracks_label(tracks: TracksDate) -> String {
-    match tracks {
-        TracksDate::Renews => crate::msg::desktop_document_types_tracks_renews(),
-        TracksDate::Ends => crate::msg::desktop_document_types_tracks_ends(),
-        TracksDate::Expires => crate::msg::desktop_document_types_tracks_expires(),
-        TracksDate::Revalue => crate::msg::desktop_document_types_tracks_revalue(),
-    }
-}
-
-/// The text of a Remind cell.
-fn remind_label(lead: RemindLead) -> String {
-    match lead {
-        RemindLead::Days(days) => crate::msg::desktop_document_types_remind_days(i64::from(days)),
-        RemindLead::Months(months) => {
-            crate::msg::desktop_document_types_remind_months(i64::from(months))
+impl DocumentsPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _types_changed = notify_on(&ledger, Domain::DocumentTypes, cx);
+        Self {
+            ledger,
+            selected: None,
+            page_focused: false,
+            _types_changed,
         }
     }
-}
 
-pub fn render(props: &DocumentsPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
-    let last = props.types.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .child(kicker_row(props.on_add_click.clone(), cx))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .border_1()
-                .border_color(color::border(cx))
-                .mb(px(16.0))
-                .child(table_header(cx))
-                .children(props.types.iter().enumerate().map(|(position, row_type)| {
-                    row(
-                        row_type,
-                        position == last,
-                        props.selected == Some(row_type.id),
-                        focused,
-                        props,
-                        cx,
-                    )
-                })),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .max_w(px(640.0))
-                .text_size(px(12.0))
-                .text_color(color::muted(cx))
-                .children([
-                    note(crate::msg::desktop_document_types_note_tracks_date(), cx),
-                    note(crate::msg::desktop_document_types_note_financial_year(), cx),
-                    note(crate::msg::desktop_document_types_note_removal(), cx),
-                    note(crate::msg::desktop_document_types_note_default(), cx),
-                ]),
-        )
-        .into_any_element()
-}
+    pub(crate) fn types<'a>(&self, cx: &'a App) -> &'a [DocumentTypeRow] {
+        self.ledger.read(cx).ledger().document_types()
+    }
 
-/// One note: its `<strong>` lead in the foreground colour, the rest muted.
-fn note(segments: Vec<lib_locale::Segment>, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_wrap()
-        .children(segments.into_iter().map(|segment| {
-            let text = div().child(segment.text);
-            match segment.tag.as_deref() {
-                Some("strong") => text
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::foreground(cx)),
-                _ => text,
+    pub fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page is open (ADR-0037)
+    // -----------------------------------------------------------------------------------------
+
+    /// `J`/`K` move the selected type a place, which is also its place in the Documents Type
+    /// filter. The router would otherwise take them, so the page claims them ahead of it.
+    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || !modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "j" => self.move_selected(1, cx),
+            "k" => self.move_selected(-1, cx),
+            _ => return false,
+        }
+        true
+    }
+
+    /// The page's bare `n`, `e` and `x`, each through the same handler its button uses.
+    /// Returns whether the key was one of them.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_dialog(cx),
+            "e" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_edit_dialog(id, cx);
+                }
             }
-        }))
-}
+            "x" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_remove_dialog(id, cx);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
 
-fn kicker_row(on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
-    let hover = color::muted(cx);
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .mb(px(10.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_document_types_kicker())),
-        )
-        // `btn btn-primary` at `height:32px`.
-        .child(
-            div()
-                .debug_selector(|| "settings-documents-add".to_string())
-                .id("settings-documents-add")
-                .cursor_pointer()
-                .flex_none()
-                .py(px(8.0))
-                .px(px(14.0))
-                .bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .whitespace_nowrap()
-                .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_click(window, cx))
-                .child(crate::msg::desktop_document_types_add_button("+")),
-        )
-}
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
+    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        let Some(step) = movement.step() else {
+            return;
+        };
+        let ids: Vec<u32> = self.types(cx).iter().map(|row| row.id).collect();
+        self.selected = lib_list_cursor::step_id(&ids, self.selected_id(cx), step);
+        cx.notify();
+    }
 
-/// `padding:6px 14px; background:#eae9e9`, with the frame's column widths.
-fn table_header(cx: &App) -> impl IntoElement {
-    let cell = |label: String, width: f32, right: bool| {
-        let cell = div().w(px(width)).flex_none().child(upper(&label));
-        if right {
-            cell.flex().justify_end()
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page's legend and its type and file counts.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_documents_hints(),
+            right: scope_text(self.types(cx)),
+        })
+    }
+
+    /// The heading's meta: how many types and how many Filed files are typed.
+    pub fn scope_note(&self, cx: &App) -> String {
+        scope_text(self.types(cx))
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Selection
+    // -----------------------------------------------------------------------------------------
+
+    /// The selected type's id: the stored id while it still exists, else the first row, so the
+    /// cursor is never lost.
+    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+        lib_list_cursor::resolve(self.types(cx).iter().map(|row| row.id), self.selected)
+    }
+
+    /// Selects type `id`, if it still exists.
+    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        if types::get(self.types(cx), id).is_some() {
+            self.selected = Some(id);
+            cx.notify();
+        }
+    }
+
+    /// Moves the selected type `delta` places in the user's order, keeping it selected.
+    fn move_selected(&mut self, delta: isize, cx: &mut Context<'_, Self>) {
+        let Some(id) = self.selected_id(cx) else {
+            return;
+        };
+        let command = MoveDocumentType { id, delta };
+        let Ok(_moved) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
+        self.select_id(id, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// A click on a row: selects it and moves focus into the page.
+    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        cx.emit(RowClicked);
+    }
+
+    /// **+ Add document type**: the same handler `n` reaches.
+    pub(crate) fn click_add(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(RowClicked);
+        self.open_add_dialog(cx);
+    }
+
+    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        cx.emit(RowClicked);
+        self.open_edit_dialog(id, cx);
+    }
+
+    pub(crate) fn click_remove(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        cx.emit(RowClicked);
+        self.open_remove_dialog(id, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Dialogs
+    // -----------------------------------------------------------------------------------------
+
+    fn open_add_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let form = DocumentTypeForm::new(self.types(cx));
+        open_dialog(DocumentTypesDialog::Add(form), cx);
+    }
+
+    /// Opens the Edit dialog filled from type `id`. A no-op if the type is gone.
+    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let rows = self.types(cx);
+        let Some(row) = types::get(rows, id) else {
+            return;
+        };
+        let form = DocumentTypeForm::from_row(row, rows);
+        open_dialog(DocumentTypesDialog::Edit(id, form), cx);
+    }
+
+    /// Other, the Default, has no remove action: it gets a notice instead, and the status line
+    /// says so.
+    fn open_remove_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let rows = self.types(cx);
+        let Some(row) = types::get(rows, id) else {
+            return;
+        };
+        let dialog = if row.is_default {
+            cx.emit(ViewEvent::SetStatus(Some(
+                crate::msg::desktop_document_types_hint_default_kept(),
+            )));
+            DocumentTypesDialog::DefaultNotice
         } else {
-            cell
+            DocumentTypesDialog::Remove(id, RemoveForm::new(rows, id))
+        };
+        open_dialog(dialog, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------------------------
+
+    /// The type names in order, the selected row's name, and each type's Filed file count. The
+    /// open Dialog is `Shell`'s, which fills it in.
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &App) -> SettingsDocumentTypesSnapshot {
+        let rows = self.types(cx);
+        SettingsDocumentTypesSnapshot {
+            document_type_names: rows.iter().map(|row| row.name.clone()).collect(),
+            selected_document_type: self
+                .selected_id(cx)
+                .and_then(|id| types::get(rows, id))
+                .map(|row| row.name.clone()),
+            document_type_files: rows.iter().map(|row| row.files).collect(),
+            document_type_dialog: None,
         }
-    };
-    div()
-        .flex()
-        .gap(px(14.0))
-        .px(px(14.0))
-        .py(px(6.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(
-            div()
-                .flex_1()
-                .child(upper(&crate::msg::desktop_document_types_column_type())),
-        )
-        .child(cell(
-            crate::msg::desktop_document_types_column_tracks_date(),
-            150.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_remind(),
-            130.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_financial_year(),
-            120.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_files(),
-            60.0,
-            true,
-        ))
-        .child(cell(lib_locale::msg::column_actions(), 118.0, true))
+    }
 }
 
-/// The selected row is inverted while the page has focus (`background:#201e1d; color:#f3f2f2`)
-/// and only tinted while the index does.
-fn row(
-    row_type: &DocumentTypeRow,
-    last: bool,
-    selected: bool,
-    focused: bool,
-    props: &DocumentsPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = row_type.id;
-    let inverted = selected && focused;
-    let hover = color::hover(cx);
-    let (placeholder, flag, button_border): (Rgba, Rgba, Rgba) = if inverted {
-        (
-            color::selection_muted(cx),
-            color::selection_accent_text(cx),
-            color::selection_muted(cx),
-        )
-    } else {
-        (
-            color::faint_text(cx),
-            color::accent_text(cx),
-            color::border(cx),
-        )
-    };
-    let on_row_click = props.on_row_click.clone();
-    let on_edit_click = props.on_edit_click.clone();
-    let on_remove_click = props.on_remove_click.clone();
-    // A dash, in the muted colour, where the type tracks or reminds nothing.
-    let optional = |text: Option<String>, width: f32| {
-        let cell = div().w(px(width)).flex_none();
-        match text {
-            Some(text) => cell.child(text),
-            None => cell
-                .text_color(placeholder)
-                .child(crate::msg::desktop_document_types_none()),
+/// The Document Types page: names in order, the selected row's name, each type's Filed file count,
+/// and the open dialog's kind (`add`, `edit`, `remove` or `notice`), which `Shell` fills in.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsDocumentTypesSnapshot {
+    pub document_type_names: Vec<String>,
+    pub selected_document_type: Option<String>,
+    pub document_type_files: Vec<u32>,
+    pub document_type_dialog: Option<String>,
+}
+
+impl DocumentTypesDialog {
+    /// The kind of dialog, for the Settings snapshot.
+    #[doc(hidden)]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Add(_) => "add",
+            Self::Edit(..) => "edit",
+            Self::Remove(..) => "remove",
+            Self::DefaultNotice => "notice",
         }
-    };
-    let yes_no = if row_type.financial_year {
-        crate::msg::desktop_document_types_yes()
-    } else {
-        crate::msg::desktop_document_types_no()
-    };
-
-    div()
-        .debug_selector(move || format!("settings-documents-row-{id}"))
-        .id(SharedString::from(format!("settings-documents-row-{id}")))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(14.0))
-        .px(px(14.0))
-        .py(px(6.0))
-        .text_size(px(12.5))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .when(selected && !focused, |this| this.bg(color::chrome(cx)))
-        .when(inverted, |this| {
-            this.bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-        })
-        .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_row_click(id, window, cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .child(row_type.name.clone()),
-                )
-                .when(row_type.is_default, |this| {
-                    this.child(
-                        div()
-                            .flex_none()
-                            .px(px(6.0))
-                            .py(px(1.0))
-                            .border_1()
-                            .border_color(color::accent(cx))
-                            .text_size(px(10.0))
-                            .text_color(flag)
-                            .child(crate::msg::desktop_document_types_flag_default()),
-                    )
-                }),
-        )
-        .child(optional(row_type.tracks_date.map(tracks_label), 150.0))
-        // Remind is inert without a Tracks date, so it reads as a dash too.
-        .child(optional(
-            row_type.tracks_date.and(row_type.remind).map(remind_label),
-            130.0,
-        ))
-        .child(div().w(px(120.0)).flex_none().child(yes_no))
-        .child(
-            div()
-                .w(px(60.0))
-                .flex_none()
-                .flex()
-                .justify_end()
-                .child(row_type.files.to_string()),
-        )
-        .child(
-            div()
-                .w(px(118.0))
-                .flex_none()
-                .flex()
-                .justify_end()
-                .gap(px(4.0))
-                .child(row_action_button(
-                    SharedString::from(format!("settings-documents-edit-{id}")),
-                    crate::msg::desktop_document_types_row_edit(),
-                    button_border,
-                    Rc::new(move |window: &mut Window, cx: &mut App| on_edit_click(id, window, cx)),
-                    cx,
-                ))
-                .when(!row_type.is_default, |this| {
-                    this.child(row_action_button(
-                        SharedString::from(format!("settings-documents-remove-{id}")),
-                        crate::msg::desktop_document_types_row_remove(),
-                        button_border,
-                        Rc::new(move |window: &mut Window, cx: &mut App| {
-                            on_remove_click(id, window, cx)
-                        }),
-                        cx,
-                    ))
-                }),
-        )
+    }
 }
 
-/// `padding:4px 8px; font-size:11.5px; border:1px solid`. Stops the click reaching the row.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    border: Rgba,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .py(px(4.0))
-        .px(px(8.0))
-        .border_1()
-        .border_color(border)
-        .text_size(px(11.5))
-        .whitespace_nowrap()
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
-            cx.stop_propagation();
-            on_click(window, cx)
-        })
-        .child(label)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scope_text_reads_the_live_counts() {
-        crate::locale::init_for_tests();
-        assert_eq!(
-            scope_text(&documents::types::default_types()),
-            "9 types \u{b7} 392 of 412 files typed"
-        );
-    }
-
-    #[test]
-    fn a_single_type_reads_singular() {
-        crate::locale::init_for_tests();
-        let one = &documents::types::default_types()[..1];
-        assert!(scope_text(one).starts_with("1 type \u{b7} "));
-    }
-
-    #[test]
-    fn remind_reads_days_and_months() {
-        crate::locale::init_for_tests();
-        assert_eq!(remind_label(RemindLead::Days(30)), "30 days before");
-        assert_eq!(remind_label(RemindLead::Months(3)), "3 months before");
-        assert_eq!(remind_label(RemindLead::Days(1)), "1 day before");
-    }
+/// Asks `Shell`'s Dialog host to open a Document types dialog.
+fn open_dialog(dialog: DocumentTypesDialog, cx: &mut Context<'_, DocumentsPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::DocumentTypes(
+        dialog,
+    ))));
 }

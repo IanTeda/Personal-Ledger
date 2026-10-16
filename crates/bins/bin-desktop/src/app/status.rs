@@ -1,12 +1,11 @@
 //! The status line's hint clicks and page status of `Shell`. An `impl Shell` block for the
 //! concern, not the status line itself (`chrome::statusline`).
 
-use crate::documents::types::DocumentTypesDialog;
 use crate::inventory::form::InventoryDialog;
 use gpui::Context;
 
-use super::{Shell, document_types_ui, inventory_ui};
-use crate::settings::hints::{settings_documents_hints, settings_inventory_hints};
+use super::{Shell, inventory_ui};
+use crate::settings::hints::settings_inventory_hints;
 use crate::view::active::ActiveViewEntity;
 use crate::{
     chrome::dialog_host::Dialog,
@@ -14,7 +13,7 @@ use crate::{
     chrome::view_chrome::ViewChrome,
     navigation::nav::InputMode,
     settings::SettingsPage,
-    settings::{self as settings_view, inventory as inventory_view},
+    settings::inventory as inventory_view,
 };
 
 impl Shell {
@@ -70,14 +69,7 @@ impl Shell {
     /// `None` when no such page has focus.
     fn settings_data_page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Documents) {
-            Some(PageStatus {
-                hints: self
-                    .dialog::<DocumentTypesDialog>()
-                    .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
-                right: settings_view::documents::scope_text(self.document_types(cx)),
-            })
-        } else if focused(SettingsPage::Inventory) {
+        if focused(SettingsPage::Inventory) {
             Some(PageStatus {
                 hints: self.dialog::<InventoryDialog>().map_or_else(
                     || settings_inventory_hints(self.settings_inventory_selected_row(cx)),

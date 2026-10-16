@@ -19,9 +19,8 @@
 use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
     bills::BillsDialog, budgets::BudgetsDialog, documents::form::DocumentsDialog,
-    documents::types::DocumentTypesDialog, form::field::TextField,
-    inventory::form::InventoryDialog, settings::SettingsDialog,
-    settings::accounts::dialogs::AccountsDialog,
+    form::field::TextField, inventory::form::InventoryDialog, settings::SettingsDialog,
+    settings::accounts::dialogs::AccountsDialog, settings::documents::dialogs::DocumentTypesDialog,
     settings::institutions::dialogs::InstitutionsDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::units::dialogs::UnitsDialog,
 };

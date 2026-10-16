@@ -314,16 +314,14 @@ impl Shell {
     }
 
     /// The keys a Settings page with Ledger data claims ahead of the router, before the Settings
-    /// View sees them: `J`/`K` reorders, and `left` where the page has something to fold or
+    /// View sees them: `J`/`K` reorders (Inventory's), and `left` where the page has something to fold or
     /// climb, which it then handles as a router leftover. `None` leaves the key to the View.
     fn settings_data_page_key_ahead(
         &mut self,
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> Option<bool> {
-        if self.handle_settings_documents_reorder_key(keystroke, cx)
-            || self.handle_settings_inventory_reorder_key(keystroke, cx)
-        {
+        if self.handle_settings_inventory_reorder_key(keystroke, cx) {
             return Some(true);
         }
         let left_is_local = keystroke.key == "left"
@@ -340,9 +338,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Documents) {
-            self.handle_settings_documents_key(keystroke, cx)
-        } else if focused(SettingsPage::Inventory) {
+        if focused(SettingsPage::Inventory) {
             self.handle_settings_inventory_key(keystroke, cx)
         } else {
             false

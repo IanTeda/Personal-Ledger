@@ -99,13 +99,10 @@ impl Shell {
         cx: &mut gpui::Context<'_, Self>,
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        let section = [SettingsPage::Documents, SettingsPage::Inventory]
+        let section = [SettingsPage::Inventory]
             .into_iter()
             .find(|section| focused(*section));
         match section {
-            Some(SettingsPage::Documents) => {
-                self.apply_settings_documents_movement(movement, cx);
-            }
             Some(SettingsPage::Inventory) => {
                 self.apply_settings_inventory_movement(movement, cx);
             }

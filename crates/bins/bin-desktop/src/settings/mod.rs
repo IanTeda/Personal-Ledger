@@ -55,7 +55,6 @@ pub struct DataPage {
 
 /// What `Shell` draws the pages with Ledger data from, until each moves into this View.
 pub struct DataPageProps<'a> {
-    pub documents: documents::DocumentsPageProps<'a>,
     pub inventory: inventory::InventoryPageProps<'a>,
 }
 
@@ -67,10 +66,6 @@ pub fn data_page(
     cx: &App,
 ) -> Option<DataPage> {
     let (meta, content) = match section {
-        SettingsPage::Documents => (
-            documents::scope_text(props.documents.types).into_any_element(),
-            documents::render(&props.documents, page_focused, cx),
-        ),
         SettingsPage::Inventory => (
             inventory::scope_text(props.inventory.inventory).into_any_element(),
             inventory::render(&props.inventory, page_focused, cx),
@@ -80,6 +75,7 @@ pub fn data_page(
         | SettingsPage::Categories
         | SettingsPage::Payees
         | SettingsPage::Tags
+        | SettingsPage::Documents
         | SettingsPage::Display
         | SettingsPage::Units
         | SettingsPage::Institutions
@@ -111,6 +107,8 @@ impl Render for SettingsView {
         payees.update(cx, |page, _| page.set_page_focused(page_focused));
         let tags = self.sources().tags.clone();
         tags.update(cx, |page, _| page.set_page_focused(page_focused));
+        let documents = self.sources().documents.clone();
+        documents.update(cx, |page, _| page.set_page_focused(page_focused));
         let display = self.sources().display.clone();
         let units = self.sources().units.clone();
         let institutions = self.sources().institutions.clone();
@@ -130,6 +128,10 @@ impl Render for SettingsView {
             None if selected == SettingsPage::Tags => {
                 (tags.read(cx).scope_note(cx), tags.into_any_element())
             }
+            None if selected == SettingsPage::Documents => (
+                documents.read(cx).scope_note(cx).into_any_element(),
+                documents.into_any_element(),
+            ),
             None if selected == SettingsPage::Display => (
                 self.scope_note().into_any_element(),
                 display.into_any_element(),

@@ -12,7 +12,6 @@ pub(crate) mod hints;
 mod inbox;
 pub mod snapshot;
 pub mod state;
-pub mod type_dialogs;
 
 use std::{ops::Range, rc::Rc};
 
