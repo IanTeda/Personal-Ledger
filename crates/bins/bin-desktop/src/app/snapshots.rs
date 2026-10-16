@@ -8,6 +8,7 @@ mod documents;
 mod overlays;
 mod palette;
 mod settings;
+mod status;
 mod transactions;
 
 pub use bills::{BillRowSnapshot, BillsSnapshot};
@@ -21,4 +22,5 @@ pub use settings::{
     SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot,
 };
+pub use status::StatusSnapshot;
 pub use transactions::{ChipSnapshot, ImportRowSnapshot, ImportSnapshot, TransactionsSnapshot};

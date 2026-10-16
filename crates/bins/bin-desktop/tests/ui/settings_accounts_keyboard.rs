@@ -247,3 +247,19 @@ fn the_accounts_command_names_an_account_it_cannot_find(app: &mut TestAppContext
         Some(":accounts delete \u{2014} no account named \"rainy\"")
     );
 }
+
+#[gpui::test]
+fn the_status_line_shows_the_page_legend_and_the_account_count(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+
+    let (keys, right) = ui
+        .status()
+        .map(|status| {
+            let keys: Vec<String> = status.hints.into_iter().map(|(key, _)| key).collect();
+            (keys, status.right)
+        })
+        .unwrap_or_default();
+    assert_eq!(keys, ["j/k", "enter", "e", "d", "n"]);
+    let accounts = ui.settings_accounts().account_names.len();
+    assert!(right.contains(&accounts.to_string()), "{right}");
+}

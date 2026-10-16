@@ -183,3 +183,47 @@ fn a_selection_survives_leaving_the_page_and_coming_back(app: &mut TestAppContex
     ui.press("l");
     assert_eq!(ui.settings_payees().selected_payee, selected);
 }
+
+/// The status line's hint keys, in order; empty when the line has no page content.
+fn hint_keys(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.status()
+        .map(|status| status.hints.into_iter().map(|(key, _)| key).collect())
+        .unwrap_or_default()
+}
+
+/// The status line's right-hand text; empty when the line has no page content.
+fn status_right(ui: &mut Harness<'_>) -> String {
+    ui.status().map(|status| status.right).unwrap_or_default()
+}
+
+#[gpui::test]
+fn the_status_line_shows_the_page_legend_and_the_payee_count(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+    // A leading count, then the without-default-category tally after a middle dot.
+    let right = status_right(&mut ui);
+    assert!(right.starts_with(|c: char| c.is_ascii_digit()), "{right}");
+    assert!(right.contains(" \u{b7} "), "{right}");
+}
+
+#[gpui::test]
+fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    let page_right = status_right(&mut ui);
+
+    ui.press("n");
+    assert_eq!(hint_keys(&mut ui), ["esc", "enter", "tab"]);
+    assert_eq!(status_right(&mut ui), page_right);
+    ui.press("escape");
+    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+
+    ui.press("e");
+    assert_eq!(hint_keys(&mut ui), ["esc", "enter", "tab"]);
+    ui.press("escape");
+
+    ui.press("d");
+    assert_eq!(hint_keys(&mut ui), ["esc", "enter"]);
+    ui.press("escape");
+    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+}

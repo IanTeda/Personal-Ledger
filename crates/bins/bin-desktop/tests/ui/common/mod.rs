@@ -16,7 +16,7 @@ use bin_desktop::{
         DocumentsSnapshot, ImportSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
         SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot,
         SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, ToastsSnapshot,
+        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot,
         TransactionsSnapshot,
     },
     build_shell,
@@ -219,6 +219,12 @@ impl<'a> Harness<'a> {
     /// The Transactions page's state, read back for assertions.
     pub fn transactions(&mut self) -> TransactionsSnapshot {
         self.read_app(Shell::transactions_snapshot)
+    }
+
+    /// The status line's hints and right-hand text for the View on show (or the open Dialog's
+    /// hints); `None` when there are none.
+    pub fn status(&mut self) -> Option<StatusSnapshot> {
+        self.read_app(Shell::status_snapshot)
     }
 
     /// The Toast layer and its history, read back for assertions.

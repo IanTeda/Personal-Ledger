@@ -55,7 +55,7 @@ pub use snapshots::{
     PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
     SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
     SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
-    SettingsUnitsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
+    SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
 
 use std::time::{Duration, Instant};
