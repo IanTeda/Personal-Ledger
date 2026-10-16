@@ -150,7 +150,7 @@ fn the_palette_search_and_help_modes_enter_and_leave_with_escape(app: &mut TestA
     for (keys, expected) in [
         (":", InputMode::Command),
         ("/", InputMode::Search),
-        ("?", InputMode::Help),
+        ("?", InputMode::Dialog),
         ("a", InputMode::Insert),
     ] {
         ui.press(keys);
@@ -176,7 +176,7 @@ fn help_swallows_keys_and_a_second_question_mark_closes_it(app: &mut TestAppCont
         Noun::Dashboard,
         "nothing behind the overlay reacts"
     );
-    assert_eq!(mode(&mut ui), InputMode::Help);
+    assert_eq!(mode(&mut ui), InputMode::Dialog);
 
     ui.press("?");
     assert_eq!(mode(&mut ui), InputMode::Normal);

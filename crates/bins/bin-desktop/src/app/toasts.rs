@@ -94,13 +94,13 @@ impl Shell {
     }
 
     /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
-    /// popover or the help overlay -- which pauses the Toast timers.
+    /// popover -- which pauses the Toast timers.
     pub(super) fn modal_open(&self) -> bool {
         self.chrome.palette.is_some()
             || self.file_explorer.is_some()
             || matches!(
                 self.nav.mode(),
-                InputMode::Command | InputMode::Dialog | InputMode::Filter | InputMode::Help
+                InputMode::Command | InputMode::Dialog | InputMode::Filter
             )
     }
 

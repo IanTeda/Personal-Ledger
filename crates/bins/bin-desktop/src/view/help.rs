@@ -5,7 +5,11 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use crate::{dialog, help, theme::color};
+use crate::{
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    dialog, help,
+    theme::color,
+};
 
 const WIDTH: gpui::Pixels = px(720.0);
 const FACTS_WIDTH: gpui::Pixels = px(340.0);
@@ -13,7 +17,23 @@ const KEY_WIDTH: gpui::Pixels = px(44.0);
 
 pub type OnClose = dialog::OnClick;
 
-pub fn render(on_close: OnClose, settings: Vec<(String, &'static str)>, cx: &App) -> AnyElement {
+/// The `?` Help Dialog: read-only, so `?` or `Esc` closes it and every other key is left to the
+/// shell. It carries the shortcuts of the page it was opened over, worded when it opened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelpDialog {
+    pub shortcuts: Vec<(String, &'static str)>,
+}
+
+impl Dialog for HelpDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        Some(match key {
+            DialogKey::Char('?') | DialogKey::Enter => DialogOutcome::Confirm,
+            _ => DialogOutcome::Ignored,
+        })
+    }
+}
+
+pub fn render(on_close: OnClose, settings: &[(String, &'static str)], cx: &App) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -232,7 +252,7 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_col().gap(px(10.0)).children(rows)
 }
 
-fn shortcuts_column(settings: Vec<(String, &'static str)>, cx: &App) -> impl IntoElement {
+fn shortcuts_column(settings: &[(String, &'static str)], cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
@@ -262,8 +282,8 @@ fn shortcuts_column(settings: Vec<(String, &'static str)>, cx: &App) -> impl Int
                 .child(kicker(crate::msg::desktop_help_settings_label(), cx))
                 .child(two_columns(
                     settings
-                        .into_iter()
-                        .map(|(label, keys)| shortcut(label, keys, cx))
+                        .iter()
+                        .map(|(label, keys)| shortcut(label, *keys, cx))
                         .collect(),
                 ))
         })

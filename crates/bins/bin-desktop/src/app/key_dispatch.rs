@@ -199,11 +199,7 @@ impl Shell {
                 true
             }
             KeyOutcome::EnterHelp => {
-                self.nav.enter_mode(InputMode::Help);
-                true
-            }
-            KeyOutcome::CloseHelp => {
-                self.nav.exit_mode();
+                self.open_help(cx);
                 true
             }
             KeyOutcome::EnterInsert => {
@@ -237,9 +233,7 @@ impl Shell {
             }
             KeyOutcome::NoOp => {
                 let handled = match self.active_view_entity(cx) {
-                    ActiveViewEntity::Shell(ShellView::Dashboard | ShellView::Placeholder(_)) => {
-                        false
-                    }
+                    ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
                     view => self.view_takes_key(keystroke) && view.handle_key(keystroke, cx),
                 };
                 handled || had_status_message
@@ -293,7 +287,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(ShellView::Dashboard | ShellView::Placeholder(_)) => false,
+            ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
             view => {
                 if !self.view_takes_key_ahead(keystroke) {
                     return false;

@@ -1,4 +1,4 @@
-//! The Dashboard, the `?` Help overlay, the Toast layer with its history, and the Import step
+//! The `?` Help Dialog, the Toast layer with its history, and the Import step
 //! driven by keys. State is read back from `Shell`.
 
 use super::common;
@@ -20,21 +20,12 @@ fn on_import(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 #[gpui::test]
-fn the_dashboard_is_the_start_page_and_lists_bills_needing_attention(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    assert_eq!(ui.noun(), Noun::Dashboard);
-
-    let bills = ui.dashboard_bills();
-    assert!(!bills.is_empty(), "the stub ledger has Bills to attend to");
-    assert!(bills.iter().all(|bill| !bill.plan.is_empty()));
-}
-
-#[gpui::test]
 fn help_opens_with_question_mark_and_escape_closes_it(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
 
     ui.press("?");
-    assert_eq!(mode(&mut ui), InputMode::Help);
+    assert_eq!(mode(&mut ui), InputMode::Dialog);
+    assert!(ui.read(|s| s.help_open()));
     ui.press("escape");
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert_eq!(ui.noun(), Noun::Dashboard);

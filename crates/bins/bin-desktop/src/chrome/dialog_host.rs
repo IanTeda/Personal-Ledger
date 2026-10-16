@@ -24,7 +24,7 @@ use crate::{
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
-    settings::units::dialogs::UnitsDialog,
+    settings::units::dialogs::UnitsDialog, view::help::HelpDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -121,6 +121,7 @@ pub enum OpenDialog {
     Budgets(Box<BudgetsDialog>),
     Documents(DocumentsDialog),
     ToastHistory(ToastHistoryDialog),
+    Help(HelpDialog),
 }
 
 impl OpenDialog {
@@ -139,6 +140,7 @@ impl OpenDialog {
             Self::Budgets(dialog) => &**dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
+            Self::Help(dialog) => dialog,
         }
     }
 
@@ -157,6 +159,7 @@ impl OpenDialog {
             Self::Budgets(dialog) => &mut **dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
+            Self::Help(dialog) => dialog,
         }
     }
 }
@@ -202,6 +205,7 @@ dialog_variant!(Tags, TagsDialog);
 dialog_variant!(Bills, BillsDialog);
 dialog_variant!(Budgets, BudgetsDialog);
 dialog_variant!(Documents, DocumentsDialog);
+dialog_variant!(Help, HelpDialog);
 
 impl Dialog for OpenDialog {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
@@ -334,6 +338,20 @@ mod tests {
             DialogKey::Enter,
             DialogKey::Down,
         ] {
+            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Ignored);
+        }
+        assert!(!dialog.close_open_select(), "the first Esc closes it");
+    }
+
+    #[test]
+    fn help_closes_on_question_mark_or_enter_and_ignores_the_rest() {
+        let mut dialog = OpenDialog::Help(HelpDialog {
+            shortcuts: Vec::new(),
+        });
+        for key in [DialogKey::Char('?'), DialogKey::Enter] {
+            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Confirm);
+        }
+        for key in [DialogKey::Char('j'), DialogKey::Tab, DialogKey::Down] {
             assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Ignored);
         }
         assert!(!dialog.close_open_select(), "the first Esc closes it");

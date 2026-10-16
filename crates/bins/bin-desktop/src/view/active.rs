@@ -10,8 +10,8 @@
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
-    bills::state::BillsView, budgets::state::BudgetsView, documents::state::DocumentsView,
-    event::Reveal, transactions::state::TransactionsView,
+    bills::state::BillsView, budgets::state::BudgetsView, dashboard::state::DashboardView,
+    documents::state::DocumentsView, event::Reveal, transactions::state::TransactionsView,
 };
 use crate::settings::state::SettingsView;
 use crate::{
@@ -22,6 +22,7 @@ use crate::{
 /// The active View, holding its typed Entity once it renders and handles its own input.
 #[derive(Clone)]
 pub enum ActiveViewEntity {
+    Dashboard(Entity<DashboardView>),
     Bills(Entity<BillsView>),
     Budgets(Entity<BudgetsView>),
     /// The Transactions page, and the Import step that takes it over while it is open.
@@ -39,13 +40,13 @@ pub enum ActiveViewEntity {
 /// has moved onto [`ActiveViewEntity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellView {
-    Dashboard,
     /// A Noun whose surface is a later map's work (#420).
     Placeholder(Noun),
 }
 
 /// The View Entities `Shell` owns, one per View that renders and handles its own input.
 pub struct ViewEntities {
+    pub dashboard: Entity<DashboardView>,
     pub bills: Entity<BillsView>,
     pub budgets: Entity<BudgetsView>,
     pub transactions: Entity<TransactionsView>,
@@ -62,7 +63,7 @@ impl ActiveViewEntity {
             ActiveView::Transactions | ActiveView::Import => {
                 Self::Transactions(views.transactions.clone())
             }
-            ActiveView::Dashboard => Self::Shell(ShellView::Dashboard),
+            ActiveView::Dashboard => Self::Dashboard(views.dashboard.clone()),
             ActiveView::Documents => Self::Documents(views.documents.clone()),
             ActiveView::Settings(_) => Self::Settings(views.settings.clone()),
             ActiveView::Placeholder(noun) => Self::Shell(ShellView::Placeholder(noun)),
@@ -71,8 +72,12 @@ impl ActiveViewEntity {
 
     /// The View as a child element of `Shell`'s main pane, told whether the View zone has focus
     /// for the focus rings it draws within itself. A `ShellView` is drawn by `Shell`.
-    pub fn element(&self, zone_focused: bool, cx: &mut App) -> AnyElement {
+    pub fn element(&self, zone_focused: bool, ledger_open: bool, cx: &mut App) -> AnyElement {
         match self {
+            Self::Dashboard(view) => {
+                view.update(cx, |view, _| view.set_ledger_open(ledger_open));
+                view.clone().into_any_element()
+            }
             Self::Documents(view) => {
                 view.update(cx, |view, _| view.set_zone_focused(zone_focused));
                 view.clone().into_any_element()
@@ -91,6 +96,7 @@ impl ActiveViewEntity {
     /// A key the View claims before `route_key`. Returns whether it took the key.
     pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
@@ -103,6 +109,7 @@ impl ActiveViewEntity {
     /// A key the router left as `NoOp`. Returns whether the View took it.
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
@@ -114,6 +121,7 @@ impl ActiveViewEntity {
 
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Transactions(view) => {
@@ -128,6 +136,7 @@ impl ActiveViewEntity {
     /// `Esc`, after the Dialog host's open select. Returns whether the View consumed it.
     pub fn escape(&self, cx: &mut App) -> bool {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.escape(cx)),
@@ -140,6 +149,7 @@ impl ActiveViewEntity {
     /// `/`. Returns `false` when the View has no Search, leaving `/` inert.
     pub fn start_search(&self, cx: &mut App) -> bool {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.start_search(cx)),
@@ -152,6 +162,7 @@ impl ActiveViewEntity {
     /// A key typed while the View's Search is open. Returns whether the View took it.
     pub fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
@@ -164,6 +175,7 @@ impl ActiveViewEntity {
     /// The View has just become the destination.
     pub fn on_enter(&self, cx: &mut App) {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.on_enter(cx)),
@@ -176,6 +188,7 @@ impl ActiveViewEntity {
     /// Shows a record another View handed off.
     pub fn reveal(&self, reveal: Reveal, cx: &mut App) {
         match self {
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
@@ -188,6 +201,7 @@ impl ActiveViewEntity {
     /// The status line's hints and right-hand text for the View's own state.
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         match self {
+            Self::Dashboard(view) => view.read(cx).page_status(cx),
             Self::Bills(view) => view.read(cx).page_status(cx),
             Self::Budgets(view) => view.read(cx).page_status(cx),
             Self::Transactions(view) => view.read(cx).page_status(cx),

@@ -31,6 +31,9 @@ pub enum ViewEvent {
     EnterMode(ViewMode),
     /// Leave the mode the View entered, once what it opened is closed.
     ExitMode,
+    /// Run a palette command by name, as its click target on a View would (the Dashboard's
+    /// `:open`/`:new` empty state).
+    RunCommand(&'static str),
     /// The Display Preferences changed on Settings. They are cross-cutting: `Shell` hands them to
     /// the Views that draw with them, and the Toasts Preference to its Toasts.
     DisplayChanged(DisplayPreferences),

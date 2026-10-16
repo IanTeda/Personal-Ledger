@@ -2,7 +2,7 @@
 //! apart from `shell.rs` so the snapshot shapes and their accessors sit together.
 
 use crate::app::Shell;
-use crate::bills;
+use crate::view::dashboard::state::DashboardBillSnapshot;
 
 /// One Toast as the stack or the history shows it.
 #[doc(hidden)]
@@ -25,14 +25,6 @@ pub struct ToastsSnapshot {
     pub history_open: bool,
     /// The Toasts Preference.
     pub on: bool,
-}
-
-/// A Dashboard Needs Attention Bill row: its Plan and the `debug_selector` of its click target.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DashboardBillSnapshot {
-    pub plan: String,
-    pub selector: String,
 }
 
 impl Shell {
@@ -71,16 +63,6 @@ impl Shell {
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
-        let ledger = self.ledger.read(cx).ledger();
-        bills::attention_entries(ledger.bill_plans(), ledger.bill_entries(), self.today)
-            .into_iter()
-            .filter_map(|id| {
-                let plan = bills::get(ledger.bill_plans(), id.plan_id)?;
-                Some(DashboardBillSnapshot {
-                    plan: plan.name.clone(),
-                    selector: format!("dashboard-bill-{}-{}", id.plan_id, id.due),
-                })
-            })
-            .collect()
+        self.views.dashboard.read(cx).bills_snapshot(cx)
     }
 }

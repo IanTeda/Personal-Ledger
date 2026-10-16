@@ -201,7 +201,6 @@ fn mode_badge(mode: InputMode, label_override: Option<String>, cx: &App) -> impl
         InputMode::Dialog => (crate::msg::desktop_mode_dialog(), color::accent(cx)),
         // The same accent callout as the other modal surfaces.
         InputMode::Filter => (crate::msg::desktop_mode_filter(), color::accent(cx)),
-        InputMode::Help => (crate::msg::desktop_mode_help(), color::accent(cx)),
     };
     let label = label_override.unwrap_or(label);
 

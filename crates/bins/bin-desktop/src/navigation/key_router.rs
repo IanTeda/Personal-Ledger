@@ -79,10 +79,7 @@ pub enum KeyOutcome {
     /// `InputMode::Filter` owns every keystroke. The View that opened its filter popover reads
     /// them ahead of the router, so `Shell` swallows whatever reaches here.
     DelegateToFilter,
-    /// `InputMode::Help` owns every keystroke: `?` closes the overlay again (`Esc` is handled
-    /// before this, as for every mode), anything else is swallowed.
-    CloseHelp,
-    /// `?` opened the help overlay.
+    /// `?` opens the Help Dialog.
     EnterHelp,
     /// A pending `g` completed: jump straight to this noun.
     JumpToNoun(Noun),
@@ -173,13 +170,6 @@ pub fn route_key(
     }
     if mode == InputMode::Filter {
         return KeyOutcome::DelegateToFilter;
-    }
-    if mode == InputMode::Help {
-        return if is_help_key(key, shift) {
-            KeyOutcome::CloseHelp
-        } else {
-            KeyOutcome::Swallowed
-        };
     }
     if mode != InputMode::Normal {
         return KeyOutcome::Swallowed;
@@ -373,7 +363,6 @@ mod tests {
             InputMode::Search,
             InputMode::Dialog,
             InputMode::Filter,
-            InputMode::Help,
         ] {
             assert!(!dismisses_toasts(
                 mode,
@@ -461,7 +450,6 @@ mod tests {
             InputMode::Search,
             InputMode::Dialog,
             InputMode::Filter,
-            InputMode::Help,
         ] {
             assert_eq!(
                 route_key(mode, false, "escape", false, false),
@@ -536,21 +524,6 @@ mod tests {
             route_key(InputMode::Normal, false, "/", false, false),
             KeyOutcome::EnterSearch
         );
-    }
-
-    #[test]
-    fn help_mode_closes_on_question_mark_and_swallows_everything_else() {
-        assert_eq!(
-            route_key(InputMode::Help, false, "?", false, true),
-            KeyOutcome::CloseHelp
-        );
-        for key in ["j", "a", ":", "/", "tab", "g", "enter"] {
-            assert_eq!(
-                route_key(InputMode::Help, false, key, false, false),
-                KeyOutcome::Swallowed,
-                "{key:?}"
-            );
-        }
     }
 
     #[test]

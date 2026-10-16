@@ -28,8 +28,7 @@ use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandle
 use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
 
 use gpui::{
-    Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, SharedString, Window, div,
-    prelude::*, px,
+    Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, Window, div, prelude::*, px,
 };
 
 use crate::settings::accounts::dialogs as accounts_dialogs;
@@ -42,46 +41,35 @@ use crate::{
     chrome::topbar::{self, TopBar},
     documents::{self},
     navigation::explorer::{self as explorer_view},
-    navigation::nav::{FocusZone, InputMode, Noun},
+    navigation::nav::{FocusZone, InputMode},
     period::Period,
     settings::accounts::dialogs::AccountsDialog,
     settings::tracing::dialogs::TracingDialog,
     theme::{color, type_scale},
-    view::format,
     view::{
         active::{ActiveViewEntity, ShellView},
-        bills as bills_view,
-        dashboard::{self, Dashboard},
         documents::{self as documents_view},
-        event::Reveal,
-        help as help_view, placeholder,
+        help::{self as help_view, HelpDialog},
+        placeholder,
     },
 };
-
-/// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
-/// name (`"open"` or `"new"`), looked up in `command::COMMANDS` and run exactly as the palette's
-/// own `enter` key would (see [`Shell::handle_empty_state_command_click`]).
-type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::App)>;
 
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let focus = self.nav.focus();
         let active_entity = self.active_view_entity(cx);
-        let display = self.display(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
         // bar and content row only, not the status line -- that same spec separately describes
         // the status line's own COMMAND-mode content (the live query, "esc close command
         // window"), which stays meaningful precisely because it stays legible; only the
         // navigational chrome the palette/explorer visually floats over goes dim.
-        let content_opacity = if self.chrome.palette.is_some()
-            || self.file_explorer.is_some()
-            || self.nav.mode() == InputMode::Help
-        {
-            0.3
-        } else {
-            1.0
-        };
+        let content_opacity =
+            if self.chrome.palette.is_some() || self.file_explorer.is_some() || self.help_open() {
+                0.3
+            } else {
+                1.0
+            };
 
         // Both closures go through an `Entity` handle rather than `cx.listener`:
         // `on_click`/`on_hover`'s own signatures are `Fn(_, &mut Window, &mut App)`, with no
@@ -168,12 +156,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_help_close: help_view::OnClose = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_help_close(cx));
-            })
-        };
+        let on_help_close: help_view::OnClose = on_toast_history_close.clone();
         let on_explorer_cancel: explorer_view::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -198,15 +181,6 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
-        let on_empty_state_command_click: OnEmptyStateCommandClick = {
-            let entity = entity.clone();
-            Rc::new(move |command_name, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_empty_state_command_click(command_name, cx)
-                });
-            })
-        };
-
         let on_accounts_dialog_field_click: accounts_dialogs::add::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
@@ -433,20 +407,6 @@ impl Render for Shell {
                 on_confirm: plain_tags(Shell::handle_dialog_confirm),
             }
         };
-        let ledger_units = self.ledger.read(cx).ledger().units();
-        let bills_base_unit = ledger_units
-            .iter()
-            .find(|unit| unit.is_base)
-            .map(|unit| unit.code.as_str());
-        let on_dashboard_bill_click: dashboard::OnBillClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.reveal(Reveal::BillEntry(id), cx);
-                    cx.notify();
-                });
-            })
-        };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
         let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
             budgets::period_figures(
@@ -456,35 +416,6 @@ impl Render for Shell {
                 self.today,
             )
         });
-        let dashboard = Dashboard::new(
-            bills::attention_entries(self.bill_plans(cx), self.bill_entries(cx), self.today)
-                .into_iter()
-                .filter_map(|id| {
-                    let entry = bills::entry(self.bill_entries(cx), id)?;
-                    let plan = bills::get(self.bill_plans(cx), id.plan_id)?;
-                    let amount = bills::amount(entry, self.bill_plans(cx), self.transactions(cx))?;
-                    Some(dashboard::AttentionBill {
-                        id,
-                        plan: plan.name.clone(),
-                        overdue: bills::status(entry, self.today) == bills::BillStatus::Overdue,
-                        due: format::date(id.due, display.date_style),
-                        amount: bills_view::schedule::with_unit(
-                            format::amount(&amount).1,
-                            bills_view::schedule::unit_code(ledger_units, plan.unit),
-                            bills_base_unit,
-                        ),
-                    })
-                })
-                .collect(),
-            format::flag_glyph(display.status_glyphs),
-            on_dashboard_bill_click,
-        )
-        .budgets(
-            default_budget_figures
-                .as_ref()
-                .map(|figures| self.dashboard_budget_list(figures, cx))
-                .unwrap_or_default(),
-        );
         // The Categories Dialogs' handlers: each change to the open form runs on `Shell`, which
         // holds the open Dialog, and confirm and cancel run the Dialog host's cycle.
         let on_categories_dialog_field_click: crate::settings::categories::dialogs::add::OnFieldClick = {
@@ -592,7 +523,8 @@ impl Render for Shell {
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
-        let active_element = active_entity.element(focus == FocusZone::View, cx);
+        let active_element =
+            active_entity.element(focus == FocusZone::View, self.nav.ledger_open(), cx);
         let view_chrome = self.view_chrome(cx);
         let active_view = self.active_view(cx);
 
@@ -669,11 +601,8 @@ impl Render for Shell {
                             .child(match active_entity {
                                 ActiveViewEntity::Shell(view) => render_view(
                                     view,
-                                    self.nav.ledger_open(),
                                     focus == FocusZone::View,
                                     &self.view_scroll_handle,
-                                    on_empty_state_command_click,
-                                    dashboard,
                                     cx,
                                 ),
                                 _ => view_frame(
@@ -725,15 +654,10 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children((self.nav.mode() == InputMode::Help).then(|| {
-                let mut sheet = if self.nav.noun() == Noun::Settings {
-                    self.views.settings.read(cx).cheat_sheet(cx)
-                } else {
-                    Vec::new()
-                };
-                sheet.extend(self.documents_cheat_sheet(cx));
-                help_view::render(on_help_close, sheet, cx)
-            }))
+            .children(
+                self.dialog::<HelpDialog>()
+                    .map(|dialog| help_view::render(on_help_close, &dialog.shortcuts, cx)),
+            )
             .children(toast_history_open.then(|| {
                 toast_history_view::render(self.chrome.toasts.history(), on_toast_history_close, cx)
             }))
@@ -894,22 +818,15 @@ impl Render for Shell {
     }
 }
 
-/// The active noun's own view interior, for a View `Shell` still draws: the Dashboard, and the
-/// placeholder Nouns. `Dashboard` further branches on `ledger_open`
-/// (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" empty state). The pane is scrollable
+/// The active noun's own view interior, for a View `Shell` still draws: the placeholder Nouns. The pane is scrollable
 /// and focus-bordered, both properties of the `View` zone itself.
 fn render_view(
     view: ShellView,
-    ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
-    on_empty_state_command_click: OnEmptyStateCommandClick,
-    dashboard: Dashboard,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
     let content = match view {
-        ShellView::Dashboard if ledger_open => dashboard.into_any_element(),
-        ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
     };
 
@@ -958,63 +875,5 @@ fn scrolling_pane(
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .child(content)
-        .into_any_element()
-}
-
-/// The "1a" cold-start empty state: "No ledger open" centered in the main pane, `:open`/`:new`
-/// named in the body copy (`docs/ux/desktop-mockups/01-shell/README.md`'s "Main pane"
-/// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
-/// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
-///
-/// Both command names are real click targets (issue #167), not just copy: clicking one lands
-/// in exactly the state running it from the palette would (this shell's own repeated invariant
-/// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
-fn empty_state(on_command_click: OnEmptyStateCommandClick, cx: &gpui::App) -> gpui::AnyElement {
-    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick, text: String| {
-        div()
-            .id(SharedString::from(format!("empty-state-{name}")))
-            .cursor_pointer()
-            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .text_color(color::foreground(cx))
-            .on_click(move |_event, window, cx| on_command_click(name, window, cx))
-            .child(text)
-    };
-
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(14.0))
-        .p(px(24.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(26.0))
-                .line_height(gpui::relative(1.1))
-                .child(crate::msg::desktop_empty_state_title()),
-        )
-        .child(
-            div()
-                .max_w(px(380.0))
-                .flex()
-                .flex_wrap()
-                .justify_center()
-                .text_align(gpui::TextAlign::Center)
-                .text_size(px(13.0))
-                .text_color(color::muted(cx))
-                .children(
-                    crate::msg::desktop_empty_state_hint(":open", ":new")
-                        .into_iter()
-                        .map(|segment| match segment.tag.as_deref() {
-                            Some("open") => command("open", on_command_click.clone(), segment.text)
-                                .into_any_element(),
-                            Some("new") => command("new", on_command_click.clone(), segment.text)
-                                .into_any_element(),
-                            _ => div().child(segment.text).into_any_element(),
-                        }),
-                ),
-        )
         .into_any_element()
 }

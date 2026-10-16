@@ -33,7 +33,7 @@ impl Shell {
         match action {
             HintAction::Command => self.open_palette(),
             HintAction::Search => self.start_search(cx),
-            HintAction::Help => self.nav.enter_mode(InputMode::Help),
+            HintAction::Help => self.open_help(cx),
             HintAction::ToggleRail => {
                 self.nav.toggle_primary_rail();
                 self.chrome.collapsed_rail_tooltip = None;

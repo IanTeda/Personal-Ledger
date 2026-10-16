@@ -11,10 +11,11 @@ mod settings;
 mod status;
 mod transactions;
 
+pub use crate::view::dashboard::state::DashboardBillSnapshot;
 pub use bills::{BillRowSnapshot, BillsSnapshot};
 pub use budgets::{BudgetRowSnapshot, BudgetsSnapshot};
 pub use documents::DocumentsSnapshot;
-pub use overlays::{DashboardBillSnapshot, ToastSnapshot, ToastsSnapshot};
+pub use overlays::{ToastSnapshot, ToastsSnapshot};
 pub use palette::PaletteSnapshot;
 pub use settings::{
     AccountFormSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,

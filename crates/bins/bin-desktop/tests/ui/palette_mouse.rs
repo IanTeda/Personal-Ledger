@@ -36,5 +36,5 @@ fn the_command_hint_does_nothing_outside_normal_mode(app: &mut TestAppContext) {
     ui.click("hint-command");
 
     assert_eq!(ui.read(|s| s.palette_snapshot()), None);
-    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Help);
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Dialog);
 }

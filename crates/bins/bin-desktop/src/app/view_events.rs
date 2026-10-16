@@ -58,6 +58,7 @@ impl Shell {
                 }
                 self.view_mode = None;
             }
+            ViewEvent::RunCommand(name) => self.handle_empty_state_command_click(name, cx),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
         }
     }

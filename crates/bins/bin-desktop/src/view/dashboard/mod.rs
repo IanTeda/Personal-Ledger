@@ -7,12 +7,18 @@
 //! shared rule (`bills::attention_entries`, #377), and the budget list, which reads the default
 //! Budget through `budgets::period_figures` (#411).
 
+pub mod state;
+
 use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px, relative};
 use gpui_component::chart::{LineChart, PieChart};
 
 use crate::{bills::EntryId, msg, theme::color};
+
+/// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
+/// name, which `Shell` looks up in `command::COMMANDS` and runs as the palette would.
+pub type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
 
 /// A Bill row's click: hands off to the Bills Schedule tab with that entry selected.
 pub type OnBillClick = Rc<dyn Fn(EntryId, &mut Window, &mut App)>;
@@ -660,6 +666,67 @@ fn bill_row(
                 .child(flag),
         )
         .child(text)
+}
+
+/// The "1a" cold-start empty state: "No ledger open" centered in the main pane, `:open`/`:new`
+/// named in the body copy (`docs/ux/desktop-mockups/01-shell/README.md`'s "Main pane"
+/// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
+/// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
+///
+/// Both command names are real click targets (issue #167), not just copy: clicking one lands
+/// in exactly the state running it from the palette would (this shell's own repeated invariant
+/// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
+pub(super) fn empty_state(
+    on_command_click: OnEmptyStateCommandClick,
+    cx: &App,
+) -> gpui::AnyElement {
+    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick, text: String| {
+        div()
+            .id(SharedString::from(format!("empty-state-{name}")))
+            .cursor_pointer()
+            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+            .text_color(color::foreground(cx))
+            .on_click(move |_event, window, cx| on_command_click(name, window, cx))
+            .child(text)
+    };
+
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(14.0))
+        .p(px(24.0))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(26.0))
+                .line_height(relative(1.1))
+                .child(msg::desktop_empty_state_title()),
+        )
+        .child(
+            div()
+                .max_w(px(380.0))
+                .flex()
+                .flex_wrap()
+                .justify_center()
+                .text_align(gpui::TextAlign::Center)
+                .text_size(px(13.0))
+                .text_color(color::muted(cx))
+                .children(
+                    msg::desktop_empty_state_hint(":open", ":new")
+                        .into_iter()
+                        .map(|segment| match segment.tag.as_deref() {
+                            Some("open") => command("open", on_command_click.clone(), segment.text)
+                                .into_any_element(),
+                            Some("new") => command("new", on_command_click.clone(), segment.text)
+                                .into_any_element(),
+                            _ => div().child(segment.text).into_any_element(),
+                        }),
+                ),
+        )
+        .into_any_element()
 }
 
 #[cfg(test)]

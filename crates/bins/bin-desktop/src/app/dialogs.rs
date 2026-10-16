@@ -2,6 +2,7 @@
 //! accessors. An `impl Shell` block, not the Dialog host itself (`chrome::dialog_host`).
 
 use super::Shell;
+use crate::navigation::nav::Noun;
 use crate::settings::categories::{
     apply::{CategoriesApply, CategoryOutcome},
     dialogs::CategoriesDialog,
@@ -23,6 +24,7 @@ use crate::settings::tracing::{
     apply::{TracingApply, TracingOutcome},
     dialogs::TracingDialog,
 };
+use crate::view::help::HelpDialog;
 use crate::{
     chrome::{
         dialog_apply::{self, Apply, DialogForm},
@@ -52,6 +54,24 @@ impl Shell {
     pub(super) fn open_dialog(&mut self, dialog: OpenDialog) {
         self.chrome.dialog = Some(dialog);
         self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Opens the Help Dialog over the active page, carrying the shortcuts that page adds to the
+    /// global ones.
+    pub(super) fn open_help(&mut self, cx: &mut Context<'_, Self>) {
+        let mut shortcuts = if self.nav.noun() == Noun::Settings {
+            self.views.settings.read(cx).cheat_sheet(cx)
+        } else {
+            Vec::new()
+        };
+        shortcuts.extend(self.documents_cheat_sheet(cx));
+        self.open_dialog(OpenDialog::Help(HelpDialog { shortcuts }));
+    }
+
+    /// Whether the Help Dialog is the open Dialog.
+    #[doc(hidden)]
+    pub fn help_open(&self) -> bool {
+        matches!(self.chrome.dialog, Some(OpenDialog::Help(_)))
     }
 
     /// Closes the Dialog host's Dialog, if one is open, without applying it.
@@ -161,7 +181,7 @@ impl Shell {
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
             // Read-only: it has nothing to apply.
-            Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
+            Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             None => {}
         }
     }

@@ -103,11 +103,7 @@ use crate::{
         SettingsPage,
         display::{DisplayPage, DisplayPreferences},
     },
-    view::format,
-    view::{
-        budgets::{self as budgets_view},
-        dashboard::{self},
-    },
+    view::dashboard::state::{DashboardSources, DashboardView},
 };
 use lib_categories::Category;
 
@@ -300,6 +296,17 @@ impl Shell {
         let budgets_subscription = Self::view_event_subscription(&budgets_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
+        let dashboard_view = cx.new(|cx| {
+            DashboardView::new(
+                DashboardSources {
+                    ledger: ledger.clone(),
+                },
+                today,
+                cx,
+            )
+        });
+        let dashboard_subscription = Self::view_event_subscription(&dashboard_view, cx);
+        let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
         let bills_view = cx.new(|cx| {
             BillsView::new(
                 BillsSources {
@@ -350,6 +357,7 @@ impl Shell {
             ledger,
             today,
             views: ViewEntities {
+                dashboard: dashboard_view,
                 bills: bills_view,
                 budgets: budgets_view,
                 transactions: transactions_view,
@@ -357,6 +365,8 @@ impl Shell {
                 settings: settings_view,
             },
             view_subscriptions: vec![
+                dashboard_subscription,
+                dashboard_view_observer,
                 accounts_subscription,
                 accounts_view_observer,
                 budgets_subscription,
@@ -536,6 +546,9 @@ impl Shell {
             display.row_density,
         );
         self.views
+            .dashboard
+            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
+        self.views
             .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
         self.views.transactions.update(cx, |view, cx| {
@@ -554,55 +567,6 @@ impl Shell {
 
     fn scroll_view(&mut self, movement: Movement) {
         crate::view::scroll_by_movement(&self.view_scroll_handle, movement);
-    }
-
-    /// The Dashboard's budget list, worded from the default Budget's current-month figures.
-    fn dashboard_budget_list(
-        &self,
-        figures: &budgets::PeriodFigures,
-        cx: &App,
-    ) -> dashboard::BudgetList {
-        use bigdecimal::{ToPrimitive, Zero};
-        let bars = budgets::dashboard_bars(figures, self.categories(cx))
-            .into_iter()
-            .map(|bar| dashboard::BudgetBar {
-                category: self
-                    .categories(cx)
-                    .iter()
-                    .find(|category| category.id == bar.category_id)
-                    .map(|category| category.name.clone())
-                    .unwrap_or_default(),
-                figures: crate::msg::desktop_budgets_history_pair(
-                    &format::amount(&bar.spent).1,
-                    &format::amount(&bar.budget).1,
-                ),
-                // A 0.00 budget is full as soon as anything is spent against it.
-                fraction: if bar.budget.0.is_zero() {
-                    if bar.over { 1.0 } else { 0.0 }
-                } else {
-                    (bar.spent.0.clone() / bar.budget.0.clone())
-                        .to_f32()
-                        .unwrap_or(0.0)
-                },
-                over: bar.over,
-            })
-            .collect();
-        dashboard::BudgetList {
-            period: crate::msg::desktop_dashboard_budgets_period(
-                &budgets_view::period_label(figures.month),
-                &figures.elapsed.day.to_string(),
-                &figures.elapsed.days_in_month.to_string(),
-                &figures.elapsed.percent.to_string(),
-            ),
-            elapsed: figures.elapsed.percent as f32 / 100.0,
-            bars,
-        }
-    }
-
-    /// The help overlay's own Close button.
-    fn handle_help_close(&mut self, cx: &mut Context<'_, Self>) {
-        self.nav.exit_mode();
-        cx.notify();
     }
 }
 

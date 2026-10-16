@@ -84,7 +84,7 @@ impl Shell {
             }
         };
         match view {
-            ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
+            ShellView::Placeholder(_) => self.scroll_view(movement),
         }
     }
 }
