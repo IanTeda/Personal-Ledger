@@ -1,104 +1,32 @@
-//! The **Data & backup** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
-//! 300px column of label/value rows (Store location, Last backup), then two buttons -- **Backup
-//! now** and **Export ledger (CSV)** -- same plain, unbordered row shape as
-//! `settings::sync_server` (a distinct component from `general::summary_panel`'s bordered
-//! rows, per that module's own doc).
-//!
-//! Both buttons are permanently out of scope for this map (the map's own Out-of-scope: stand-in
-//! handlers with no real effect) rather than "not yet built" behind a future ticket -- so, like
-//! `sync_server::sync_now_button`, their stub status-line messages name no issue.
+//! The Settings › Data & backup page (ADR-0037's amendment, one folder per page): a read-only column
+//! of label/value rows and two stand-in buttons. [`DataBackupPage`] renders itself (`render.rs`).
+//! Both buttons are permanently out of scope for this map, so a click only says so on the status
+//! line, as [`ViewEvent::SetStatus`].
 
-use std::rc::Rc;
+mod render;
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{Context, EventEmitter};
 
-use crate::theme::color;
+use crate::view::event::ViewEvent;
 
-pub type OnBackupNowClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnExportLedgerClick = Rc<dyn Fn(&mut Window, &mut App)>;
+impl EventEmitter<ViewEvent> for DataBackupPage {}
 
-const COLUMN_WIDTH: gpui::Pixels = px(300.0);
+/// The Data & backup page. It holds no state: the values it shows are the mockup's own.
+#[derive(Debug, Default)]
+pub struct DataBackupPage;
 
-pub fn render(
-    on_backup_now_click: OnBackupNowClick,
-    on_export_ledger_click: OnExportLedgerClick,
-    cx: &App,
-) -> AnyElement {
-    div()
-        .w(COLUMN_WIDTH)
-        .flex_none()
-        .flex()
-        .flex_col()
-        .gap(px(12.0))
-        .child(row(
-            crate::msg::desktop_settings_backup_location(),
-            "~/.ledger/personal",
-            px(11.0),
-            cx,
-        ))
-        .child(row(
-            crate::msg::desktop_settings_backup_last(),
-            "12 sep 2026 \u{b7} 23:10",
-            px(12.0),
-            cx,
-        ))
-        .child(button(
-            "settings-backup-now",
-            crate::msg::desktop_settings_backup_now(),
-            true,
-            move |window, cx| on_backup_now_click(window, cx),
-            cx,
-        ))
-        .child(button(
-            "settings-export-ledger",
-            crate::msg::desktop_settings_backup_export(),
-            false,
-            move |window, cx| on_export_ledger_click(window, cx),
-            cx,
-        ))
-        .into_any_element()
-}
+impl DataBackupPage {
+    /// "Backup now" has nothing behind it, and says so on the status line.
+    fn click_backup_now(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(ViewEvent::SetStatus(Some(
+            crate::msg::desktop_status_backup_now_not_implemented(),
+        )));
+    }
 
-fn row(label: String, value: &'static str, value_size: gpui::Pixels, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .justify_between()
-        .items_center()
-        .py(px(8.0))
-        .child(div().text_color(color::muted(cx)).child(label))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(value_size)
-                .child(value),
-        )
-}
-
-/// A section button: `padding:8px 16px; border:1px solid rgba(32,30,29,.30);
-/// background:#eae9e9; font-weight:800` -- `top_gap` adds the mockup's own `margin-top:8px` on
-/// the first button only; the second relies on the column's own `gap:12px` alone, matching the
-/// raw markup exactly (no inline margin on "Export ledger (CSV)").
-fn button(
-    id: &'static str,
-    label: String,
-    top_gap: bool,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> impl IntoElement {
-    let mut button = div()
-        .id(id)
-        .debug_selector(|| id.to_string())
-        .cursor_pointer()
-        .when(top_gap, |this| this.mt(px(8.0)))
-        .py(px(8.0))
-        .px(px(16.0))
-        .bg(color::chrome(cx))
-        .border_1()
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(label);
-    button.style().align_self = Some(gpui::AlignItems::FlexStart);
-    button
+    /// "Export ledger (CSV)" has nothing behind it, and says so on the status line.
+    fn click_export_ledger(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(ViewEvent::SetStatus(Some(
+            crate::msg::desktop_status_export_ledger_not_implemented(),
+        )))
+    }
 }

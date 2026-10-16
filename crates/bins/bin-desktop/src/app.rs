@@ -68,6 +68,7 @@ use crate::ledger_store::{LedgerStore, notify_on};
 use crate::settings::institutions::InstitutionsPage;
 use crate::settings::state::{SettingsSources, SettingsView};
 use crate::settings::units::UnitsPage;
+use crate::settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage};
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
@@ -227,12 +228,20 @@ impl Shell {
         let units_page_subscription = Self::view_event_subscription(&units_page, cx);
         let institutions_page = cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx));
         let institutions_page_subscription = Self::view_event_subscription(&institutions_page, cx);
+        let sync_server_page = cx.new(|_| SyncServerPage);
+        let sync_server_page_subscription = Self::view_event_subscription(&sync_server_page, cx);
+        let data_backup_page = cx.new(|_| DataBackupPage);
+        let data_backup_page_subscription = Self::view_event_subscription(&data_backup_page, cx);
+        let about_page = cx.new(|_| AboutPage);
         // A private, empty capture until `set_log_capture` hands over the real one.
         let settings_view = cx.new(|cx| {
             SettingsView::new(
                 SettingsSources {
                     display: display_page,
                     institutions: institutions_page,
+                    sync_server: sync_server_page,
+                    data_backup: data_backup_page,
+                    about: about_page,
                     units: units_page,
                     accounts: accounts_view,
                     categories: categories_page,
@@ -372,6 +381,8 @@ impl Shell {
                 display_page_observer,
                 institutions_subscription,
                 institutions_page_subscription,
+                sync_server_page_subscription,
+                data_backup_page_subscription,
                 inventory_subscription,
                 categories_page_subscription,
                 categories_page_observer,

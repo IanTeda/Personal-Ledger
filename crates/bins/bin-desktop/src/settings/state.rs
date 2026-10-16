@@ -39,6 +39,7 @@ use crate::{
         step_choice,
         tracing_log::{LogChange, LogView, TracingLevel},
     },
+    settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage},
     view::event::{Reveal, ViewEvent},
 };
 use gpui::{
@@ -52,6 +53,9 @@ impl EventEmitter<ViewEvent> for SettingsView {}
 pub struct SettingsSources {
     pub display: Entity<DisplayPage>,
     pub institutions: Entity<InstitutionsPage>,
+    pub sync_server: Entity<SyncServerPage>,
+    pub data_backup: Entity<DataBackupPage>,
+    pub about: Entity<AboutPage>,
     pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsPage>,
     pub categories: Entity<CategoriesPage>,
@@ -623,12 +627,6 @@ impl SettingsView {
                 true
             }
         }
-    }
-
-    /// The buttons with no dialog or behaviour yet (Sync now, Backup now, Export
-    /// ledger) say so on the status line.
-    pub(super) fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
-        cx.emit(ViewEvent::SetStatus(Some(message)));
     }
 
     // -----------------------------------------------------------------------------------------

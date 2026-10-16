@@ -3,7 +3,7 @@
 //! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 
-mod about;
+pub mod about;
 pub mod accounts;
 pub(crate) mod apply;
 pub mod categories;
@@ -112,6 +112,9 @@ impl Render for SettingsView {
         let display = self.sources().display.clone();
         let units = self.sources().units.clone();
         let institutions = self.sources().institutions.clone();
+        let sync_server = self.sources().sync_server.clone();
+        let data_backup = self.sources().data_backup.clone();
+        let about = self.sources().about.clone();
         let (meta, content) = match self.data_page.take() {
             Some(page) => (page.meta, page.content),
             None if selected == SettingsPage::Accounts => (
@@ -143,6 +146,18 @@ impl Render for SettingsView {
             None if selected == SettingsPage::Institutions => (
                 institutions.read(cx).scope_note(cx).into_any_element(),
                 institutions.into_any_element(),
+            ),
+            None if selected == SettingsPage::SyncServer => (
+                self.scope_note().into_any_element(),
+                sync_server.into_any_element(),
+            ),
+            None if selected == SettingsPage::DataBackup => (
+                self.scope_note().into_any_element(),
+                data_backup.into_any_element(),
+            ),
+            None if selected == SettingsPage::About => (
+                self.scope_note().into_any_element(),
+                about.into_any_element(),
             ),
             None => (
                 self.scope_note().into_any_element(),
@@ -207,36 +222,9 @@ impl SettingsView {
             let entity = entity.clone();
             Rc::new(move |_window, cx| entity.update(cx, act))
         }
-        // As `plain`, for a button with nothing behind it yet: it says so on the status line.
-        fn stub(entity: &Entity<SettingsView>, message: fn() -> String) -> OnPlain {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| entity.update(cx, |view, cx| view.not_built(message(), cx)))
-        }
-        // As `stub`, for a row's button, whose row it ignores.
-        fn row_stub(entity: &Entity<SettingsView>, message: fn() -> String) -> OnValue<usize> {
-            let entity = entity.clone();
-            Rc::new(move |_index, _window, cx| {
-                entity.update(cx, |view, cx| view.not_built(message(), cx))
-            })
-        }
 
         match self.selected_section() {
             SettingsPage::General => general::render(cx),
-            SettingsPage::SyncServer => sync_server::render(
-                stub(entity, crate::msg::desktop_status_sync_now_not_implemented),
-                cx,
-            ),
-            SettingsPage::DataBackup => data_backup::render(
-                stub(
-                    entity,
-                    crate::msg::desktop_status_backup_now_not_implemented,
-                ),
-                stub(
-                    entity,
-                    crate::msg::desktop_status_export_ledger_not_implemented,
-                ),
-                cx,
-            ),
             SettingsPage::Tracing => tracing::render(
                 &tracing::LogBoxProps {
                     level: self.log().level(),
@@ -248,13 +236,16 @@ impl SettingsView {
                 plain(entity, SettingsView::click_clear_logs),
                 cx,
             ),
-            SettingsPage::About => about::render(cx),
-            // Accounts, Categories, Payees, Tags, Display, Units and Institutions draw themselves;
+            // Accounts, Categories, Payees, Tags, Display, Units, Institutions, Sync server, Data
+            // & backup and About draw themselves;
             // `Shell` hands the rest in as a `DataPage`, and a frame without one draws nothing there.
             SettingsPage::Accounts
             | SettingsPage::Display
             | SettingsPage::Units
             | SettingsPage::Institutions
+            | SettingsPage::SyncServer
+            | SettingsPage::DataBackup
+            | SettingsPage::About
             | SettingsPage::Categories
             | SettingsPage::Payees
             | SettingsPage::Tags
