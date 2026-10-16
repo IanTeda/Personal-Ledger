@@ -1,10 +1,9 @@
-//! The **Property** (#494) and **Room** (#495) dialogs' drafts and the Inventory Dialog enum: the
-//! typed text of every field, the focus between them and the checks that turn it into an
-//! [`inventory::PropertyDraft`]. `gpui`-free, so each rule is unit-tested without a window; the
+//! The **Property** (#494) and **Room** (#495) dialogs' drafts: the typed text of every field, the
+//! focus between them and the checks that turn it into an [`inventory::PropertyDraft`]. `gpui`-free, so each rule is unit-tested without a window; the
 //! model's own rules (unique name, the cover's amounts) stay in `inventory` and this module only
 //! words them per field.
 //!
-//! Everything a check needs from `Shell` (the Inventory, today, the date style, the fiat Units) is
+//! Everything a check needs from the page (the Inventory, today, the date style, the fiat Units) is
 //! copied in when the Dialog opens, so no form reaches back into it.
 //!
 //! An empty Insurer means no cover, and emptying it clears the other four cover fields.
@@ -22,68 +21,6 @@ use crate::{
     },
     transactions::filter_form::parse_date,
 };
-
-/// The dialog open over Settings › Inventory: Property and Room dialogs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InventoryDialog {
-    Add(PropertyForm),
-    Edit(u32, PropertyForm),
-    /// The Property and the name typed so far, which only a Property holding something asks for.
-    Remove(u32, RemovePropertyForm),
-    /// Add room to the Property.
-    AddRoom(u32, RoomForm),
-    EditRoom(u32, RoomForm),
-    /// The Room, and the chosen destination for its Items (unused while it is empty).
-    RemoveRoom(u32, RemoveRoomForm),
-    /// The Room is its Property's last and holds Items.
-    RoomBlocked(u32),
-}
-
-impl InventoryDialog {
-    fn inner(&self) -> Option<&dyn Dialog> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Remove(_, form) => Some(form),
-            Self::AddRoom(_, form) | Self::EditRoom(_, form) => Some(form),
-            Self::RemoveRoom(_, form) => Some(form),
-            Self::RoomBlocked(_) => None,
-        }
-    }
-
-    fn inner_mut(&mut self) -> Option<&mut dyn Dialog> {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Remove(_, form) => Some(form),
-            Self::AddRoom(_, form) | Self::EditRoom(_, form) => Some(form),
-            Self::RemoveRoom(_, form) => Some(form),
-            Self::RoomBlocked(_) => None,
-        }
-    }
-}
-
-impl Dialog for InventoryDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        self.inner_mut()?.handle_own_key(key)
-    }
-
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        self.inner_mut()?.focused_text()
-    }
-
-    fn cycle_field(&mut self) {
-        if let Some(inner) = self.inner_mut() {
-            inner.cycle_field();
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        self.inner().is_none_or(Dialog::is_valid)
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        self.inner_mut().is_some_and(Dialog::close_open_select)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropertyField {
@@ -127,7 +64,7 @@ impl Problem {
     }
 }
 
-/// What the Property form checks against, copied from `Shell` when the Dialog opens.
+/// What the Property form checks against, copied from the page when the Dialog opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PropertyContext {
     pub inventory: Inventory,
@@ -734,6 +671,7 @@ pub fn suggestions(inventory: &Inventory, typed: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::inventory::dialogs::InventoryDialog;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()
@@ -755,7 +693,7 @@ mod tests {
         }
     }
 
-    /// An Add form with the AUD Unit picked, as `Shell` opens it.
+    /// An Add form with the AUD Unit picked, as the page opens it.
     fn add_form() -> PropertyForm {
         PropertyForm::for_add(Some("AUD".to_string()), context())
     }

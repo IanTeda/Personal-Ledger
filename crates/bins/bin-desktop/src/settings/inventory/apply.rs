@@ -1,20 +1,17 @@
 //! The Inventory Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Inventory store, and against the Ledger for the Document
-//! Links a removed Property drops.
+//! [`Apply`] that runs it against the Ledger, which also drops the Document Links a removed
+//! Property's Items had.
 
 use gpui::{App, Entity};
-use lib_inventory::{PropertyDraft, PropertyError, RoomError};
+use lib_inventory::{Inventory, PropertyDraft, PropertyError, RoomError};
 use lib_ledger::{AddProperty, AddRoom, EditProperty, EditRoom, RemoveProperty, RemoveRoom};
+use lib_toast::ToastKind;
 
-use super::{
-    InventoryStore,
-    form::{InventoryDialog, Problem},
-};
+use super::{InventoryRow, dialogs::InventoryDialog, form::Problem};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     chrome::dialog_host::Dialog,
     ledger_store::LedgerStore,
-    settings::inventory::InventoryRow,
 };
 
 /// What confirming an Inventory Dialog asks for.
@@ -79,6 +76,42 @@ pub enum InventoryOutcome {
     Dismissed,
 }
 
+impl InventoryOutcome {
+    /// The Toast a landed command raises; the Room-blocked notice raises none.
+    pub fn toast(&self) -> Option<(ToastKind, String)> {
+        let message = match self {
+            Self::PropertyAdded { name, .. } => {
+                crate::msg::desktop_inventory_toast_property_added(name)
+            }
+            Self::PropertySaved { name, .. } => {
+                crate::msg::desktop_inventory_toast_property_saved(name)
+            }
+            Self::PropertyRemoved { name, .. } => {
+                crate::msg::desktop_inventory_toast_property_removed(name)
+            }
+            Self::RoomAdded { name, .. } => crate::msg::desktop_inventory_toast_room_added(name),
+            Self::RoomSaved { name, .. } => crate::msg::desktop_inventory_toast_room_saved(name),
+            Self::RoomRemoved {
+                name,
+                items,
+                destination,
+                ..
+            } => match destination {
+                Some(to) if *items > 0 => crate::msg::desktop_inventory_toast_room_removed_moved(
+                    name,
+                    &crate::msg::desktop_inventory_count_items(
+                        i64::try_from(*items).unwrap_or(i64::MAX),
+                    ),
+                    to,
+                ),
+                _ => crate::msg::desktop_inventory_toast_room_removed(name),
+            },
+            Self::Dismissed => return None,
+        };
+        Some((ToastKind::Success, message))
+    }
+}
+
 /// Why an Inventory command didn't land. The forms check the same rules live, so this only
 /// happens when the Property or Room was removed while its Dialog was open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,11 +160,16 @@ impl DialogForm for InventoryDialog {
     fn refuse(&mut self, _refusal: InventoryRefusal) {}
 }
 
-/// Runs [`InventoryCommand`]s against the Inventory store, dropping the Document Links of a
-/// removed Property's Items through the Ledger.
+/// Runs [`InventoryCommand`]s against the Ledger as Ledger commands. Removing a Property drops the
+/// Document Links of its Items in the same command.
 pub struct InventoryApply {
-    pub inventory: Entity<InventoryStore>,
     pub ledger: Entity<LedgerStore>,
+}
+
+impl InventoryApply {
+    fn inventory<'a>(&self, cx: &'a App) -> &'a Inventory {
+        self.ledger.read(cx).ledger().inventory()
+    }
 }
 
 impl Apply<InventoryCommand> for InventoryApply {
@@ -168,7 +206,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 Ok(InventoryOutcome::PropertySaved { id, name })
             }
             InventoryCommand::RemoveProperty(id) => {
-                let inventory = self.inventory.read(cx).inventory(cx);
+                let inventory = self.inventory(cx);
                 let name = inventory
                     .property(id)
                     .map(|property| property.name.clone())
@@ -183,7 +221,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 self.ledger
                     .update(cx, |store, cx| store.apply(cx, RemoveProperty(id)))
                     .map_err(InventoryRefusal::Property)?;
-                let properties = &self.inventory.read(cx).inventory(cx).properties;
+                let properties = &self.inventory(cx).properties;
                 let selected = properties
                     .get(position.min(properties.len().saturating_sub(1)))
                     .map(|property| InventoryRow::Property(property.id));
@@ -219,7 +257,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 Ok(InventoryOutcome::RoomSaved { id, name })
             }
             InventoryCommand::RemoveRoom { id, destination } => {
-                let inventory = self.inventory.read(cx).inventory(cx);
+                let inventory = self.inventory(cx);
                 let (property, room) = inventory
                     .room(id)
                     .ok_or(InventoryRefusal::Room(RoomError::UnknownRoom))?;
@@ -251,8 +289,6 @@ impl Apply<InventoryCommand> for InventoryApply {
                     .map_err(InventoryRefusal::Room)?;
                 // The cursor lands on the Room that takes the removed row's place, else the Property.
                 let rooms = self
-                    .inventory
-                    .read(cx)
                     .inventory(cx)
                     .property(property_id)
                     .map(|property| property.rooms.as_slice())
@@ -276,7 +312,7 @@ impl Apply<InventoryCommand> for InventoryApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -292,14 +328,13 @@ mod tests {
                 ..LedgerParts::default()
             },
         );
-        let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
-        InventoryApply { inventory, ledger }
+        InventoryApply { ledger }
     }
 
     #[gpui::test]
     fn removing_a_property_selects_its_neighbour(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let first = cx.read(|cx| apply.inventory.read(cx).inventory(cx).properties[0].id);
+        let first = cx.read(|cx| apply.inventory(cx).properties[0].id);
         let outcome = cx
             .update(|cx| apply.apply(InventoryCommand::RemoveProperty(first), cx))
             .expect("the seeded Property exists");

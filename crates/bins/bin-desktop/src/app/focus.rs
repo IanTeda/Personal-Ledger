@@ -6,7 +6,6 @@ use crate::{
     chrome::rail as chrome_rail,
     navigation::key_router::Movement,
     navigation::nav::FocusZone,
-    settings::SettingsPage,
     view::active::{ActiveViewEntity, ShellView},
 };
 
@@ -80,34 +79,12 @@ impl Shell {
         let view = match self.active_view_entity(cx) {
             ActiveViewEntity::Shell(view) => view,
             view => {
-                if !self.apply_settings_data_page_movement(movement, cx) {
-                    view.apply_movement(movement, cx);
-                }
+                view.apply_movement(movement, cx);
                 return;
             }
         };
         match view {
             ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }
-    }
-
-    /// Movement on a Settings page with Ledger data, which `Shell` still drives until the page
-    /// moves into the Settings View. `false` when no such page has focus.
-    fn apply_settings_data_page_movement(
-        &mut self,
-        movement: Movement,
-        cx: &mut gpui::Context<'_, Self>,
-    ) -> bool {
-        let focused = |section| self.settings_data_page_has_focus(section, cx);
-        let section = [SettingsPage::Inventory]
-            .into_iter()
-            .find(|section| focused(*section));
-        match section {
-            Some(SettingsPage::Inventory) => {
-                self.apply_settings_inventory_movement(movement, cx);
-            }
-            _ => return false,
-        }
-        true
     }
 }

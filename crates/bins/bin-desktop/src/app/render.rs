@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 use crate::settings as settings_view;
 use crate::settings::institutions::dialogs::{InstitutionsDialog, InstitutionsDialogHandlers};
-use crate::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandlers};
 use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
 
 use gpui::{
@@ -45,8 +45,8 @@ use crate::{
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
     period::Period,
+    settings::SettingsDialog,
     settings::accounts::dialogs::AccountsDialog,
-    settings::{SettingsDialog, SettingsFocus},
     theme::{color, type_scale},
     view::format,
     view::{
@@ -355,43 +355,6 @@ impl Render for Shell {
                 on_confirm: on_settings_dialog_confirm.clone(),
             }
         };
-        let inventory_row_click =
-            |handler: fn(&mut Shell, InventoryRow, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: inventory_view::OnRowClick = Rc::new(move |row, _window, cx| {
-                    entity.update(cx, |shell, cx| handler(shell, row, cx));
-                });
-                on_click
-            };
-        let inventory_property_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: inventory_view::OnPropertyClick = Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| handler(shell, id, cx));
-            });
-            on_click
-        };
-        let settings_inventory_page = inventory_view::InventoryPageProps {
-            inventory: self.inventory(cx),
-            expanded: self.views.settings.read(cx).inventory_expanded(),
-            selected: self.settings_inventory_selected_row(cx),
-            on_add_property_click: {
-                let entity = entity.clone();
-                Rc::new(move |_window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_settings_inventory_add_property_click(cx)
-                    });
-                })
-            },
-            on_add_room_click: inventory_property_click(
-                Shell::handle_settings_inventory_add_room_click,
-            ),
-            on_toggle_click: inventory_property_click(
-                Shell::handle_settings_inventory_toggle_click,
-            ),
-            on_row_click: inventory_row_click(Shell::handle_settings_inventory_row_click),
-            on_edit_click: inventory_row_click(Shell::handle_settings_inventory_edit_click),
-            on_remove_click: inventory_row_click(Shell::handle_settings_inventory_remove_click),
-        };
         let plain_tags = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -572,23 +535,62 @@ impl Render for Shell {
             on_cancel: on_categories_dialog_cancel,
             on_confirm: on_categories_dialog_confirm,
         };
-
-        // The Settings pages with Ledger data are still drawn here, and handed to the Settings
-        // View for this frame.
-        let settings_data_page = {
-            let settings = self.views.settings.read(cx);
-            settings_view::data_page(
-                settings.selected_section(),
-                focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
-                &settings_view::DataPageProps {
-                    inventory: settings_inventory_page,
-                },
-                cx,
-            )
+        let inventory_dialog_handlers = {
+            // A click that runs `change` on the open Inventory dialog.
+            let edit = |change: fn(&mut InventoryDialog)| {
+                let entity = entity.clone();
+                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                    entity.update(cx, |shell, cx| shell.edit_dialog(cx, change));
+                });
+                on_click
+            };
+            // As `edit`, for a click on an option of one of its selects.
+            let choose = |change: fn(&mut InventoryDialog, usize)| {
+                let entity = entity.clone();
+                let on_click: crate::form::select_field::OnOptionClick =
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
+                                change(dialog, index)
+                            });
+                        });
+                    });
+                on_click
+            };
+            let on_field_click: crate::settings::inventory::dialogs::property::OnFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
+                            dialog.click_field(field)
+                        });
+                    });
+                })
+            };
+            let on_suggestion_click: crate::settings::inventory::dialogs::property::OnSuggestionClick = {
+                let entity = entity.clone();
+                Rc::new(move |insurer, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
+                            dialog.click_suggestion(&insurer)
+                        });
+                    });
+                })
+            };
+            InventoryDialogHandlers {
+                on_field_click,
+                on_suggestion_click,
+                on_unit_field_click: edit(InventoryDialog::click_unit_field),
+                on_unit_option_click: choose(InventoryDialog::click_unit_option),
+                // The Room form has one field, already focused: a click only repaints.
+                on_room_name_click: edit(|_| {}),
+                on_destination_field_click: edit(InventoryDialog::click_destination_field),
+                on_destination_option_click: choose(InventoryDialog::click_destination_option),
+                on_cancel: on_settings_dialog_cancel.clone(),
+                on_confirm: on_settings_dialog_confirm.clone(),
+            }
         };
-        self.views
-            .settings
-            .update(cx, |view, _| view.set_data_page(settings_data_page));
+
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
         let active_element = active_entity.element(focus == FocusZone::View, cx);
@@ -812,7 +814,14 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(self.render_inventory_dialog(&entity, cx))
+            .children(self.dialog::<InventoryDialog>().and_then(|dialog| {
+                dialog.render(
+                    self.ledger.read(cx).ledger().inventory(),
+                    self.documents(cx),
+                    inventory_dialog_handlers,
+                    cx,
+                )
+            }))
             .children(self.dialog::<TagsDialog>().and_then(|dialog| {
                 dialog.render(
                     self.ledger.read(cx).ledger().tags(),

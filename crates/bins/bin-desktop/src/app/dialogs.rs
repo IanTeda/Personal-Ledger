@@ -7,6 +7,7 @@ use crate::settings::documents::{
     apply::{DocumentTypeOutcome, DocumentTypesApply},
     dialogs::DocumentTypesDialog,
 };
+use crate::settings::inventory::{InventoryPage, apply::InventoryApply, dialogs::InventoryDialog};
 use crate::settings::payees::PayeesPage;
 use crate::settings::tags::{
     TagsPage,
@@ -111,7 +112,19 @@ impl Shell {
                     Some(DocumentTypeOutcome::Dismissed) | None => {}
                 }
             }
-            Some(OpenDialog::Inventory(_)) => self.confirm_inventory_dialog(cx),
+            Some(OpenDialog::Inventory(_)) => {
+                let mut apply = InventoryApply {
+                    ledger: self.ledger.clone(),
+                };
+                // The page selects and opens what the Dialog left the cursor on.
+                if let Some(outcome) = self.confirm_dialog::<InventoryDialog, _>(&mut apply, cx) {
+                    self.inventory_page(cx)
+                        .update(cx, |page, cx| page.land(&outcome, cx));
+                    if let Some((kind, message)) = outcome.toast() {
+                        self.raise_toast(kind, message);
+                    }
+                }
+            }
             Some(OpenDialog::Tags(_)) => {
                 let mut apply = TagsApply {
                     ledger: self.ledger.clone(),
@@ -149,6 +162,11 @@ impl Shell {
     /// The Document Types page's Entity, which the Settings View owns.
     pub(super) fn documents_page(&self, cx: &gpui::App) -> gpui::Entity<DocumentsPage> {
         self.views.settings.read(cx).documents().clone()
+    }
+
+    /// The Inventory page's Entity, which the Settings View owns.
+    pub(super) fn inventory_page(&self, cx: &gpui::App) -> gpui::Entity<InventoryPage> {
+        self.views.settings.read(cx).inventory().clone()
     }
 
     /// The Tags page's Entity, which the Settings View owns.

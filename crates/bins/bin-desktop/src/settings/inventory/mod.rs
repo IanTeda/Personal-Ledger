@@ -1,44 +1,48 @@
-//! The **Inventory** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16q, as settled on #491): a
-//! kicker with **+ Add property** over one bordered table of Properties in creation order. An
-//! expanded Property shows its Rooms in a sub-table that ends in a clickable **+ Add room** row.
+//! The **Inventory** Settings page (ADR-0037, and its amendment's one folder per page):
+//! `SettingsPage::Inventory`, the Ledger's Properties and, under each open one, its Rooms.
+//! [`InventoryPage`] reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its
+//! keys and movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through
+//! [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms them through `apply.rs`. The
+//! Settings View forwards to it while the page is open.
 //!
-//! Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
-//! handlers. Selection is one flat list over the visible Property and Room rows; **+ Add room**
-//! is never part of it.
+//! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
+//! page: both read the `gpui`-free model through `crate::inventory`, a re-export of
+//! `lib_inventory`.
+//!
+//! Selection is one flat list over the visible Property and Room rows; **+ Add room** is never
+//! part of it.
 
-use std::{collections::HashSet, rc::Rc};
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+pub(crate) mod render;
 
-use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_core::{Money, UnitKind};
-use lib_locale::format::{Unit, format_money, upper};
+use std::collections::HashSet;
+
+use chrono::NaiveDate;
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_core::{DateStyle, UnitKind};
+use lib_ledger::{Domain, MoveRoom};
+use lib_toast::ToastKind;
 
 use crate::{
-    inventory::{Inventory, Property},
-    theme::color,
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    inventory::{self, Inventory},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::Movement,
+    settings::hints::settings_inventory_hints,
+    view::event::ViewEvent,
 };
-
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnPropertyClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
-pub type OnRowClick = Rc<dyn Fn(InventoryRow, &mut Window, &mut App)>;
+use apply::InventoryOutcome;
+use dialogs::InventoryDialog;
+use form::{PropertyContext, PropertyForm, RemovePropertyForm, RemoveRoomForm, RoomForm};
+pub use render::scope_text;
 
 /// One selectable row: a Property, or a Room of an expanded Property.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRow {
     Property(u32),
     Room(u32),
-}
-
-pub struct InventoryPageProps<'a> {
-    pub inventory: &'a Inventory,
-    /// The Properties shown open.
-    pub expanded: &'a HashSet<u32>,
-    pub selected: Option<InventoryRow>,
-    pub on_add_property_click: OnPlainClick,
-    pub on_add_room_click: OnPropertyClick,
-    pub on_toggle_click: OnPropertyClick,
-    pub on_row_click: OnRowClick,
-    pub on_edit_click: OnRowClick,
-    pub on_remove_click: OnRowClick,
 }
 
 /// The rows `j`/`k` walk, in screen order: each Property, then its Rooms when it is expanded.
@@ -53,539 +57,583 @@ pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<u32>) -> Vec<Inven
     rows
 }
 
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
+impl EventEmitter<ViewEvent> for InventoryPage {}
+
+/// Emitted when a click lands on the page, so the Settings View, which owns the page's focus,
+/// moves it from the index into the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowClicked;
+
+impl EventEmitter<RowClicked> for InventoryPage {}
+
+/// The Inventory page's own state: the row under the cursor and the Properties shown open.
+pub struct InventoryPage {
+    ledger: Entity<LedgerStore>,
+    /// The date a Property's Renews on is checked against.
+    today: NaiveDate,
+    /// How a typed Renews on is read, told by `Shell` with the other Display Preferences.
+    date_style: Option<DateStyle>,
+    /// It may name a row that is gone or hidden, so read it through [`Self::selected_row`].
+    selected: Option<InventoryRow>,
+    expanded: HashSet<u32>,
+    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
+    /// draws the page.
+    pub(crate) page_focused: bool,
+    /// Repaints the page when the Inventory its rows read changes, or the Units its amounts are
+    /// in.
+    _inventory_changed: Subscription,
+    _units_changed: Subscription,
 }
 
-/// The heading's meta as plain text, for the status line: `2 properties · 11 rooms · 232 items`.
-pub fn scope_text(inventory: &Inventory) -> String {
-    crate::msg::desktop_inventory_scope(
-        &crate::msg::desktop_inventory_count_properties(count(inventory.property_count())),
-        &crate::msg::desktop_inventory_count_rooms(count(inventory.room_count())),
-        &crate::msg::desktop_inventory_count_items(count(inventory.item_count())),
-    )
-}
+impl InventoryPage {
+    pub fn new(ledger: Entity<LedgerStore>, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+        let _inventory_changed = notify_on(&ledger, Domain::Inventory, cx);
+        let _units_changed = notify_on(&ledger, Domain::Units, cx);
+        Self {
+            ledger,
+            today,
+            date_style: None,
+            selected: None,
+            expanded: HashSet::new(),
+            page_focused: false,
+            _inventory_changed,
+            _units_changed,
+        }
+    }
 
-/// An amount in the Property's own Unit.
-fn money(property: &Property, amount: &Money) -> String {
-    let code = property.unit.to_uppercase();
-    format_money(amount, &Unit::new(&code, &UnitKind::Fiat, 2))
-}
+    pub(crate) fn inventory<'a>(&self, cx: &'a App) -> &'a Inventory {
+        self.ledger.read(cx).ledger().inventory()
+    }
 
-/// The Policy cell: the insurer and, when it has one, the policy number.
-fn policy_text(property: &Property) -> Option<String> {
-    property.cover.as_ref().map(|cover| match &cover.policy_no {
-        Some(number) => format!("{} {number}", cover.insurer),
-        None => cover.insurer.clone(),
-    })
-}
+    pub fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
 
-pub fn render(props: &InventoryPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
-    let table =
-        if props.inventory.properties.is_empty() {
-            div()
-                .mb(px(16.0))
-                .px(px(14.0))
-                .py(px(14.0))
-                .border_1()
-                .border_color(color::border(cx))
-                .text_size(px(12.5))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_inventory_empty())
-        } else {
-            let last = props.inventory.properties.len() - 1;
-            div()
-                .flex()
-                .flex_col()
-                .border_1()
-                .border_color(color::border(cx))
-                .mb(px(16.0))
-                .child(table_header(cx))
-                .children(props.inventory.properties.iter().enumerate().map(
-                    |(position, property)| {
-                        property_block(property, position == last, focused, props, cx)
-                    },
-                ))
+    pub fn set_date_style(&mut self, date_style: Option<DateStyle>) {
+        self.date_style = date_style;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page is open (ADR-0037)
+    // -----------------------------------------------------------------------------------------
+
+    /// `J`/`K` move the selected Room a place within its Property (inert on a Property row), and
+    /// `left` closes an open Property or climbs from a Room to it. The router and Settings' focus
+    /// keys would otherwise take them, so the page claims them ahead of both; a `left` with
+    /// nothing to close or climb is left to Settings, which steps back to the index.
+    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform {
+            return false;
+        }
+        if modifiers.shift {
+            let delta = match keystroke.key.as_str() {
+                "j" => 1,
+                "k" => -1,
+                _ => return false,
+            };
+            // A Room already at the end of its Property stays put.
+            if let Some(InventoryRow::Room(room)) = self.selected_row(cx) {
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, MoveRoom { room, delta }))
+                    .ok();
+            }
+            return true;
+        }
+        if keystroke.key == "left" && self.left_is_local(cx) {
+            self.step_out(cx);
+            return true;
+        }
+        false
+    }
+
+    /// The page's bare `n`, `r`, `e` and `x`, each through the same handler its button uses, and
+    /// `right`, which opens a closed Property or steps into an open one's first Room. Returns
+    /// whether the key was one of them.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_property_dialog(cx),
+            "r" => self.add_room_for_selection(cx),
+            "e" => {
+                if let Some(row) = self.selected_row(cx) {
+                    self.open_edit_dialog(row, cx);
+                }
+            }
+            "x" => {
+                if let Some(row) = self.selected_row(cx) {
+                    self.open_remove_dialog(row, cx);
+                }
+            }
+            "right" => self.step_in(cx),
+            _ => return false,
+        }
+        true
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Property and Room rows as one list.
+    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        let Some(step) = movement.step() else {
+            return;
         };
-    div()
-        .flex()
-        .flex_col()
-        .child(kicker_row(props.on_add_property_click.clone(), cx))
-        .child(table)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .max_w(px(640.0))
-                .text_size(px(12.0))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_inventory_note_registers())
-                .child(crate::msg::desktop_inventory_note_cover())
-                .child(crate::msg::desktop_inventory_note_removal()),
-        )
-        .into_any_element()
-}
+        let rows = self.rows(cx);
+        if rows.is_empty() {
+            return;
+        }
+        self.selected = lib_list_cursor::step_id(&rows, self.selected_row(cx), step);
+        cx.notify();
+    }
 
-fn kicker_row(on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
-    let hover = color::muted(cx);
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .mb(px(10.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_inventory_kicker())),
-        )
-        .child(
-            div()
-                .debug_selector(|| "settings-inventory-add-property".to_string())
-                .id("settings-inventory-add-property")
-                .cursor_pointer()
-                .flex_none()
-                .py(px(8.0))
-                .px(px(14.0))
-                .bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .whitespace_nowrap()
-                .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_click(window, cx))
-                .child(crate::msg::desktop_inventory_add_property("+")),
-        )
-}
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
 
-/// A header cell of a fixed width, right-aligned for the numeric columns.
-fn header_cell(label: String, width: f32, right: bool) -> gpui::Div {
-    let cell = div().w(px(width)).flex_none().child(upper(&label));
-    if right {
-        cell.flex().justify_end()
-    } else {
-        cell
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page's legend for the selected row, and its Property, Room and Item counts.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_inventory_hints(self.selected_row(cx)),
+            right: scope_text(self.inventory(cx)),
+        })
+    }
+
+    /// The heading's meta: how many Properties, Rooms and Items.
+    pub fn scope_note(&self, cx: &App) -> String {
+        scope_text(self.inventory(cx))
+    }
+
+    /// The `?` cheat-sheet's keys for the page, by the selected row.
+    pub fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
+        settings_inventory_hints(self.selected_row(cx))
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Selection and disclosure
+    // -----------------------------------------------------------------------------------------
+
+    fn rows(&self, cx: &App) -> Vec<InventoryRow> {
+        visible_rows(self.inventory(cx), &self.expanded)
+    }
+
+    /// The selected row: the stored one while it is still on screen, else the first row, so the
+    /// cursor is never lost. `None` only with no Properties.
+    pub fn selected_row(&self, cx: &App) -> Option<InventoryRow> {
+        lib_list_cursor::resolve(self.rows(cx), self.selected)
+    }
+
+    fn select(&mut self, row: Option<InventoryRow>, cx: &mut Context<'_, Self>) {
+        self.selected = row;
+        cx.notify();
+    }
+
+    /// Shows Property `id` open. Returns whether it was closed before.
+    fn expand(&mut self, id: u32, cx: &mut Context<'_, Self>) -> bool {
+        cx.notify();
+        self.expanded.insert(id)
+    }
+
+    /// Shows Property `id` closed. Returns whether it was open before.
+    fn collapse(&mut self, id: u32, cx: &mut Context<'_, Self>) -> bool {
+        cx.notify();
+        self.expanded.remove(&id)
+    }
+
+    /// The Property the selected row belongs to.
+    fn selected_property(&self, cx: &App) -> Option<u32> {
+        match self.selected_row(cx)? {
+            InventoryRow::Property(id) => Some(id),
+            InventoryRow::Room(id) => self.inventory(cx).room(id).map(|(property, _)| property.id),
+        }
+    }
+
+    /// Whether `left` has something to do: close an open Property, or climb from a Room to its
+    /// Property.
+    fn left_is_local(&self, cx: &App) -> bool {
+        match self.selected_row(cx) {
+            Some(InventoryRow::Room(_)) => true,
+            Some(InventoryRow::Property(id)) => self.expanded.contains(&id),
+            None => false,
+        }
+    }
+
+    /// `right`: open a closed Property, or step from an open one to its first Room.
+    fn step_in(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(InventoryRow::Property(id)) = self.selected_row(cx) else {
+            return;
+        };
+        if self.expand(id, cx) {
+            return;
+        }
+        let first_room = self
+            .inventory(cx)
+            .property(id)
+            .and_then(|property| property.rooms.first().map(|room| room.id));
+        if let Some(room) = first_room {
+            self.select(Some(InventoryRow::Room(room)), cx);
+        }
+    }
+
+    /// `left`: climb from a Room to its Property, or close an open Property.
+    fn step_out(&mut self, cx: &mut Context<'_, Self>) {
+        match self.selected_row(cx) {
+            Some(InventoryRow::Room(id)) => {
+                let property = self.inventory(cx).room(id).map(|(property, _)| property.id);
+                if let Some(property) = property {
+                    self.select(Some(InventoryRow::Property(property)), cx);
+                }
+            }
+            Some(InventoryRow::Property(id)) => {
+                self.collapse(id, cx);
+            }
+            None => {}
+        }
+    }
+
+    /// `r`: Add room for the selected Property (or the selected Room's), opening it so the new
+    /// Room shows. With no Property it is a Toast.
+    fn add_room_for_selection(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(property) = self.selected_property(cx) else {
+            if self.selected_row(cx).is_none() {
+                cx.emit(ViewEvent::RaiseToast {
+                    kind: ToastKind::Info,
+                    text: crate::msg::desktop_inventory_toast_no_property(),
+                });
+            }
+            return;
+        };
+        self.expand(property, cx);
+        self.open_add_room_dialog(property, cx);
+    }
+
+    /// Selects and opens what a landed Dialog left the cursor on.
+    pub fn land(&mut self, outcome: &InventoryOutcome, cx: &mut Context<'_, Self>) {
+        match outcome {
+            InventoryOutcome::PropertyAdded { id, .. } => {
+                self.expand(*id, cx);
+                self.select(Some(InventoryRow::Property(*id)), cx);
+            }
+            InventoryOutcome::PropertySaved { id, .. } => {
+                self.select(Some(InventoryRow::Property(*id)), cx);
+            }
+            InventoryOutcome::PropertyRemoved { id, selected, .. } => {
+                self.collapse(*id, cx);
+                self.select(*selected, cx);
+            }
+            InventoryOutcome::RoomAdded { property, id, .. } => {
+                self.expand(*property, cx);
+                self.select(Some(InventoryRow::Room(*id)), cx);
+            }
+            InventoryOutcome::RoomSaved { id, .. } => {
+                self.select(Some(InventoryRow::Room(*id)), cx);
+            }
+            InventoryOutcome::RoomRemoved { selected, .. } => {
+                self.select(Some(*selected), cx);
+            }
+            InventoryOutcome::Dismissed => {}
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// A click on a row: selects it and moves focus into the page.
+    pub(crate) fn click_row(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+        self.select(Some(row), cx);
+        cx.emit(RowClicked);
+    }
+
+    /// The disclosure control of a Property row: opens or closes it. Closing keeps the selection
+    /// on screen by moving a hidden Room's selection up to its Property.
+    pub(crate) fn click_toggle(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        cx.emit(RowClicked);
+        if self.collapse(id, cx) {
+            if let Some(InventoryRow::Room(room)) = self.selected
+                && self
+                    .inventory(cx)
+                    .room(room)
+                    .is_some_and(|(property, _)| property.id == id)
+            {
+                self.select(Some(InventoryRow::Property(id)), cx);
+            }
+        } else {
+            self.expand(id, cx);
+        }
+    }
+
+    /// **edit** on a row: selects it and asks for its Edit dialog.
+    pub(crate) fn click_edit(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+        self.select(Some(row), cx);
+        cx.emit(RowClicked);
+        self.open_edit_dialog(row, cx);
+    }
+
+    /// **remove** on a row: selects it and asks for its Remove dialog.
+    pub(crate) fn click_remove(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+        self.select(Some(row), cx);
+        cx.emit(RowClicked);
+        self.open_remove_dialog(row, cx);
+    }
+
+    /// **+ Add property**: the same handler `n` reaches.
+    pub(crate) fn click_add_property(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(RowClicked);
+        self.open_add_property_dialog(cx);
+    }
+
+    /// **+ Add room** under an open Property, or **+ room** on its row.
+    pub(crate) fn click_add_room(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        cx.emit(RowClicked);
+        self.open_add_room_dialog(id, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Dialogs
+    // -----------------------------------------------------------------------------------------
+
+    /// The fiat Units a Property can be kept in, as option labels, with each one's code.
+    fn unit_choices(&self, cx: &App) -> Vec<(String, String)> {
+        self.ledger
+            .read(cx)
+            .ledger()
+            .units()
+            .iter()
+            .filter(|unit| unit.kind == UnitKind::Fiat)
+            .map(|unit| {
+                (
+                    crate::msg::desktop_inventory_unit_option(
+                        &unit.code.to_uppercase(),
+                        &unit.name,
+                    ),
+                    unit.code.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// What the Property form checks against, copied in when it opens.
+    fn property_context(&self, cx: &App) -> PropertyContext {
+        PropertyContext {
+            inventory: self.inventory(cx).clone(),
+            today: self.today,
+            date_style: self.date_style,
+            unit_choices: self.unit_choices(cx),
+        }
+    }
+
+    /// `e` or **edit**: a Property opens its dialog; a Room opens its own.
+    fn open_edit_dialog(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+        match row {
+            InventoryRow::Property(id) => self.open_edit_property_dialog(id, cx),
+            InventoryRow::Room(id) => self.open_edit_room_dialog(id, cx),
+        }
+    }
+
+    /// `x` or **remove**: same split as [`Self::open_edit_dialog`].
+    fn open_remove_dialog(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+        match row {
+            InventoryRow::Property(id) => self.open_remove_property_dialog(id, cx),
+            InventoryRow::Room(id) => self.open_remove_room_dialog(id, cx),
+        }
+    }
+
+    fn open_add_property_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        // The selected Property's Unit, else the first fiat Unit.
+        let choices = self.unit_choices(cx);
+        let preferred = self
+            .selected_property(cx)
+            .and_then(|id| self.inventory(cx).property(id))
+            .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
+            .or_else(|| choices.first())
+            .map(|(label, _)| label.clone());
+        let form = PropertyForm::for_add(preferred, self.property_context(cx));
+        open_dialog(InventoryDialog::Add(form), cx);
+    }
+
+    fn open_edit_property_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let Some(property) = self.inventory(cx).property(id) else {
+            return;
+        };
+        let form = PropertyForm::from_property(property, self.property_context(cx));
+        open_dialog(InventoryDialog::Edit(id, form), cx);
+    }
+
+    fn open_remove_property_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let inventory = self.inventory(cx);
+        let Some(property) = inventory.property(id) else {
+            return;
+        };
+        let form = RemovePropertyForm::new(
+            property.name.clone(),
+            dialogs::needs_typed_name(inventory, id),
+        );
+        open_dialog(InventoryDialog::Remove(id, form), cx);
+    }
+
+    fn open_add_room_dialog(&mut self, property: u32, cx: &mut Context<'_, Self>) {
+        let inventory = self.inventory(cx);
+        if inventory.property(property).is_none() {
+            return;
+        }
+        let form = RoomForm::for_add(inventory.clone(), property);
+        open_dialog(InventoryDialog::AddRoom(property, form), cx);
+    }
+
+    fn open_edit_room_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let inventory = self.inventory(cx);
+        let Some((property, room)) = inventory.room(id) else {
+            return;
+        };
+        let form = RoomForm::for_edit(inventory.clone(), property.id, room);
+        open_dialog(InventoryDialog::EditRoom(id, form), cx);
+    }
+
+    /// An empty Room gets a plain confirm; one with Items a destination picker pre-selecting the
+    /// Room above (below when first); the last Room with Items a notice.
+    fn open_remove_room_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let inventory = self.inventory(cx);
+        let Some((property, _)) = inventory.room(id) else {
+            return;
+        };
+        let items = inventory.room_items(id);
+        let dialog = if items > 0 && property.rooms.len() == 1 {
+            InventoryDialog::RoomBlocked(id)
+        } else {
+            let preselected = (items > 0)
+                .then(|| inventory::default_destination(inventory, id))
+                .flatten()
+                .and_then(|to| inventory.room(to))
+                .map(|(_, room)| room.name.clone());
+            let destinations = room_destinations(inventory, id);
+            InventoryDialog::RemoveRoom(
+                id,
+                RemoveRoomForm::new(destinations, preselected, items > 0),
+            )
+        };
+        open_dialog(dialog, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------------------------
+
+    /// An Inventory row as `property:<name>` or `room:<name>`.
+    fn row_label(&self, row: InventoryRow, cx: &App) -> String {
+        let inventory = self.inventory(cx);
+        match row {
+            InventoryRow::Property(id) => inventory
+                .property(id)
+                .map(|property| format!("property:{}", property.name))
+                .unwrap_or_default(),
+            InventoryRow::Room(id) => inventory
+                .room(id)
+                .map(|(_, room)| format!("room:{}", room.name))
+                .unwrap_or_default(),
+        }
+    }
+
+    /// The visible rows and the selected one, each Property's Rooms, Units and insurers, and each
+    /// Room's Item count. The open Dialog is `Shell`'s, which fills it in.
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &App) -> SettingsInventorySnapshot {
+        let inventory = self.inventory(cx);
+        SettingsInventorySnapshot {
+            inventory_rows: self
+                .rows(cx)
+                .into_iter()
+                .map(|row| self.row_label(row, cx))
+                .collect(),
+            selected_inventory: self.selected_row(cx).map(|row| self.row_label(row, cx)),
+            inventory_rooms: inventory
+                .properties
+                .iter()
+                .map(|property| {
+                    (
+                        property.name.clone(),
+                        property
+                            .rooms
+                            .iter()
+                            .map(|room| room.name.clone())
+                            .collect(),
+                    )
+                })
+                .collect(),
+            inventory_dialog: None,
+            inventory_properties: inventory
+                .properties
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        p.unit.clone(),
+                        p.cover.as_ref().map(|c| c.insurer.clone()),
+                    )
+                })
+                .collect(),
+            inventory_room_items: inventory
+                .properties
+                .iter()
+                .flat_map(|p| p.rooms.iter())
+                .map(|room| (room.name.clone(), inventory.room_items(room.id)))
+                .collect(),
+        }
     }
 }
 
-fn table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .gap(px(14.0))
-        .px(px(14.0))
-        .py(px(6.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        // The disclosure control's width.
-        .child(div().w(px(14.0)).flex_none())
-        .child(
-            div()
-                .flex_1()
-                .child(upper(&crate::msg::desktop_inventory_column_property())),
-        )
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_policy(),
-            170.0,
-            false,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_sum_insured(),
-            100.0,
-            true,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_item_limit(),
-            90.0,
-            true,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_items(),
-            60.0,
-            true,
-        ))
-        .child(header_cell(lib_locale::msg::column_actions(), 150.0, true))
+/// The Inventory page's visible rows and the selected one, as `property:<name>` or `room:<name>`,
+/// each Property's Rooms in order, and the dialog last asked for.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsInventorySnapshot {
+    pub inventory_rows: Vec<String>,
+    pub selected_inventory: Option<String>,
+    pub inventory_rooms: Vec<(String, Vec<String>)>,
+    /// The open dialog's kind (`add`, `edit`, `remove`, `add-room`, ...), which `Shell` fills in,
+    /// and each Property as `(name, unit code, insurer)`.
+    pub inventory_dialog: Option<String>,
+    pub inventory_properties: Vec<(String, String, Option<String>)>,
+    /// Each Room's name with its Item count, in page order.
+    pub inventory_room_items: Vec<(String, usize)>,
 }
 
-/// One Property row and, while it is open, its Room sub-table.
-fn property_block(
-    property: &Property,
-    last: bool,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let open = props.expanded.contains(&property.id);
-    div()
-        .flex()
-        .flex_col()
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(property_row(property, open, focused, props, cx))
-        .when(open, |this| {
-            this.child(room_table(property, focused, props, cx))
-        })
+/// The names of the Property's other Rooms, in tab order: where a removed Room's Items can go.
+fn room_destinations(inventory: &Inventory, room: u32) -> Vec<String> {
+    inventory.room(room).map_or_else(Vec::new, |(property, _)| {
+        property
+            .rooms
+            .iter()
+            .filter(|r| r.id != room)
+            .map(|r| r.name.clone())
+            .collect()
+    })
 }
 
-fn property_row(
-    property: &Property,
-    open: bool,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = property.id;
-    let row = InventoryRow::Property(id);
-    let selected = props.selected == Some(row);
-    let on_toggle = props.on_toggle_click.clone();
-    // A dash, in the muted colour, where there is no cover or no item limit.
-    let placeholder = if selected && focused {
-        color::selection_muted(cx)
-    } else {
-        color::faint_text(cx)
-    };
-    let optional = |text: Option<String>, width: f32, right: bool| {
-        let cell = div().w(px(width)).flex_none().truncate();
-        let cell = if right {
-            cell.flex().justify_end()
-        } else {
-            cell
-        };
-        match text {
-            Some(text) => cell.child(text),
-            None => cell
-                .text_color(placeholder)
-                .child(crate::msg::desktop_inventory_none()),
-        }
-    };
-    let cover = property.cover.as_ref();
-    let disclosure = if open {
-        crate::msg::desktop_inventory_disclosure_open()
-    } else {
-        crate::msg::desktop_inventory_disclosure_closed()
-    };
-    selectable_row(
-        SharedString::from(format!("settings-inventory-property-{id}")),
-        row,
-        focused,
-        props,
-        cx,
-    )
-    .child(
-        div()
-            .debug_selector(move || format!("settings-inventory-toggle-{id}"))
-            .id(SharedString::from(format!(
-                "settings-inventory-toggle-{id}"
-            )))
-            .cursor_pointer()
-            .w(px(14.0))
-            .flex_none()
-            .on_click(move |_event, window, cx| {
-                cx.stop_propagation();
-                on_toggle(id, window, cx)
-            })
-            .child(disclosure),
-    )
-    .child(
-        div()
-            .flex_1()
-            .min_w(px(0.0))
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .truncate()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .child(property.name.clone()),
-            )
-            .child(
-                div()
-                    .truncate()
-                    .text_size(px(11.0))
-                    .text_color(placeholder)
-                    .child(property.address.clone()),
-            ),
-    )
-    .child(optional(policy_text(property), 170.0, false))
-    .child(optional(
-        cover.map(|c| money(property, &c.sum_insured)),
-        100.0,
-        true,
-    ))
-    .child(optional(
-        cover
-            .and_then(|c| c.item_limit.as_ref())
-            .map(|limit| money(property, limit)),
-        90.0,
-        true,
-    ))
-    .child(
-        div()
-            .w(px(60.0))
-            .flex_none()
-            .flex()
-            .justify_end()
-            .child(props.inventory.property_items(id).to_string()),
-    )
-    .child(actions(row, selected && focused, props, cx))
-}
-
-/// The Rooms of an open Property, indented under it, ending in the **+ Add room** row.
-fn room_table(
-    property: &Property,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = property.id;
-    let on_add_room = props.on_add_room_click.clone();
-    let hover = color::hover(cx);
-    div()
-        .flex()
-        .flex_col()
-        .ml(px(28.0))
-        .mb(px(8.0))
-        .mr(px(14.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .child(
-            div()
-                .flex()
-                .gap(px(14.0))
-                .px(px(14.0))
-                .py(px(6.0))
-                .bg(color::chrome(cx))
-                .border_b(px(1.0))
-                .border_color(color::border(cx))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::muted(cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .child(upper(&crate::msg::desktop_inventory_column_room())),
-                )
-                .child(header_cell(
-                    crate::msg::desktop_inventory_column_items(),
-                    60.0,
-                    true,
-                ))
-                .child(header_cell(
-                    crate::msg::desktop_inventory_column_value(),
-                    100.0,
-                    true,
-                ))
-                .child(header_cell(lib_locale::msg::column_actions(), 118.0, true)),
-        )
-        .children(property.rooms.iter().map(|room| {
-            let row = InventoryRow::Room(room.id);
-            let selected = props.selected == Some(row);
-            selectable_row(
-                SharedString::from(format!("settings-inventory-room-{}", room.id)),
-                row,
-                focused,
-                props,
-                cx,
-            )
-            .border_b(px(1.0))
-            .border_color(color::hairline(cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .truncate()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .child(room.name.clone()),
-            )
-            .child(
-                div()
-                    .w(px(60.0))
-                    .flex_none()
-                    .flex()
-                    .justify_end()
-                    .child(props.inventory.room_items(room.id).to_string()),
-            )
-            .child(
-                div()
-                    .w(px(100.0))
-                    .flex_none()
-                    .flex()
-                    .justify_end()
-                    .child(money(property, &props.inventory.room_value(room.id))),
-            )
-            .child(actions(row, selected && focused, props, cx))
-        }))
-        .child(
-            div()
-                .debug_selector(move || format!("settings-inventory-add-room-{id}"))
-                .id(SharedString::from(format!(
-                    "settings-inventory-add-room-{id}"
-                )))
-                .cursor_pointer()
-                .px(px(14.0))
-                .py(px(6.0))
-                .text_size(px(12.0))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_room(id, window, cx))
-                .child(crate::msg::desktop_inventory_add_room("+")),
-        )
-}
-
-/// The shared shell of a selectable row. The selected one is inverted while the page has focus
-/// (`background:#201e1d; color:#f3f2f2`) and only tinted while the index does.
-fn selectable_row(
-    id: SharedString,
-    row: InventoryRow,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> gpui::Stateful<gpui::Div> {
-    let selected = props.selected == Some(row);
-    let inverted = selected && focused;
-    let hover = color::hover(cx);
-    let on_row_click = props.on_row_click.clone();
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(14.0))
-        .px(px(14.0))
-        .py(px(6.0))
-        .text_size(px(12.5))
-        .when(selected && !focused, |this| this.bg(color::chrome(cx)))
-        .when(inverted, |this| {
-            this.bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-        })
-        .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_row_click(row, window, cx))
-}
-
-/// The buttons of a row: **+ room** (Properties only), edit and remove.
-fn actions(
-    row: InventoryRow,
-    inverted: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let border: Rgba = if inverted {
-        color::selection_muted(cx)
-    } else {
-        color::border(cx)
-    };
-    let (kind, id) = match row {
-        InventoryRow::Property(id) => ("property", id),
-        InventoryRow::Room(id) => ("room", id),
-    };
-    let on_edit = props.on_edit_click.clone();
-    let on_remove = props.on_remove_click.clone();
-    // Only a Property row carries **+ room**, and its wider column makes room for it.
-    let (width, add_room) = match row {
-        InventoryRow::Property(_) => (150.0, Some(props.on_add_room_click.clone())),
-        InventoryRow::Room(_) => (118.0, None),
-    };
-    div()
-        .w(px(width))
-        .flex_none()
-        .flex()
-        .justify_end()
-        .gap(px(4.0))
-        .when_some(add_room, |this, on_add_room| {
-            this.child(row_action_button(
-                SharedString::from(format!("settings-inventory-property-add-room-{id}")),
-                crate::msg::desktop_inventory_row_add_room(),
-                border,
-                Rc::new(move |window: &mut Window, cx: &mut App| on_add_room(id, window, cx)),
-                cx,
-            ))
-        })
-        .child(row_action_button(
-            SharedString::from(format!("settings-inventory-edit-{kind}-{id}")),
-            crate::msg::desktop_inventory_row_edit(),
-            border,
-            Rc::new(move |window: &mut Window, cx: &mut App| on_edit(row, window, cx)),
-            cx,
-        ))
-        .child(row_action_button(
-            SharedString::from(format!("settings-inventory-remove-{kind}-{id}")),
-            crate::msg::desktop_inventory_row_remove(),
-            border,
-            Rc::new(move |window: &mut Window, cx: &mut App| on_remove(row, window, cx)),
-            cx,
-        ))
-}
-
-/// `padding:4px 8px; font-size:11.5px; border:1px solid`. Stops the click reaching the row.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    border: Rgba,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .py(px(4.0))
-        .px(px(8.0))
-        .border_1()
-        .border_color(border)
-        .text_size(px(11.5))
-        .whitespace_nowrap()
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
-            cx.stop_propagation();
-            on_click(window, cx)
-        })
-        .child(label)
+/// Asks `Shell`'s Dialog host to open an Inventory dialog.
+fn open_dialog(dialog: InventoryDialog, cx: &mut Context<'_, InventoryPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Inventory(
+        dialog,
+    ))));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
 
     fn seed() -> Inventory {
-        crate::inventory::default_inventory(NaiveDate::from_ymd_opt(2026, 10, 2).unwrap())
-    }
-
-    #[test]
-    fn scope_text_reads_the_live_counts() {
-        crate::locale::init_for_tests();
-        assert_eq!(
-            scope_text(&seed()),
-            "2 properties \u{b7} 11 rooms \u{b7} 232 items"
-        );
-    }
-
-    #[test]
-    fn zeros_are_shown_and_one_reads_singular() {
-        crate::locale::init_for_tests();
-        let mut inventory = seed();
-        inventory.properties.truncate(1);
-        inventory.items.clear();
-        inventory.properties[0].rooms.clear();
-        assert_eq!(
-            scope_text(&inventory),
-            "1 property \u{b7} 0 rooms \u{b7} 0 items"
-        );
+        inventory::default_inventory(NaiveDate::from_ymd_opt(2026, 10, 2).unwrap())
     }
 
     #[test]

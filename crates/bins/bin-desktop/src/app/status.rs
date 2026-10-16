@@ -1,19 +1,15 @@
 //! The status line's hint clicks and page status of `Shell`. An `impl Shell` block for the
 //! concern, not the status line itself (`chrome::statusline`).
 
-use crate::inventory::form::InventoryDialog;
 use gpui::Context;
 
-use super::{Shell, inventory_ui};
-use crate::settings::hints::settings_inventory_hints;
+use super::Shell;
 use crate::view::active::ActiveViewEntity;
 use crate::{
     chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
     navigation::nav::InputMode,
-    settings::SettingsPage,
-    settings::inventory as inventory_view,
 };
 
 impl Shell {
@@ -52,9 +48,7 @@ impl Shell {
     pub(super) fn page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let status = match self.active_view_entity(cx) {
             ActiveViewEntity::Shell(_) => None,
-            view => self
-                .settings_data_page_status(cx)
-                .or_else(|| view.page_status(cx)),
+            view => view.page_status(cx),
         };
         match self.chrome.dialog.as_ref().and_then(Dialog::hints) {
             Some(hints) => Some(PageStatus {
@@ -62,23 +56,6 @@ impl Shell {
                 right: status.map(|status| status.right).unwrap_or_default(),
             }),
             None => status,
-        }
-    }
-
-    /// [`Self::page_status`] for a Settings page with Ledger data, which `Shell` still draws, or
-    /// `None` when no such page has focus.
-    fn settings_data_page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
-        let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Inventory) {
-            Some(PageStatus {
-                hints: self.dialog::<InventoryDialog>().map_or_else(
-                    || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
-                    inventory_ui::dialog_hints,
-                ),
-                right: inventory_view::scope_text(self.inventory(cx)),
-            })
-        } else {
-            None
         }
     }
 }

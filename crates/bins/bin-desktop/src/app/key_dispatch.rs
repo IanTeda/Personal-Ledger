@@ -14,7 +14,6 @@ use crate::{
         key_router::{self, KeyOutcome, route_key},
         nav::{FocusZone, InputMode},
     },
-    settings::SettingsPage,
     view::{
         active::{ActiveViewEntity, ShellView},
         event::ViewMode,
@@ -241,12 +240,7 @@ impl Shell {
                     ActiveViewEntity::Shell(ShellView::Dashboard | ShellView::Placeholder(_)) => {
                         false
                     }
-                    // A Settings page with Ledger data reads its own modifiers, as it did on
-                    // `Shell`, so it is asked before the View's gate.
-                    view => {
-                        self.handle_settings_data_page_key(keystroke, cx)
-                            || (self.view_takes_key(keystroke) && view.handle_key(keystroke, cx))
-                    }
+                    view => self.view_takes_key(keystroke) && view.handle_key(keystroke, cx),
                 };
                 handled || had_status_message
             }
@@ -292,8 +286,7 @@ impl Shell {
         self.nav.enter_mode(InputMode::Search);
     }
 
-    /// The active View's keys that sit ahead of the router. A Settings page with Ledger data,
-    /// which `Shell` still drives, takes its own first.
+    /// The active View's keys that sit ahead of the router.
     fn handle_view_key_ahead_of_router(
         &mut self,
         keystroke: &Keystroke,
@@ -305,43 +298,8 @@ impl Shell {
                 if !self.view_takes_key_ahead(keystroke) {
                     return false;
                 }
-                match self.settings_data_page_key_ahead(keystroke, cx) {
-                    Some(taken) => taken,
-                    None => view.key_ahead(keystroke, cx),
-                }
+                view.key_ahead(keystroke, cx)
             }
-        }
-    }
-
-    /// The keys a Settings page with Ledger data claims ahead of the router, before the Settings
-    /// View sees them: `J`/`K` reorders (Inventory's), and `left` where the page has something to fold or
-    /// climb, which it then handles as a router leftover. `None` leaves the key to the View.
-    fn settings_data_page_key_ahead(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> Option<bool> {
-        if self.handle_settings_inventory_reorder_key(keystroke, cx) {
-            return Some(true);
-        }
-        let left_is_local = keystroke.key == "left"
-            && !keystroke.modifiers.shift
-            && self.settings_data_page_has_focus(SettingsPage::Inventory, cx)
-            && self.settings_inventory_left_is_local(cx);
-        left_is_local.then_some(false)
-    }
-
-    /// A router leftover on a Settings page with Ledger data, which `Shell` still drives.
-    fn handle_settings_data_page_key(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
-        let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Inventory) {
-            self.handle_settings_inventory_key(keystroke, cx)
-        } else {
-            false
         }
     }
 

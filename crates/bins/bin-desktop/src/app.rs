@@ -18,7 +18,7 @@
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
 //! `log_feed`, `rail`, `render`, `status`, `toasts`) under `app/` that is an `impl Shell` block,
-//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `inventory_ui`, ...)
+//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `bills_ui`, ...)
 //! marks per-domain wiring.
 //!
 //! `Shell` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
@@ -34,7 +34,6 @@ mod dialogs;
 mod documents_ui;
 mod explorer;
 mod focus;
-mod inventory_ui;
 mod key_dispatch;
 mod log_feed;
 mod rail;
@@ -62,10 +61,9 @@ pub use snapshots::{
 
 use std::time::{Duration, Instant};
 
-use crate::inventory::InventoryStore;
-use crate::ledger_data::LedgerDataEvent;
 use crate::ledger_store::{LedgerStore, notify_on};
 use crate::settings::institutions::InstitutionsPage;
+use crate::settings::inventory::InventoryPage;
 use crate::settings::state::{SettingsSources, SettingsView};
 use crate::settings::units::UnitsPage;
 use crate::settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage};
@@ -169,9 +167,6 @@ pub struct Shell {
     views: ViewEntities,
     /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
-    /// The Inventory, read through its store Entity (ADR-0032). Shared: Settings' Inventory page
-    /// edits it, and Documents resolve their Links against it.
-    inventory: Entity<InventoryStore>,
     /// Keeps each View's event subscription alive: dropping one silently stops its events.
     view_subscriptions: Vec<Subscription>,
 }
@@ -220,6 +215,12 @@ impl Shell {
         let documents_page_subscription = Self::view_event_subscription(&documents_page, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let documents_page_observer = cx.observe(&documents_page, |_, _, cx| cx.notify());
+        let inventory_page = cx.new(|cx| InventoryPage::new(ledger.clone(), today, cx));
+        let inventory_page_subscription = Self::view_event_subscription(&inventory_page, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let inventory_page_observer = cx.observe(&inventory_page, |_, _, cx| cx.notify());
+        // Documents resolve their Links against the Inventory.
+        let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
         let display_page = cx.new(|_| DisplayPage::default());
         let display_page_subscription = Self::view_event_subscription(&display_page, cx);
         // The status line reads the page's focus, so a change in it repaints `Shell` too.
@@ -248,6 +249,7 @@ impl Shell {
                     payees: payees_view,
                     tags: tags_page,
                     documents: documents_page,
+                    inventory: inventory_page,
                 },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -260,11 +262,6 @@ impl Shell {
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
-        let inventory_subscription = cx
-            .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
-                cx.notify()
-            });
         let transactions_view = cx.new(|cx| {
             TransactionsView::new(
                 TransactionsSources {
@@ -312,7 +309,6 @@ impl Shell {
             DocumentsView::new(
                 DocumentsSources {
                     ledger: ledger.clone(),
-                    inventory: inventory.clone(),
                 },
                 today,
                 cx,
@@ -353,7 +349,6 @@ impl Shell {
                 documents: documents_view,
                 settings: settings_view,
             },
-            inventory,
             view_subscriptions: vec![
                 accounts_subscription,
                 accounts_view_observer,
@@ -383,7 +378,9 @@ impl Shell {
                 institutions_page_subscription,
                 sync_server_page_subscription,
                 data_backup_page_subscription,
-                inventory_subscription,
+                inventory_changed,
+                inventory_page_subscription,
+                inventory_page_observer,
                 categories_page_subscription,
                 categories_page_observer,
                 settings_subscription,
@@ -466,9 +463,10 @@ impl Shell {
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
         let ids: Vec<u32> = self
-            .inventory
+            .ledger
             .read(cx)
-            .inventory(cx)
+            .ledger()
+            .inventory()
             .properties
             .iter()
             .map(|property| property.id)
@@ -538,6 +536,12 @@ impl Shell {
         self.views
             .documents
             .update(cx, |view, cx| view.set_display(date_style, cx));
+        self.views
+            .settings
+            .read(cx)
+            .inventory()
+            .clone()
+            .update(cx, |page, _| page.set_date_style(date_style));
     }
 
     fn scroll_view(&mut self, movement: Movement) {

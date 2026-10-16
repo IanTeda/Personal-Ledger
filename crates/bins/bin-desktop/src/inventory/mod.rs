@@ -1,10 +1,5 @@
-//! The Desktop's half of the Inventory: the dialog forms (`form`) that need `gpui`. The `gpui`-free
-//! model, rules and stub seed live in `lib_inventory` and are re-exported here, so every
-//! `inventory::X` path keeps working.
-
-pub(crate) mod apply;
-pub(crate) mod form;
-pub(crate) mod store;
+//! The `gpui`-free Inventory model, rules and stub seed, re-exported from `lib_inventory` so every
+//! `inventory::X` path keeps working. The Settings › Inventory page (`settings/inventory/`) holds
+//! the Desktop's forms and Dialogs.
 
 pub use lib_inventory::*;
-pub use store::InventoryStore;

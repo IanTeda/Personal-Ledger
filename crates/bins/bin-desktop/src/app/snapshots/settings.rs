@@ -2,7 +2,6 @@
 //! snapshot shape and its accessor sit together.
 
 use crate::app::Shell;
-use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
 pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 use crate::settings::categories::dialogs::CategoriesDialog;
@@ -10,6 +9,8 @@ use crate::settings::categories::dialogs::CategoriesDialog;
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
+#[doc(hidden)]
+pub use crate::settings::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::settings::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
@@ -23,6 +24,7 @@ pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
     settings::accounts::dialogs::AccountsDialog,
     settings::documents::dialogs::DocumentTypesDialog,
+    settings::inventory::dialogs::InventoryDialog,
     settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog,
     settings::{
@@ -31,22 +33,6 @@ use crate::{
 };
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
-
-/// The Inventory page's visible rows and the selected one, as `property:<name>` or `room:<name>`,
-/// each Property's Rooms in order, and the dialog last asked for.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsInventorySnapshot {
-    pub inventory_rows: Vec<String>,
-    pub selected_inventory: Option<String>,
-    pub inventory_rooms: Vec<(String, Vec<String>)>,
-    /// The open Property dialog (`add`, `edit` or `remove`), and each Property as
-    /// `(name, unit code, insurer)`.
-    pub inventory_dialog: Option<String>,
-    pub inventory_properties: Vec<(String, String, Option<String>)>,
-    /// Each Room's name with its Item count, in page order.
-    pub inventory_room_items: Vec<(String, usize)>,
-}
 
 /// What the open Settings dialog shows, read once for the snapshots that report it.
 #[derive(Default)]
@@ -96,27 +82,6 @@ impl Shell {
             select_open: form.any_select_open(),
             valid: form.is_valid(),
         })
-    }
-
-    /// An Inventory row as `property:<name>` or `room:<name>`.
-    fn inventory_row_label(
-        &self,
-        row: crate::settings::inventory::InventoryRow,
-        cx: &gpui::App,
-    ) -> String {
-        use crate::settings::inventory::InventoryRow;
-        match row {
-            InventoryRow::Property(id) => self
-                .inventory(cx)
-                .property(id)
-                .map(|property| format!("property:{}", property.name))
-                .unwrap_or_default(),
-            InventoryRow::Room(id) => self
-                .inventory(cx)
-                .room(id)
-                .map(|(_, room)| format!("room:{}", room.name))
-                .unwrap_or_default(),
-        }
     }
 
     /// The open Settings dialog, whichever page owns it.
@@ -297,62 +262,10 @@ impl Shell {
     #[doc(hidden)]
     pub fn settings_inventory_snapshot(&self, cx: &gpui::App) -> SettingsInventorySnapshot {
         SettingsInventorySnapshot {
-            inventory_rows: crate::settings::inventory::visible_rows(
-                self.inventory(cx),
-                self.views.settings.read(cx).inventory_expanded(),
-            )
-            .into_iter()
-            .map(|row| self.inventory_row_label(row, cx))
-            .collect(),
-            selected_inventory: self
-                .settings_inventory_selected_row(cx)
-                .map(|row| self.inventory_row_label(row, cx)),
-            inventory_rooms: self
-                .inventory(cx)
-                .properties
-                .iter()
-                .map(|property| {
-                    (
-                        property.name.clone(),
-                        property
-                            .rooms
-                            .iter()
-                            .map(|room| room.name.clone())
-                            .collect(),
-                    )
-                })
-                .collect(),
-            inventory_dialog: self.dialog::<InventoryDialog>().map(|dialog| {
-                match dialog {
-                    InventoryDialog::Add(_) => "add",
-                    InventoryDialog::Edit(..) => "edit",
-                    InventoryDialog::Remove(..) => "remove",
-                    InventoryDialog::AddRoom(..) => "add-room",
-                    InventoryDialog::EditRoom(..) => "edit-room",
-                    InventoryDialog::RemoveRoom(..) => "remove-room",
-                    InventoryDialog::RoomBlocked(_) => "room-blocked",
-                }
-                .to_string()
-            }),
-            inventory_room_items: self
-                .inventory(cx)
-                .properties
-                .iter()
-                .flat_map(|p| p.rooms.iter())
-                .map(|room| (room.name.clone(), self.inventory(cx).room_items(room.id)))
-                .collect(),
-            inventory_properties: self
-                .inventory(cx)
-                .properties
-                .iter()
-                .map(|p| {
-                    (
-                        p.name.clone(),
-                        p.unit.clone(),
-                        p.cover.as_ref().map(|c| c.insurer.clone()),
-                    )
-                })
-                .collect(),
+            inventory_dialog: self
+                .dialog::<InventoryDialog>()
+                .map(|dialog| dialog.kind().to_string()),
+            ..self.inventory_page(cx).read(cx).snapshot(cx)
         }
     }
 

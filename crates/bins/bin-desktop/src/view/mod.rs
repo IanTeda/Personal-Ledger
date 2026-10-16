@@ -11,7 +11,6 @@ pub mod event;
 pub(crate) mod format;
 pub mod help;
 pub mod import;
-pub mod inventory;
 pub mod placeholder;
 pub mod transactions;
 

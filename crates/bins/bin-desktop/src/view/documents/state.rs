@@ -31,7 +31,6 @@ use crate::{
         picker::{PickerRow, PickerState, Purpose},
         types::DocumentTypeRow,
     },
-    inventory::store::InventoryStore,
     ledger_store::{LedgerStore, notify_on},
     navigation::{key_router::Movement, nav::Noun},
     view::event::{Reveal, ViewEvent, ViewMode},
@@ -80,11 +79,11 @@ impl Default for DocumentsState {
     }
 }
 
-/// The store Entities the Documents page reads, and the Ledger it writes the Documents through.
+/// The Ledger the Documents page reads, its Inventory Links included, and writes the Documents
+/// through.
 #[derive(Clone)]
 pub struct DocumentsSources {
     pub ledger: Entity<LedgerStore>,
-    pub inventory: Entity<InventoryStore>,
 }
 
 /// The Documents Entity.
@@ -189,7 +188,7 @@ impl DocumentsView {
             payees: self.sources.ledger.read(cx).ledger().payees(),
             plans: self.sources.ledger.read(cx).ledger().bill_plans(),
             types: self.types(cx),
-            inventory: self.sources.inventory.read(cx).inventory(cx),
+            inventory: self.sources.ledger.read(cx).ledger().inventory(),
             transactions: self.sources.ledger.read(cx).ledger().transactions(),
             today: self.today,
             date_style: self.date_style,

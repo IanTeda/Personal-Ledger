@@ -45,48 +45,6 @@ type OnValue<A> = Rc<dyn Fn(A, &mut Window, &mut App)>;
 /// As [`OnValue`], for a click that carries no value.
 type OnPlain = Rc<dyn Fn(&mut Window, &mut App)>;
 
-/// A page `Shell` still draws (the pages with Ledger data, until each moves into this View):
-/// its heading's meta and its content, handed to [`SettingsView`] for the frame they are drawn
-/// in.
-pub struct DataPage {
-    pub meta: AnyElement,
-    pub content: AnyElement,
-}
-
-/// What `Shell` draws the pages with Ledger data from, until each moves into this View.
-pub struct DataPageProps<'a> {
-    pub inventory: inventory::InventoryPageProps<'a>,
-}
-
-/// The page `section` as `Shell` draws it, or `None` for a page [`SettingsView`] draws itself.
-pub fn data_page(
-    section: SettingsPage,
-    page_focused: bool,
-    props: &DataPageProps<'_>,
-    cx: &App,
-) -> Option<DataPage> {
-    let (meta, content) = match section {
-        SettingsPage::Inventory => (
-            inventory::scope_text(props.inventory.inventory).into_any_element(),
-            inventory::render(&props.inventory, page_focused, cx),
-        ),
-        SettingsPage::General
-        | SettingsPage::Accounts
-        | SettingsPage::Categories
-        | SettingsPage::Payees
-        | SettingsPage::Tags
-        | SettingsPage::Documents
-        | SettingsPage::Display
-        | SettingsPage::Units
-        | SettingsPage::Institutions
-        | SettingsPage::SyncServer
-        | SettingsPage::DataBackup
-        | SettingsPage::Tracing
-        | SettingsPage::About => return None,
-    };
-    Some(DataPage { meta, content })
-}
-
 impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
@@ -109,57 +67,58 @@ impl Render for SettingsView {
         tags.update(cx, |page, _| page.set_page_focused(page_focused));
         let documents = self.sources().documents.clone();
         documents.update(cx, |page, _| page.set_page_focused(page_focused));
+        let inventory = self.sources().inventory.clone();
+        inventory.update(cx, |page, _| page.set_page_focused(page_focused));
         let display = self.sources().display.clone();
         let units = self.sources().units.clone();
         let institutions = self.sources().institutions.clone();
         let sync_server = self.sources().sync_server.clone();
         let data_backup = self.sources().data_backup.clone();
         let about = self.sources().about.clone();
-        let (meta, content) = match self.data_page.take() {
-            Some(page) => (page.meta, page.content),
-            None if selected == SettingsPage::Accounts => (
+        let (meta, content) = match selected {
+            SettingsPage::Accounts => (
                 accounts.read(cx).scope_note(cx).into_any_element(),
                 accounts.into_any_element(),
             ),
-            None if selected == SettingsPage::Categories => (
+            SettingsPage::Categories => (
                 categories.read(cx).scope_note(cx).into_any_element(),
                 categories.into_any_element(),
             ),
-            None if selected == SettingsPage::Payees => {
-                (payees.read(cx).scope_note(cx), payees.into_any_element())
-            }
-            None if selected == SettingsPage::Tags => {
-                (tags.read(cx).scope_note(cx), tags.into_any_element())
-            }
-            None if selected == SettingsPage::Documents => (
+            SettingsPage::Payees => (payees.read(cx).scope_note(cx), payees.into_any_element()),
+            SettingsPage::Tags => (tags.read(cx).scope_note(cx), tags.into_any_element()),
+            SettingsPage::Documents => (
                 documents.read(cx).scope_note(cx).into_any_element(),
                 documents.into_any_element(),
             ),
-            None if selected == SettingsPage::Display => (
+            SettingsPage::Inventory => (
+                inventory.read(cx).scope_note(cx).into_any_element(),
+                inventory.into_any_element(),
+            ),
+            SettingsPage::Display => (
                 self.scope_note().into_any_element(),
                 display.into_any_element(),
             ),
-            None if selected == SettingsPage::Units => (
+            SettingsPage::Units => (
                 units.read(cx).scope_note(cx).into_any_element(),
                 units.into_any_element(),
             ),
-            None if selected == SettingsPage::Institutions => (
+            SettingsPage::Institutions => (
                 institutions.read(cx).scope_note(cx).into_any_element(),
                 institutions.into_any_element(),
             ),
-            None if selected == SettingsPage::SyncServer => (
+            SettingsPage::SyncServer => (
                 self.scope_note().into_any_element(),
                 sync_server.into_any_element(),
             ),
-            None if selected == SettingsPage::DataBackup => (
+            SettingsPage::DataBackup => (
                 self.scope_note().into_any_element(),
                 data_backup.into_any_element(),
             ),
-            None if selected == SettingsPage::About => (
+            SettingsPage::About => (
                 self.scope_note().into_any_element(),
                 about.into_any_element(),
             ),
-            None => (
+            SettingsPage::General | SettingsPage::Tracing => (
                 self.scope_note().into_any_element(),
                 self.page_content(&entity, cx),
             ),
@@ -236,9 +195,7 @@ impl SettingsView {
                 plain(entity, SettingsView::click_clear_logs),
                 cx,
             ),
-            // Accounts, Categories, Payees, Tags, Display, Units, Institutions, Sync server, Data
-            // & backup and About draw themselves;
-            // `Shell` hands the rest in as a `DataPage`, and a frame without one draws nothing there.
+            // Every other page is its own Entity and draws itself.
             SettingsPage::Accounts
             | SettingsPage::Display
             | SettingsPage::Units
