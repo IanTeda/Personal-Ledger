@@ -28,7 +28,7 @@
 
 mod bills_ui;
 mod budgets_ui;
-mod categories_ui;
+
 mod commands;
 mod dialogs;
 mod document_types_ui;
@@ -80,17 +80,16 @@ use lib_ledger::{Ledger, MoveDocumentType};
 use lib_toast::Toasts;
 
 use crate::settings::accounts::AccountsPage;
+use crate::settings::categories::CategoriesPage;
 use crate::settings::payees::{PayeesPage, PayeesSources};
 use crate::settings::tags::TagsPage;
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
-use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
 use crate::{
     budgets,
-    categories::Category,
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
@@ -110,6 +109,7 @@ use crate::{
         dashboard::{self},
     },
 };
+use lib_categories::Category;
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop-mockups/01-shell/README.md`'s
 /// "1c" tooltip spec) -- deliberately the same 500ms `gpui`'s own built-in `.tooltip()` uses,
@@ -155,12 +155,6 @@ pub struct Shell {
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
-    /// The Categories tree, read through its store Entity (ADR-0032). Shared:
-    /// Budgets, Bills, Transactions, Documents, Payees and Settings read the same tree.
-    categories_store: Entity<CategoriesStore>,
-    /// The Settings Categories tree's cursor, selected id and expanded nodes, owned by their view
-    /// Entity.
-    categories_view: Entity<CategoriesView>,
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
@@ -191,18 +185,16 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
-        let categories_store = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
-        let categories_view = cx.new(|_| CategoriesView::new());
-        // The Dialogs and the Dashboard read the Units and Institutions straight from the Ledger.
+        // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
+        let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
         let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
         let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
-        let categories_subscription = cx.subscribe(
-            &categories_store,
-            |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
-        );
-        let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
+        let categories_page = cx.new(|cx| CategoriesPage::new(ledger.clone(), today, cx));
+        let categories_page_subscription = Self::view_event_subscription(&categories_page, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let categories_page_observer = cx.observe(&categories_page, |_, _, cx| cx.notify());
         let accounts_view = cx.new(|cx| AccountsPage::new(ledger.clone(), cx));
         let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
@@ -212,7 +204,6 @@ impl Shell {
             PayeesPage::new(
                 PayeesSources {
                     ledger: ledger.clone(),
-                    categories: categories_store.clone(),
                 },
                 cx,
             )
@@ -240,6 +231,7 @@ impl Shell {
                     institutions: institutions_page,
                     units: units_page,
                     accounts: accounts_view,
+                    categories: categories_page,
                     payees: payees_view,
                     tags: tags_page,
                 },
@@ -263,7 +255,6 @@ impl Shell {
             TransactionsView::new(
                 TransactionsSources {
                     ledger: ledger.clone(),
-                    categories: categories_store.clone(),
                 },
                 today,
                 cx,
@@ -282,7 +273,6 @@ impl Shell {
             BudgetsView::new(
                 BudgetsSources {
                     ledger: ledger.clone(),
-                    categories: categories_store.clone(),
                 },
                 budgets_current,
                 today,
@@ -295,7 +285,6 @@ impl Shell {
         let bills_view = cx.new(|cx| {
             BillsView::new(
                 BillsSources {
-                    categories: categories_store.clone(),
                     ledger: ledger.clone(),
                 },
                 today,
@@ -343,8 +332,6 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             ledger,
             today,
-            categories_store,
-            categories_view,
             views: ViewEntities {
                 bills: bills_view,
                 budgets: budgets_view,
@@ -379,16 +366,17 @@ impl Shell {
                 institutions_subscription,
                 institutions_page_subscription,
                 inventory_subscription,
-                categories_view_observer,
+                categories_page_subscription,
+                categories_page_observer,
                 settings_subscription,
                 settings_view_observer,
             ],
         }
     }
 
-    /// The Categories tree, read through its store Entity (ADR-0032).
+    /// The Categories tree, read straight from the Ledger (ADR-0038).
     fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.categories_store.read(cx).categories(cx)
+        self.ledger.read(cx).ledger().categories()
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.
@@ -628,15 +616,15 @@ mod tests {
         settings_colour_grid_hints, settings_display_hints, settings_index_hints,
         settings_plain_page_hints,
     };
+    use crate::transactions;
     use crate::transactions::Transaction;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
-    use crate::{categories, transactions};
     use chrono::Local;
     use lib_accounts::Account;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = lib_accounts::default_accounts();
-        let categories = categories::default_categories();
+        let categories = lib_categories::default_categories();
         let transactions = transactions::default_transactions(
             &accounts,
             &categories,
@@ -671,7 +659,7 @@ mod tests {
     fn deleting_a_leaf_category_toasts_the_splits_it_moved() {
         crate::locale::init_for_tests();
         let mut ledger = Ledger::stub();
-        let rent = categories::find_by_name(ledger.categories(), "Rent").expect("seeded");
+        let rent = lib_categories::find_by_name(ledger.categories(), "Rent").expect("seeded");
         let deleted = ledger.delete_category(rent).expect("a leaf");
         let text =
             lib_locale::msg::toast_category_deleted(&deleted.name, deleted.splits_moved as i64);

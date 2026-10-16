@@ -55,7 +55,6 @@ pub struct DataPage {
 
 /// What `Shell` draws the pages with Ledger data from, until each moves into this View.
 pub struct DataPageProps<'a> {
-    pub categories: categories::CategoriesPageProps<'a>,
     pub documents: documents::DocumentsPageProps<'a>,
     pub inventory: inventory::InventoryPageProps<'a>,
 }
@@ -68,10 +67,6 @@ pub fn data_page(
     cx: &App,
 ) -> Option<DataPage> {
     let (meta, content) = match section {
-        SettingsPage::Categories => (
-            categories::scope_note(props.categories.categories).into_any_element(),
-            categories::render(&props.categories, page_focused, cx),
-        ),
         SettingsPage::Documents => (
             documents::scope_text(props.documents.types).into_any_element(),
             documents::render(&props.documents, page_focused, cx),
@@ -82,6 +77,7 @@ pub fn data_page(
         ),
         SettingsPage::General
         | SettingsPage::Accounts
+        | SettingsPage::Categories
         | SettingsPage::Payees
         | SettingsPage::Tags
         | SettingsPage::Display
@@ -109,6 +105,8 @@ impl Render for SettingsView {
         };
         let accounts = self.sources().accounts.clone();
         accounts.update(cx, |page, _| page.set_page_focused(page_focused));
+        let categories = self.sources().categories.clone();
+        categories.update(cx, |page, _| page.set_page_focused(page_focused));
         let payees = self.sources().payees.clone();
         payees.update(cx, |page, _| page.set_page_focused(page_focused));
         let tags = self.sources().tags.clone();
@@ -121,6 +119,10 @@ impl Render for SettingsView {
             None if selected == SettingsPage::Accounts => (
                 accounts.read(cx).scope_note(cx).into_any_element(),
                 accounts.into_any_element(),
+            ),
+            None if selected == SettingsPage::Categories => (
+                categories.read(cx).scope_note(cx).into_any_element(),
+                categories.into_any_element(),
             ),
             None if selected == SettingsPage::Payees => {
                 (payees.read(cx).scope_note(cx), payees.into_any_element())
@@ -245,8 +247,8 @@ impl SettingsView {
                 cx,
             ),
             SettingsPage::About => about::render(cx),
-            // Accounts, Payees, Tags, Display, Units and Institutions draw themselves; `Shell` hands the rest
-            // in as a `DataPage`, and a frame without one draws nothing there.
+            // Accounts, Categories, Payees, Tags, Display, Units and Institutions draw themselves;
+            // `Shell` hands the rest in as a `DataPage`, and a frame without one draws nothing there.
             SettingsPage::Accounts
             | SettingsPage::Display
             | SettingsPage::Units

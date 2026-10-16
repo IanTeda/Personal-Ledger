@@ -12,7 +12,6 @@ use lib_core::{DateStyle, HexColor};
 use lib_payees::Payee;
 
 use crate::{
-    categories,
     settings::display::StatusGlyphs,
     transactions::Transaction,
     transactions::query::{Ledger, Visible},
@@ -87,7 +86,7 @@ pub fn payee_summary(transaction: &Transaction, payees: &[Payee]) -> String {
 }
 
 /// The CATEGORY cell: the leaf's own name for one Split, `split · N` for several.
-pub fn category_summary(transaction: &Transaction, all: &[categories::Category]) -> String {
+pub fn category_summary(transaction: &Transaction, all: &[lib_categories::Category]) -> String {
     match transaction.splits.as_slice() {
         [only] => all
             .iter()
@@ -187,12 +186,12 @@ pub fn half_page_rows(viewport_px: f32, row_px: f32) -> usize {
 mod tests {
     use super::*;
     use crate::{
-        categories::default_categories,
         transactions::default_transactions,
         transactions::query::{TransactionFilters, query},
     };
     use chrono::NaiveDate;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_core::TransactionStatus;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
@@ -210,7 +209,7 @@ mod tests {
 
     struct World {
         accounts: Vec<lib_accounts::Account>,
-        categories: Vec<categories::Category>,
+        categories: Vec<lib_categories::Category>,
         payees: Vec<Payee>,
         tags: Vec<Tag>,
         transactions: Vec<Transaction>,

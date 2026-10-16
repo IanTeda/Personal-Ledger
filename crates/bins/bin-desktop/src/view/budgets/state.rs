@@ -18,15 +18,11 @@ use crate::{
         self, BudgetsDialog, BudgetsTab, PlanEdit, default_plan_start,
         limit_form::{LimitForm, LimitOptions, StopForm},
     },
-    categories,
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     period::Period,
-    view::{
-        categories::state::CategoriesStore,
-        event::{Reveal, ViewEvent, ViewMode},
-    },
+    view::event::{Reveal, ViewEvent, ViewMode},
 };
 use lib_ledger::Domain;
 
@@ -78,7 +74,6 @@ impl BudgetsState {
 #[derive(Clone)]
 pub struct BudgetsSources {
     pub ledger: Entity<LedgerStore>,
-    pub categories: Entity<CategoriesStore>,
 }
 
 /// The Budgets Entity.
@@ -91,6 +86,7 @@ pub struct BudgetsView {
     pub(super) state: BudgetsState,
     /// Repaints the page when the Accounts its rows and filters name change.
     _accounts_changed: Subscription,
+    _categories_changed: Subscription,
 }
 
 impl BudgetsView {
@@ -102,12 +98,14 @@ impl BudgetsView {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
+        let _categories_changed = notify_on(&sources.ledger, Domain::Categories, cx);
         Self {
             sources,
             today,
             scroll: ScrollHandle::new(),
             state: BudgetsState::new(current, today),
             _accounts_changed,
+            _categories_changed,
         }
     }
 
@@ -129,8 +127,8 @@ impl BudgetsView {
         self.budgets(cx).get(self.state.current)
     }
 
-    pub fn categories<'a>(&self, cx: &'a App) -> &'a [categories::Category] {
-        self.sources.categories.read(cx).categories(cx)
+    pub fn categories<'a>(&self, cx: &'a App) -> &'a [lib_categories::Category] {
+        self.sources.ledger.read(cx).ledger().categories()
     }
 
     /// Everything the Budgets figures are worked out from.
@@ -213,7 +211,7 @@ impl BudgetsView {
     pub fn detail_editable(&self, category_id: u32, cx: &App) -> bool {
         let categories = self.categories(cx);
         self.editable(cx).is_some()
-            && categories::is_leaf(categories, category_id)
+            && lib_categories::is_leaf(categories, category_id)
             && categories.iter().any(|category| {
                 category.id == category_id && category.category_type == CategoryTypes::Expense
             })
@@ -334,7 +332,7 @@ impl BudgetsView {
         let current = Period::of(self.today);
         let categories = self.categories(cx);
         let form = if budgets::applied(budget.chain(category_id), current).is_some() {
-            if !categories::is_leaf(categories, category_id) {
+            if !lib_categories::is_leaf(categories, category_id) {
                 return None;
             }
             LimitForm::edit(budget, category_id, month, &options)
@@ -1113,7 +1111,6 @@ mod tests {
         });
         let sources = BudgetsSources {
             ledger: ledger.clone(),
-            categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
         };
         let view = cx.new(|cx| BudgetsView::new(sources, current, today(), cx));
         let events = Rc::new(RefCell::new(Vec::new()));

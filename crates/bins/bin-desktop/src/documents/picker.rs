@@ -498,11 +498,11 @@ mod tests {
     use crate::inventory::Inventory;
     use crate::{
         bills::{BillPlan, default_bills},
-        categories::default_categories,
         documents::{DocumentsSeed, default_documents},
         transactions::default_transactions,
     };
     use lib_accounts::{Account, default_accounts};
+    use lib_categories::default_categories;
     use lib_core::DateStyle;
     use lib_payees::{Payee, default_payees};
     use lib_tags::default_tags;

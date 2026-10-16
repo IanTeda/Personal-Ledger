@@ -15,11 +15,11 @@ use lib_locale::format::{format_month, upper};
 
 use crate::{
     budgets::{History, HistoryCell, HistoryMonth, HistoryRow},
-    categories::{self, Category},
     theme::color,
     transactions::rows::EMPTY_CELL,
     view::format::amount,
 };
+use lib_categories::{self, Category};
 
 const BUDGET_WIDTH: gpui::Pixels = px(92.0);
 const MONTH_WIDTH: gpui::Pixels = px(92.0);
@@ -273,7 +273,7 @@ fn render_row(
         .iter()
         .find(|c| c.id == row.category_id)
         .map_or_else(|| EMPTY_CELL.to_string(), |c| c.name.clone());
-    let depth = categories::depth(props.categories, row.category_id) as f32;
+    let depth = lib_categories::depth(props.categories, row.category_id) as f32;
     let figure = |width, value: String| {
         div()
             .w(width)

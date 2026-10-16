@@ -30,12 +30,12 @@ use lib_locale::format::upper;
 
 use crate::{
     budgets::{BudgetsTab, Method, PeriodFigures},
-    categories::Category,
     navigation::nav::Noun,
     period::Period,
     theme::color,
     view::placeholder,
 };
+use lib_categories::Category;
 use state::BudgetsView;
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;

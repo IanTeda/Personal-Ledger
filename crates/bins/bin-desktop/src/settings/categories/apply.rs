@@ -11,7 +11,7 @@ use lib_ledger::{
     SaveCategoryRefusal,
 };
 
-use super::form::{CategoriesDialog, CategoryForm};
+use super::{dialogs::CategoriesDialog, form::CategoryForm};
 use crate::{
     budgets,
     chrome::dialog_apply::{Apply, DialogForm, FormError},
@@ -164,7 +164,8 @@ mod tests {
     use super::*;
     use crate::ledger_store::test_ledger;
     use crate::{
-        categories::form::DeleteCategoryForm, chrome::dialog_apply::confirm, form::field::TextField,
+        chrome::dialog_apply::confirm, form::field::TextField,
+        settings::categories::form::DeleteCategoryForm,
     };
 
     fn apply(cx: &mut TestAppContext) -> CategoriesApply {

@@ -18,13 +18,13 @@ use lib_core::Money;
 
 use crate::{
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
-    categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
     period::Period,
 };
+use lib_categories::{self, Category};
 
 /// How many months 9e's Starting offers, the current one first.
 pub const START_MONTHS: usize = 3;
@@ -76,7 +76,7 @@ impl LimitOptions {
         month_label: impl Fn(Period, bool) -> String,
     ) -> Self {
         let unbudgeted = budgets::unbudgeted_leaves(budget, categories, current);
-        let (category_ids, category_labels) = categories::paths_in_tree_order(categories)
+        let (category_ids, category_labels) = lib_categories::paths_in_tree_order(categories)
             .into_iter()
             .filter(|(id, _)| unbudgeted.contains(id))
             .unzip();
@@ -555,8 +555,8 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::categories::default_categories;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()
@@ -581,7 +581,7 @@ mod tests {
             let mut budgets = budgets::default_budgets(&default_accounts(), &categories, today());
             // The seed budgets every Expense leaf, so two are Stopped for the picker to offer.
             for name in ["Household", "Water"] {
-                let id = categories::find_by_name(&categories, name).unwrap();
+                let id = lib_categories::find_by_name(&categories, name).unwrap();
                 budgets
                     .stop(
                         budgets::PERSONAL_SPENDING_ID,
@@ -620,7 +620,7 @@ mod tests {
         }
 
         fn category(&self, name: &str) -> u32 {
-            categories::find_by_name(&self.categories, name).unwrap()
+            lib_categories::find_by_name(&self.categories, name).unwrap()
         }
 
         /// A leaf the seeded Budget has an amount for this month.
@@ -642,7 +642,7 @@ mod tests {
         );
         assert!(!options.category_labels.is_empty());
         for id in &options.category_ids {
-            assert!(categories::is_leaf(&world.categories, *id));
+            assert!(lib_categories::is_leaf(&world.categories, *id));
             assert!(budgets::applied(world.budget().chain(*id), sep()).is_none());
         }
         assert!(!options.category_ids.contains(&world.budgeted()));

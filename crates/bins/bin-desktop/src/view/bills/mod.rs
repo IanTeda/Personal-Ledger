@@ -345,7 +345,7 @@ impl Render for BillsView {
             planner: planner::PlannerProps {
                 plans: &planner_plans,
                 inactive: bills::inactive_count(plans),
-                categories: self.sources.categories.read(cx).categories(cx),
+                categories: self.sources.ledger.read(cx).ledger().categories(),
                 accounts,
                 base_unit,
                 units,

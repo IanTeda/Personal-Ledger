@@ -11,6 +11,11 @@ use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, Noun};
 use crate::settings::accounts::{AccountsPage, hints::accounts_hints};
 use crate::settings::apply::{SettingsApply, SettingsOutcome};
+use crate::settings::categories::{
+    apply::{CategoriesApply, CategoryOutcome},
+    dialogs::CategoriesDialog,
+    form::CategoryField,
+};
 use crate::settings::hints::{
     settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
     settings_documents_hints, settings_index_hints, settings_inventory_hints,
@@ -19,6 +24,7 @@ use crate::settings::hints::{
 use crate::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::settings::{SettingsDialog, SettingsFocus, SettingsPage};
 use gpui::{App, Context, Entity, Keystroke};
+use lib_core::CategoryTypes;
 use lib_toast::ToastKind;
 
 impl Shell {
@@ -497,5 +503,124 @@ impl Shell {
         self.accounts_page(cx).update(cx, |page, cx| {
             page.run_command(command_name, verb, argument, cx);
         });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The Categories Dialogs' clicks and confirm. The page opens them, and `Shell` runs the
+    // Dialog host's cycle on them, as for every Dialog.
+    // -----------------------------------------------------------------------------------------
+
+    /// Raises the error Toast for a Categories write the store or Budgets refused, so the dialog
+    /// closes with the reason on screen rather than dropping the write silently.
+    fn raise_category_save_failed(&mut self, reason: &str) {
+        self.raise_toast(
+            ToastKind::Error,
+            lib_locale::msg::toast_save_failed(&lib_locale::msg::toast_entity_category(), reason),
+        );
+    }
+
+    /// Raises the Toast for a refused Categories store write, if it was refused.
+    fn report_category_write(&mut self, result: Result<(), lib_categories::CategoryError>) {
+        if let Err(error) = result {
+            self.raise_category_save_failed(&error.to_string());
+        }
+    }
+
+    pub(super) fn handle_categories_dialog_field_click(
+        &mut self,
+        field: CategoryField,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.focus_field(field);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn handle_categories_dialog_parent_change(
+        &mut self,
+        parent_id: Option<u32>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        // A child takes its parent's type.
+        let parent_type = parent_id.and_then(|parent_id| {
+            self.categories(cx)
+                .iter()
+                .find(|c| c.id == parent_id)
+                .map(|parent| parent.category_type.clone())
+        });
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.parent_id = parent_id;
+            if parent_type.is_some() {
+                form.category_type = parent_type;
+            }
+            cx.notify();
+        }
+    }
+
+    pub(super) fn handle_categories_dialog_type_change(
+        &mut self,
+        category_type: CategoryTypes,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let can_change_type = match self.dialog::<CategoriesDialog>() {
+            Some(CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
+            Some(CategoriesDialog::Edit(id, _)) => self
+                .categories(cx)
+                .iter()
+                .find(|c| c.id == *id)
+                .is_some_and(|c| c.parent.is_none()),
+            _ => false,
+        };
+        if !can_change_type {
+            return;
+        }
+        let edited_id = match self.dialog::<CategoriesDialog>() {
+            Some(CategoriesDialog::Edit(id, _)) => Some(*id),
+            _ => None,
+        };
+        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.category_type = Some(category_type.clone());
+        }
+        // For Edit dialogs, cascade the type change to descendants
+        if let Some(id) = edited_id {
+            let changed = self.ledger.update(cx, |store, cx| {
+                store.apply(cx, lib_ledger::ChangeCategoryType { id, category_type })
+            });
+            self.report_category_write(changed);
+        }
+        cx.notify();
+    }
+
+    /// Confirms the open Categories dialog through the host's cycle: the form's command runs
+    /// against the Ledger, a refusal stays on the form, and a landed one closes the dialog. Delete
+    /// toasts the Splits it moved.
+    pub(super) fn confirm_categories_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = CategoriesApply {
+            ledger: self.ledger.clone(),
+            today: self.today,
+        };
+        let Some(dialog) = self.dialog_mut::<CategoriesDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            CategoryOutcome::Saved => {}
+            CategoryOutcome::Deleted { name, moved } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_category_deleted(&name, moved),
+                );
+            }
+        }
     }
 }

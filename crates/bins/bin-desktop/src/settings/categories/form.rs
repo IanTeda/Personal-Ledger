@@ -1,10 +1,11 @@
-//! The Categories dialogs' form state: the Add, Edit and Delete category forms and the dialog
-//! they sit behind. `gpui`-free, like the rest of this domain; `view::categories` renders it.
+//! The Categories dialogs' form state: the Add/Edit category form and the Delete confirm form.
+//! `gpui`-free, like the rest of this page's domain. `dialogs::CategoriesDialog` holds them behind
+//! the Dialog host, and `dialogs/` renders them.
 
 use lib_core::CategoryTypes;
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
 };
 
@@ -77,7 +78,7 @@ impl CategoryForm {
     }
 
     /// The text field typing edits: Name, or Monthly budget unless it is locked.
-    fn focused_text(&mut self) -> Option<&mut TextField> {
+    pub fn focused_text(&mut self) -> Option<&mut TextField> {
         match self.focused {
             CategoryField::Name => Some(&mut self.name),
             CategoryField::Budget if self.budget_lock.is_none() => Some(&mut self.budget),
@@ -88,7 +89,7 @@ impl CategoryForm {
     /// Typing and `Backspace` on a field with nothing to type into (the two selects, a locked
     /// Monthly budget) are swallowed so they never fall through to the shell, and the Monthly
     /// budget only takes digits and `.`.
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+    pub fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         match key {
             DialogKey::Char(ch) => {
                 let on_budget = self.focused == CategoryField::Budget;
@@ -134,70 +135,12 @@ impl DeleteCategoryForm {
     }
 }
 
-/// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CategoriesDialog {
-    /// Adding a new category under a parent (or None for top-level).
-    Add {
-        parent_id: Option<u32>,
-        form: CategoryForm,
-    },
-    /// Editing the category with this [`Category::id`].
-    Edit(u32, CategoryForm),
-    /// Deleting the category with this [`Category::id`], once its name has been typed back.
-    Delete(u32, DeleteCategoryForm),
-}
-
-impl CategoriesDialog {
-    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
-    pub fn form(&self) -> Option<&CategoryForm> {
-        match self {
-            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
-            CategoriesDialog::Delete(_, _) => None,
-        }
-    }
-
-    /// The mutable form behind the Add and Edit dialogs; Delete has its own, single-field form.
-    pub fn form_mut(&mut self) -> Option<&mut CategoryForm> {
-        match self {
-            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
-            CategoriesDialog::Delete(_, _) => None,
-        }
-    }
-}
-
-impl Dialog for CategoriesDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        self.form_mut()?.handle_own_key(key)
-    }
-
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        match self {
-            Self::Add { form, .. } | Self::Edit(_, form) => form.focused_text(),
-            Self::Delete(_, form) => Some(&mut form.confirmation_name),
-        }
-    }
-
-    fn cycle_field(&mut self) {
-        if let Some(form) = self.form_mut() {
-            form.focused = form.focused.next();
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        match self {
-            Self::Add { form, .. } | Self::Edit(_, form) => form.is_valid(),
-            Self::Delete(_, form) => form.is_valid(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::categories::form::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
-    use crate::chrome::dialog_host::type_text;
+    use crate::chrome::dialog_host::{Dialog, type_text};
     use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+    use crate::settings::categories::dialogs::CategoriesDialog;
 
     fn add_category() -> OpenDialog {
         OpenDialog::Categories(CategoriesDialog::Add {

@@ -8,7 +8,6 @@ pub mod app;
 mod assets;
 mod bills;
 mod budgets;
-mod categories;
 mod chrome;
 mod dialog;
 mod documents;

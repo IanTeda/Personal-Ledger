@@ -25,12 +25,12 @@ use lib_locale::format::{
 use lib_payees::Payee;
 
 use crate::{
-    categories::{self, Category},
     form::select::SelectState,
     transactions::chips::FilterField,
     transactions::query::{StatusFilter, TransactionFilters},
 };
 use lib_accounts::Account;
+use lib_categories::{self, Category};
 use lib_tags::Tag;
 
 /// The Account select's first option, meaning no account filter.
@@ -115,7 +115,7 @@ impl FormOptions {
         );
         let mut category_options = vec![(None, any_category())];
         category_options.extend(
-            categories::paths_in_tree_order(all_categories)
+            lib_categories::paths_in_tree_order(all_categories)
                 .into_iter()
                 .map(|(id, path)| (Some(id), path)),
         );
@@ -482,8 +482,8 @@ impl FilterForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::categories::default_categories;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -628,7 +628,7 @@ mod tests {
     fn a_draft_round_trips_through_every_date_style() {
         let mut filters = TransactionFilters::defaults(today());
         filters.account = Some(default_accounts()[1].id);
-        filters.category = categories::find_by_name(&default_categories(), "Groceries");
+        filters.category = lib_categories::find_by_name(&default_categories(), "Groceries");
         filters.payee = "wool".to_string();
         filters.tag = "japan".to_string();
         filters.status = StatusFilter::Cleared;
@@ -683,7 +683,7 @@ mod tests {
         );
         assert_eq!(
             filters.category,
-            categories::find_by_name(&default_categories(), "Dining")
+            lib_categories::find_by_name(&default_categories(), "Dining")
         );
     }
 

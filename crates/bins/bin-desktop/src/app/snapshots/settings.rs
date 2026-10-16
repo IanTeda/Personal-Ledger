@@ -5,6 +5,7 @@ use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
 #[doc(hidden)]
 pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
+use crate::settings::categories::dialogs::CategoriesDialog;
 #[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
@@ -18,7 +19,6 @@ pub use crate::settings::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
-    categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     settings::accounts::dialogs::AccountsDialog,
     settings::payees::dialogs::PayeesDialog,
@@ -28,13 +28,7 @@ use crate::{
     },
 };
 
-/// The Categories page: names in storage order, and the selected row's name.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsCategoriesSnapshot {
-    pub category_names: Vec<String>,
-    pub selected_category: Option<String>,
-}
+pub use crate::settings::categories::SettingsCategoriesSnapshot;
 
 /// The Document Types page: names in the user's order, the selected row's name, filed files per
 /// type in the same order, and the open dialog (`add`, `edit`, `remove` or `notice`).
@@ -273,20 +267,12 @@ impl Shell {
     /// The Settings Categories page for a test.
     #[doc(hidden)]
     pub fn settings_categories_snapshot(&self, cx: &gpui::App) -> SettingsCategoriesSnapshot {
-        let selected_category = self.categories_view.read(cx).selected_id().and_then(|id| {
-            self.categories(cx)
-                .iter()
-                .find(|category| category.id == id)
-                .map(|category| category.name.clone())
-        });
-        SettingsCategoriesSnapshot {
-            category_names: self
-                .categories(cx)
-                .iter()
-                .map(|category| category.name.clone())
-                .collect(),
-            selected_category,
-        }
+        self.views
+            .settings
+            .read(cx)
+            .categories()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Payees page for a test.

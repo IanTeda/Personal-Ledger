@@ -6,9 +6,7 @@ use crate::inventory::form::InventoryDialog;
 use gpui::Context;
 
 use super::{Shell, document_types_ui, inventory_ui};
-use crate::settings::hints::{
-    settings_categories_hints, settings_documents_hints, settings_inventory_hints,
-};
+use crate::settings::hints::{settings_documents_hints, settings_inventory_hints};
 use crate::view::active::ActiveViewEntity;
 use crate::{
     chrome::dialog_host::Dialog,
@@ -86,11 +84,6 @@ impl Shell {
                     inventory_ui::dialog_hints,
                 ),
                 right: inventory_view::scope_text(self.inventory(cx)),
-            })
-        } else if focused(SettingsPage::Categories) {
-            Some(PageStatus {
-                hints: settings_categories_hints(),
-                right: settings_view::categories::scope_note(self.categories(cx)),
             })
         } else {
             None

@@ -2,8 +2,8 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Shell;
-use crate::categories::form::CategoriesDialog;
 use crate::form::colour_field::OnPick;
+use crate::settings::categories::dialogs::{CategoriesDialog, CategoriesDialogHandlers};
 use crate::settings::payees::{
     dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
     form,
@@ -32,7 +32,6 @@ use crate::settings::accounts::dialogs as accounts_dialogs;
 use crate::{
     bills::{self},
     budgets,
-    categories::{self},
     chrome::rail::{self as chrome_rail, context::ContextRail, primary::PrimaryRail},
     chrome::statusline::{self, StatusLine},
     chrome::toast::history as toast_history_view,
@@ -47,7 +46,7 @@ use crate::{
     view::format,
     view::{
         active::{ActiveViewEntity, ShellView},
-        bills as bills_view, categories as categories_view,
+        bills as bills_view,
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
@@ -235,40 +234,6 @@ impl Render for Shell {
             })
         };
         let account_options = crate::settings::accounts::dialog_options(&self.ledger, cx);
-        let on_categories_add_click: categories_view::OnAddClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_add_click(cx));
-            })
-        };
-        let on_categories_add_sub_click: categories_view::OnAddSubClick = {
-            let entity = entity.clone();
-            Rc::new(move |parent_id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_add_sub_click(parent_id, cx)
-                });
-            })
-        };
-        let on_categories_edit_click: categories_view::OnEditClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_edit_click(id, cx));
-            })
-        };
-        let on_categories_delete_click: categories_view::OnDeleteClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_delete_click(id, cx));
-            })
-        };
-        let on_categories_disclosure_click: categories_view::OnDisclosureClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_disclosure_click(id, cx)
-                });
-            })
-        };
         let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -515,28 +480,9 @@ impl Render for Shell {
                 .map(|figures| self.dashboard_budget_list(figures, cx))
                 .unwrap_or_default(),
         );
-        let on_settings_categories_row_click: categories_view::OnRowClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_settings_categories_row_click(id, cx)
-                });
-            })
-        };
-        let settings_categories_page = settings_view::categories::CategoriesPageProps {
-            categories: self.categories(cx),
-            expanded: self.categories_view.read(cx).expanded(),
-            selected: self.categories_view.read(cx).selected_id(),
-            on_add_click: on_categories_add_click.clone(),
-            on_add_sub_click: on_categories_add_sub_click.clone(),
-            on_edit_click: on_categories_edit_click.clone(),
-            on_delete_click: on_categories_delete_click.clone(),
-            on_disclosure_click: on_categories_disclosure_click.clone(),
-            on_row_click: on_settings_categories_row_click,
-        };
-
-        // Categories dialog closures
-        let on_categories_dialog_field_click: categories_view::add_dialog::OnFieldClick = {
+        // The Categories Dialogs' handlers: each change to the open form runs on `Shell`, which
+        // holds the open Dialog, and confirm and cancel run the Dialog host's cycle.
+        let on_categories_dialog_field_click: crate::settings::categories::dialogs::add::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -544,7 +490,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_categories_dialog_parent_change: categories_view::add_dialog::OnParentChange = {
+        let on_categories_dialog_parent_change: crate::settings::categories::dialogs::add::OnParentChange = {
             let entity = entity.clone();
             Rc::new(move |parent_id, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -552,7 +498,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_categories_dialog_type_change: categories_view::add_dialog::OnTypeChange = {
+        let on_categories_dialog_type_change: crate::settings::categories::dialogs::add::OnTypeChange = {
             let entity = entity.clone();
             Rc::new(move |category_type, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -560,7 +506,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_categories_dialog_cancel: categories_view::add_dialog::OnCancel = {
+        let on_categories_dialog_cancel: crate::settings::categories::dialogs::add::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -568,13 +514,20 @@ impl Render for Shell {
                 });
             })
         };
-        let on_categories_dialog_confirm: categories_view::add_dialog::OnConfirm = {
+        let on_categories_dialog_confirm: crate::settings::categories::dialogs::add::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| {
                     shell.handle_dialog_confirm(cx);
                 });
             })
+        };
+        let categories_dialog_handlers = CategoriesDialogHandlers {
+            on_field_click: on_categories_dialog_field_click,
+            on_parent_change: on_categories_dialog_parent_change,
+            on_type_change: on_categories_dialog_type_change,
+            on_cancel: on_categories_dialog_cancel,
+            on_confirm: on_categories_dialog_confirm,
         };
 
         // The Settings pages with Ledger data are still drawn here, and handed to the Settings
@@ -585,7 +538,6 @@ impl Render for Shell {
                 settings.selected_section(),
                 focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
                 &settings_view::DataPageProps {
-                    categories: settings_categories_page,
                     documents: settings_documents_page,
                     inventory: settings_inventory_page,
                 },
@@ -821,146 +773,15 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(
-                self.dialog::<CategoriesDialog>()
-                    .map(|dialog| match dialog {
-                        CategoriesDialog::Add { form, .. } => {
-                            let parent_options: Vec<_> = self
-                                .categories(cx)
-                                .iter()
-                                .map(|c| {
-                                    let depth = categories::depth(self.categories(cx), c.id);
-                                    let is_available = depth < 2; // Can't add children to depth-2 categories
-                                    categories_view::add_dialog::ParentOption {
-                                        id: Some(c.id),
-                                        label: categories::path(self.categories(cx), c.id)
-                                            .unwrap_or_else(|| c.name.clone()),
-                                        is_available,
-                                    }
-                                })
-                                .collect();
-
-                            categories_view::add_dialog::render(
-                                form,
-                                &parent_options,
-                                self.categories(cx),
-                                categories_view::DialogHandlers {
-                                    on_field_click: on_categories_dialog_field_click,
-                                    on_parent_change: on_categories_dialog_parent_change,
-                                    on_type_change: on_categories_dialog_type_change,
-                                    on_cancel: on_categories_dialog_cancel,
-                                    on_confirm: on_categories_dialog_confirm,
-                                },
-                                cx,
-                            )
-                        }
-                        CategoriesDialog::Edit(category_id, form) => {
-                            let category =
-                                self.categories(cx).iter().find(|c| c.id == *category_id);
-                            let descendants = category
-                                .map(|_| {
-                                    categories::descendants_inclusive(
-                                        self.categories(cx),
-                                        *category_id,
-                                    )
-                                })
-                                .unwrap_or_default();
-
-                            let parent_options: Vec<_> = self
-                                .categories(cx)
-                                .iter()
-                                .filter(|c| {
-                                    // Exclude the category itself
-                                    if c.id == *category_id {
-                                        return false;
-                                    }
-                                    // Exclude descendants (to prevent cycles)
-                                    if descendants.contains(&c.id) {
-                                        return false;
-                                    }
-                                    // Check depth: can't be at depth 2 or deeper
-                                    let depth = categories::depth(self.categories(cx), c.id);
-                                    depth < 2
-                                })
-                                .map(|c| categories_view::edit_dialog::ParentOption {
-                                    id: Some(c.id),
-                                    label: categories::path(self.categories(cx), c.id)
-                                        .unwrap_or_else(|| c.name.clone()),
-                                    is_available: true,
-                                })
-                                .collect();
-
-                            // Count splits in this category (and descendants if parent)
-                            let split_count = categories::descendants_inclusive(
-                                self.categories(cx),
-                                *category_id,
-                            )
-                            .iter()
-                            .flat_map(|cat_id| {
-                                self.transactions(cx).iter().flat_map(move |t| {
-                                    t.splits.iter().filter(move |s| s.category_id == *cat_id)
-                                })
-                            })
-                            .count();
-
-                            let is_parent = !categories::is_leaf(self.categories(cx), *category_id);
-
-                            categories_view::edit_dialog::render(
-                                *category_id,
-                                form,
-                                &parent_options,
-                                self.categories(cx),
-                                split_count,
-                                is_parent,
-                                categories_view::DialogHandlers {
-                                    on_field_click: on_categories_dialog_field_click,
-                                    on_parent_change: on_categories_dialog_parent_change,
-                                    on_type_change: on_categories_dialog_type_change,
-                                    on_cancel: on_categories_dialog_cancel,
-                                    on_confirm: on_categories_dialog_confirm,
-                                },
-                                cx,
-                            )
-                        }
-                        CategoriesDialog::Delete(category_id, form) => {
-                            let category = self
-                                .categories(cx)
-                                .iter()
-                                .find(|c| c.id == *category_id)
-                                .cloned();
-
-                            if let Some(category) = category {
-                                // Count splits in this category (and descendants if parent)
-                                let split_count = categories::descendants_inclusive(
-                                    self.categories(cx),
-                                    *category_id,
-                                )
-                                .iter()
-                                .flat_map(|cat_id| {
-                                    self.transactions(cx).iter().flat_map(move |t| {
-                                        t.splits.iter().filter(move |s| s.category_id == *cat_id)
-                                    })
-                                })
-                                .count();
-
-                                // Count budgets attached to this category
-                                let budget_count = self.budgets(cx).limit_count(*category_id);
-
-                                categories_view::delete_dialog::render(
-                                    &category,
-                                    form,
-                                    split_count,
-                                    budget_count,
-                                    on_categories_dialog_cancel.clone(),
-                                    on_categories_dialog_confirm.clone(),
-                                    cx,
-                                )
-                            } else {
-                                div().into_any_element()
-                            }
-                        }
-                    }),
-            )
+            .children(self.dialog::<CategoriesDialog>().map(|dialog| {
+                dialog.render(
+                    self.categories(cx),
+                    self.transactions(cx),
+                    self.budgets(cx),
+                    categories_dialog_handlers,
+                    cx,
+                )
+            }))
             .children(self.dialog::<SettingsDialog>().map(|dialog| match dialog {
                 SettingsDialog::ClearLogs => settings_view::clear_logs_dialog::render(
                     on_settings_dialog_cancel.clone(),

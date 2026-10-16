@@ -211,3 +211,28 @@ fn typing_the_exact_name_and_pressing_enter_removes_the_leaf(app: &mut TestAppCo
             .any(|name| name == "Rent")
     );
 }
+
+#[gpui::test]
+fn left_climbs_from_a_nested_row_to_its_parent_and_keeps_the_page_focused(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+    // Rent is the first nested row, under the open Housing parent.
+    for _ in 0..10 {
+        if ui.settings_categories().selected_category.as_deref() == Some("Rent") {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(
+        ui.settings_categories().selected_category.as_deref(),
+        Some("Rent")
+    );
+
+    ui.press("left");
+    assert_eq!(
+        ui.settings_categories().selected_category.as_deref(),
+        Some("Housing")
+    );
+    assert!(ui.settings().page_focused);
+}

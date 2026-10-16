@@ -624,11 +624,11 @@ mod tests {
     use super::*;
     use crate::{
         bills::default_bills,
-        categories::default_categories,
         documents::{self, DocumentsSeed, default_documents},
         transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 

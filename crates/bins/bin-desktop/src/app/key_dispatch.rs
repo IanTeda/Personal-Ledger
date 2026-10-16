@@ -328,10 +328,8 @@ impl Shell {
         }
         let left_is_local = keystroke.key == "left"
             && !keystroke.modifiers.shift
-            && ((self.settings_data_page_has_focus(SettingsPage::Categories, cx)
-                && self.settings_categories_left_is_local(cx))
-                || (self.settings_data_page_has_focus(SettingsPage::Inventory, cx)
-                    && self.settings_inventory_left_is_local(cx)));
+            && self.settings_data_page_has_focus(SettingsPage::Inventory, cx)
+            && self.settings_inventory_left_is_local(cx);
         left_is_local.then_some(false)
     }
 
@@ -342,9 +340,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Categories) {
-            self.handle_categories_key(keystroke, cx)
-        } else if focused(SettingsPage::Documents) {
+        if focused(SettingsPage::Documents) {
             self.handle_settings_documents_key(keystroke, cx)
         } else if focused(SettingsPage::Inventory) {
             self.handle_settings_inventory_key(keystroke, cx)

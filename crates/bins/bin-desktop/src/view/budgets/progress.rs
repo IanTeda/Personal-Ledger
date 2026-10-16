@@ -15,7 +15,6 @@ use lib_locale::format::upper;
 
 use crate::{
     budgets::{CategoryFigures, PeriodFigures},
-    categories,
     theme::color,
     transactions::rows::EMPTY_CELL,
     view::format::amount,
@@ -476,7 +475,7 @@ fn render_row(
         .iter()
         .find(|c| c.id == row.category_id)
         .map_or_else(|| EMPTY_CELL.to_string(), |c| c.name.clone());
-    let depth = categories::depth(props.categories, row.category_id) as f32;
+    let depth = lib_categories::depth(props.categories, row.category_id) as f32;
     let cell = |width, value: String, colour: Rgba| {
         div()
             .w(width)

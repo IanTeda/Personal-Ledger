@@ -6,18 +6,16 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
-use super::add_dialog::WIDTH;
-use crate::{
-    categories::{self, form::DeleteCategoryForm},
-    dialog,
-    theme::color,
-};
+use lib_categories::Category;
+
+use super::add::WIDTH;
+use crate::{dialog, settings::categories::form::DeleteCategoryForm, theme::color};
 
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
 pub fn render(
-    category: &categories::Category,
+    category: &Category,
     form: &DeleteCategoryForm,
     split_count: usize,
     budget_count: usize,

@@ -130,13 +130,13 @@ impl Dialog for BillsDialog {
 mod tests {
     use super::*;
     use crate::{
-        categories::{Category, default_categories},
         period::Period,
         transactions::{Transaction, default_transactions},
     };
     use bigdecimal::{BigDecimal, Signed};
     use chrono::{Datelike, NaiveDate};
     use lib_accounts::{Account, default_accounts};
+    use lib_categories::{Category, default_categories};
     use lib_core::{Money, Total, TransactionStatus};
     use lib_payees::default_payees;
     use lib_tags::default_tags;

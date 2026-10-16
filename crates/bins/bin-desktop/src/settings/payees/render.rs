@@ -14,7 +14,8 @@ use lib_locale::format::upper;
 use lib_payees::Payee;
 
 use super::PayeesPage;
-use crate::{categories::Category, theme::color};
+use crate::theme::color;
+use lib_categories::Category;
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 

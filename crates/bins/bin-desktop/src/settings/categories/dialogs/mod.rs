@@ -1,0 +1,185 @@
+//! The Categories page's Dialogs (ADR-0037's amendment): Add, Edit and Delete category. [`CategoriesDialog`]
+//! is the value `Shell`'s Dialog host holds while one is open (`OpenDialog::Categories`).
+//! [`CategoriesDialog::render`] draws whichever is open from the Ledger's tree, and every click
+//! inside it reaches `Shell` through [`CategoriesDialogHandlers`].
+
+pub mod add;
+pub mod delete;
+pub mod edit;
+
+use gpui::{AnyElement, App, div, prelude::*};
+use lib_budgets::Budgets;
+use lib_categories::{Category, depth, descendants_inclusive, is_leaf, path};
+use lib_transactions::Transaction;
+
+use super::{
+    apply::CategoryRefusal,
+    form::{CategoryForm, DeleteCategoryForm},
+};
+use crate::{
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    dialog,
+    form::field::TextField,
+};
+
+/// The handlers a Categories Dialog binds: the Add and Edit forms' field, parent and type changes,
+/// and cancel and confirm, which the Delete confirm shares.
+pub struct CategoriesDialogHandlers {
+    pub on_field_click: add::OnFieldClick,
+    pub on_parent_change: add::OnParentChange,
+    pub on_type_change: add::OnTypeChange,
+    pub on_cancel: dialog::OnClick,
+    pub on_confirm: dialog::OnClick,
+}
+
+/// A refusal the domain made on confirm, as the dialogs' last line.
+pub(crate) fn refusal_line(refusal: &CategoryRefusal, cx: &App) -> AnyElement {
+    div()
+        .text_size(gpui::px(11.5))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_color(crate::theme::color::accent_text(cx))
+        .child(refusal.to_string())
+        .into_any_element()
+}
+
+/// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CategoriesDialog {
+    /// Adding a new category under a parent (or None for top-level).
+    Add {
+        parent_id: Option<u32>,
+        form: CategoryForm,
+    },
+    /// Editing the category with this [`Category::id`].
+    Edit(u32, CategoryForm),
+    /// Deleting the category with this [`Category::id`], once its name has been typed back.
+    Delete(u32, DeleteCategoryForm),
+}
+
+impl CategoriesDialog {
+    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
+    pub fn form(&self) -> Option<&CategoryForm> {
+        match self {
+            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
+            CategoriesDialog::Delete(_, _) => None,
+        }
+    }
+
+    /// The mutable form behind the Add and Edit dialogs; Delete has its own, single-field form.
+    pub fn form_mut(&mut self) -> Option<&mut CategoryForm> {
+        match self {
+            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
+            CategoriesDialog::Delete(_, _) => None,
+        }
+    }
+}
+
+impl Dialog for CategoriesDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.form_mut()?.handle_own_key(key)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self {
+            Self::Add { form, .. } | Self::Edit(_, form) => form.focused_text(),
+            Self::Delete(_, form) => Some(&mut form.confirmation_name),
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        if let Some(form) = self.form_mut() {
+            form.focused = form.focused.next();
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::Add { form, .. } | Self::Edit(_, form) => form.is_valid(),
+            Self::Delete(_, form) => form.is_valid(),
+        }
+    }
+}
+
+impl CategoriesDialog {
+    /// Draws the open Dialog. Its counts and parent choices come from the Ledger's `categories`,
+    /// `transactions` and `budgets`; Delete draws nothing if its Category has gone.
+    pub fn render(
+        &self,
+        categories: &[Category],
+        transactions: &[Transaction],
+        budgets: &Budgets,
+        handlers: CategoriesDialogHandlers,
+        cx: &App,
+    ) -> AnyElement {
+        match self {
+            Self::Add { form, .. } => {
+                let parent_options: Vec<_> = categories
+                    .iter()
+                    .map(|c| add::ParentOption {
+                        id: Some(c.id),
+                        label: path(categories, c.id).unwrap_or_else(|| c.name.clone()),
+                        // Can't add children to depth-2 categories
+                        is_available: depth(categories, c.id) < 2,
+                    })
+                    .collect();
+                add::render(form, &parent_options, categories, handlers, cx)
+            }
+            Self::Edit(category_id, form) => {
+                let descendants = categories
+                    .iter()
+                    .find(|c| c.id == *category_id)
+                    .map(|_| descendants_inclusive(categories, *category_id))
+                    .unwrap_or_default();
+                let parent_options: Vec<_> = categories
+                    .iter()
+                    // Exclude the category itself and its descendants (to prevent cycles)
+                    .filter(|c| c.id != *category_id && !descendants.contains(&c.id))
+                    // Check depth: can't be at depth 2 or deeper
+                    .filter(|c| depth(categories, c.id) < 2)
+                    .map(|c| edit::ParentOption {
+                        id: Some(c.id),
+                        label: path(categories, c.id).unwrap_or_else(|| c.name.clone()),
+                        is_available: true,
+                    })
+                    .collect();
+                edit::render(
+                    *category_id,
+                    form,
+                    &parent_options,
+                    categories,
+                    split_count(categories, transactions, *category_id),
+                    !is_leaf(categories, *category_id),
+                    handlers,
+                    cx,
+                )
+            }
+            Self::Delete(category_id, form) => {
+                let Some(category) = categories.iter().find(|c| c.id == *category_id) else {
+                    return div().into_any_element();
+                };
+                delete::render(
+                    category,
+                    form,
+                    split_count(categories, transactions, *category_id),
+                    // Count budgets attached to this category
+                    budgets.limit_count(*category_id),
+                    handlers.on_cancel,
+                    handlers.on_confirm,
+                    cx,
+                )
+            }
+        }
+    }
+}
+
+/// The Splits in `category_id` and, for a parent, in all its descendants.
+fn split_count(categories: &[Category], transactions: &[Transaction], category_id: u32) -> usize {
+    descendants_inclusive(categories, category_id)
+        .iter()
+        .flat_map(|cat_id| {
+            transactions
+                .iter()
+                .flat_map(move |t| t.splits.iter().filter(move |s| s.category_id == *cat_id))
+        })
+        .count()
+}

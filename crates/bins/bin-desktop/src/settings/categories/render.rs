@@ -1,40 +1,81 @@
-//! The **Categories** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 2i): a kicker (EXPENSE · n)
-//! with **+ Add category** over a nested tree of NAME and ACTIONS only, then the Income tree under
-//! its own kicker. Budget and spend figures live in Budgets and Reports; the Monthly budget field
-//! stays in the edit dialog. It reuses the Categories model and dialogs.
+//! Draws the **Categories** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 2i): a kicker
+//! (EXPENSE · n) with **+ Add category** over a nested tree of NAME and ACTIONS only, then the
+//! Income tree under its own kicker. Budget and spend figures live in Budgets and Reports; the
+//! Monthly budget field stays in the edit dialog.
 //!
-//! Every action is a callback into `Shell`, so the keyboard (`n`/`N`/`e`/`d`/`→`/`←`) and the
-//! mouse reach the same handlers.
+//! Every action is a callback into [`CategoriesPage`], so the keyboard (`n`/`N`/`e`/`d`/`→`/`←`)
+//! and the mouse reach the same handlers.
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, Entity, Render, SharedString, Window, div, prelude::*, px};
+use lib_categories::{Category, TreeNode};
 use lib_core::CategoryTypes;
 use lib_locale::format::upper;
 
-use crate::{
-    categories::{self, Category, TreeNode},
-    theme::color,
-    view::categories::{
-        OnAddClick, OnAddSubClick, OnDeleteClick, OnDisclosureClick, OnEditClick, OnRowClick,
-    },
-};
+use super::CategoriesPage;
+use crate::theme::color;
 
+/// What the tree's own rows, kickers and buttons read and call back into.
 pub struct CategoriesPageProps<'a> {
     pub categories: &'a [Category],
     /// The ids of the parents shown open.
     pub expanded: &'a [u32],
     /// The selected row's Category id.
     pub selected: Option<u32>,
-    pub on_add_click: OnAddClick,
-    pub on_add_sub_click: OnAddSubClick,
-    pub on_edit_click: OnEditClick,
-    pub on_delete_click: OnDeleteClick,
-    pub on_disclosure_click: OnDisclosureClick,
-    pub on_row_click: OnRowClick,
+    pub on_add_click: OnPlainClick,
+    pub on_add_sub_click: OnIdClick,
+    pub on_edit_click: OnIdClick,
+    pub on_delete_click: OnIdClick,
+    pub on_disclosure_click: OnIdClick,
+    pub on_row_click: OnIdClick,
 }
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+type OnIdClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+type OnAddClick = OnPlainClick;
+type OnAddSubClick = OnIdClick;
+type OnEditClick = OnIdClick;
+type OnDeleteClick = OnIdClick;
+type OnDisclosureClick = OnIdClick;
+type OnRowClick = OnIdClick;
+
+impl Render for CategoriesPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let cx: &App = cx;
+        let props = CategoriesPageProps {
+            categories: self.categories(cx),
+            expanded: &self.expanded,
+            selected: self.selected_id,
+            on_add_click: on_plain(&entity, CategoriesPage::click_add),
+            on_add_sub_click: on_id(&entity, CategoriesPage::click_add_sub),
+            on_edit_click: on_id(&entity, CategoriesPage::click_edit),
+            on_delete_click: on_id(&entity, CategoriesPage::click_delete),
+            on_disclosure_click: on_id(&entity, CategoriesPage::click_disclosure),
+            on_row_click: on_id(&entity, CategoriesPage::click_row),
+        };
+        render_tree(&props, self.page_focused, cx)
+    }
+}
+
+/// A click handler that runs `act` on the page with no value.
+fn on_plain(
+    entity: &Entity<CategoriesPage>,
+    act: fn(&mut CategoriesPage, &mut Context<'_, CategoriesPage>),
+) -> OnPlainClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| entity.update(cx, act))
+}
+
+/// A click handler that runs `act` on the page with the clicked Category's id.
+fn on_id(
+    entity: &Entity<CategoriesPage>,
+    act: fn(&mut CategoriesPage, u32, &mut Context<'_, CategoriesPage>),
+) -> OnIdClick {
+    let entity = entity.clone();
+    Rc::new(move |id, _window, cx| entity.update(cx, |page, cx| act(page, id, cx)))
+}
 
 /// A row count as the number a plural selector takes.
 fn count(len: usize) -> i64 {
@@ -42,15 +83,15 @@ fn count(len: usize) -> i64 {
 }
 
 /// The section heading's meta: `12 categories · 3 levels deep`.
-pub fn scope_note(categories: &[Category]) -> String {
+pub(super) fn scope_text(categories: &[Category]) -> String {
     crate::msg::desktop_settings_categories_summary(
         count(categories.len()),
-        i64::from(categories::levels_deep(categories)),
+        i64::from(lib_categories::levels_deep(categories)),
     )
 }
 
-pub fn render(props: &CategoriesPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
-    let rows = categories::settings_rows(props.categories, props.expanded);
+fn render_tree(props: &CategoriesPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
+    let rows = lib_categories::settings_rows(props.categories, props.expanded);
     let of_type = |wanted: &CategoryTypes| -> Vec<&TreeNode> {
         rows.iter()
             .filter(|row| {
@@ -202,7 +243,7 @@ fn tree_row(
     let on_row_click = props.on_row_click.clone();
     let on_disclosure_click = props.on_disclosure_click.clone();
     let can_add_sub = row.depth < 2;
-    let subcategories = categories::child_count(props.categories, id);
+    let subcategories = lib_categories::child_count(props.categories, id);
 
     div()
         .debug_selector(move || format!("settings-categories-row-{id}"))
@@ -358,7 +399,7 @@ mod tests {
     fn scope_note_reads_count_and_levels_deep() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_note(&categories::default_categories()),
+            scope_text(&lib_categories::default_categories()),
             "12 categories \u{b7} 3 levels deep"
         );
     }

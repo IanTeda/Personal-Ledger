@@ -121,8 +121,8 @@ impl PayeesDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::categories::default_categories;
     use crate::settings::payees::form::{DeleteAction, PayeeField, PayeeOptions};
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
 
     use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key, type_text};

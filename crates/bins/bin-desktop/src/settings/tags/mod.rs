@@ -332,8 +332,9 @@ mod tests {
     use super::*;
     use lib_tags::*;
 
-    use crate::{categories::default_categories, transactions::default_transactions};
+    use crate::transactions::default_transactions;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_transactions::Split;
 
     fn today() -> NaiveDate {

@@ -8,13 +8,12 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::CategoryTypes;
 
-use super::DialogHandlers;
+use lib_categories::Category;
+
+use super::CategoriesDialogHandlers;
 use crate::{
-    categories::{
-        self,
-        form::{CategoryField, CategoryForm},
-    },
     dialog,
+    settings::categories::form::{self, CategoryField, CategoryForm},
     theme::color,
 };
 
@@ -36,11 +35,11 @@ pub struct ParentOption {
 pub fn render(
     form: &CategoryForm,
     parent_options: &[ParentOption],
-    all_categories: &[categories::Category],
-    handlers: DialogHandlers,
+    all_categories: &[Category],
+    handlers: CategoriesDialogHandlers,
     cx: &App,
 ) -> AnyElement {
-    let DialogHandlers {
+    let CategoriesDialogHandlers {
         on_field_click,
         on_parent_change,
         on_type_change,
@@ -285,11 +284,11 @@ fn parent_field(
 fn budget_field(
     value: &str,
     focused: bool,
-    lock: Option<&categories::form::BudgetLock>,
+    lock: Option<&form::BudgetLock>,
     on_field_click: OnFieldClick,
     cx: &App,
 ) -> AnyElement {
-    if let Some(categories::form::BudgetLock::Archived(budget)) = lock {
+    if let Some(form::BudgetLock::Archived(budget)) = lock {
         return div()
             .child(suffixed_label(
                 crate::msg::desktop_categories_field_monthly_budget(),
@@ -351,11 +350,7 @@ fn budget_field(
         .into_any_element()
 }
 
-fn lock_notice(
-    type_locked: bool,
-    parent_category: Option<&categories::Category>,
-    cx: &App,
-) -> AnyElement {
+fn lock_notice(type_locked: bool, parent_category: Option<&Category>, cx: &App) -> AnyElement {
     if type_locked {
         let parent_name = parent_category
             .map(|c| c.name.as_str())
@@ -427,7 +422,7 @@ fn suffixed_label(
         .into_any_element()
 }
 
-fn is_valid(form: &CategoryForm, all_categories: &[categories::Category]) -> bool {
+fn is_valid(form: &CategoryForm, all_categories: &[Category]) -> bool {
     // Name must not be empty
     if form.name.text().trim().is_empty() {
         return false;

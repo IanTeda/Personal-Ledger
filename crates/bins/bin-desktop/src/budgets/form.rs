@@ -470,11 +470,9 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::{
-        budgets::{self, Budgets},
-        categories::default_categories,
-    };
+    use crate::budgets::{self, Budgets};
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()
@@ -662,7 +660,7 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()
     }
 
-    fn budgets_world() -> (Vec<Account>, Vec<crate::categories::Category>, Budgets) {
+    fn budgets_world() -> (Vec<Account>, Vec<lib_categories::Category>, Budgets) {
         let accounts = default_accounts();
         let categories = default_categories();
         let budgets = budgets::default_budgets(&accounts, &categories, budgets_today());
@@ -750,7 +748,7 @@ mod tests {
         let today = budgets_today();
         // The seed budgets every Expense leaf, so two are Stopped for the picker to offer.
         for name in ["Household", "Water"] {
-            let id = crate::categories::find_by_name(&categories, name).unwrap();
+            let id = lib_categories::find_by_name(&categories, name).unwrap();
             budgets
                 .stop(
                     budgets::PERSONAL_SPENDING_ID,

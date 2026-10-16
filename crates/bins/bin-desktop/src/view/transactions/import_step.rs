@@ -26,7 +26,7 @@ impl TransactionsView {
     /// The Category select's options on 6e: "choose category…", then every leaf.
     pub(super) fn import_categories(&self, cx: &App) -> PayeeOptions {
         PayeeOptions::new(
-            self.sources.categories.read(cx).categories(cx),
+            self.sources.ledger.read(cx).ledger().categories(),
             crate::msg::desktop_import_choose_category(),
         )
     }

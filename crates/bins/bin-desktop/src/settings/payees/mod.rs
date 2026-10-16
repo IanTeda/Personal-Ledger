@@ -14,23 +14,21 @@ use lib_ledger::Domain;
 use lib_payees::Payee;
 
 use crate::{
-    categories::Category,
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_payees_hints,
-    view::categories::state::CategoriesStore,
     view::event::{Reveal, ViewEvent},
 };
 use dialogs::PayeesDialog;
 use form::{DeleteAction, DeletePayeeForm, PayeeForm, PayeeOptions};
+use lib_categories::Category;
 use render::scope_text;
 
 /// The stores the Payees page reads: the Ledger, for its rows and each Payee's use, and the
 /// Categories its dialogs offer as a default.
 pub struct PayeesSources {
     pub ledger: Entity<LedgerStore>,
-    pub categories: Entity<CategoriesStore>,
 }
 
 impl EventEmitter<ViewEvent> for PayeesPage {}
@@ -52,16 +50,19 @@ pub struct PayeesPage {
     pub(crate) page_focused: bool,
     /// Repaints the page when the Payees its rows and counts read change.
     _payees_changed: Subscription,
+    _categories_changed: Subscription,
 }
 
 impl PayeesPage {
     pub fn new(sources: PayeesSources, cx: &mut Context<'_, Self>) -> Self {
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
+        let _categories_changed = notify_on(&sources.ledger, Domain::Categories, cx);
         Self {
             sources,
             selected: None,
             page_focused: false,
             _payees_changed,
+            _categories_changed,
         }
     }
 
@@ -70,7 +71,7 @@ impl PayeesPage {
     }
 
     pub(crate) fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.sources.categories.read(cx).categories(cx)
+        self.sources.ledger.read(cx).ledger().categories()
     }
 
     pub fn set_page_focused(&mut self, focused: bool) {

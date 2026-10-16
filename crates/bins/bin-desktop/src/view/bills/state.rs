@@ -27,10 +27,7 @@ use crate::{
     navigation::key_router::Movement,
     period::Period,
     settings::display::StatusGlyphs,
-    view::{
-        categories::state::CategoriesStore,
-        event::{Reveal, ViewEvent},
-    },
+    view::event::{Reveal, ViewEvent},
 };
 
 impl EventEmitter<ViewEvent> for BillsView {}
@@ -68,7 +65,6 @@ impl BillsState {
 /// none of them, since a confirmed dialog is applied by the Dialog host.
 #[derive(Clone)]
 pub struct BillsSources {
-    pub categories: Entity<CategoriesStore>,
     /// The Ledger, for the base Unit the summary totals in.
     pub ledger: Entity<LedgerStore>,
 }
@@ -90,6 +86,7 @@ pub struct BillsView {
     _accounts_changed: Subscription,
     /// Repaints the page when the Payees its rows and plans name change.
     _payees_changed: Subscription,
+    _categories_changed: Subscription,
 }
 
 impl BillsView {
@@ -97,6 +94,7 @@ impl BillsView {
         let _units_changed = notify_on(&sources.ledger, Domain::Units, cx);
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
+        let _categories_changed = notify_on(&sources.ledger, Domain::Categories, cx);
         Self {
             sources,
             today,
@@ -107,6 +105,7 @@ impl BillsView {
             _units_changed,
             _accounts_changed,
             _payees_changed,
+            _categories_changed,
         }
     }
 
@@ -454,9 +453,10 @@ impl BillsView {
             }
             FilterField::Category => self
                 .sources
-                .categories
+                .ledger
                 .read(cx)
-                .categories(cx)
+                .ledger()
+                .categories()
                 .iter()
                 .filter(|c| plans.iter().any(|p| p.category_id == c.id))
                 .map(|c| (c.id, c.name.clone()))
@@ -578,7 +578,7 @@ impl BillsView {
     /// Edit the Plan's own Payee stays listed even if it has since been deactivated.
     fn plan_source(&self, keep_payee: Option<u32>, cx: &App) -> BillPlanSource {
         BillPlanSource::new(
-            self.sources.categories.read(cx).categories(cx),
+            self.sources.ledger.read(cx).ledger().categories(),
             self.sources.ledger.read(cx).ledger().accounts(),
             self.sources.ledger.read(cx).ledger().units(),
             self.sources.ledger.read(cx).ledger().payees(),
@@ -638,7 +638,7 @@ impl BillsView {
             ledger.bill_entries(),
             transactions,
             self.sources.ledger.read(cx).ledger().accounts(),
-            self.sources.categories.read(cx).categories(cx),
+            self.sources.ledger.read(cx).ledger().categories(),
             row.id,
         );
         let preselected = bills::preselected_candidate(plan, &candidates, transactions);
@@ -757,10 +757,7 @@ mod tests {
     fn seeded_view(cx: &mut TestAppContext) -> (Entity<BillsView>, Rc<RefCell<Vec<Seen>>>) {
         crate::locale::init_for_tests();
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let sources = BillsSources {
-            categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
-            ledger,
-        };
+        let sources = BillsSources { ledger };
         let view = cx.new(|cx| BillsView::new(sources, today(), cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();

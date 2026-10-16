@@ -14,7 +14,6 @@ use std::rc::Rc;
 
 use crate::{
     budgets,
-    categories::{self},
     chrome::rail::{self as chrome_rail},
     chrome::{dialog_apply, dialog_host::OpenDialog},
     period::Period,
@@ -22,6 +21,7 @@ use crate::{
     view::budgets::{self as budgets_view, manage_dialog::ManageAction},
     view::format,
 };
+use lib_categories::{self};
 
 use gpui::{Context, px};
 
@@ -874,7 +874,7 @@ impl Shell {
             on_click
         };
         let category =
-            categories::path(self.categories(cx), detail.category_id).unwrap_or_default();
+            lib_categories::path(self.categories(cx), detail.category_id).unwrap_or_default();
         let name = category
             .rsplit(" / ")
             .next()

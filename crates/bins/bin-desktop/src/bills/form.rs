@@ -26,7 +26,6 @@ use lib_payees::Payee;
 
 use crate::{
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
-    categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
@@ -35,6 +34,7 @@ use crate::{
     transactions::filter_form::parse_date,
 };
 use lib_accounts::Account;
+use lib_categories::{self, Category};
 
 /// The dialog's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -114,7 +114,8 @@ impl BillPlanSource {
         let mut leaves: Vec<&Category> = categories
             .iter()
             .filter(|c| {
-                c.category_type == CategoryTypes::Expense && categories::is_leaf(categories, c.id)
+                c.category_type == CategoryTypes::Expense
+                    && lib_categories::is_leaf(categories, c.id)
             })
             .collect();
         leaves.sort_by(|a, b| a.name.cmp(&b.name));
@@ -701,11 +702,9 @@ impl Dialog for BillPlanForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        bills, categories::default_categories, chrome::dialog_host::handle_key,
-        transactions::default_transactions,
-    };
+    use crate::{bills, chrome::dialog_host::handle_key, transactions::default_transactions};
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -785,7 +784,7 @@ mod tests {
         for id in &options.category_ids {
             let category = stubs.categories.iter().find(|c| c.id == *id).unwrap();
             assert_eq!(category.category_type, CategoryTypes::Expense);
-            assert!(categories::is_leaf(&stubs.categories, *id));
+            assert!(lib_categories::is_leaf(&stubs.categories, *id));
         }
         assert!(!options.category_ids.is_empty());
     }
@@ -942,8 +941,8 @@ mod tests {
     use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, type_text};
 
     fn bill_plan_form() -> BillPlanForm {
-        use crate::categories::default_categories;
         use lib_accounts::default_accounts;
+        use lib_categories::default_categories;
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let source = BillPlanSource::new(
             &default_categories(),

@@ -5,7 +5,6 @@
 pub mod active;
 pub mod bills;
 pub mod budgets;
-pub mod categories;
 pub mod dashboard;
 pub mod documents;
 pub mod event;

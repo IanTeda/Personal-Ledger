@@ -45,10 +45,9 @@ mod tests {
     fn types() -> Vec<DocumentTypeRow> {
         types::default_types()
     }
-    use crate::{
-        bills::default_bills, categories::default_categories, transactions::default_transactions,
-    };
+    use crate::{bills::default_bills, transactions::default_transactions};
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_tags::default_tags;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {

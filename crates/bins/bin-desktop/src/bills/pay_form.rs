@@ -251,10 +251,10 @@ impl Dialog for PayForm {
 mod tests {
     use super::*;
     use crate::{
-        bills::default_bills, categories::default_categories, chrome::dialog_host::handle_key,
-        transactions::default_transactions,
+        bills::default_bills, chrome::dialog_host::handle_key, transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -366,10 +366,10 @@ mod tests {
     fn pay_form(candidates: usize) -> PayForm {
         use crate::{
             bills::{EntryId, SplitRef, default_bills},
-            categories::default_categories,
             transactions::default_transactions,
         };
         use lib_accounts::default_accounts;
+        use lib_categories::default_categories;
         use lib_tags::default_tags;
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let (accounts, categories, payees) =

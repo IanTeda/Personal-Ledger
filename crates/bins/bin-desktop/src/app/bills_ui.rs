@@ -13,7 +13,6 @@ use crate::{
         apply::{BillOutcome, BillsApply},
         pay_form::PayForm,
     },
-    categories,
     chrome::dialog_apply,
     view::bills as bills_view,
     view::format,
@@ -200,7 +199,8 @@ impl Shell {
             .payee_id
             .and_then(|id| lib_payees::get(self.ledger.read(cx).ledger().payees(), id))
             .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
-        let category = categories::path(self.categories(cx), plan.category_id).unwrap_or_default();
+        let category =
+            lib_categories::path(self.categories(cx), plan.category_id).unwrap_or_default();
         Some(bills_view::pay_dialog::render(
             bills_view::pay_dialog::PayDialogProps {
                 plan_name: &plan.name,

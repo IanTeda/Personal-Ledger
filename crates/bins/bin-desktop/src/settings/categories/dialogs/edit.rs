@@ -8,13 +8,12 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::CategoryTypes;
 
-use super::DialogHandlers;
+use lib_categories::Category;
+
+use super::CategoriesDialogHandlers;
 use crate::{
-    categories::{
-        self,
-        form::{CategoryField, CategoryForm},
-    },
     dialog,
+    settings::categories::form::{self, CategoryField, CategoryForm},
     theme::color,
 };
 
@@ -41,13 +40,13 @@ pub fn render(
     category_id: u32,
     form: &CategoryForm,
     parent_options: &[ParentOption],
-    all_categories: &[categories::Category],
+    all_categories: &[Category],
     split_count: usize,
     is_parent: bool,
-    handlers: DialogHandlers,
+    handlers: CategoriesDialogHandlers,
     cx: &App,
 ) -> AnyElement {
-    let DialogHandlers {
+    let CategoriesDialogHandlers {
         on_field_click,
         on_parent_change,
         on_type_change,
@@ -295,28 +294,26 @@ fn parent_field(
 fn budget_field(
     value: &str,
     focused: bool,
-    lock: Option<&categories::form::BudgetLock>,
+    lock: Option<&form::BudgetLock>,
     on_field_click: OnFieldClick,
     cx: &App,
 ) -> AnyElement {
     let is_parent = lock.is_some();
     let locked_text = match lock {
-        Some(categories::form::BudgetLock::Parent) if value.is_empty() => {
+        Some(form::BudgetLock::Parent) if value.is_empty() => {
             crate::msg::desktop_categories_parent_budget_rollup()
         }
-        Some(categories::form::BudgetLock::Parent) => {
+        Some(form::BudgetLock::Parent) => {
             crate::msg::desktop_categories_parent_budget_rollup_sum(value)
         }
-        Some(categories::form::BudgetLock::Archived(budget)) => {
-            crate::msg::desktop_categories_budget_archived(
-                if value.is_empty() {
-                    crate::transactions::rows::EMPTY_CELL
-                } else {
-                    value
-                },
-                budget,
-            )
-        }
+        Some(form::BudgetLock::Archived(budget)) => crate::msg::desktop_categories_budget_archived(
+            if value.is_empty() {
+                crate::transactions::rows::EMPTY_CELL
+            } else {
+                value
+            },
+            budget,
+        ),
         None => String::new(),
     };
     div()
@@ -374,7 +371,7 @@ fn edit_notice(
     split_count: usize,
     is_parent: bool,
     type_locked: bool,
-    parent_category: Option<&categories::Category>,
+    parent_category: Option<&Category>,
     cx: &App,
 ) -> AnyElement {
     if split_count > 0 {
@@ -483,11 +480,7 @@ fn suffixed_label(
         .into_any_element()
 }
 
-fn is_valid(
-    form: &CategoryForm,
-    all_categories: &[categories::Category],
-    category_id: u32,
-) -> bool {
+fn is_valid(form: &CategoryForm, all_categories: &[Category], category_id: u32) -> bool {
     // Name must not be empty
     if form.name.text().trim().is_empty() {
         return false;

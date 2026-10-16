@@ -15,7 +15,6 @@ use chrono::NaiveDate;
 use lib_core::DateStyle;
 
 use crate::{
-    categories,
     transactions::Transaction,
     transactions::query::{Ledger, Total, TransactionFilters, Visible, this_year},
     view::format,
@@ -100,7 +99,7 @@ pub fn chips(
             .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown)
     });
     let category = filters.category.map(|id| {
-        categories::path(ledger.categories, id)
+        lib_categories::path(ledger.categories, id)
             .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown)
     });
     // An id-only filter (the Payees and Tags pages' hand-off) names its Payee or Tag.
@@ -288,12 +287,12 @@ pub fn footer(visible: &Visible<'_>, filters: &TransactionFilters, ledger: &Ledg
 mod tests {
     use super::*;
     use crate::{
-        categories::default_categories,
         transactions::default_transactions,
         transactions::query::{StatusFilter, query},
     };
     use chrono::Duration;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -303,7 +302,7 @@ mod tests {
 
     struct World {
         accounts: Vec<lib_accounts::Account>,
-        categories: Vec<categories::Category>,
+        categories: Vec<lib_categories::Category>,
         payees: Vec<lib_payees::Payee>,
         tags: Vec<lib_tags::Tag>,
         transactions: Vec<Transaction>,
@@ -408,7 +407,7 @@ mod tests {
     #[test]
     fn a_changed_filter_is_an_accent_chip_that_reads_its_value() {
         let w = world();
-        let groceries = categories::find_by_name(&w.categories, "Groceries").unwrap();
+        let groceries = lib_categories::find_by_name(&w.categories, "Groceries").unwrap();
         let mut filters = TransactionFilters::defaults(today());
         filters.account = Some(w.accounts[1].id);
         filters.category = Some(groceries);
@@ -547,7 +546,7 @@ mod tests {
             format!("{} of 700 transactions shown", visible.rows.len())
         );
 
-        let groceries = categories::find_by_name(&w.categories, "Groceries").unwrap();
+        let groceries = lib_categories::find_by_name(&w.categories, "Groceries").unwrap();
         let mut filters = TransactionFilters::defaults(today());
         filters.category = Some(groceries);
         let visible = query(&w.ledger(), &w.transactions, &filters, "");

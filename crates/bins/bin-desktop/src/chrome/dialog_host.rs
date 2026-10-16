@@ -16,10 +16,11 @@
 //! Drawing stays in `crate::dialog` (the chrome) and each feature's view; `Shell::render` matches
 //! on the [`OpenDialog`] variant to draw it.
 
+use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
-    bills::BillsDialog, budgets::BudgetsDialog, categories::form::CategoriesDialog,
-    documents::form::DocumentsDialog, documents::types::DocumentTypesDialog,
-    form::field::TextField, inventory::form::InventoryDialog, settings::SettingsDialog,
+    bills::BillsDialog, budgets::BudgetsDialog, documents::form::DocumentsDialog,
+    documents::types::DocumentTypesDialog, form::field::TextField,
+    inventory::form::InventoryDialog, settings::SettingsDialog,
     settings::accounts::dialogs::AccountsDialog,
     settings::institutions::dialogs::InstitutionsDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::units::dialogs::UnitsDialog,

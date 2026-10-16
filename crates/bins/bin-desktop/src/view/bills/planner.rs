@@ -12,11 +12,11 @@ use lib_locale::format::upper;
 
 use crate::{
     bills::{AmountKind, BillPlan, Recurrence},
-    categories::Category,
     theme::color,
     transactions::rows::EMPTY_CELL,
 };
 use lib_accounts::Account;
+use lib_categories::Category;
 
 use super::OnRowClick;
 

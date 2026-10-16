@@ -548,7 +548,7 @@ mod tests {
     use lib_ledger::{CommitImport, Ledger, LedgerCommand};
     use lib_payees::default_payees;
 
-    use crate::categories::default_categories;
+    use lib_categories::default_categories;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 28).unwrap()

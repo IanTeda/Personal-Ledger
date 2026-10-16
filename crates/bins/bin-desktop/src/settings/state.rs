@@ -6,11 +6,11 @@
 //! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
-//! Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by
-//! that Entity, and this View forwards the page's keys, movement and status to it while the page
-//! has focus. The rest (Categories, Documents, Inventory) are still `Shell`'s: it hands their
-//! drawn page in as a [`DataPage`] each frame, and handles their keys before forwarding to this
-//! Entity, until each moves in its own ticket.
+//! Categories, [`CategoriesPage`]; Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`];
+//! Institutions, [`InstitutionsPage`]) is drawn by that Entity, and this View forwards the page's
+//! keys, movement and status to it while the page has focus. The rest (Documents, Inventory) are
+//! still `Shell`'s: it hands their drawn page in as a [`DataPage`] each frame, and handles their
+//! keys before forwarding to this Entity, until each moves in its own ticket.
 
 use std::collections::HashSet;
 
@@ -22,6 +22,7 @@ use super::{
     },
     tracing::LOG_LINE_STEP,
 };
+use crate::settings::categories::{CategoriesPage, CategoryRowClicked};
 use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
 use crate::{
@@ -52,6 +53,7 @@ pub struct SettingsSources {
     pub institutions: Entity<InstitutionsPage>,
     pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsPage>,
+    pub categories: Entity<CategoriesPage>,
     pub payees: Entity<PayeesPage>,
     pub tags: Entity<TagsPage>,
 }
@@ -60,6 +62,7 @@ pub struct SettingsSources {
 #[derive(Clone)]
 enum FocusedPage {
     Accounts(Entity<AccountsPage>),
+    Categories(Entity<CategoriesPage>),
     Payees(Entity<PayeesPage>),
     Tags(Entity<TagsPage>),
     Units(Entity<UnitsPage>),
@@ -70,6 +73,7 @@ impl FocusedPage {
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Categories(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
@@ -80,6 +84,7 @@ impl FocusedPage {
     fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Categories(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
@@ -91,6 +96,10 @@ impl FocusedPage {
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx));
+                true
+            }
+            Self::Categories(page) => {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx));
                 true
             }
@@ -112,6 +121,7 @@ impl FocusedPage {
     fn escape(&self, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Categories(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
@@ -122,6 +132,7 @@ impl FocusedPage {
     fn start_search(&self, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Categories(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
@@ -132,6 +143,7 @@ impl FocusedPage {
     fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Categories(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Tags(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
@@ -142,6 +154,7 @@ impl FocusedPage {
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         match self {
             Self::Accounts(page) => page.read(cx).page_status(cx),
+            Self::Categories(page) => page.read(cx).page_status(cx),
             Self::Payees(page) => page.read(cx).page_status(cx),
             Self::Tags(page) => page.read(cx).page_status(cx),
             Self::Units(page) => page.read(cx).page_status(cx),
@@ -168,7 +181,9 @@ pub struct SettingsView {
     pub(super) zone_focused: bool,
     /// The page `Shell` still draws, handed in for the frame it is drawn in.
     pub(super) data_page: Option<DataPage>,
-    /// Keeps the Payees page's row clicks reaching this View, which owns the page's focus.
+    /// Keeps the Categories and Payees pages' row clicks reaching this View, which owns the page's
+    /// focus.
+    _categories_row_clicked: Subscription,
     _payees_row_clicked: Subscription,
     _tags_row_clicked: Subscription,
 }
@@ -182,6 +197,10 @@ impl SettingsView {
         log_list: ListState,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        let _categories_row_clicked = cx.subscribe(
+            &sources.categories,
+            |view, _page, _event: &CategoryRowClicked, cx| view.focus_page_from_click(cx),
+        );
         let _payees_row_clicked = cx
             .subscribe(&sources.payees, |view, _page, _event: &RowClicked, cx| {
                 view.focus_page_from_click(cx)
@@ -202,6 +221,7 @@ impl SettingsView {
             scroll_handle: ScrollHandle::new(),
             zone_focused: false,
             data_page: None,
+            _categories_row_clicked,
             _payees_row_clicked,
             _tags_row_clicked,
         }
@@ -214,6 +234,11 @@ impl SettingsView {
     /// The Accounts page's Entity, for `Shell`'s Dialog host and the `accounts` command.
     pub fn accounts(&self) -> &Entity<AccountsPage> {
         &self.sources.accounts
+    }
+
+    /// The Categories page's Entity, for `Shell`'s Dialog host and the Settings snapshots.
+    pub fn categories(&self) -> &Entity<CategoriesPage> {
+        &self.sources.categories
     }
 
     /// The Payees page's Entity, for `Shell`'s Dialog host.
@@ -249,6 +274,9 @@ impl SettingsView {
         }
         match self.selected_section {
             SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
+            SettingsPage::Categories => {
+                Some(FocusedPage::Categories(self.sources.categories.clone()))
+            }
             SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
             SettingsPage::Tags => Some(FocusedPage::Tags(self.sources.tags.clone())),
             SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
@@ -281,12 +309,14 @@ impl SettingsView {
         if keystroke.key == "escape" {
             return false;
         }
+        // The focused page goes before `focus_key`, which would otherwise move focus to the index
+        // on `left` before the page could fold its own tree.
         let taken = self.display_key(keystroke, cx)
             || self.tracing_key(keystroke, cx)
-            || self.focus_key(keystroke, cx)
             || self
                 .focused_page()
-                .is_some_and(|page| page.key_ahead(keystroke, cx));
+                .is_some_and(|page| page.key_ahead(keystroke, cx))
+            || self.focus_key(keystroke, cx);
         if taken {
             cx.notify();
         }

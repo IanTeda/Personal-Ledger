@@ -5,12 +5,12 @@
 use lib_ledger::PayeeUse;
 
 use crate::{
-    categories::{self, Category},
     chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
 };
+use lib_categories::{self, Category};
 use lib_payees::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
 
 /// The Default category select's options: "none" first, then every leaf Category. `labels` are
@@ -27,7 +27,7 @@ impl PayeeOptions {
     pub fn new(categories: &[Category], none_label: String) -> Self {
         let leaves: Vec<&Category> = categories
             .iter()
-            .filter(|category| categories::is_leaf(categories, category.id))
+            .filter(|category| lib_categories::is_leaf(categories, category.id))
             .collect();
         let mut labels = vec![none_label];
         let mut ids = vec![None];
@@ -361,11 +361,11 @@ impl DeletePayeeForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::categories::default_categories;
     use crate::transactions::default_transactions;
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
     use lib_accounts::default_accounts;
+    use lib_categories::default_categories;
     use lib_core::Money;
     use lib_payees::{default_payees, find_by_name, get, set_active, usage};
     use lib_tags::default_tags;
@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(options.ids[0], None);
         assert_eq!(options.labels.len(), options.ids.len());
         for id in options.ids.iter().skip(1).flatten() {
-            assert!(categories::is_leaf(&categories, *id));
+            assert!(lib_categories::is_leaf(&categories, *id));
         }
         assert!(options.labels.contains(&"Groceries".to_string()));
     }
