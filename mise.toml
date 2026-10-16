@@ -110,9 +110,18 @@ description = "Build Rust docs (with RUSTDOCFLAGS to set asset root)"
 env = { RUSTDOCFLAGS = "-Z unstable-options --static-root-path /rust-docs" }
 run = "cargo +nightly doc --no-deps --target-dir target/rustdoc"
 
+# mdBook copies every non-Markdown file under docs/ into the book, gitignored or not, so a local
+# build would carry the Archify receipts (with absolute home paths) beside docs/diagrams/. Delete
+# whatever Git ignores under docs/ from the built book afterwards. CI's checkout has none of them.
+# `docs-serve` rebuilds on every change and can't be pruned like this; it only serves localhost.
 [tasks.docs-mdbook]
 description = "Build mdBook documentation"
-run = "mdbook build"
+run = '''
+set -eu
+mdbook build
+git ls-files --others --ignored --exclude-standard --directory docs/ \
+  | while IFS= read -r path; do rm -rf "target/mdbook/${path#docs/}"; done
+'''
 
 [tasks.docs-build]
 description = "Build all documentation (rustdoc + mdBook)"
@@ -121,6 +130,84 @@ run = "mise run docs-rustdoc && mise run docs-mdbook"
 [tasks.docs-serve]
 description = "Serve mdBook documentation on port 8001"
 run = "mdbook serve --port 8001"
+
+# Advisory staleness report for the Archify diagrams in docs/diagrams/ (docs/agents/issue-tracker.md,
+# Diagrams). Run by hand at parent-ticket close and in a code review, never in CI or pre-push: drift
+# is expected while the code is in concept, and a failing gate would push agents to re-pin without
+# re-reading the code. Cited-file drift is reported but never fails the task; an HTML that no longer
+# matches a re-render of its JSON does, since the HTML must be a deterministic build of the JSON.
+# Rendering reads the cited evidence from the pinned commit, so it needs Node and Git but no Chrome.
+[tasks.diagrams-check]
+description = "Report Archify diagrams whose cited files changed since their pinned commit, and check each HTML still matches its JSON"
+env = { ARCHIFY_UPDATE_CHECK_DISABLED = "1" }
+run = '''
+set -eu
+archify=.claude/skills/archify/bin/archify.mjs
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+status=0
+for json in docs/diagrams/*.json; do
+  case "$json" in
+    *.finalize.json|*-summary.json|*.browser-check.json|*.visual-check.json|*.delivery.json|*.delivery-pending.json|*.receipt.json) continue ;;
+  esac
+  slug=$(basename "$json" .json)
+  html="docs/diagrams/$slug.html"
+  # One line each: type, quality profile, pinned revision, then every distinct cited path.
+  fields=$(node -e '
+    const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const paths = new Set();
+    (function walk(v) {
+      if (Array.isArray(v)) return v.forEach(walk);
+      if (v && typeof v === "object") {
+        if (Array.isArray(v.sources)) v.sources.forEach(s => s && s.path && paths.add(s.path));
+        Object.values(v).forEach(walk);
+      }
+    })(d);
+    console.log([d.diagram_type, d.meta?.quality_profile ?? "showcase", d.meta?.repository?.revision ?? "", ...[...paths].sort()].join("\n"));
+  ' "$json")
+  type=$(printf '%s\n' "$fields" | sed -n 1p)
+  quality=$(printf '%s\n' "$fields" | sed -n 2p)
+  revision=$(printf '%s\n' "$fields" | sed -n 3p)
+  echo "== $slug ($type)"
+  if [ -z "$revision" ]; then
+    echo "   no meta.repository.revision: cited-file drift not checked"
+  elif ! git cat-file -e "$revision^{commit}" 2>/dev/null; then
+    echo "   pinned revision $revision is not in this clone: cited-file drift not checked"
+  else
+    echo "   pinned at $(git rev-parse --short "$revision"), $(git rev-list --count "$revision..HEAD") commits behind HEAD"
+    changed=0
+    total=0
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      total=$((total + 1))
+      if ! git cat-file -e "HEAD:$path" 2>/dev/null; then
+        echo "   gone     $path"
+        changed=$((changed + 1))
+      elif ! git diff --quiet "$revision" HEAD -- "$path"; then
+        echo "   changed  $path (touched by $(git rev-list --count "$revision..HEAD" -- "$path") commits since the pin)"
+        changed=$((changed + 1))
+      fi
+    done <<EOF
+$(printf '%s\n' "$fields" | sed -n '4,$p')
+EOF
+    echo "   $changed of $total cited files changed or gone since the pin (advisory)"
+  fi
+  if [ ! -f "$html" ]; then
+    echo "   MISSING  $html"
+    status=1
+  elif ! node "$archify" render "$type" "$json" "$scratch/$slug.html" --quality "$quality" --repo-root . >"$scratch/$slug.log" 2>&1; then
+    echo "   RENDER FAILED: rerun the skill's finalize to see why"
+    sed 's/^/     /' "$scratch/$slug.log"
+    status=1
+  elif cmp -s "$scratch/$slug.html" "$html"; then
+    echo "   html matches a re-render of the json"
+  else
+    echo "   HTML DIFFERS from a re-render of the json: re-render it, don't hand-edit it"
+    status=1
+  fi
+done
+exit "$status"
+'''
 
 [tasks.mockups]
 description = "Serve the Desktop and TUI mockups on port 8002"

@@ -179,9 +179,14 @@ mise.local.toml
 # graphify knowledge graph (derived output)
 graphify-out/
 
-# Archify finalize receipts: build evidence beside each rendered diagram, not its source
+# Archify receipts: build evidence beside each rendered diagram, not its source. Scratch work and
+# `--out-dir` review/repair evidence belong in `.archify/` (already ignored by `.*` above); the folder
+# glob catches an `--out-dir` pointed under docs/diagrams/ by mistake, since the diagrams are flat.
 docs/diagrams/*.finalize.json
-docs/diagrams/*.finalize-summary.json
+docs/diagrams/*-summary.json
 docs/diagrams/*.browser-check.json
+docs/diagrams/*.visual-check.*
 docs/diagrams/*.delivery.json
 docs/diagrams/*.delivery-pending.json
+docs/diagrams/*.receipt.json
+docs/diagrams/*/
