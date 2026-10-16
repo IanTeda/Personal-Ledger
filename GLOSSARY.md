@@ -103,6 +103,14 @@ _Avoid_: shell (the whole application, not just its frame), frame, layout.
 The content the Desktop Client shows inside the Chrome for where the user is: one destination's page, or one Settings page. A destination can have more than one View: Transactions shows either the list or an Import.
 _Avoid_: screen, page (alone), tab.
 
+**Window Size**:
+Which of Medium, Large or X-Large the Desktop Client's window width falls in; the Chrome and each View arrange themselves by it. It is the window that counts, not the monitor, so a tiled window on a large monitor can be Medium. Height never changes the Window Size: a short window scrolls. The window cannot be made narrower than Medium.
+_Avoid_: screen size, device size, size class.
+
+**Breakpoint**:
+The width at which one Window Size gives way to the next.
+_Avoid_: using it for the Window Size itself ("the Medium breakpoint").
+
 **Settings page**:
 One entry in the Desktop Client's Settings index rail and the View it opens, such as Units or Display. Each Settings page owns its rendering, keys, Dialogs and commands, and on the Desktop it lives in its own folder under `settings/`.
 _Avoid_: section, tab, settings screen.
