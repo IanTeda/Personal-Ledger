@@ -702,11 +702,12 @@ impl Dialog for BillPlanForm {
 mod tests {
     use super::*;
     use crate::{
-        bills, categories::default_categories, chrome::dialog_host::handle_key, tags::default_tags,
+        bills, categories::default_categories, chrome::dialog_host::handle_key,
         transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()

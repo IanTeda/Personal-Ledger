@@ -24,7 +24,6 @@ pub mod navigation;
 mod period;
 pub mod persistence;
 mod settings;
-mod tags;
 pub mod theme;
 mod transactions;
 mod view;

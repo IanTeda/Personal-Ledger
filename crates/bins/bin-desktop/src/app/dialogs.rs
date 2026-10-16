@@ -3,6 +3,11 @@
 
 use super::Shell;
 use crate::settings::payees::PayeesPage;
+use crate::settings::tags::{
+    TagsPage,
+    apply::{TagOutcome, TagsApply},
+    dialogs::TagsDialog,
+};
 use crate::{
     chrome::{
         dialog_apply::{self, Apply, DialogForm},
@@ -81,7 +86,26 @@ impl Shell {
             }
             Some(OpenDialog::DocumentTypes(_)) => self.confirm_document_types_dialog(cx),
             Some(OpenDialog::Inventory(_)) => self.confirm_inventory_dialog(cx),
-            Some(OpenDialog::Tags(_)) => self.confirm_tags_dialog(cx),
+            Some(OpenDialog::Tags(_)) => {
+                let mut apply = TagsApply {
+                    ledger: self.ledger.clone(),
+                };
+                let outcome = self.confirm_dialog::<TagsDialog, _>(&mut apply, cx);
+                match outcome {
+                    Some(TagOutcome::Saved(id)) => self
+                        .tags_page(cx)
+                        .update(cx, |page, cx| page.select_id(id, cx)),
+                    Some(TagOutcome::Merged { target, .. }) => self
+                        .tags_page(cx)
+                        .update(cx, |page, cx| page.select_id(target, cx)),
+                    // A removal keeps the selection in range: a removed Tag's id no longer
+                    // resolves, so the page lands on its first row.
+                    Some(TagOutcome::Removed { .. }) | None => {}
+                }
+                if let Some((kind, message)) = outcome.as_ref().and_then(TagOutcome::toast) {
+                    self.raise_toast(kind, message);
+                }
+            }
             Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
@@ -94,6 +118,11 @@ impl Shell {
     /// The Payees page's Entity, which the Settings View owns.
     pub(super) fn payees_page(&self, cx: &gpui::App) -> gpui::Entity<PayeesPage> {
         self.views.settings.read(cx).payees().clone()
+    }
+
+    /// The Tags page's Entity, which the Settings View owns.
+    pub(super) fn tags_page(&self, cx: &gpui::App) -> gpui::Entity<TagsPage> {
+        self.views.settings.read(cx).tags().clone()
     }
 
     /// Confirms the open `T` Dialog through the host's cycle (ADR-0037): the form's command runs

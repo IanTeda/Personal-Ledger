@@ -500,12 +500,12 @@ mod tests {
         bills::{BillPlan, default_bills},
         categories::default_categories,
         documents::{DocumentsSeed, default_documents},
-        tags::default_tags,
         transactions::default_transactions,
     };
     use lib_accounts::{Account, default_accounts};
     use lib_core::DateStyle;
     use lib_payees::{Payee, default_payees};
+    use lib_tags::default_tags;
 
     struct World {
         types: Vec<crate::documents::types::DocumentTypeRow>,

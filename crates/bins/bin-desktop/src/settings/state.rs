@@ -6,9 +6,9 @@
 //! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
-//! Payees, [`PayeesPage`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by
+//! Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`]; Institutions, [`InstitutionsPage`]) is drawn by
 //! that Entity, and this View forwards the page's keys, movement and status to it while the page
-//! has focus. The rest (Categories, Tags, Documents, Inventory) are still `Shell`'s: it hands their
+//! has focus. The rest (Categories, Documents, Inventory) are still `Shell`'s: it hands their
 //! drawn page in as a [`DataPage`] each frame, and handles their keys before forwarding to this
 //! Entity, until each moves in its own ticket.
 
@@ -23,6 +23,7 @@ use super::{
     tracing::LOG_LINE_STEP,
 };
 use crate::settings::payees::{PayeesPage, RowClicked};
+use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
 use crate::{
     chrome::{dialog_host::OpenDialog, statusline::PageStatus},
     navigation::key_router::Movement,
@@ -52,6 +53,7 @@ pub struct SettingsSources {
     pub units: Entity<UnitsPage>,
     pub accounts: Entity<AccountsPage>,
     pub payees: Entity<PayeesPage>,
+    pub tags: Entity<TagsPage>,
 }
 
 /// The open page's own Entity, while it has focus.
@@ -59,6 +61,7 @@ pub struct SettingsSources {
 enum FocusedPage {
     Accounts(Entity<AccountsPage>),
     Payees(Entity<PayeesPage>),
+    Tags(Entity<TagsPage>),
     Units(Entity<UnitsPage>),
     Institutions(Entity<InstitutionsPage>),
 }
@@ -68,6 +71,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Tags(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
         }
@@ -77,6 +81,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Tags(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
         }
@@ -93,6 +98,10 @@ impl FocusedPage {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx));
                 true
             }
+            Self::Tags(page) => {
+                page.update(cx, |page, cx| page.apply_movement(movement, cx));
+                true
+            }
             Self::Units(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
             Self::Institutions(page) => {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx))
@@ -104,6 +113,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Tags(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.escape(cx)),
         }
@@ -113,6 +123,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Tags(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.start_search(cx)),
         }
@@ -122,6 +133,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Tags(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
         }
@@ -131,6 +143,7 @@ impl FocusedPage {
         match self {
             Self::Accounts(page) => page.read(cx).page_status(cx),
             Self::Payees(page) => page.read(cx).page_status(cx),
+            Self::Tags(page) => page.read(cx).page_status(cx),
             Self::Units(page) => page.read(cx).page_status(cx),
             Self::Institutions(page) => page.read(cx).page_status(cx),
         }
@@ -157,6 +170,7 @@ pub struct SettingsView {
     pub(super) data_page: Option<DataPage>,
     /// Keeps the Payees page's row clicks reaching this View, which owns the page's focus.
     _payees_row_clicked: Subscription,
+    _tags_row_clicked: Subscription,
 }
 
 impl SettingsView {
@@ -172,6 +186,10 @@ impl SettingsView {
             .subscribe(&sources.payees, |view, _page, _event: &RowClicked, cx| {
                 view.focus_page_from_click(cx)
             });
+        let _tags_row_clicked = cx
+            .subscribe(&sources.tags, |view, _page, _event: &TagsRowClicked, cx| {
+                view.focus_page_from_click(cx)
+            });
         Self {
             sources,
             selected_section: SettingsPage::default(),
@@ -185,6 +203,7 @@ impl SettingsView {
             zone_focused: false,
             data_page: None,
             _payees_row_clicked,
+            _tags_row_clicked,
         }
     }
 
@@ -200,6 +219,11 @@ impl SettingsView {
     /// The Payees page's Entity, for `Shell`'s Dialog host.
     pub fn payees(&self) -> &Entity<PayeesPage> {
         &self.sources.payees
+    }
+
+    /// The Tags page's Entity, for `Shell`'s Dialog host and the `tags merge` command.
+    pub fn tags(&self) -> &Entity<TagsPage> {
+        &self.sources.tags
     }
 
     /// The Display page's Entity, for the Settings snapshots.
@@ -226,6 +250,7 @@ impl SettingsView {
         match self.selected_section {
             SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
             SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
+            SettingsPage::Tags => Some(FocusedPage::Tags(self.sources.tags.clone())),
             SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
             SettingsPage::Institutions => {
                 Some(FocusedPage::Institutions(self.sources.institutions.clone()))

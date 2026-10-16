@@ -101,7 +101,6 @@ impl Shell {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
         let section = [
             SettingsPage::Categories,
-            SettingsPage::Tags,
             SettingsPage::Documents,
             SettingsPage::Inventory,
         ]
@@ -111,7 +110,6 @@ impl Shell {
             Some(SettingsPage::Categories) => {
                 self.apply_settings_categories_movement(movement, cx);
             }
-            Some(SettingsPage::Tags) => self.apply_settings_tags_movement(movement, cx),
             Some(SettingsPage::Documents) => {
                 self.apply_settings_documents_movement(movement, cx);
             }

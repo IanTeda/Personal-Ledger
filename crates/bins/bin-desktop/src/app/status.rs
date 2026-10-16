@@ -3,13 +3,11 @@
 
 use crate::documents::types::DocumentTypesDialog;
 use crate::inventory::form::InventoryDialog;
-use crate::tags::form::TagsDialog;
 use gpui::Context;
 
 use super::{Shell, document_types_ui, inventory_ui};
 use crate::settings::hints::{
-    confirm_dialog_hints, merge_tags_dialog_hints, settings_categories_hints,
-    settings_documents_hints, settings_inventory_hints, settings_tags_hints, tag_dialog_hints,
+    settings_categories_hints, settings_documents_hints, settings_inventory_hints,
 };
 use crate::view::active::ActiveViewEntity;
 use crate::{
@@ -19,7 +17,6 @@ use crate::{
     navigation::nav::InputMode,
     settings::SettingsPage,
     settings::{self as settings_view, inventory as inventory_view},
-    tags,
 };
 
 impl Shell {
@@ -75,21 +72,7 @@ impl Shell {
     /// `None` when no such page has focus.
     fn settings_data_page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let focused = |section| self.settings_data_page_has_focus(section, cx);
-        if focused(SettingsPage::Tags) {
-            Some(PageStatus {
-                hints: match self.dialog::<TagsDialog>() {
-                    Some(TagsDialog::Add(_)) => tag_dialog_hints(false),
-                    Some(TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(TagsDialog::Remove(..)) => confirm_dialog_hints(),
-                    Some(TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
-                    None => settings_tags_hints(),
-                },
-                right: settings_view::tags::scope_text(
-                    self.tags_list(cx),
-                    &tags::duplicate_groups(self.tags_list(cx), self.transactions(cx)),
-                ),
-            })
-        } else if focused(SettingsPage::Documents) {
+        if focused(SettingsPage::Documents) {
             Some(PageStatus {
                 hints: self
                     .dialog::<DocumentTypesDialog>()

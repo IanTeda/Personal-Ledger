@@ -342,7 +342,7 @@ fn tags_cell(
                         .text_color(color::muted(cx))
                 })
                 .when_some(color.as_ref(), |this, colour| {
-                    this.child(crate::view::tags::swatch(Some(colour), px(6.0)))
+                    this.child(crate::form::swatch::swatch(Some(colour), px(6.0)))
                 })
                 .child(div().min_w(px(0.0)).truncate().child(first.clone()));
             cell.child(chip).when(*more > 0, |this| {

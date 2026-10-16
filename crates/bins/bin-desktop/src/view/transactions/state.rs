@@ -38,7 +38,6 @@ use crate::{
         event::{Reveal, ViewEvent, ViewMode},
         format,
         import::import_hints,
-        tags::state::TagsStore,
     },
 };
 use lib_ledger::Domain;
@@ -88,7 +87,6 @@ impl TransactionsState {
 pub struct TransactionsSources {
     pub ledger: Entity<LedgerStore>,
     pub categories: Entity<CategoriesStore>,
-    pub tags: Entity<TagsStore>,
 }
 
 /// The Transactions Entity.
@@ -109,12 +107,14 @@ pub struct TransactionsView {
     _accounts_changed: Subscription,
     /// Repaints the page when the Payees its rows and filters name change.
     _payees_changed: Subscription,
+    _tags_changed: Subscription,
 }
 
 impl TransactionsView {
     pub fn new(sources: TransactionsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
+        let _tags_changed = notify_on(&sources.ledger, Domain::Tags, cx);
         Self {
             sources,
             today,
@@ -126,6 +126,7 @@ impl TransactionsView {
             state: TransactionsState::new(today),
             _accounts_changed,
             _payees_changed,
+            _tags_changed,
         }
     }
 
@@ -173,7 +174,7 @@ impl TransactionsView {
             accounts: self.sources.ledger.read(cx).ledger().accounts(),
             categories: self.sources.categories.read(cx).categories(cx),
             payees: self.payees(cx),
-            tags: self.sources.tags.read(cx).tags(cx),
+            tags: self.sources.ledger.read(cx).ledger().tags(),
             units: self.sources.ledger.read(cx).ledger().units(),
         }
     }

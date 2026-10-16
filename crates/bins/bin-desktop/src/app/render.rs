@@ -3,11 +3,19 @@
 
 use super::Shell;
 use crate::categories::form::CategoriesDialog;
+use crate::form::colour_field::OnPick;
 use crate::settings::payees::{
     dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
     form,
 };
-use crate::tags::form::TagsDialog;
+use crate::settings::tags::{
+    dialogs::{
+        TagsDialog, TagsDialogHandlers,
+        add::OnFieldClick as TagFieldClick,
+        merge::{OnFieldClick as MergeFieldClick, OnOptionClick as MergeOptionClick},
+    },
+    form::TagField,
+};
 use std::rc::Rc;
 
 use crate::settings as settings_view;
@@ -35,7 +43,6 @@ use crate::{
     period::Period,
     settings::accounts::dialogs::AccountsDialog,
     settings::{SettingsDialog, SettingsFocus},
-    tags::{self},
     theme::{color, type_scale},
     view::format,
     view::{
@@ -44,7 +51,7 @@ use crate::{
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, placeholder, tags as tags_view,
+        help as help_view, placeholder,
     },
 };
 
@@ -377,52 +384,84 @@ impl Render for Shell {
             on_edit_click: inventory_row_click(Shell::handle_settings_inventory_edit_click),
             on_remove_click: inventory_row_click(Shell::handle_settings_inventory_remove_click),
         };
-        let tag_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
+        let plain_tags = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
-            let on_click: tags_view::OnTagClick = Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| handler(shell, id, cx));
-            });
-            on_click
-        };
-        let tag_plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: tags_view::OnPlainClick = Rc::new(move |_window, cx| {
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
                 entity.update(cx, handler);
             });
             on_click
         };
         let tags_dialog_handlers = {
-            let on_field_click: tags_view::add_dialog::OnFieldClick = {
+            let on_field_click: TagFieldClick = {
                 let entity = entity.clone();
                 Rc::new(move |field, _window, cx| {
                     entity.update(cx, |shell, cx| {
-                        shell.handle_tags_dialog_field_click(field, cx);
+                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
+                            if let Some(form) = dialog.name_form_mut() {
+                                form.focus(field);
+                            }
+                        });
                     });
                 })
             };
-            let on_pick: tags_view::colour_field::OnPick = {
+            let on_pick: OnPick = {
                 let entity = entity.clone();
                 Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |shell, cx| shell.handle_tags_dialog_pick(index, cx));
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
+                            if let Some(form) = dialog.name_form_mut() {
+                                form.focus(TagField::Swatches);
+                                form.pick(index);
+                            }
+                        });
+                    });
                 })
             };
-            tags_view::add_dialog::TagDialogHandlers {
+            let on_toggle_active: crate::dialog::OnClick = {
+                let entity = entity.clone();
+                Rc::new(move |_window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
+                            if let Some(form) = dialog.name_form_mut() {
+                                form.toggle_active();
+                            }
+                        });
+                    });
+                })
+            };
+            let on_merge_field_click: MergeFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
+                            if let TagsDialog::Merge(form) = dialog {
+                                form.toggle(field);
+                            }
+                        });
+                    });
+                })
+            };
+            let on_merge_option_click: MergeOptionClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
+                            if let TagsDialog::Merge(form) = dialog {
+                                form.choose(field, index);
+                            }
+                        });
+                    });
+                })
+            };
+            TagsDialogHandlers {
                 on_field_click,
                 on_pick,
-                on_cancel: tag_plain(Shell::handle_dialog_cancel),
-                on_confirm: tag_plain(Shell::handle_dialog_confirm),
+                on_toggle_active,
+                on_merge_field_click,
+                on_merge_option_click,
+                on_cancel: plain_tags(Shell::handle_dialog_cancel),
+                on_confirm: plain_tags(Shell::handle_dialog_confirm),
             }
-        };
-        let tag_groups = tags::duplicate_groups(self.tags_list(cx), self.transactions(cx));
-        let settings_tags_page = settings_view::tags::TagsPageProps {
-            tags: self.tags_list(cx),
-            selected: self.settings_tags_selected_id(cx),
-            groups: &tag_groups,
-            on_add_click: tag_plain(Shell::handle_tags_add_click),
-            on_row_click: tag_click(Shell::handle_settings_tags_row_click),
-            on_merge_click: tag_click(Shell::handle_tags_duplicate_click),
-            on_edit_click: tag_click(Shell::handle_tags_edit_click),
-            on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
         let ledger_units = self.ledger.read(cx).ledger().units();
         let bills_base_unit = ledger_units
@@ -547,7 +586,6 @@ impl Render for Shell {
                 focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
                 &settings_view::DataPageProps {
                     categories: settings_categories_page,
-                    tags: settings_tags_page,
                     documents: settings_documents_page,
                     inventory: settings_inventory_page,
                 },
@@ -775,78 +813,14 @@ impl Render for Shell {
             }))
             .children(self.render_document_types_dialog(&entity, cx))
             .children(self.render_inventory_dialog(&entity, cx))
-            .children(match self.dialog::<TagsDialog>() {
-                Some(TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
-                    form,
-                    form.name_error(),
-                    form.is_valid(),
+            .children(self.dialog::<TagsDialog>().and_then(|dialog| {
+                dialog.render(
+                    self.ledger.read(cx).ledger().tags(),
+                    self.transactions(cx),
                     tags_dialog_handlers,
                     cx,
-                )),
-                Some(TagsDialog::Edit(id, form)) => tags::get(self.tags_list(cx), *id).map(|tag| {
-                    tags_view::edit_dialog::render(
-                        tags_view::edit_dialog::EditTagProps {
-                            original_name: &tag.name,
-                            form,
-                            name_error: form.name_error(),
-                            valid: form.is_valid(),
-                            transactions: tags::transaction_count(self.transactions(cx), *id),
-                            on_toggle_active: tag_plain(Shell::handle_tags_dialog_toggle_active),
-                        },
-                        tags_dialog_handlers,
-                        cx,
-                    )
-                }),
-                Some(TagsDialog::Remove(id, form)) => {
-                    tags::get(self.tags_list(cx), *id).map(|tag| {
-                        tags_view::remove_dialog::render(
-                            tags_view::remove_dialog::RemoveTagProps {
-                                tag,
-                                form,
-                                transactions: tags::transaction_count(self.transactions(cx), *id),
-                                on_cancel: tag_plain(Shell::handle_dialog_cancel),
-                                on_confirm: tag_plain(Shell::handle_dialog_confirm),
-                            },
-                            cx,
-                        )
-                    })
-                }
-                Some(TagsDialog::Merge(form)) => {
-                    let source = form.source_id();
-                    let entity = entity.clone();
-                    let on_field_click: tags_view::merge_dialog::OnFieldClick = {
-                        let entity = entity.clone();
-                        Rc::new(move |field, _window, cx| {
-                            entity.update(cx, |shell, cx| {
-                                shell.handle_merge_tags_field_click(field, cx);
-                            });
-                        })
-                    };
-                    let on_option_click: tags_view::merge_dialog::OnOptionClick =
-                        Rc::new(move |field, index, _window, cx| {
-                            entity.update(cx, |shell, cx| {
-                                shell.handle_merge_tags_option_click(field, index, cx);
-                            });
-                        });
-                    Some(tags_view::merge_dialog::render(
-                        tags_view::merge_dialog::MergeTagsProps {
-                            form,
-                            source: source.and_then(|id| tags::get(self.tags_list(cx), id)),
-                            target: form
-                                .target_id()
-                                .and_then(|id| tags::get(self.tags_list(cx), id)),
-                            transactions: source
-                                .map_or(0, |id| tags::transaction_count(self.transactions(cx), id)),
-                            on_field_click,
-                            on_option_click,
-                            on_cancel: tag_plain(Shell::handle_dialog_cancel),
-                            on_confirm: tag_plain(Shell::handle_dialog_confirm),
-                        },
-                        cx,
-                    ))
-                }
-                None => None,
-            })
+                )
+            }))
             .children(
                 self.dialog::<CategoriesDialog>()
                     .map(|dialog| match dialog {

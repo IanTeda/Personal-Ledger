@@ -348,8 +348,6 @@ impl Shell {
             self.handle_settings_documents_key(keystroke, cx)
         } else if focused(SettingsPage::Inventory) {
             self.handle_settings_inventory_key(keystroke, cx)
-        } else if focused(SettingsPage::Tags) {
-            self.handle_tags_key(keystroke, cx)
         } else {
             false
         }

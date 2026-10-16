@@ -114,7 +114,7 @@ pub fn chips(
         _ => filters.payee.trim().to_string(),
     };
     let tag = match filters.tag_id {
-        Some(id) if filters.tag.trim().is_empty() => crate::tags::get(ledger.tags, id)
+        Some(id) if filters.tag.trim().is_empty() => lib_tags::get(ledger.tags, id)
             .map(|tag| tag.name.clone())
             .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown),
         _ => filters.tag.trim().to_string(),
@@ -289,13 +289,13 @@ mod tests {
     use super::*;
     use crate::{
         categories::default_categories,
-        tags::default_tags,
         transactions::default_transactions,
         transactions::query::{StatusFilter, query},
     };
     use chrono::Duration;
     use lib_accounts::default_accounts;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -305,7 +305,7 @@ mod tests {
         accounts: Vec<lib_accounts::Account>,
         categories: Vec<categories::Category>,
         payees: Vec<lib_payees::Payee>,
-        tags: Vec<crate::tags::Tag>,
+        tags: Vec<lib_tags::Tag>,
         transactions: Vec<Transaction>,
         units: Vec<lib_units::UnitRow>,
     }
@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(chips[2].label, format!("payee: {}", payee.name));
         assert!(chips[2].active);
 
-        let tag = crate::tags::find_by_name(&w.tags, "work-trip").unwrap();
+        let tag = lib_tags::find_by_name(&w.tags, "work-trip").unwrap();
         let chips = w.chips(&TransactionFilters::for_tag(today(), tag));
         assert_eq!(chips[3].label, "tag: work-trip");
         assert_eq!(

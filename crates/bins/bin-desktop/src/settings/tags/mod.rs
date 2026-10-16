@@ -1,371 +1,746 @@
-//! The **Tags** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 2j): a kicker (A–Z) with **+ Add tag**
-//! over one bordered list of colour swatch and name, with `edit · remove` per row. A likely
-//! duplicate carries its warning badge and a direct **merge**; the merge flow is 7e's. Usage lives
-//! in Transactions and Reports, so there are no transaction, total or last-used columns. It reuses
-//! the Tags model, swatch and dialogs.
+//! The **Tags** Settings page (ADR-0037, and its amendment's one folder per page): the Tags table
+//! with its likely duplicates and their merge. [`TagsPage`] reads its rows from [`LedgerStore`],
+//! renders itself (`render.rs`), handles its keys and movement, builds its Dialogs (`dialogs/`)
+//! and reaches `Shell` only through [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms
+//! them through `apply.rs`. The Settings View forwards to it while the page is open.
 //!
-//! Every action is a callback into `Shell`, so the keyboard (`n`/`e`/`x`/`m`) and the mouse reach
-//! the same handlers.
+//! The rules live in `lib_tags`: a Tag's name, usage, merge and remove, and the likely duplicates
+//! that broke the uniqueness rule (ADR-0015 and its amendments).
 
-use std::rc::Rc;
+pub mod apply;
+pub mod dialogs;
+pub mod form;
+mod render;
 
-use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_locale::format::upper;
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_ledger::Domain;
+use lib_tags::{DuplicateGroup, Tag};
 
 use crate::{
-    tags::{self, DuplicateGroup, Tag},
-    theme::color,
-    view::tags::{OnPlainClick, OnTagClick, SWATCH_SIZE, likely_duplicate_count, swatch},
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::Movement,
+    settings::hints::settings_tags_hints,
+    view::event::ViewEvent,
 };
+use dialogs::TagsDialog;
+use form::{MergeTagsForm, RemoveTagForm, TagForm, merge_options};
+use render::scope_text;
 
-pub struct TagsPageProps<'a> {
-    pub tags: &'a [Tag],
-    /// The selected row's Tag id.
-    pub selected: Option<u32>,
-    /// The likely-duplicate groups, which the Shell works out from the ledger's Transactions.
-    pub groups: &'a [DuplicateGroup],
-    pub on_add_click: OnPlainClick,
-    pub on_row_click: OnTagClick,
-    pub on_merge_click: OnTagClick,
-    pub on_edit_click: OnTagClick,
-    pub on_remove_click: OnTagClick,
+impl EventEmitter<ViewEvent> for TagsPage {}
+
+/// Emitted when a click lands on the page's rows, so the Settings View, which owns the page's
+/// focus, moves it from the index into the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowClicked;
+
+impl EventEmitter<RowClicked> for TagsPage {}
+
+/// The Tags page's own state: the Tag id under the cursor.
+pub struct TagsPage {
+    ledger: Entity<LedgerStore>,
+    /// It may name a Tag that no longer exists, so read it through [`Self::selected_id`].
+    selected: Option<u32>,
+    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
+    /// draws the page.
+    pub(crate) page_focused: bool,
+    /// Repaints the page when the Tags its rows read change.
+    _tags_changed: Subscription,
+    /// Repaints the page when a Transaction changes, since usage drives the duplicates and the
+    /// merge counts.
+    _transactions_changed: Subscription,
 }
 
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
-}
+impl TagsPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _tags_changed = notify_on(&ledger, Domain::Tags, cx);
+        let _transactions_changed = notify_on(&ledger, Domain::Transactions, cx);
+        Self {
+            ledger,
+            selected: None,
+            page_focused: false,
+            _tags_changed,
+            _transactions_changed,
+        }
+    }
 
-/// The heading's meta as plain text, for the status line: `18 tags · 2 likely duplicates`.
-pub fn scope_text(tags: &[Tag], groups: &[DuplicateGroup]) -> String {
-    let total = crate::msg::desktop_tags_count(count(tags::active_count(tags)));
-    match likely_duplicate_count(groups) {
-        0 => total,
-        duplicates => format!(
-            "{total} \u{b7} {}",
-            crate::msg::desktop_tags_status_duplicates(count(duplicates))
-        ),
+    pub(crate) fn tags<'a>(&self, cx: &'a App) -> &'a [Tag] {
+        self.ledger.read(cx).ledger().tags()
+    }
+
+    fn transactions<'a>(&self, cx: &'a App) -> &'a [lib_transactions::Transaction] {
+        self.ledger.read(cx).ledger().transactions()
+    }
+
+    /// The likely duplicates, which the rows and the heading flag.
+    pub(crate) fn duplicate_groups(&self, cx: &App) -> Vec<DuplicateGroup> {
+        lib_tags::duplicate_groups(self.tags(cx), self.transactions(cx))
+    }
+
+    pub fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page is open (ADR-0037)
+    // -----------------------------------------------------------------------------------------
+
+    /// The page claims no key ahead of the router: its `n`/`e`/`x`/`m` are router leftovers.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page's bare `n`, `e`, `x` and `m`, each through the same handler its button uses.
+    /// Returns whether the key was one of them.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_dialog(cx),
+            "e" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_edit_dialog(id, cx);
+                }
+            }
+            "x" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_remove_dialog(id, cx);
+                }
+            }
+            "m" => {
+                if let Some(id) = self.selected_id(cx) {
+                    self.open_merge_dialog(Some(id), cx);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Tags list A–Z. `enter` has no hand-off here.
+    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        let Some(step) = movement.step() else {
+            return;
+        };
+        let ids: Vec<u32> = lib_tags::sorted_by_name(self.tags(cx))
+            .iter()
+            .map(|tag| tag.id)
+            .collect();
+        self.selected = lib_list_cursor::step_id(&ids, self.selected_id(cx), step);
+        cx.notify();
+    }
+
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page's legend and its Tag counts.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_tags_hints(),
+            right: scope_text(self.tags(cx), &self.duplicate_groups(cx)),
+        })
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Selection
+    // -----------------------------------------------------------------------------------------
+
+    /// The selected Tag's id: the stored id while it still exists, else the first row, so a
+    /// removed or merged-away Tag never leaves the page with nothing under the cursor.
+    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+        let sorted = lib_tags::sorted_by_name(self.tags(cx));
+        lib_list_cursor::resolve(sorted.iter().map(|tag| tag.id), self.selected)
+    }
+
+    /// Selects Tag `id`, if it still exists.
+    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        if lib_tags::get(self.tags(cx), id).is_some() {
+            self.selected = Some(id);
+            cx.notify();
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// A click on a row: selects it and moves focus into the page.
+    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        cx.emit(RowClicked);
+    }
+
+    /// **+ Add tag**: the same handler `n` reaches.
+    pub(crate) fn click_add(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_add_dialog(cx);
+    }
+
+    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        self.open_edit_dialog(id, cx);
+    }
+
+    /// A flagged Tag's **merge** opens the merge dialog on it, with its suggested target chosen.
+    pub(crate) fn click_merge(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        self.open_merge_dialog(Some(id), cx);
+    }
+
+    pub(crate) fn click_remove(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_id(id, cx);
+        self.open_remove_dialog(id, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Dialogs
+    // -----------------------------------------------------------------------------------------
+
+    fn open_add_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let form = TagForm::new(self.tags(cx).to_vec());
+        open_dialog(TagsDialog::Add(form), cx);
+    }
+
+    /// Opens the Edit dialog pre-filled from Tag `id`. A no-op if the Tag is gone.
+    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let rows = self.tags(cx);
+        let Some(tag) = lib_tags::get(rows, id) else {
+            return;
+        };
+        let form = TagForm::for_edit(tag, rows.to_vec());
+        open_dialog(TagsDialog::Edit(id, form), cx);
+    }
+
+    /// Opens the Remove dialog on Tag `id`, counting its Transactions. A no-op if the Tag is gone.
+    fn open_remove_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let Some(tag) = lib_tags::get(self.tags(cx), id) else {
+            return;
+        };
+        let form = RemoveTagForm::new(
+            &tag.name,
+            lib_tags::transaction_count(self.transactions(cx), id),
+        );
+        open_dialog(TagsDialog::Remove(id, form), cx);
+    }
+
+    /// Opens the merge dialog with `source` as the source Tag and, when it is flagged as a likely
+    /// duplicate, its suggested target (#354). `None` (the palette's `tags merge`) leaves both
+    /// selects empty.
+    pub fn open_merge_dialog(&mut self, source: Option<u32>, cx: &mut Context<'_, Self>) {
+        let groups = self.duplicate_groups(cx);
+        let target = source.and_then(|id| lib_tags::duplicate_of(&groups, id));
+        let form = MergeTagsForm::new(self.merge_options(cx), source, target);
+        open_dialog(TagsDialog::Merge(form), cx);
+    }
+
+    /// The 7e selects' options, labelled `Shared (9 txns)`.
+    fn merge_options(&self, cx: &App) -> Vec<form::MergeOption> {
+        merge_options(self.tags(cx), self.transactions(cx), |name, count| {
+            crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
+        })
     }
 }
 
-/// The heading's meta: the count, then the duplicates clause with its number bold in the accent
-/// text colour (`#ae1800`) and no "merge them" link -- each flagged row has its own **merge**.
-pub fn scope_note(tags: &[Tag], groups: &[DuplicateGroup], cx: &App) -> AnyElement {
-    let duplicates = count(likely_duplicate_count(groups));
-    div()
-        .flex()
-        .items_baseline()
-        .gap(px(4.0))
-        .child(crate::msg::desktop_tags_count(count(tags::active_count(
-            tags,
-        ))))
-        .when(duplicates > 0, |this| {
-            this.child("\u{b7}").children(
-                crate::msg::desktop_tags_likely_duplicates(duplicates)
-                    .into_iter()
-                    .map(|segment| match segment.tag.as_deref() {
-                        Some("strong") => div()
-                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .text_color(color::accent_text(cx))
-                            .child(segment.text)
-                            .into_any_element(),
-                        // The message ends in the dash that led into the Tags page's link.
-                        _ => div()
-                            .child(segment.text.trim_end_matches(" \u{2014}").to_string())
-                            .into_any_element(),
-                    }),
-            )
-        })
-        .into_any_element()
+/// How many Tags are flagged as likely duplicates: every group member but its suggested target.
+pub fn likely_duplicate_count(groups: &[DuplicateGroup]) -> usize {
+    groups.iter().map(|group| group.duplicates.len()).sum()
 }
 
-pub fn render(props: &TagsPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
-    let sorted = tags::sorted_by_name(props.tags);
-    let last = sorted.len().saturating_sub(1);
-    div()
-        .flex()
-        .flex_col()
-        .child(kicker_row(props.on_add_click.clone(), cx))
-        .when(sorted.is_empty(), |this| {
-            this.child(
-                div()
-                    .text_color(color::muted(cx))
-                    .child(crate::msg::desktop_tags_empty("n")),
-            )
-        })
-        .when(!sorted.is_empty(), |this| {
-            this.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .border_1()
-                    .border_color(color::border(cx))
-                    .mb(px(18.0))
-                    .child(table_header(cx))
-                    .children(sorted.iter().enumerate().map(|(position, tag)| {
-                        let duplicate_of = tags::duplicate_of(props.groups, tag.id)
-                            .and_then(|target| tags::get(props.tags, target));
-                        row(
-                            tag,
-                            duplicate_of,
-                            position == last,
-                            props.selected == Some(tag.id),
-                            focused,
-                            props,
-                            cx,
-                        )
-                    })),
-            )
-        })
-        .child(
-            div()
-                .max_w(px(620.0))
-                .text_size(px(11.5))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_tags_footnote()),
-        )
-        .into_any_element()
+/// Asks `Shell`'s Dialog host to open a Tags dialog.
+fn open_dialog(dialog: TagsDialog, cx: &mut Context<'_, TagsPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Tags(dialog))));
 }
 
-fn kicker_row(on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
-    let hover = color::muted(cx);
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .mb(px(10.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_settings_tags_kicker())),
-        )
-        // `btn btn-primary` at `height:32px`.
-        .child(
-            div()
-                .debug_selector(|| "settings-tags-add".to_string())
-                .id("settings-tags-add")
-                .cursor_pointer()
-                .flex_none()
-                .py(px(8.0))
-                .px(px(14.0))
-                .bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .whitespace_nowrap()
-                .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_click(window, cx))
-                .child(crate::msg::desktop_tags_add_button("+")),
-        )
+/// The Tags page: names A–Z, the selected row's name, and the open Merge dialog's chosen
+/// `(source, target)` names. `Shell` fills in the pair, since the open Dialog is its own.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsTagsSnapshot {
+    pub tag_names: Vec<String>,
+    pub selected_tag: Option<String>,
+    pub merge_pair: Option<(String, String)>,
 }
 
-/// `padding:6px 14px; background:#eae9e9`: TAG and ACTIONS only.
-fn table_header(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .px(px(14.0))
-        .py(px(6.0))
-        .bg(color::chrome(cx))
-        .border_b(px(1.0))
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(10.0))
-        .text_color(color::muted(cx))
-        .child(
-            div()
-                .flex_1()
-                .child(upper(&crate::msg::desktop_tags_column_tag())),
-        )
-        .child(div().child(upper(&lib_locale::msg::column_actions())))
-}
-
-/// The selected row is inverted while the page has focus (`background:#201e1d; color:#f3f2f2`)
-/// and only tinted while the index does. A likely duplicate takes the accent tint.
-fn row(
-    tag: &Tag,
-    duplicate_of: Option<&Tag>,
-    last: bool,
-    selected: bool,
-    focused: bool,
-    props: &TagsPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = tag.id;
-    let inverted = selected && focused;
-    let hover = color::hover(cx);
-    let (secondary, flag, button_border): (Rgba, Rgba, Rgba) = if inverted {
-        (
-            color::selection_muted(cx),
-            color::selection_accent_text(cx),
-            color::selection_muted(cx),
-        )
-    } else {
-        (color::muted(cx), color::accent_text(cx), color::border(cx))
-    };
-    let on_row_click = props.on_row_click.clone();
-    let on_merge_click = props.on_merge_click.clone();
-    let on_edit_click = props.on_edit_click.clone();
-    let on_remove_click = props.on_remove_click.clone();
-
-    div()
-        .debug_selector(move || format!("settings-tags-row-{id}"))
-        .id(SharedString::from(format!("settings-tags-row-{id}")))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .px(px(14.0))
-        .py(px(5.0))
-        .text_size(px(12.5))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .when(!selected && duplicate_of.is_some(), |this| {
-            this.bg(color::accent_tint(cx))
-        })
-        .when(selected && !focused, |this| this.bg(color::chrome(cx)))
-        .when(inverted, |this| {
-            this.bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-        })
-        .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        // An inactive Tag stays listed, dimmed and tagged, rather than hidden.
-        .when(!tag.is_active, |this| this.opacity(0.55))
-        .on_click(move |_event, window, cx| on_row_click(id, window, cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .child(swatch(tag.color.as_ref(), SWATCH_SIZE))
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .child(tag.name.clone()),
-                )
-                .when(!tag.is_active, |this| {
-                    this.child(
-                        div()
-                            .flex_none()
-                            .px(px(6.0))
-                            .py(px(1.0))
-                            .border_1()
-                            .border_color(button_border)
-                            .text_size(px(10.0))
-                            .text_color(secondary)
-                            .child(crate::msg::desktop_tags_inactive()),
-                    )
-                })
-                .when_some(duplicate_of, |this, target| {
-                    this.child(
-                        div()
-                            .flex_none()
-                            .ml(px(4.0))
-                            .px(px(6.0))
-                            .py(px(1.0))
-                            .border_1()
-                            .border_color(color::accent(cx))
-                            .text_size(px(10.0))
-                            .text_color(flag)
-                            .child(crate::msg::desktop_tags_duplicate_of(&target.name)),
-                    )
-                }),
-        )
-        .child(
-            div()
-                .flex()
-                .gap(px(4.0))
-                .when(duplicate_of.is_some(), |this| {
-                    this.child(row_action_button(
-                        SharedString::from(format!("settings-tags-merge-{id}")),
-                        crate::msg::desktop_settings_tags_row_merge(),
-                        button_border,
-                        Rc::new(move |window: &mut Window, cx: &mut App| {
-                            on_merge_click(id, window, cx)
-                        }),
-                        cx,
-                    ))
-                })
-                .child(row_action_button(
-                    SharedString::from(format!("settings-tags-edit-{id}")),
-                    crate::msg::desktop_tags_row_edit(),
-                    button_border,
-                    Rc::new(move |window: &mut Window, cx: &mut App| on_edit_click(id, window, cx)),
-                    cx,
-                ))
-                .child(row_action_button(
-                    SharedString::from(format!("settings-tags-remove-{id}")),
-                    crate::msg::desktop_tags_row_remove(),
-                    button_border,
-                    Rc::new(move |window: &mut Window, cx: &mut App| {
-                        on_remove_click(id, window, cx)
-                    }),
-                    cx,
-                )),
-        )
-}
-
-/// `padding:2px 6px; font-size:11px; border:1px solid`. Stops the click reaching the row.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    border: Rgba,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .py(px(2.0))
-        .px(px(6.0))
-        .border_1()
-        .border_color(border)
-        .text_size(px(11.0))
-        .whitespace_nowrap()
-        .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
-            cx.stop_propagation();
-            on_click(window, cx)
-        })
-        .child(label)
+impl TagsPage {
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &App) -> SettingsTagsSnapshot {
+        let rows = self.tags(cx);
+        SettingsTagsSnapshot {
+            tag_names: lib_tags::sorted_by_name(rows)
+                .into_iter()
+                .map(|tag| tag.name.clone())
+                .collect(),
+            selected_tag: self
+                .selected_id(cx)
+                .and_then(|id| lib_tags::get(rows, id))
+                .map(|tag| tag.name.clone()),
+            merge_pair: None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use lib_payees::default_payees;
+    #[test]
+    fn sorted_by_name_ignores_case() {
+        let tags = default_tags();
+        let names: Vec<String> = sorted_by_name(&tags)
+            .iter()
+            .map(|tag| tag.name.to_lowercase())
+            .collect();
+        let mut expected = names.clone();
+        expected.sort();
+        assert_eq!(names, expected);
+    }
 
     #[test]
-    fn scope_text_reads_the_count_alone_when_nothing_is_flagged() {
-        crate::locale::init_for_tests();
-        let tags = tags::default_tags();
+    fn only_the_non_target_members_count_as_likely_duplicates() {
+        let groups = [
+            DuplicateGroup {
+                target: 1,
+                duplicates: vec![2, 3],
+            },
+            DuplicateGroup {
+                target: 4,
+                duplicates: vec![5],
+            },
+        ];
+        assert_eq!(likely_duplicate_count(&groups), 3);
+        assert_eq!(likely_duplicate_count(&[]), 0);
+    }
+
+    use bigdecimal::BigDecimal;
+    use chrono::NaiveDate;
+    use lib_accounts::Account;
+    use lib_core::{Money, Total, TransactionStatus};
+    use lib_transactions::Transaction;
+
+    use super::*;
+    use lib_tags::*;
+
+    use crate::{categories::default_categories, transactions::default_transactions};
+    use lib_accounts::default_accounts;
+    use lib_transactions::Split;
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
+    }
+
+    pub(super) fn seeded() -> (Vec<Account>, Vec<Tag>, Vec<Transaction>) {
+        let accounts = default_accounts();
+        let tags = default_tags();
+        let transactions = default_transactions(
+            &accounts,
+            &default_categories(),
+            &default_payees(),
+            &tags,
+            today(),
+        );
+        (accounts, tags, transactions)
+    }
+
+    fn id(tags: &[Tag], name: &str) -> u32 {
+        tags.iter().find(|t| t.name == name).unwrap().id
+    }
+
+    fn draft(name: &str) -> TagDraft {
+        TagDraft {
+            name: name.to_string(),
+            color: None,
+        }
+    }
+
+    fn split(cents: i64, tag_ids: &[u32]) -> Split {
+        Split {
+            amount: Money(BigDecimal::new(cents.into(), 2)),
+            category_id: 7,
+            payee_id: None,
+            tag_ids: tag_ids.to_vec(),
+        }
+    }
+
+    fn transaction(id: u32, account_id: u32, date: NaiveDate, splits: Vec<Split>) -> Transaction {
+        Transaction {
+            id,
+            date,
+            account_id,
+            status: TransactionStatus::Open,
+            is_flagged: false,
+            description: None,
+            splits,
+        }
+    }
+
+    fn account_id(accounts: &[Account], name: &str) -> u32 {
+        accounts.iter().find(|a| a.name == name).unwrap().id
+    }
+
+    #[test]
+    fn normalise_lower_cases_and_keeps_only_letters_and_digits() {
+        assert_eq!(normalise("Work-Trip"), "worktrip");
+        assert_eq!(normalise(" work_trip 2 "), "worktrip2");
+        assert_eq!(normalise("Überweisung"), "überweisung");
+        assert_eq!(normalise("--- !"), "");
+    }
+
+    #[test]
+    fn seeded_tags_break_the_rule_only_for_the_one_duplicate_pair() {
+        let (_, tags, transactions) = seeded();
+        let groups = duplicate_groups(&tags, &transactions);
         assert_eq!(
-            scope_text(&tags, &[]),
-            format!("{} tags", tags::active_count(&tags))
+            groups,
+            vec![DuplicateGroup {
+                target: id(&tags, "work-trip"),
+                duplicates: vec![id(&tags, "Work Trip")],
+            }]
         );
     }
 
     #[test]
-    fn scope_text_adds_the_duplicates_clause() {
-        crate::locale::init_for_tests();
-        let tags = tags::default_tags();
-        let groups = [DuplicateGroup {
-            target: 1,
-            duplicates: vec![2],
-        }];
+    fn the_seed_has_one_inactive_tag_left_out_of_the_count() {
+        let (_, tags, _) = seeded();
+        assert!(!get(&tags, id(&tags, "Bali 2025")).unwrap().is_active);
+        assert_eq!(active_count(&tags), tags.len() - 1);
+    }
+
+    #[test]
+    fn seeded_usage_keeps_the_mockups_order() {
+        let (_, tags, transactions) = seeded();
+        let order: Vec<&str> = sorted_by_usage(&tags, &transactions)
+            .iter()
+            .map(|t| t.name.as_str())
+            .take(6)
+            .collect();
         assert_eq!(
-            scope_text(&tags, &groups),
-            format!(
-                "{} tags \u{b7} 1 likely duplicate",
-                tags::active_count(&tags)
-            )
+            order,
+            [
+                "shared",
+                "reimbursable",
+                "tax-deductible",
+                "work-trip",
+                "gift",
+                "one-off"
+            ]
+        );
+        assert_eq!(transaction_count(&transactions, id(&tags, "one-off")), 3);
+        assert!(transaction_count(&transactions, id(&tags, "Work Trip")) > 0);
+        assert!(transaction_count(&transactions, id(&tags, "Bali 2025")) > 0);
+    }
+
+    #[test]
+    fn find_by_name_ignores_case_but_not_punctuation() {
+        let tags = default_tags();
+        assert_eq!(find_by_name(&tags, "SHARED"), Some(id(&tags, "shared")));
+        assert_eq!(find_by_name(&tags, "tax deductible"), None);
+        assert_eq!(find_by_name(&tags, "missing"), None);
+    }
+
+    #[test]
+    fn insert_trims_the_name_and_starts_active() {
+        let mut tags = default_tags();
+        let new = insert_tag(
+            &mut tags,
+            &TagDraft {
+                name: "  holiday ".to_string(),
+                color: Some(swatches()[3].clone()),
+            },
+        )
+        .unwrap();
+        let tag = get(&tags, new).unwrap();
+        assert_eq!(tag.name, "holiday");
+        assert_eq!(tag.color, Some(swatches()[3].clone()));
+        assert!(tag.is_active);
+        assert_eq!(new, tags.iter().map(|t| t.id).max().unwrap());
+    }
+
+    #[test]
+    fn insert_refuses_empty_punctuation_only_and_normalised_duplicates() {
+        let mut tags = default_tags();
+        assert_eq!(
+            insert_tag(&mut tags, &draft("   ")),
+            Err(TagError::NameRequired)
+        );
+        assert_eq!(
+            insert_tag(&mut tags, &draft("- !")),
+            Err(TagError::NoLetterOrDigit)
+        );
+        assert_eq!(
+            insert_tag(&mut tags, &draft("Tax Deductible")),
+            Err(TagError::DuplicateName("tax-deductible".to_string()))
+        );
+        // An inactive Tag's name stays taken.
+        assert_eq!(
+            insert_tag(&mut tags, &draft("bali-2025")),
+            Err(TagError::DuplicateName("Bali 2025".to_string()))
+        );
+    }
+
+    #[test]
+    fn edit_renames_and_recolours_and_may_keep_its_own_name() {
+        let mut tags = default_tags();
+        let shared = id(&tags, "shared");
+        edit_tag(&mut tags, shared, &draft("Shared")).unwrap();
+        assert_eq!(get(&tags, shared).unwrap().name, "Shared");
+        assert_eq!(get(&tags, shared).unwrap().color, None);
+        assert_eq!(
+            edit_tag(&mut tags, shared, &draft("gift!")),
+            Err(TagError::DuplicateName("gift".to_string()))
+        );
+        assert_eq!(
+            edit_tag(&mut tags, 999, &draft("x")),
+            Err(TagError::NotFound)
+        );
+    }
+
+    #[test]
+    fn set_active_toggles() {
+        let mut tags = default_tags();
+        let gift = id(&tags, "gift");
+        set_active(&mut tags, gift, false).unwrap();
+        assert!(!get(&tags, gift).unwrap().is_active);
+        set_active(&mut tags, gift, true).unwrap();
+        assert!(get(&tags, gift).unwrap().is_active);
+        assert_eq!(set_active(&mut tags, 999, false), Err(TagError::NotFound));
+    }
+
+    #[test]
+    fn remove_untags_every_split_and_keeps_the_transactions() {
+        let (_, mut tags, mut transactions) = seeded();
+        let before = transactions.clone();
+        let shared = id(&tags, "shared");
+        remove_tag(&mut tags, &mut transactions, shared).unwrap();
+        assert!(get(&tags, shared).is_none());
+        assert_eq!(transaction_count(&transactions, shared), 0);
+        assert_eq!(transactions.len(), before.len());
+        for (after, before) in transactions.iter().zip(&before) {
+            assert_eq!(after.total(), before.total());
+            for (a, b) in after.splits.iter().zip(&before.splits) {
+                assert_eq!((a.category_id, a.payee_id), (b.category_id, b.payee_id));
+            }
+        }
+        assert_eq!(
+            remove_tag(&mut tags, &mut transactions, shared),
+            Err(TagError::NotFound)
+        );
+    }
+
+    #[test]
+    fn remove_deletes_an_unused_tag_too() {
+        let (_, mut tags, mut transactions) = seeded();
+        let new = insert_tag(&mut tags, &draft("unused")).unwrap();
+        remove_tag(&mut tags, &mut transactions, new).unwrap();
+        assert!(get(&tags, new).is_none());
+    }
+
+    #[test]
+    fn merge_retags_without_doubling_and_deletes_the_source() {
+        let mut tags = default_tags();
+        let (source, target, other) = (id(&tags, "Work Trip"), id(&tags, "work-trip"), 1);
+        let day = today();
+        let mut transactions = vec![
+            transaction(1, 2, day, vec![split(-100, &[source])]),
+            transaction(
+                2,
+                2,
+                day,
+                vec![split(-200, &[source, target]), split(-50, &[other])],
+            ),
+            transaction(3, 2, day, vec![split(-300, &[target])]),
+        ];
+        merge_tags(&mut tags, &mut transactions, source, target).unwrap();
+        assert!(get(&tags, source).is_none());
+        assert_eq!(transactions[0].splits[0].tag_ids, vec![target]);
+        assert_eq!(transactions[1].splits[0].tag_ids, vec![target]);
+        assert_eq!(transactions[1].splits[1].tag_ids, vec![other]);
+        assert_eq!(transaction_count(&transactions, target), 3);
+        // The target keeps its own name, colour and state.
+        let kept = get(&tags, target).unwrap();
+        assert_eq!(kept.name, "work-trip");
+        assert_eq!(kept.color, Some(swatches()[4].clone()));
+    }
+
+    #[test]
+    fn merge_refuses_itself_and_missing_tags_and_allows_inactive_ones() {
+        let (_, mut tags, mut transactions) = seeded();
+        let gift = id(&tags, "gift");
+        let bali = id(&tags, "Bali 2025");
+        assert_eq!(
+            merge_tags(&mut tags, &mut transactions, gift, gift),
+            Err(TagError::MergeIntoItself)
+        );
+        assert_eq!(
+            merge_tags(&mut tags, &mut transactions, 999, gift),
+            Err(TagError::NotFound)
+        );
+        let expected =
+            transaction_count(&transactions, gift) + transaction_count(&transactions, bali);
+        merge_tags(&mut tags, &mut transactions, bali, gift).unwrap();
+        assert_eq!(transaction_count(&transactions, gift), expected);
+        assert!(get(&tags, gift).unwrap().is_active);
+    }
+
+    #[test]
+    fn a_split_reuses_an_exact_match_and_refuses_a_normalised_one() {
+        let tags = default_tags();
+        assert_eq!(
+            resolve_split_tag(&tags, " SHARED "),
+            Ok(SplitTag::Existing(id(&tags, "shared")))
+        );
+        assert_eq!(
+            resolve_split_tag(&tags, "one off"),
+            Err(TagError::DuplicateName("one-off".to_string()))
+        );
+        assert_eq!(resolve_split_tag(&tags, "camping"), Ok(SplitTag::New));
+        assert_eq!(resolve_split_tag(&tags, ""), Err(TagError::NameRequired));
+    }
+
+    #[test]
+    fn usage_counts_distinct_transactions_sums_the_tagged_splits_and_takes_the_newest_date() {
+        let accounts = default_accounts();
+        let everyday = account_id(&accounts, "ANZ Everyday");
+        let day = today();
+        let transactions = vec![
+            transaction(
+                1,
+                everyday,
+                day - chrono::Duration::days(3),
+                vec![split(-1_000, &[5]), split(-250, &[5]), split(-9_999, &[])],
+            ),
+            // Future-dated still counts as last used.
+            transaction(
+                2,
+                everyday,
+                day + chrono::Duration::days(2),
+                vec![split(-500, &[5])],
+            ),
+            transaction(3, everyday, day, vec![split(-700, &[6])]),
+        ];
+        let used = usage(&transactions, &accounts, 5, |_| "aud".to_string());
+        assert_eq!(used.transactions, 2);
+        assert_eq!(
+            used.total,
+            Total::Single {
+                unit: "aud".to_string(),
+                amount: Money(BigDecimal::new((-1_750).into(), 2)),
+            }
+        );
+        assert_eq!(used.last_used, Some(day + chrono::Duration::days(2)));
+    }
+
+    #[test]
+    fn usage_across_units_is_mixed_and_an_unused_tag_is_empty() {
+        let accounts = default_accounts();
+        let day = today();
+        let transactions = vec![
+            transaction(
+                1,
+                account_id(&accounts, "ANZ Everyday"),
+                day,
+                vec![split(-1_000, &[5])],
+            ),
+            transaction(
+                2,
+                account_id(&accounts, "Bitcoin"),
+                day,
+                vec![split(-500, &[5])],
+            ),
+        ];
+        assert_eq!(
+            usage(&transactions, &accounts, 5, |_| "aud".to_string()).total,
+            Total::Mixed
+        );
+        let unused = usage(&transactions, &accounts, 6, |_| "aud".to_string());
+        assert_eq!(
+            (unused.transactions, unused.total, unused.last_used),
+            (0, Total::Empty, None)
+        );
+    }
+
+    #[test]
+    fn sort_ties_fall_back_to_the_name() {
+        let tags = vec![
+            Tag {
+                id: 1,
+                name: "zeta".to_string(),
+                color: None,
+                is_active: true,
+            },
+            Tag {
+                id: 2,
+                name: "Alpha".to_string(),
+                color: None,
+                is_active: true,
+            },
+            Tag {
+                id: 3,
+                name: "beta".to_string(),
+                color: None,
+                is_active: true,
+            },
+        ];
+        let transactions = vec![transaction(1, 2, today(), vec![split(-1, &[3])])];
+        let order: Vec<u32> = sorted_by_usage(&tags, &transactions)
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(order, [3, 2, 1]);
+    }
+
+    #[test]
+    fn the_suggested_target_is_active_then_more_used_then_older() {
+        let tag = |id, name: &str, is_active| Tag {
+            id,
+            name: name.to_string(),
+            color: None,
+            is_active,
+        };
+        let day = today();
+        let used = |id, tag_id| transaction(id, 2, day, vec![split(-1, &[tag_id])]);
+
+        // More Transactions wins among active Tags.
+        let tags = vec![tag(1, "Shared", true), tag(2, "shared", true)];
+        let transactions = vec![used(1, 2)];
+        let groups = duplicate_groups(&tags, &transactions);
+        assert_eq!(
+            groups[0],
+            DuplicateGroup {
+                target: 2,
+                duplicates: vec![1]
+            }
+        );
+        assert_eq!(duplicate_of(&groups, 1), Some(2));
+        assert_eq!(duplicate_of(&groups, 2), None);
+
+        // Active beats more used.
+        let tags = vec![tag(1, "Shared", true), tag(2, "shared", false)];
+        assert_eq!(duplicate_groups(&tags, &transactions)[0].target, 1);
+
+        // A tie goes to the older (lower id); every other member is flagged against it.
+        let tags = vec![
+            tag(4, "work trip", true),
+            tag(3, "Work-Trip", true),
+            tag(5, "WORK_TRIP", false),
+        ];
+        assert_eq!(
+            duplicate_groups(&tags, &[]),
+            vec![DuplicateGroup {
+                target: 3,
+                duplicates: vec![4, 5]
+            }]
         );
     }
 }

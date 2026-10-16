@@ -132,7 +132,6 @@ mod tests {
     use crate::{
         categories::{Category, default_categories},
         period::Period,
-        tags::default_tags,
         transactions::{Transaction, default_transactions},
     };
     use bigdecimal::{BigDecimal, Signed};
@@ -140,6 +139,7 @@ mod tests {
     use lib_accounts::{Account, default_accounts};
     use lib_core::{Money, Total, TransactionStatus};
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn cents_money(cents: i64) -> Money {
         Money(BigDecimal::new(cents.into(), 2))

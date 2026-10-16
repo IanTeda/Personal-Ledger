@@ -6,11 +6,9 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
-use crate::{
-    dialog,
-    tags::{Tag, form::RemoveTagForm},
-    theme::color,
-};
+use lib_tags::Tag;
+
+use crate::{dialog, settings::tags::form::RemoveTagForm, theme::color};
 
 /// The dialog's width: the handoff's 7d.
 pub const WIDTH: gpui::Pixels = px(400.0);
@@ -42,7 +40,7 @@ pub fn render(props: RemoveTagProps<'_>, cx: &App) -> AnyElement {
     }
 
     if let Some(error) = &form.error {
-        fields.push(super::colour_field::error_line(error.to_string(), cx));
+        fields.push(crate::form::colour_field::error_line(error.to_string(), cx));
     }
 
     let card = div()

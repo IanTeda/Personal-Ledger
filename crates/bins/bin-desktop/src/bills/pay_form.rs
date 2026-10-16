@@ -252,10 +252,11 @@ mod tests {
     use super::*;
     use crate::{
         bills::default_bills, categories::default_categories, chrome::dialog_host::handle_key,
-        tags::default_tags, transactions::default_transactions,
+        transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -366,10 +367,10 @@ mod tests {
         use crate::{
             bills::{EntryId, SplitRef, default_bills},
             categories::default_categories,
-            tags::default_tags,
             transactions::default_transactions,
         };
         use lib_accounts::default_accounts;
+        use lib_tags::default_tags;
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let (accounts, categories, payees) =
             (default_accounts(), default_categories(), default_payees());

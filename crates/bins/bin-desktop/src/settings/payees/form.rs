@@ -362,12 +362,13 @@ impl DeletePayeeForm {
 mod tests {
     use super::*;
     use crate::categories::default_categories;
-    use crate::{tags::default_tags, transactions::default_transactions};
+    use crate::transactions::default_transactions;
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
     use lib_accounts::default_accounts;
     use lib_core::Money;
     use lib_payees::{default_payees, find_by_name, get, set_active, usage};
+    use lib_tags::default_tags;
     use lib_transactions::Transaction;
 
     fn id_of(payees: &[Payee], name: &str) -> u32 {

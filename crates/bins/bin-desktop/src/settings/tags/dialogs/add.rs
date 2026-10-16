@@ -2,21 +2,19 @@
 //! `crate::dialog` chrome: Name with its live inline error, the shared Colour field, and a callout
 //! on how names are matched. The handoff's callout offered to reuse a case-insensitive match; #354
 //! settled on refusing any name equal once case, spaces and punctuation are ignored, so the callout
-//! says that instead and there is no reuse button. `Shell` owns the live form (`tags::form::TagForm`)
-//! and every keystroke while it is open.
+//! says that instead and there is no reuse button. The Tags page owns the live form
+//! (`settings::tags::form::TagForm`) and every keystroke while it is open.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use lib_tags::TagError;
 
-use super::colour_field::{self, ColourFieldProps, OnPick, error_line};
 use crate::{
     dialog,
+    form::colour_field::{self, ColourFieldProps, OnPick, error_line},
     form::dialog_fields::{label, text_field},
-    tags::{
-        TagError,
-        form::{TagField, TagForm},
-    },
+    settings::tags::form::{TagField, TagForm},
     theme::color,
 };
 

@@ -10,13 +10,12 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
+use lib_tags::Tag;
+
 use crate::{
     dialog,
     form::select_field::{self, SelectFieldProps},
-    tags::{
-        Tag,
-        form::{MergeField, MergeTagsForm},
-    },
+    settings::tags::form::{MergeField, MergeTagsForm},
     theme::color,
 };
 
@@ -126,7 +125,7 @@ pub fn render(props: MergeTagsProps<'_>, cx: &App) -> AnyElement {
                 .chain(
                     form.error
                         .as_ref()
-                        .map(|error| super::colour_field::error_line(error.to_string(), cx)),
+                        .map(|error| crate::form::colour_field::error_line(error.to_string(), cx)),
                 ),
         ))
         .child(dialog::action_row(
@@ -206,7 +205,7 @@ mod tests {
     fn the_callout_bolds_the_count_and_names_the_targets_colour_or_its_lack() {
         crate::locale::init_for_tests();
         let source = tag(1, "Shared", None);
-        let coloured = tag(2, "shared", Some(crate::tags::swatches()[0].clone()));
+        let coloured = tag(2, "shared", Some(lib_tags::swatches()[0].clone()));
         let segments = callout_segments(&source, &coloured, 9);
         let strong: Vec<&str> = segments
             .iter()

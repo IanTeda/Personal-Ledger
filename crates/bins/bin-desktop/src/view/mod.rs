@@ -14,7 +14,6 @@ pub mod help;
 pub mod import;
 pub mod inventory;
 pub mod placeholder;
-pub mod tags;
 pub mod transactions;
 
 use gpui::{ScrollHandle, point, px};

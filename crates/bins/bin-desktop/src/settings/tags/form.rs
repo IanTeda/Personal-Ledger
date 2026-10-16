@@ -1,9 +1,10 @@
-//! The Tags dialogs' form state: the Add, Edit, Remove and Merge tag forms, the merge options and
-//! the dialog they sit behind. `gpui`-free, like the rest of this domain; `view::tags` renders it.
+//! The Tags dialogs' form state: the Add, Edit, Remove and Merge tag forms and the merge options.
+//! `gpui`-free, like the rest of this domain; `dialogs/` renders it and `dialogs::TagsDialog`
+//! holds it while it is open.
 
 use lib_core::HexColor;
+use lib_tags::{Tag, TagDraft, TagError, name_error, sorted_by_usage, swatches, transaction_count};
 
-use super::{Tag, TagDraft, TagError, name_error, sorted_by_usage, swatches, transaction_count};
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
@@ -272,59 +273,6 @@ pub fn merge_options(
         .collect()
 }
 
-/// Which Tags dialog is open on the Tags page.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TagsDialog {
-    Add(TagForm),
-    /// Editing the Tag with this [`Tag::id`].
-    Edit(u32, TagForm),
-    /// Removing the Tag with this [`Tag::id`].
-    Remove(u32, RemoveTagForm),
-    /// Merging one Tag into another; either select is empty until chosen (the palette's
-    /// `tags merge` opens with neither, `m` on an unflagged Tag with only the source).
-    Merge(MergeTagsForm),
-}
-
-impl TagsDialog {
-    fn inner(&self) -> &dyn Dialog {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form,
-            Self::Remove(_, form) => form,
-            Self::Merge(form) => form,
-        }
-    }
-
-    fn inner_mut(&mut self) -> &mut dyn Dialog {
-        match self {
-            Self::Add(form) | Self::Edit(_, form) => form,
-            Self::Remove(_, form) => form,
-            Self::Merge(form) => form,
-        }
-    }
-}
-
-impl Dialog for TagsDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        self.inner_mut().handle_own_key(key)
-    }
-
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        self.inner_mut().focused_text()
-    }
-
-    fn cycle_field(&mut self) {
-        self.inner_mut().cycle_field();
-    }
-
-    fn is_valid(&self) -> bool {
-        self.inner().is_valid()
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        self.inner_mut().close_open_select()
-    }
-}
-
 /// A 7e select's option: a Tag and its label, `Shared (9 txns)`. Labels are unique because names
 /// are, so the selects key their value on the label and map it back to the id here.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -522,7 +470,8 @@ impl Dialog for MergeTagsForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tags::{default_tags, find_by_name, get, tests::seeded};
+    use crate::settings::tags::{dialogs::TagsDialog, tests::seeded};
+    use lib_tags::{default_tags, find_by_name, get};
 
     #[test]
     fn a_new_form_has_no_colour_and_picks_none() {

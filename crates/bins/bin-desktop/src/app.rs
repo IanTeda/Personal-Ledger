@@ -43,7 +43,6 @@ mod render;
 mod settings_ui;
 mod snapshots;
 mod status;
-mod tags_ui;
 mod toasts;
 mod transactions_ui;
 mod view_events;
@@ -82,13 +81,13 @@ use lib_toast::Toasts;
 
 use crate::settings::accounts::AccountsPage;
 use crate::settings::payees::{PayeesPage, PayeesSources};
+use crate::settings::tags::TagsPage;
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
-use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
     budgets,
     categories::Category,
@@ -165,11 +164,6 @@ pub struct Shell {
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
-    /// The Tags rows, read through their store Entity (ADR-0032). Shared:
-    /// Transactions reads the same rows for its chips, filter form and Split tag picker.
-    tags_store: Entity<TagsStore>,
-    /// The Tags page's and Settings Tags list's selections, owned by their view Entity.
-    tags_view: Entity<TagsView>,
     /// The Transactions, read through their store Entity (ADR-0032): saved-in-memory state that
     /// survives leaving and re-entering the page. Deleting an account deletes its transactions
     /// with it.
@@ -201,6 +195,7 @@ impl Shell {
         let categories_view = cx.new(|_| CategoriesView::new());
         // The Dialogs and the Dashboard read the Units and Institutions straight from the Ledger.
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
+        let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
         let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
         let categories_subscription = cx.subscribe(
@@ -225,6 +220,10 @@ impl Shell {
         let payees_view_subscription = Self::view_event_subscription(&payees_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
+        let tags_page = cx.new(|cx| TagsPage::new(ledger.clone(), cx));
+        let tags_page_subscription = Self::view_event_subscription(&tags_page, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let tags_page_observer = cx.observe(&tags_page, |_, _, cx| cx.notify());
         let display_page = cx.new(|_| DisplayPage::default());
         let display_page_subscription = Self::view_event_subscription(&display_page, cx);
         // The status line reads the page's focus, so a change in it repaints `Shell` too.
@@ -242,6 +241,7 @@ impl Shell {
                     units: units_page,
                     accounts: accounts_view,
                     payees: payees_view,
+                    tags: tags_page,
                 },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -254,10 +254,6 @@ impl Shell {
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let tags_store = cx.new(|cx| TagsStore::new(ledger.clone(), cx));
-        let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
-        let tags_subscription =
-            cx.subscribe(&tags_store, |_, _store, _event: &TagsEvent, cx| cx.notify());
         let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
         let inventory_subscription = cx
             .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
@@ -268,7 +264,6 @@ impl Shell {
                 TransactionsSources {
                     ledger: ledger.clone(),
                     categories: categories_store.clone(),
-                    tags: tags_store.clone(),
                 },
                 today,
                 cx,
@@ -350,8 +345,6 @@ impl Shell {
             today,
             categories_store,
             categories_view,
-            tags_store,
-            tags_view,
             views: ViewEntities {
                 bills: bills_view,
                 budgets: budgets_view,
@@ -375,6 +368,8 @@ impl Shell {
                 payees_changed,
                 payees_view_subscription,
                 payees_view_observer,
+                tags_page_subscription,
+                tags_page_observer,
                 categories_subscription,
                 units_subscription,
                 accounts_changed,
@@ -635,7 +630,7 @@ mod tests {
     };
     use crate::transactions::Transaction;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
-    use crate::{categories, tags, transactions};
+    use crate::{categories, transactions};
     use chrono::Local;
     use lib_accounts::Account;
 
@@ -646,7 +641,7 @@ mod tests {
             &accounts,
             &categories,
             &lib_payees::default_payees(),
-            &tags::default_tags(),
+            &lib_tags::default_tags(),
             Local::now().date_naive(),
         );
         (accounts, categories, transactions)

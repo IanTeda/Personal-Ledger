@@ -14,11 +14,11 @@ use lib_payees::Payee;
 use crate::{
     categories,
     settings::display::StatusGlyphs,
-    tags::Tag,
     transactions::Transaction,
     transactions::query::{Ledger, Visible},
     view::format,
 };
+use lib_tags::Tag;
 
 /// The mark for an empty PAYEE or TAGS cell.
 pub const EMPTY_CELL: &str = "\u{2014}";
@@ -188,7 +188,6 @@ mod tests {
     use super::*;
     use crate::{
         categories::default_categories,
-        tags::default_tags,
         transactions::default_transactions,
         transactions::query::{TransactionFilters, query},
     };
@@ -196,6 +195,7 @@ mod tests {
     use lib_accounts::default_accounts;
     use lib_core::TransactionStatus;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -315,7 +315,7 @@ mod tests {
             tags_summary(tokyo, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
-                color: crate::tags::get(&w.tags, 1).unwrap().color.clone(),
+                color: lib_tags::get(&w.tags, 1).unwrap().color.clone(),
                 more: 0
             }
         );
@@ -325,7 +325,7 @@ mod tests {
             tags_summary(&many, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
-                color: crate::tags::get(&w.tags, 1).unwrap().color.clone(),
+                color: lib_tags::get(&w.tags, 1).unwrap().color.clone(),
                 more: 2
             },
             "the duplicated Japan tag counts once"

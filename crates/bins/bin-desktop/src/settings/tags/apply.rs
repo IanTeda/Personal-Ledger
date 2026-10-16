@@ -2,10 +2,12 @@
 //! that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_toast::ToastKind;
 
 use lib_ledger::{AddTag, EditTag, MergeTags, RemoveTag};
+use lib_tags::{TagDraft, TagError, get};
 
-use super::{TagDraft, TagError, form::TagsDialog, get};
+use super::dialogs::TagsDialog;
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     ledger_store::LedgerStore,
@@ -38,6 +40,32 @@ pub enum TagOutcome {
         retagged: usize,
         target: u32,
     },
+}
+
+impl TagOutcome {
+    /// The Toast `Shell` raises once the Dialog has closed: a removal or a merge has one, since a
+    /// save selects its Tag instead.
+    pub fn toast(&self) -> Option<(ToastKind, String)> {
+        match self {
+            Self::Saved(_) => None,
+            Self::Removed { name } => {
+                Some((ToastKind::Success, lib_locale::msg::toast_tag_deleted(name)))
+            }
+            Self::Merged {
+                source_name,
+                target_name,
+                retagged,
+                ..
+            } => Some((
+                ToastKind::Success,
+                lib_locale::msg::toast_tag_merged(
+                    source_name,
+                    target_name,
+                    i64::try_from(*retagged).unwrap_or(i64::MAX),
+                ),
+            )),
+        }
+    }
 }
 
 impl DialogForm for TagsDialog {
@@ -139,7 +167,7 @@ mod tests {
     use crate::ledger_store::test_ledger;
     use crate::{
         chrome::dialog_apply::confirm,
-        tags::form::{MergeTagsForm, RemoveTagForm, TagForm},
+        settings::tags::form::{MergeTagsForm, RemoveTagForm, TagForm},
     };
 
     fn apply(cx: &mut TestAppContext) -> TagsApply {
@@ -180,7 +208,8 @@ mod tests {
     fn a_merge_reports_both_names(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
         let rows = lib_tags::default_tags();
-        let options = crate::tags::form::merge_options(&rows, &[], |name, _| name.to_string());
+        let options =
+            crate::settings::tags::form::merge_options(&rows, &[], |name, _| name.to_string());
         let mut dialog = TagsDialog::Merge(MergeTagsForm::new(
             options,
             Some(rows[1].id),

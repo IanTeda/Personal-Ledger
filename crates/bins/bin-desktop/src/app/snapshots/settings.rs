@@ -14,16 +14,18 @@ pub use crate::settings::snapshot::{
     SettingsDisplaySnapshot, SettingsSnapshot, SettingsTracingSnapshot,
 };
 #[doc(hidden)]
+pub use crate::settings::tags::SettingsTagsSnapshot;
+#[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     settings::accounts::dialogs::AccountsDialog,
     settings::payees::dialogs::PayeesDialog,
+    settings::tags::dialogs::TagsDialog,
     settings::{
         SettingsDialog, institutions::dialogs::InstitutionsDialog, units::dialogs::UnitsDialog,
     },
-    tags::{self, form::TagsDialog},
 };
 
 /// The Categories page: names in storage order, and the selected row's name.
@@ -59,16 +61,6 @@ pub struct SettingsInventorySnapshot {
     pub inventory_properties: Vec<(String, String, Option<String>)>,
     /// Each Room's name with its Item count, in page order.
     pub inventory_room_items: Vec<(String, usize)>,
-}
-
-/// The Tags page: names A-Z, the selected row's name, and the Merge tags dialog's chosen
-/// `(source, target)` names once both are set.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsTagsSnapshot {
-    pub tag_names: Vec<String>,
-    pub selected_tag: Option<String>,
-    pub merge_pair: Option<(String, String)>,
 }
 
 /// What the open Settings dialog shows, read once for the snapshots that report it.
@@ -206,8 +198,12 @@ impl Shell {
                 TagsDialog::Merge(form) => {
                     open_dialog.merge_pair = form.pair().and_then(|(source, target)| {
                         Some((
-                            tags::get(self.tags_list(cx), source)?.name.clone(),
-                            tags::get(self.tags_list(cx), target)?.name.clone(),
+                            lib_tags::get(self.ledger.read(cx).ledger().tags(), source)?
+                                .name
+                                .clone(),
+                            lib_tags::get(self.ledger.read(cx).ledger().tags(), target)?
+                                .name
+                                .clone(),
                         ))
                     });
                     ("MergeTags", None, None)
@@ -401,16 +397,10 @@ impl Shell {
     /// The Settings Tags page for a test.
     #[doc(hidden)]
     pub fn settings_tags_snapshot(&self, cx: &gpui::App) -> SettingsTagsSnapshot {
-        let selected_tag = self
-            .settings_tags_selected_id(cx)
-            .and_then(|id| tags::get(self.tags_list(cx), id).map(|tag| tag.name.clone()));
+        let page = self.views.settings.read(cx).tags().read(cx).snapshot(cx);
         SettingsTagsSnapshot {
-            tag_names: tags::sorted_by_name(self.tags_list(cx))
-                .into_iter()
-                .map(|tag| tag.name.clone())
-                .collect(),
-            selected_tag,
             merge_pair: self.open_settings_dialog(cx).merge_pair,
+            ..page
         }
     }
 

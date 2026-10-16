@@ -1,20 +1,17 @@
 //! The Add and Edit tag dialogs' **Colour** field (#352): a "none" chip, the handoff's six preset
 //! swatches (`26×26`, `gap 8px`, the pick outlined `2px`) and a free hex box that takes any other
-//! colour. `tags::form::TagForm` keeps the hex box as the one source of the colour, so this only draws
+//! colour. `settings::tags::form::TagForm` keeps the hex box as the one source of the colour, so this only draws
 //! it and reports clicks.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use super::swatch;
+use super::swatch::{swatch, swatch_colour};
 use crate::{
     dialog,
     form::dialog_fields::optional_label,
-    tags::{
-        self,
-        form::{TagField, TagForm},
-    },
+    settings::tags::form::{TagField, TagForm},
     theme::color,
 };
 
@@ -72,15 +69,10 @@ pub fn render(props: ColourFieldProps<'_>, cx: &App) -> AnyElement {
             .text_color(color::muted(cx))
             .child(crate::msg::desktop_tags_colour_none()),
     );
-    let presets = tags::swatches()
+    let presets = lib_tags::swatches()
         .into_iter()
         .zip(1..)
-        .map(|(preset, index)| {
-            pick(
-                index,
-                div().w(SWATCH_SIZE).bg(super::swatch_colour(&preset)),
-            )
-        });
+        .map(|(preset, index)| pick(index, div().w(SWATCH_SIZE).bg(swatch_colour(&preset))));
 
     div()
         .child(optional_label(crate::msg::desktop_tags_field_colour(), cx))

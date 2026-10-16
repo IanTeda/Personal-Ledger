@@ -626,11 +626,11 @@ mod tests {
         bills::default_bills,
         categories::default_categories,
         documents::{self, DocumentsSeed, default_documents},
-        tags::default_tags,
         transactions::default_transactions,
     };
     use lib_accounts::default_accounts;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     struct World {
         types: Vec<DocumentTypeRow>,

@@ -22,7 +22,7 @@ use crate::{
     form::field::TextField, inventory::form::InventoryDialog, settings::SettingsDialog,
     settings::accounts::dialogs::AccountsDialog,
     settings::institutions::dialogs::InstitutionsDialog, settings::payees::dialogs::PayeesDialog,
-    settings::units::dialogs::UnitsDialog, tags::form::TagsDialog,
+    settings::tags::dialogs::TagsDialog, settings::units::dialogs::UnitsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.

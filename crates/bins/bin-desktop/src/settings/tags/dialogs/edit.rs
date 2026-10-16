@@ -8,17 +8,14 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
-use super::{
-    add_dialog::{OnFieldClick, TagDialogHandlers, callout, name_error_text},
-    colour_field::{self, ColourFieldProps, error_line},
-};
+use lib_tags::TagError;
+
+use super::add::{OnFieldClick, TagDialogHandlers, callout, name_error_text};
 use crate::{
     dialog,
+    form::colour_field::{self, ColourFieldProps, error_line},
     form::dialog_fields::{label, text_field},
-    tags::{
-        TagError,
-        form::{TagField, TagForm},
-    },
+    settings::tags::form::{TagField, TagForm},
     theme::color,
 };
 

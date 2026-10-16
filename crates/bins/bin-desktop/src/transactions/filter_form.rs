@@ -27,11 +27,11 @@ use lib_payees::Payee;
 use crate::{
     categories::{self, Category},
     form::select::SelectState,
-    tags::Tag,
     transactions::chips::FilterField,
     transactions::query::{StatusFilter, TransactionFilters},
 };
 use lib_accounts::Account;
+use lib_tags::Tag;
 
 /// The Account select's first option, meaning no account filter.
 pub fn all_accounts() -> String {
@@ -482,9 +482,10 @@ impl FilterForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{categories::default_categories, tags::default_tags};
+    use crate::categories::default_categories;
     use lib_accounts::default_accounts;
     use lib_payees::default_payees;
+    use lib_tags::default_tags;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -688,7 +689,7 @@ mod tests {
 
     #[test]
     fn an_id_hand_off_shows_the_name_and_survives_apply_until_edited() {
-        let tag = crate::tags::find_by_name(&default_tags(), "work-trip").unwrap();
+        let tag = lib_tags::find_by_name(&default_tags(), "work-trip").unwrap();
         let filters = TransactionFilters::for_tag(today(), tag);
         let mut form = au(|| FilterForm::from_filters(&filters, &options(), today(), fmt()));
         assert_eq!((form.tag.as_str(), form.tag_id), ("work-trip", Some(tag)));
