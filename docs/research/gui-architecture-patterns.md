@@ -110,7 +110,38 @@ The costs are what Elm buys: data flow is harder to trace through observer webs,
 
 In short, the Desktop already follows Zed's approach for ownership, events, ports and tests. The open choices are moving I/O onto background tasks (#636), whether to split the model layer into its own crate, and whether to adopt gpui actions.
 
-## 7. Unverified
+## 7. Personal Ledger's ideal Desktop
+
+The target-state diagram is [`desktop-ideal-architecture.html`](../diagrams/desktop-ideal-architecture.html). Existing crates and types cite source at `26cbab6`; proposed ones are marked "(new)" or "new ·" and have no sources. It sits beside [`desktop-architecture.html`](../diagrams/desktop-architecture.html) (today's Desktop) and [`base-architect-diagram.html`](../diagrams/base-architect-diagram.html) (a generic GPUI ideal). These are target-state choices agreed in a design review, not accepted decisions: each becomes an ADR when its ticket is taken on.
+
+| # | Decision | Reason |
+|---|---|---|
+| 1 | Scope is the Desktop process and every crate it links; the Sync Server, the SQLite file and the Document files are external | The question is the Desktop's crate boundaries; the TUI and Sync Server would double the canvas without answering it |
+| 2 | Target state for this repo, not a blank slate: keep what's right, add or split where the ideal differs | The diagram doubles as a gap map against today's code |
+| 3 | Split `bin-desktop` Zed-style: `lib-desktop-model` (gpui Entities, no Views), `lib-desktop-ui`, and a thin `bin-desktop` | Model tests stop linking the Views, and a View edit stops recompiling the models (§6, item 9) |
+| 4 | Hybrid keyboard: the modal grammar router stays a pure, tested function but outputs typed `Intent`s dispatched as gpui actions | Keeps the tested chorded grammar and gains focus-scoped dispatch, rebinding and an action list for the command palette (§6, item 10) |
+| 5 | The `LedgerRepository` port lives in `lib-ledger` with a stub behind `test-support`; `SqliteLedgerRepository` lives in `lib-database`; the port is async; commands apply synchronously and the drained changes are written behind on the background executor, a failure raising a Toast and a reload | Dependencies still point one way (`lib-database` → `lib-ledger`), and the UI never waits on SQLite (ADR-0039 leaves the wiring to #636) |
+| 6 | Sync is in the Desktop, as a full replica of the database and Document files rather than a change log | Planned change of sync model; GLOSSARY's Ledger entry already describes a full local SQLite copy per Client |
+| 7 | The 11 domain crates are one node, named in a card | The rule that domain crates never depend on each other is a boundary fact, not 11 arrows |
+| 8 | Cross-cutting support crates are individual nodes; arrows only where they meet the app | They're real crate boundaries, and arrows to every consumer would be a hairball |
+| 9 | Existing crates cite pushed source; proposed crates carry none | Evidence is checked against committed bytes at a pinned commit |
+| 10 | One view crate per destination (`lib-desktop-<destination>-ui`), with shared Chrome, Dialog host, Toasts, widgets and theme glue in `lib-desktop-ui`, and `Shell` plus `ActiveViewEntity` in `bin-desktop` | Zed-like: an edit to Budgets recompiles only Budgets and the bin; ADR-0030's single UI test binary still works through the bin |
+| 11 | `LedgerStore` becomes `ClientLedger` | It is this Client's live copy of the Ledger (GLOSSARY: Client), and the name stays distinct from the pure `Ledger` aggregate |
+| 12 | A `SyncReplicator` Entity snapshots SQLite (`VACUUM INTO` or the backup API) and the files, pushes and pulls through `lib-sync-client`, swaps a pulled replica in, and `ClientLedger` reloads; the conflict and merge policy stays open | Shows the planned mechanism without pretending the policy is settled; its ADR should also replace Change Sets in GLOSSARY |
+| 13 | A new `lib-file-store` crate: a content-addressed on-disk file store behind a `FileStore` port, drawn with the SQLite file as one "Local replica" | Files and SQL rows are different storage concerns, and files don't fit ADR-0041's one-file-per-entity rule |
+| 14 | `Shell` stays the window root and the Chrome stays product code, not `gpui-component`'s `Root` | The Chrome, Dialog and Toast rules are specific to Personal Ledger; `Root` adds no layer or boundary |
+| 15 | Configuration is read once into a read-only Global; Ledger-scoped Preferences are Ledger data in `ClientLedger`; Client-scoped Preferences live locally; the `Colours` Global derives from all three | Follows GLOSSARY's Configuration and Preference split and ADR-0021/0027 |
+| 16 | Git backup (ADR-0033) and AI connections (ADR-0034) are a card, not nodes | Both reuse the snapshot and `FileStore` seams; drawing them repeats the sync pattern |
+| 17 | A gpui-free `lib-desktop-navigation` crate holds the router and the `Intent` enum; `lib-desktop-ui` maps intents to gpui actions and registers the keymap; destination crates handle them with `on_action` | Destination crates can share intents without depending on each other (Zed's `zed_actions`), and the grammar's tests stay fast |
+| 18 | `lib-desktop-model` depends on ports only (`LedgerRepository`, `FileStore`, `ReplicaTransport`); only `bin-desktop` links the real adapters and injects them at start-up | The model crate stays testable with fakes and links no SQLx or tonic; the composition root is the one place real I/O is chosen |
+| 19 | A `ClientState` Entity holds window, navigation and Client-scoped Preferences, saved to one local JSON file on the background executor: never synced | Makes the line between "this device" and "the Ledger" visible, as ADR-0027's Client-scoped versus Ledger-scoped split |
+| 20 | Hybrid drawing: Desktop crates are region frames with key types inside; lib crates are single nodes; regions also mark the pure core, adapters, local replica and support layers | Shows crate names and boundaries with enough type detail to follow the data flow |
+| 21 | Existing diagrams stay; this note records the decisions; no ADR yet | Three diagrams cover today, the generic ideal and Personal Ledger's ideal; the reasons belong in text |
+| 22 | One **User** node ("keyboard, mouse") with a "keys" arrow into `Shell` and a "clicks" arrow into the destination Views | The convention readers expect, while still showing that only keys pass through the router; both paths reach the same action handlers |
+
+On the canvas, two things are drawn more loosely than these decisions state. Adapter injection by `bin-desktop` is a tag on `main` and a card line rather than arrows to each adapter, since those arrows would cross the whole canvas. And the support crates other than `lib-config` and `lib-colour-theme` carry their consumer as a tag rather than an arrow.
+
+## 8. Unverified
 
 - **Section 1's pattern summaries.** MVC, MVVM and Elm descriptions, origins and framework lists are a summary of widely documented material, not checked against primary sources in this note.
 - **Reentrancy failure mode.** That a reentrant update of the same Entity is unsupported comes from Sobo's post (research note §2); the exact run-time behaviour (panic text) and `cx.defer`'s signature weren't checked against `gpui 0.2.2`.

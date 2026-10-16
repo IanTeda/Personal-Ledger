@@ -1,0 +1,971 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ideal Desktop Architecture",
+    "output": "docs/diagrams/desktop-ideal-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/IanTeda/Personal-Ledger",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "26cbab6012fa1af9eb9e5e2f9b144a01779eecf7"
+    },
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Outside the app"
+        },
+        "frontend": {
+          "label": "gpui UI: Shell, Chrome, Views"
+        },
+        "backend": {
+          "label": "gpui model Entities"
+        },
+        "messagebus": {
+          "label": "Pure Rust: no gpui, no I/O"
+        },
+        "cloud": {
+          "label": "I/O adapter (injected)"
+        },
+        "database": {
+          "label": "On disk"
+        },
+        "security": {
+          "label": "Cross-cutting support crate"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "lib-config",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-config",
+      "sublabel": "layered INI config",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "Configuration",
+      "sources": [
+        {
+          "path": "crates/libs/lib-config/src/lib.rs",
+          "line": 1,
+          "end_line": 6
+        }
+      ]
+    },
+    {
+      "id": "lib-colour-theme",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-colour-theme",
+      "sublabel": "Colour Themes",
+      "pos": [
+        235,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "→ Colours Global",
+      "sources": [
+        {
+          "path": "crates/libs/lib-colour-theme/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/theme/colours.rs",
+          "line": 19,
+          "end_line": 28
+        }
+      ]
+    },
+    {
+      "id": "lib-tracing",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-tracing",
+      "sublabel": "init guard in main",
+      "pos": [
+        430,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "telemetry",
+      "sources": [
+        {
+          "path": "crates/libs/lib-tracing/src/init.rs",
+          "line": 87
+        }
+      ]
+    },
+    {
+      "id": "lib-locale",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-locale",
+      "sublabel": "+ lib-locale-build",
+      "pos": [
+        625,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "msg:: for UI",
+      "sources": [
+        {
+          "path": "crates/libs/lib-locale/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "crates/libs/lib-locale-build/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "lib-toast",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-toast",
+      "sublabel": "Toast model",
+      "pos": [
+        820,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "for Chrome",
+      "sources": [
+        {
+          "path": "crates/libs/lib-toast/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "lib-list-cursor",
+      "type": "security",
+      "icon": "neutral",
+      "label": "lib-list-cursor",
+      "sublabel": "list selection",
+      "pos": [
+        1015,
+        40
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "for Views",
+      "sources": [
+        {
+          "path": "crates/libs/lib-list-cursor/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "type": "frontend",
+      "label": "main + init(cx)",
+      "sublabel": "composition root",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "injects adapters",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/main.rs",
+          "line": 15,
+          "end_line": 28
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/lib.rs",
+          "line": 122,
+          "end_line": 150
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "Shell",
+      "sublabel": "window root",
+      "pos": [
+        235,
+        190
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "ActiveViewEntity",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/app.rs",
+          "line": 118,
+          "end_line": 136
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/view/active.rs",
+          "line": 1,
+          "end_line": 36
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "keyboard, mouse",
+      "pos": [
+        430,
+        190
+      ],
+      "size": [
+        130,
+        64
+      ]
+    },
+    {
+      "id": "sync-server",
+      "type": "external",
+      "label": "Sync Server",
+      "sublabel": "holds a full replica",
+      "pos": [
+        1015,
+        340
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "sources": [
+        {
+          "path": "crates/bins/bin-sync-server/src/main.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "router",
+      "type": "messagebus",
+      "label": "Key router",
+      "sublabel": "modal grammar → Intent",
+      "pos": [
+        235,
+        340
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed crate",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/navigation/key_router.rs",
+          "line": 1,
+          "end_line": 12
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/navigation/key_router.rs",
+          "line": 147
+        }
+      ]
+    },
+    {
+      "id": "actions",
+      "type": "frontend",
+      "label": "Actions + keymap",
+      "sublabel": "Intent → gpui action",
+      "pos": [
+        430,
+        340
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed"
+    },
+    {
+      "id": "destinations",
+      "type": "frontend",
+      "label": "Destination Views",
+      "sublabel": "impl Render, on_action",
+      "pos": [
+        625,
+        340
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed crates ×9",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/view/mod.rs",
+          "line": 1,
+          "end_line": 3
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/view/active.rs",
+          "line": 24,
+          "end_line": 36
+        }
+      ]
+    },
+    {
+      "id": "chrome",
+      "type": "frontend",
+      "label": "Chrome",
+      "sublabel": "Dialog host, Toasts",
+      "pos": [
+        430,
+        490
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "bars, rails, palette",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/chrome/mod.rs",
+          "line": 1,
+          "end_line": 14
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/chrome/dialog_apply.rs",
+          "line": 1,
+          "end_line": 8
+        }
+      ]
+    },
+    {
+      "id": "sync-client",
+      "type": "cloud",
+      "label": "lib-sync-client",
+      "sublabel": "new · ReplicaTransport",
+      "pos": [
+        820,
+        490
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed",
+      "icon": "cloud"
+    },
+    {
+      "id": "lib-rpc",
+      "type": "cloud",
+      "label": "lib-rpc",
+      "sublabel": "tonic Push / Pull",
+      "pos": [
+        1015,
+        490
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-rpc/src/lib.rs",
+          "line": 1,
+          "end_line": 8
+        }
+      ]
+    },
+    {
+      "id": "client-state-file",
+      "type": "database",
+      "label": "client-state.json",
+      "sublabel": "this device only",
+      "pos": [
+        40,
+        640
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "never synced",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/persistence.rs",
+          "line": 71,
+          "end_line": 80
+        }
+      ]
+    },
+    {
+      "id": "client-state",
+      "type": "backend",
+      "label": "ClientState",
+      "sublabel": "window, nav, Toasts on",
+      "pos": [
+        235,
+        640
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/persistence.rs",
+          "line": 30,
+          "end_line": 45
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/persistence.rs",
+          "line": 120,
+          "end_line": 139
+        }
+      ]
+    },
+    {
+      "id": "client-ledger",
+      "type": "backend",
+      "label": "ClientLedger",
+      "sublabel": "was LedgerStore",
+      "pos": [
+        625,
+        640
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "renamed LedgerStore",
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/src/ledger_store.rs",
+          "line": 11,
+          "end_line": 51
+        },
+        {
+          "path": "crates/bins/bin-desktop/src/ledger_store.rs",
+          "line": 53,
+          "end_line": 65
+        }
+      ]
+    },
+    {
+      "id": "replicator",
+      "type": "backend",
+      "label": "SyncReplicator",
+      "sublabel": "replicate whole Ledger",
+      "pos": [
+        820,
+        640
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed"
+    },
+    {
+      "id": "lib-core",
+      "type": "messagebus",
+      "label": "lib-core",
+      "sublabel": "RowID, Money, periods",
+      "pos": [
+        235,
+        790
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-core/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "domains",
+      "type": "messagebus",
+      "label": "Domain crates ×11",
+      "sublabel": "model, rules, seed",
+      "pos": [
+        430,
+        790
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "never depend on each other",
+      "sources": [
+        {
+          "path": "crates/libs/lib-accounts/src/lib.rs",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "lib-ledger",
+      "type": "messagebus",
+      "label": "lib-ledger",
+      "sublabel": "Ledger + commands",
+      "pos": [
+        625,
+        790
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "LedgerRepository port",
+      "sources": [
+        {
+          "path": "crates/libs/lib-ledger/src/lib.rs",
+          "line": 73,
+          "end_line": 100
+        },
+        {
+          "path": "crates/libs/lib-ledger/src/change.rs",
+          "line": 1,
+          "end_line": 7
+        }
+      ]
+    },
+    {
+      "id": "lib-database",
+      "type": "cloud",
+      "label": "lib-database",
+      "sublabel": "SqliteLedgerRepository",
+      "pos": [
+        820,
+        790
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "+ snapshot",
+      "icon": "database",
+      "sources": [
+        {
+          "path": "crates/libs/lib-database/src/lib.rs",
+          "line": 1,
+          "end_line": 15
+        },
+        {
+          "path": "crates/libs/lib-database/src/connection.rs",
+          "line": 66,
+          "end_line": 95
+        }
+      ]
+    },
+    {
+      "id": "lib-file-store",
+      "type": "cloud",
+      "label": "lib-file-store",
+      "sublabel": "new · FileStore port",
+      "pos": [
+        1015,
+        790
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed",
+      "icon": "database"
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "Ledger database",
+      "sublabel": "SQLite file",
+      "pos": [
+        820,
+        940
+      ],
+      "size": [
+        130,
+        64
+      ]
+    },
+    {
+      "id": "document-files",
+      "type": "database",
+      "label": "Document files",
+      "sublabel": "new · by content hash",
+      "pos": [
+        1015,
+        940
+      ],
+      "size": [
+        130,
+        64
+      ],
+      "tag": "proposed"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cross-cutting support crates",
+      "wraps": [
+        "lib-config",
+        "lib-colour-theme",
+        "lib-tracing",
+        "lib-locale",
+        "lib-toast",
+        "lib-list-cursor"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "bin-desktop",
+      "wraps": [
+        "main",
+        "shell"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "lib-desktop-navigation (new)",
+      "wraps": [
+        "router"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "lib-desktop-ui (new)",
+      "wraps": [
+        "actions",
+        "chrome"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "lib-desktop-<destination>-ui (new ×9)",
+      "wraps": [
+        "destinations"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "lib-desktop-model (new, ports only)",
+      "wraps": [
+        "client-state",
+        "client-ledger",
+        "replicator"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Sync transport",
+      "wraps": [
+        "sync-client",
+        "lib-rpc"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Pure core",
+      "wraps": [
+        "lib-core",
+        "domains",
+        "lib-ledger"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Storage adapters",
+      "wraps": [
+        "lib-database",
+        "lib-file-store"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Local replica",
+      "wraps": [
+        "sqlite",
+        "document-files"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "config-to-main",
+      "from": "lib-config",
+      "to": "main",
+      "label": "Configuration"
+    },
+    {
+      "id": "colours-to-shell",
+      "from": "lib-colour-theme",
+      "to": "shell",
+      "label": "Colours Global"
+    },
+    {
+      "id": "main-opens-shell",
+      "from": "main",
+      "to": "shell",
+      "label": "opens"
+    },
+    {
+      "id": "user-keys",
+      "from": "user",
+      "to": "shell",
+      "label": "keys",
+      "variant": "emphasis"
+    },
+    {
+      "id": "user-clicks",
+      "from": "user",
+      "to": "destinations",
+      "label": "clicks",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "shell-routes-key",
+      "from": "shell",
+      "to": "router",
+      "label": "route_key",
+      "variant": "emphasis"
+    },
+    {
+      "id": "router-intent",
+      "from": "router",
+      "to": "actions",
+      "label": "Intent",
+      "variant": "emphasis"
+    },
+    {
+      "id": "action-dispatch",
+      "from": "actions",
+      "to": "destinations",
+      "label": "action",
+      "variant": "emphasis"
+    },
+    {
+      "id": "view-opens-dialog",
+      "from": "destinations",
+      "to": "chrome",
+      "label": "opens Dialog",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "dialog-applies",
+      "from": "chrome",
+      "to": "client-ledger",
+      "label": "Apply(command)",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "ledger-changed",
+      "from": "client-ledger",
+      "to": "destinations",
+      "label": "LedgerChanged",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "runs-command",
+      "from": "client-ledger",
+      "to": "lib-ledger",
+      "label": "command.run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ledger-joins-domains",
+      "from": "lib-ledger",
+      "to": "domains",
+      "label": "joins"
+    },
+    {
+      "id": "domains-use-core",
+      "from": "domains",
+      "to": "lib-core",
+      "label": "uses"
+    },
+    {
+      "id": "write-behind",
+      "from": "client-ledger",
+      "to": "lib-database",
+      "label": "write-behind",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "replica-reload",
+      "from": "replicator",
+      "to": "client-ledger",
+      "label": "reload"
+    },
+    {
+      "id": "replica-snapshot",
+      "from": "replicator",
+      "to": "lib-database",
+      "label": "snapshot / swap"
+    },
+    {
+      "id": "replica-files",
+      "from": "replicator",
+      "to": "lib-file-store",
+      "label": "files",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "replica-transport",
+      "from": "replicator",
+      "to": "sync-client",
+      "label": "push / pull",
+      "variant": "dashed"
+    },
+    {
+      "id": "transport-rpc",
+      "from": "sync-client",
+      "to": "lib-rpc",
+      "label": "gRPC"
+    },
+    {
+      "id": "rpc-to-server",
+      "from": "lib-rpc",
+      "to": "sync-server",
+      "label": "replica",
+      "variant": "dashed"
+    },
+    {
+      "id": "sql",
+      "from": "lib-database",
+      "to": "sqlite",
+      "label": "SQL"
+    },
+    {
+      "id": "file-io",
+      "from": "lib-file-store",
+      "to": "document-files",
+      "label": "read / write"
+    },
+    {
+      "id": "client-state-save",
+      "from": "client-state",
+      "to": "client-state-file",
+      "label": "save"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Crate dependency direction",
+      "items": [
+        "bin-desktop → lib-desktop-<destination>-ui → lib-desktop-ui → lib-desktop-model → lib-ledger → domain crates → lib-core",
+        "lib-desktop-navigation is gpui-free: the modal grammar router and the Intent enum, tested with plain #[test]",
+        "lib-desktop-model depends on ports only (LedgerRepository, FileStore, ReplicaTransport); only bin-desktop links lib-database, lib-file-store and lib-sync-client and injects them at start-up",
+        "Destination crates never depend on each other; they share Intents and actions through lib-desktop-ui (Zed's zed_actions pattern)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data flow",
+      "items": [
+        "Keys: User → Shell → route_key → Intent → gpui action → Destination View (on_action)",
+        "Clicks go straight to the element under the pointer and dispatch the same actions as keys",
+        "A Dialog in the Chrome confirms with Apply(command) → ClientLedger runs it on the Ledger synchronously",
+        "A landed command emits LedgerChanged naming its domains; Views re-read ClientLedger; a refusal emits nothing",
+        "ClientLedger hands the drained LedgerChanges to a background task (write-behind); a failed write raises a Toast and reloads"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Replication (planned)",
+      "items": [
+        "The Sync Server holds a full replica of the Ledger database and Document files, not a change log",
+        "Push: SyncReplicator takes a consistent SQLite snapshot (VACUUM INTO or the backup API) plus files and sends them through lib-sync-client",
+        "Pull: download a replica, swap it in, then ClientLedger reloads through LedgerRepository::load()",
+        "Open: the conflict and merge policy (last writer wins, single-writer lease, …) needs its own ADR, which also replaces Change Sets"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Crate names",
+      "items": [
+        "Destination UI crates: lib-desktop-dashboard-ui, -transactions-ui (with Import), -budgets-ui, -bills-ui, -documents-ui, -inventory-ui, -categories-ui, -tags-ui, -settings-ui",
+        "Domain crates: lib-accounts, lib-bills, lib-budgets, lib-categories, lib-documents, lib-institutions, lib-inventory, lib-payees, lib-tags, lib-transactions, lib-units",
+        "Proposed, marked (new) or \"new ·\" on the canvas: lib-desktop-ui, lib-desktop-navigation, lib-desktop-model, the destination crates, lib-file-store, lib-sync-client",
+        "Renamed: LedgerStore → ClientLedger (GLOSSARY: a Client holds its own full local copy of the Ledger)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Configuration, Preferences, theme",
+      "items": [
+        "Configuration (lib-config) is read once in main into a read-only Global; the Locale is fixed for the run (ADR-0021)",
+        "Ledger-scoped Preferences are Ledger data in ClientLedger, so they replicate with the database",
+        "Client-scoped Preferences (Toasts on/off, ADR-0027), window and navigation state live in ClientState: never synced",
+        "The Colours Global is derived from Configuration and both kinds of Preference and watched with observe_global"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Testing seams",
+      "items": [
+        "Pure crates (navigation, lib-ledger, domain crates, lib-core): plain #[test], no gpui linked",
+        "lib-desktop-model: #[gpui::test] with TestAppContext and fake adapters behind a test-support feature",
+        "UI: one headless test binary (ADR-0030) driving bin-desktop through VisualTestContext keystrokes and clicks"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Notes",
+      "items": [
+        "Target state, not today's code: existing crates and types cite source at 26cbab6; proposed ones have none",
+        "Shell stays the window root and the Chrome stays product code; gpui-component supplies widgets, charts and theme, not Root",
+        "Planned, not drawn: Git backup (ADR-0033) and AI connections (ADR-0034) would reuse the snapshot and FileStore seams",
+        "Related: docs/diagrams/desktop-architecture.html (today) and base-architect-diagram.html (generic GPUI ideal); reasons in docs/research/gui-architecture-patterns.md"
+      ]
+    }
+  ]
+}
