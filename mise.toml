@@ -169,10 +169,13 @@ for json in docs/diagrams/*.json; do
   quality=$(printf '%s\n' "$fields" | sed -n 2p)
   revision=$(printf '%s\n' "$fields" | sed -n 3p)
   echo "== $slug ($type)"
+  foreign=0
   if [ -z "$revision" ]; then
     echo "   no meta.repository.revision: cited-file drift not checked"
   elif ! git cat-file -e "$revision^{commit}" 2>/dev/null; then
-    echo "   pinned revision $revision is not in this clone: cited-file drift not checked"
+    # Evidence from another repository (e.g. zed-architecture) needs that checkout to render.
+    echo "   pinned revision $revision is not in this clone: cited-file drift and re-render not checked"
+    foreign=1
   else
     echo "   pinned at $(git rev-parse --short "$revision"), $(git rev-list --count "$revision..HEAD") commits behind HEAD"
     changed=0
@@ -195,6 +198,8 @@ EOF
   if [ ! -f "$html" ]; then
     echo "   MISSING  $html"
     status=1
+  elif [ "$foreign" = 1 ]; then
+    :
   elif ! node "$archify" render "$type" "$json" "$scratch/$slug.html" --quality "$quality" --repo-root . >"$scratch/$slug.log" 2>&1; then
     echo "   RENDER FAILED: rerun the skill's finalize to see why"
     sed 's/^/     /' "$scratch/$slug.log"

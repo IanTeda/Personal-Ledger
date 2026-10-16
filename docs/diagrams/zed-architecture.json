@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Zed Editor Architecture",
+    "output": "docs/diagrams/zed-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": { "url": "https://github.com/zed-industries/zed.git", "provider": "github", "link_mode": "web", "revision": "32b16ce2ada96ba86c9052e456a2642102b39b7a" }
+  },
+  "components": [
+    { "id": "platform", "type": "external", "label": "OS platforms", "sublabel": "macOS · Linux · Win", "pos": [40, 40], "size": [160, 64], "sources": [{ "path": "crates/gpui_platform/src/gpui_platform.rs", "line": 66, "end_line": 90 }] },
+    { "id": "gpui", "type": "frontend", "label": "GPUI", "sublabel": "App · Window · Entity", "pos": [280, 40], "size": [160, 64], "tag": "UI framework", "sources": [{ "path": "crates/gpui/src/app.rs", "line": 817 }, { "path": "crates/gpui/src/window.rs", "line": 1224 }, { "path": "crates/gpui/src/platform.rs", "line": 363 }] },
+    { "id": "client", "type": "backend", "label": "client::Client", "sublabel": "RPC Peer · UserStore", "pos": [520, 40], "size": [160, 64], "sources": [{ "path": "crates/client/src/client.rs", "line": 207, "end_line": 230 }] },
+    { "id": "collab", "type": "cloud", "label": "collab server", "sublabel": "calls · channels", "pos": [760, 40], "size": [160, 64], "sources": [{ "path": "crates/collab/src/main.rs", "line": 33, "end_line": 80 }] },
+    { "id": "llm", "type": "external", "label": "LLM providers", "sublabel": "Anthropic · OpenAI …", "pos": [1240, 180], "size": [160, 64], "sources": [{ "path": "crates/language_models/src/provider/anthropic.rs", "line": 289 }, { "path": "crates/language_model/src/registry.rs", "line": 46 }] },
+    { "id": "dev", "type": "external", "label": "Developer", "sublabel": "window or zed CLI", "pos": [40, 180], "size": [160, 64] },
+    { "id": "main", "type": "backend", "label": "zed binary", "sublabel": "main.rs wires ~100 crates", "pos": [280, 180], "size": [160, 64], "tag": "AppState", "sources": [{ "path": "crates/zed/src/main.rs", "line": 479, "end_line": 600 }, { "path": "crates/zed/src/main.rs", "line": 645, "end_line": 790 }, { "path": "crates/workspace/src/workspace.rs", "line": 1332, "end_line": 1341 }] },
+    { "id": "workspace", "type": "frontend", "label": "Workspace", "sublabel": "panes · docks · panels", "pos": [520, 180], "size": [160, 64], "sources": [{ "path": "crates/workspace/src/workspace.rs", "line": 1580, "end_line": 1600 }, { "path": "crates/workspace/src/pane.rs", "line": 399 }] },
+    { "id": "editor", "type": "frontend", "label": "Editor", "sublabel": "DisplayMap · selections", "pos": [760, 180], "size": [160, 64], "sources": [{ "path": "crates/editor/src/editor.rs", "line": 965, "end_line": 975 }] },
+    { "id": "multibuffer", "type": "backend", "label": "MultiBuffer", "sublabel": "excerpts of buffers", "pos": [1000, 180], "size": [160, 64], "sources": [{ "path": "crates/multi_buffer/src/multi_buffer.rs", "line": 74, "end_line": 80 }] },
+    { "id": "headless", "type": "cloud", "label": "remote_server", "sublabel": "HeadlessProject", "pos": [40, 320], "size": [160, 64], "sources": [{ "path": "crates/remote_server/src/headless_project.rs", "line": 57 }] },
+    { "id": "remote", "type": "backend", "label": "RemoteClient", "sublabel": "SSH · WSL · container", "pos": [280, 320], "size": [160, 64], "sources": [{ "path": "crates/remote/src/remote_client.rs", "line": 333 }, { "path": "crates/remote/src/remote_client.rs", "line": 385 }] },
+    { "id": "project", "type": "backend", "label": "Project", "sublabel": "stores per open project", "pos": [520, 320], "size": [160, 64], "tag": "Entity hub", "sources": [{ "path": "crates/project/src/project.rs", "line": 217, "end_line": 258 }] },
+    { "id": "buffer", "type": "backend", "label": "language::Buffer", "sublabel": "CRDT text · SyntaxMap", "pos": [1000, 320], "size": [160, 64], "sources": [{ "path": "crates/language/src/buffer.rs", "line": 104, "end_line": 125 }, { "path": "crates/text/src/text.rs", "line": 59 }, { "path": "crates/rope/src/rope.rs", "line": 26 }] },
+    { "id": "agent", "type": "backend", "label": "Agent", "sublabel": "agent_ui · NativeAgent", "pos": [1240, 320], "size": [160, 64], "sources": [{ "path": "crates/agent/src/agent.rs", "line": 601 }, { "path": "crates/zed/src/main.rs", "line": 713 }] },
+    { "id": "lspstore", "type": "backend", "label": "LspStore", "sublabel": "starts servers", "pos": [520, 460], "size": [160, 64], "sources": [{ "path": "crates/project/src/lsp_store.rs", "line": 4578 }, { "path": "crates/project/src/lsp_store.rs", "line": 477, "end_line": 590 }] },
+    { "id": "worktree", "type": "database", "label": "Worktrees · Git", "sublabel": "WorktreeStore · GitStore", "pos": [760, 460], "size": [160, 64], "sources": [{ "path": "crates/project/src/worktree_store.rs", "line": 207 }, { "path": "crates/project/src/git_store.rs", "line": 103 }, { "path": "crates/worktree/src/worktree.rs", "line": 141 }] },
+    { "id": "registry", "type": "backend", "label": "LanguageRegistry", "sublabel": "languages · grammars", "pos": [1000, 460], "size": [160, 64], "sources": [{ "path": "crates/language/src/language_registry.rs", "line": 38 }, { "path": "crates/zed/src/main.rs", "line": 529, "end_line": 562 }] },
+    { "id": "acp", "type": "external", "label": "ACP agents", "sublabel": "external agent CLIs", "pos": [1240, 460], "size": [160, 64], "sources": [{ "path": "crates/agent_servers/src/acp/transport.rs", "line": 80, "end_line": 107 }] },
+    { "id": "langservers", "type": "external", "label": "Language servers", "sublabel": "child processes", "pos": [520, 600], "size": [160, 64], "sources": [{ "path": "crates/lsp/src/lsp.rs", "line": 510, "end_line": 560 }] },
+    { "id": "extensions", "type": "security", "label": "Extension host", "sublabel": "WASM via wasmtime", "pos": [1000, 600], "size": [160, 64], "tag": "sandboxed", "sources": [{ "path": "crates/extension_host/src/extension_host.rs", "line": 157 }, { "path": "crates/extension_host/src/wasm_host.rs", "line": 557, "end_line": 560 }, { "path": "crates/extension_host/src/extension_host.rs", "line": 1537 }] }
+  ],
+  "connections": [
+    { "id": "dev-main", "from": "dev", "to": "main", "label": "launch", "variant": "emphasis" },
+    { "id": "main-workspace", "from": "main", "to": "workspace", "label": "open_paths", "variant": "emphasis" },
+    { "id": "workspace-editor", "from": "workspace", "to": "editor", "label": "pane item", "variant": "emphasis" },
+    { "id": "editor-multibuffer", "from": "editor", "to": "multibuffer", "label": "edits", "variant": "emphasis" },
+    { "id": "multibuffer-buffer", "from": "multibuffer", "to": "buffer", "label": "excerpts" },
+    { "id": "main-gpui", "from": "main", "to": "gpui", "label": "Application::run" },
+    { "id": "gpui-platform", "from": "gpui", "to": "platform", "label": "Platform" },
+    { "id": "workspace-client", "from": "workspace", "to": "client", "label": "AppState" },
+    { "id": "client-collab", "from": "client", "to": "collab", "label": "RPC / WS" },
+    { "id": "workspace-project", "from": "workspace", "to": "project", "label": "owns" },
+    { "id": "project-buffer", "from": "project", "to": "buffer", "label": "BufferStore opens" },
+    { "id": "project-remote", "from": "project", "to": "remote", "label": "if remote" , "variant": "dashed" },
+    { "id": "remote-headless", "from": "remote", "to": "headless", "label": "ssh proto", "variant": "dashed" },
+    { "id": "project-lspstore", "from": "project", "to": "lspstore", "label": "diagnostics" },
+    { "id": "project-worktree", "from": "project", "to": "worktree", "label": "scans files" },
+    { "id": "lspstore-langservers", "from": "lspstore", "to": "langservers", "label": "JSON-RPC stdio" },
+    { "id": "registry-buffer", "from": "registry", "to": "buffer", "label": "language" },
+    { "id": "extensions-registry", "from": "extensions", "to": "registry", "label": "registers" },
+    { "id": "agent-buffer", "from": "agent", "to": "buffer", "label": "edits" },
+    { "id": "agent-llm", "from": "agent", "to": "llm", "label": "completions" },
+    { "id": "agent-acp", "from": "agent", "to": "acp", "label": "ACP stdio", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "UI layer", "items": ["GPUI owns the App, Windows and Entities; per-OS crates implement its Platform trait", "Workspace lays out Panes, Docks and panels (project, git, terminal, agent)", "Editor renders a MultiBuffer through a DisplayMap (folds, wraps, inlays)"] },
+    { "dot": "emerald", "title": "Model layer", "items": ["Project is the hub Entity: BufferStore, WorktreeStore, LspStore, GitStore, DapStore, TaskStore", "language::Buffer wraps a CRDT text::Buffer on a Rope (SumTree) plus a tree-sitter SyntaxMap", "The same Project runs headless in remote_server for SSH/WSL/dev-container projects"] },
+    { "dot": "violet", "title": "AI & extensions", "items": ["NativeAgent talks to providers via LanguageModelRegistry; external agents speak ACP over stdio", "Extensions are WASM components that register languages, grammars, themes and LSP adapters"] },
+    { "dot": "slate", "title": "Not shown", "items": ["Debugger (DAP), tasks, terminal, vim mode, settings, SQLite persistence (db/sqlez), auto-update, telemetry"] }
+  ]
+}
