@@ -1,21 +1,19 @@
 //! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] owns the View state
 //! that belongs to Settings: the page on show, where keyboard focus sits, the Display page's
-//! focused control and Preferences, and the Tracing page's log. It renders itself (`impl Render` in `super`), handles the index, its focus
+//! focused control and Preferences. It renders itself (`impl Render` in `super`), handles the index, its focus
 //! keys and the static pages' keys, movement and `Esc`, and reaches `Shell` only through
-//! [`ViewEvent`]. It builds the Clear logs dialog, which `Shell`'s Dialog host draws and confirms.
+//! [`ViewEvent`].
 //!
 //! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
 //! Categories, [`CategoriesPage`]; Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`];
 //! Institutions, [`InstitutionsPage`]; Document Types, [`DocumentsPage`]; Inventory,
-//! [`InventoryPage`]) is drawn by that Entity, and this View forwards the page's keys, movement
+//! [`InventoryPage`]; Tracing, [`TracingPage`]) is drawn by that Entity, and this View forwards the page's keys, movement
 //! and status to it while the page has focus.
 
-use super::{
-    hints::{
-        settings_colour_grid_hints, settings_display_hints, settings_index_hints,
-        settings_plain_page_hints, settings_tracing_hints,
-    },
-    tracing::LOG_LINE_STEP,
+use super::hints::{
+    settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
+    settings_documents_hints, settings_index_hints, settings_payees_hints,
+    settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
 };
 use crate::settings::categories::{CategoriesPage, CategoryRowClicked};
 use crate::settings::documents::{DocumentsPage, RowClicked as DocumentsRowClicked};
@@ -23,24 +21,20 @@ use crate::settings::inventory::{InventoryPage, RowClicked as InventoryRowClicke
 use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::statusline::PageStatus,
     navigation::key_router::Movement,
-    settings::accounts::AccountsPage,
+    settings::accounts::{AccountsPage, hints::accounts_hints},
     settings::institutions::InstitutionsPage,
+    settings::tracing::TracingPage,
     settings::units::UnitsPage,
     settings::{
-        SettingsDialog, SettingsFocus, SettingsPage,
+        SettingsFocus, SettingsPage,
         display::{DisplayKey, DisplayPage, DisplayPreferences},
-        step_choice,
-        tracing_log::{LogChange, LogView, TracingLevel},
     },
     settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage},
     view::event::{Reveal, ViewEvent},
 };
-use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ListOffset, ListState, ScrollHandle,
-    Subscription, px,
-};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
@@ -58,6 +52,7 @@ pub struct SettingsSources {
     pub tags: Entity<TagsPage>,
     pub documents: Entity<DocumentsPage>,
     pub inventory: Entity<InventoryPage>,
+    pub tracing: Entity<TracingPage>,
 }
 
 /// The open page's own Entity, while it has focus.
@@ -71,6 +66,7 @@ enum FocusedPage {
     Inventory(Entity<InventoryPage>),
     Units(Entity<UnitsPage>),
     Institutions(Entity<InstitutionsPage>),
+    Tracing(Entity<TracingPage>),
 }
 
 impl FocusedPage {
@@ -84,6 +80,7 @@ impl FocusedPage {
             Self::Inventory(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
+            Self::Tracing(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
         }
     }
 
@@ -97,6 +94,7 @@ impl FocusedPage {
             Self::Inventory(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
+            Self::Tracing(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
         }
     }
 
@@ -131,6 +129,7 @@ impl FocusedPage {
             Self::Institutions(page) => {
                 page.update(cx, |page, cx| page.apply_movement(movement, cx))
             }
+            Self::Tracing(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
         }
     }
 
@@ -144,6 +143,7 @@ impl FocusedPage {
             Self::Inventory(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.escape(cx)),
+            Self::Tracing(page) => page.update(cx, |page, cx| page.escape(cx)),
         }
     }
 
@@ -157,6 +157,7 @@ impl FocusedPage {
             Self::Inventory(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.start_search(cx)),
+            Self::Tracing(page) => page.update(cx, |page, cx| page.start_search(cx)),
         }
     }
 
@@ -170,6 +171,7 @@ impl FocusedPage {
             Self::Inventory(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
             Self::Institutions(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
+            Self::Tracing(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
         }
     }
 
@@ -183,19 +185,17 @@ impl FocusedPage {
             Self::Inventory(page) => page.read(cx).page_status(cx),
             Self::Units(page) => page.read(cx).page_status(cx),
             Self::Institutions(page) => page.read(cx).page_status(cx),
+            Self::Tracing(page) => page.read(cx).page_status(cx),
         }
     }
 }
 
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
-/// re-entering Settings, as `g s` relies on. The Tracing page's log mirror and its list live here
-/// too: the capture feed in `Shell` pushes into them, and only this page reads them.
+/// re-entering Settings, as `g s` relies on.
 pub struct SettingsView {
     sources: SettingsSources,
     selected_section: SettingsPage,
     focus: SettingsFocus,
-    log: LogView,
-    log_list: ListState,
     /// The page body's scroll, which also gives the Colour Theme grid its width.
     pub(super) scroll_handle: ScrollHandle,
     /// Whether the View zone has focus, told by `Shell` as it draws the View.
@@ -210,14 +210,7 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    /// `log` mirrors the live capture; `log_list` is the virtualised list that shows it, and must
-    /// be kept in step with `log` by [`Self::pull_log`] and [`Self::replace_log`].
-    pub fn new(
-        sources: SettingsSources,
-        log: LogView,
-        log_list: ListState,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
+    pub fn new(sources: SettingsSources, cx: &mut Context<'_, Self>) -> Self {
         let _categories_row_clicked = cx.subscribe(
             &sources.categories,
             |view, _page, _event: &CategoryRowClicked, cx| view.focus_page_from_click(cx),
@@ -242,8 +235,6 @@ impl SettingsView {
             sources,
             selected_section: SettingsPage::default(),
             focus: SettingsFocus::default(),
-            log,
-            log_list,
             scroll_handle: ScrollHandle::new(),
             zone_focused: false,
             _categories_row_clicked,
@@ -298,6 +289,12 @@ impl SettingsView {
         &self.sources.units
     }
 
+    /// The Tracing page's Entity, for `Shell`'s capture feed and Dialog host and the Settings
+    /// snapshots.
+    pub fn tracing(&self) -> &Entity<TracingPage> {
+        &self.sources.tracing
+    }
+
     /// The Institutions page's Entity, for the Settings snapshots.
     pub fn institutions(&self) -> &Entity<InstitutionsPage> {
         &self.sources.institutions
@@ -322,6 +319,7 @@ impl SettingsView {
             SettingsPage::Institutions => {
                 Some(FocusedPage::Institutions(self.sources.institutions.clone()))
             }
+            SettingsPage::Tracing => Some(FocusedPage::Tracing(self.sources.tracing.clone())),
             _ => None,
         }
     }
@@ -335,7 +333,7 @@ impl SettingsView {
     // -----------------------------------------------------------------------------------------
 
     /// Settings' keys ahead of the router, in order: the Display page's controls and Colour Theme
-    /// grid, the Tracing page's keys, then the index-and-page focus keys. The Display page goes
+    /// grid, the focused page's keys (Tracing's among them), then the index-and-page focus keys. The Display page goes
     /// first, since its `h`/`l` must win over the focus keys' `h`. `false` for any key none of them
     /// takes. `Esc` is left to [`Self::escape`].
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
@@ -345,7 +343,6 @@ impl SettingsView {
         // The focused page goes before `focus_key`, which would otherwise move focus to the index
         // on `left` before the page could fold its own tree.
         let taken = self.display_key(keystroke, cx)
-            || self.tracing_key(keystroke, cx)
             || self
                 .focused_page()
                 .is_some_and(|page| page.key_ahead(keystroke, cx))
@@ -470,6 +467,31 @@ impl SettingsView {
         })
     }
 
+    /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
+    /// page's.
+    pub fn cheat_sheet(&self, cx: &App) -> Vec<(String, &'static str)> {
+        let page = match self.selected_section {
+            SettingsPage::Accounts => accounts_hints(),
+            SettingsPage::Categories => settings_categories_hints(),
+            SettingsPage::Tags => settings_tags_hints(),
+            SettingsPage::Documents => settings_documents_hints(),
+            SettingsPage::Payees => settings_payees_hints(),
+            SettingsPage::Inventory => self.sources.inventory.read(cx).hints(cx),
+            SettingsPage::Display => {
+                let mut keys = settings_display_hints();
+                keys.extend(settings_colour_grid_hints().into_iter().take(2));
+                keys
+            }
+            SettingsPage::Tracing => settings_tracing_hints(),
+            _ => settings_plain_page_hints(),
+        };
+        settings_index_hints()
+            .into_iter()
+            .chain(page)
+            .map(|(keys, action)| (action, keys))
+            .collect()
+    }
+
     /// The legend for Settings' current focus: the index rail's keys, or the open page's.
     fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
         if self.focus == SettingsFocus::Index {
@@ -482,7 +504,6 @@ impl SettingsView {
                 settings_colour_grid_hints()
             }
             SettingsPage::Display => settings_display_hints(),
-            SettingsPage::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         }
     }
@@ -633,114 +654,4 @@ impl SettingsView {
             }
         }
     }
-
-    // -----------------------------------------------------------------------------------------
-    // Tracing
-    // -----------------------------------------------------------------------------------------
-
-    pub fn log(&self) -> &LogView {
-        &self.log
-    }
-
-    pub fn log_list(&self) -> &ListState {
-        &self.log_list
-    }
-
-    /// Hands the page a new capture, opening on `log`'s level, and restarts the list at its top.
-    pub fn replace_log(&mut self, cx: &mut Context<'_, Self>, log: LogView) {
-        self.log = log;
-        self.log_list.reset(self.log.visible().len());
-        cx.notify();
-    }
-
-    /// Pulls new entries from the capture and mirrors them onto the list. Notifies only when
-    /// something changed, so an idle capture doesn't redraw the page.
-    pub fn pull_log(&mut self, cx: &mut Context<'_, Self>) -> LogChange {
-        let change = self.log.pull();
-        if change != LogChange::default() {
-            self.mirror_log_change(change);
-            cx.notify();
-        }
-        change
-    }
-
-    /// Mirrors a pull onto the list: evicted rows leave the bottom, new ones arrive at the top.
-    /// A reader at the very top keeps seeing the newest; one scrolled down stays where they are.
-    fn mirror_log_change(&mut self, change: LogChange) {
-        let list = &self.log_list;
-        let top = list.logical_scroll_top();
-        let at_top = top.item_ix == 0 && top.offset_in_item <= px(0.0);
-        let count = list.item_count();
-        let evicted = change.evicted.min(count);
-        list.splice(count - evicted..count, 0);
-        list.splice(0..0, change.added);
-        if at_top {
-            list.scroll_to(ListOffset::default());
-        }
-    }
-
-    /// Edits the log mirror in place (its level and clear), then redraws. The list is reset to
-    /// the mirror's visible rows, as a level or clear changes which rows show.
-    fn update_log(&mut self, cx: &mut Context<'_, Self>, edit: impl FnOnce(&mut LogView)) {
-        edit(&mut self.log);
-        self.log_list.reset(self.log.visible().len());
-        cx.notify();
-    }
-
-    /// Empties the capture, once Clear logs is confirmed.
-    pub fn clear_log(&mut self, cx: &mut Context<'_, Self>) {
-        self.update_log(cx, LogView::clear);
-    }
-
-    /// The level radios filter the log box at once, including what is already there, and start
-    /// it back at the newest entry.
-    pub(super) fn set_tracing_level(&mut self, level: TracingLevel, cx: &mut Context<'_, Self>) {
-        self.update_log(cx, |log| log.set_level(level));
-    }
-
-    /// **Clear logs** (and `c`) asks first, since the capture is emptied for good (#502).
-    pub(super) fn click_clear_logs(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(ViewEvent::SetStatus(None));
-        open_dialog(SettingsDialog::ClearLogs, cx);
-    }
-
-    /// The Tracing page's keys while it has focus, ahead of the focus keys so `h` steps the level
-    /// rather than leaving (Display's radio grammar; `esc` leaves): `h`/`l` the level, `j`/`k` a
-    /// line, `J`/`K` a page, `G` the oldest entry, `c` Clear logs. Focus never enters the box
-    /// itself.
-    fn tracing_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if self.focus != SettingsFocus::Page || self.selected_section != SettingsPage::Tracing {
-            return false;
-        }
-        let list = self.log_list.clone();
-        let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
-        match (keystroke.modifiers.shift, keystroke.key.as_str()) {
-            (false, "h" | "left") => self.step_tracing_level(-1, cx),
-            (false, "l" | "right") => self.step_tracing_level(1, cx),
-            (false, "j" | "down") => list.scroll_by(LOG_LINE_STEP),
-            (false, "k" | "up") => list.scroll_by(-LOG_LINE_STEP),
-            (true, "j") => list.scroll_by(page),
-            (true, "k") => list.scroll_by(-page),
-            (true, "g") => {
-                if let Some(last) = list.item_count().checked_sub(1) {
-                    list.scroll_to_reveal_item(last);
-                }
-            }
-            (false, "c") => self.click_clear_logs(cx),
-            _ => return false,
-        }
-        true
-    }
-
-    fn step_tracing_level(&mut self, delta: isize, cx: &mut Context<'_, Self>) {
-        let level = step_choice(&TracingLevel::ALL, self.log.level(), delta);
-        self.set_tracing_level(level, cx);
-    }
-}
-
-/// Asks `Shell`'s Dialog host to open a Settings dialog.
-fn open_dialog(dialog: SettingsDialog, cx: &mut Context<'_, SettingsView>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Settings(
-        dialog,
-    ))));
 }

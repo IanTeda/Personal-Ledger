@@ -19,11 +19,12 @@
 use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
     bills::BillsDialog, budgets::BudgetsDialog, documents::form::DocumentsDialog,
-    form::field::TextField, settings::SettingsDialog, settings::accounts::dialogs::AccountsDialog,
+    form::field::TextField, settings::accounts::dialogs::AccountsDialog,
     settings::documents::dialogs::DocumentTypesDialog,
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
-    settings::tags::dialogs::TagsDialog, settings::units::dialogs::UnitsDialog,
+    settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
+    settings::units::dialogs::UnitsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -105,7 +106,7 @@ impl Dialog for ToastHistoryDialog {
 /// The open Dialog, one variant per feature.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
-    Settings(SettingsDialog),
+    Tracing(TracingDialog),
     Units(UnitsDialog),
     Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
@@ -125,7 +126,7 @@ pub enum OpenDialog {
 impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
-            Self::Settings(dialog) => dialog,
+            Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
@@ -143,7 +144,7 @@ impl OpenDialog {
 
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
-            Self::Settings(dialog) => dialog,
+            Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
@@ -189,7 +190,7 @@ macro_rules! dialog_variant {
     };
 }
 
-dialog_variant!(Settings, SettingsDialog);
+dialog_variant!(Tracing, TracingDialog);
 dialog_variant!(Units, UnitsDialog);
 dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
@@ -285,7 +286,7 @@ mod tests {
 
     #[test]
     fn a_dialog_without_text_fields_ignores_typing_but_swallows_tab() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::ClearLogs);
+        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Char('x')),
             DialogOutcome::Ignored
@@ -315,9 +316,9 @@ mod tests {
 
     #[test]
     fn dialog_variant_finds_only_its_own_features_dialog() {
-        let mut dialog = OpenDialog::Settings(SettingsDialog::ClearLogs);
-        assert!(SettingsDialog::from_open(&dialog).is_some());
-        assert!(SettingsDialog::from_open_mut(&mut dialog).is_some());
+        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
+        assert!(TracingDialog::from_open(&dialog).is_some());
+        assert!(TracingDialog::from_open_mut(&mut dialog).is_some());
         assert!(AccountsDialog::from_open(&dialog).is_none());
         assert!(AccountsDialog::from_open_mut(&mut dialog).is_none());
     }

@@ -1,5 +1,5 @@
 //! The log-capture feed of `Shell`, which keeps the Settings › Tracing page current. An `impl Shell`
-//! block; the model is `settings::tracing_log::LogView`.
+//! block; the model is `settings::tracing::log::LogView`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use gpui::{Context, px};
 
 use super::Shell;
-use crate::settings::tracing_log::{LogView, TracingLevel};
+use crate::settings::tracing::log::{LogView, TracingLevel};
 
 /// How long the Tracing page lets a burst of log events settle before redrawing, capping live
 /// updates at about ten a second. Public so the headless tests advance past exactly this.
@@ -31,9 +31,8 @@ impl Shell {
         // Runs on whichever thread logged: only signal. One stored permit absorbs a burst.
         buffer.set_waker(move || waker.notify_one());
         let log = LogView::new(buffer, level);
-        self.views
-            .settings
-            .update(cx, |view, cx| view.replace_log(cx, log));
+        let tracing = self.views.settings.read(cx).tracing().clone();
+        tracing.update(cx, |page, cx| page.replace_log(cx, log));
         cx.spawn(async move |this, cx| {
             loop {
                 notify.notified().await;
@@ -42,10 +41,8 @@ impl Shell {
                 // Stops once the window, and with it the Shell, has gone.
                 if this
                     .update(cx, |shell, cx| {
-                        shell
-                            .views
-                            .settings
-                            .update(cx, |view, cx| view.pull_log(cx));
+                        let tracing = shell.views.settings.read(cx).tracing().clone();
+                        tracing.update(cx, |page, cx| page.pull_log(cx));
                     })
                     .is_err()
                 {

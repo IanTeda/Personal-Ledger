@@ -23,7 +23,6 @@ use crate::settings::tags::{
 use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
 
-use crate::settings as settings_view;
 use crate::settings::institutions::dialogs::{InstitutionsDialog, InstitutionsDialogHandlers};
 use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandlers};
 use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
@@ -43,10 +42,10 @@ use crate::{
     chrome::topbar::{self, TopBar},
     documents::{self},
     navigation::explorer::{self as explorer_view},
-    navigation::nav::{FocusZone, InputMode},
+    navigation::nav::{FocusZone, InputMode, Noun},
     period::Period,
-    settings::SettingsDialog,
     settings::accounts::dialogs::AccountsDialog,
+    settings::tracing::dialogs::TracingDialog,
     theme::{color, type_scale},
     view::format,
     view::{
@@ -727,7 +726,11 @@ impl Render for Shell {
                 )
             }))
             .children((self.nav.mode() == InputMode::Help).then(|| {
-                let mut sheet = self.settings_cheat_sheet(cx);
+                let mut sheet = if self.nav.noun() == Noun::Settings {
+                    self.views.settings.read(cx).cheat_sheet(cx)
+                } else {
+                    Vec::new()
+                };
                 sheet.extend(self.documents_cheat_sheet(cx));
                 help_view::render(on_help_close, sheet, cx)
             }))
@@ -839,12 +842,12 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(self.dialog::<SettingsDialog>().map(|dialog| match dialog {
-                SettingsDialog::ClearLogs => settings_view::clear_logs_dialog::render(
+            .children(self.dialog::<TracingDialog>().map(|dialog| {
+                dialog.render(
                     on_settings_dialog_cancel.clone(),
                     on_settings_dialog_confirm.clone(),
                     cx,
-                ),
+                )
             }))
             .children(self.dialog::<InstitutionsDialog>().map(|dialog| {
                 dialog.render(

@@ -38,7 +38,6 @@ mod key_dispatch;
 mod log_feed;
 mod rail;
 mod render;
-mod settings_ui;
 mod snapshots;
 mod status;
 mod toasts;
@@ -96,11 +95,13 @@ use crate::{
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router::{self, Movement},
     navigation::nav::NavState,
-    settings::tracing_log::LogView,
+    settings::tracing::{
+        TracingPage,
+        log::{LogView, TracingLevel},
+    },
     settings::{
         SettingsPage,
         display::{DisplayPage, DisplayPreferences},
-        tracing_log::TracingLevel,
     },
     view::format,
     view::{
@@ -235,6 +236,16 @@ impl Shell {
         let data_backup_page_subscription = Self::view_event_subscription(&data_backup_page, cx);
         let about_page = cx.new(|_| AboutPage);
         // A private, empty capture until `set_log_capture` hands over the real one.
+        let tracing_page = cx.new(|_| {
+            TracingPage::new(
+                LogView::new(
+                    lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+                    TracingLevel::default(),
+                ),
+                ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
+            )
+        });
+        let tracing_page_subscription = Self::view_event_subscription(&tracing_page, cx);
         let settings_view = cx.new(|cx| {
             SettingsView::new(
                 SettingsSources {
@@ -250,12 +261,8 @@ impl Shell {
                     tags: tags_page,
                     documents: documents_page,
                     inventory: inventory_page,
+                    tracing: tracing_page,
                 },
-                LogView::new(
-                    lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-                    TracingLevel::default(),
-                ),
-                ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
                 cx,
             )
         });
@@ -372,6 +379,7 @@ impl Shell {
                 units_subscription,
                 accounts_changed,
                 units_page_subscription,
+                tracing_page_subscription,
                 display_page_subscription,
                 display_page_observer,
                 institutions_subscription,

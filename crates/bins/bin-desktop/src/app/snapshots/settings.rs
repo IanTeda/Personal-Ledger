@@ -14,11 +14,11 @@ pub use crate::settings::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::settings::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
-pub use crate::settings::snapshot::{
-    SettingsDisplaySnapshot, SettingsSnapshot, SettingsTracingSnapshot,
-};
+pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 #[doc(hidden)]
 pub use crate::settings::tags::SettingsTagsSnapshot;
+#[doc(hidden)]
+pub use crate::settings::tracing::SettingsTracingSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
@@ -28,7 +28,8 @@ use crate::{
     settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog,
     settings::{
-        SettingsDialog, institutions::dialogs::InstitutionsDialog, units::dialogs::UnitsDialog,
+        institutions::dialogs::InstitutionsDialog, tracing::dialogs::TracingDialog,
+        units::dialogs::UnitsDialog,
     },
 };
 
@@ -162,9 +163,9 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<SettingsDialog>() {
+        } else if let Some(open) = self.dialog::<TracingDialog>() {
             let (label, name, confirm) = match open {
-                SettingsDialog::ClearLogs => ("ClearLogs", None, None),
+                TracingDialog::ClearLogs => ("ClearLogs", None, None),
             };
             open_dialog.label = Some(label);
             open_dialog.name = name;
@@ -318,6 +319,6 @@ impl Shell {
     /// The Settings Tracing page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_tracing_snapshot(&self, cx: &gpui::App) -> SettingsTracingSnapshot {
-        self.views.settings.read(cx).tracing_snapshot()
+        self.views.settings.read(cx).tracing().read(cx).snapshot()
     }
 }

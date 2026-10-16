@@ -1,236 +1,220 @@
-//! The **Tracing (Logs)** page (16m, issues #499–#502): level radios on the left and **Clear logs**
-//! on the right of one row, then a log box filling the rest of the page with the live capture,
-//! newest first. The box is a virtualised `list` (rows wrap, so heights vary) with an
-//! always-visible scroll bar; `Shell` owns its `ListState` and splices it as entries arrive.
-//!
-//! One entry is `[hh:mm:ss] LEVEL subsystem: message key=value` (`crate::settings::tracing_log`): the time is
-//! a fixed column, and a long body wraps under the level tag, not under the time.
-//!
-//! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
-//! (`docs/ux/desktop-mockups/16-settings/README.md`'s implementation note 11: "namespace radio groups per
-//! instance").
+//! The **Tracing (Logs)** Settings page (ADR-0037, and its amendment's one folder per page): the
+//! live log capture. [`TracingPage`] owns the log mirror and the virtualised list that shows it,
+//! renders itself (`render.rs`), builds the Clear logs Dialog (`dialogs/`) and reaches `Shell`
+//! only through [`ViewEvent`]; `Shell`'s Dialog host draws it and confirms it through `apply.rs`,
+//! and `Shell`'s capture feed (`app/log_feed.rs`) pushes new entries in. The Settings View
+//! forwards the page's keys and status to it while the page has focus. The page has no form: the
+//! level radios filter the mirror at once.
 
-use std::{rc::Rc, sync::Arc};
+pub mod apply;
+pub mod dialogs;
+pub mod log;
+mod render;
 
-use gpui::{
-    AnyElement, App, HighlightStyle, ListState, Rgba, SharedString, StyledText, Window, div, list,
-    prelude::*, px,
-};
-use gpui_component::scroll::{Scrollbar, ScrollbarShow};
-use lib_tracing::LogEntry;
-use tracing::Level;
+use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
-    form::fields::radio_dot,
-    settings::tracing_log::{self, TracingLevel},
-    theme::color,
+    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    navigation::key_router::Movement,
+    settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
+    view::event::ViewEvent,
 };
+use dialogs::TracingDialog;
+use log::{LogChange, LogView, TracingLevel};
 
-pub type OnLevelClick = Rc<dyn Fn(TracingLevel, &mut Window, &mut App)>;
-pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// A plain, level-less click handler -- what a [`radio_option`] is bound to after its own level
-/// has already been curried in (mirrors the Units page's `OnPlainClick`).
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+/// One `j`/`k` step in the log box: a line of its 11px/1.6 monospace.
+pub const LOG_LINE_STEP: Pixels = px(17.6);
 
-const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
+impl EventEmitter<ViewEvent> for TracingPage {}
 
-/// One `j`/`k` step in the Tracing log box: a line of its 11px/1.6 monospace.
-pub const LOG_LINE_STEP: gpui::Pixels = px(17.6);
-
-/// What the log box shows, gathered by `Shell` from its `LogView`.
-pub struct LogBoxProps {
-    pub level: TracingLevel,
-    /// Filtered, newest first.
-    pub entries: Rc<Vec<Arc<LogEntry>>>,
-    /// Captured entries the filter hides, for the empty state.
-    pub hidden: usize,
-    pub list: ListState,
+/// The Tracing page. `log_list` is the virtualised list that shows `log`, and must be kept in
+/// step with it by [`Self::pull_log`], [`Self::replace_log`] and the edits below.
+pub struct TracingPage {
+    log: LogView,
+    log_list: ListState,
 }
 
-pub fn render(
-    log: &LogBoxProps,
-    on_level_click: OnLevelClick,
-    on_clear_logs_click: OnClearLogsClick,
-    cx: &App,
-) -> AnyElement {
-    div()
-        .flex_1()
-        .min_h(px(0.0))
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(12.0))
-                .mb(px(10.0))
-                .child(level_row(log.level, on_level_click, cx))
-                .child(clear_logs_button(on_clear_logs_click, cx)),
-        )
-        .child(log_box(log, cx))
-        .into_any_element()
-}
-
-fn level_row(selected: TracingLevel, on_click: OnLevelClick, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .gap(px(8.0))
-        .children(TracingLevel::ALL.into_iter().map(|level| {
-            let on_click = on_click.clone();
-            radio_option(
-                level,
-                level == selected,
-                Rc::new(move |window: &mut Window, cx: &mut App| on_click(level, window, cx)),
-                cx,
-            )
-        }))
-}
-
-fn radio_option(
-    level: TracingLevel,
-    checked: bool,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let id = format!("tracing-level-{}", format!("{level:?}").to_lowercase());
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.clone()
-        })
-        .id(SharedString::from(id))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(radio_dot(checked, cx))
-        .child(div().text_size(px(12.0)).child(level.label()))
-}
-
-/// The log box: `flex:1; min-height:0; border:1px solid rgba(32,30,29,.30); #eae9e9;
-/// padding:10px 12px`, monospace 11px/1.6 muted, with the scroll bar always shown.
-fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
-    let frame = div()
-        .id("tracing-log-box")
-        .debug_selector(|| "tracing-log-box".to_string())
-        .relative()
-        .flex_1()
-        .min_h(px(0.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .bg(color::chrome(cx))
-        .font_family("monospace")
-        .text_size(LOG_TEXT_SIZE)
-        .line_height(gpui::relative(1.6))
-        .text_color(color::muted(cx));
-
-    if log.entries.is_empty() {
-        let message = if log.hidden == 0 {
-            crate::msg::desktop_settings_tracing_empty()
-        } else {
-            crate::msg::desktop_settings_tracing_all_hidden(
-                &log.level.label(),
-                i64::try_from(log.hidden).unwrap_or(i64::MAX),
-            )
-        };
-        return frame
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(24.0))
-            .child(
-                div()
-                    .debug_selector(|| "tracing-log-empty".to_string())
-                    .text_color(color::faint_text(cx))
-                    .font_family(crate::theme::type_scale::FONT_FAMILY)
-                    .child(message),
-            );
+impl TracingPage {
+    pub fn new(log: LogView, log_list: ListState) -> Self {
+        Self { log, log_list }
     }
 
-    let entries = log.entries.clone();
-    let rows = list(log.list.clone(), move |index, _window, cx| {
-        match entries.get(index) {
-            Some(entry) => entry_row(index, entry, cx),
-            // The list's count can briefly lead the entries during a splice; draw nothing.
-            None => div().into_any_element(),
+    pub fn log(&self) -> &LogView {
+        &self.log
+    }
+
+    pub fn log_list(&self) -> &ListState {
+        &self.log_list
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The capture feed
+    // -----------------------------------------------------------------------------------------
+
+    /// Hands the page a new capture, opening on `log`'s level, and restarts the list at its top.
+    pub fn replace_log(&mut self, cx: &mut Context<'_, Self>, log: LogView) {
+        self.log = log;
+        self.log_list.reset(self.log.visible().len());
+        cx.notify();
+    }
+
+    /// Pulls new entries from the capture and mirrors them onto the list. Notifies only when
+    /// something changed, so an idle capture doesn't redraw the page.
+    pub fn pull_log(&mut self, cx: &mut Context<'_, Self>) -> LogChange {
+        let change = self.log.pull();
+        if change != LogChange::default() {
+            self.mirror_log_change(change);
+            cx.notify();
         }
-    })
-    .size_full()
-    .py(px(10.0))
-    .px(px(12.0));
+        change
+    }
 
-    frame.child(rows).child(
-        div()
-            .occlude()
-            .absolute()
-            .top_0()
-            .right_0()
-            .bottom_0()
-            .w(px(12.0))
-            .child(Scrollbar::vertical(&log.list).scrollbar_show(ScrollbarShow::Always)),
-    )
-}
+    /// Mirrors a pull onto the list: evicted rows leave the bottom, new ones arrive at the top.
+    /// A reader at the very top keeps seeing the newest; one scrolled down stays where they are.
+    fn mirror_log_change(&mut self, change: LogChange) {
+        let list = &self.log_list;
+        let top = list.logical_scroll_top();
+        let at_top = top.item_ix == 0 && top.offset_in_item <= px(0.0);
+        let count = list.item_count();
+        let evicted = change.evicted.min(count);
+        list.splice(count - evicted..count, 0);
+        list.splice(0..0, change.added);
+        if at_top {
+            list.scroll_to(ListOffset::default());
+        }
+    }
 
-/// One entry: the time in a fixed column, then the level tag (coloured) and body as one wrapping
-/// run, so continuation lines hang under the level tag.
-fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
-    let tag = tracing_log::level_tag(entry.level);
-    let text = format!("{tag} {}", tracing_log::body(entry));
-    let highlight = HighlightStyle {
-        color: Some(level_colour(entry.level, cx).into()),
-        font_weight: (entry.level <= Level::WARN).then_some(gpui::FontWeight::EXTRA_BOLD),
-        ..Default::default()
-    };
-    div()
-        .debug_selector(move || format!("tracing-log-row-{index}"))
-        .flex()
-        .gap(px(8.0))
-        .pr(px(12.0))
-        .child(
-            div()
-                .flex_none()
-                .text_color(color::faint_text(cx))
-                .child(tracing_log::timestamp(entry.time)),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .child(StyledText::new(text).with_highlights([(0..tag.len(), highlight)])),
-        )
-        .into_any_element()
-}
+    /// Edits the log mirror in place (its level and clear), then redraws. The list is reset to
+    /// the mirror's visible rows, as a level or clear changes which rows show.
+    fn update_log(&mut self, cx: &mut Context<'_, Self>, edit: impl FnOnce(&mut LogView)) {
+        edit(&mut self.log);
+        self.log_list.reset(self.log.visible().len());
+        cx.notify();
+    }
 
-/// Error and warning use the Toast marks, which hold 3:1 against the box's chrome ground; info
-/// stays muted like the body and debug drops back to faint.
-fn level_colour(level: Level, cx: &App) -> Rgba {
-    match level {
-        Level::ERROR => color::toast_mark(lib_toast::ToastKind::Error, cx),
-        Level::WARN => color::toast_mark(lib_toast::ToastKind::Warning, cx),
-        Level::INFO => color::muted(cx),
-        Level::DEBUG | Level::TRACE => color::faint_text(cx),
+    /// Empties the capture, once Clear logs is confirmed.
+    pub fn clear_log(&mut self, cx: &mut Context<'_, Self>) {
+        self.update_log(cx, LogView::clear);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The interface the Settings View forwards to while the page has focus (ADR-0037)
+    // -----------------------------------------------------------------------------------------
+
+    /// The page's keys, ahead of the focus keys so `h` steps the level rather than leaving
+    /// (Display's radio grammar; `esc` leaves): `h`/`l` the level, `j`/`k` a line, `J`/`K` a
+    /// page, `G` the oldest entry, `c` Clear logs. Focus never enters the box itself.
+    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let list = self.log_list.clone();
+        let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
+        match (keystroke.modifiers.shift, keystroke.key.as_str()) {
+            (false, "h" | "left") => self.step_level(-1, cx),
+            (false, "l" | "right") => self.step_level(1, cx),
+            (false, "j" | "down") => list.scroll_by(LOG_LINE_STEP),
+            (false, "k" | "up") => list.scroll_by(-LOG_LINE_STEP),
+            (true, "j") => list.scroll_by(page),
+            (true, "k") => list.scroll_by(-page),
+            (true, "g") => {
+                if let Some(last) = list.item_count().checked_sub(1) {
+                    list.scroll_to_reveal_item(last);
+                }
+            }
+            (false, "c") => self.click_clear_logs(cx),
+            _ => return false,
+        }
+        true
+    }
+
+    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The log box scrolls by its own keys, so the page takes no movement and Settings leaves its
+    /// body alone.
+    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
+    /// the index.
+    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The page has no Search: `/` is inert there.
+    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// The Tracing legend and the page's fixed note.
+    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: settings_tracing_hints(),
+            right: SettingsPage::Tracing.scope_note(),
+        })
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------------------------
+
+    /// The level radios filter the log box at once, including what is already there, and start
+    /// it back at the newest entry.
+    fn set_level(&mut self, level: TracingLevel, cx: &mut Context<'_, Self>) {
+        self.update_log(cx, |log| log.set_level(level));
+    }
+
+    fn step_level(&mut self, delta: isize, cx: &mut Context<'_, Self>) {
+        let level = step_choice(&TracingLevel::ALL, self.log.level(), delta);
+        self.set_level(level, cx);
+    }
+
+    /// **Clear logs** (and `c`) asks first, since the capture is emptied for good (#502).
+    fn click_clear_logs(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(ViewEvent::SetStatus(None));
+        open_dialog(TracingDialog::ClearLogs, cx);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tests
+    // -----------------------------------------------------------------------------------------
+
+    /// The Tracing page's state.
+    #[doc(hidden)]
+    pub fn snapshot(&self) -> SettingsTracingSnapshot {
+        SettingsTracingSnapshot {
+            tracing_level: format!("{:?}", self.log.level()),
+            log_line_count: self.log.visible().len(),
+            log_lines: self
+                .log
+                .visible()
+                .iter()
+                .map(|entry| log::body(entry))
+                .collect(),
+            log_hidden_count: self.log.hidden_count(),
+            log_scroll_top: self.log_list.logical_scroll_top().item_ix,
+        }
     }
 }
 
-/// **Clear logs**: `.btn.btn-secondary`, 32px, top right of the level row.
-fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
-    div()
-        .id("settings-clear-logs")
-        .debug_selector(|| "settings-clear-logs".to_string())
-        .cursor_pointer()
-        .flex_none()
-        .h(px(32.0))
-        .flex()
-        .items_center()
-        .px(px(16.0))
-        .bg(color::chrome(cx))
-        .border_1()
-        .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_settings_tracing_clear())
+/// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the filter
+/// shows, their bodies newest first (`subsystem: message key=value`), how many it hides, and the
+/// list's top row.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsTracingSnapshot {
+    pub tracing_level: String,
+    pub log_line_count: usize,
+    pub log_lines: Vec<String>,
+    pub log_hidden_count: usize,
+    pub log_scroll_top: usize,
+}
+
+/// Asks `Shell`'s Dialog host to open a Tracing Dialog.
+fn open_dialog(dialog: TracingDialog, cx: &mut Context<'_, TracingPage>) {
+    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Tracing(dialog))));
 }

@@ -5,9 +5,7 @@
 
 pub mod about;
 pub mod accounts;
-pub(crate) mod apply;
 pub mod categories;
-pub mod clear_logs_dialog;
 pub mod data_backup;
 pub mod display;
 pub mod documents;
@@ -22,28 +20,17 @@ pub mod state;
 pub mod sync_server;
 pub mod tags;
 pub mod tracing;
-pub mod tracing_log;
 pub mod units;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, Entity, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, Window, div, prelude::*, px};
 
-use crate::{
-    chrome::{dialog_host::Dialog, rail::settings_index::SettingsIndexRail},
-    form::field::TextField,
-    navigation::nav::Noun,
-    theme::color,
-};
+use crate::{chrome::rail::settings_index::SettingsIndexRail, navigation::nav::Noun, theme::color};
 
 use state::SettingsView;
 
 pub use page::SettingsPage;
-
-/// A click handler the Settings View binds for a page, given the clicked value.
-type OnValue<A> = Rc<dyn Fn(A, &mut Window, &mut App)>;
-/// As [`OnValue`], for a click that carries no value.
-type OnPlain = Rc<dyn Fn(&mut Window, &mut App)>;
 
 impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
@@ -69,6 +56,7 @@ impl Render for SettingsView {
         documents.update(cx, |page, _| page.set_page_focused(page_focused));
         let inventory = self.sources().inventory.clone();
         inventory.update(cx, |page, _| page.set_page_focused(page_focused));
+        let tracing = self.sources().tracing.clone();
         let display = self.sources().display.clone();
         let units = self.sources().units.clone();
         let institutions = self.sources().institutions.clone();
@@ -118,10 +106,11 @@ impl Render for SettingsView {
                 self.scope_note().into_any_element(),
                 about.into_any_element(),
             ),
-            SettingsPage::General | SettingsPage::Tracing => (
+            SettingsPage::Tracing => (
                 self.scope_note().into_any_element(),
-                self.page_content(&entity, cx),
+                tracing.into_any_element(),
             ),
+            SettingsPage::General => (self.scope_note().into_any_element(), general::render(cx)),
         };
         // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
         let fills = selected.fills_page();
@@ -161,54 +150,6 @@ impl SettingsView {
     /// The heading's scope note for a page this View draws: a fixed note.
     fn scope_note(&self) -> String {
         self.selected_section().scope_note()
-    }
-
-    /// The content of a page this View draws, its clicks bound to `entity`.
-    fn page_content(&self, entity: &Entity<Self>, cx: &App) -> AnyElement {
-        // A click handler that runs `act` on this View with the clicked value.
-        fn bind<A: 'static>(
-            entity: &Entity<SettingsView>,
-            act: fn(&mut SettingsView, A, &mut Context<'_, SettingsView>),
-        ) -> OnValue<A> {
-            let entity = entity.clone();
-            Rc::new(move |value, _window, cx| entity.update(cx, |view, cx| act(view, value, cx)))
-        }
-        // As `bind`, for a click that carries no value.
-        fn plain(
-            entity: &Entity<SettingsView>,
-            act: fn(&mut SettingsView, &mut Context<'_, SettingsView>),
-        ) -> OnPlain {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| entity.update(cx, act))
-        }
-
-        match self.selected_section() {
-            SettingsPage::General => general::render(cx),
-            SettingsPage::Tracing => tracing::render(
-                &tracing::LogBoxProps {
-                    level: self.log().level(),
-                    entries: self.log().visible(),
-                    hidden: self.log().hidden_count(),
-                    list: self.log_list().clone(),
-                },
-                bind(entity, SettingsView::set_tracing_level),
-                plain(entity, SettingsView::click_clear_logs),
-                cx,
-            ),
-            // Every other page is its own Entity and draws itself.
-            SettingsPage::Accounts
-            | SettingsPage::Display
-            | SettingsPage::Units
-            | SettingsPage::Institutions
-            | SettingsPage::SyncServer
-            | SettingsPage::DataBackup
-            | SettingsPage::About
-            | SettingsPage::Categories
-            | SettingsPage::Payees
-            | SettingsPage::Tags
-            | SettingsPage::Documents
-            | SettingsPage::Inventory => gpui::Empty.into_any_element(),
-        }
     }
 }
 
@@ -280,29 +221,6 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
     };
     let last = choices.len() - 1;
     choices[position.saturating_add_signed(delta).min(last)]
-}
-
-/// The Settings dialogs no page owns: each page's own Dialogs live in its folder (ADR-0037's
-/// amendment), so only Tracing's Clear logs confirm is left.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SettingsDialog {
-    /// Tracing's Clear logs confirm: nothing to fill in.
-    ClearLogs,
-}
-
-impl Dialog for SettingsDialog {
-    fn focused_text(&mut self) -> Option<&mut TextField> {
-        None
-    }
-
-    fn is_valid(&self) -> bool {
-        true
-    }
-
-    /// Clear logs is a confirm.
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(hints::confirm_dialog_hints())
-    }
 }
 
 #[cfg(test)]

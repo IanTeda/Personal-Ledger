@@ -42,19 +42,6 @@ pub struct SettingsDisplaySnapshot {
     pub toasts_on: bool,
 }
 
-/// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the filter
-/// shows, their bodies newest first (`subsystem: message key=value`), how many it hides, and the
-/// list's top row.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsTracingSnapshot {
-    pub tracing_level: String,
-    pub log_line_count: usize,
-    pub log_lines: Vec<String>,
-    pub log_hidden_count: usize,
-    pub log_scroll_top: usize,
-}
-
 impl SettingsView {
     /// The page on show and where focus sits. The dialog and status message are left empty.
     pub fn snapshot(&self) -> SettingsSnapshot {
@@ -80,21 +67,6 @@ impl SettingsView {
             status_glyphs: format!("{:?}", display.status_glyphs),
             start_sidebar_minimised: display.start_sidebar_minimised,
             toasts_on: display.toasts_on,
-        }
-    }
-
-    pub fn tracing_snapshot(&self) -> SettingsTracingSnapshot {
-        SettingsTracingSnapshot {
-            tracing_level: format!("{:?}", self.log().level()),
-            log_line_count: self.log().visible().len(),
-            log_lines: self
-                .log()
-                .visible()
-                .iter()
-                .map(|entry| crate::settings::tracing_log::body(entry))
-                .collect(),
-            log_hidden_count: self.log().hidden_count(),
-            log_scroll_top: self.log_list().logical_scroll_top().item_ix,
         }
     }
 }

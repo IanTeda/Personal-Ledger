@@ -1,13 +1,13 @@
 //! Command history and execution of `Shell`. An `impl Shell` block for the concern, not the
 //! command registry itself (`navigation::command`).
 
-use gpui::Context;
+use gpui::{App, Context};
 
 use super::{Shell, explorer::explorer_start_dir};
 use crate::{
     chrome::palette::Palette,
     navigation::{
-        command::{self, BudgetsVerb, Command, CommandEffect},
+        command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
@@ -198,5 +198,36 @@ impl Shell {
     pub(super) fn open_palette(&mut self) {
         self.nav.enter_mode(InputMode::Command);
         self.chrome.palette = Some(Palette::with_history(self.command_history.clone()));
+    }
+}
+
+impl Shell {
+    /// Opens a Settings page with focus in it -- what `:settings <page>`, the old `:accounts` /
+    /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on.
+    /// Leaves the page's scroll alone when Settings is already showing.
+    pub(super) fn open_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
+        let noun_before = self.nav.noun();
+        self.nav.set_noun(Noun::Settings);
+        if noun_before != Noun::Settings {
+            self.reset_view_scroll(cx);
+        }
+        self.views
+            .settings
+            .update(cx, |view, cx| view.open_page(section, cx));
+    }
+
+    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, whose Entity then
+    /// opens the same dialog its `n`/`e`/`d` and buttons do.
+    pub(super) fn run_accounts_command(
+        &mut self,
+        command_name: &str,
+        verb: AccountsVerb,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.open_settings_page(SettingsPage::Accounts, cx);
+        self.accounts_page(cx).update(cx, |page, cx| {
+            page.run_command(command_name, verb, argument, cx);
+        });
     }
 }

@@ -29,7 +29,7 @@ pub enum ActiveViewEntity {
     Documents(Entity<DocumentsView>),
     /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
     /// forwarded to by the View; `Shell` still draws the other pages with Ledger data and handles
-    /// their keys first (`app/settings_ui.rs`) until each moves into the View.
+    /// their keys first (`Shell`) until each moves into the View.
     Settings(Entity<SettingsView>),
     /// A View whose rendering and input are still `Shell`'s.
     Shell(ShellView),
