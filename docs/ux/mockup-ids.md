@@ -171,3 +171,7 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-119 | — | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-120 | — | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-121 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-122 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-123 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-124 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-125 | — | `desktop-mockups/16-settings/Settings.dc.html` |
