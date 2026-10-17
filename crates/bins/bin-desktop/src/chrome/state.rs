@@ -1,6 +1,6 @@
 //! Chrome's own state: the frame's status message, the Toast stack and its keybindings, the
-//! command palette, the open Dialog, the rail's `b` override and the collapsed rail's hover tooltip. `Shell` owns one of
-//! these as its `chrome` field; none of it is View state, so Chrome does not become an Entity
+//! command palette, the open Dialog, the rail's `b` override and the collapsed rail's hover
+//! tooltip. `Shell` owns one of these as its `chrome` field; none of it is View state, so Chrome does not become an Entity
 //! (ADR-0032).
 
 use chrono::{DateTime, Local};

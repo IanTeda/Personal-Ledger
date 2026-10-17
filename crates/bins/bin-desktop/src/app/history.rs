@@ -42,6 +42,7 @@ impl Shell {
     }
 
     /// The recent-actions list below Undo is open.
+    #[doc(hidden)]
     pub fn undo_menu_open(&self) -> bool {
         self.chrome.undo_menu_open
     }

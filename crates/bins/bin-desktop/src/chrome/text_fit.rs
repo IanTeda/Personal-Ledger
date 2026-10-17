@@ -1,6 +1,5 @@
 //! Fitting Chrome text to a narrow window (ADR-0042): the status line drops whole hints from its
-//! end. The decisions are
-//! pure over a `measure` function; [`text_width`] is the real one.
+//! end. The decisions are pure over a `measure` function; [`text_width`] is the real one.
 
 use gpui::{Font, FontWeight, Hsla, Pixels, TextRun, Window, font, px};
 
@@ -42,11 +41,6 @@ pub fn hints_that_fit(widths: &[Pixels], gap: Pixels, max: Pixels) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// One pixel per character, so widths read as lengths.
-    fn chars(text: &str) -> Pixels {
-        px(text.chars().count() as f32)
-    }
 
     #[test]
     fn hints_drop_from_the_end_whole() {

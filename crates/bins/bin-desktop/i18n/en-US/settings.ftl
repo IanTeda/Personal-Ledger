@@ -19,6 +19,9 @@ desktop-display-locale-hint = Set with the locale setting or the --locale flag, 
 
 desktop-settings-index-footer = preferences sync · configuration local
 
+# The page heading at Large and X-Large, beside the docked index: `Settings - Display`.
+desktop-settings-page-heading = { $settings } - { $page }
+
 ## Settings at Medium (DESKTOP-119, DESKTOP-120): the index page's count and each page's one-line
 ## description, and the page picker's filter prompt.
 

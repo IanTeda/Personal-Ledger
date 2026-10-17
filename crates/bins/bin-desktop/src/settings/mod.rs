@@ -296,7 +296,10 @@ fn plain_heading(section: SettingsPage, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(28.0))
         .text_color(color::foreground(cx))
-        .child(format!("{} - {}", Noun::Settings.label(), section.label()))
+        .child(crate::msg::desktop_settings_page_heading(
+            &Noun::Settings.label(),
+            &section.label(),
+        ))
 }
 
 /// The page heading at Medium, a breadcrumb that is the only trail on screen (DESKTOP-120):

@@ -1,7 +1,7 @@
 //! The shell's top bar (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec, "Top
 //! bar" component): rail toggle, Back/Forward, brand mark, Undo with its recent-actions list,
-//! sync indicator, window controls. The rail toggle
-//! is clickable (issue #152). The spec's own `:` palette-hint box was dropped from here --
+//! sync indicator, window controls. The rail toggle is clickable (issue #152). The spec's own
+//! `:` palette-hint box was dropped from here --
 //! palette entry is keyboard-only (`:`), and the status line's own hint strip already names it.
 //!
 //! The mockup draws a "sync" icon next to the sync indicator, but no Lucide name for it
@@ -355,7 +355,7 @@ fn sync_indicator(cx: &App) -> impl IntoElement {
         .child(sync_text())
 }
 
-// Representative content -- a real last-write timestamp lands with the sync ticket.
+/// Representative content -- a real last-write timestamp lands with the sync ticket.
 fn sync_text() -> String {
     crate::msg::desktop_topbar_synced("14:22")
 }
