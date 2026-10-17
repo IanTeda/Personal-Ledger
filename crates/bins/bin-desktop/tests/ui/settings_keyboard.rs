@@ -184,10 +184,6 @@ fn at_medium_g_s_lands_on_the_index_page(app: &mut TestAppContext) {
         !ui.is_drawn("settings-index-General"),
         "no docked index at Medium"
     );
-    assert!(
-        ui.is_drawn("topbar-brand-alone"),
-        "the header drops its breadcrumb"
-    );
     assert!(!ui.settings().page_focused);
     assert_eq!(hint_keys(&mut ui), ["j/k", "l/enter"]);
 }
@@ -374,7 +370,6 @@ fn leaving_medium_closes_the_picker_and_docks_the_index(app: &mut TestAppContext
     assert_eq!(ui.settings().picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert!(ui.is_drawn("settings-index-Display"));
-    assert!(ui.is_drawn("topbar-trail"));
 }
 
 #[gpui::test]

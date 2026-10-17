@@ -1,7 +1,7 @@
 //! The shell's status line (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec,
 //! "Status line" component): mode badge, hint strip. Its own bottom-right breadcrumb (`ledger ·
-//! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
-//! (`crate::chrome::topbar::brand_mark`), and showing it in both places was a plain duplicate.
+//! <noun>`) was dropped -- the active View's own heading names the screen, so a breadcrumb here
+//! was a plain duplicate (as was the top bar's View suffix, `crate::chrome::topbar::brand_mark`).
 
 use std::rc::Rc;
 

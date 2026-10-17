@@ -44,6 +44,23 @@ fn every_g_jump_lands_on_its_noun(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_header_is_the_wordmark_alone_on_every_view(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Medium, WindowSize::Large] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+        let wordmark = ui.bounds("topbar-brand").size;
+        for (key, _) in bin_desktop::navigation::key_router::JUMPS {
+            ui.press(&format!("g {key}"));
+            assert_eq!(
+                ui.bounds("topbar-brand").size,
+                wordmark,
+                "g {key} at {window_size:?}: no View suffix"
+            );
+        }
+    }
+}
+
+#[gpui::test]
 fn g_followed_by_an_unbound_key_changes_nothing(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g l");

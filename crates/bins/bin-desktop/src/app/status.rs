@@ -14,11 +14,9 @@ use crate::{
 };
 
 impl Shell {
-    /// The View on show as Chrome reads it: its title and its status-line content, built together
-    /// so the top bar and the status line can't disagree about which View they describe.
+    /// The View on show as Chrome reads it: its status-line content.
     pub(super) fn view_chrome(&self, cx: &gpui::App) -> ViewChrome {
         ViewChrome {
-            title: self.active_view(cx).title(),
             status: self.page_status(cx),
         }
     }

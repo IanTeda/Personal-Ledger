@@ -1,10 +1,6 @@
 ## The Import "match payees" step (the Payees handoff's 6e). `$file` is the statement's file name,
 ## `$glyph` the create option's leading plus sign.
 
-## The title-bar context beside the Transactions label.
-
-desktop-import-context = import { $file }
-
 ## The stepper, heading and subline.
 
 desktop-import-step-upload = 1 upload

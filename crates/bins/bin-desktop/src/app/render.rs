@@ -44,7 +44,7 @@ use crate::{
     chrome::window_size::WindowSize,
     documents::{self},
     navigation::explorer::{self as explorer_view},
-    navigation::nav::{FocusZone, InputMode, Noun},
+    navigation::nav::{FocusZone, InputMode},
     period::Period,
     settings::accounts::dialogs::AccountsDialog,
     settings::tracing::dialogs::TracingDialog,
@@ -583,15 +583,7 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(
-                        TopBar::new(on_rail_toggle, view_chrome.title.clone())
-                            .context(active_view.context())
-                            // Settings' Medium page heading is the trail (DESKTOP-120).
-                            .hide_trail(
-                                self.nav.noun() == Noun::Settings
-                                    && window_size == WindowSize::Medium,
-                            ),
-                    )
+                    .child(TopBar::new(on_rail_toggle))
                     .child(
                         div()
                             .flex_1()

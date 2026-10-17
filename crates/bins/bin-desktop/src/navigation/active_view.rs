@@ -36,28 +36,6 @@ impl ActiveView {
         }
     }
 
-    /// The title the Chrome shows for this View: its Noun's display name.
-    pub fn title(self) -> String {
-        self.noun().label()
-    }
-
-    /// The top bar's context beside the title: the Settings page on show, or the statement the
-    /// Import step is matching.
-    pub fn context(self) -> Option<String> {
-        match self {
-            Self::Settings(section) => Some(section.label()),
-            Self::Import => Some(crate::msg::desktop_import_context(
-                crate::import::STATEMENT_FILE,
-            )),
-            Self::Dashboard
-            | Self::Transactions
-            | Self::Documents
-            | Self::Bills
-            | Self::Budgets
-            | Self::Placeholder(_) => None,
-        }
-    }
-
     /// The status line's mode label in `Normal` mode, where the View on show names its own: the
     /// Import step's `IMPORT`.
     pub fn mode_label(self) -> Option<String> {
@@ -114,24 +92,6 @@ mod tests {
             ActiveView::derive(Noun::Bills, GENERAL, true),
             ActiveView::Bills
         );
-    }
-
-    #[test]
-    fn title_is_the_name_of_the_noun_the_view_belongs_to() {
-        let locale = lib_locale::Locale::EnUs;
-        lib_locale::with_locale(locale, || {
-            assert_eq!(ActiveView::Import.title(), Noun::Transactions.label());
-            assert_eq!(ActiveView::Transactions.title(), Noun::Transactions.label());
-            assert_eq!(ActiveView::Dashboard.title(), Noun::Dashboard.label());
-            assert_eq!(
-                ActiveView::Settings(SettingsPage::Tags).title(),
-                Noun::Settings.label()
-            );
-            assert_eq!(
-                ActiveView::Placeholder(Noun::Cash).title(),
-                Noun::Cash.label()
-            );
-        });
     }
 
     #[test]

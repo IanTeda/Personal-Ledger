@@ -40,7 +40,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 **Purpose**: The active dashboard: net worth, cash / investments / liabilities at a glance, and what needs action today. The second rail is a persistent "accounts at a glance" panel rather than a record list. Dashboard has no records of its own, so nothing is selected; `j/k` + `enter` jumps into an account.
 
 **Layout**:
-- Header: `Personal Ledger | Dashboard`
+- Header: `Personal Ledger` (no View suffix: the main pane heading names the View)
 - Primary rail (206px): flat list, Dashboard active
 - Secondary rail: accounts at a glance (e.g. ANZ Everyday 4,182.55, `aud · 312 transactions`)
 - Main pane: NET WORTH (218,940.12, `+3,412.80 this month`) with CASH, INVESTMENTS and LIABILITIES tiles; NEEDS ACTION (5 items: overdue, due today, reconcile, review, in 4 days); SEPTEMBER BUDGET; RECENT transactions across all accounts
@@ -108,7 +108,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 | `esc` | back to the Settings index |
 
 - **Status line hints:** `j/k section · [/] pages · p picker · esc settings`. `[` and `]` have no on-screen chips; the status line is their only hint.
-- **Chrome header:** on Settings at Medium the header shows the wordmark and no breadcrumb, so the trail is never shown twice.
+- **Chrome header:** the header shows the wordmark alone, so the page heading is the only trail.
 
 **Considered:** a drawer over the View, a plain drill-down (back only, two steps between pages), a header picker alone (`Display ▾` with `[`/`]` chips) and a narrow 120px docked index of icons and short labels. Each was drawn at 960 and 720 (DESKTOP-108 to DESKTOP-115, retired). The picked design takes the drill-down's index page, which has room to explain each page, and the picker's direct jumps, so moving between two pages is one step. The full prototype, every option and its generator, is on branch [`prototype/692-window-sizes`](https://github.com/IanTeda/Personal-Ledger/tree/prototype/692-window-sizes).
 
@@ -121,7 +121,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 
 - **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
 - **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
-- **Header breadcrumb:** truncates from the left with `…`, so the leaf always shows (DESKTOP-116). On Settings at Medium the header shows no breadcrumb: the page heading is the trail (turn 2). The wordmark, sync status and window controls never shrink.
+- **Header:** the wordmark alone on every View, with no breadcrumb or View suffix: the View's own heading says where the user is (DESKTOP-116). The wordmark, sync status and window controls never shrink.
 - **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
 - **Dialogs:** stay 420px wide at every Window Size.
 - **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
@@ -137,7 +137,6 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 | --- | --- |
 | Header | 48px, `background #eae9e9`, `border-bottom: 2px solid rgba(32,30,29,.38)`, padding `0 10px 0 12px`, gap 12px |
 | Wordmark | 800 13.5px, letter-spacing −.01em |
-| Breadcrumb | 12px, `#9b9797` |
 | Command affordance | `padding: 4px 9px; border: 1px solid rgba(32,30,29,.30)`, `:` in 800 #201e1d |
 | Window controls | three 26px squares, `background rgba(32,30,29,.08)`, gap 2px |
 | Primary rail | 206px (48px collapsed), `background #eae9e9`, `border-right: 2px solid rgba(32,30,29,.38)`, padding `14px 0 10px` |
@@ -180,7 +179,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 ### Type
 - Family: **Archivo** throughout (headings and body); monospace only for log output and inline command tokens
 - Weights: 400, 800 — nothing between
-- Sizes: 10px (labels), 11px (bindings), 11.5px (status/meta), 12px (breadcrumb), 13px (body), 13.5px (wordmark), 15px (palette input), 19–20px (view headings), 26px (empty-state title)
+- Sizes: 10px (labels), 11px (bindings), 11.5px (status/meta), 12px (sync status), 13px (body), 13.5px (wordmark), 15px (palette input), 19–20px (view headings), 26px (empty-state title)
 - Letter-spacing: `.11em` (all-caps labels), `−.01em` (display sizes), `.1em` (mode chip)
 - Numbers: `font-variant-numeric: tabular-nums` on every figure
 
@@ -280,7 +279,7 @@ fileExplorer
 - `README.md` — this document
 
 ## Changes (9 October 2026)
-- **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, breadcrumb, sync status, window controls.
+- **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, sync status, window controls. The wordmark carries no breadcrumb or View suffix, since each View's heading names it.
 - **1b** is now the Dashboard (see above).
 - **Settings rail** lists Backup, History and Logs in place of Data & backup and Tracing (Logs).
 
