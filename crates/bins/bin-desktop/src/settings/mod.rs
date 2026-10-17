@@ -72,9 +72,6 @@ impl Render for SettingsView {
                 .h_full()
                 .overflow_y_scroll()
                 .track_scroll(&self.scroll_handle)
-                .when(index_focused, |this| {
-                    this.border_l(px(2.0)).border_color(color::foreground(cx))
-                })
                 .py(px(22.0))
                 .px(px(28.0))
                 .child(index_page(selected, on_row_click, cx))
@@ -159,7 +156,8 @@ impl Render for SettingsView {
             .when(!fills, |this| {
                 this.overflow_y_scroll().track_scroll(&self.scroll_handle)
             })
-            .when(page_focused, |this| {
+            // The focus rule tells the index from the page; at Medium only one of them shows.
+            .when(page_focused && !drill_down, |this| {
                 this.border_l(px(2.0)).border_color(color::foreground(cx))
             })
             .py(px(22.0))
@@ -318,10 +316,9 @@ fn crumb_heading(
         .children(picker.map(|picker| gpui::deferred(page_picker(picker, on_pick, cx))))
 }
 
-/// The picker under the page name: its filter, then the matching pages in index order.
+/// The picker under the page name: the pages matching what has been typed, in index order.
 fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElement {
     let chosen = picker.chosen();
-    let query = picker.query();
     div()
         .absolute()
         .top_full()
@@ -336,23 +333,6 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
         .font_weight(gpui::FontWeight::NORMAL)
         .text_size(px(13.0))
         .occlude()
-        .child(
-            div()
-                .py(px(8.0))
-                .px(px(12.0))
-                .border_b_1()
-                .border_color(color::hairline(cx))
-                .text_color(if query.is_empty() {
-                    color::faint_text(cx)
-                } else {
-                    color::foreground(cx)
-                })
-                .child(if query.is_empty() {
-                    crate::msg::desktop_settings_picker_filter()
-                } else {
-                    query.to_string()
-                }),
-        )
         .children(picker.matches().into_iter().map(|page| {
             let on_pick = on_pick.clone();
             div()

@@ -40,7 +40,6 @@ desktop-settings-description-sync-server = server address, sign-in, interval
 desktop-settings-description-data-backup = backups, export and the ledger file
 desktop-settings-description-tracing = log level and the live log
 desktop-settings-description-about = version, licences and credits
-desktop-settings-picker-filter = type to filter
 
 desktop-settings-section-general = General
 desktop-settings-section-display = Display
