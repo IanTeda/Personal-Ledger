@@ -154,3 +154,20 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-102 | 20c | `desktop-mockups/20-payees/Payees.dc.html` |
 | DESKTOP-103 | 20d | `desktop-mockups/20-payees/Payees.dc.html` |
 | DESKTOP-104 | 20e | `desktop-mockups/20-payees/Payees.dc.html` |
+| DESKTOP-105 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-106 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-107 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-108 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-109 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-110 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-111 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-112 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-113 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-114 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-115 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |
+| DESKTOP-116 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-117 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-118 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-119 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-120 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-121 | — | `desktop-mockups/01-shell/Shell.dc.html` |
