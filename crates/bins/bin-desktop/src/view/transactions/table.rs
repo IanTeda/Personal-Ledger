@@ -40,6 +40,29 @@ const RUNNING_WIDTH: Pixels = px(104.0);
 /// Horizontal padding of the header and every row: the bundle's `28px`.
 const PAGE_PADDING_X: Pixels = px(28.0);
 
+/// Between neighbouring columns, in the header and every row.
+const COLUMN_GAP: Pixels = px(8.0);
+
+/// The narrowest the table draws every column at: in a narrower View it scrolls sideways
+/// (ADR-0042) rather than squeezing the Payee column away.
+pub fn min_width() -> Pixels {
+    let columns = [
+        STATUS_WIDTH,
+        FLAG_WIDTH,
+        DATE_WIDTH,
+        ACCOUNT_WIDTH,
+        PAYEE_MIN_WIDTH,
+        CATEGORY_WIDTH,
+        TAGS_WIDTH,
+        AMOUNT_WIDTH,
+        RUNNING_WIDTH,
+    ];
+    let gaps = COLUMN_GAP * (columns.len() - 1) as f32;
+    columns
+        .into_iter()
+        .fold(PAGE_PADDING_X * 2.0 + gaps, |sum, width| sum + width)
+}
+
 /// `padding:8px 28px; 10px/800; #9b9797; border-bottom:1px solid #d7d3d3`.
 pub fn column_header(cx: &App) -> impl IntoElement {
     let head = |width: Pixels, label: String, right: bool| {
@@ -58,7 +81,7 @@ pub fn column_header(cx: &App) -> impl IntoElement {
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(COLUMN_GAP)
         .px(PAGE_PADDING_X)
         .py(px(8.0))
         .border_b(px(1.0))
@@ -202,7 +225,7 @@ fn row(
         .cursor_pointer()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(COLUMN_GAP)
         .w_full()
         .h(height)
         .px(PAGE_PADDING_X)

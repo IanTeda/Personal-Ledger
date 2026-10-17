@@ -1,10 +1,13 @@
-//! The Settings pages driven by clicks: the index rail, the Categories and Units pages' add
+//! The Settings pages driven by clicks: the index rail and its Medium index page and picker, the Categories and Units pages' add
 //! button and row actions, and the dialogs' buttons. Only elements tagged with
 //! `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{InputMode, Noun},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -107,4 +110,54 @@ fn the_about_page_shows_without_a_focus_target(app: &mut TestAppContext) {
     let page = ui.settings();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
+}
+
+#[gpui::test]
+fn at_medium_an_index_row_opens_its_page_and_the_crumb_goes_back(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+
+    ui.click("settings-index-page-Units");
+    let settings = ui.settings();
+    assert_eq!(settings.page, "Units");
+    assert!(settings.page_focused);
+    assert!(ui.is_drawn("settings-page"));
+
+    ui.click("settings-crumb-index");
+    assert!(ui.is_drawn("settings-index-page"));
+    assert_eq!(ui.settings().page, "Units");
+}
+
+#[gpui::test]
+fn at_medium_the_caret_opens_the_picker_and_a_row_jumps_to_its_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter");
+
+    ui.click("settings-crumb-picker");
+    assert_eq!(mode(&mut ui), InputMode::Filter);
+    assert!(ui.is_drawn("settings-picker-About"));
+
+    ui.click("settings-picker-Tracing");
+    let settings = ui.settings();
+    assert_eq!(settings.page, "Tracing");
+    assert_eq!(settings.picker_query, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn at_x_large_the_docked_index_swaps_the_capped_page(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    ui.resize_to(WindowSize::XLarge);
+
+    ui.click("settings-index-Display");
+    assert_eq!(ui.settings().page, "Display");
+    let page = ui.bounds("settings-page");
+    assert_eq!(
+        page.size.width,
+        gpui::px(840.0),
+        "capped, the rest of the View empty"
+    );
+    assert!(!ui.is_drawn("settings-crumb-picker"));
 }

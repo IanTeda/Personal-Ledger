@@ -4,7 +4,10 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{FocusZone, InputMode, Noun, RailMode};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{FocusZone, InputMode, Noun, RailMode},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -17,7 +20,7 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
 }
 
 fn rail(ui: &mut Harness<'_>) -> RailMode {
-    ui.read(|shell| shell.nav().primary_rail())
+    ui.rail()
 }
 
 #[gpui::test]
@@ -140,6 +143,65 @@ fn b_toggles_the_primary_rail(app: &mut TestAppContext) {
     assert_eq!(rail(&mut ui), RailMode::Collapsed);
     ui.press("b");
     assert_eq!(rail(&mut ui), RailMode::Expanded);
+}
+
+#[gpui::test]
+fn the_rail_is_icons_at_medium_and_expanded_at_large(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.resize_to(WindowSize::Medium);
+    assert_eq!(rail(&mut ui), RailMode::Collapsed);
+    assert!(ui.is_drawn("primary-rail-collapsed-Budgets"));
+
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(rail(&mut ui), RailMode::Expanded);
+    assert!(ui.is_drawn("primary-rail-Budgets"));
+}
+
+#[gpui::test]
+fn b_holds_only_until_the_window_crosses_a_breakpoint(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+
+    ui.press("b");
+    assert_eq!(
+        rail(&mut ui),
+        RailMode::Expanded,
+        "b expands the Medium rail"
+    );
+
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(rail(&mut ui), RailMode::Expanded, "Large's own default");
+    ui.press("b");
+    assert_eq!(rail(&mut ui), RailMode::Collapsed);
+
+    ui.resize_to(WindowSize::Medium);
+    assert_eq!(rail(&mut ui), RailMode::Collapsed, "Medium's own default");
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(
+        rail(&mut ui),
+        RailMode::Expanded,
+        "the override made at Large dropped when the window left Large"
+    );
+}
+
+#[gpui::test]
+fn start_with_the_rail_hidden_applies_at_large_and_x_large(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let shell = ui.shell.clone();
+    shell.update(ui.cx, |shell, cx| {
+        shell.set_start_sidebar_minimised(true, cx);
+        cx.notify();
+    });
+
+    for window_size in [WindowSize::XLarge, WindowSize::Large, WindowSize::Medium] {
+        ui.resize_to(window_size);
+        assert_eq!(rail(&mut ui), RailMode::Collapsed, "at {window_size:?}");
+    }
+
+    ui.resize_to(WindowSize::Large);
+    ui.press("b");
+    assert_eq!(rail(&mut ui), RailMode::Expanded, "b still overrides it");
 }
 
 #[gpui::test]

@@ -23,6 +23,8 @@ use crate::settings::tags::{
 use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
 
+use gpui_component::scroll::{Scrollbar, ScrollbarShow};
+
 use crate::settings::institutions::dialogs::{InstitutionsDialog, InstitutionsDialogHandlers};
 use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandlers};
 use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
@@ -39,9 +41,10 @@ use crate::{
     chrome::statusline::{self, StatusLine},
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
+    chrome::window_size::WindowSize,
     documents::{self},
     navigation::explorer::{self as explorer_view},
-    navigation::nav::{FocusZone, InputMode},
+    navigation::nav::{FocusZone, InputMode, Noun},
     period::Period,
     settings::accounts::dialogs::AccountsDialog,
     settings::tracing::dialogs::TracingDialog,
@@ -55,7 +58,18 @@ use crate::{
 };
 
 impl Render for Shell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let window_size = WindowSize::of(window);
+        // A `b` override lasts only until the window crosses a Breakpoint (ADR-0042); dropped
+        // here, so coming back to the Window Size it was set at draws that size's default.
+        if self
+            .chrome
+            .rail_override
+            .is_some_and(|rail_override| rail_override.set_at != window_size)
+        {
+            self.chrome.rail_override = None;
+        }
+        let rail_mode = self.primary_rail(window_size, cx);
         let focus = self.nav.focus();
         let active_entity = self.active_view_entity(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
@@ -79,8 +93,9 @@ impl Render for Shell {
         let entity = cx.entity();
         let on_rail_toggle: topbar::OnRailToggle = {
             let entity = entity.clone();
-            Rc::new(move |_event, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_toggle_rail(cx));
+            Rc::new(move |_event, window, cx| {
+                let window_size = WindowSize::of(window);
+                entity.update(cx, |shell, cx| shell.handle_toggle_rail(window_size, cx));
             })
         };
         let on_row_hover: chrome_rail::primary::OnRowHover = {
@@ -121,8 +136,11 @@ impl Render for Shell {
         };
         let on_hint: statusline::OnHint = {
             let entity = entity.clone();
-            Rc::new(move |action, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_hint_click(action, cx));
+            Rc::new(move |action, window, cx| {
+                let window_size = WindowSize::of(window);
+                entity.update(cx, |shell, cx| {
+                    shell.handle_hint_click(action, window_size, cx)
+                });
             })
         };
         let on_toast_dismiss: crate::chrome::toast::OnDismiss = {
@@ -145,7 +163,13 @@ impl Render for Shell {
         let toast_layer = if toast_history_open {
             None
         } else {
-            crate::chrome::toast::render(&self.chrome.toasts, on_toast_dismiss, on_toast_hover, cx)
+            crate::chrome::toast::render(
+                &self.chrome.toasts,
+                on_toast_dismiss,
+                on_toast_hover,
+                window.viewport_size().width,
+                cx,
+            )
         };
         let on_toast_history_close: toast_history_view::OnClose = {
             let entity = entity.clone();
@@ -523,8 +547,12 @@ impl Render for Shell {
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
-        let active_element =
-            active_entity.element(focus == FocusZone::View, self.nav.ledger_open(), cx);
+        let active_element = active_entity.element(
+            focus == FocusZone::View,
+            self.nav.ledger_open(),
+            window_size,
+            cx,
+        );
         let view_chrome = self.view_chrome(cx);
         let active_view = self.active_view(cx);
 
@@ -542,8 +570,8 @@ impl Render for Shell {
                 this.drop_documents(paths.paths(), cx);
                 cx.notify();
             }))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                if this.handle_key_down(event, cx) {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.handle_key_down(event, WindowSize::of(window), cx) {
                     cx.notify();
                 }
                 this.run_pending_effects(cx);
@@ -557,7 +585,12 @@ impl Render for Shell {
                     .opacity(content_opacity)
                     .child(
                         TopBar::new(on_rail_toggle, view_chrome.title.clone())
-                            .context(active_view.context()),
+                            .context(active_view.context())
+                            // Settings' Medium page heading is the trail (DESKTOP-120).
+                            .hide_trail(
+                                self.nav.noun() == Noun::Settings
+                                    && window_size == WindowSize::Medium,
+                            ),
                     )
                     .child(
                         div()
@@ -568,7 +601,7 @@ impl Render for Shell {
                                 PrimaryRail::new(
                                     self.nav.primary_highlight(),
                                     focus == FocusZone::PrimaryRail,
-                                    self.nav.primary_rail(),
+                                    rail_mode,
                                     self.chrome.collapsed_rail_tooltip,
                                     on_row_hover,
                                     on_row_click,
@@ -607,6 +640,8 @@ impl Render for Shell {
                                 ),
                                 _ => view_frame(
                                     active_element,
+                                    active_entity.min_width(),
+                                    &self.view_x_scroll_handle,
                                     focus == FocusZone::View,
                                     cx.listener(|shell, _: &MouseDownEvent, _window, cx| {
                                         shell.nav.set_focus(FocusZone::View);
@@ -642,7 +677,7 @@ impl Render for Shell {
                 self.chrome
                     .palette
                     .as_ref()
-                    .map(|palette| palette.render(cx)),
+                    .map(|palette| palette.render(window.viewport_size().width, cx)),
             )
             .children(self.file_explorer.as_ref().map(|explorer| {
                 explorer.render(
@@ -722,7 +757,7 @@ impl Render for Shell {
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))
-            .children(self.render_budgets_switcher(&entity, cx))
+            .children(self.render_budgets_switcher(&entity, rail_mode, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
             .children(self.dialog::<PayeesDialog>().and_then(|dialog| {
@@ -837,13 +872,18 @@ fn render_view(
 /// scrolling page, and the border says whether the View zone has focus, which is `Shell`'s. A
 /// click anywhere in the View gives the View zone focus (`on_click_focus`), so a View never sets
 /// `Shell`'s focus itself.
+///
+/// A View with a `min_width` lays out at least that wide, and scrolls sideways inside the frame,
+/// over a horizontal scroll bar along its bottom edge, when the frame is narrower (ADR-0042).
 fn view_frame(
     view: gpui::AnyElement,
+    min_width: Option<gpui::Pixels>,
+    x_scroll_handle: &ScrollHandle,
     focused: bool,
     on_click_focus: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    div()
+    let frame = div()
         .id("view-frame")
         .on_mouse_down(gpui::MouseButton::Left, on_click_focus)
         .flex_1()
@@ -852,8 +892,44 @@ fn view_frame(
         .flex()
         .when(focused, |this| {
             this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
-        .child(view)
+        });
+    let Some(min_width) = min_width else {
+        return frame.child(view).into_any_element();
+    };
+    frame
+        .relative()
+        .child(
+            div()
+                .id("view-x-scroll")
+                .debug_selector(|| "view-x-scroll".to_string())
+                .size_full()
+                .flex()
+                .overflow_x_scroll()
+                .track_scroll(x_scroll_handle)
+                .child(
+                    div()
+                        .debug_selector(|| "view-content".to_string())
+                        .flex_1()
+                        .min_w(min_width)
+                        .h_full()
+                        .flex()
+                        .child(view),
+                ),
+        )
+        .child(
+            div()
+                .debug_selector(|| "view-x-scrollbar".to_string())
+                // Not occluding: the bar draws only while the View overflows, and the strip must
+                // not block clicks on the View's own bottom edge the rest of the time.
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .h(px(12.0))
+                .child(
+                    Scrollbar::horizontal(x_scroll_handle).scrollbar_show(ScrollbarShow::Always),
+                ),
+        )
         .into_any_element()
 }
 

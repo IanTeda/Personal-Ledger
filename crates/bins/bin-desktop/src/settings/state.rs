@@ -12,8 +12,9 @@
 
 use super::hints::{
     settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
-    settings_documents_hints, settings_index_hints, settings_payees_hints,
-    settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
+    settings_documents_hints, settings_index_hints, settings_medium_page_hints,
+    settings_payees_hints, settings_picker_hints, settings_plain_page_hints, settings_tags_hints,
+    settings_tracing_hints,
 };
 use crate::settings::categories::{CategoriesPage, CategoryRowClicked};
 use crate::settings::documents::{DocumentsPage, RowClicked as DocumentsRowClicked};
@@ -21,10 +22,11 @@ use crate::settings::inventory::{InventoryPage, RowClicked as InventoryRowClicke
 use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
 use crate::{
-    chrome::statusline::PageStatus,
+    chrome::{statusline::PageStatus, window_size::WindowSize},
     navigation::key_router::Movement,
     settings::accounts::{AccountsPage, hints::accounts_hints},
     settings::institutions::InstitutionsPage,
+    settings::picker::PagePicker,
     settings::tracing::TracingPage,
     settings::units::UnitsPage,
     settings::{
@@ -32,9 +34,10 @@ use crate::{
         display::{DisplayKey, DisplayPage, DisplayPreferences},
     },
     settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage},
-    view::event::{Reveal, ViewEvent},
+    view::event::{Reveal, ViewEvent, ViewMode},
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
+use lib_list_cursor::Step;
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
@@ -200,6 +203,12 @@ pub struct SettingsView {
     pub(super) scroll_handle: ScrollHandle,
     /// Whether the View zone has focus, told by `Shell` as it draws the View.
     pub(super) zone_focused: bool,
+    /// The Window Size the View was last drawn at, told by `Shell` as it draws the View, so its
+    /// keys and status line act on the layout on screen. At Medium, Settings is a drill-down: the
+    /// index is a page of its own and a page's heading carries the page picker (DESKTOP-119).
+    window_size: WindowSize,
+    /// The Medium page picker, while it is open.
+    picker: Option<PagePicker>,
     /// Keeps the Categories and Payees pages' row clicks reaching this View, which owns the page's
     /// focus.
     _categories_row_clicked: Subscription,
@@ -237,6 +246,8 @@ impl SettingsView {
             focus: SettingsFocus::default(),
             scroll_handle: ScrollHandle::new(),
             zone_focused: false,
+            window_size: WindowSize::Large,
+            picker: None,
             _categories_row_clicked,
             _payees_row_clicked,
             _tags_row_clicked,
@@ -328,6 +339,24 @@ impl SettingsView {
         self.zone_focused = focused;
     }
 
+    /// Tells the View the Window Size it is drawn at. Leaving Medium closes the picker, which only
+    /// Medium draws.
+    pub fn set_window_size(&mut self, window_size: WindowSize, cx: &mut Context<'_, Self>) {
+        self.window_size = window_size;
+        if window_size != WindowSize::Medium && self.picker.is_some() {
+            self.close_picker(cx);
+        }
+    }
+
+    /// Whether Settings is drawn as a drill-down, the index and each page taking the View in turn.
+    pub(super) fn drill_down(&self) -> bool {
+        self.window_size == WindowSize::Medium
+    }
+
+    pub(super) fn picker(&self) -> Option<&PagePicker> {
+        self.picker.as_ref()
+    }
+
     // -----------------------------------------------------------------------------------------
     // The interface `Shell` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
@@ -339,6 +368,15 @@ impl SettingsView {
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "escape" {
             return false;
+        }
+        if self.picker.is_some() {
+            self.picker_key(keystroke, cx);
+            cx.notify();
+            return true;
+        }
+        if self.medium_page_key(keystroke, cx) {
+            cx.notify();
+            return true;
         }
         // The focused page goes before `focus_key`, which would otherwise move focus to the index
         // on `left` before the page could fold its own tree.
@@ -388,6 +426,11 @@ impl SettingsView {
     /// `Esc` closes what the open page has open, then leaves the Colour Theme grid for the
     /// control above it, or the page for the index.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.picker.is_some() {
+            self.close_picker(cx);
+            cx.notify();
+            return true;
+        }
         if let Some(page) = self.focused_page()
             && page.escape(cx)
         {
@@ -458,13 +501,23 @@ impl SettingsView {
         if !self.zone_focused {
             return None;
         }
-        if let Some(page) = self.focused_page() {
-            return page.page_status(cx);
+        if self.picker.is_some() {
+            return Some(PageStatus {
+                hints: settings_picker_hints(),
+                right: self.selected_section.scope_note(),
+            });
         }
-        Some(PageStatus {
-            hints: self.hints(cx),
-            right: self.selected_section.scope_note(),
-        })
+        let mut status = match self.focused_page() {
+            Some(page) => page.page_status(cx)?,
+            None => PageStatus {
+                hints: self.hints(cx),
+                right: self.selected_section.scope_note(),
+            },
+        };
+        if self.drill_down() && self.focus == SettingsFocus::Page {
+            status.hints.extend(settings_medium_page_hints());
+        }
+        Some(status)
     }
 
     /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
@@ -555,7 +608,8 @@ impl SettingsView {
     /// Moves focus from the index rail into the open page (`l`/`enter`). A page with nothing to
     /// focus keeps focus on the index, as a quiet no-op.
     fn focus_page(&mut self, cx: &mut Context<'_, Self>) {
-        if !self.selected_section.has_controls() {
+        // At Medium the page is what's on screen, so even a page with nothing to focus opens.
+        if !self.selected_section.has_controls() && !self.drill_down() {
             return;
         }
         self.focus = SettingsFocus::Page;
@@ -594,6 +648,101 @@ impl SettingsView {
         self.select_page(section, cx);
         self.focus = SettingsFocus::Index;
         cx.notify();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Medium: the drill-down and its page picker (DESKTOP-119 to DESKTOP-121)
+    // -----------------------------------------------------------------------------------------
+
+    /// An index page row's click at Medium: opens that page in the index's place.
+    pub(super) fn click_index_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
+        self.open_page(section, cx);
+    }
+
+    /// The heading's **Settings**: back to the index, with the page still selected.
+    pub(super) fn click_index_crumb(&mut self, cx: &mut Context<'_, Self>) {
+        if self.picker.is_some() {
+            self.close_picker(cx);
+        }
+        self.focus_index(cx);
+        cx.notify();
+    }
+
+    /// The heading's caret: opens the picker, or closes it if it is open.
+    pub(super) fn click_picker_caret(&mut self, cx: &mut Context<'_, Self>) {
+        if self.picker.is_some() {
+            self.close_picker(cx);
+        } else {
+            self.open_picker(cx);
+        }
+        cx.notify();
+    }
+
+    /// A picker row's click: straight to that page.
+    pub(super) fn click_picker_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
+        self.close_picker(cx);
+        self.open_page(section, cx);
+    }
+
+    /// A page's own keys at Medium: `[`/`]` step to the previous and next page in index order, and
+    /// `p` opens the picker. `Esc` back to the index is [`Self::escape`]'s.
+    fn medium_page_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if !self.drill_down()
+            || self.focus != SettingsFocus::Page
+            || modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+        {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "[" => self.step_page(Step::Prev, cx),
+            "]" => self.step_page(Step::Next, cx),
+            "p" if !modifiers.shift => self.open_picker(cx),
+            _ => return false,
+        }
+        true
+    }
+
+    fn step_page(&mut self, step: Step, cx: &mut Context<'_, Self>) {
+        let pages = SettingsPage::ALL;
+        let next = lib_list_cursor::step(self.selected_section.index(), pages.len(), step);
+        self.select_page(pages[next], cx);
+        self.focus_page(cx);
+    }
+
+    fn open_picker(&mut self, cx: &mut Context<'_, Self>) {
+        self.picker = Some(PagePicker::new(self.selected_section));
+        cx.emit(ViewEvent::EnterMode(ViewMode::Filter));
+    }
+
+    fn close_picker(&mut self, cx: &mut Context<'_, Self>) {
+        self.picker = None;
+        cx.emit(ViewEvent::ExitMode);
+    }
+
+    /// Every key while the picker is open: `↑`/`↓` move, `enter` opens the chosen page, `backspace`
+    /// and typing edit the filter. `Esc` comes back as [`Self::escape`].
+    fn picker_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) {
+        let Some(picker) = self.picker.as_mut() else {
+            return;
+        };
+        match keystroke.key.as_str() {
+            "up" => picker.step(Step::Prev),
+            "down" => picker.step(Step::Next),
+            "backspace" => picker.backspace(),
+            "enter" => {
+                if let Some(section) = picker.chosen() {
+                    self.click_picker_page(section, cx);
+                }
+            }
+            _ => {
+                if let Some(ch) = crate::app::typed_char(keystroke) {
+                    picker.push(ch);
+                }
+            }
+        }
     }
 
     /// Settings' own focus keys: `l`/`right`/`enter` on the index step into the page, `h`/`left`

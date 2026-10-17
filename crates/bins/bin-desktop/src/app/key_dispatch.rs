@@ -9,6 +9,7 @@ use lib_toast::ToastKind;
 use super::Shell;
 use crate::{
     chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
+    chrome::window_size::WindowSize,
     navigation::{
         explorer::ExplorerMode,
         key_router::{self, KeyOutcome, route_key},
@@ -60,6 +61,7 @@ impl Shell {
     pub(super) fn handle_key_down(
         &mut self,
         event: &KeyDownEvent,
+        window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let keystroke = &event.keystroke;
@@ -207,12 +209,9 @@ impl Shell {
                 self.view_mode = None;
                 true
             }
-            // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`) --
-            // same action, two entry points. Clears any settled collapsed-rail tooltip: it's
-            // meaningless once the rail that anchors it changes shape.
+            // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`).
             KeyOutcome::ToggleRail => {
-                self.nav.toggle_primary_rail();
-                self.chrome.collapsed_rail_tooltip = None;
+                self.toggle_rail(window_size, cx);
                 true
             }
             KeyOutcome::CycleFocusForward => {
@@ -424,7 +423,7 @@ fn dialog_key(keystroke: &Keystroke) -> DialogKey {
 
 /// The one character an unmodified keystroke types into a text field, or `None` for a modified
 /// key (a chord this field gives no meaning to) or anything that isn't a single character.
-pub(super) fn typed_char(keystroke: &Keystroke) -> Option<char> {
+pub(crate) fn typed_char(keystroke: &Keystroke) -> Option<char> {
     let modifiers = &keystroke.modifiers;
     if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
         return None;

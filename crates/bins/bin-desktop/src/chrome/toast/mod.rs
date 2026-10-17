@@ -13,7 +13,7 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_toast::{Toast, Toasts};
 
 use crate::{
-    chrome::statusline,
+    chrome::{statusline, window_size},
     theme::{color, type_scale},
 };
 
@@ -37,8 +37,10 @@ pub fn render<S>(
     toasts: &Toasts<S>,
     on_dismiss: OnDismiss,
     on_hover: OnHover,
+    viewport_width: gpui::Pixels,
     cx: &App,
 ) -> Option<AnyElement> {
+    let max_width = window_size::overlay_width(MAX_WIDTH, viewport_width);
     let visible = toasts.visible();
     if visible.is_empty() {
         return None;
@@ -68,22 +70,25 @@ pub fn render<S>(
             })
             // `visible` is oldest first, and a column stacks downwards, so the newest lands
             // nearest the status line.
-            .children(
-                visible
-                    .iter()
-                    .enumerate()
-                    .map(|(index, toast)| render_toast(index, toast, on_dismiss.clone(), cx)),
-            )
+            .children(visible.iter().enumerate().map(|(index, toast)| {
+                render_toast(index, toast, max_width, on_dismiss.clone(), cx)
+            }))
             .into_any_element(),
     )
 }
 
-fn render_toast(index: usize, toast: &Toast, on_dismiss: OnDismiss, cx: &App) -> AnyElement {
+fn render_toast(
+    index: usize,
+    toast: &Toast,
+    max_width: gpui::Pixels,
+    on_dismiss: OnDismiss,
+    cx: &App,
+) -> AnyElement {
     let mark = color::toast_mark(toast.kind(), cx);
     div()
         .flex()
         .items_center()
-        .max_w(MAX_WIDTH)
+        .max_w(max_width)
         .h(HEIGHT)
         .bg(color::info_toast_background(cx))
         .text_color(color::info_toast_text(cx))

@@ -3,7 +3,10 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{FocusZone, Noun, RailMode};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{FocusZone, Noun, RailMode},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -23,9 +26,9 @@ fn the_topbar_toggle_collapses_and_expands_the_rail(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
 
     ui.click("topbar-rail-toggle");
-    assert_eq!(ui.read(|s| s.nav().primary_rail()), RailMode::Collapsed);
+    assert_eq!(ui.rail(), RailMode::Collapsed);
     ui.click("topbar-rail-toggle");
-    assert_eq!(ui.read(|s| s.nav().primary_rail()), RailMode::Expanded);
+    assert_eq!(ui.rail(), RailMode::Expanded);
 }
 
 #[gpui::test]
@@ -36,5 +39,27 @@ fn a_collapsed_rail_row_still_navigates_on_click(app: &mut TestAppContext) {
     ui.click("primary-rail-collapsed-Budgets");
 
     assert_eq!(ui.noun(), Noun::Budgets);
-    assert_eq!(ui.read(|s| s.nav().primary_rail()), RailMode::Collapsed);
+    assert_eq!(ui.rail(), RailMode::Collapsed);
+}
+
+#[gpui::test]
+fn at_medium_the_topbar_toggle_expands_the_rail_until_a_breakpoint(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    assert_eq!(ui.rail(), RailMode::Collapsed);
+
+    ui.click("topbar-rail-toggle");
+    assert_eq!(ui.rail(), RailMode::Expanded);
+    ui.click("primary-rail-Budgets");
+    assert_eq!(ui.noun(), Noun::Budgets);
+
+    ui.resize_to(WindowSize::Large);
+    ui.resize_to(WindowSize::Medium);
+    assert_eq!(
+        ui.rail(),
+        RailMode::Collapsed,
+        "the override dropped at Large"
+    );
+    ui.click("primary-rail-collapsed-Transactions");
+    assert_eq!(ui.noun(), Noun::Transactions);
 }

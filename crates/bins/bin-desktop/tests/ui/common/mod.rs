@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs,
+    ShellBindings, ShellLogs, WindowSize,
     app::{
         AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,
         DocumentsSnapshot, ImportSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
@@ -21,12 +21,15 @@ use bin_desktop::{
     },
     build_shell,
     locale::init_for_tests,
-    navigation::nav::Noun,
+    navigation::nav::{Noun, RailMode},
     persistence::PersistedState,
     theme,
 };
 use chrono::NaiveDate;
-use gpui::{App, Entity, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{
+    App, Bounds, Entity, Modifiers, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
+    TestAppContext, VisualTestContext,
+};
 use lib_colour_theme::ThemeOverrides;
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
@@ -94,6 +97,44 @@ impl<'a> Harness<'a> {
             .executor()
             .advance_clock(bin_desktop::app::LOG_COALESCE * 2);
         self.cx.run_until_parked();
+    }
+
+    /// Resizes the window to `window_size`'s reference frame (ADR-0042) and lets it redraw. The
+    /// window opens maximised on the test display, 1920 × 1080, which is X-Large.
+    pub fn resize_to(&mut self, window_size: WindowSize) {
+        self.resize(window_size.reference_frame());
+    }
+
+    /// Resizes the window to `size` and lets it redraw: for a case a reference frame doesn't
+    /// reach, such as Medium's 720px floor.
+    pub fn resize(&mut self, size: Size<Pixels>) {
+        self.cx.simulate_resize(size);
+        self.cx.run_until_parked();
+    }
+
+    /// Where the element tagged `debug_selector(selector)` was drawn in the last frame.
+    pub fn bounds(&mut self, selector: &str) -> Bounds<Pixels> {
+        let key: &'static str = Box::leak(selector.to_string().into_boxed_str());
+        self.cx
+            .debug_bounds(key)
+            .unwrap_or_else(|| panic!("no element tagged `{selector}` was drawn"))
+    }
+
+    /// Scrolls the wheel by `delta` over `position`, then lets the window redraw.
+    pub fn scroll_at(&mut self, position: Point<Pixels>, delta: Point<Pixels>) {
+        self.cx.simulate_event(ScrollWheelEvent {
+            position,
+            delta: ScrollDelta::Pixels(delta),
+            ..Default::default()
+        });
+        self.cx.run_until_parked();
+    }
+
+    /// The primary rail as the window is drawn now.
+    pub fn rail(&mut self) -> RailMode {
+        let shell = self.shell.clone();
+        self.cx
+            .update(|window, cx| shell.read(cx).primary_rail(WindowSize::of(window), cx))
     }
 
     /// Presses a space-separated keystroke sequence, e.g. `press("g f")`.

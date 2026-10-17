@@ -72,7 +72,13 @@ impl ActiveViewEntity {
 
     /// The View as a child element of `Shell`'s main pane, told whether the View zone has focus
     /// for the focus rings it draws within itself. A `ShellView` is drawn by `Shell`.
-    pub fn element(&self, zone_focused: bool, ledger_open: bool, cx: &mut App) -> AnyElement {
+    pub fn element(
+        &self,
+        zone_focused: bool,
+        ledger_open: bool,
+        window_size: crate::chrome::window_size::WindowSize,
+        cx: &mut App,
+    ) -> AnyElement {
         match self {
             Self::Dashboard(view) => {
                 view.update(cx, |view, _| view.set_ledger_open(ledger_open));
@@ -83,7 +89,10 @@ impl ActiveViewEntity {
                 view.clone().into_any_element()
             }
             Self::Settings(view) => {
-                view.update(cx, |view, _| view.set_zone_focused(zone_focused));
+                view.update(cx, |view, cx| {
+                    view.set_zone_focused(zone_focused);
+                    view.set_window_size(window_size, cx);
+                });
                 view.clone().into_any_element()
             }
             Self::Bills(view) => view.clone().into_any_element(),
@@ -195,6 +204,15 @@ impl ActiveViewEntity {
             Self::Documents(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Shell(_) => {}
+        }
+    }
+
+    /// The narrowest the View lays out at, when it has content that must not squeeze (the
+    /// Transactions table). A View area narrower than this scrolls sideways (ADR-0042).
+    pub fn min_width(&self) -> Option<gpui::Pixels> {
+        match self {
+            Self::Transactions(_) => Some(crate::view::transactions::table::min_width()),
+            _ => None,
         }
     }
 

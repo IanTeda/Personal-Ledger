@@ -69,6 +69,26 @@ impl SettingsPage {
         }
     }
 
+    /// The one-line description under the page's name on the Medium index page (DESKTOP-119).
+    pub fn description(self) -> String {
+        match self {
+            Self::General => crate::msg::desktop_settings_description_general(),
+            Self::Display => crate::msg::desktop_settings_description_display(),
+            Self::Units => crate::msg::desktop_settings_description_units(),
+            Self::Institutions => crate::msg::desktop_settings_description_institutions(),
+            Self::Accounts => crate::msg::desktop_settings_description_accounts(),
+            Self::Categories => crate::msg::desktop_settings_description_categories(),
+            Self::Tags => crate::msg::desktop_settings_description_tags(),
+            Self::Payees => crate::msg::desktop_settings_description_payees(),
+            Self::Documents => crate::msg::desktop_settings_description_documents(),
+            Self::Inventory => crate::msg::desktop_settings_description_inventory(),
+            Self::SyncServer => crate::msg::desktop_settings_description_sync_server(),
+            Self::DataBackup => crate::msg::desktop_settings_description_data_backup(),
+            Self::Tracing => crate::msg::desktop_settings_description_tracing(),
+            Self::About => crate::msg::desktop_settings_description_about(),
+        }
+    }
+
     /// The section heading's right-aligned scope note -- the Configuration-vs-Preferences
     /// distinction the README calls "the UI must make ... legible" (issue #63/#101/ADR-0014).
     pub fn scope_note(self) -> String {

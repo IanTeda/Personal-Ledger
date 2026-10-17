@@ -17,13 +17,27 @@
 
 use std::rc::Rc;
 
-use gpui::{App, ClickEvent, Window, div, prelude::*, px};
+use gpui::{App, ClickEvent, FontWeight, Pixels, Window, div, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{assets::icon::DesktopIcon, theme::color};
+use crate::{
+    assets::icon::DesktopIcon,
+    chrome::text_fit::{text_width, truncate_start},
+    theme::color,
+};
 
 /// Band height: `docs/ux/desktop-mockups/01-shell/README.md`'s "Layout" table.
-pub const HEIGHT: gpui::Pixels = px(48.0);
+pub const HEIGHT: Pixels = px(48.0);
+
+const PADDING_LEFT: Pixels = px(12.0);
+const PADDING_RIGHT: Pixels = px(10.0);
+const GAP: Pixels = px(12.0);
+const BUTTON: Pixels = px(28.0);
+const CONTROLS_GAP: Pixels = px(4.0);
+const CLUSTER_MARGIN: Pixels = px(6.0);
+const BRAND_GAP: Pixels = px(6.0);
+const WORDMARK_SIZE: Pixels = px(13.5);
+const CONTEXT_SIZE: Pixels = px(12.0);
 
 /// The rail-toggle button's own click, reported raw -- `Shell::handle_toggle_rail` owns what
 /// it actually does. `Rc` since `TopBar` is rebuilt fresh every render (see the module doc).
@@ -36,6 +50,8 @@ pub struct TopBar {
     title: String,
     /// Extra context after the noun (6e's `import statement.csv`).
     context: Option<String>,
+    /// Draw the wordmark alone: Settings at Medium, whose page heading is the trail already.
+    hide_trail: bool,
 }
 
 impl TopBar {
@@ -44,7 +60,13 @@ impl TopBar {
             on_rail_toggle,
             title,
             context: None,
+            hide_trail: false,
         }
+    }
+
+    pub fn hide_trail(mut self, hide_trail: bool) -> Self {
+        self.hide_trail = hide_trail;
+        self
     }
 
     pub fn context(mut self, context: Option<String>) -> Self {
@@ -54,32 +76,76 @@ impl TopBar {
 }
 
 impl RenderOnce for TopBar {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let trail = (!self.hide_trail).then(|| fit_trail(self.title, self.context, window));
         div()
             .h(HEIGHT)
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(12.0))
-            .pl(px(12.0))
-            .pr(px(10.0))
+            .gap(GAP)
+            .pl(PADDING_LEFT)
+            .pr(PADDING_RIGHT)
             .bg(color::chrome(cx))
             .border_b(px(2.0))
             .border_color(color::structural_rule(cx))
             .child(rail_toggle(self.on_rail_toggle, cx))
-            .child(brand_mark(self.title, self.context, cx))
+            .child(brand_mark(trail, cx))
             .child(div().flex_1())
             .child(sync_indicator(cx))
             .child(window_controls(cx))
     }
 }
 
+/// The breadcrumb, `title` then `› context`, shortened from its start to the room the rest of the
+/// bar leaves it, so its leaf always shows (DESKTOP-116). The wordmark, sync status and window
+/// controls never shrink.
+fn fit_trail(title: String, context: Option<String>, window: &Window) -> (String, Option<String>) {
+    let measure = |text: &str, size: Pixels| text_width(window, text, size, FontWeight::NORMAL);
+    let fixed = PADDING_LEFT
+        + PADDING_RIGHT
+        + BUTTON
+        + GAP * 4.0
+        + text_width(
+            window,
+            &lib_locale::msg::app_name(),
+            WORDMARK_SIZE,
+            FontWeight::EXTRA_BOLD,
+        )
+        + BRAND_GAP * 2.0
+        + measure("|", WORDMARK_SIZE)
+        + CLUSTER_MARGIN
+        + measure(&sync_text(), CONTEXT_SIZE)
+        + CLUSTER_MARGIN
+        + BUTTON * 3.0
+        + CONTROLS_GAP * 2.0;
+    let room = window.viewport_size().width - fixed;
+    let ellipsis = measure("\u{2026}", WORDMARK_SIZE);
+    let Some(context) = context else {
+        return (
+            truncate_start(&title, room, |text| measure(text, WORDMARK_SIZE)),
+            None,
+        );
+    };
+    let context = format!("\u{203a} {context}");
+    let context_room = room - BRAND_GAP;
+    let title_room = context_room - measure(&context, CONTEXT_SIZE);
+    if title_room >= ellipsis {
+        let title = truncate_start(&title, title_room, |text| measure(text, WORDMARK_SIZE));
+        return (title, Some(context));
+    }
+    let context = truncate_start(&context, context_room - ellipsis, |text| {
+        measure(text, CONTEXT_SIZE)
+    });
+    ("\u{2026}".to_string(), Some(context))
+}
+
 fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
     div()
         .id("topbar-rail-toggle")
         .debug_selector(|| "topbar-rail-toggle".to_string())
-        .w(px(28.0))
-        .h(px(28.0))
+        .w(BUTTON)
+        .h(BUTTON)
         .flex()
         .items_center()
         .justify_center()
@@ -99,34 +165,53 @@ fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
 /// breadcrumb used to duplicate this same fact and was dropped in favour of naming it once, here.
 /// The open Ledger's own file path lives at the status line's own bottom right instead
 /// (`crate::chrome::statusline`), not here.
-fn brand_mark(title: String, context: Option<String>, cx: &App) -> impl IntoElement {
+fn brand_mark(trail: Option<(String, Option<String>)>, cx: &App) -> impl IntoElement {
+    let selector = if trail.is_some() {
+        "topbar-brand"
+    } else {
+        "topbar-brand-alone"
+    };
     div()
+        .debug_selector(move || selector.to_string())
         .flex()
         .items_baseline()
-        .gap(px(6.0))
-        .text_size(px(13.5))
+        .gap(BRAND_GAP)
+        .min_w(px(0.0))
+        .whitespace_nowrap()
+        .text_size(WORDMARK_SIZE)
         .child(
             div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .font_weight(FontWeight::EXTRA_BOLD)
                 .child(lib_locale::msg::app_name()),
         )
-        .child(div().text_color(color::faint_text(cx)).child("|"))
-        .child(title)
-        .children(context.map(|context| {
-            div()
-                .text_size(px(12.0))
-                .text_color(color::faint_text(cx))
-                .child(format!("\u{203a} {context}"))
-        }))
+        .when_some(trail, |this, (title, context)| {
+            this.child(div().text_color(color::faint_text(cx)).child("|"))
+                .child(
+                    div()
+                        .debug_selector(|| "topbar-trail".to_string())
+                        .child(title),
+                )
+                .children(context.map(|context| {
+                    div()
+                        .text_size(CONTEXT_SIZE)
+                        .text_color(color::faint_text(cx))
+                        .child(context)
+                }))
+        })
 }
 
 fn sync_indicator(cx: &App) -> impl IntoElement {
     div()
-        .ml(px(6.0))
-        .text_size(px(12.0))
+        .ml(CLUSTER_MARGIN)
+        .whitespace_nowrap()
+        .text_size(CONTEXT_SIZE)
         .text_color(color::muted(cx))
-        // Representative content -- a real last-write timestamp lands with the sync ticket.
-        .child(crate::msg::desktop_topbar_synced("14:22"))
+        .child(sync_text())
+}
+
+// Representative content -- a real last-write timestamp lands with the sync ticket.
+fn sync_text() -> String {
+    crate::msg::desktop_topbar_synced("14:22")
 }
 
 /// Minimize/maximize/close, in that order -- the conventional cross-platform window-control
@@ -135,8 +220,8 @@ fn window_controls(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
-        .gap(px(4.0))
-        .ml(px(6.0))
+        .gap(CONTROLS_GAP)
+        .ml(CLUSTER_MARGIN)
         .child(window_control_button(
             "topbar-window-minimize",
             DesktopIcon::WindowMinimize,
@@ -168,8 +253,8 @@ fn window_control_button(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .w(px(28.0))
-        .h(px(28.0))
+        .w(BUTTON)
+        .h(BUTTON)
         .flex()
         .items_center()
         .justify_center()

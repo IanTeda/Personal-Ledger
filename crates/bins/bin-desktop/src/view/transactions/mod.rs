@@ -17,7 +17,7 @@ pub(crate) mod hints;
 mod import_step;
 pub mod snapshot;
 pub mod state;
-mod table;
+pub(crate) mod table;
 
 use std::rc::Rc;
 

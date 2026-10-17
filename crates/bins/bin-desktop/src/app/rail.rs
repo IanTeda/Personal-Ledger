@@ -4,15 +4,33 @@
 use gpui::{Context, Timer};
 
 use super::{Shell, TOOLTIP_REVEAL_DELAY};
-use crate::navigation::nav::Noun;
+use crate::{
+    chrome::{rail as chrome_rail, window_size::WindowSize},
+    navigation::nav::Noun,
+};
 
 impl Shell {
     /// The TopBar's own rail-toggle button (`Shell::render`'s `on_rail_toggle` closure) --
     /// same action as the `b` key, see [`Self::handle_key_down`].
-    pub(super) fn handle_toggle_rail(&mut self, cx: &mut Context<'_, Self>) {
-        self.nav.toggle_primary_rail();
-        self.chrome.collapsed_rail_tooltip = None;
+    pub(super) fn handle_toggle_rail(
+        &mut self,
+        window_size: WindowSize,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.toggle_rail(window_size, cx);
         cx.notify();
+    }
+
+    /// `b`, the TopBar's toggle and the status line's hint: flips the rail drawn at this Window
+    /// Size until the window crosses a Breakpoint. Clears any settled collapsed-rail tooltip, which
+    /// is meaningless once the rail that anchors it changes shape.
+    pub(super) fn toggle_rail(&mut self, window_size: WindowSize, cx: &gpui::App) {
+        self.chrome.rail_override = Some(chrome_rail::toggled(
+            window_size,
+            self.start_sidebar_minimised(cx),
+            self.chrome.rail_override,
+        ));
+        self.chrome.collapsed_rail_tooltip = None;
     }
 
     /// A collapsed primary-rail row's raw hover transition (`chrome::rail::primary::PrimaryRail`'s

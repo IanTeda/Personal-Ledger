@@ -9,6 +9,7 @@ use crate::{
     chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
+    chrome::window_size::WindowSize,
     navigation::nav::InputMode,
 };
 
@@ -24,7 +25,12 @@ impl Shell {
 
     /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
     /// and ignored in any other mode (where those keys aren't live either).
-    pub(super) fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<'_, Self>) {
+    pub(super) fn handle_hint_click(
+        &mut self,
+        action: HintAction,
+        window_size: WindowSize,
+        cx: &mut Context<'_, Self>,
+    ) {
         if self.nav.mode() != InputMode::Normal {
             return;
         }
@@ -34,10 +40,7 @@ impl Shell {
             HintAction::Command => self.open_palette(),
             HintAction::Search => self.start_search(cx),
             HintAction::Help => self.open_help(cx),
-            HintAction::ToggleRail => {
-                self.nav.toggle_primary_rail();
-                self.chrome.collapsed_rail_tooltip = None;
-            }
+            HintAction::ToggleRail => self.toggle_rail(window_size, cx),
         }
         cx.notify();
     }

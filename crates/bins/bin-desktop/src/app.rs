@@ -46,6 +46,7 @@ mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
+pub(crate) use key_dispatch::typed_char;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
@@ -90,11 +91,12 @@ use crate::{
     budgets,
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
+    chrome::{rail as chrome_rail, window_size::WindowSize},
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router::{self, Movement},
-    navigation::nav::NavState,
+    navigation::nav::{NavState, RailMode},
     settings::tracing::{
         TracingPage,
         log::{LogView, TracingLevel},
@@ -120,6 +122,9 @@ pub struct Shell {
     /// Drives the `View` zone's own scroll when it's focused (`Movement::*`) -- rails don't
     /// scroll at all yet (their content always fits; overflow is a future ticket's problem).
     view_scroll_handle: ScrollHandle,
+    /// The View area's sideways scroll, for a View wider than the space the Chrome leaves it
+    /// (ADR-0042). The Chrome itself never scrolls sideways.
+    view_x_scroll_handle: ScrollHandle,
     /// When this `g` was pressed -- `Some` while a completing chord (`gg`, or `g` + a jump
     /// key) is still possible. Cleared by the next keypress regardless of outcome, so an
     /// abandoned `g` never leaks into the one after it. Checked against
@@ -335,6 +340,7 @@ impl Shell {
             nav,
             focus_handle,
             view_scroll_handle: ScrollHandle::new(),
+            view_x_scroll_handle: ScrollHandle::new(),
             pending_g: None,
             view_mode: None,
             chrome: ChromeState {
@@ -347,6 +353,7 @@ impl Shell {
                 debug_toast_kind: 0,
                 palette: None,
                 collapsed_rail_tooltip: None,
+                rail_override: None,
                 hover_generation: 0,
                 dialog: None,
                 pending_colour_change: None,
@@ -440,6 +447,16 @@ impl Shell {
 
     pub fn set_explorer_filters(&mut self, filters: ExplorerFilters) {
         self.explorer_filters = filters;
+    }
+
+    /// The primary rail drawn at `window_size`: a `b` override made at that Window Size, or the
+    /// Window Size's own default.
+    pub fn primary_rail(&self, window_size: WindowSize, cx: &App) -> RailMode {
+        chrome_rail::rail_mode(
+            window_size,
+            self.start_sidebar_minimised(cx),
+            self.chrome.rail_override,
+        )
     }
 
     pub fn start_sidebar_minimised(&self, cx: &App) -> bool {

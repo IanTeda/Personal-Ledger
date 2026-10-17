@@ -11,6 +11,7 @@
 use gpui::{App, BoxShadow, div, point, prelude::*, px};
 
 use crate::{
+    chrome::window_size,
     navigation::command::{self, Command, Domain},
     theme::color,
 };
@@ -239,7 +240,7 @@ impl Palette {
     /// position `gpui` has no transform to recentre). Borrows `self` rather than consuming it
     /// (unlike the chrome's `RenderOnce` components) since `Shell` must keep this state past the
     /// render call that draws it.
-    pub fn render(&self, cx: &App) -> gpui::AnyElement {
+    pub fn render(&self, viewport_width: gpui::Pixels, cx: &App) -> gpui::AnyElement {
         let rows = self.rows();
         let match_count = rows
             .iter()
@@ -272,7 +273,8 @@ impl Palette {
             .justify_center()
             .child(
                 div()
-                    .w(WIDTH)
+                    .debug_selector(|| "palette".to_string())
+                    .w(window_size::overlay_width(WIDTH, viewport_width))
                     .flex()
                     .flex_col()
                     .bg(color::background(cx))

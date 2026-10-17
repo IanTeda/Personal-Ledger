@@ -530,6 +530,7 @@ impl Shell {
     pub(super) fn render_budgets_switcher(
         &self,
         entity: &gpui::Entity<Self>,
+        rail_mode: crate::navigation::nav::RailMode,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
         let Some(BudgetsDialog::Switcher(switcher)) = self.dialog::<BudgetsDialog>() else {
@@ -556,7 +557,7 @@ impl Shell {
             })
             .collect();
         // The page's left edge: past the primary rail and the context rail, inside its gutter.
-        let rail = match self.nav.primary_rail() {
+        let rail = match rail_mode {
             crate::navigation::nav::RailMode::Expanded => chrome_rail::primary::WIDTH,
             crate::navigation::nav::RailMode::Collapsed => chrome_rail::primary::COLLAPSED_WIDTH,
         };

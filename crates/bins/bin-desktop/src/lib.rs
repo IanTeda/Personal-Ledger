@@ -39,6 +39,7 @@ use gpui::{
 };
 
 use app::Shell;
+pub use chrome::window_size::WindowSize;
 pub use error::Error;
 use persistence::{PersistedState, WindowGeometry};
 
@@ -78,11 +79,6 @@ pub fn build_shell(
 ) -> Shell {
     let mut nav = navigation::nav::NavState::new();
     nav.set_noun(persisted.noun);
-    nav.set_primary_rail(if persisted.start_sidebar_minimised {
-        navigation::nav::RailMode::Collapsed
-    } else {
-        persisted.primary_rail
-    });
     let documents_state = (
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         documents::LibraryScope::from_id(
@@ -153,7 +149,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                 tracing::error!(%error, "Failed to register the bundled Archivo fonts");
             }
 
-            // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s
+            // `noun`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s
             // "State machine"); everything else in `NavState` starts fresh every launch, so there's
             // nothing else to seed here.
             let persisted = persistence::load();
@@ -177,6 +173,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
             let opened = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // Medium is the floor (ADR-0042): no layout is designed narrower.
+                    window_min_size: Some(chrome::window_size::MIN_WINDOW),
                     // Wayland app_id / X11 WM_CLASS -- without this the window reports an
                     // empty class, which leaves window-manager rules (workspace assignment,
                     // etc.) with nothing to match on. Mirrors the packager identifier in
@@ -240,7 +238,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                     let bounds = window.bounds();
                     let state = PersistedState {
                         noun: shell.nav().noun(),
-                        primary_rail: shell.nav().primary_rail(),
                         start_sidebar_minimised: shell.start_sidebar_minimised(cx),
                         settings_page: Some(shell.settings_page(cx).id().to_string()),
                         explorer_filters: shell.explorer_filters(),

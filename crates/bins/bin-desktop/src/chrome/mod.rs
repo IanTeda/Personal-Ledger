@@ -9,6 +9,8 @@ pub(crate) mod palette;
 pub(crate) mod rail;
 pub(crate) mod state;
 pub(crate) mod statusline;
+pub(crate) mod text_fit;
 pub(crate) mod toast;
 pub(crate) mod topbar;
 pub(crate) mod view_chrome;
+pub mod window_size;

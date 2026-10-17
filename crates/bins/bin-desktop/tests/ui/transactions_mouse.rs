@@ -10,9 +10,12 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{FocusZone, InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{FocusZone, InputMode, Noun},
+};
 use common::Harness;
-use gpui::TestAppContext;
+use gpui::{TestAppContext, point, px, size};
 
 fn on_transactions(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
@@ -228,4 +231,50 @@ fn clicking_in_the_page_gives_the_view_focus(app: &mut TestAppContext) {
     ui.click("import-row-3");
     assert_eq!(ui.read(|s| s.nav().focus()), FocusZone::View);
     assert_eq!(ui.import().expect("import is open").selected, 3);
+}
+
+#[gpui::test]
+fn at_large_the_table_fits_its_space(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.resize_to(WindowSize::Large);
+
+    let space = ui.bounds("view-x-scroll");
+    let content = ui.bounds("view-content");
+    assert_eq!(content.size.width, space.size.width);
+}
+
+#[gpui::test]
+fn at_the_medium_floor_the_table_scrolls_sideways_inside_the_view(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.resize(size(px(720.0), px(1040.0)));
+
+    let space = ui.bounds("view-x-scroll");
+    let content = ui.bounds("view-content");
+    assert!(
+        content.size.width > space.size.width,
+        "the table ({:?}) is wider than its space ({:?})",
+        content.size.width,
+        space.size.width
+    );
+    let toggle = ui.bounds("topbar-rail-toggle");
+    let status = ui.bounds("status-right");
+    let search = ui.bounds("transactions-search");
+
+    ui.scroll_at(search.center(), point(px(-120.0), px(0.0)));
+
+    assert!(
+        ui.bounds("view-content").origin.x < content.origin.x,
+        "the View scrolled sideways"
+    );
+    assert!(ui.bounds("transactions-search").origin.x < search.origin.x);
+    assert_eq!(
+        ui.bounds("topbar-rail-toggle"),
+        toggle,
+        "the top bar never scrolls"
+    );
+    assert_eq!(
+        ui.bounds("status-right"),
+        status,
+        "the status line never scrolls"
+    );
 }

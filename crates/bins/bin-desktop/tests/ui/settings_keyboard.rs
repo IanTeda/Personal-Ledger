@@ -1,9 +1,13 @@
 //! The Settings pages driven by keys: the index rail's paged navigation, focus stepping into and
-//! out of a page, the Categories list with its add, edit and delete dialogs, and the About page. State is read back from `Shell`.
+//! out of a page, the Categories list with its add, edit and delete dialogs, the About page, and the
+//! Medium drill-down with its page picker. State is read back from `Shell`.
 
 use super::common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{InputMode, Noun},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -143,4 +147,168 @@ fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) 
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.press("escape");
     assert_eq!(ui.settings().dialog, None);
+}
+
+const PAGES: [&str; 14] = [
+    "General",
+    "Display",
+    "Units",
+    "Institutions",
+    "Accounts",
+    "Categories",
+    "Tags",
+    "Payees",
+    "Documents",
+    "Inventory",
+    "SyncServer",
+    "DataBackup",
+    "Tracing",
+    "About",
+];
+
+/// The status line's hint keys, in order.
+fn hint_keys(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.status()
+        .map(|status| status.hints.into_iter().map(|(key, _)| key).collect())
+        .unwrap_or_default()
+}
+
+#[gpui::test]
+fn at_medium_g_s_lands_on_the_index_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+
+    assert!(ui.is_drawn("settings-index-page"));
+    assert!(
+        !ui.is_drawn("settings-index-General"),
+        "no docked index at Medium"
+    );
+    assert!(
+        ui.is_drawn("topbar-brand-alone"),
+        "the header drops its breadcrumb"
+    );
+    assert!(!ui.settings().page_focused);
+    assert_eq!(hint_keys(&mut ui), ["j/k", "l/enter"]);
+}
+
+#[gpui::test]
+fn at_medium_enter_opens_a_page_in_the_index_s_place_and_esc_goes_back(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s j enter");
+
+    let page = ui.settings();
+    assert_eq!(page.page, "Display");
+    assert!(page.page_focused);
+    assert!(ui.is_drawn("settings-crumb-index"));
+    let hints = hint_keys(&mut ui);
+    assert!(hints.ends_with(&["[/]".to_string(), "p".to_string(), "esc".to_string()]));
+
+    ui.press("escape");
+    assert!(ui.is_drawn("settings-index-page"));
+    assert_eq!(ui.settings().page, "Display", "the page stays selected");
+    assert!(!ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn at_medium_brackets_step_through_every_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter");
+
+    for (index, page) in PAGES.into_iter().enumerate() {
+        if index > 0 {
+            ui.press("]");
+        }
+        let settings = ui.settings();
+        assert_eq!(settings.page, page);
+        assert!(
+            settings.page_focused,
+            "{page} opens even with nothing to focus"
+        );
+        assert!(ui.is_drawn("settings-page"), "{page} renders at Medium");
+    }
+    ui.press("]");
+    assert_eq!(ui.settings().page, "About", "stops at the last page");
+    ui.press("[ [");
+    assert_eq!(ui.settings().page, "DataBackup");
+}
+
+#[gpui::test]
+fn at_medium_p_opens_the_picker_and_enter_jumps_to_the_chosen_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s j enter p");
+
+    assert_eq!(mode(&mut ui), InputMode::Filter);
+    let settings = ui.settings();
+    assert_eq!(settings.picker_pages, PAGES);
+    assert_eq!(settings.picker_chosen.as_deref(), Some("Display"));
+
+    ui.press("t a");
+    let settings = ui.settings();
+    assert_eq!(settings.picker_query.as_deref(), Some("ta"));
+    assert_eq!(settings.picker_pages, ["Tags", "DataBackup"]);
+    ui.press("down enter");
+
+    let settings = ui.settings();
+    assert_eq!(settings.page, "DataBackup");
+    assert!(settings.page_focused);
+    assert_eq!(settings.picker_query, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn at_medium_escape_closes_the_picker_and_leaves_the_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s j enter p");
+
+    ui.press("escape");
+
+    let settings = ui.settings();
+    assert_eq!(settings.picker_query, None);
+    assert_eq!(settings.page, "Display");
+    assert!(settings.page_focused);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn leaving_medium_closes_the_picker_and_docks_the_index(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s j enter p");
+
+    ui.resize_to(WindowSize::Large);
+
+    assert_eq!(ui.settings().picker_query, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+    assert!(ui.is_drawn("settings-index-Display"));
+    assert!(ui.is_drawn("topbar-trail"));
+}
+
+#[gpui::test]
+fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+        ui.press("g s");
+
+        for (index, page) in PAGES.into_iter().enumerate() {
+            if index > 0 {
+                ui.press("j");
+            }
+            assert_eq!(ui.settings().page, page);
+            assert!(ui.is_drawn(&format!("settings-index-{page}")));
+            assert!(
+                ui.bounds("settings-page").size.width <= gpui::px(840.0),
+                "{page} caps its content at {window_size:?}"
+            );
+        }
+        // `[`, `]` and `p` are Medium's; here they leave the page alone.
+        ui.press("l ] p");
+        assert_eq!(ui.settings().page, "About");
+        assert_eq!(ui.settings().picker_query, None);
+    }
 }

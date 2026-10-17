@@ -28,6 +28,7 @@ impl Shell {
     /// (`on_enter`), so it can reset its own scroll and focus.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
+        self.view_x_scroll_handle.set_offset(gpui::Point::default());
         self.active_view_entity(cx).on_enter(cx);
     }
 

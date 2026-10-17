@@ -148,12 +148,10 @@ pub enum FocusZone {
     View,
 }
 
-/// The primary rail's own two drawn states (option 1a vs. its collapsed 1c state).
-/// `RailMode::default()` is `Expanded`, the accepted design's default. Serializable -- see
-/// `Noun`'s own note above.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// The primary rail's own two drawn states (option 1a vs. its collapsed 1c state). Which one is
+/// drawn follows the Window Size, not `NavState` (`crate::chrome::rail::RailOverride`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RailMode {
-    #[default]
     Expanded,
     Collapsed,
 }
@@ -206,7 +204,6 @@ pub struct NavState {
     noun: Noun,
     context: ContextSelection,
     focus: FocusZone,
-    primary_rail: RailMode,
     mode: InputMode,
     /// Rule 6: the focus zone `exit_mode` restores -- `Some` only while `mode` isn't
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
@@ -231,7 +228,6 @@ impl Default for NavState {
             noun: Noun::default(),
             context: Noun::default().has_context_entities().then_some(0),
             focus: FocusZone::default(),
-            primary_rail: RailMode::default(),
             mode: InputMode::default(),
             pre_mode_focus: None,
             primary_highlight: Noun::default(),
@@ -255,10 +251,6 @@ impl NavState {
 
     pub fn focus(&self) -> FocusZone {
         self.focus
-    }
-
-    pub fn primary_rail(&self) -> RailMode {
-        self.primary_rail
     }
 
     pub fn mode(&self) -> InputMode {
@@ -356,19 +348,6 @@ impl NavState {
         }
     }
 
-    /// Rule 5: collapsing/expanding the primary rail doesn't touch focus or context -- true
-    /// here simply because this method never mutates either field.
-    pub fn set_primary_rail(&mut self, mode: RailMode) {
-        self.primary_rail = mode;
-    }
-
-    pub fn toggle_primary_rail(&mut self) {
-        self.primary_rail = match self.primary_rail {
-            RailMode::Expanded => RailMode::Collapsed,
-            RailMode::Collapsed => RailMode::Expanded,
-        };
-    }
-
     /// Rule 6 (entry half): mode transitions pre-empt zone key handling. Entering a
     /// non-`Normal` mode from `Normal` remembers the current focus zone so `exit_mode` can
     /// restore it; entering a mode while already in a (different) non-`Normal` mode leaves
@@ -430,7 +409,6 @@ mod tests {
         // Dashboard has context entities (its account roll-call) -- rule 1's "first entity".
         assert_eq!(nav.context(), Some(0));
         assert_eq!(nav.focus(), FocusZone::View);
-        assert_eq!(nav.primary_rail(), RailMode::Expanded);
         assert_eq!(nav.mode(), InputMode::Normal);
     }
 
@@ -591,24 +569,6 @@ mod tests {
             );
             assert_eq!(noun.has_context_entities(), expected, "{noun:?}");
         }
-    }
-
-    // Rule 5
-    #[test]
-    fn toggling_primary_rail_preserves_focus_and_context() {
-        let mut nav = NavState::new();
-        nav.set_noun(Noun::Budgets);
-        nav.set_focus(FocusZone::ContextRail);
-        nav.set_context(Some(2));
-
-        nav.toggle_primary_rail();
-
-        assert_eq!(nav.primary_rail(), RailMode::Collapsed);
-        assert_eq!(nav.focus(), FocusZone::ContextRail);
-        assert_eq!(nav.context(), Some(2));
-
-        nav.toggle_primary_rail();
-        assert_eq!(nav.primary_rail(), RailMode::Expanded);
     }
 
     // Rule 6

@@ -1,4 +1,4 @@
-//! Restart persistence for the shell's `noun`, `primary_rail`, and window geometry --
+//! Restart persistence for the shell's `noun`, Settings page and window geometry --
 //! everything else in `NavState` (and the window's own transient state) resets on every
 //! launch, per `docs/ux/desktop-mockups/README.md`'s "Persistence" note. A small dedicated JSON file,
 //! not `lib_config`'s layered INI config: that config is for static, user-editable settings,
@@ -11,10 +11,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    navigation::explorer::ExplorerFilters,
-    navigation::nav::{Noun, RailMode},
-};
+use crate::{navigation::explorer::ExplorerFilters, navigation::nav::Noun};
 
 /// Directory name under the platform's state directory, mirroring `lib_config`'s own
 /// `APPLICATION_NAME` convention (`crates/libs/lib-config/src/ledger.rs`).
@@ -34,14 +31,15 @@ pub struct WindowGeometry {
     pub height: f32,
 }
 
-/// The subset of shell state that survives restart. `Default` (via `Noun`/`RailMode`'s own
-/// defaults and `window: None`) is "nothing persisted yet".
+/// The subset of shell state that survives restart. `Default` (via `Noun`'s own default and
+/// `window: None`) is "nothing persisted yet". The primary rail is not here: it follows the
+/// Window Size, and a `b` override lasts only until the window crosses a Breakpoint (ADR-0042),
+/// so an older state file's `primary_rail` is read and ignored.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct PersistedState {
     pub noun: Noun,
-    pub primary_rail: RailMode,
-    /// The Display section's "Start Sidebar minimised" toggle: when set, every launch opens with
-    /// the primary rail collapsed regardless of [`Self::primary_rail`].
+    /// The Display section's "Start Sidebar minimised" toggle: when set, the primary rail is
+    /// collapsed by default at Large and X-Large.
     #[serde(default)]
     pub start_sidebar_minimised: bool,
     /// The Settings page last visited, as [`crate::settings::SettingsPage::id`]. A stale or
@@ -97,7 +95,7 @@ const REMOVED_NOUNS: [(&str, &str); 4] = [
 ];
 
 /// Rewrites a persisted removed `noun` to `Settings` on its matching page, so an old state file
-/// still restores the rest of the session (window geometry, rail mode) instead of resetting to
+/// still restores the rest of the session (window geometry) instead of resetting to
 /// the default. A state that already names a Settings page keeps it.
 fn migrate_removed_noun(mut state: serde_json::Value) -> serde_json::Value {
     let Some(object) = state.as_object_mut() else {
@@ -174,7 +172,6 @@ mod tests {
         let path = dir.path().join("nested").join(STATE_FILE_NAME);
         let state = PersistedState {
             noun: Noun::Cash,
-            primary_rail: RailMode::Collapsed,
             start_sidebar_minimised: true,
             settings_page: Some("tags".to_string()),
             explorer_filters: ExplorerFilters {
@@ -204,7 +201,6 @@ mod tests {
         let path = dir.path().join(STATE_FILE_NAME);
         let state = PersistedState {
             noun: Noun::Settings,
-            primary_rail: RailMode::Expanded,
             start_sidebar_minimised: false,
             settings_page: None,
             explorer_filters: ExplorerFilters::default(),
@@ -250,7 +246,6 @@ mod tests {
 
         assert_eq!(loaded.noun, Noun::Settings);
         assert_eq!(loaded.settings_page.as_deref(), Some("payees"));
-        assert_eq!(loaded.primary_rail, RailMode::Collapsed);
         assert!(loaded.window.is_some());
     }
 }

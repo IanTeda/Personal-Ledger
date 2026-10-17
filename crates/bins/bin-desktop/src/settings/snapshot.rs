@@ -5,7 +5,7 @@
 use gpui::App;
 
 use super::state::SettingsView;
-use crate::settings::SettingsFocus;
+use crate::settings::{SettingsFocus, picker::PagePicker};
 
 /// The Settings shell's state: the page on show and the dialog open over it. Each page's own state
 /// is its own snapshot (`settings_<page>_snapshot`), so a change to one domain edits one struct.
@@ -26,6 +26,11 @@ pub struct SettingsSnapshot {
     pub dialog_parent: Option<String>,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
+    /// The Medium page picker's filter, while it is open.
+    pub picker_query: Option<String>,
+    /// The pages the open picker lists, and the one `enter` opens.
+    pub picker_pages: Vec<String>,
+    pub picker_chosen: Option<String>,
 }
 
 /// The Display page: the focused control above the Colour Theme grid and the focused card, then
@@ -53,6 +58,21 @@ impl SettingsView {
             dialog_confirm: None,
             dialog_parent: None,
             status_message: None,
+            picker_query: self.picker().map(|picker| picker.query().to_string()),
+            picker_pages: self
+                .picker()
+                .map(|picker| {
+                    picker
+                        .matches()
+                        .into_iter()
+                        .map(|page| format!("{page:?}"))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            picker_chosen: self
+                .picker()
+                .and_then(PagePicker::chosen)
+                .map(|page| format!("{page:?}")),
         }
     }
 

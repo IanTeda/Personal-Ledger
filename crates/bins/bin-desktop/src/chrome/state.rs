@@ -1,5 +1,5 @@
 //! Chrome's own state: the frame's status message, the Toast stack and its keybindings, the
-//! command palette, the open Dialog and the collapsed rail's hover tooltip. `Shell` owns one of
+//! command palette, the open Dialog, the rail's `b` override and the collapsed rail's hover tooltip. `Shell` owns one of
 //! these as its `chrome` field; none of it is View state, so Chrome does not become an Entity
 //! (ADR-0032).
 
@@ -7,7 +7,7 @@ use chrono::{DateTime, Local};
 use lib_toast::Toasts;
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, palette::Palette},
+    chrome::{dialog_host::OpenDialog, palette::Palette, rail::RailOverride},
     navigation::nav::Noun,
     theme::colours::ColourChange,
 };
@@ -38,6 +38,9 @@ pub(crate) struct ChromeState {
     /// yet, or the rail isn't collapsed (see `chrome::rail::primary::PrimaryRail`, which only wires
     /// hover at all in its collapsed rendering).
     pub(crate) collapsed_rail_tooltip: Option<Noun>,
+    /// The rail `b` last set, with the Window Size it was set at; `Shell::render` drops it once
+    /// the window is drawn at another (ADR-0042).
+    pub(crate) rail_override: Option<RailOverride>,
     /// Bumped on every hover transition; a pending reveal timer checks this against the value
     /// it captured before applying, so hovering a second row (or leaving the rail entirely)
     /// before the first row's delay elapses can't reveal the wrong tooltip.

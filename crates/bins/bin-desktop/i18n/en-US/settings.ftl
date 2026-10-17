@@ -19,6 +19,29 @@ desktop-display-locale-hint = Set with the locale setting or the --locale flag, 
 
 desktop-settings-index-footer = preferences sync · configuration local
 
+## Settings at Medium (DESKTOP-119, DESKTOP-120): the index page's count and each page's one-line
+## description, and the page picker's filter prompt.
+
+desktop-settings-index-count = { $count ->
+    [one] { $count } page
+   *[other] { $count } pages
+}
+desktop-settings-description-general = ledger name, owner and start of the financial year
+desktop-settings-description-display = date format, separators, row density, colour theme
+desktop-settings-description-units = currencies and other units, and the default
+desktop-settings-description-institutions = banks, brokers and lenders
+desktop-settings-description-accounts = every account, its institution and its unit
+desktop-settings-description-categories = income and expense categories
+desktop-settings-description-tags = free labels across transactions
+desktop-settings-description-payees = who you pay and who pays you
+desktop-settings-description-documents = document types and where files are kept
+desktop-settings-description-inventory = item types and depreciation
+desktop-settings-description-sync-server = server address, sign-in, interval
+desktop-settings-description-data-backup = backups, export and the ledger file
+desktop-settings-description-tracing = log level and the live log
+desktop-settings-description-about = version, licences and credits
+desktop-settings-picker-filter = type to filter
+
 desktop-settings-section-general = General
 desktop-settings-section-display = Display
 desktop-settings-section-units = Units
