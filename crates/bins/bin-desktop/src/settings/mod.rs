@@ -314,7 +314,8 @@ fn crumb_heading(
                         .child("\u{25be}"),
                 ),
         )
-        .children(picker.map(|picker| page_picker(picker, on_pick, cx)))
+        // Deferred so it paints after the page below it; otherwise the page draws over the menu.
+        .children(picker.map(|picker| gpui::deferred(page_picker(picker, on_pick, cx))))
 }
 
 /// The picker under the page name: its filter, then the matching pages in index order.
