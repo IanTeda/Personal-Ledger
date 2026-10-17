@@ -154,7 +154,7 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-102 | 20c | `desktop-mockups/20-payees/Payees.dc.html` |
 | DESKTOP-103 | 20d | `desktop-mockups/20-payees/Payees.dc.html` |
 | DESKTOP-104 | 20e | `desktop-mockups/20-payees/Payees.dc.html` |
-| DESKTOP-105 | — | `desktop-mockups/01-shell/Shell.dc.html` |
+| DESKTOP-105 | — | retired: Medium baseline with the docked index, superseded by the Medium Settings navigation, on branch `prototype/692-window-sizes` |
 | DESKTOP-106 | — | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-107 | — | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-108 | — | retired: Medium Settings navigation option not picked, on branch `prototype/692-window-sizes` |

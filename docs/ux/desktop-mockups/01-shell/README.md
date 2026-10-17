@@ -1,6 +1,6 @@
 # Handoff: Desktop Chrome & Navigation
 
-> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-105 to DESKTOP-118. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-106, DESKTOP-107 and DESKTOP-116 to DESKTOP-121. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
@@ -12,7 +12,7 @@ This package contains the design for **Personal Ledger's application shell** —
 **High-fidelity.** Final colors, typography, exact spacing, and interaction states. Recreate faithfully; translate HTML structure into GPUI idioms.
 
 ## Frame
-Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Window Size frames (turns 2–4) are drawn at each Window Size's reference frame; see [Window Sizes](#window-sizes). The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
+Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Window Size frames (turns 2 and 3) are drawn at each Window Size's reference frame; see [Window Sizes](#window-sizes). The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
 
 ---
 
@@ -85,7 +85,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 
 ## Window Sizes
 
-The Chrome arranges itself by the Window Size, picked from the window's width alone ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md), [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)). The Chrome is designed Medium-first. Turns 2–4 of `Shell.dc.html` draw it; every card's label starts with its Window Size and frame.
+The Chrome arranges itself by the Window Size, picked from the window's width alone ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md), [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)). The Chrome is designed Medium-first. Turns 2 and 3 of `Shell.dc.html` draw it, Medium first; every card's label starts with its Window Size and frame.
 
 | Window Size | Width | Reference frame | Primary rail | Settings index | Ledger path |
 | --- | --- | --- | --- | --- | --- |
@@ -93,25 +93,7 @@ The Chrome arranges itself by the Window Size, picked from the window's width al
 | Large | 1200 – 1599 | 1280 × 800 | expanded, 206px | docked, 232px | `~/documents/ledgers/teda.pldb` |
 | X-Large | ≥ 1600 | 1920 × 1080 | expanded, 206px | docked, 232px | `~/documents/ledgers/teda.pldb` |
 
-### Reference frames (turn 2)
-
-- **DESKTOP-105 · Medium:** the baseline, today's Chrome with only the icon rail applied. The docked 232px index leaves the page 676px, so the Display preview stacks under the form. At Medium Settings uses the drill-down below instead.
-- **DESKTOP-106 · Large:** today's Chrome, unchanged.
-- **DESKTOP-107 · X-Large:** the same Chrome as Large. The Settings page caps its content at 840px and leaves the rest of the View empty.
-
-### Chrome at each Window Size (turn 4)
-
-- **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
-- **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
-- **Header breadcrumb:** truncates from the left with `…`, so the leaf always shows (DESKTOP-116). On Settings at Medium the header shows no breadcrumb: the page heading is the trail (turn 3). The wordmark, sync status and window controls never shrink.
-- **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
-- **Dialogs:** stay 420px wide at every Window Size.
-- **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
-- **Toasts:** at most 420px, or the window width minus 16px each side when that is narrower. At the 720px floor that is 688px, so a toast never actually shrinks; the rule only guards against a smaller minimum later (DESKTOP-116).
-- **Horizontal scroll:** a View whose content is wider than the space the Chrome leaves it shows a horizontal scroll bar at the View's bottom edge and scrolls inside the View. The page title, header, rails and status line never scroll sideways (DESKTOP-118).
-- **X-Large:** a View may dock a detail pane and decides that per View. Settings docks none.
-
-### Medium Settings navigation (turn 3)
+### Medium Settings navigation (turn 2)
 
 At Medium, Settings is a drill-down with the page picker in a breadcrumb page heading. Large and X-Large keep the docked 232px index. Decided in [#692](https://github.com/IanTeda/Personal-Ledger/issues/692).
 
@@ -129,6 +111,23 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 - **Chrome header:** on Settings at Medium the header shows the wordmark and no breadcrumb, so the trail is never shown twice.
 
 **Considered:** a drawer over the View, a plain drill-down (back only, two steps between pages), a header picker alone (`Display ▾` with `[`/`]` chips) and a narrow 120px docked index of icons and short labels. Each was drawn at 960 and 720 (DESKTOP-108 to DESKTOP-115, retired). The picked design takes the drill-down's index page, which has room to explain each page, and the picker's direct jumps, so moving between two pages is one step. The full prototype, every option and its generator, is on branch [`prototype/692-window-sizes`](https://github.com/IanTeda/Personal-Ledger/tree/prototype/692-window-sizes).
+
+### Large and X-Large (turn 2)
+
+- **DESKTOP-106 · Large:** today's Chrome, unchanged.
+- **DESKTOP-107 · X-Large:** the same Chrome as Large. The Settings page caps its content at 840px and leaves the rest of the View empty.
+
+### Chrome at each Window Size (turn 3)
+
+- **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
+- **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
+- **Header breadcrumb:** truncates from the left with `…`, so the leaf always shows (DESKTOP-116). On Settings at Medium the header shows no breadcrumb: the page heading is the trail (turn 2). The wordmark, sync status and window controls never shrink.
+- **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
+- **Dialogs:** stay 420px wide at every Window Size.
+- **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
+- **Toasts:** at most 420px, or the window width minus 16px each side when that is narrower. At the 720px floor that is 688px, so a toast never actually shrinks; the rule only guards against a smaller minimum later (DESKTOP-116).
+- **Horizontal scroll:** a View whose content is wider than the space the Chrome leaves it shows a horizontal scroll bar at the View's bottom edge and scrolls inside the View. The page title, header, rails and status line never scroll sideways (DESKTOP-118).
+- **X-Large:** a View may dock a detail pane and decides that per View. Settings docks none.
 
 ---
 
@@ -291,5 +290,5 @@ fileExplorer
 
 ## Changes (17 October 2026)
 
-- **Window Sizes:** turns 2–4 draw the Chrome at Medium, Large and X-Large (DESKTOP-105 to DESKTOP-107, DESKTOP-116 to DESKTOP-121). See [Window Sizes](#window-sizes).
-- **Medium Settings navigation:** a drill-down index with a `Settings › <Page> ▾` page heading, picked in #692.
+- **Window Sizes:** turns 2 and 3 draw the Chrome at Medium, Large and X-Large (DESKTOP-106, DESKTOP-107, DESKTOP-116 to DESKTOP-121), Medium first. See [Window Sizes](#window-sizes).
+- **Medium Settings navigation:** a drill-down index with a `Settings › <Page> ▾` page heading, picked in #692. DESKTOP-105, the Medium baseline with the docked index, is retired.
