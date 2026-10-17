@@ -52,4 +52,6 @@ pub(crate) struct ChromeState {
     /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
     /// the caller once it has an `App` (the key handling runs without one).
     pub(crate) pending_colour_change: Option<ColourChange>,
+    /// The top bar's recent-actions list below Undo is open.
+    pub(crate) undo_menu_open: bool,
 }

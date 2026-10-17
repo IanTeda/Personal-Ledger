@@ -216,7 +216,15 @@ pub struct NavState {
     /// a previous session. Rails render identically either way (Implementation note 2); only
     /// the main pane's `Dashboard` arm branches on it (`render_view` in `app/render.rs`).
     ledger_open: bool,
+    /// The top bar's Back history: the nouns left by `set_noun`, most recent last, capped at
+    /// `HISTORY_LIMIT`. A noun change clears `forward`, the way a browser's does.
+    back: Vec<Noun>,
+    /// The nouns `go_back` stepped away from, most recent last, for `go_forward` to return to.
+    forward: Vec<Noun>,
 }
+
+/// How far Back reaches: enough for any session's wandering without growing for ever.
+const HISTORY_LIMIT: usize = 50;
 
 impl Default for NavState {
     /// Every launch's starting state: `Dashboard`, context at its first entity (rule 1 --
@@ -232,6 +240,8 @@ impl Default for NavState {
             pre_mode_focus: None,
             primary_highlight: Noun::default(),
             ledger_open: false,
+            back: Vec::new(),
+            forward: Vec::new(),
         }
     }
 }
@@ -239,6 +249,14 @@ impl Default for NavState {
 impl NavState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A launch's starting state at a restored `noun`, with no Back history: the restored View
+    /// is where the session starts, not a step taken from the Dashboard.
+    pub fn starting_at(noun: Noun) -> Self {
+        let mut nav = Self::default();
+        nav.show_noun(noun);
+        nav
     }
 
     pub fn noun(&self) -> Noun {
@@ -269,6 +287,47 @@ impl NavState {
     /// `None` for a noun with none) and moves focus to `View`. Also syncs `primary_highlight`
     /// -- see the struct doc's "Primary rail highlight vs. selection" note.
     pub fn set_noun(&mut self, noun: Noun) {
+        if noun != self.noun {
+            if self.back.len() == HISTORY_LIMIT {
+                self.back.remove(0);
+            }
+            self.back.push(self.noun);
+            self.forward.clear();
+        }
+        self.show_noun(noun);
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        !self.back.is_empty()
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        !self.forward.is_empty()
+    }
+
+    /// The top bar's Back: returns to the noun before the last `set_noun`, with rule 1's
+    /// resets. `false` when there's nowhere to go back to.
+    pub fn go_back(&mut self) -> bool {
+        let Some(noun) = self.back.pop() else {
+            return false;
+        };
+        self.forward.push(self.noun);
+        self.show_noun(noun);
+        true
+    }
+
+    /// The top bar's Forward: undoes the last `go_back`. `false` once nothing is ahead.
+    pub fn go_forward(&mut self) -> bool {
+        let Some(noun) = self.forward.pop() else {
+            return false;
+        };
+        self.back.push(self.noun);
+        self.show_noun(noun);
+        true
+    }
+
+    /// Rule 1's resets on showing `noun`, without touching the Back/Forward history.
+    fn show_noun(&mut self, noun: Noun) {
         self.noun = noun;
         self.primary_highlight = noun;
         self.context = noun.has_context_entities().then_some(0);
@@ -664,5 +723,59 @@ mod tests {
         let mut nav = NavState::new();
         nav.set_noun(Noun::Reports);
         assert_eq!(nav.primary_highlight(), Noun::Reports);
+    }
+
+    #[test]
+    fn set_noun_records_the_noun_it_left_for_back() {
+        let mut nav = NavState::new();
+        assert!(!nav.can_go_back());
+
+        nav.set_noun(Noun::Budgets);
+        nav.set_noun(Noun::Budgets);
+        nav.set_noun(Noun::Bills);
+
+        assert!(nav.go_back());
+        assert_eq!(nav.noun(), Noun::Budgets);
+        assert!(nav.go_back());
+        assert_eq!(nav.noun(), Noun::Dashboard);
+        assert!(!nav.go_back(), "a repeated noun is not a step");
+    }
+
+    #[test]
+    fn go_forward_retraces_back_until_a_new_noun_clears_it() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Budgets);
+        nav.set_noun(Noun::Bills);
+        nav.go_back();
+        nav.go_back();
+
+        assert!(nav.go_forward());
+        assert_eq!(nav.noun(), Noun::Budgets);
+        assert_eq!(nav.context(), Some(0), "rule 1's resets still apply");
+
+        nav.set_noun(Noun::Settings);
+        assert!(!nav.can_go_forward());
+        assert!(!nav.go_forward());
+    }
+
+    #[test]
+    fn back_history_is_capped() {
+        let mut nav = NavState::new();
+        for _ in 0..HISTORY_LIMIT {
+            nav.set_noun(Noun::Budgets);
+            nav.set_noun(Noun::Bills);
+        }
+        let mut steps = 0;
+        while nav.go_back() {
+            steps += 1;
+        }
+        assert_eq!(steps, HISTORY_LIMIT);
+    }
+
+    #[test]
+    fn starting_at_a_restored_noun_has_no_history() {
+        let nav = NavState::starting_at(Noun::Reports);
+        assert_eq!(nav.noun(), Noun::Reports);
+        assert!(!nav.can_go_back());
     }
 }

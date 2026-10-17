@@ -260,3 +260,16 @@ fn help_swallows_keys_and_a_second_question_mark_closes_it(app: &mut TestAppCont
     ui.press("?");
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
+
+#[gpui::test]
+fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g l");
+    ui.click("topbar-undo-menu");
+
+    ui.press("escape");
+
+    assert!(!ui.read(|s| s.undo_menu_open()));
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}

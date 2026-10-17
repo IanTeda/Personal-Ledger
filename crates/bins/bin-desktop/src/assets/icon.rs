@@ -35,6 +35,14 @@ pub enum DesktopIcon {
     WindowMaximize,
     /// TopBar window controls (issue #162) -- quits the app.
     WindowClose,
+    /// The top bar's Back, before the wordmark.
+    NavBack,
+    /// The top bar's Forward, beside Back.
+    NavForward,
+    /// The top bar's Undo, after the wordmark.
+    Undo,
+    /// The caret opening the top bar's recent-actions list beside Undo.
+    UndoMenu,
     /// The "1e" file explorer's row icon for a folder (issue #165).
     Folder,
     /// The "1e" file explorer's row icon for any non-folder entry, openable or not.
@@ -68,6 +76,10 @@ impl DesktopIcon {
             Self::WindowMinimize => "icons/minus.svg",
             Self::WindowMaximize => "icons/square.svg",
             Self::WindowClose => "icons/x.svg",
+            Self::NavBack => "icons/chevron-left.svg",
+            Self::NavForward => "icons/chevron-right.svg",
+            Self::Undo => "icons/undo-2.svg",
+            Self::UndoMenu => "icons/chevron-down.svg",
             Self::Folder => "icons/folder.svg",
             Self::File => "icons/file.svg",
         }

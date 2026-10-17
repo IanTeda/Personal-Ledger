@@ -52,6 +52,11 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("minus"),
     icon!("square"),
     icon!("x"),
+    // The top bar's Back/Forward and Undo, from the same bundled Lucide set.
+    icon!("chevron-left"),
+    icon!("chevron-right"),
+    icon!("undo-2"),
+    icon!("chevron-down"),
     // The "1e" file explorer's row icons (issue #165) -- not in the handoff's own "Assets"
     // table either (its markup embeds hand-drawn 16x16 paths, not Lucide names); these are the
     // genuine Lucide `folder`/`file` icons, stroke-normalized the same as every other bundled

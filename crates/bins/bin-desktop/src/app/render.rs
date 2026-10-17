@@ -98,6 +98,12 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_toggle_rail(window_size, cx));
             })
         };
+        let on_topbar_action: topbar::OnTopBarAction = {
+            let entity = entity.clone();
+            Rc::new(move |action, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_topbar_action(action, cx));
+            })
+        };
         let on_row_hover: chrome_rail::primary::OnRowHover = {
             let entity = entity.clone();
             Rc::new(move |noun, hovered, _window, cx| {
@@ -583,7 +589,13 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(TopBar::new(on_rail_toggle))
+                    .child(TopBar::new(
+                        on_rail_toggle,
+                        on_topbar_action,
+                        self.nav.can_go_back(),
+                        self.nav.can_go_forward(),
+                        self.chrome.undo_menu_open,
+                    ))
                     .child(
                         div()
                             .flex_1()

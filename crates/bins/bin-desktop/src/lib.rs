@@ -77,8 +77,7 @@ pub fn build_shell(
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
-    let mut nav = navigation::nav::NavState::new();
-    nav.set_noun(persisted.noun);
+    let nav = navigation::nav::NavState::starting_at(persisted.noun);
     let documents_state = (
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         documents::LibraryScope::from_id(

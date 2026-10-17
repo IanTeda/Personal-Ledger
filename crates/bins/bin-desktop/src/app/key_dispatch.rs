@@ -69,6 +69,12 @@ impl Shell {
         let shift = keystroke.modifiers.shift;
         let key = keystroke.key.as_str();
 
+        // The top bar's recent-actions list is a mouse affordance; Esc closes it and nothing else.
+        if self.chrome.undo_menu_open && key == "escape" {
+            self.chrome.undo_menu_open = false;
+            return true;
+        }
+
         let pending_g_active = self
             .pending_g
             .take()

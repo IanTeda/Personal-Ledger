@@ -34,6 +34,7 @@ mod dialogs;
 mod documents_ui;
 mod explorer;
 mod focus;
+mod history;
 mod key_dispatch;
 mod log_feed;
 mod rail;
@@ -356,6 +357,7 @@ impl Shell {
                 hover_generation: 0,
                 dialog: None,
                 pending_colour_change: None,
+                undo_menu_open: false,
             },
             command_history: Vec::new(),
             file_explorer: None,
