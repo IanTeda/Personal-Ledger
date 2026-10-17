@@ -8,7 +8,7 @@ Each Settings page moves into its own sub deck, a folder named after the page's 
 
 | Page | Sub deck | Cards |
 | --- | --- | --- |
-| Display | [`display/`](display/README.md) | DESKTOP-129, 130, 131, 132 and the v5 DESKTOP-064 (16f) |
+| Display | [`display/`](display/README.md) | DESKTOP-129 to 133 and the v5 DESKTOP-064 (16f) |
 
 The rest of the pages get their sub decks as they come up, one ticket each.
 
@@ -132,7 +132,7 @@ The v5 frames are **1280 × 800**, and Window Size cards use their reference fra
 - **DESKTOP-127 · Large (1280 × 800):** expanded rail (206px) and the docked 232px Settings index with General selected. Heading **General** alone. The two columns take 760px of the 782px View.
 - **DESKTOP-128 · X-Large (1920 × 1080):** the same Chrome as Large. The content stops at 840px and the rest of the View stays empty.
 
-**16f at each Window Size** (DESKTOP-129–131) is in the [`display/`](display/README.md) sub deck.
+**16f at each Window Size** (DESKTOP-129–133) is in the [`display/`](display/README.md) sub deck.
 
 **16g at each Window Size.** Three cards after 16g draw the Units page in the Window Size Chrome from `../01-shell/README.md#window-sizes`. The page content, both tables and their columns are 16g's, capped at 840px; only the Chrome and the heading change.
 
