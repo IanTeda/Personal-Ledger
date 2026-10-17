@@ -3,6 +3,7 @@
 //! line and method tag, then the archived ones dimmed, with `+ New budget` and `Manage budgets…`
 //! in the footer. `Shell` owns the state (`budgets::Switcher`) and every keystroke.
 
+use lib_core::BudgetId;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};
@@ -18,11 +19,11 @@ use crate::{
 const WIDTH: Pixels = px(380.0);
 
 /// Called with the clicked Budget's id.
-pub type OnBudgetClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+pub type OnBudgetClick = Rc<dyn Fn(BudgetId, &mut Window, &mut App)>;
 
 /// One Budget, already worded.
 pub struct SwitcherRow {
-    pub id: u32,
+    pub id: BudgetId,
     pub name: String,
     pub is_default: bool,
     /// The Budget the page is showing: its row carries the check.

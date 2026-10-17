@@ -687,11 +687,12 @@ mod tests {
 
     use super::*;
     use crate::bills::EntryId;
+    use lib_core::BillPlanId;
 
     fn row(status: BillStatus, preview: bool) -> ScheduleRow {
         ScheduleRow {
             id: EntryId {
-                plan_id: 1,
+                plan_id: BillPlanId::seed(1),
                 due: NaiveDate::from_ymd_opt(2026, 9, 15).unwrap_or_default(),
             },
             status,

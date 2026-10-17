@@ -13,7 +13,7 @@ mod render;
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_categories::{Category, is_leaf, settings_rows, toggle_expanded};
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 use lib_ledger::Domain;
 use lib_list_cursor::step_id;
 
@@ -45,9 +45,9 @@ pub struct CategoriesPage {
     today: NaiveDate,
     /// The Category the cursor is on. It may name a Category that no longer exists, so read it
     /// through [`Self::live_selected_id`].
-    selected_id: Option<u32>,
+    selected_id: Option<CategoryId>,
     /// The parents shown open: Housing, Utilities and Food by default.
-    expanded: Vec<u32>,
+    expanded: Vec<CategoryId>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -62,7 +62,11 @@ impl CategoriesPage {
             ledger,
             today,
             selected_id: None,
-            expanded: vec![1, 3, 6],
+            expanded: vec![
+                CategoryId::seed(1),
+                CategoryId::seed(3),
+                CategoryId::seed(6),
+            ],
             page_focused: false,
             _categories_changed,
         }
@@ -77,7 +81,7 @@ impl CategoriesPage {
     }
 
     /// The selected Category, if it still exists.
-    fn live_selected_id(&self, cx: &App) -> Option<u32> {
+    fn live_selected_id(&self, cx: &App) -> Option<CategoryId> {
         self.selected_id
             .filter(|id| self.categories(cx).iter().any(|c| c.id == *id))
     }
@@ -150,7 +154,7 @@ impl CategoriesPage {
         let Some(step) = movement.step() else {
             return;
         };
-        let ids: Vec<u32> = settings_rows(self.categories(cx), &self.expanded)
+        let ids: Vec<CategoryId> = settings_rows(self.categories(cx), &self.expanded)
             .iter()
             .map(|row| row.id)
             .collect();
@@ -199,19 +203,19 @@ impl CategoriesPage {
     }
 
     /// A row's **+ sub** selects that row and opens the Add dialog under it.
-    pub(crate) fn click_add_sub(&mut self, parent_id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_add_sub(&mut self, parent_id: CategoryId, cx: &mut Context<'_, Self>) {
         self.select(Some(parent_id), cx);
         self.open_add_dialog(Some(parent_id), cx);
     }
 
-    pub(crate) fn click_edit(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_edit(&mut self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         if self.categories(cx).iter().any(|c| c.id == category_id) {
             self.select(Some(category_id), cx);
             self.open_edit_dialog(category_id, cx);
         }
     }
 
-    pub(crate) fn click_delete(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_delete(&mut self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         if !is_leaf(self.categories(cx), category_id) {
             cx.emit(ViewEvent::SetStatus(Some(
                 crate::msg::desktop_status_delete_children_first(),
@@ -221,12 +225,12 @@ impl CategoriesPage {
         self.open_delete_dialog(category_id, cx);
     }
 
-    pub(crate) fn click_disclosure(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_disclosure(&mut self, id: CategoryId, cx: &mut Context<'_, Self>) {
         self.expanded_edit(cx, |expanded| toggle_expanded(expanded, id, false));
     }
 
     /// A click on a row selects it and hands focus to the page.
-    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_row(&mut self, id: CategoryId, cx: &mut Context<'_, Self>) {
         self.select(Some(id), cx);
         cx.emit(CategoryRowClicked);
     }
@@ -278,12 +282,16 @@ impl CategoriesPage {
         }
     }
 
-    fn select(&mut self, id: Option<u32>, cx: &mut Context<'_, Self>) {
+    fn select(&mut self, id: Option<CategoryId>, cx: &mut Context<'_, Self>) {
         self.selected_id = id;
         cx.notify();
     }
 
-    fn expanded_edit(&mut self, cx: &mut Context<'_, Self>, edit: impl FnOnce(&mut Vec<u32>)) {
+    fn expanded_edit(
+        &mut self,
+        cx: &mut Context<'_, Self>,
+        edit: impl FnOnce(&mut Vec<CategoryId>),
+    ) {
         edit(&mut self.expanded);
         cx.notify();
     }
@@ -295,7 +303,11 @@ impl CategoriesPage {
     /// Why the Monthly budget field is read-only for `category_id` (`None` for a Category being
     /// added): the Personal spending Budget it reads and writes is archived, or the Category is a
     /// parent and so only rolls up.
-    pub(crate) fn budget_lock(&self, category_id: Option<u32>, cx: &App) -> Option<BudgetLock> {
+    pub(crate) fn budget_lock(
+        &self,
+        category_id: Option<CategoryId>,
+        cx: &App,
+    ) -> Option<BudgetLock> {
         if category_id.is_some_and(|id| !is_leaf(self.categories(cx), id)) {
             return Some(BudgetLock::Parent);
         }
@@ -310,7 +322,7 @@ impl CategoriesPage {
 
     /// Opens the Add dialog under `parent_id`, or at the top level. A child takes its parent's type,
     /// locked in the form; a top-level one starts as Expense.
-    fn open_add_dialog(&mut self, parent_id: Option<u32>, cx: &mut Context<'_, Self>) {
+    fn open_add_dialog(&mut self, parent_id: Option<CategoryId>, cx: &mut Context<'_, Self>) {
         let category_type = match parent_id {
             Some(id) => self
                 .categories(cx)
@@ -333,7 +345,7 @@ impl CategoriesPage {
 
     /// Opens the Edit dialog on `category_id`, pre-filled. Monthly budget shows the current month's
     /// amount in the Personal spending Budget (a parent's is its children's sum).
-    fn open_edit_dialog(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_dialog(&mut self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         let Some(category) = self
             .categories(cx)
             .iter()
@@ -369,7 +381,7 @@ impl CategoriesPage {
 
     /// Opens the Delete dialog on `category_id`, copying its name in so the form validates without
     /// `Shell`. A no-op if the Category is gone.
-    fn open_delete_dialog(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
+    fn open_delete_dialog(&mut self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         let Some(category) = self.categories(cx).iter().find(|c| c.id == category_id) else {
             return;
         };
@@ -431,7 +443,7 @@ mod tests {
         )
     }
 
-    fn add(ledger: &Entity<LedgerStore>, cx: &mut TestAppContext, parent: u32) -> bool {
+    fn add(ledger: &Entity<LedgerStore>, cx: &mut TestAppContext, parent: CategoryId) -> bool {
         ledger.update(cx, |store, cx| {
             store
                 .apply(
@@ -462,11 +474,11 @@ mod tests {
         });
 
         // Salary (11) is Income, so an Expense child under it is refused.
-        assert!(!add(&ledger, cx, 11));
+        assert!(!add(&ledger, cx, CategoryId::seed(11)));
         cx.run_until_parked();
         assert!(announced.borrow().is_empty());
 
-        assert!(add(&ledger, cx, 6));
+        assert!(add(&ledger, cx, CategoryId::seed(6)));
         cx.run_until_parked();
         assert_eq!(
             *announced.borrow(),

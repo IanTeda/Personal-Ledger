@@ -25,7 +25,10 @@ use std::path::{Path, PathBuf};
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
-use lib_core::{Money, TransactionStatus};
+use lib_core::{
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
+    TransactionStatus,
+};
 
 use lib_accounts::Account;
 use lib_bills::{BillPlan, FINANCIAL_YEAR_START_MONTH, financial_year_start};
@@ -52,19 +55,19 @@ pub const OTHER_CANDIDATES: usize = 2;
 /// A Document's type: the stable id of a user-managed [`DocumentTypeRow`] (ADR-0031). Names, order
 /// and the per-type flags live in the list, so a Document never carries them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct DocumentType(pub u32);
+pub struct DocumentType(pub DocumentTypeId);
 
 impl DocumentType {
     // The nine seeded types' ids, for the mock data and tests that name one.
-    pub const RECEIPTS: DocumentType = DocumentType(1);
-    pub const STATEMENTS: DocumentType = DocumentType(2);
-    pub const TAX: DocumentType = DocumentType(3);
-    pub const INSURANCE: DocumentType = DocumentType(4);
-    pub const WARRANTIES: DocumentType = DocumentType(5);
-    pub const CONTRACTS: DocumentType = DocumentType(6);
-    pub const IDENTITY: DocumentType = DocumentType(7);
-    pub const BILLS: DocumentType = DocumentType(8);
-    pub const OTHER: DocumentType = DocumentType(9);
+    pub const RECEIPTS: DocumentType = DocumentType(DocumentTypeId::seed(1));
+    pub const STATEMENTS: DocumentType = DocumentType(DocumentTypeId::seed(2));
+    pub const TAX: DocumentType = DocumentType(DocumentTypeId::seed(3));
+    pub const INSURANCE: DocumentType = DocumentType(DocumentTypeId::seed(4));
+    pub const WARRANTIES: DocumentType = DocumentType(DocumentTypeId::seed(5));
+    pub const CONTRACTS: DocumentType = DocumentType(DocumentTypeId::seed(6));
+    pub const IDENTITY: DocumentType = DocumentType(DocumentTypeId::seed(7));
+    pub const BILLS: DocumentType = DocumentType(DocumentTypeId::seed(8));
+    pub const OTHER: DocumentType = DocumentType(DocumentTypeId::seed(9));
 
     /// The id persisted in a Library scope (`type:<id>`); never shown.
     pub fn id(self) -> String {
@@ -73,7 +76,7 @@ impl DocumentType {
 
     /// Parses a persisted id, only when `types` still has that type.
     pub fn from_id(id: &str, types: &[DocumentTypeRow]) -> Option<Self> {
-        let id = id.parse().ok()?;
+        let id: DocumentTypeId = id.parse().ok()?;
         types::position(types, id).map(|_| DocumentType(id))
     }
 
@@ -140,11 +143,11 @@ pub fn band(key_date: &KeyDate, today: NaiveDate) -> KeyDateBand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentLink {
     /// The whole Transaction, never one Split.
-    Transaction(u32),
-    InventoryItem(u32),
-    Account(u32),
-    Payee(u32),
-    BillPlan(u32),
+    Transaction(TransactionId),
+    InventoryItem(ItemId),
+    Account(AccountId),
+    Payee(PayeeId),
+    BillPlan(BillPlanId),
 }
 
 /// The file format, for the glyph's extension label.
@@ -198,7 +201,7 @@ pub enum Filing {
 /// A reference to one file beside the Ledger, plus its metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-    pub id: u32,
+    pub id: DocumentId,
     /// Relative to the Ledger's data directory; never renamed or moved.
     pub path: PathBuf,
     pub kind: FileKind,
@@ -294,11 +297,11 @@ impl Document {
     }
 }
 
-pub fn get(documents: &[Document], id: u32) -> Option<&Document> {
+pub fn get(documents: &[Document], id: DocumentId) -> Option<&Document> {
     documents.iter().find(|document| document.id == id)
 }
 
-fn get_mut(documents: &mut [Document], id: u32) -> Option<&mut Document> {
+fn get_mut(documents: &mut [Document], id: DocumentId) -> Option<&mut Document> {
     documents.iter_mut().find(|document| document.id == id)
 }
 
@@ -563,7 +566,7 @@ pub fn total_bytes(documents: &[Document]) -> u64 {
 
 /// Adds `link` when the Document lacks it, removes it when it has it, and returns whether it was
 /// added. Filing never changes: removing the last Link leaves the Document Filed and "not linked".
-pub fn toggle_link(documents: &mut [Document], id: u32, link: DocumentLink) -> Option<bool> {
+pub fn toggle_link(documents: &mut [Document], id: DocumentId, link: DocumentLink) -> Option<bool> {
     let document = get_mut(documents, id)?;
     if let Some(at) = document.links.iter().position(|existing| *existing == link) {
         document.links.remove(at);
@@ -615,7 +618,7 @@ pub enum SignalStrength {
 /// A Transaction that could be an Unfiled Document's Link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Candidate {
-    pub transaction_id: u32,
+    pub transaction_id: TransactionId,
     pub signals: Signals,
     /// Days between the Transaction and the Document's date, unsigned.
     pub gap_days: i64,
@@ -653,7 +656,7 @@ impl Suggestion {
 
 /// The Payee an extracted merchant names: an alias match, else the active Payee whose name the
 /// merchant contains (case-insensitive, the longest name winning).
-pub fn merchant_payee(payees: &[Payee], merchant: &str) -> Option<u32> {
+pub fn merchant_payee(payees: &[Payee], merchant: &str) -> Option<PayeeId> {
     payees::match_alias(payees, merchant).or_else(|| {
         let haystack = merchant.to_lowercase();
         payees
@@ -795,7 +798,7 @@ pub enum FilingError {
 /// What one filed Document looked like before, so [`undo`] can restore it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FiledEntry {
-    pub id: u32,
+    pub id: DocumentId,
     pub previous_type: DocumentType,
     pub previous_date: NaiveDate,
     pub added_links: Vec<DocumentLink>,
@@ -807,12 +810,12 @@ pub struct FiledEntry {
 pub struct FilingUndo {
     pub entries: Vec<FiledEntry>,
     /// The Document focused when the action began, restored on undo.
-    pub focus: Option<u32>,
+    pub focus: Option<DocumentId>,
 }
 
 fn file_one(
     documents: &mut [Document],
-    id: u32,
+    id: DocumentId,
     doc_type: DocumentType,
     date: NaiveDate,
     link: Option<DocumentLink>,
@@ -843,8 +846,8 @@ pub fn accept(
     types: &[DocumentTypeRow],
     documents: &mut [Document],
     transactions: &[Transaction],
-    id: u32,
-    transaction_id: u32,
+    id: DocumentId,
+    transaction_id: TransactionId,
 ) -> Result<FiledEntry, FilingError> {
     let transaction = transactions
         .iter()
@@ -871,7 +874,7 @@ pub fn accept(
 /// one Link. The date is the extracted date, else the received date.
 pub fn file_by_hand(
     documents: &mut [Document],
-    id: u32,
+    id: DocumentId,
     doc_type: DocumentType,
     link: Option<DocumentLink>,
 ) -> Result<FiledEntry, FilingError> {
@@ -891,9 +894,9 @@ pub fn accept_all_strong(
     documents: &mut [Document],
     transactions: &[Transaction],
     payees: &[Payee],
-    focus: Option<u32>,
+    focus: Option<DocumentId>,
 ) -> Option<FilingUndo> {
-    let strong: Vec<(u32, u32)> = inbox_rows(documents)
+    let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents)
         .into_iter()
         .filter_map(|document| {
             let suggestion = suggestion(document, documents, transactions, payees);
@@ -931,7 +934,7 @@ pub fn strong_count(
 
 /// Reverses a filing action: each Document returns to Unfiled with its earlier Document Type and
 /// date, and the Links the action added are removed. Returns the focus to restore.
-pub fn undo(documents: &mut [Document], record: FilingUndo) -> Option<u32> {
+pub fn undo(documents: &mut [Document], record: FilingUndo) -> Option<DocumentId> {
     for entry in record.entries {
         if let Some(document) = get_mut(documents, entry.id) {
             document
@@ -946,7 +949,7 @@ pub fn undo(documents: &mut [Document], record: FilingUndo) -> Option<u32> {
 }
 
 /// Skip: sets an Unfiled Document aside to the bottom of the Inbox for the session.
-pub fn skip(documents: &mut [Document], id: u32) -> Result<(), FilingError> {
+pub fn skip(documents: &mut [Document], id: DocumentId) -> Result<(), FilingError> {
     let document = get_mut(documents, id).ok_or(FilingError::NotFound)?;
     match (&document.filing, &mut document.intake) {
         (Filing::Unfiled, Some(intake)) => {
@@ -962,7 +965,7 @@ pub fn skip(documents: &mut [Document], id: u32) -> Result<(), FilingError> {
 /// Candidates recompute from the new facts on the next [`suggestion`].
 pub fn edit_facts(
     documents: &mut [Document],
-    id: u32,
+    id: DocumentId,
     facts: ExtractedFacts,
 ) -> Result<(), FilingError> {
     let document = get_mut(documents, id).ok_or(FilingError::NotFound)?;
@@ -1038,15 +1041,6 @@ pub fn find_by_path<'a>(documents: &'a [Document], path: &Path) -> Option<&'a Do
     documents.iter().find(|document| document.path == path)
 }
 
-fn next_id(documents: &[Document]) -> u32 {
-    documents
-        .iter()
-        .map(|document| document.id)
-        .max()
-        .unwrap_or(0)
-        + 1
-}
-
 /// What the `+ Add` dialog collects.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewDocument {
@@ -1059,7 +1053,7 @@ pub struct NewDocument {
 
 /// `+ Add`: a Filed Document from a path the user already knows the meaning of. Its Links come
 /// afterwards, through the picker. The size is read from disk when the file is there.
-pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<u32, AddError> {
+pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<DocumentId, AddError> {
     let kind = FileKind::from_path(&new.path).ok_or(AddError::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &new.path) {
         return Err(AddError::AlreadyInLibrary(existing.title.clone()));
@@ -1068,7 +1062,7 @@ pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<u32,
     if title.is_empty() {
         return Err(AddError::NoTitle);
     }
-    let id = next_id(documents);
+    let id = DocumentId::new();
     documents.push(Document {
         id,
         bytes: std::fs::metadata(&new.path).map_or(0, |meta| meta.len()),
@@ -1125,13 +1119,13 @@ pub fn import_path(
     path: PathBuf,
     today: NaiveDate,
     source: Source,
-) -> Result<u32, AddError> {
+) -> Result<DocumentId, AddError> {
     let kind = FileKind::from_path(&path).ok_or(AddError::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &path) {
         return Err(AddError::AlreadyInLibrary(existing.title.clone()));
     }
     let facts = catalogue_facts(types, &path, today).unwrap_or_default();
-    let id = next_id(documents);
+    let id = DocumentId::new();
     documents.push(Document {
         id,
         bytes: std::fs::metadata(&path).map_or(0, |meta| meta.len()),
@@ -1168,7 +1162,7 @@ pub struct ImportLine {
 /// What an import made of one line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportOutcome {
-    Imported(u32),
+    Imported(DocumentId),
     NotFound(String),
     Unsupported(String),
     Already(String),
@@ -1210,7 +1204,7 @@ pub fn import_batch(
 /// The Financial Year follows the date, since it is never stored.
 pub fn edit_metadata(
     documents: &mut [Document],
-    id: u32,
+    id: DocumentId,
     title: &str,
     doc_type: DocumentType,
     date: NaiveDate,
@@ -1261,7 +1255,10 @@ pub struct DocumentsSeed {
 
 /// Drops every Link to the given Items, as removing a Property does. The Documents themselves
 /// stay, whatever Links they have left; returns the ids of those that lost a Link.
-pub fn drop_inventory_links(documents: &mut [Document], removed_items: &[u32]) -> Vec<u32> {
+pub fn drop_inventory_links(
+    documents: &mut [Document],
+    removed_items: &[ItemId],
+) -> Vec<DocumentId> {
     let mut affected = Vec::new();
     for document in documents {
         let before = document.links.len();
@@ -1280,8 +1277,11 @@ fn cents_money(cents: i64) -> Money {
 }
 
 /// Inserts a Transaction newest first, as the stub keeps them, and returns its new id.
-fn insert_transaction(transactions: &mut Vec<Transaction>, mut transaction: Transaction) -> u32 {
-    let id = transactions.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+fn insert_transaction(
+    transactions: &mut Vec<Transaction>,
+    mut transaction: Transaction,
+) -> TransactionId {
+    let id = TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default());
     transaction.id = id;
     let at = transactions
         .iter()
@@ -1301,19 +1301,19 @@ struct Lookup<'a> {
 }
 
 impl Lookup<'_> {
-    fn account(&self, name: &str) -> Option<u32> {
+    fn account(&self, name: &str) -> Option<AccountId> {
         self.accounts.iter().find(|a| a.name == name).map(|a| a.id)
     }
 
-    fn payee(&self, name: &str) -> Option<u32> {
+    fn payee(&self, name: &str) -> Option<PayeeId> {
         payees::find_by_name(self.payees, name)
     }
 
-    fn plan(&self, name: &str) -> Option<u32> {
+    fn plan(&self, name: &str) -> Option<BillPlanId> {
         self.plans.iter().find(|p| p.name == name).map(|p| p.id)
     }
 
-    fn item(&self, name: &str) -> Option<u32> {
+    fn item(&self, name: &str) -> Option<ItemId> {
         self.inventory
             .items
             .iter()
@@ -1332,7 +1332,7 @@ impl Lookup<'_> {
         memo: &str,
     ) -> Option<Transaction> {
         Some(Transaction {
-            id: 0,
+            id: TransactionId::seed(0),
             date,
             account_id: self.account(account)?,
             status: TransactionStatus::Cleared,
@@ -1424,7 +1424,7 @@ impl Draft {
         self
     }
 
-    fn build(self, id: u32) -> Document {
+    fn build(self, id: DocumentId) -> Document {
         let folder = if self.intake.is_some() {
             "inbox".to_string()
         } else {
@@ -1519,7 +1519,7 @@ pub fn default_documents(
         "SONOS ONLINE",
     ));
 
-    let transaction = |id: Option<u32>| id.map(DocumentLink::Transaction);
+    let transaction = |id: Option<TransactionId>| id.map(DocumentLink::Transaction);
     let account = |name: &str| lookup.account(name).map(DocumentLink::Account);
     let payee = |name: &str| lookup.payee(name).map(DocumentLink::Payee);
     let plan = |name: &str| lookup.plan(name).map(DocumentLink::BillPlan);
@@ -1732,7 +1732,7 @@ pub fn default_documents(
     let documents = drafts
         .into_iter()
         .zip(1..)
-        .map(|(draft, id)| draft.build(id))
+        .map(|(draft, id)| draft.build(DocumentId::seed(id)))
         .collect();
     DocumentsSeed { documents }
 }
@@ -1775,7 +1775,7 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
         .iter()
         .filter(|t| t.date < cutoff && t.total().0 <= hundred)
         .filter(|t| t.splits.iter().any(|split| split.payee_id.is_some()))
-        .filter(|t| t.id % 4 == 0);
+        .filter(|t| t.id.seed_number() % 4 == 0);
     for purchase in purchases {
         let Some(name) = purchase
             .splits
@@ -1789,7 +1789,7 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
         let slug = name.to_lowercase().replace(' ', "-");
         drafts.push(
             Draft::filed(
-                &format!("receipt-{slug}-{}.pdf", purchase.id),
+                &format!("receipt-{slug}-{}.pdf", purchase.id.seed_number()),
                 &format!("Receipt — {name}"),
                 DocumentType::RECEIPTS,
                 purchase.date,

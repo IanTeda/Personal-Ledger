@@ -4,6 +4,7 @@
 //! the other three cards are drawn dimmed and take no click (#400). Edit mode locks the Unit and
 //! leaves Start from out. `Shell` owns the live form (`budgets::form::BudgetForm`).
 
+use lib_core::AccountId;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -27,7 +28,7 @@ pub const WIDTH: gpui::Pixels = px(640.0);
 
 pub type OnFieldClick = Rc<dyn Fn(BudgetField, &mut Window, &mut App)>;
 /// Called with the clicked Account's id.
-pub type OnAccountClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+pub type OnAccountClick = Rc<dyn Fn(AccountId, &mut Window, &mut App)>;
 pub type OnStartClick = Rc<dyn Fn(StartChoice, &mut Window, &mut App)>;
 
 pub struct BudgetDialogHandlers {

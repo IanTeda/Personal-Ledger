@@ -3,6 +3,7 @@
 //! back from the Settings snapshot.
 
 use super::common;
+use lib_core::CategoryId;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -37,7 +38,7 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
 fn an_edit_action_selects_the_row_and_opens_its_dialog(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
-    ui.click("settings-categories-edit-1");
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(1)));
     let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditCategory"));

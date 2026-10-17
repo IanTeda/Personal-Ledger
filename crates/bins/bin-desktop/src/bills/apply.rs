@@ -3,6 +3,7 @@
 
 use chrono::NaiveDate;
 use gpui::{App, Entity};
+use lib_core::BillPlanId;
 
 use lib_ledger::{AddBillPlan, EditBillPlan, MatchBill, PayBill, SkipBill};
 
@@ -17,7 +18,7 @@ use crate::{
 pub enum BillCommand {
     /// Add (`editing` is `None`) or save the Plan; Schedule regeneration is the rules'.
     SavePlan {
-        editing: Option<u32>,
+        editing: Option<BillPlanId>,
         draft: BillPlanDraft,
         is_active: bool,
     },
@@ -33,7 +34,7 @@ pub enum BillCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BillOutcome {
     /// Added or edited: the Plan to select on the Planner tab.
-    PlanSaved(u32),
+    PlanSaved(BillPlanId),
     Paid,
     Skipped,
     /// The entry resolved or was superseded underneath the Skip Dialog. It has no form to show an
@@ -189,7 +190,7 @@ mod tests {
 
     fn entry() -> EntryId {
         EntryId {
-            plan_id: 1,
+            plan_id: BillPlanId::seed(1),
             due: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
         }
     }

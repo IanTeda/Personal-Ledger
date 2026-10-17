@@ -12,7 +12,10 @@ use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
-use lib_core::UnitId;
+use lib_core::{
+    AccountId, CategoryId, DocumentTypeId, ItemId, PayeeId, PropertyId, RoomId, TagId,
+    TransactionId, UnitId,
+};
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
 use lib_inventory::{Item, Property, Room};
@@ -46,31 +49,31 @@ pub enum Domain {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
     UpsertAccount(Account),
-    DeleteAccount(u32),
+    DeleteAccount(AccountId),
     UpsertPayee(Payee),
-    DeletePayee(u32),
+    DeletePayee(PayeeId),
     UpsertCategory(Category),
-    DeleteCategory(u32),
+    DeleteCategory(CategoryId),
     UpsertTag(Tag),
-    DeleteTag(u32),
+    DeleteTag(TagId),
     UpsertTransaction(Transaction),
-    DeleteTransaction(u32),
+    DeleteTransaction(TransactionId),
     UpsertBillPlan(BillPlan),
     UpsertBillEntry(BillScheduleEntry),
     UpsertBudget(Budget),
     UpsertDocument(Document),
     UpsertDocumentType(DocumentTypeRow),
-    DeleteDocumentType(u32),
+    DeleteDocumentType(DocumentTypeId),
     UpsertProperty(Property),
-    DeleteProperty(u32),
+    DeleteProperty(PropertyId),
     /// A Room names its Property, since a Room row is keyed by its own id.
     UpsertRoom {
-        property: u32,
+        property: PropertyId,
         room: Room,
     },
-    DeleteRoom(u32),
+    DeleteRoom(RoomId),
     UpsertItem(Item),
-    DeleteItem(u32),
+    DeleteItem(ItemId),
     UpsertInstitution(InstitutionRow),
     UpsertUnit(UnitRow),
     DeleteUnit(UnitId),
@@ -121,9 +124,9 @@ mod tests {
     #[test]
     fn domains_names_each_touched_domain_once() {
         let changes = [
-            LedgerChange::DeletePayee(1),
-            LedgerChange::DeletePayee(2),
-            LedgerChange::DeleteCategory(3),
+            LedgerChange::DeletePayee(PayeeId::seed(1)),
+            LedgerChange::DeletePayee(PayeeId::seed(2)),
+            LedgerChange::DeleteCategory(CategoryId::seed(3)),
         ];
         assert_eq!(
             domains(&changes),

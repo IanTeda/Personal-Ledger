@@ -255,6 +255,7 @@ mod tests {
     };
     use lib_accounts::default_accounts;
     use lib_categories::default_categories;
+    use lib_core::{BillPlanId, TransactionId};
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -275,7 +276,7 @@ mod tests {
             .unwrap()
     }
 
-    fn split(transaction_id: u32) -> SplitRef {
+    fn split(transaction_id: TransactionId) -> SplitRef {
         SplitRef {
             transaction_id,
             split_index: 0,
@@ -284,7 +285,7 @@ mod tests {
 
     fn form(candidates: Vec<SplitRef>, preselected: Option<SplitRef>) -> PayForm {
         let entry = EntryId {
-            plan_id: 1,
+            plan_id: BillPlanId::seed(1),
             due: today(),
         };
         PayForm::new(entry, &plan(), candidates, preselected, today(), None)
@@ -292,10 +293,16 @@ mod tests {
 
     #[test]
     fn opens_on_match_with_the_preselected_candidate() {
-        let f = form(vec![split(4), split(9)], Some(split(9)));
+        let f = form(
+            vec![split(TransactionId::seed(4)), split(TransactionId::seed(9))],
+            Some(split(TransactionId::seed(9))),
+        );
         assert_eq!(f.mode, PayMode::Match);
         assert_eq!(f.choice, Some(MatchChoice::Candidate(1)));
-        assert_eq!(f.action(), Some(PayAction::Match(split(9))));
+        assert_eq!(
+            f.action(),
+            Some(PayAction::Match(split(TransactionId::seed(9))))
+        );
     }
 
     #[test]
@@ -313,7 +320,7 @@ mod tests {
 
     #[test]
     fn nothing_chosen_refuses_confirm_until_a_step() {
-        let mut f = form(vec![split(4)], None);
+        let mut f = form(vec![split(TransactionId::seed(4))], None);
         assert_eq!(f.action(), None);
         f.step_choice(true);
         assert_eq!(f.choice, Some(MatchChoice::Candidate(0)));
@@ -327,7 +334,10 @@ mod tests {
 
     #[test]
     fn choosing_none_of_these_switches_to_direct() {
-        let mut f = form(vec![split(4)], Some(split(4)));
+        let mut f = form(
+            vec![split(TransactionId::seed(4))],
+            Some(split(TransactionId::seed(4))),
+        );
         f.choose(MatchChoice::NoneOfThese);
         assert_eq!(f.mode, PayMode::Direct);
         f.toggle_mode();
@@ -353,7 +363,7 @@ mod tests {
 
     #[test]
     fn typing_is_ignored_on_the_match_panel() {
-        let mut f = form(vec![split(4)], None);
+        let mut f = form(vec![split(TransactionId::seed(4))], None);
         let amount = f.amount.clone();
         handle_key(&mut f, DialogKey::Char('5'));
         handle_key(&mut f, DialogKey::Backspace);
@@ -387,7 +397,7 @@ mod tests {
         };
         let candidates = (0..candidates as u32)
             .map(|transaction_id| SplitRef {
-                transaction_id,
+                transaction_id: TransactionId::seed(transaction_id),
                 split_index: 0,
             })
             .collect();
@@ -463,7 +473,7 @@ mod tests {
     #[test]
     fn skip_confirms_on_enter_and_swallows_tab() {
         let entry = EntryId {
-            plan_id: 1,
+            plan_id: BillPlanId::seed(1),
             due: NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
         };
         let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Skip(entry)));

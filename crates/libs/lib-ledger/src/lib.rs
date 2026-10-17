@@ -60,7 +60,7 @@ use lib_categories::{Category, default_categories};
 use lib_core::UnitId;
 use lib_documents::{
     Document, default_documents,
-    types::{DocumentTypeRow, default_types, first_free_id},
+    types::{DocumentTypeRow, default_types},
 };
 use lib_institutions::{InstitutionRow, default_institutions};
 use lib_inventory::{Inventory, default_inventory};
@@ -83,9 +83,6 @@ pub struct Ledger {
     budgets: Budgets,
     documents: Vec<Document>,
     document_types: Vec<DocumentTypeRow>,
-    /// The id the next added Document Type takes. It only counts up, so ids are never reused, and
-    /// it goes when ids become UUIDv7 newtypes (ADR-0040).
-    document_type_next_id: u32,
     inventory: Inventory,
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
@@ -133,7 +130,6 @@ impl Ledger {
             units,
             price_sources,
         } = parts;
-        let document_type_next_id = first_free_id(&document_types);
         Self {
             accounts,
             categories,
@@ -145,7 +141,6 @@ impl Ledger {
             budgets,
             documents,
             document_types,
-            document_type_next_id,
             inventory,
             institutions,
             units,

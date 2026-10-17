@@ -14,7 +14,7 @@
 //! - 9g writes a **Stop** from the current month or the next.
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
-use lib_core::Money;
+use lib_core::{BudgetId, CategoryId, Money};
 
 use crate::{
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
@@ -61,7 +61,7 @@ pub const ROLLOVERS: [Rollover; 3] = [Rollover::None, Rollover::CarryUnspent, Ro
 pub struct LimitOptions {
     /// The unbudgeted leaf Expense Categories, by path in tree order.
     pub category_labels: Vec<String>,
-    category_ids: Vec<u32>,
+    category_ids: Vec<CategoryId>,
     pub month_labels: Vec<String>,
     months: Vec<Period>,
 }
@@ -94,12 +94,12 @@ impl LimitOptions {
         }
     }
 
-    fn category_label(&self, id: u32) -> Option<String> {
+    fn category_label(&self, id: CategoryId) -> Option<String> {
         let index = self.category_ids.iter().position(|c| *c == id)?;
         self.category_labels.get(index).cloned()
     }
 
-    fn category_id(&self, label: Option<&str>) -> Option<u32> {
+    fn category_id(&self, label: Option<&str>) -> Option<CategoryId> {
         let index = self
             .category_labels
             .iter()
@@ -132,7 +132,7 @@ impl LimitOptions {
 /// What saving 9e writes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LimitDraft {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub month: Period,
     pub span: Span,
     pub amount: Money,
@@ -157,7 +157,7 @@ pub struct LimitPreview {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LimitForm {
     /// The Category being edited; `None` while the picker chooses it.
-    pub fixed_category: Option<u32>,
+    pub fixed_category: Option<CategoryId>,
     pub category: SelectState,
     pub amount: TextField,
     pub starting: SelectState,
@@ -173,7 +173,12 @@ pub struct LimitForm {
 impl LimitForm {
     /// 9e on a Category that is budgeted in `month` (or the first offered month): prefilled from
     /// the amount that month resolves to.
-    pub fn edit(budget: &Budget, category_id: u32, month: Period, options: &LimitOptions) -> Self {
+    pub fn edit(
+        budget: &Budget,
+        category_id: CategoryId,
+        month: Period,
+        options: &LimitOptions,
+    ) -> Self {
         let starting = options.starting(month);
         let applied = options
             .month(starting.value())
@@ -197,7 +202,7 @@ impl LimitForm {
     }
 
     /// 9e from **+ Budget a category**: the picker, optionally preselected (`set` on a row).
-    pub fn pick(preselected: Option<u32>, options: &LimitOptions) -> Self {
+    pub fn pick(preselected: Option<CategoryId>, options: &LimitOptions) -> Self {
         let label = preselected.and_then(|id| options.category_label(id));
         Self {
             fixed_category: None,
@@ -220,7 +225,7 @@ impl LimitForm {
         self.fixed_category.is_none()
     }
 
-    pub fn category_id(&self) -> Option<u32> {
+    pub fn category_id(&self) -> Option<CategoryId> {
         self.fixed_category
             .or_else(|| self.options.category_id(self.category.value()))
     }
@@ -371,7 +376,7 @@ impl LimitForm {
 /// Writes 9e's draft into Budget `id`.
 pub fn save(
     budgets: &mut Budgets,
-    id: u32,
+    id: BudgetId,
     categories: &[Category],
     draft: &LimitDraft,
     today: chrono::NaiveDate,
@@ -391,7 +396,7 @@ pub fn save(
 /// 9e's before/after summary for `draft`, or `None` when the save would be refused.
 pub fn preview(
     budgets: &Budgets,
-    id: u32,
+    id: BudgetId,
     categories: &[Category],
     draft: &LimitDraft,
     today: chrono::NaiveDate,
@@ -417,7 +422,7 @@ pub fn preview(
 /// 9g's form: the Category and the month the Stop starts in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopForm {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub from: SelectState,
     /// The months on offer, copied in as the Dialog opens.
     pub options: LimitOptions,
@@ -427,7 +432,7 @@ pub struct StopForm {
 
 impl StopForm {
     /// Defaults to `month` when it is offered, else the current month.
-    pub fn new(category_id: u32, month: Period, options: &LimitOptions) -> Self {
+    pub fn new(category_id: CategoryId, month: Period, options: &LimitOptions) -> Self {
         Self {
             category_id,
             from: options.starting(month),
@@ -619,12 +624,12 @@ mod tests {
             )
         }
 
-        fn category(&self, name: &str) -> u32 {
+        fn category(&self, name: &str) -> CategoryId {
             lib_categories::find_by_name(&self.categories, name).unwrap()
         }
 
         /// A leaf the seeded Budget has an amount for this month.
-        fn budgeted(&self) -> u32 {
+        fn budgeted(&self) -> CategoryId {
             self.budget()
                 .category_ids()
                 .find(|id| budgets::applied(self.budget().chain(*id), sep()).is_some())

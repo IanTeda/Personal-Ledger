@@ -19,7 +19,7 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, DateStyle, Money, UnitId};
+use lib_core::{AccountId, CategoryId, CategoryTypes, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::format_date_input;
 
 use lib_payees::Payee;
@@ -76,16 +76,16 @@ impl BillPlanField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BillPlanSource {
     category_labels: Vec<String>,
-    category_ids: Vec<u32>,
+    category_ids: Vec<CategoryId>,
     /// Unit codes: every Unit some Account taking Transactions is kept in.
     units: Vec<String>,
     /// The id of each of `units`, in the same order.
     unit_ids: Vec<UnitId>,
     /// Every Account taking Transactions, as (Unit code, id, name).
-    accounts: Vec<(String, u32, String)>,
+    accounts: Vec<(String, AccountId, String)>,
     /// "none" first, then the active Payees by name.
     payee_labels: Vec<String>,
-    payee_ids: Vec<Option<u32>>,
+    payee_ids: Vec<Option<PayeeId>>,
     /// [`Recurrence::ALL`]'s labels, in that order.
     recurrence_labels: Vec<String>,
     today: NaiveDate,
@@ -105,7 +105,7 @@ impl BillPlanSource {
         accounts: &[Account],
         unit_rows: &[lib_units::UnitRow],
         payees: &[Payee],
-        keep_payee: Option<u32>,
+        keep_payee: Option<PayeeId>,
         none_label: String,
         recurrence_label: fn(Recurrence) -> String,
         today: NaiveDate,
@@ -177,7 +177,7 @@ impl BillPlanSource {
 
     /// The selects' options for `unit`, which scopes the Account list.
     fn options(&self, unit: Option<&str>) -> BillPlanOptions {
-        let in_unit: Vec<&(String, u32, String)> = self
+        let in_unit: Vec<&(String, AccountId, String)> = self
             .accounts
             .iter()
             .filter(|(account_unit, ..)| Some(account_unit.as_str()) == unit)
@@ -199,12 +199,12 @@ impl BillPlanSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BillPlanOptions {
     pub category_labels: Vec<String>,
-    category_ids: Vec<u32>,
+    category_ids: Vec<CategoryId>,
     pub units: Vec<String>,
     pub account_labels: Vec<String>,
-    account_ids: Vec<u32>,
+    account_ids: Vec<AccountId>,
     pub payee_labels: Vec<String>,
-    payee_ids: Vec<Option<u32>>,
+    payee_ids: Vec<Option<PayeeId>>,
     pub recurrence_labels: Vec<String>,
 }
 
@@ -219,21 +219,21 @@ impl BillPlanOptions {
             .position(|label| Some(label.as_str()) == value)
     }
 
-    fn category_label(&self, id: u32) -> Option<String> {
+    fn category_label(&self, id: CategoryId) -> Option<String> {
         Self::label(
             &self.category_labels,
             self.category_ids.iter().position(|c| *c == id),
         )
     }
 
-    fn account_label(&self, id: u32) -> Option<String> {
+    fn account_label(&self, id: AccountId) -> Option<String> {
         Self::label(
             &self.account_labels,
             self.account_ids.iter().position(|a| *a == id),
         )
     }
 
-    fn payee_label(&self, id: Option<u32>) -> Option<String> {
+    fn payee_label(&self, id: Option<PayeeId>) -> Option<String> {
         Self::label(
             &self.payee_labels,
             self.payee_ids.iter().position(|p| *p == id),
@@ -733,7 +733,7 @@ mod tests {
     }
 
     impl Stubs {
-        fn source(&self, keep_payee: Option<u32>) -> BillPlanSource {
+        fn source(&self, keep_payee: Option<PayeeId>) -> BillPlanSource {
             BillPlanSource::new(
                 &self.categories,
                 &self.accounts,

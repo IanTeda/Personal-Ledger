@@ -9,6 +9,7 @@ pub mod rules_field;
 
 use gpui::{AnyElement, App};
 use lib_accounts::Account;
+use lib_core::PayeeId;
 use lib_payees::{Payee, usage};
 use lib_transactions::Transaction;
 
@@ -22,9 +23,9 @@ pub use add::{OnFieldClick, OnOptionClick, PayeeDialogHandlers};
 pub enum PayeesDialog {
     Add(PayeeForm),
     /// Editing the Payee with this [`Payee::id`].
-    Edit(u32, PayeeForm),
+    Edit(PayeeId, PayeeForm),
     /// Deleting (or, when referenced, deactivating) the Payee with this [`Payee::id`].
-    Delete(u32, DeletePayeeForm),
+    Delete(PayeeId, DeletePayeeForm),
 }
 
 impl PayeesDialog {

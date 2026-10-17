@@ -7,7 +7,9 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountType, Money, TransactionStatus};
+use lib_core::{
+    AccountId, AccountType, CategoryId, Money, PayeeId, TagId, TransactionId, TransactionStatus,
+};
 
 /// A zero amount in cents, the sum every Transaction's total folds from.
 fn cents_money(cents: i64) -> Money {
@@ -19,19 +21,19 @@ fn cents_money(cents: i64) -> Money {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Split {
     pub amount: Money,
-    pub category_id: u32,
-    pub payee_id: Option<u32>,
-    pub tag_ids: Vec<u32>,
+    pub category_id: CategoryId,
+    pub payee_id: Option<PayeeId>,
+    pub tag_ids: Vec<TagId>,
 }
 
 /// A single-entry record of an amount moving against one Transaction or Credit Card Account on a
 /// date, composed of one or more [`Split`]s. Its unit is its account's.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transaction {
-    pub id: u32,
+    pub id: TransactionId,
     pub date: NaiveDate,
     /// The the Account id it is posted against.
-    pub account_id: u32,
+    pub account_id: AccountId,
     pub status: TransactionStatus,
     /// Independent of `status`: any status can also be flagged.
     pub is_flagged: bool,

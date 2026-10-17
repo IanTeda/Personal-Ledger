@@ -3,6 +3,7 @@
 //! tests live in `lib_budgets`.
 
 use chrono::NaiveDate;
+use lib_core::BudgetId;
 
 use super::*;
 use lib_accounts::{Account, default_accounts};
@@ -33,7 +34,7 @@ impl World {
 fn the_switcher_lists_active_budgets_then_archived_and_filters_by_name() {
     let world = World::new();
     let mut budgets = default_budgets(&world.accounts, &world.categories, today());
-    let ids: Vec<u32> = budgets.all().iter().map(|b| b.id).collect();
+    let ids: Vec<BudgetId> = budgets.all().iter().map(|b| b.id).collect();
     assert!(ids.len() >= 2, "the seed has more than one Budget");
     assert_eq!(switcher_ids(&budgets, ""), ids);
 
@@ -42,7 +43,7 @@ fn the_switcher_lists_active_budgets_then_archived_and_filters_by_name() {
         .iter()
         .copied()
         .find(|id| *id != PERSONAL_SPENDING_ID)
-        .unwrap_or_default();
+        .expect("a second seeded Budget");
     assert_eq!(budgets.archive(other, today()), Ok(()));
     assert_eq!(switcher_ids(&budgets, "").last(), Some(&other));
 
@@ -58,7 +59,7 @@ fn the_switcher_opens_on_the_current_budget_and_steps_inside_its_rows() {
     let world = World::new();
     let budgets = default_budgets(&world.accounts, &world.categories, today());
     let ids = switcher_ids(&budgets, "");
-    let last = *ids.last().unwrap_or(&0);
+    let last = *ids.last().expect("a seeded Budget");
     let mut switcher = Switcher::new(&budgets, last);
     assert_eq!(switcher.chosen(), Some(last));
     switcher.step(true);

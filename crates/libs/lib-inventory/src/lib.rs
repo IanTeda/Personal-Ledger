@@ -8,7 +8,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::Money;
+use lib_core::{ItemId, Money, PropertyId, RoomId};
 
 /// A Property's insurance cover: one of its details, not a record of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,7 +24,7 @@ pub struct Cover {
 /// A named area of one Property. `id` is stable across renames, so an Item never moves on one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Room {
-    pub id: u32,
+    pub id: RoomId,
     pub name: String,
 }
 
@@ -32,7 +32,7 @@ pub struct Room {
 /// (and `J`/`K`) order; persistence adds the column later.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Property {
-    pub id: u32,
+    pub id: PropertyId,
     pub name: String,
     pub address: String,
     /// The fiat Unit's code, fixed when the Property is added.
@@ -44,9 +44,9 @@ pub struct Property {
 /// A physical possession, in one Room of one Property.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
-    pub id: u32,
-    pub property: u32,
-    pub room: u32,
+    pub id: ItemId,
+    pub property: PropertyId,
+    pub room: RoomId,
     pub name: String,
     /// In the Property's Unit.
     pub replacement: Money,
@@ -64,16 +64,16 @@ pub struct Inventory {
 // ---------------------------------------------------------------------------------------------
 
 impl Inventory {
-    pub fn property(&self, id: u32) -> Option<&Property> {
+    pub fn property(&self, id: PropertyId) -> Option<&Property> {
         self.properties.iter().find(|p| p.id == id)
     }
 
-    pub fn item(&self, id: u32) -> Option<&Item> {
+    pub fn item(&self, id: ItemId) -> Option<&Item> {
         self.items.iter().find(|i| i.id == id)
     }
 
     /// The Room and the Property holding it.
-    pub fn room(&self, id: u32) -> Option<(&Property, &Room)> {
+    pub fn room(&self, id: RoomId) -> Option<(&Property, &Room)> {
         self.properties
             .iter()
             .find_map(|p| p.rooms.iter().find(|r| r.id == id).map(|r| (p, r)))
@@ -92,35 +92,21 @@ impl Inventory {
     }
 
     /// Items in a Room; an empty or unknown Room is 0.
-    pub fn room_items(&self, room: u32) -> usize {
+    pub fn room_items(&self, room: RoomId) -> usize {
         self.items.iter().filter(|i| i.room == room).count()
     }
 
     /// The replacement value of a Room's Items; an empty or unknown Room is zero.
-    pub fn room_value(&self, room: u32) -> Money {
+    pub fn room_value(&self, room: RoomId) -> Money {
         sum(self.items.iter().filter(|i| i.room == room))
     }
 
-    pub fn property_items(&self, property: u32) -> usize {
+    pub fn property_items(&self, property: PropertyId) -> usize {
         self.items.iter().filter(|i| i.property == property).count()
     }
 
-    pub fn property_value(&self, property: u32) -> Money {
+    pub fn property_value(&self, property: PropertyId) -> Money {
         sum(self.items.iter().filter(|i| i.property == property))
-    }
-
-    fn next_property_id(&self) -> u32 {
-        self.properties.iter().map(|p| p.id).max().unwrap_or(0) + 1
-    }
-
-    fn next_room_id(&self) -> u32 {
-        self.properties
-            .iter()
-            .flat_map(|p| &p.rooms)
-            .map(|r| r.id)
-            .max()
-            .unwrap_or(0)
-            + 1
     }
 }
 
@@ -236,15 +222,15 @@ fn taken<'a>(mut names: impl Iterator<Item = &'a str>, name: &str) -> bool {
 /// Items whose Document Links must drop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemovedProperty {
-    pub rooms: Vec<u32>,
+    pub rooms: Vec<RoomId>,
     /// The ids of the Items that went with it.
-    pub items: Vec<u32>,
+    pub items: Vec<ItemId>,
 }
 
 /// What removing a Room changed beyond the Room itself: the Items it moved to the destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemovedRoom {
-    pub moved_items: Vec<u32>,
+    pub moved_items: Vec<ItemId>,
 }
 
 /// The Inventory's writes. Each refuses before it changes anything, and reports the rows it
@@ -255,12 +241,12 @@ impl Inventory {
         &mut self,
         draft: &PropertyDraft,
         unit: &str,
-    ) -> Result<u32, PropertyError> {
+    ) -> Result<PropertyId, PropertyError> {
         if unit.trim().is_empty() {
             return Err(PropertyError::UnitMissing);
         }
         let (name, cover) = checked(self, None, draft)?;
-        let id = self.next_property_id();
+        let id = PropertyId::new();
         self.properties.push(Property {
             id,
             name,
@@ -273,7 +259,11 @@ impl Inventory {
     }
 
     /// Edits everything but the Unit.
-    pub fn edit_property(&mut self, id: u32, draft: &PropertyDraft) -> Result<(), PropertyError> {
+    pub fn edit_property(
+        &mut self,
+        id: PropertyId,
+        draft: &PropertyDraft,
+    ) -> Result<(), PropertyError> {
         let (name, cover) = checked(self, Some(id), draft)?;
         let property = self
             .properties
@@ -287,7 +277,7 @@ impl Inventory {
     }
 
     /// Removes a Property, its Rooms and its Items, and reports each. The last Property may go.
-    pub fn remove_property(&mut self, id: u32) -> Result<RemovedProperty, PropertyError> {
+    pub fn remove_property(&mut self, id: PropertyId) -> Result<RemovedProperty, PropertyError> {
         let at = self
             .properties
             .iter()
@@ -308,8 +298,8 @@ impl Inventory {
     }
 
     /// Adds a Room at the end of the Property's tabs and returns its id.
-    pub fn add_room(&mut self, property: u32, name: &str) -> Result<u32, RoomError> {
-        let id = self.next_room_id();
+    pub fn add_room(&mut self, property: PropertyId, name: &str) -> Result<RoomId, RoomError> {
+        let id = RoomId::new();
         let property = self
             .properties
             .iter_mut()
@@ -321,7 +311,7 @@ impl Inventory {
     }
 
     /// Renames a Room. Nothing else about a Room is editable: it never changes Property.
-    pub fn edit_room(&mut self, room: u32, name: &str) -> Result<(), RoomError> {
+    pub fn edit_room(&mut self, room: RoomId, name: &str) -> Result<(), RoomError> {
         let property = self
             .properties
             .iter_mut()
@@ -338,8 +328,8 @@ impl Inventory {
     /// must be another Room of the same Property. Reports the Items it moved.
     pub fn remove_room(
         &mut self,
-        room: u32,
-        destination: Option<u32>,
+        room: RoomId,
+        destination: Option<RoomId>,
     ) -> Result<RemovedRoom, RoomError> {
         let (property, _) = self.room(room).ok_or(RoomError::UnknownRoom)?;
         let property_id = property.id;
@@ -365,7 +355,7 @@ impl Inventory {
 
     /// Moves a Room down (`delta` > 0) or up within its own Property, stopping at the ends.
     /// Returns the Room and the neighbour it swapped with, or `None` when nothing moved.
-    pub fn move_room(&mut self, room: u32, delta: isize) -> Option<[u32; 2]> {
+    pub fn move_room(&mut self, room: RoomId, delta: isize) -> Option<[RoomId; 2]> {
         let property = self
             .properties
             .iter_mut()
@@ -384,7 +374,7 @@ impl Inventory {
 
 fn checked(
     inventory: &Inventory,
-    own_id: Option<u32>,
+    own_id: Option<PropertyId>,
     draft: &PropertyDraft,
 ) -> Result<(String, Option<Cover>), PropertyError> {
     if let Some(id) = own_id
@@ -410,7 +400,7 @@ fn checked(
 
 fn checked_room_name(
     property: &Property,
-    own_id: Option<u32>,
+    own_id: Option<RoomId>,
     name: &str,
 ) -> Result<String, RoomError> {
     let name = name.trim();
@@ -429,7 +419,7 @@ fn checked_room_name(
 }
 
 /// The Room the remove dialog pre-selects: the one above, or the one below when it is first.
-pub fn default_destination(inventory: &Inventory, room: u32) -> Option<u32> {
+pub fn default_destination(inventory: &Inventory, room: RoomId) -> Option<RoomId> {
     let (property, _) = inventory.room(room)?;
     let at = property.rooms.iter().position(|r| r.id == room)?;
     let other = at.checked_sub(1).unwrap_or(1);
@@ -575,7 +565,8 @@ fn seed_property(
     cover: Cover,
     rooms: &[RoomSeed],
 ) {
-    let property_id = inventory.next_property_id();
+    let property_id =
+        PropertyId::seed(u32::try_from(inventory.properties.len() + 1).unwrap_or_default());
     let mut property = Property {
         id: property_id,
         name: name.to_string(),
@@ -585,8 +576,13 @@ fn seed_property(
         rooms: Vec::new(),
     };
     for seed in rooms {
-        let room_id =
-            inventory.next_room_id() + u32::try_from(property.rooms.len()).unwrap_or_default();
+        let rooms_so_far = inventory
+            .properties
+            .iter()
+            .map(|p| p.rooms.len())
+            .sum::<usize>()
+            + property.rooms.len();
+        let room_id = RoomId::seed(u32::try_from(rooms_so_far + 1).unwrap_or_default());
         property.rooms.push(Room {
             id: room_id,
             name: seed.name.to_string(),
@@ -594,7 +590,7 @@ fn seed_property(
         let named_total: i64 = seed.named.iter().map(|(_, _, d)| d).sum();
         for (id, item, amount) in seed.named {
             inventory.items.push(Item {
-                id: *id,
+                id: ItemId::seed(*id),
                 property: property_id,
                 room: room_id,
                 name: (*item).to_string(),
@@ -609,7 +605,7 @@ fn seed_property(
             .enumerate()
         {
             inventory.items.push(Item {
-                id: *next_filler_id,
+                id: ItemId::seed(*next_filler_id),
                 property: property_id,
                 room: room_id,
                 name: format!("{} item {}", seed.name, k + 1),
@@ -672,7 +668,7 @@ mod tests {
         default_inventory(today())
     }
 
-    fn room_id(inv: &Inventory, property: &str, room: &str) -> u32 {
+    fn room_id(inv: &Inventory, property: &str, room: &str) -> RoomId {
         inv.properties
             .iter()
             .find(|p| p.name == property)
@@ -681,7 +677,7 @@ mod tests {
             .id
     }
 
-    fn property_id(inv: &Inventory, name: &str) -> u32 {
+    fn property_id(inv: &Inventory, name: &str) -> PropertyId {
         inv.properties.iter().find(|p| p.name == name).unwrap().id
     }
 
@@ -723,14 +719,16 @@ mod tests {
         let before = service.clone();
 
         assert_eq!(
-            service.add_room(9_999, "Nowhere"),
+            service.add_room(PropertyId::seed(9_999), "Nowhere"),
             Err(RoomError::UnknownProperty)
         );
         assert_eq!(
-            service.remove_property(9_999).unwrap_err(),
+            service
+                .remove_property(PropertyId::seed(9_999))
+                .unwrap_err(),
             PropertyError::Unknown
         );
-        assert!(service.move_room(9_999, 1).is_none());
+        assert!(service.move_room(RoomId::seed(9_999), 1).is_none());
 
         assert_eq!(&service, &before);
     }
@@ -739,7 +737,7 @@ mod tests {
     fn remove_property_reports_the_items_it_took() {
         let mut service = seed();
         let elm = property_id(&service, "12 Elm St contents");
-        let expected: Vec<u32> = service
+        let expected: Vec<ItemId> = service
             .items
             .iter()
             .filter(|item| item.property == elm)
@@ -837,7 +835,7 @@ mod tests {
             (6, "Toyota Corolla", "Garage"),
         ];
         for (id, name, room) in named {
-            let item = inv.item(id).unwrap();
+            let item = inv.item(ItemId::seed(id)).unwrap();
             assert_eq!(item.name, name);
             assert_eq!(inv.room(item.room).unwrap().1.name, room);
         }
@@ -874,8 +872,8 @@ mod tests {
         let spare = inv.add_room(storage, "Spare").unwrap();
         assert_eq!(inv.room_items(spare), 0);
         assert_eq!(inv.room_value(spare), zero());
-        assert_eq!(inv.room_items(9_999), 0);
-        assert_eq!(inv.room_value(9_999), zero());
+        assert_eq!(inv.room_items(RoomId::seed(9_999)), 0);
+        assert_eq!(inv.room_value(RoomId::seed(9_999)), zero());
     }
 
     // --- property mutations -----------------------------------------------------------------
@@ -934,7 +932,7 @@ mod tests {
             Err(PropertyError::Name(NameError::Taken))
         );
         assert_eq!(
-            inv.edit_property(999, &draft("Anything")),
+            inv.edit_property(PropertyId::seed(999), &draft("Anything")),
             Err(PropertyError::Unknown)
         );
     }
@@ -943,7 +941,7 @@ mod tests {
     fn remove_property_takes_its_rooms_and_items_and_reports_the_item_ids() {
         let mut inv = seed();
         let storage = property_id(&inv, "Storage unit");
-        let expected: Vec<u32> = inv
+        let expected: Vec<ItemId> = inv
             .items
             .iter()
             .filter(|i| i.property == storage)
@@ -1050,7 +1048,10 @@ mod tests {
         );
         // The same name is fine in another Property.
         assert!(inv.add_room(storage, "Attic").is_ok());
-        assert_eq!(inv.add_room(999, "X"), Err(RoomError::UnknownProperty));
+        assert_eq!(
+            inv.add_room(PropertyId::seed(999), "X"),
+            Err(RoomError::UnknownProperty)
+        );
     }
 
     #[test]
@@ -1083,7 +1084,10 @@ mod tests {
             inv.edit_room(living, "kitchen"),
             Err(RoomError::Name(NameError::Taken))
         );
-        assert_eq!(inv.edit_room(999, "X"), Err(RoomError::UnknownRoom));
+        assert_eq!(
+            inv.edit_room(RoomId::seed(999), "X"),
+            Err(RoomError::UnknownRoom)
+        );
     }
 
     #[test]
@@ -1129,7 +1133,7 @@ mod tests {
             Err(RoomError::BadDestination)
         );
         assert_eq!(
-            inv.remove_room(laundry, Some(999)),
+            inv.remove_room(laundry, Some(RoomId::seed(999))),
             Err(RoomError::BadDestination)
         );
         assert!(inv.room(laundry).is_some());
@@ -1165,7 +1169,7 @@ mod tests {
             None,
             "an only Room has none"
         );
-        assert_eq!(default_destination(&inv, 999), None);
+        assert_eq!(default_destination(&inv, RoomId::seed(999)), None);
     }
 
     #[test]
@@ -1194,7 +1198,7 @@ mod tests {
         assert_eq!(&names(&inv)[..2], ["Kitchen", "Living"]);
         assert!(inv.move_room(living, -1).is_some());
         assert_eq!(&names(&inv)[..2], ["Living", "Kitchen"]);
-        assert!(inv.move_room(999, 1).is_none());
+        assert!(inv.move_room(RoomId::seed(999), 1).is_none());
     }
 
     #[test]

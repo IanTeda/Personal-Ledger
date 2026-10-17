@@ -216,12 +216,14 @@ impl<'de> serde::Deserialize<'de> for HexColor {
 }
 
 // SQLx trait implementations ensure the colour can be stored as TEXT.
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for HexColor {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for HexColor {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let raw = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
@@ -229,6 +231,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for HexColor {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for HexColor {
     fn encode_by_ref(
         &self,

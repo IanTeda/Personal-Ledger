@@ -8,7 +8,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountType, Money, UnitId};
+use lib_core::{AccountId, AccountType, Money, UnitId};
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
 /// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
 /// deliberately absent from `institutions::default_institutions()`: it is not a user-managed row.
@@ -33,7 +33,7 @@ pub const GROUP_ORDER: [AccountType; 5] = [
 /// Account on that Unit; the code is looked up through the Ledger when shown.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Account {
-    pub id: u32,
+    pub id: AccountId,
     pub name: String,
     pub institution: String,
     pub account_type: AccountType,
@@ -82,8 +82,8 @@ pub enum AccountError {
 }
 
 /// Adds the Account `new` describes, with no Transactions or Budgets yet, and returns its id.
-pub fn insert_account(accounts: &mut Vec<Account>, new: NewAccount) -> u32 {
-    let id = next_account_id(accounts);
+pub fn insert_account(accounts: &mut Vec<Account>, new: NewAccount) -> AccountId {
+    let id = AccountId::new();
     accounts.push(Account {
         id,
         name: new.draft.name,
@@ -102,7 +102,7 @@ pub fn insert_account(accounts: &mut Vec<Account>, new: NewAccount) -> u32 {
 /// Writes `draft` onto Account `id`, leaving Unit, balance, opened date and the stub counts alone.
 pub fn edit_account(
     accounts: &mut [Account],
-    id: u32,
+    id: AccountId,
     draft: &AccountDraft,
 ) -> Result<(), AccountError> {
     let account = accounts
@@ -118,7 +118,7 @@ pub fn edit_account(
 
 /// Removes every row with Account `id`, so a deleted id can never leave the list orphaned, and
 /// returns the first one removed. The Transactions booked to it are the Ledger's to delete.
-pub fn remove_account(accounts: &mut Vec<Account>, id: u32) -> Result<Account, AccountError> {
+pub fn remove_account(accounts: &mut Vec<Account>, id: AccountId) -> Result<Account, AccountError> {
     let first = get(accounts, id).ok_or(AccountError::NotFound)?.clone();
     accounts.retain(|account| account.id != id);
     Ok(first)
@@ -128,7 +128,7 @@ pub fn remove_account(accounts: &mut Vec<Account>, id: u32) -> Result<Account, A
 /// Transactions to it.
 pub fn count_imported(
     accounts: &mut [Account],
-    id: u32,
+    id: AccountId,
     imported: u32,
 ) -> Result<(), AccountError> {
     let account = accounts
@@ -140,7 +140,7 @@ pub fn count_imported(
 }
 
 /// Account `id`, if it exists.
-pub fn get(accounts: &[Account], id: u32) -> Option<&Account> {
+pub fn get(accounts: &[Account], id: AccountId) -> Option<&Account> {
     accounts.iter().find(|account| account.id == id)
 }
 
@@ -178,15 +178,6 @@ pub fn display_order(accounts: &[Account]) -> Vec<usize> {
         .into_iter()
         .flat_map(|group| group.indices)
         .collect()
-}
-
-/// The next unused account id.
-pub fn next_account_id(accounts: &[Account]) -> u32 {
-    accounts
-        .iter()
-        .map(|account| account.id)
-        .max()
-        .map_or(1, |max| max + 1)
 }
 
 /// The page header's figures under the no-cross-Unit rule: one net figure in the base Unit
@@ -301,7 +292,7 @@ const fn date(year: i32, month: u32) -> NaiveDate {
 pub fn default_accounts() -> Vec<Account> {
     vec![
         Account {
-            id: 1,
+            id: AccountId::seed(1),
             name: "Wallet".to_string(),
             institution: NO_INSTITUTION.to_string(),
             account_type: AccountType::Cash,
@@ -313,7 +304,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 0,
         },
         Account {
-            id: 2,
+            id: AccountId::seed(2),
             name: "ANZ Everyday".to_string(),
             institution: "ANZ Banking Group".to_string(),
             account_type: AccountType::Bank,
@@ -325,7 +316,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 3,
         },
         Account {
-            id: 3,
+            id: AccountId::seed(3),
             name: "ANZ Offset".to_string(),
             institution: "ANZ Banking Group".to_string(),
             account_type: AccountType::Bank,
@@ -337,7 +328,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 0,
         },
         Account {
-            id: 4,
+            id: AccountId::seed(4),
             name: "Amex Platinum".to_string(),
             institution: "American Express".to_string(),
             account_type: AccountType::CreditCard,
@@ -349,7 +340,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 2,
         },
         Account {
-            id: 5,
+            id: AccountId::seed(5),
             name: "Home Loan".to_string(),
             institution: "Westpac Banking".to_string(),
             account_type: AccountType::Loan,
@@ -361,7 +352,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 0,
         },
         Account {
-            id: 6,
+            id: AccountId::seed(6),
             name: "Vanguard VAS".to_string(),
             institution: "Vanguard Investments".to_string(),
             account_type: AccountType::Investment,
@@ -373,7 +364,7 @@ pub fn default_accounts() -> Vec<Account> {
             budget_count: 0,
         },
         Account {
-            id: 7,
+            id: AccountId::seed(7),
             name: "Bitcoin".to_string(),
             institution: "Cryptocurrency Exchange".to_string(),
             account_type: AccountType::Investment,
@@ -391,7 +382,7 @@ pub fn default_accounts() -> Vec<Account> {
 mod tests {
     use super::*;
 
-    fn account(id: u32, name: &str, account_type: AccountType) -> Account {
+    fn account(id: AccountId, name: &str, account_type: AccountType) -> Account {
         Account {
             id,
             name: name.to_string(),
@@ -420,10 +411,10 @@ mod tests {
     #[test]
     fn groups_follow_fixed_order_not_insertion_order() {
         let accounts = vec![
-            account(1, "Fund", AccountType::Investment),
-            account(2, "Mortgage", AccountType::Loan),
-            account(3, "Card", AccountType::CreditCard),
-            account(4, "Savings", AccountType::Bank),
+            account(AccountId::seed(1), "Fund", AccountType::Investment),
+            account(AccountId::seed(2), "Mortgage", AccountType::Loan),
+            account(AccountId::seed(3), "Card", AccountType::CreditCard),
+            account(AccountId::seed(4), "Savings", AccountType::Bank),
         ];
         let types: Vec<_> = group_accounts(&accounts)
             .into_iter()
@@ -442,7 +433,7 @@ mod tests {
 
     #[test]
     fn empty_types_are_omitted() {
-        let accounts = vec![account(1, "Savings", AccountType::Bank)];
+        let accounts = vec![account(AccountId::seed(1), "Savings", AccountType::Bank)];
         let groups = group_accounts(&accounts);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].account_type, AccountType::Bank);
@@ -452,8 +443,8 @@ mod tests {
     #[test]
     fn within_a_group_accounts_keep_insertion_order() {
         let accounts = vec![
-            account(1, "Zebra", AccountType::Bank),
-            account(2, "Apple", AccountType::Bank),
+            account(AccountId::seed(1), "Zebra", AccountType::Bank),
+            account(AccountId::seed(2), "Apple", AccountType::Bank),
         ];
         assert_eq!(group_accounts(&accounts)[0].indices, vec![0, 1]);
     }
@@ -466,12 +457,6 @@ mod tests {
         order.sort_unstable();
         order.dedup();
         assert_eq!(order.len(), accounts.len());
-    }
-
-    #[test]
-    fn next_account_id_is_one_past_the_max_and_starts_at_one() {
-        assert_eq!(next_account_id(&[]), 1);
-        assert_eq!(next_account_id(&default_accounts()), 8);
     }
 
     #[test]
@@ -494,7 +479,7 @@ mod tests {
     fn net_worth_with_no_base_unit_accounts_is_zero_and_lists_every_unit() {
         let accounts = vec![Account {
             unit: UnitId::SEED_BTC,
-            ..account(1, "Coins", AccountType::Investment)
+            ..account(AccountId::seed(1), "Coins", AccountType::Investment)
         }];
         let net = net_worth(&accounts, Some(UnitId::SEED_AUD));
         assert_eq!(net.base_net, money("0"));
@@ -550,7 +535,7 @@ mod tests {
         let mut accounts = default_accounts();
         accounts.push(Account {
             name: "ANZ".to_string(),
-            ..account(20, "ANZ", AccountType::Bank)
+            ..account(AccountId::seed(20), "ANZ", AccountType::Bank)
         });
         assert_eq!(find_by_name(&accounts, "anz"), NameLookup::Found(7));
     }
@@ -558,8 +543,8 @@ mod tests {
     #[test]
     fn duplicate_exact_names_are_ambiguous() {
         let accounts = vec![
-            account(1, "Savings", AccountType::Bank),
-            account(2, "Savings", AccountType::Bank),
+            account(AccountId::seed(1), "Savings", AccountType::Bank),
+            account(AccountId::seed(2), "Savings", AccountType::Bank),
         ];
         assert_eq!(
             find_by_name(&accounts, "savings"),
@@ -585,8 +570,8 @@ mod tests {
     }
 
     #[test]
-    fn insert_takes_the_next_id_with_zero_counts() {
-        let mut accounts = vec![account(4, "Savings", AccountType::Bank)];
+    fn insert_gives_a_fresh_id_with_zero_counts() {
+        let mut accounts = vec![account(AccountId::seed(4), "Savings", AccountType::Bank)];
         let id = insert_account(
             &mut accounts,
             NewAccount {
@@ -596,23 +581,23 @@ mod tests {
                 opened_at: date(2026, 2),
             },
         );
-        assert_eq!(id, 5);
-        let added = get(&accounts, 5).expect("inserted");
+        assert_ne!(id, AccountId::seed(4));
+        let added = get(&accounts, id).expect("inserted");
         assert_eq!(added.name, "Card");
         assert_eq!((added.transaction_count, added.budget_count), (0, 0));
     }
 
     #[test]
     fn edit_writes_the_draft_and_leaves_the_fixed_fields() {
-        let mut accounts = vec![account(7, "Old", AccountType::Bank)];
-        edit_account(&mut accounts, 7, &draft("New")).expect("account 7 exists");
-        let edited = get(&accounts, 7).expect("still there");
+        let mut accounts = vec![account(AccountId::seed(7), "Old", AccountType::Bank)];
+        edit_account(&mut accounts, AccountId::seed(7), &draft("New")).expect("account 7 exists");
+        let edited = get(&accounts, AccountId::seed(7)).expect("still there");
         assert_eq!(edited.name, "New");
         assert_eq!(edited.account_type, AccountType::CreditCard);
         assert_eq!(edited.account_number.as_deref(), Some("42"));
         assert_eq!(edited.unit, UnitId::SEED_AUD);
         assert_eq!(
-            edit_account(&mut accounts, 8, &draft("x")),
+            edit_account(&mut accounts, AccountId::seed(8), &draft("x")),
             Err(AccountError::NotFound)
         );
     }
@@ -620,15 +605,15 @@ mod tests {
     #[test]
     fn remove_takes_every_row_with_the_id() {
         let mut accounts = vec![
-            account(4, "First", AccountType::Bank),
-            account(4, "Second", AccountType::Bank),
-            account(5, "Other", AccountType::Bank),
+            account(AccountId::seed(4), "First", AccountType::Bank),
+            account(AccountId::seed(4), "Second", AccountType::Bank),
+            account(AccountId::seed(5), "Other", AccountType::Bank),
         ];
-        let removed = remove_account(&mut accounts, 4).expect("id 4 exists");
+        let removed = remove_account(&mut accounts, AccountId::seed(4)).expect("id 4 exists");
         assert_eq!(removed.name, "First");
         assert_eq!(accounts.len(), 1);
         assert_eq!(
-            remove_account(&mut accounts, 4),
+            remove_account(&mut accounts, AccountId::seed(4)),
             Err(AccountError::NotFound)
         );
     }

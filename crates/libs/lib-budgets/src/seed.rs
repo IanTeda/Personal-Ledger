@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{Period, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
 use lib_transactions as transactions;
 
 use super::store::Budgets;
@@ -67,8 +67,8 @@ fn seeded_limits(
     seeds: &[LimitSeed],
     categories: &[Category],
     today: NaiveDate,
-) -> BTreeMap<u32, Vec<LimitRecord>> {
-    let mut limits: BTreeMap<u32, Vec<LimitRecord>> = BTreeMap::new();
+) -> BTreeMap<CategoryId, Vec<LimitRecord>> {
+    let mut limits: BTreeMap<CategoryId, Vec<LimitRecord>> = BTreeMap::new();
     for seed in seeds {
         let Some(id) = categories::find_by_name(categories, seed.category) else {
             continue;
@@ -105,7 +105,7 @@ fn seeded_limits(
 /// Accounts and some of the same Categories, so the two overlap. A Category or Account the stubs
 /// lack is left out.
 pub fn default_budgets(accounts: &[Account], categories: &[Category], today: NaiveDate) -> Budgets {
-    let on_budget = |names: Option<&[&str]>| -> Vec<u32> {
+    let on_budget = |names: Option<&[&str]>| -> Vec<AccountId> {
         accounts
             .iter()
             .filter(|a| {
@@ -127,7 +127,7 @@ pub fn default_budgets(accounts: &[Account], categories: &[Category], today: Nai
             limits: seeded_limits(&PERSONAL_SPENDING, categories, today),
         },
         Budget {
-            id: 2,
+            id: BudgetId::seed(2),
             name: "Joint household".to_string(),
             method: Method::Limits,
             unit: UnitId::SEED_AUD,

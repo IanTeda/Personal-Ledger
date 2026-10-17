@@ -2,6 +2,7 @@
 //! [`Apply`] that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_core::PayeeId;
 use lib_ledger::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, SetPayeeActive, SetPayeeActiveRefusal,
 };
@@ -19,15 +20,15 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayeeCommand {
     Add(PayeeDraft),
-    Edit(u32, PayeeDraft),
-    Remove(u32, DeleteAction),
+    Edit(PayeeId, PayeeDraft),
+    Remove(PayeeId, DeleteAction),
 }
 
 /// What a landed [`PayeeCommand`] did, for the selection and Toast that follow it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayeeOutcome {
     /// Added or edited: the Payee to select.
-    Saved(u32),
+    Saved(PayeeId),
     /// Deleted, deactivated or reactivated; the name is read before the write removes it.
     Removed { name: String, action: DeleteAction },
 }

@@ -6,7 +6,7 @@
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
-use lib_core::CategoryTypes;
+use lib_core::{BudgetId, CategoryId, CategoryTypes};
 use lib_ledger::{CycleBudgetRollover, SaveBudgetCell};
 use lib_toast::ToastKind;
 
@@ -36,7 +36,7 @@ impl EventEmitter<ViewEvent> for BudgetsView {}
 pub struct BudgetsState {
     /// The Budget the Budgets surface shows. The last one opened is a Client-scoped Preference, so
     /// this starts on the default Budget; the stub doesn't persist it.
-    pub current: u32,
+    pub current: BudgetId,
     pub tab: BudgetsTab,
     /// The Progress tab's calendar month; starts at today's.
     pub period: Period,
@@ -55,7 +55,7 @@ pub struct BudgetsState {
 }
 
 impl BudgetsState {
-    pub fn new(current: u32, today: NaiveDate) -> Self {
+    pub fn new(current: BudgetId, today: NaiveDate) -> Self {
         Self {
             current,
             tab: BudgetsTab::default(),
@@ -93,7 +93,7 @@ impl BudgetsView {
     /// The page on `current`, as of `today`.
     pub fn new(
         sources: BudgetsSources,
-        current: u32,
+        current: BudgetId,
         today: NaiveDate,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -114,7 +114,7 @@ impl BudgetsView {
     }
 
     /// The Budget on show's id.
-    pub fn current(&self) -> u32 {
+    pub fn current(&self) -> BudgetId {
         self.state.current
     }
 
@@ -208,7 +208,7 @@ impl BudgetsView {
     }
 
     /// Whether 9d offers Edit budget: a leaf Expense Category in a Budget that takes edits.
-    pub fn detail_editable(&self, category_id: u32, cx: &App) -> bool {
+    pub fn detail_editable(&self, category_id: CategoryId, cx: &App) -> bool {
         let categories = self.categories(cx);
         self.editable(cx).is_some()
             && lib_categories::is_leaf(categories, category_id)
@@ -228,7 +228,7 @@ impl BudgetsView {
     }
 
     /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
-    pub fn cursor_category(&self, cx: &App) -> Option<(u32, Period)> {
+    pub fn cursor_category(&self, cx: &App) -> Option<(CategoryId, Period)> {
         match self.state.tab {
             BudgetsTab::Progress => {
                 let (_, figures) = self.figures(cx)?;
@@ -252,7 +252,7 @@ impl BudgetsView {
     /// 9d's figures for `category_id` in `month`, or `None` once its Budget or Category is gone.
     pub fn category_detail(
         &self,
-        category_id: u32,
+        category_id: CategoryId,
         month: Period,
         cx: &App,
     ) -> Option<budgets::CategoryDetail> {
@@ -309,7 +309,7 @@ impl BudgetsView {
 
     /// 11c's edit mode on Budget `id`: rename it or change its Accounts. An archived Budget is
     /// read-only, so it has none.
-    pub fn edit_budget_dialog(&self, id: u32, cx: &App) -> Option<BudgetsDialog> {
+    pub fn edit_budget_dialog(&self, id: BudgetId, cx: &App) -> Option<BudgetsDialog> {
         let budget = self
             .budgets(cx)
             .get(id)
@@ -326,7 +326,12 @@ impl BudgetsView {
     /// 9e on a leaf Category, starting in `month` when that is offered. A Category with no Budget
     /// Amount this month gets the picker with it preselected (9a's `set`); a parent only rolls up,
     /// so it gets none.
-    pub fn limit_dialog(&self, category_id: u32, month: Period, cx: &App) -> Option<BudgetsDialog> {
+    pub fn limit_dialog(
+        &self,
+        category_id: CategoryId,
+        month: Period,
+        cx: &App,
+    ) -> Option<BudgetsDialog> {
         let budget = self.editable(cx)?;
         let options = self.limit_options(budgets::limit_form::START_MONTHS, cx)?;
         let current = Period::of(self.today);
@@ -352,7 +357,12 @@ impl BudgetsView {
     }
 
     /// 9g on a leaf Category that has a Budget Amount this month or in `month`.
-    pub fn stop_dialog(&self, category_id: u32, month: Period, cx: &App) -> Option<BudgetsDialog> {
+    pub fn stop_dialog(
+        &self,
+        category_id: CategoryId,
+        month: Period,
+        cx: &App,
+    ) -> Option<BudgetsDialog> {
         let budget = self.editable(cx)?;
         let options = self.limit_options(budgets::limit_form::STOP_MONTHS, cx)?;
         let chain = budget.chain(category_id);
@@ -377,7 +387,7 @@ impl BudgetsView {
     }
 
     /// 9d, counting the Transactions it lists now so its `j`/`k` never need the ledger.
-    fn detail_dialog(&self, category_id: u32, month: Period, cx: &App) -> BudgetsDialog {
+    fn detail_dialog(&self, category_id: CategoryId, month: Period, cx: &App) -> BudgetsDialog {
         let listed = self
             .category_detail(category_id, month, cx)
             .map_or(0, |detail| {
@@ -604,7 +614,7 @@ impl BudgetsView {
 
     /// Shows Budget `id`, keeping the active tab (every method built has all three) and putting
     /// each tab's cursor and range back at its start.
-    pub fn switch_budget(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn switch_budget(&mut self, id: BudgetId, cx: &mut Context<'_, Self>) {
         if self.budgets(cx).get(id).is_none() {
             return;
         }
@@ -795,7 +805,7 @@ impl BudgetsView {
             .update(cx, |store, cx| store.apply(cx, command))
     }
 
-    fn cycle_rollover(&self, category_id: u32, cx: &mut Context<'_, Self>) {
+    fn cycle_rollover(&self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         let _ = self.apply(
             CycleBudgetRollover {
                 budget_id: self.state.current,

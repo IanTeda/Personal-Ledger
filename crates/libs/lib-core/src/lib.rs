@@ -38,10 +38,13 @@ pub use error::{Error, Result};
 mod row_id;
 pub use row_id::{RowID, RowIDError};
 
-/// The id of a Unit (ADR-0040): a [`RowID`] newtype, so a Unit's id can't be passed where another
-/// domain's id is wanted, and an Account's Unit reference survives the Unit's code being edited.
-mod unit_id;
-pub use unit_id::UnitId;
+/// The Ledger's ids (ADR-0040): a [`RowID`] newtype per kind of row, so one domain's id can't be
+/// passed where another's is wanted.
+mod ids;
+pub use ids::{
+    AccountId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, ItemId, PayeeId,
+    PropertyId, RoomId, TagId, TransactionId, UnitId,
+};
 
 /// Category types used for classifying financial transactions.
 ///

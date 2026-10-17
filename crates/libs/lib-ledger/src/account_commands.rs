@@ -9,6 +9,7 @@ use lib_accounts::{
     Account, AccountDraft, AccountError, NewAccount, count_imported, edit_account, get,
     insert_account, remove_account,
 };
+use lib_core::AccountId;
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -22,21 +23,25 @@ pub struct AccountDeleted {
 
 impl Ledger {
     /// Adds the Account `new` describes and returns its id.
-    pub fn add_account(&mut self, new: NewAccount) -> u32 {
+    pub fn add_account(&mut self, new: NewAccount) -> AccountId {
         let id = insert_account(&mut self.accounts, new);
         self.record_account(id);
         id
     }
 
     /// Saves the editable fields of Account `id`.
-    pub fn edit_account(&mut self, id: u32, draft: &AccountDraft) -> Result<(), AccountError> {
+    pub fn edit_account(
+        &mut self,
+        id: AccountId,
+        draft: &AccountDraft,
+    ) -> Result<(), AccountError> {
         edit_account(&mut self.accounts, id, draft)?;
         self.record_account(id);
         Ok(())
     }
 
     /// Deletes Account `id` and the Transactions booked to it, as the Delete Dialog says.
-    pub fn delete_account(&mut self, id: u32) -> Result<AccountDeleted, AccountError> {
+    pub fn delete_account(&mut self, id: AccountId) -> Result<AccountDeleted, AccountError> {
         let removed = remove_account(&mut self.accounts, id)?;
         self.pending.push(LedgerChange::DeleteAccount(id));
         let mut transactions = 0;
@@ -59,7 +64,7 @@ impl Ledger {
     /// show, after an Import books that many Transactions to it.
     pub fn count_imported_transactions(
         &mut self,
-        id: u32,
+        id: AccountId,
         imported: u32,
     ) -> Result<(), AccountError> {
         count_imported(&mut self.accounts, id, imported)?;
@@ -67,7 +72,7 @@ impl Ledger {
         Ok(())
     }
 
-    fn record_account(&mut self, id: u32) {
+    fn record_account(&mut self, id: AccountId) {
         if let Some(account) = get(&self.accounts, id) {
             self.pending
                 .push(LedgerChange::UpsertAccount(Account::clone(account)));
@@ -80,9 +85,9 @@ impl Ledger {
 pub struct AddAccount(pub NewAccount);
 
 impl LedgerCommand for AddAccount {
-    type Outcome = u32;
+    type Outcome = AccountId;
     type Refusal = AccountError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, AccountError> {
+    fn run(self, ledger: &mut Ledger) -> Result<AccountId, AccountError> {
         Ok(ledger.add_account(self.0))
     }
 }
@@ -90,7 +95,7 @@ impl LedgerCommand for AddAccount {
 /// [`Ledger::edit_account`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditAccount {
-    pub id: u32,
+    pub id: AccountId,
     pub draft: AccountDraft,
 }
 
@@ -104,7 +109,7 @@ impl LedgerCommand for EditAccount {
 
 /// [`Ledger::delete_account`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeleteAccount(pub u32);
+pub struct DeleteAccount(pub AccountId);
 
 impl LedgerCommand for DeleteAccount {
     type Outcome = AccountDeleted;
@@ -117,7 +122,7 @@ impl LedgerCommand for DeleteAccount {
 /// [`Ledger::count_imported_transactions`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CountImportedTransactions {
-    pub id: u32,
+    pub id: AccountId,
     pub imported: u32,
 }
 
@@ -156,13 +161,12 @@ mod tests {
     }
 
     #[test]
-    fn add_records_the_new_account_with_the_next_id() {
+    fn add_records_the_new_account_under_a_fresh_id() {
         let mut ledger = Ledger::stub();
-        let expected = lib_accounts::next_account_id(ledger.accounts());
 
         let id = AddAccount(new_account("Fresh")).run(&mut ledger).unwrap();
 
-        assert_eq!(id, expected);
+        assert!(ledger.accounts().iter().filter(|a| a.id == id).count() == 1);
         let account = get(ledger.accounts(), id).unwrap();
         assert_eq!(
             (account.name.as_str(), account.transaction_count),
@@ -202,14 +206,14 @@ mod tests {
 
         assert_eq!(
             EditAccount {
-                id: 999,
+                id: AccountId::seed(999),
                 draft: draft("x"),
             }
             .run(&mut ledger),
             Err(AccountError::NotFound)
         );
         assert_eq!(
-            DeleteAccount(999).run(&mut ledger),
+            DeleteAccount(AccountId::seed(999)).run(&mut ledger),
             Err(AccountError::NotFound)
         );
         assert_eq!(ledger.accounts(), accounts);
@@ -284,7 +288,7 @@ mod tests {
         assert_eq!(ledger.drain_changes().len(), 1);
         assert_eq!(
             CountImportedTransactions {
-                id: 999,
+                id: AccountId::seed(999),
                 imported: 1,
             }
             .run(&mut ledger),

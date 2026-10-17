@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use chrono::NaiveDate;
-use lib_core::DateStyle;
+use lib_core::{DateStyle, DocumentId};
 use lib_locale::format::format_date_input;
 
 use crate::{
@@ -445,11 +445,11 @@ fn key_position(kind: KeyDateKind) -> usize {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentsDialog {
     Add(Box<DocumentForm>),
-    Edit(u32, Box<DocumentForm>),
+    Edit(DocumentId, Box<DocumentForm>),
     /// The typed paths, and why the last attempt imported none of them.
     Import(ImportForm, Vec<String>),
     /// An Unfiled Document's Extracted Facts, edited from the Inbox.
-    Facts(u32, Box<FactsForm>),
+    Facts(DocumentId, Box<FactsForm>),
     /// The count-first confirm for Accept all strong matches: how many it will file.
     AcceptAll(usize),
     /// The link picker: link toggling, filing from the Inbox, or following one of several Links.
@@ -1018,7 +1018,7 @@ mod tests {
     fn edit_has_no_path_field() {
         let options = options();
         let document = Document {
-            id: 1,
+            id: DocumentId::seed(1),
             path: PathBuf::from("/tmp/a.pdf"),
             kind: FileKind::Pdf,
             pages: 1,
@@ -1251,7 +1251,7 @@ mod tests {
 
     fn facts_dialog() -> OpenDialog {
         OpenDialog::Documents(DocumentsDialog::Facts(
-            1,
+            DocumentId::seed(1),
             Box::new(FactsForm::new(
                 &documents::ExtractedFacts::default(),
                 &doc_options(),
@@ -1377,7 +1377,7 @@ mod tests {
     #[test]
     fn picker_types_a_query_and_tab_cycles_the_kind_filter() {
         use crate::documents::picker::{KindFilter, Purpose};
-        let mut dialog = picker(Purpose::Link(1));
+        let mut dialog = picker(Purpose::Link(DocumentId::seed(1)));
         type_text(&mut dialog, "coles");
         handle_key(&mut dialog, DialogKey::Backspace);
         assert_eq!(picker_of(&dialog).query.text(), "cole");
@@ -1390,7 +1390,7 @@ mod tests {
     #[test]
     fn picker_enter_and_the_arrows_ask_shell_for_the_live_rows() {
         use crate::documents::picker::{PickerRequest, Purpose};
-        let mut dialog = picker(Purpose::Link(1));
+        let mut dialog = picker(Purpose::Link(DocumentId::seed(1)));
         assert!(!dialog.is_valid());
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
@@ -1404,7 +1404,7 @@ mod tests {
             (DialogKey::Ctrl('n'), true),
             (DialogKey::Ctrl('p'), false),
         ] {
-            let mut dialog = picker(Purpose::Link(1));
+            let mut dialog = picker(Purpose::Link(DocumentId::seed(1)));
             assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Confirm);
             assert_eq!(
                 picker_of(&dialog).request,
@@ -1417,13 +1417,13 @@ mod tests {
     fn picker_left_and_right_step_the_inbox_document_type_only_when_filing() {
         use crate::documents::DocumentType;
         use crate::documents::picker::Purpose;
-        let mut dialog = picker(Purpose::File(1));
+        let mut dialog = picker(Purpose::File(DocumentId::seed(1)));
         handle_key(&mut dialog, DialogKey::Right);
         assert_eq!(picker_of(&dialog).doc_type, Some(DocumentType::TAX));
         handle_key(&mut dialog, DialogKey::Right);
         assert_eq!(picker_of(&dialog).doc_type, Some(DocumentType::OTHER));
 
-        let mut dialog = picker(Purpose::Link(1));
+        let mut dialog = picker(Purpose::Link(DocumentId::seed(1)));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Right),
             DialogOutcome::Ignored

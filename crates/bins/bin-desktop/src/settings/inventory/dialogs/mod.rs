@@ -8,6 +8,7 @@ pub mod property;
 pub mod room;
 
 use gpui::{AnyElement, App, div, prelude::*, px};
+use lib_core::{ItemId, PropertyId, RoomId};
 
 use super::form::{
     PropertyField, PropertyForm, RemovePropertyForm, RemoveRoomForm, RoomForm, suggestions,
@@ -26,16 +27,16 @@ use property::{OnFieldClick, OnSuggestionClick};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryDialog {
     Add(PropertyForm),
-    Edit(u32, PropertyForm),
+    Edit(PropertyId, PropertyForm),
     /// The Property and the name typed so far, which only a Property holding something asks for.
-    Remove(u32, RemovePropertyForm),
+    Remove(PropertyId, RemovePropertyForm),
     /// Add room to the Property.
-    AddRoom(u32, RoomForm),
-    EditRoom(u32, RoomForm),
+    AddRoom(PropertyId, RoomForm),
+    EditRoom(RoomId, RoomForm),
     /// The Room, and the chosen destination for its Items (unused while it is empty).
-    RemoveRoom(u32, RemoveRoomForm),
+    RemoveRoom(RoomId, RemoveRoomForm),
     /// The Room is its Property's last and holds Items.
-    RoomBlocked(u32),
+    RoomBlocked(RoomId),
 }
 
 impl InventoryDialog {
@@ -118,9 +119,9 @@ struct Holdings {
 }
 
 /// The Rooms and Items Property `id` holds, and the Documents that Link to one of its Items.
-fn holdings(inventory: &Inventory, documents: &[Document], id: u32) -> Holdings {
+fn holdings(inventory: &Inventory, documents: &[Document], id: PropertyId) -> Holdings {
     let rooms = inventory.property(id).map_or(0, |p| p.rooms.len());
-    let items: Vec<u32> = inventory
+    let items: Vec<ItemId> = inventory
         .items
         .iter()
         .filter(|item| item.property == id)
@@ -142,7 +143,7 @@ fn holdings(inventory: &Inventory, documents: &[Document], id: u32) -> Holdings 
 }
 
 /// Whether removing Property `id` asks for its name typed: only when it holds Rooms or Items.
-pub(super) fn needs_typed_name(inventory: &Inventory, id: u32) -> bool {
+pub(super) fn needs_typed_name(inventory: &Inventory, id: PropertyId) -> bool {
     let holdings = holdings(inventory, &[], id);
     holdings.rooms > 0 || holdings.items > 0
 }

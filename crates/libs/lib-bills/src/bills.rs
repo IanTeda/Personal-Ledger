@@ -6,7 +6,10 @@ use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{CategoryTypes, Money, Period, Total, TransactionStatus, UnitId};
+use lib_core::{
+    AccountId, BillPlanId, CategoryId, CategoryTypes, Money, PayeeId, Period, Total, TransactionId,
+    TransactionStatus, UnitId,
+};
 use lib_transactions::{self as transactions, Split, Transaction};
 
 use super::*;
@@ -55,10 +58,10 @@ pub enum BillError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillPlanDraft {
     pub name: String,
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub unit: UnitId,
-    pub account_id: u32,
-    pub payee_id: Option<u32>,
+    pub account_id: AccountId,
+    pub payee_id: Option<PayeeId>,
     pub planned_amount: Money,
     pub amount_kind: AmountKind,
     pub recurrence: Recurrence,
@@ -110,9 +113,29 @@ pub fn insert_plan(
     categories: &[Category],
     accounts: &[Account],
     today: NaiveDate,
-) -> Result<u32, BillError> {
+) -> Result<BillPlanId, BillError> {
+    insert_plan_as(
+        BillPlanId::new(),
+        plans,
+        entries,
+        draft,
+        categories,
+        accounts,
+        today,
+    )
+}
+
+/// [`insert_plan`] under a given id, for the stub seed, whose ids are fixed.
+pub(crate) fn insert_plan_as(
+    id: BillPlanId,
+    plans: &mut Vec<BillPlan>,
+    entries: &mut Vec<BillScheduleEntry>,
+    draft: &BillPlanDraft,
+    categories: &[Category],
+    accounts: &[Account],
+    today: NaiveDate,
+) -> Result<BillPlanId, BillError> {
     let name = validate(draft, categories, accounts)?;
-    let id = plans.iter().map(|p| p.id).max().unwrap_or(0) + 1;
     let plan = BillPlan {
         id,
         name,
@@ -140,7 +163,7 @@ pub fn insert_plan(
 pub fn edit_plan(
     plans: &mut [BillPlan],
     entries: &mut Vec<BillScheduleEntry>,
-    id: u32,
+    id: BillPlanId,
     draft: &BillPlanDraft,
     categories: &[Category],
     accounts: &[Account],
@@ -179,7 +202,7 @@ pub fn edit_plan(
 pub fn set_active(
     plans: &mut [BillPlan],
     entries: &mut Vec<BillScheduleEntry>,
-    id: u32,
+    id: BillPlanId,
     is_active: bool,
     today: NaiveDate,
 ) -> Result<(), BillError> {
@@ -224,12 +247,32 @@ pub fn pay(
     id: EntryId,
     amount: &Money,
     date: NaiveDate,
-) -> Result<u32, BillError> {
+) -> Result<TransactionId, BillError> {
+    pay_as(
+        TransactionId::new(),
+        plans,
+        entries,
+        transactions,
+        id,
+        amount,
+        date,
+    )
+}
+
+/// [`pay`] under a given Transaction id, for the stub seed, whose ids are fixed.
+pub(crate) fn pay_as(
+    transaction_id: TransactionId,
+    plans: &[BillPlan],
+    entries: &mut [BillScheduleEntry],
+    transactions: &mut Vec<Transaction>,
+    id: EntryId,
+    amount: &Money,
+    date: NaiveDate,
+) -> Result<TransactionId, BillError> {
     let plan = open_entry(plans, entries, id)?;
     if !amount.0.is_positive() {
         return Err(BillError::AmountNotPositive);
     }
-    let transaction_id = transactions.iter().map(|t| t.id).max().unwrap_or(0) + 1;
     let transaction = Transaction {
         id: transaction_id,
         date,
@@ -267,7 +310,7 @@ pub fn is_matched(entries: &[BillScheduleEntry], split: SplitRef) -> bool {
 }
 
 /// Whether a Transaction carries a Bill: any of its Splits is Matched.
-pub fn carries_bill(entries: &[BillScheduleEntry], transaction_id: u32) -> bool {
+pub fn carries_bill(entries: &[BillScheduleEntry], transaction_id: TransactionId) -> bool {
     entries.iter().any(
         |e| matches!(e.resolution, Resolution::Paid(split) if split.transaction_id == transaction_id),
     )
@@ -290,8 +333,9 @@ pub fn match_candidates(
     let Ok(plan) = open_entry(plans, entries, id) else {
         return Vec::new();
     };
-    let unit_of = |account_id: u32| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
-    let is_expense = |category_id: u32| {
+    let unit_of =
+        |account_id: AccountId| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
+    let is_expense = |category_id: CategoryId| {
         categories
             .iter()
             .any(|c| c.id == category_id && c.category_type == CategoryTypes::Expense)
@@ -403,7 +447,7 @@ pub fn unskip(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Bill
 
 /// Unmatches every entry Matched to a Split of `transaction_id`: what deleting that Transaction
 /// must do, so its entries return to Needs Attention.
-pub fn unmatch_transaction(entries: &mut [BillScheduleEntry], transaction_id: u32) {
+pub fn unmatch_transaction(entries: &mut [BillScheduleEntry], transaction_id: TransactionId) {
     for found in entries.iter_mut() {
         if matches!(found.resolution, Resolution::Paid(split) if split.transaction_id == transaction_id)
         {
@@ -650,10 +694,10 @@ mod tests {
     fn draft(recurrence: Recurrence, first_due: NaiveDate) -> BillPlanDraft {
         BillPlanDraft {
             name: "Water".to_string(),
-            category_id: 5,
+            category_id: CategoryId::seed(5),
             unit: UnitId::SEED_AUD,
-            account_id: 2,
-            payee_id: Some(15),
+            account_id: AccountId::seed(2),
+            payee_id: Some(PayeeId::seed(15)),
             planned_amount: cents_money(9_000),
             amount_kind: AmountKind::Estimated,
             recurrence,
@@ -663,7 +707,7 @@ mod tests {
         }
     }
 
-    fn add(w: &mut World, draft: &BillPlanDraft) -> u32 {
+    fn add(w: &mut World, draft: &BillPlanDraft) -> BillPlanId {
         insert_plan(
             &mut w.plans,
             &mut w.entries,
@@ -675,7 +719,7 @@ mod tests {
         .unwrap()
     }
 
-    fn dues(w: &World, plan_id: u32) -> Vec<NaiveDate> {
+    fn dues(w: &World, plan_id: BillPlanId) -> Vec<NaiveDate> {
         let mut dates: Vec<NaiveDate> = w
             .entries
             .iter()
@@ -686,7 +730,7 @@ mod tests {
         dates
     }
 
-    fn id(plan_id: u32, due: NaiveDate) -> EntryId {
+    fn id(plan_id: BillPlanId, due: NaiveDate) -> EntryId {
         EntryId { plan_id, due }
     }
 
@@ -714,7 +758,7 @@ mod tests {
 
     fn open(due: NaiveDate) -> BillScheduleEntry {
         BillScheduleEntry {
-            plan_id: 1,
+            plan_id: BillPlanId::seed(1),
             due,
             resolution: Resolution::Unresolved,
             superseded: false,
@@ -902,16 +946,22 @@ mod tests {
         assert_eq!(refused(|d| d.name = "  ".into()), BillError::NameRequired);
         // Salary is Income; Utilities has children.
         assert_eq!(
-            refused(|d| d.category_id = 11),
+            refused(|d| d.category_id = CategoryId::seed(11)),
             BillError::CategoryNotExpenseLeaf
         );
         assert_eq!(
-            refused(|d| d.category_id = 3),
+            refused(|d| d.category_id = CategoryId::seed(3)),
             BillError::CategoryNotExpenseLeaf
         );
         // Home Loan takes no Transactions.
-        assert_eq!(refused(|d| d.account_id = 5), BillError::AccountRequired);
-        assert_eq!(refused(|d| d.account_id = 99), BillError::AccountRequired);
+        assert_eq!(
+            refused(|d| d.account_id = AccountId::seed(5)),
+            BillError::AccountRequired
+        );
+        assert_eq!(
+            refused(|d| d.account_id = AccountId::seed(99)),
+            BillError::AccountRequired
+        );
         assert_eq!(
             refused(|d| d.unit = UnitId::SEED_BTC),
             BillError::UnitMismatch

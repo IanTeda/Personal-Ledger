@@ -3,6 +3,7 @@
 //! clicked; state is read back from the Settings snapshot.
 
 use super::common;
+use lib_core::CategoryId;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -60,7 +61,7 @@ fn the_sub_button_opens_add_under_its_row(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
     // Housing is a top-level row, so it can take a sub-category.
-    ui.click("settings-categories-sub-1");
+    ui.click(&format!("settings-categories-sub-{}", CategoryId::seed(1)));
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
     assert_eq!(page.dialog_parent.as_deref(), Some("Housing"));
@@ -74,7 +75,7 @@ fn clicking_a_row_selects_it(app: &mut TestAppContext) {
     assert_eq!(ui.settings_categories().selected_category, None);
 
     // Food (id 6) is a top-level row, visible with the tree collapsed.
-    ui.click("settings-categories-row-6");
+    ui.click(&format!("settings-categories-row-{}", CategoryId::seed(6)));
     assert_eq!(
         ui.settings_categories().selected_category.as_deref(),
         Some("Food")
@@ -85,7 +86,7 @@ fn clicking_a_row_selects_it(app: &mut TestAppContext) {
 fn the_edit_action_opens_its_dialog_and_confirm_saves_the_rename(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
-    ui.click("settings-categories-edit-6");
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditCategory"));
@@ -109,7 +110,7 @@ fn the_edit_cancel_button_closes_without_renaming(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
     let before = ui.settings_categories().category_names;
 
-    ui.click("settings-categories-edit-6");
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     ui.press("x");
     ui.click("edit-category-cancel");
     assert_eq!(ui.settings().dialog, None);
@@ -122,7 +123,10 @@ fn the_delete_action_opens_its_dialog_and_cancel_keeps_the_row(app: &mut TestApp
     let before = ui.settings_categories().category_names;
 
     // Household (id 10) is a leaf, so Delete opens its dialog.
-    ui.click("settings-categories-delete-10");
+    ui.click(&format!(
+        "settings-categories-delete-{}",
+        CategoryId::seed(10)
+    ));
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.click("delete-category-cancel");
     assert_eq!(ui.settings().dialog, None);
@@ -133,7 +137,10 @@ fn the_delete_action_opens_its_dialog_and_cancel_keeps_the_row(app: &mut TestApp
 fn the_delete_confirm_is_inert_until_the_name_is_typed(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
-    ui.click("settings-categories-delete-10");
+    ui.click(&format!(
+        "settings-categories-delete-{}",
+        CategoryId::seed(10)
+    ));
     ui.click("delete-category-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
     ui.press("shift-h o u s e h o l d");

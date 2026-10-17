@@ -10,7 +10,7 @@ use chrono::NaiveDate;
 use lib_bills::{
     self as bills, BillError, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, SplitRef,
 };
-use lib_core::Money;
+use lib_core::{BillPlanId, Money, TransactionId};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -20,7 +20,7 @@ impl Ledger {
         &mut self,
         draft: &BillPlanDraft,
         today: NaiveDate,
-    ) -> Result<u32, BillError> {
+    ) -> Result<BillPlanId, BillError> {
         let mut plans = self.bill_plans.clone();
         let mut entries = self.bill_entries.clone();
         let id = bills::insert_plan(
@@ -39,7 +39,7 @@ impl Ledger {
     /// say. A refusal in either step leaves both undone.
     pub fn edit_bill_plan(
         &mut self,
-        id: u32,
+        id: BillPlanId,
         draft: &BillPlanDraft,
         is_active: bool,
         today: NaiveDate,
@@ -67,7 +67,7 @@ impl Ledger {
         entry: EntryId,
         amount: &Money,
         date: NaiveDate,
-    ) -> Result<u32, BillError> {
+    ) -> Result<TransactionId, BillError> {
         let mut entries = self.bill_entries.clone();
         let mut transactions = self.transactions.clone();
         let transaction_id = bills::pay(
@@ -130,7 +130,12 @@ impl Ledger {
     /// Replaces the Plans and entries with the checked result and records Plan `plan_id`'s upsert
     /// and an upsert per entry that is new or differs from before. Entries of other Plans are
     /// never touched by a command, so they're not compared.
-    fn land_bills(&mut self, plans: Vec<BillPlan>, entries: Vec<BillScheduleEntry>, plan_id: u32) {
+    fn land_bills(
+        &mut self,
+        plans: Vec<BillPlan>,
+        entries: Vec<BillScheduleEntry>,
+        plan_id: BillPlanId,
+    ) {
         let changed: Vec<BillScheduleEntry> = entries
             .iter()
             .filter(|e| e.plan_id == plan_id && !self.bill_entries.contains(e))
@@ -157,9 +162,9 @@ pub struct AddBillPlan {
 }
 
 impl LedgerCommand for AddBillPlan {
-    type Outcome = u32;
+    type Outcome = BillPlanId;
     type Refusal = BillError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, BillError> {
+    fn run(self, ledger: &mut Ledger) -> Result<BillPlanId, BillError> {
         ledger.add_bill_plan(&self.draft, self.today)
     }
 }
@@ -167,7 +172,7 @@ impl LedgerCommand for AddBillPlan {
 /// [`Ledger::edit_bill_plan`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditBillPlan {
-    pub id: u32,
+    pub id: BillPlanId,
     pub draft: BillPlanDraft,
     pub is_active: bool,
     pub today: NaiveDate,
@@ -190,9 +195,9 @@ pub struct PayBill {
 }
 
 impl LedgerCommand for PayBill {
-    type Outcome = u32;
+    type Outcome = TransactionId;
     type Refusal = BillError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, BillError> {
+    fn run(self, ledger: &mut Ledger) -> Result<TransactionId, BillError> {
         ledger.pay_bill(self.entry, &self.amount, self.date)
     }
 }
@@ -255,6 +260,7 @@ mod tests {
     use lib_core::UnitId;
 
     use super::*;
+    use lib_core::{AccountId, CategoryId};
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -269,9 +275,9 @@ mod tests {
     fn draft() -> BillPlanDraft {
         BillPlanDraft {
             name: "Water".to_owned(),
-            category_id: 5,
+            category_id: CategoryId::seed(5),
             unit: UnitId::SEED_AUD,
-            account_id: 2,
+            account_id: AccountId::seed(2),
             payee_id: None,
             planned_amount: Money(BigDecimal::new(9_000.into(), 2)),
             amount_kind: AmountKind::Estimated,
@@ -386,7 +392,7 @@ mod tests {
         let mut ledger = ledger();
         let before = ledger.clone();
         let refused = EditBillPlan {
-            id: 9_999,
+            id: BillPlanId::seed(9_999),
             draft: draft(),
             is_active: true,
             today: today(),
@@ -444,7 +450,7 @@ mod tests {
 
         let gone = PayBill {
             entry: EntryId {
-                plan_id: 9_999,
+                plan_id: BillPlanId::seed(9_999),
                 due: today(),
             },
             amount: Money(BigDecimal::new(100.into(), 2)),
@@ -463,7 +469,7 @@ mod tests {
         let refused = MatchBill {
             entry,
             split: SplitRef {
-                transaction_id: 9_999,
+                transaction_id: TransactionId::seed(9_999),
                 split_index: 0,
             },
         }
@@ -542,7 +548,7 @@ mod tests {
             Err(BillError::NotSkipped)
         );
         let missing = EntryId {
-            plan_id: 9_999,
+            plan_id: BillPlanId::seed(9_999),
             due: today(),
         };
         assert_eq!(

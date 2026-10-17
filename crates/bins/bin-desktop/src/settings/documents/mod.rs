@@ -14,6 +14,7 @@ pub mod form;
 pub(crate) mod render;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_core::DocumentTypeId;
 use lib_documents::types::{self as types, DocumentTypeRow};
 use lib_ledger::{Domain, MoveDocumentType};
 
@@ -41,7 +42,7 @@ impl EventEmitter<RowClicked> for DocumentsPage {}
 pub struct DocumentsPage {
     ledger: Entity<LedgerStore>,
     /// It may name a type that no longer exists, so read it through [`Self::selected_id`].
-    selected: Option<u32>,
+    selected: Option<DocumentTypeId>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -116,7 +117,7 @@ impl DocumentsPage {
         let Some(step) = movement.step() else {
             return;
         };
-        let ids: Vec<u32> = self.types(cx).iter().map(|row| row.id).collect();
+        let ids: Vec<DocumentTypeId> = self.types(cx).iter().map(|row| row.id).collect();
         self.selected = lib_list_cursor::step_id(&ids, self.selected_id(cx), step);
         cx.notify();
     }
@@ -155,12 +156,12 @@ impl DocumentsPage {
 
     /// The selected type's id: the stored id while it still exists, else the first row, so the
     /// cursor is never lost.
-    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+    pub fn selected_id(&self, cx: &App) -> Option<DocumentTypeId> {
         lib_list_cursor::resolve(self.types(cx).iter().map(|row| row.id), self.selected)
     }
 
     /// Selects type `id`, if it still exists.
-    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn select_id(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         if types::get(self.types(cx), id).is_some() {
             self.selected = Some(id);
             cx.notify();
@@ -182,7 +183,7 @@ impl DocumentsPage {
     // -----------------------------------------------------------------------------------------
 
     /// A click on a row: selects it and moves focus into the page.
-    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_row(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         cx.emit(RowClicked);
     }
@@ -193,13 +194,13 @@ impl DocumentsPage {
         self.open_add_dialog(cx);
     }
 
-    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_edit(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         cx.emit(RowClicked);
         self.open_edit_dialog(id, cx);
     }
 
-    pub(crate) fn click_remove(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_remove(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         cx.emit(RowClicked);
         self.open_remove_dialog(id, cx);
@@ -215,7 +216,7 @@ impl DocumentsPage {
     }
 
     /// Opens the Edit dialog filled from type `id`. A no-op if the type is gone.
-    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_dialog(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         let rows = self.types(cx);
         let Some(row) = types::get(rows, id) else {
             return;
@@ -226,7 +227,7 @@ impl DocumentsPage {
 
     /// Other, the Default, has no remove action: it gets a notice instead, and the status line
     /// says so.
-    fn open_remove_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_remove_dialog(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         let rows = self.types(cx);
         let Some(row) = types::get(rows, id) else {
             return;
@@ -253,6 +254,7 @@ impl DocumentsPage {
         let rows = self.types(cx);
         SettingsDocumentTypesSnapshot {
             document_type_names: rows.iter().map(|row| row.name.clone()).collect(),
+            document_type_ids: rows.iter().map(|row| row.id).collect(),
             selected_document_type: self
                 .selected_id(cx)
                 .and_then(|id| types::get(rows, id))
@@ -269,6 +271,8 @@ impl DocumentsPage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsDocumentTypesSnapshot {
     pub document_type_names: Vec<String>,
+    /// Each type's id, in the same order as the names.
+    pub document_type_ids: Vec<DocumentTypeId>,
     pub selected_document_type: Option<String>,
     pub document_type_files: Vec<u32>,
     pub document_type_dialog: Option<String>,

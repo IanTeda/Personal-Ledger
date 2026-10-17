@@ -11,20 +11,21 @@ use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
 };
+use lib_core::AccountId;
 
 /// The dialogs' shared width: `docs/ux/desktop-mockups/17-accounts/README.md`'s "Dialog" row.
 pub const WIDTH: gpui::Pixels = gpui::px(440.0);
 
 /// Every Accounts dialog `Shell` can have open, `None` when none is -- the README's own `State`
-/// block (`dialog: Option<Dialog>`). The `u32` is the account's [`Account::id`]. Each dialog
+/// block (`dialog: Option<Dialog>`). The [`AccountId`] is the account's [`Account::id`]. Each dialog
 /// ticket attaches its own form state to its variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountsDialog {
     Add(AccountForm),
     /// Editing the account with this [`Account::id`].
-    Edit(u32, AccountForm),
+    Edit(AccountId, AccountForm),
     /// Deleting the account with this [`Account::id`], once its name has been typed back.
-    Delete(u32, DeleteAccountForm),
+    Delete(AccountId, DeleteAccountForm),
 }
 
 impl AccountsDialog {

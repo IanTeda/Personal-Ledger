@@ -427,6 +427,7 @@ mod tests {
 
     use super::*;
     use lib_accounts::{default_accounts, group_accounts};
+    use lib_core::AccountId;
 
     use super::super::dialogs::AccountsDialog;
     use crate::chrome::dialog_host::Dialog;
@@ -842,9 +843,13 @@ mod tests {
         let options = add_options();
         let form = AccountForm::new(&options, None);
         assert!(AccountsDialog::Add(form.clone()).form().is_some());
-        assert!(AccountsDialog::Edit(1, form).form().is_some());
         assert!(
-            AccountsDialog::Delete(1, DeleteAccountForm::new("Wallet"))
+            AccountsDialog::Edit(AccountId::seed(1), form)
+                .form()
+                .is_some()
+        );
+        assert!(
+            AccountsDialog::Delete(AccountId::seed(1), DeleteAccountForm::new("Wallet"))
                 .form()
                 .is_none()
         );
@@ -945,7 +950,7 @@ mod tests {
     #[test]
     fn delete_account_confirms_only_on_the_exact_case_sensitive_name() {
         let mut dialog = OpenDialog::Accounts(AccountsDialog::Delete(
-            1,
+            AccountId::seed(1),
             DeleteAccountForm::new("Amex Platinum"),
         ));
         type_text(&mut dialog, "amex platinum");

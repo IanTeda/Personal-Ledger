@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 
 use lib_categories::Category;
 
@@ -20,14 +20,14 @@ use crate::{
 pub const WIDTH: gpui::Pixels = px(440.0);
 
 pub type OnFieldClick = Rc<dyn Fn(CategoryField, &mut Window, &mut App)>;
-pub type OnParentChange = Rc<dyn Fn(Option<u32>, &mut Window, &mut App)>;
+pub type OnParentChange = Rc<dyn Fn(Option<CategoryId>, &mut Window, &mut App)>;
 pub type OnTypeChange = Rc<dyn Fn(CategoryTypes, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
 #[derive(Clone)]
 pub struct ParentOption {
-    pub id: Option<u32>,
+    pub id: Option<CategoryId>,
     pub label: String,
     pub is_available: bool,
 }
@@ -37,7 +37,7 @@ pub struct ParentOption {
     reason = "the dialog's callbacks plus the App the Colour Theme is read from; a handlers struct is the sweep's call"
 )]
 pub fn render(
-    category_id: u32,
+    category_id: CategoryId,
     form: &CategoryForm,
     parent_options: &[ParentOption],
     all_categories: &[Category],
@@ -245,7 +245,7 @@ fn type_field(
 }
 
 fn parent_field(
-    selected_parent: Option<u32>,
+    selected_parent: Option<CategoryId>,
     options: &[ParentOption],
     focused: bool,
     on_field_click: OnFieldClick,
@@ -480,7 +480,7 @@ fn suffixed_label(
         .into_any_element()
 }
 
-fn is_valid(form: &CategoryForm, all_categories: &[Category], category_id: u32) -> bool {
+fn is_valid(form: &CategoryForm, all_categories: &[Category], category_id: CategoryId) -> bool {
     // Name must not be empty
     if form.name.text().trim().is_empty() {
         return false;

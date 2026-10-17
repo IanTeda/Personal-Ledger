@@ -10,6 +10,7 @@ pub mod edit;
 use gpui::{AnyElement, App, div, prelude::*};
 use lib_budgets::Budgets;
 use lib_categories::{Category, depth, descendants_inclusive, is_leaf, path};
+use lib_core::CategoryId;
 use lib_transactions::Transaction;
 
 use super::{
@@ -47,13 +48,13 @@ pub(crate) fn refusal_line(refusal: &CategoryRefusal, cx: &App) -> AnyElement {
 pub enum CategoriesDialog {
     /// Adding a new category under a parent (or None for top-level).
     Add {
-        parent_id: Option<u32>,
+        parent_id: Option<CategoryId>,
         form: CategoryForm,
     },
     /// Editing the category with this [`Category::id`].
-    Edit(u32, CategoryForm),
+    Edit(CategoryId, CategoryForm),
     /// Deleting the category with this [`Category::id`], once its name has been typed back.
-    Delete(u32, DeleteCategoryForm),
+    Delete(CategoryId, DeleteCategoryForm),
 }
 
 impl CategoriesDialog {
@@ -173,7 +174,11 @@ impl CategoriesDialog {
 }
 
 /// The Splits in `category_id` and, for a parent, in all its descendants.
-fn split_count(categories: &[Category], transactions: &[Transaction], category_id: u32) -> usize {
+fn split_count(
+    categories: &[Category],
+    transactions: &[Transaction],
+    category_id: CategoryId,
+) -> usize {
     descendants_inclusive(categories, category_id)
         .iter()
         .flat_map(|cat_id| {

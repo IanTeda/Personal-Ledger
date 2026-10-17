@@ -7,6 +7,7 @@ use crate::budgets::{
     BudgetsDialog,
     apply::{BudgetOutcome, BudgetsApply},
 };
+use lib_core::{BudgetId, CategoryId};
 use lib_ledger::{ArchiveBudget, DuplicateBudget, LedgerCommand, RestoreBudget, SetDefaultBudget};
 
 use super::Shell;
@@ -48,7 +49,7 @@ impl Shell {
     }
 
     /// The Budget the Budgets page shows.
-    pub(super) fn budgets_current(&self, cx: &gpui::App) -> u32 {
+    pub(super) fn budgets_current(&self, cx: &gpui::App) -> BudgetId {
         self.views.budgets.read(cx).current()
     }
 
@@ -69,7 +70,7 @@ impl Shell {
     }
 
     /// Whether 9d offers Edit budget on `category_id`.
-    pub(super) fn budgets_detail_editable(&self, category_id: u32, cx: &gpui::App) -> bool {
+    pub(super) fn budgets_detail_editable(&self, category_id: CategoryId, cx: &gpui::App) -> bool {
         self.views.budgets.read(cx).detail_editable(category_id, cx)
     }
 
@@ -86,7 +87,12 @@ impl Shell {
     }
 
     /// 9e on a leaf Category, from 9d's **Edit budget**.
-    pub(super) fn open_budgets_limit(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
+    pub(super) fn open_budgets_limit(
+        &mut self,
+        category_id: CategoryId,
+        month: Period,
+        cx: &gpui::App,
+    ) {
         let dialog = self
             .views
             .budgets
@@ -96,7 +102,12 @@ impl Shell {
     }
 
     /// 9g, from 9e's footer link.
-    pub(super) fn open_budgets_stop(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
+    pub(super) fn open_budgets_stop(
+        &mut self,
+        category_id: CategoryId,
+        month: Period,
+        cx: &gpui::App,
+    ) {
         let dialog = self
             .views
             .budgets
@@ -118,7 +129,7 @@ impl Shell {
     }
 
     /// 11c's edit mode on Budget `id`. An archived Budget is read-only, so it opens nothing.
-    pub(super) fn open_budgets_edit(&mut self, id: u32, cx: &gpui::App) {
+    pub(super) fn open_budgets_edit(&mut self, id: BudgetId, cx: &gpui::App) {
         let dialog = self.views.budgets.read(cx).edit_budget_dialog(id, cx);
         self.open_budgets_built(dialog);
     }
@@ -130,7 +141,7 @@ impl Shell {
     }
 
     /// Shows Budget `id` on the Budgets page.
-    pub(super) fn switch_budget(&mut self, id: u32, cx: &mut gpui::App) {
+    pub(super) fn switch_budget(&mut self, id: BudgetId, cx: &mut gpui::App) {
         self.views
             .budgets
             .update(cx, |view, cx| view.switch_budget(id, cx));
@@ -250,7 +261,7 @@ impl Shell {
     }
 
     /// `enter` or a click on a Switcher row: switches to it and closes the popover.
-    pub(super) fn choose_budgets_switcher(&mut self, id: u32, cx: &mut gpui::App) {
+    pub(super) fn choose_budgets_switcher(&mut self, id: BudgetId, cx: &mut gpui::App) {
         self.close_dialog();
         self.switch_budget(id, cx);
     }
@@ -352,7 +363,7 @@ impl Shell {
     /// the palette with Manage closed, a refusal goes to the status line instead.
     pub(super) fn run_budgets_manage_action(
         &mut self,
-        id: u32,
+        id: BudgetId,
         action: ManageAction,
         cx: &mut Context<'_, Self>,
     ) {
@@ -612,7 +623,7 @@ impl Shell {
         let previews = budgets::FillSource::ALL
             .map(|each| budgets::fill_preview(budget, &ledger, month, each));
         let chosen = previews.iter().find(|preview| preview.source == source)?;
-        let name = |category_id: &u32| {
+        let name = |category_id: &CategoryId| {
             self.categories(cx)
                 .iter()
                 .find(|category| category.id == *category_id)
@@ -717,7 +728,7 @@ impl Shell {
             });
             on_click
         };
-        let leaf_name = |category_id: u32| {
+        let leaf_name = |category_id: CategoryId| {
             self.categories(cx)
                 .iter()
                 .find(|category| category.id == category_id)

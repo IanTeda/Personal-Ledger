@@ -2,7 +2,7 @@
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money, Period};
+use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use lib_categories::{self as categories, Category};
 
@@ -24,7 +24,7 @@ fn months_before(target: Period) -> impl Iterator<Item = Period> {
     (1..=AVERAGE_MONTHS).map(move |back| (0..back).fold(target, |month, _| month.prev()))
 }
 
-fn average_of(index: &SpentIndex, category_id: u32, target: Period) -> Money {
+fn average_of(index: &SpentIndex, category_id: CategoryId, target: Period) -> Money {
     let total =
         months_before(target).fold(zero(), |sum, month| sum + index.spent(category_id, month));
     let mean = total / BigDecimal::from(AVERAGE_MONTHS);
@@ -46,7 +46,7 @@ fn average_of(index: &SpentIndex, category_id: u32, target: Period) -> Money {
 pub fn three_month_average(
     budget: &Budget,
     ledger: &BudgetSources<'_>,
-    category_id: u32,
+    category_id: CategoryId,
     target: Period,
 ) -> Money {
     average_of(&SpentIndex::build(budget, ledger), category_id, target)
@@ -57,7 +57,7 @@ pub fn three_month_averages(
     budget: &Budget,
     ledger: &BudgetSources<'_>,
     target: Period,
-) -> Vec<(u32, Money)> {
+) -> Vec<(CategoryId, Money)> {
     let index = SpentIndex::build(budget, ledger);
     expense_leaves(ledger.categories)
         .into_iter()
@@ -83,7 +83,7 @@ impl FillSource {
 /// One Category Fill would change: what the plan gives the month now, and what Fill writes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FillLine {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     /// `None` when the plan leaves the month Unbudgeted.
     pub before: Option<Money>,
     pub after: Money,
@@ -97,7 +97,7 @@ pub struct FillPreview {
     /// The Categories whose amount changes, tree order.
     pub changes: Vec<FillLine>,
     /// Categories with their own record in the target month: never overwritten.
-    pub kept: Vec<u32>,
+    pub kept: Vec<CategoryId>,
     /// Eligible Categories the source leaves at the plan's amount.
     pub unchanged: usize,
     /// The target month's Total budgeted once filled.
@@ -169,7 +169,7 @@ pub fn fill_preview(
 /// The average signed Income Splits on the Budget's Accounts over the last 3 closed months.
 pub fn average_income(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveDate) -> Money {
     let last_three: Vec<Period> = months_before(Period::of(today)).collect();
-    let income: Vec<u32> = ledger
+    let income: Vec<CategoryId> = ledger
         .categories
         .iter()
         .filter(|c| c.category_type == CategoryTypes::Income)
@@ -234,7 +234,7 @@ pub struct PlanCell {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanRow {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub name: String,
     pub cells: Vec<PlanCell>,
     /// The current month's Rollover, `None` while that month is Unbudgeted.
@@ -366,14 +366,14 @@ pub fn plan(budget: &Budget, ledger: &BudgetSources<'_>, start: Period, today: N
 /// after that keys edit it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanEdit {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub month: Period,
     pub text: String,
     fresh: bool,
 }
 
 impl PlanEdit {
-    pub fn new(category_id: u32, month: Period, current: Option<&Money>) -> Self {
+    pub fn new(category_id: CategoryId, month: Period, current: Option<&Money>) -> Self {
         Self {
             category_id,
             month,

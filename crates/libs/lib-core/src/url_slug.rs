@@ -206,12 +206,14 @@ impl From<&str> for UrlSlug {
 }
 
 // SQLx trait implementations for SQLite
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for UrlSlug {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for UrlSlug {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
@@ -219,6 +221,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for UrlSlug {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for UrlSlug {
     fn encode_by_ref(
         &self,
@@ -489,6 +492,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "sqlx")]
     #[test]
     fn test_sqlx_type_info() {
         // Test that UrlSlug has the correct SQLx type info for SQLite
@@ -497,6 +501,7 @@ mod tests {
         assert_eq!(type_info, string_type_info);
     }
 
+    #[cfg(feature = "sqlx")]
     #[test]
     fn test_sqlx_encode() {
         use sqlx::Encode;

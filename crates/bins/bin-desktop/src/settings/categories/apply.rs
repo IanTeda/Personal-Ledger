@@ -5,7 +5,7 @@ use std::fmt;
 
 use chrono::NaiveDate;
 use gpui::{App, Entity};
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_ledger::{
     AddCategory, DeleteCategory, DeleteCategoryRefusal, EditCategory, MonthlyBudget,
     SaveCategoryRefusal,
@@ -22,8 +22,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryCommand {
     Add(CategoryForm),
-    Edit(u32, CategoryForm),
-    Delete(u32),
+    Edit(CategoryId, CategoryForm),
+    Delete(CategoryId),
 }
 
 /// What a landed [`CategoryCommand`] did, for the selection and Toast that follow it.
@@ -204,7 +204,8 @@ mod tests {
     #[gpui::test]
     fn a_vanished_category_stays_open_with_the_refusal(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let mut dialog = CategoriesDialog::Delete(9999, DeleteCategoryForm::new(""));
+        let mut dialog =
+            CategoriesDialog::Delete(CategoryId::seed(9999), DeleteCategoryForm::new(""));
         let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
         assert_eq!(outcome, None);
         assert!(matches!(

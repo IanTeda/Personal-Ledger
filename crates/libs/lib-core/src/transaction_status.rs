@@ -80,12 +80,14 @@ impl TransactionStatus {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for TransactionStatus {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for TransactionStatus {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
@@ -94,6 +96,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for TransactionStatus {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for TransactionStatus {
     fn encode_by_ref(
         &self,

@@ -10,6 +10,7 @@ pub mod form;
 mod render;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_core::PayeeId;
 use lib_ledger::Domain;
 use lib_payees::Payee;
 
@@ -44,7 +45,7 @@ impl EventEmitter<RowClicked> for PayeesPage {}
 pub struct PayeesPage {
     sources: PayeesSources,
     /// It may name a Payee that no longer exists, so read it through [`Self::selected_id`].
-    selected: Option<u32>,
+    selected: Option<PayeeId>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -116,7 +117,7 @@ impl PayeesPage {
         let Some(step) = movement.step() else {
             return;
         };
-        let ids: Vec<u32> = lib_payees::sorted_by_name(self.payees(cx))
+        let ids: Vec<PayeeId> = lib_payees::sorted_by_name(self.payees(cx))
             .iter()
             .map(|payee| payee.id)
             .collect();
@@ -163,13 +164,13 @@ impl PayeesPage {
 
     /// The selected Payee's id: the stored id while it still exists, else the first row, so a
     /// deleted Payee never leaves the page with nothing under the cursor.
-    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+    pub fn selected_id(&self, cx: &App) -> Option<PayeeId> {
         let sorted = lib_payees::sorted_by_name(self.payees(cx));
         lib_list_cursor::resolve(sorted.iter().map(|payee| payee.id), self.selected)
     }
 
     /// Selects Payee `id`, if it still exists.
-    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn select_id(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         if lib_payees::get(self.payees(cx), id).is_some() {
             self.selected = Some(id);
             cx.notify();
@@ -181,7 +182,7 @@ impl PayeesPage {
     // -----------------------------------------------------------------------------------------
 
     /// A click on a row: selects it and moves focus into the page.
-    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_row(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         cx.emit(RowClicked);
     }
@@ -191,12 +192,12 @@ impl PayeesPage {
         self.open_add_dialog(cx);
     }
 
-    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_edit(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_edit_dialog(id, cx);
     }
 
-    pub(crate) fn click_delete(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_delete(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_delete_dialog(id, cx);
     }
@@ -218,7 +219,7 @@ impl PayeesPage {
     }
 
     /// Opens the Edit dialog pre-filled from Payee `id`. A no-op if the Payee is gone.
-    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_dialog(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         let rows = self.payees(cx);
         let Some(payee) = lib_payees::get(rows, id) else {
             return;
@@ -229,7 +230,7 @@ impl PayeesPage {
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
     /// without `Shell`. A no-op if the Payee is gone.
-    fn open_delete_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_delete_dialog(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         let Some(payee) = lib_payees::get(self.payees(cx), id) else {
             return;
         };

@@ -11,7 +11,7 @@ use lib_budgets::{
     PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
 };
 use lib_categories::{self as categories, Category, default_categories};
-use lib_core::{Money, Period, UnitId};
+use lib_core::{BudgetId, CategoryId, Money, Period, UnitId};
 use lib_payees::default_payees;
 use lib_tags::default_tags;
 use lib_transactions::Transaction;
@@ -60,12 +60,12 @@ impl World {
         }
     }
 
-    fn category(&self, name: &str) -> u32 {
-        categories::find_by_name(&self.categories, name).unwrap_or_default()
+    fn category(&self, name: &str) -> CategoryId {
+        categories::find_by_name(&self.categories, name).expect("a seeded Category")
     }
 }
 
-fn row(figures: &PeriodFigures, category_id: u32) -> Option<&CategoryFigures> {
+fn row(figures: &PeriodFigures, category_id: CategoryId) -> Option<&CategoryFigures> {
     figures.rows.iter().find(|r| r.category_id == category_id)
 }
 
@@ -75,7 +75,7 @@ fn amount_in(chain: &[LimitRecord], month: Period) -> Option<Money> {
 
 fn unreachable_budget() -> Budget {
     Budget {
-        id: 0,
+        id: BudgetId::seed(0),
         name: String::new(),
         method: Method::Limits,
         unit: UnitId::SEED_AUD,
@@ -110,7 +110,7 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
         Some(PERSONAL_SPENDING_ID)
     );
     assert_eq!(budgets.all().iter().filter(|b| b.is_default).count(), 1);
-    let joint = budgets.get(2);
+    let joint = budgets.get(BudgetId::seed(2));
     assert!(joint.is_some_and(|j| {
         j.account_ids
             .iter()
@@ -118,7 +118,7 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
             && j.category_ids()
                 .any(|c| personal.is_some_and(|p| !p.chain(c).is_empty()))
     }));
-    assert!(world.category("Groceries") > 0);
+    assert!(world.category("Groceries") > CategoryId::seed(0));
 }
 
 #[test]

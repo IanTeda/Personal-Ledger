@@ -6,6 +6,7 @@
 //! [`AccountsPage`] draws it, and every click is bound to the same handler its key reaches
 //! (`n`/`e`/`d`/`enter`).
 
+use lib_core::AccountId;
 use std::rc::Rc;
 
 use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
@@ -81,8 +82,8 @@ impl AccountsPage {
 /// A click handler that runs `act` on the page with the clicked account's id.
 fn on_account(
     entity: &Entity<AccountsPage>,
-    id: u32,
-    act: fn(&mut AccountsPage, u32, &mut Context<'_, AccountsPage>),
+    id: AccountId,
+    act: fn(&mut AccountsPage, AccountId, &mut Context<'_, AccountsPage>),
 ) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |view, cx| act(view, id, cx)))

@@ -5,6 +5,7 @@
 //! The Documents surface reads this list through `documents::DocumentType`, which is just a row's
 //! stable `id`, so a rename or a reorder never touches a Document.
 
+use lib_core::DocumentTypeId;
 /// The kind of Key Date a type tracks (`GLOSSARY.md`'s Key Date).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TracksDate {
@@ -24,7 +25,7 @@ pub enum RemindLead {
 /// A Document Type. `id` is stable across renames, so saved filters survive one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentTypeRow {
-    pub id: u32,
+    pub id: DocumentTypeId,
     pub name: String,
     pub tracks_date: Option<TracksDate>,
     /// Inert while `tracks_date` is `None`.
@@ -47,7 +48,7 @@ pub fn default_types() -> Vec<DocumentTypeRow> {
                remind: Option<RemindLead>,
                financial_year: bool,
                files: u32| DocumentTypeRow {
-        id,
+        id: DocumentTypeId::seed(id),
         name: name.to_string(),
         tracks_date,
         remind,
@@ -101,22 +102,22 @@ pub fn default_types() -> Vec<DocumentTypeRow> {
 }
 
 /// The row with `id`.
-pub fn get(types: &[DocumentTypeRow], id: u32) -> Option<&DocumentTypeRow> {
+pub fn get(types: &[DocumentTypeRow], id: DocumentTypeId) -> Option<&DocumentTypeRow> {
     types.iter().find(|row| row.id == id)
 }
 
 /// The id a Document falls back to when its type is missing or none was read: the Default type
 /// (Other), else the first in order.
-pub fn fallback_id(types: &[DocumentTypeRow]) -> u32 {
+pub fn fallback_id(types: &[DocumentTypeRow]) -> DocumentTypeId {
     types
         .iter()
         .find(|row| row.is_default)
         .or_else(|| types.first())
-        .map_or(0, |row| row.id)
+        .map_or(DocumentTypeId::seed(0), |row| row.id)
 }
 
 /// The id of the type named `name`, ignoring case: how an Inbox file's extracted type is matched.
-pub fn id_by_name(types: &[DocumentTypeRow], name: &str) -> Option<u32> {
+pub fn id_by_name(types: &[DocumentTypeRow], name: &str) -> Option<DocumentTypeId> {
     types
         .iter()
         .find(|row| row.name.to_lowercase() == name.to_lowercase())
@@ -134,13 +135,13 @@ pub fn all_files(types: &[DocumentTypeRow]) -> u32 {
 }
 
 /// The position of the type with `id`.
-pub fn position(types: &[DocumentTypeRow], id: u32) -> Option<usize> {
+pub fn position(types: &[DocumentTypeRow], id: DocumentTypeId) -> Option<usize> {
     types.iter().position(|row| row.id == id)
 }
 
 /// Swaps the type with `id` one place down (`delta` 1) or up (`delta` -1), stopping at either end.
 /// Returns whether it moved.
-pub fn move_by(types: &mut [DocumentTypeRow], id: u32, delta: isize) -> bool {
+pub fn move_by(types: &mut [DocumentTypeRow], id: DocumentTypeId, delta: isize) -> bool {
     let Some(from) = position(types, id) else {
         return false;
     };
@@ -154,15 +155,6 @@ pub fn move_by(types: &mut [DocumentTypeRow], id: u32, delta: isize) -> bool {
     true
 }
 
-/// The id the next added type takes: past every seeded id.
-pub fn first_free_id(types: &[DocumentTypeRow]) -> u32 {
-    types
-        .iter()
-        .map(|row| row.id)
-        .max()
-        .map_or(1, |max| max + 1)
-}
-
 /// What the Add and Edit Dialogs collect for a type: everything but its id, file count and
 /// Default flag.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,10 +166,9 @@ pub struct DocumentTypeDraft {
     pub financial_year: bool,
 }
 
-/// Adds a type from `draft` at the end of the order with the id `id`, which the caller takes from
-/// a counter that only counts up so removing the newest type never frees its id for a saved
-/// `type:<id>` filter to match against a different type.
-pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: u32, draft: &DocumentTypeDraft) {
+/// Adds a type from `draft` at the end of the order with the id `id`, a fresh one so removing the
+/// newest type never frees its id for a saved `type:<id>` filter to match against a different type.
+pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: DocumentTypeId, draft: &DocumentTypeDraft) {
     types.push(DocumentTypeRow {
         id,
         name: draft.name.trim().to_string(),
@@ -191,7 +182,11 @@ pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: u32, draft: &DocumentTypeD
 
 /// Applies `draft` to the type with `id`. The id never changes, so saved filters survive a rename.
 /// Returns whether the type exists.
-pub fn edit_type(types: &mut [DocumentTypeRow], id: u32, draft: &DocumentTypeDraft) -> bool {
+pub fn edit_type(
+    types: &mut [DocumentTypeRow],
+    id: DocumentTypeId,
+    draft: &DocumentTypeDraft,
+) -> bool {
     let Some(row) = types.iter_mut().find(|row| row.id == id) else {
         return false;
     };
@@ -215,7 +210,7 @@ pub enum RemoveError {
 /// Removes the type with `id`, moving its Filed files to the type named `destination`.
 pub fn remove_type(
     types: &mut Vec<DocumentTypeRow>,
-    id: u32,
+    id: DocumentTypeId,
     destination: Option<&str>,
 ) -> Result<(), RemoveError> {
     let position = position(types, id).ok_or(RemoveError::Unknown)?;
@@ -241,7 +236,10 @@ mod tests {
     #[test]
     fn remove_moves_files_to_the_destination() {
         let mut types = default_types();
-        assert_eq!(remove_type(&mut types, 3, Some("Other")), Ok(()));
+        assert_eq!(
+            remove_type(&mut types, DocumentTypeId::seed(3), Some("Other")),
+            Ok(())
+        );
         assert_eq!(types.len(), 8);
         assert_eq!(types.last().unwrap().files, 33);
         assert_eq!(typed_files(&types), 392);
@@ -251,11 +249,11 @@ mod tests {
     fn remove_needs_a_real_destination_when_files_exist() {
         let mut types = default_types();
         assert_eq!(
-            remove_type(&mut types, 3, None),
+            remove_type(&mut types, DocumentTypeId::seed(3), None),
             Err(RemoveError::NeedsDestination)
         );
         assert_eq!(
-            remove_type(&mut types, 3, Some("Tax")),
+            remove_type(&mut types, DocumentTypeId::seed(3), Some("Tax")),
             Err(RemoveError::NeedsDestination)
         );
         assert_eq!(types.len(), 9);
@@ -265,12 +263,18 @@ mod tests {
     fn an_empty_type_removes_with_no_destination_and_other_never_does() {
         let mut types = default_types();
         types[2].files = 0;
-        assert_eq!(remove_type(&mut types, 3, None), Ok(()));
         assert_eq!(
-            remove_type(&mut types, 9, Some("Bills")),
+            remove_type(&mut types, DocumentTypeId::seed(3), None),
+            Ok(())
+        );
+        assert_eq!(
+            remove_type(&mut types, DocumentTypeId::seed(9), Some("Bills")),
             Err(RemoveError::IsDefault)
         );
-        assert_eq!(remove_type(&mut types, 99, None), Err(RemoveError::Unknown));
+        assert_eq!(
+            remove_type(&mut types, DocumentTypeId::seed(99), None),
+            Err(RemoveError::Unknown)
+        );
     }
 
     #[test]
@@ -293,14 +297,14 @@ mod tests {
     #[test]
     fn move_by_swaps_neighbours_and_stops_at_the_ends() {
         let mut types = default_types();
-        assert!(!move_by(&mut types, 1, -1));
-        assert!(move_by(&mut types, 1, 1));
-        assert_eq!(types[0].id, 2);
-        assert_eq!(types[1].id, 1);
-        assert!(!move_by(&mut types, 9, 1));
-        assert!(move_by(&mut types, 9, -1));
-        assert_eq!(types[7].id, 9);
-        assert!(!move_by(&mut types, 99, 1));
+        assert!(!move_by(&mut types, DocumentTypeId::seed(1), -1));
+        assert!(move_by(&mut types, DocumentTypeId::seed(1), 1));
+        assert_eq!(types[0].id, DocumentTypeId::seed(2));
+        assert_eq!(types[1].id, DocumentTypeId::seed(1));
+        assert!(!move_by(&mut types, DocumentTypeId::seed(9), 1));
+        assert!(move_by(&mut types, DocumentTypeId::seed(9), -1));
+        assert_eq!(types[7].id, DocumentTypeId::seed(9));
+        assert!(!move_by(&mut types, DocumentTypeId::seed(99), 1));
     }
     fn draft(name: &str) -> DocumentTypeDraft {
         DocumentTypeDraft {
@@ -314,11 +318,11 @@ mod tests {
     #[test]
     fn add_type_appends_a_trimmed_empty_row_with_the_given_id() {
         let mut types = default_types();
-        add_type(&mut types, 10, &draft("Warranties"));
+        add_type(&mut types, DocumentTypeId::seed(10), &draft("Warranties"));
         let row = types.last().unwrap();
         assert_eq!(
             (row.id, row.name.as_str(), row.files),
-            (10, "Warranties", 0)
+            (DocumentTypeId::seed(10), "Warranties", 0)
         );
         assert!(!row.is_default);
         assert_eq!(row.tracks_date, Some(TracksDate::Renews));
@@ -327,8 +331,19 @@ mod tests {
     #[test]
     fn edit_type_keeps_the_id_and_reports_a_missing_type() {
         let mut types = default_types();
-        assert!(edit_type(&mut types, 3, &draft("Renamed")));
-        assert_eq!(get(&types, 3).unwrap().name, "Renamed");
-        assert!(!edit_type(&mut types, 99, &draft("Nope")));
+        assert!(edit_type(
+            &mut types,
+            DocumentTypeId::seed(3),
+            &draft("Renamed")
+        ));
+        assert_eq!(
+            get(&types, DocumentTypeId::seed(3)).unwrap().name,
+            "Renamed"
+        );
+        assert!(!edit_type(
+            &mut types,
+            DocumentTypeId::seed(99),
+            &draft("Nope")
+        ));
     }
 }

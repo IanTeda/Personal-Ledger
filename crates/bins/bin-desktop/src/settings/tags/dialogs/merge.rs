@@ -184,8 +184,9 @@ mod tests {
     use lib_core::HexColor;
 
     use super::*;
+    use lib_core::TagId;
 
-    fn tag(id: u32, name: &str, color: Option<HexColor>) -> Tag {
+    fn tag(id: TagId, name: &str, color: Option<HexColor>) -> Tag {
         Tag {
             id,
             name: name.to_string(),
@@ -204,8 +205,12 @@ mod tests {
     #[test]
     fn the_callout_bolds_the_count_and_names_the_targets_colour_or_its_lack() {
         crate::locale::init_for_tests();
-        let source = tag(1, "Shared", None);
-        let coloured = tag(2, "shared", Some(lib_tags::swatches()[0].clone()));
+        let source = tag(TagId::seed(1), "Shared", None);
+        let coloured = tag(
+            TagId::seed(2),
+            "shared",
+            Some(lib_tags::swatches()[0].clone()),
+        );
         let segments = callout_segments(&source, &coloured, 9);
         let strong: Vec<&str> = segments
             .iter()
@@ -215,7 +220,7 @@ mod tests {
         assert_eq!(strong, ["9 transactions"]);
         assert!(text(&segments).contains("using shared's colour"));
 
-        let plain = tag(2, "shared", None);
+        let plain = tag(TagId::seed(2), "shared", None);
         assert!(text(&callout_segments(&source, &plain, 1)).contains("which has no colour"));
     }
 }

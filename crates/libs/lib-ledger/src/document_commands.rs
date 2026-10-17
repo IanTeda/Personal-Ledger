@@ -6,6 +6,7 @@
 //! reads the Transactions and Payees it matches against, and removing a Document Type moves its
 //! Filed Documents to another type in the same command.
 
+use lib_core::{DocumentId, DocumentTypeId, ItemId, TransactionId};
 use std::convert::Infallible;
 
 use chrono::NaiveDate;
@@ -38,14 +39,14 @@ pub struct UnknownDocumentType;
 
 impl Ledger {
     /// Adds a Filed Document and returns its id.
-    pub fn add_document(&mut self, new: NewDocument) -> Result<u32, AddError> {
+    pub fn add_document(&mut self, new: NewDocument) -> Result<DocumentId, AddError> {
         let id = add_filed(&mut self.documents, new)?;
         self.record_document(id);
         Ok(id)
     }
 
     /// Replaces Document `id`'s Title, Document Type, date and Key Date.
-    pub fn edit_document(&mut self, id: u32, edit: &DocumentEdit) -> Result<(), AddError> {
+    pub fn edit_document(&mut self, id: DocumentId, edit: &DocumentEdit) -> Result<(), AddError> {
         edit_metadata(
             &mut self.documents,
             id,
@@ -61,7 +62,7 @@ impl Ledger {
     /// Overwrites the Extracted Facts of Unfiled Document `id`.
     pub fn set_document_facts(
         &mut self,
-        id: u32,
+        id: DocumentId,
         facts: ExtractedFacts,
     ) -> Result<(), FilingError> {
         edit_facts(&mut self.documents, id, facts)?;
@@ -94,7 +95,7 @@ impl Ledger {
     /// Adds `link` to Document `id`, or removes it when it has it. Returns whether it was added.
     pub fn toggle_document_link(
         &mut self,
-        id: u32,
+        id: DocumentId,
         link: DocumentLink,
     ) -> Result<bool, FilingError> {
         let added = toggle_link(&mut self.documents, id, link).ok_or(FilingError::NotFound)?;
@@ -105,8 +106,8 @@ impl Ledger {
     /// Files Unfiled Document `id` under Transaction `transaction_id`.
     pub fn accept_document(
         &mut self,
-        id: u32,
-        transaction_id: u32,
+        id: DocumentId,
+        transaction_id: TransactionId,
     ) -> Result<FiledEntry, FilingError> {
         let entry = accept(
             &self.document_types,
@@ -122,7 +123,7 @@ impl Ledger {
     /// Files Unfiled Document `id` by hand with a Document Type and at most one Link.
     pub fn file_document_by_hand(
         &mut self,
-        id: u32,
+        id: DocumentId,
         doc_type: DocumentType,
         link: Option<DocumentLink>,
     ) -> Result<FiledEntry, FilingError> {
@@ -132,15 +133,15 @@ impl Ledger {
     }
 
     /// Sets Unfiled Document `id` aside to the bottom of the Inbox.
-    pub fn skip_document(&mut self, id: u32) -> Result<(), FilingError> {
+    pub fn skip_document(&mut self, id: DocumentId) -> Result<(), FilingError> {
         skip(&mut self.documents, id)?;
         self.record_document(id);
         Ok(())
     }
 
     /// Reverses a filing action and returns the Document focus goes back to.
-    pub fn undo_filing(&mut self, record: FilingUndo) -> Option<u32> {
-        let ids: Vec<u32> = record.entries.iter().map(|entry| entry.id).collect();
+    pub fn undo_filing(&mut self, record: FilingUndo) -> Option<DocumentId> {
+        let ids: Vec<DocumentId> = record.entries.iter().map(|entry| entry.id).collect();
         let focus = undo(&mut self.documents, record);
         for id in ids {
             self.record_document(id);
@@ -150,7 +151,7 @@ impl Ledger {
 
     /// Accepts every Unfiled Document whose Suggested Link is Strong, as one undoable batch.
     /// `focus` is the Inbox row the Client keeps in view. Returns `None` when none was strong.
-    pub fn accept_all_documents(&mut self, focus: Option<u32>) -> Option<FilingUndo> {
+    pub fn accept_all_documents(&mut self, focus: Option<DocumentId>) -> Option<FilingUndo> {
         let batch = accept_all_strong(
             &self.document_types,
             &mut self.documents,
@@ -166,7 +167,7 @@ impl Ledger {
 
     /// Drops every Link to the given Inventory Items, as removing a Property does. Returns how
     /// many Documents lost a Link.
-    pub fn drop_document_inventory_links(&mut self, removed_items: &[u32]) -> usize {
+    pub fn drop_document_inventory_links(&mut self, removed_items: &[ItemId]) -> usize {
         let affected = drop_inventory_links(&mut self.documents, removed_items);
         for id in &affected {
             self.record_document(*id);
@@ -174,12 +175,11 @@ impl Ledger {
         affected.len()
     }
 
-    /// Adds a Document Type at the end of the order and returns its id. Ids only count up, so
-    /// removing the newest type never frees its id for a saved `type:<id>` filter to match against
-    /// a different type.
-    pub fn add_document_type(&mut self, draft: &DocumentTypeDraft) -> u32 {
-        let id = self.document_type_next_id;
-        self.document_type_next_id += 1;
+    /// Adds a Document Type at the end of the order and returns its id. Ids are never reused,
+    /// so removing the newest type never frees its id for a saved `type:<id>` filter to match
+    /// against a different type.
+    pub fn add_document_type(&mut self, draft: &DocumentTypeDraft) -> DocumentTypeId {
+        let id = DocumentTypeId::new();
         add_type(&mut self.document_types, id, draft);
         self.record_document_type(id);
         id
@@ -188,7 +188,7 @@ impl Ledger {
     /// Applies `draft` to Document Type `id`.
     pub fn edit_document_type(
         &mut self,
-        id: u32,
+        id: DocumentTypeId,
         draft: &DocumentTypeDraft,
     ) -> Result<(), UnknownDocumentType> {
         if !edit_type(&mut self.document_types, id, draft) {
@@ -202,7 +202,7 @@ impl Ledger {
     /// the Default when none is named.
     pub fn remove_document_type(
         &mut self,
-        id: u32,
+        id: DocumentTypeId,
         destination: Option<&str>,
     ) -> Result<(), RemoveError> {
         let moved_to = destination
@@ -235,7 +235,7 @@ impl Ledger {
 
     /// Swaps Document Type `id` one place down (`delta` 1) or up (`delta` -1), stopping at either
     /// end. Returns whether it moved.
-    pub fn move_document_type(&mut self, id: u32, delta: isize) -> bool {
+    pub fn move_document_type(&mut self, id: DocumentTypeId, delta: isize) -> bool {
         let Some(from) = position(&self.document_types, id) else {
             return false;
         };
@@ -253,14 +253,14 @@ impl Ledger {
         true
     }
 
-    fn record_document(&mut self, id: u32) {
+    fn record_document(&mut self, id: DocumentId) {
         if let Some(document) = get(&self.documents, id) {
             self.pending
                 .push(LedgerChange::UpsertDocument(Document::clone(document)));
         }
     }
 
-    fn record_document_type(&mut self, id: u32) {
+    fn record_document_type(&mut self, id: DocumentTypeId) {
         if let Some(row) = self.document_types.iter().find(|row| row.id == id) {
             self.pending
                 .push(LedgerChange::UpsertDocumentType(DocumentTypeRow::clone(
@@ -275,9 +275,9 @@ impl Ledger {
 pub struct AddDocument(pub NewDocument);
 
 impl LedgerCommand for AddDocument {
-    type Outcome = u32;
+    type Outcome = DocumentId;
     type Refusal = AddError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, AddError> {
+    fn run(self, ledger: &mut Ledger) -> Result<DocumentId, AddError> {
         ledger.add_document(self.0)
     }
 }
@@ -285,7 +285,7 @@ impl LedgerCommand for AddDocument {
 /// [`Ledger::edit_document`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditDocument {
-    pub id: u32,
+    pub id: DocumentId,
     pub edit: DocumentEdit,
 }
 
@@ -300,7 +300,7 @@ impl LedgerCommand for EditDocument {
 /// [`Ledger::set_document_facts`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetDocumentFacts {
-    pub id: u32,
+    pub id: DocumentId,
     pub facts: ExtractedFacts,
 }
 
@@ -331,7 +331,7 @@ impl LedgerCommand for ImportDocuments {
 /// [`Ledger::toggle_document_link`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToggleDocumentLink {
-    pub id: u32,
+    pub id: DocumentId,
     pub link: DocumentLink,
 }
 
@@ -346,8 +346,8 @@ impl LedgerCommand for ToggleDocumentLink {
 /// [`Ledger::accept_document`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AcceptDocument {
-    pub id: u32,
-    pub transaction_id: u32,
+    pub id: DocumentId,
+    pub transaction_id: TransactionId,
 }
 
 impl LedgerCommand for AcceptDocument {
@@ -361,7 +361,7 @@ impl LedgerCommand for AcceptDocument {
 /// [`Ledger::file_document_by_hand`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileDocumentByHand {
-    pub id: u32,
+    pub id: DocumentId,
     pub doc_type: DocumentType,
     pub link: Option<DocumentLink>,
 }
@@ -376,7 +376,7 @@ impl LedgerCommand for FileDocumentByHand {
 
 /// [`Ledger::skip_document`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SkipDocument(pub u32);
+pub struct SkipDocument(pub DocumentId);
 
 impl LedgerCommand for SkipDocument {
     type Outcome = ();
@@ -391,9 +391,9 @@ impl LedgerCommand for SkipDocument {
 pub struct UndoFiling(pub FilingUndo);
 
 impl LedgerCommand for UndoFiling {
-    type Outcome = Option<u32>;
+    type Outcome = Option<DocumentId>;
     type Refusal = Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<Option<u32>, Infallible> {
+    fn run(self, ledger: &mut Ledger) -> Result<Option<DocumentId>, Infallible> {
         Ok(ledger.undo_filing(self.0))
     }
 }
@@ -401,7 +401,7 @@ impl LedgerCommand for UndoFiling {
 /// [`Ledger::accept_all_documents`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AcceptAllDocuments {
-    pub focus: Option<u32>,
+    pub focus: Option<DocumentId>,
 }
 
 impl LedgerCommand for AcceptAllDocuments {
@@ -414,7 +414,7 @@ impl LedgerCommand for AcceptAllDocuments {
 
 /// [`Ledger::drop_document_inventory_links`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DropDocumentInventoryLinks(pub Vec<u32>);
+pub struct DropDocumentInventoryLinks(pub Vec<ItemId>);
 
 impl LedgerCommand for DropDocumentInventoryLinks {
     type Outcome = usize;
@@ -429,9 +429,9 @@ impl LedgerCommand for DropDocumentInventoryLinks {
 pub struct AddDocumentType(pub DocumentTypeDraft);
 
 impl LedgerCommand for AddDocumentType {
-    type Outcome = u32;
+    type Outcome = DocumentTypeId;
     type Refusal = Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, Infallible> {
+    fn run(self, ledger: &mut Ledger) -> Result<DocumentTypeId, Infallible> {
         Ok(ledger.add_document_type(&self.0))
     }
 }
@@ -439,7 +439,7 @@ impl LedgerCommand for AddDocumentType {
 /// [`Ledger::edit_document_type`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditDocumentType {
-    pub id: u32,
+    pub id: DocumentTypeId,
     pub draft: DocumentTypeDraft,
 }
 
@@ -454,7 +454,7 @@ impl LedgerCommand for EditDocumentType {
 /// [`Ledger::remove_document_type`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveDocumentType {
-    pub id: u32,
+    pub id: DocumentTypeId,
     pub destination: Option<String>,
 }
 
@@ -469,7 +469,7 @@ impl LedgerCommand for RemoveDocumentType {
 /// [`Ledger::move_document_type`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveDocumentType {
-    pub id: u32,
+    pub id: DocumentTypeId,
     pub delta: isize,
 }
 
@@ -505,7 +505,7 @@ mod tests {
         )
     }
 
-    fn unfiled(ledger: &Ledger) -> u32 {
+    fn unfiled(ledger: &Ledger) -> DocumentId {
         ledger
             .documents()
             .iter()
@@ -514,7 +514,7 @@ mod tests {
             .id
     }
 
-    fn filed(ledger: &Ledger) -> u32 {
+    fn filed(ledger: &Ledger) -> DocumentId {
         ledger
             .documents()
             .iter()
@@ -602,7 +602,7 @@ mod tests {
 
         let before = snapshot(&ledger);
         let refused = EditDocument {
-            id: 9_999,
+            id: DocumentId::seed(9_999),
             edit: edit.clone(),
         }
         .run(&mut ledger);
@@ -698,7 +698,11 @@ mod tests {
         assert_eq!(ledger.drain_changes().len(), 2);
 
         let before = snapshot(&ledger);
-        let refused = ToggleDocumentLink { id: 9_999, link }.run(&mut ledger);
+        let refused = ToggleDocumentLink {
+            id: DocumentId::seed(9_999),
+            link,
+        }
+        .run(&mut ledger);
         assert_eq!(refused, Err(FilingError::NotFound));
         assert_eq!(snapshot(&ledger), before);
         assert!(ledger.drain_changes().is_empty());
@@ -747,7 +751,7 @@ mod tests {
         let id = unfiled(&ledger);
         let missing_transaction = AcceptDocument {
             id,
-            transaction_id: 9_999,
+            transaction_id: TransactionId::seed(9_999),
         };
         assert_eq!(
             missing_transaction.run(&mut ledger),
@@ -768,7 +772,7 @@ mod tests {
         );
         assert_eq!(
             FileDocumentByHand {
-                id: 9_999,
+                id: DocumentId::seed(9_999),
                 doc_type: DocumentType::OTHER,
                 link: None,
             }
@@ -798,7 +802,7 @@ mod tests {
     #[test]
     fn dropping_inventory_links_records_the_documents_that_lost_one() {
         let mut ledger = ledger();
-        let items: Vec<u32> = ledger
+        let items: Vec<ItemId> = ledger
             .documents()
             .iter()
             .flat_map(|document| &document.links)
@@ -814,7 +818,7 @@ mod tests {
         assert_eq!(changes.len(), lost);
 
         let before = snapshot(&ledger);
-        DropDocumentInventoryLinks(vec![9_999])
+        DropDocumentInventoryLinks(vec![ItemId::seed(9_999)])
             .run(&mut ledger)
             .unwrap();
         assert_eq!(snapshot(&ledger), before);
@@ -843,7 +847,7 @@ mod tests {
     fn editing_a_document_type_records_it_and_refuses_an_unknown_one() {
         let mut ledger = ledger();
         EditDocumentType {
-            id: 3,
+            id: DocumentTypeId::seed(3),
             draft: draft(" Renamed "),
         }
         .run(&mut ledger)
@@ -852,7 +856,7 @@ mod tests {
             ledger
                 .document_types()
                 .iter()
-                .find(|row| row.id == 3)
+                .find(|row| row.id == DocumentTypeId::seed(3))
                 .unwrap()
                 .name,
             "Renamed"
@@ -861,7 +865,7 @@ mod tests {
 
         let before = snapshot(&ledger);
         let refused = EditDocumentType {
-            id: 9_999,
+            id: DocumentTypeId::seed(9_999),
             draft: draft("Nope"),
         }
         .run(&mut ledger);
@@ -926,7 +930,7 @@ mod tests {
             Err(RemoveError::NeedsDestination)
         );
         assert_eq!(
-            remove(9_999, None).run(&mut ledger),
+            remove(DocumentTypeId::seed(9_999), None).run(&mut ledger),
             Err(RemoveError::Unknown)
         );
         assert_eq!(snapshot(&ledger), before);

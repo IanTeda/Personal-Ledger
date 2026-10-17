@@ -13,6 +13,7 @@ mod inbox;
 pub mod snapshot;
 pub mod state;
 
+use lib_core::TransactionId;
 use std::{ops::Range, rc::Rc};
 
 use gpui::{
@@ -37,7 +38,7 @@ pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub type OnSortClick = Rc<dyn Fn(LibrarySort, &mut Window, &mut App)>;
 pub type OnLinkClick = Rc<dyn Fn(DocumentLink, &mut Window, &mut App)>;
 /// A Transaction id: an Other candidate to accept instead of the Suggested Link.
-pub type OnCandidateClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+pub type OnCandidateClick = Rc<dyn Fn(TransactionId, &mut Window, &mut App)>;
 
 const RAIL_WIDTH: Pixels = px(190.0);
 const DETAIL_WIDTH: Pixels = px(300.0);

@@ -20,7 +20,7 @@
 //! - Every figure on every surface comes from [`period_figures`], [`history`] and their
 //!   helpers, all pure over an injectable `today`, so nothing is counted twice.
 //!
-//! Category ids and Account ids are the stubs' `u32`s, like every other desktop stub.
+//! Ids are the Ledger's `lib-core` newtypes (ADR-0040).
 //!
 //! This file holds the Category Limit chain itself; each surface's figures sit in their own
 //! section module, re-exported here. The Desktop reads it through `LedgerStore`.
@@ -46,11 +46,11 @@ use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{Money, Period, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
 /// rename changes nothing (ADR-0029).
-pub const PERSONAL_SPENDING_ID: u32 = 1;
+pub const PERSONAL_SPENDING_ID: BudgetId = BudgetId::seed(1);
 
 /// How far back "the last 3 months" reaches, for the average and Unallocated figures.
 pub const AVERAGE_MONTHS: i32 = 3;
@@ -106,13 +106,13 @@ pub struct LimitRecord {
 /// A named container of Category Limits over one Ledger (glossary: Budget).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Budget {
-    pub id: u32,
+    pub id: BudgetId,
     pub name: String,
     pub method: Method,
     /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
     pub unit: UnitId,
     /// The [`Account::id`]s whose Splits this Budget counts.
-    pub account_ids: Vec<u32>,
+    pub account_ids: Vec<AccountId>,
     pub is_default: bool,
     /// Archived is computed and viewable but read-only; `None` while active.
     pub archived_at: Option<NaiveDate>,
@@ -120,7 +120,7 @@ pub struct Budget {
     ///
     /// Public only so the Desktop's seeded-data tests can build a chain directly; everything else
     /// goes through [`Budgets`] and keeps the chain sorted.
-    pub limits: BTreeMap<u32, Vec<LimitRecord>>,
+    pub limits: BTreeMap<CategoryId, Vec<LimitRecord>>,
 }
 
 impl Budget {
@@ -129,12 +129,12 @@ impl Budget {
     }
 
     /// A Category's chain, oldest record first.
-    pub fn chain(&self, category_id: u32) -> &[LimitRecord] {
+    pub fn chain(&self, category_id: CategoryId) -> &[LimitRecord] {
         self.limits.get(&category_id).map_or(&[], Vec::as_slice)
     }
 
     /// The Categories that have (or once had) a chain here.
-    pub fn category_ids(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn category_ids(&self) -> impl Iterator<Item = CategoryId> + '_ {
         self.limits.keys().copied()
     }
 

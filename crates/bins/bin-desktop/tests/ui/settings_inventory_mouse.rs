@@ -2,6 +2,7 @@
 //! row actions and the Add buttons. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
+use lib_core::{PropertyId, RoomId};
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -15,8 +16,8 @@ fn on_inventory(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 /// The first Property's id and the second's, from the seed's creation order.
-const ELM: u32 = 1;
-const STORAGE: u32 = 2;
+const ELM: PropertyId = PropertyId::seed(1);
+const STORAGE: PropertyId = PropertyId::seed(2);
 
 #[gpui::test]
 fn clicking_a_property_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
@@ -56,7 +57,7 @@ fn clicking_a_room_selects_it_and_closing_its_property_reselects_the_property(
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
     let room = ui.settings_inventory().inventory_rows[1].clone();
     assert!(room.starts_with("room:"));
-    ui.click("settings-inventory-room-1");
+    ui.click(&format!("settings-inventory-room-{}", RoomId::seed(1)));
     assert_eq!(ui.settings_inventory().selected_inventory, Some(room));
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
     assert_eq!(
@@ -87,7 +88,7 @@ fn the_row_actions_select_the_row_and_ask_for_their_dialogs(app: &mut TestAppCon
     assert_eq!(ui.settings_inventory().inventory_dialog, None);
 
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
-    ui.click("settings-inventory-edit-room-1");
+    ui.click(&format!("settings-inventory-edit-room-{}", RoomId::seed(1)));
     assert_eq!(
         ui.settings_inventory().inventory_dialog.as_deref(),
         Some("edit-room")
@@ -116,7 +117,9 @@ fn the_add_buttons_ask_for_their_dialogs(app: &mut TestAppContext) {
     // + Add room exists only under an open Property, and is not a selectable row.
     assert!(
         ui.cx
-            .debug_bounds("settings-inventory-add-room-1")
+            .debug_bounds(Box::leak(
+                format!("settings-inventory-add-room-{}", RoomId::seed(1)).into_boxed_str()
+            ))
             .is_none()
     );
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
@@ -201,7 +204,13 @@ fn the_remove_dialog_confirms_by_its_button(app: &mut TestAppContext) {
     ui.click("property-name");
     ui.press("c a b i n");
     ui.click("add-property-confirm");
-    ui.click("settings-inventory-remove-property-3");
+    let cabin = ui
+        .settings_inventory()
+        .inventory_property_ids
+        .last()
+        .copied()
+        .expect("the added Property");
+    ui.click(&format!("settings-inventory-remove-property-{cabin}"));
     ui.click("remove-property-confirm");
     assert_eq!(ui.settings_inventory().inventory_properties.len(), 2);
     assert_eq!(ui.settings_inventory().inventory_dialog, None);
@@ -262,7 +271,7 @@ fn edit_room_saves_by_its_button(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
 
-    ui.click("settings-inventory-edit-room-1");
+    ui.click(&format!("settings-inventory-edit-room-{}", RoomId::seed(1)));
     ui.click("room-name");
     ui.press("s");
     ui.click("edit-room-confirm");
@@ -285,7 +294,10 @@ fn remove_room_moves_items_by_the_picker_and_the_confirm_button(app: &mut TestAp
     let moving = count(&mut ui, &rooms[0]);
     let third = count(&mut ui, &rooms[2]);
 
-    ui.click("settings-inventory-remove-room-1");
+    ui.click(&format!(
+        "settings-inventory-remove-room-{}",
+        RoomId::seed(1)
+    ));
     assert_eq!(
         ui.settings_inventory().inventory_dialog.as_deref(),
         Some("remove-room")
@@ -306,7 +318,10 @@ fn the_last_room_with_items_shows_the_notice_which_closes_by_its_button(app: &mu
     let mut ui = on_inventory(app);
     ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
 
-    ui.click("settings-inventory-remove-room-11");
+    ui.click(&format!(
+        "settings-inventory-remove-room-{}",
+        RoomId::seed(11)
+    ));
     assert_eq!(
         ui.settings_inventory().inventory_dialog.as_deref(),
         Some("room-blocked")

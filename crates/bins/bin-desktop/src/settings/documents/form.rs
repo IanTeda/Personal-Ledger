@@ -3,6 +3,7 @@
 //! a window. The rows themselves, and the helpers the Documents destination shares, are
 //! `lib_documents::types`.
 
+use lib_core::DocumentTypeId;
 use lib_documents::types::*;
 
 use crate::{
@@ -189,7 +190,7 @@ impl DocumentTypeForm {
     }
 }
 
-fn taken_names(types: &[DocumentTypeRow], own_id: Option<u32>) -> Vec<String> {
+fn taken_names(types: &[DocumentTypeRow], own_id: Option<DocumentTypeId>) -> Vec<String> {
     types
         .iter()
         .filter(|row| Some(row.id) != own_id)
@@ -250,7 +251,7 @@ pub struct RemoveForm {
 
 impl RemoveForm {
     /// The form for removing the type with `id`, whose files move to Other unless told otherwise.
-    pub fn new(types: &[DocumentTypeRow], id: u32) -> Self {
+    pub fn new(types: &[DocumentTypeRow], id: DocumentTypeId) -> Self {
         Self {
             destinations: destination_names(types, id),
             select: destination_select(types, id),
@@ -300,7 +301,7 @@ impl RemoveForm {
 }
 
 /// Names a removed type's files can move to: every other type, in order.
-pub fn destination_names(types: &[DocumentTypeRow], removing: u32) -> Vec<String> {
+pub fn destination_names(types: &[DocumentTypeRow], removing: DocumentTypeId) -> Vec<String> {
     types
         .iter()
         .filter(|row| row.id != removing)
@@ -309,7 +310,7 @@ pub fn destination_names(types: &[DocumentTypeRow], removing: u32) -> Vec<String
 }
 
 /// The Remove dialog's destination select, defaulting to Other.
-pub fn destination_select(types: &[DocumentTypeRow], removing: u32) -> SelectState {
+pub fn destination_select(types: &[DocumentTypeRow], removing: DocumentTypeId) -> SelectState {
     SelectState::new(
         types
             .iter()
@@ -327,7 +328,7 @@ mod tests {
     }
 
     /// A draft named `name` over the seed, editing the type `own_id` if given.
-    fn form_editing(name: &str, own_id: Option<u32>) -> DocumentTypeForm {
+    fn form_editing(name: &str, own_id: Option<DocumentTypeId>) -> DocumentTypeForm {
         let types = default_types();
         let mut form = match own_id.and_then(|id| get(&types, id)) {
             Some(row) => DocumentTypeForm::from_row(row, &types),
@@ -344,9 +345,12 @@ mod tests {
         assert_eq!(form(&"a".repeat(40)).name_error(), None);
         assert_eq!(form(" tAx ").name_error(), Some(NameError::Taken));
         // Editing a type keeps its own name free, even in another case.
-        assert_eq!(form_editing("TAX", Some(3)).name_error(), None);
         assert_eq!(
-            form_editing("tax", Some(4)).name_error(),
+            form_editing("TAX", Some(DocumentTypeId::seed(3))).name_error(),
+            None
+        );
+        assert_eq!(
+            form_editing("tax", Some(DocumentTypeId::seed(4))).name_error(),
             Some(NameError::Taken)
         );
     }
@@ -407,9 +411,12 @@ mod tests {
     #[test]
     fn the_destination_defaults_to_other_and_excludes_the_removed_type() {
         let types = default_types();
-        assert_eq!(destination_select(&types, 3).value(), Some("Other"));
-        assert!(!destination_names(&types, 3).contains(&"Tax".to_string()));
-        assert_eq!(destination_names(&types, 3).len(), 8);
+        assert_eq!(
+            destination_select(&types, DocumentTypeId::seed(3)).value(),
+            Some("Other")
+        );
+        assert!(!destination_names(&types, DocumentTypeId::seed(3)).contains(&"Tax".to_string()));
+        assert_eq!(destination_names(&types, DocumentTypeId::seed(3)).len(), 8);
     }
 
     use crate::chrome::dialog_host::type_text;
@@ -485,8 +492,8 @@ mod tests {
     #[test]
     fn remove_document_type_select_walks_commits_and_first_esc_closes_it() {
         let mut dialog = OpenDialog::DocumentTypes(DocumentTypesDialog::Remove(
-            3,
-            RemoveForm::new(&default_types(), 3),
+            DocumentTypeId::seed(3),
+            RemoveForm::new(&default_types(), DocumentTypeId::seed(3)),
         ));
         let destination = |dialog: &OpenDialog| match dialog {
             OpenDialog::DocumentTypes(DocumentTypesDialog::Remove(_, form)) => {

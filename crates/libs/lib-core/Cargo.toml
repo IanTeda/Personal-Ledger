@@ -11,6 +11,11 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[features]
+# The sqlx `Type`/`Encode`/`Decode` impls for the value types and ids. Only `lib-database` enables
+# it, so the domain crates (and so both Clients) don't pull in sqlx (ADR-0040).
+sqlx = ["dep:sqlx"]
+
 [dependencies]
 ## -- Internal Dependencies --
 # lib_rpc = { path = "../../../crates/libs/lib-rpc" }
@@ -19,7 +24,7 @@ doctest = false
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
-sqlx = { workspace = true }
+sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 

@@ -91,12 +91,14 @@ impl std::str::FromStr for HybridLogicalClock {
 }
 
 // SQLx implementations for HybridLogicalClock, stored as TEXT in SQLite via its Display form.
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for HybridLogicalClock {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for HybridLogicalClock {
     fn encode_by_ref(
         &self,
@@ -106,6 +108,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for HybridLogicalClock {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for HybridLogicalClock {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;

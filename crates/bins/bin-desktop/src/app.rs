@@ -47,6 +47,7 @@ mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
+use lib_core::PropertyId;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
@@ -498,7 +499,7 @@ impl Shell {
     /// lands, so a test can reach the Inventory page's empty state.
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
-        let ids: Vec<u32> = self
+        let ids: Vec<PropertyId> = self
             .ledger
             .read(cx)
             .ledger()

@@ -3,6 +3,7 @@
 //! Property's Items had.
 
 use gpui::{App, Entity};
+use lib_core::{PropertyId, RoomId};
 use lib_inventory::{Inventory, PropertyDraft, PropertyError, RoomError};
 use lib_ledger::{AddProperty, AddRoom, EditProperty, EditRoom, RemoveProperty, RemoveRoom};
 use lib_toast::ToastKind;
@@ -21,19 +22,19 @@ pub enum InventoryCommand {
         draft: PropertyDraft,
         unit: String,
     },
-    EditProperty(u32, PropertyDraft),
-    RemoveProperty(u32),
+    EditProperty(PropertyId, PropertyDraft),
+    RemoveProperty(PropertyId),
     AddRoom {
-        property: u32,
+        property: PropertyId,
         name: String,
     },
     EditRoom {
-        id: u32,
+        id: RoomId,
         name: String,
     },
     /// Remove the Room, moving its Items to the Room named `destination`.
     RemoveRoom {
-        id: u32,
+        id: RoomId,
         destination: Option<String>,
     },
     /// The Room-blocked notice: nothing to change, the Dialog only closes.
@@ -44,26 +45,26 @@ pub enum InventoryCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryOutcome {
     PropertyAdded {
-        id: u32,
+        id: PropertyId,
         name: String,
     },
     PropertySaved {
-        id: u32,
+        id: PropertyId,
         name: String,
     },
     /// Removed: the name, read before the write, and the row the cursor lands on.
     PropertyRemoved {
-        id: u32,
+        id: PropertyId,
         name: String,
         selected: Option<InventoryRow>,
     },
     RoomAdded {
-        property: u32,
-        id: u32,
+        property: PropertyId,
+        id: RoomId,
         name: String,
     },
     RoomSaved {
-        id: u32,
+        id: RoomId,
         name: String,
     },
     /// Removed: how many Items moved, and to which Room, read before the write.
@@ -350,7 +351,7 @@ mod tests {
         let refused = cx.update(|cx| {
             apply.apply(
                 InventoryCommand::RemoveRoom {
-                    id: 9999,
+                    id: RoomId::seed(9999),
                     destination: None,
                 },
                 cx,
@@ -358,7 +359,7 @@ mod tests {
         });
         assert_eq!(refused, Err(InventoryRefusal::Room(RoomError::UnknownRoom)));
 
-        let mut notice = InventoryDialog::RoomBlocked(1);
+        let mut notice = InventoryDialog::RoomBlocked(RoomId::seed(1));
         let outcome = cx.update(|cx| confirm(&mut notice, &mut apply, cx));
         assert_eq!(outcome, Some(InventoryOutcome::Dismissed));
     }

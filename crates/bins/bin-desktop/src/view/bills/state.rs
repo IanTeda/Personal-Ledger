@@ -7,7 +7,7 @@
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
-use lib_core::DateStyle;
+use lib_core::{AccountId, BillPlanId, CategoryId, DateStyle, PayeeId};
 use lib_ledger::Domain;
 
 use super::{
@@ -152,7 +152,7 @@ impl BillsView {
     }
 
     /// The Planner tab's selected Bill Plan's id, its stored position clamped to the Plans.
-    pub fn selected_plan(&self, cx: &App) -> Option<u32> {
+    pub fn selected_plan(&self, cx: &App) -> Option<BillPlanId> {
         let plans = bills::planner_order(self.sources.ledger.read(cx).ledger().bill_plans());
         plans
             .get(self.state.selected.min(plans.len().saturating_sub(1)))
@@ -326,7 +326,7 @@ impl BillsView {
     }
 
     /// A saved Bill Plan, selected if the Planner is on show.
-    pub fn show_saved_plan(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn show_saved_plan(&mut self, id: BillPlanId, cx: &mut Context<'_, Self>) {
         if self.state.tab != BillsTab::Planner {
             return;
         }
@@ -419,15 +419,15 @@ impl BillsView {
         let (all, current) = match field {
             FilterField::Plan => (
                 crate::msg::desktop_bills_filter_all_bills(),
-                filters.plan_id,
+                filters.plan_id.map(FilterId::Plan),
             ),
             FilterField::Category => (
                 crate::msg::desktop_bills_filter_all_categories(),
-                filters.category_id,
+                filters.category_id.map(FilterId::Category),
             ),
             FilterField::Account => (
                 crate::msg::desktop_bills_filter_all_accounts(),
-                filters.account_id,
+                filters.account_id.map(FilterId::Account),
             ),
         };
         let choices = self.filter_choices(field, cx);
@@ -442,13 +442,13 @@ impl BillsView {
 
     /// The Bill Plan, Category or Account choices behind a scope select (after its "All" option),
     /// as `(id, name)`.
-    fn filter_choices(&self, field: FilterField, cx: &App) -> Vec<(u32, String)> {
+    fn filter_choices(&self, field: FilterField, cx: &App) -> Vec<(FilterId, String)> {
         let plans = self.sources.ledger.read(cx).ledger().bill_plans();
-        let mut choices: Vec<(u32, String)> = match field {
+        let mut choices: Vec<(FilterId, String)> = match field {
             FilterField::Plan => {
                 return bills::planner_order(plans)
                     .into_iter()
-                    .map(|plan| (plan.id, plan.name.clone()))
+                    .map(|plan| (FilterId::Plan(plan.id), plan.name.clone()))
                     .collect();
             }
             FilterField::Category => self
@@ -459,7 +459,7 @@ impl BillsView {
                 .categories()
                 .iter()
                 .filter(|c| plans.iter().any(|p| p.category_id == c.id))
-                .map(|c| (c.id, c.name.clone()))
+                .map(|c| (FilterId::Category(c.id), c.name.clone()))
                 .collect(),
             FilterField::Account => self
                 .sources
@@ -469,7 +469,7 @@ impl BillsView {
                 .accounts()
                 .iter()
                 .filter(|a| plans.iter().any(|p| p.account_id == a.id))
-                .map(|a| (a.id, a.name.clone()))
+                .map(|a| (FilterId::Account(a.id), a.name.clone()))
                 .collect(),
         };
         choices.sort_by_key(|(_, name)| name.to_lowercase());
@@ -483,9 +483,24 @@ impl BillsView {
             .and_then(|i| self.filter_choices(field, cx).get(i).map(|(id, _)| *id));
         let filters = &mut self.state.filters;
         match field {
-            FilterField::Plan => filters.plan_id = id,
-            FilterField::Category => filters.category_id = id,
-            FilterField::Account => filters.account_id = id,
+            FilterField::Plan => {
+                filters.plan_id = id.and_then(|id| match id {
+                    FilterId::Plan(plan) => Some(plan),
+                    _ => None,
+                });
+            }
+            FilterField::Category => {
+                filters.category_id = id.and_then(|id| match id {
+                    FilterId::Category(category) => Some(category),
+                    _ => None,
+                });
+            }
+            FilterField::Account => {
+                filters.account_id = id.and_then(|id| match id {
+                    FilterId::Account(account) => Some(account),
+                    _ => None,
+                });
+            }
         }
         self.state.selected = 0;
     }
@@ -576,7 +591,7 @@ impl BillsView {
 
     /// What the Add and Edit bill plan selects choose from, copied into the form as it opens. On
     /// Edit the Plan's own Payee stays listed even if it has since been deactivated.
-    fn plan_source(&self, keep_payee: Option<u32>, cx: &App) -> BillPlanSource {
+    fn plan_source(&self, keep_payee: Option<PayeeId>, cx: &App) -> BillPlanSource {
         BillPlanSource::new(
             self.sources.ledger.read(cx).ledger().categories(),
             self.sources.ledger.read(cx).ledger().accounts(),
@@ -603,7 +618,7 @@ impl BillsView {
     }
 
     /// The Edit dialog, pre-filled from Bill Plan `id`.
-    fn open_edit_plan(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_plan(&mut self, id: BillPlanId, cx: &mut Context<'_, Self>) {
         let Some(plan) = bills::get(self.sources.ledger.read(cx).ledger().bill_plans(), id) else {
             return;
         };
@@ -707,6 +722,14 @@ impl BillsView {
     }
 }
 
+/// One entry of a Schedule filter select: the Bill Plan, Category or Account it picks, by id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FilterId {
+    Plan(BillPlanId),
+    Category(CategoryId),
+    Account(AccountId),
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
@@ -724,7 +747,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Seen {
         AddPlan,
-        EditPlan(u32),
+        EditPlan(BillPlanId),
         Pay(EntryId),
         Skip(EntryId),
         Status(Option<String>),

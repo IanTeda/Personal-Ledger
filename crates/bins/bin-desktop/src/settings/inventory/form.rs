@@ -10,7 +10,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{DateStyle, Money};
+use lib_core::{DateStyle, Money, PropertyId, RoomId};
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
@@ -91,7 +91,7 @@ pub struct PropertyForm {
     touched: Vec<PropertyField>,
     context: PropertyContext,
     /// The Property being edited; `None` on Add.
-    own_id: Option<u32>,
+    own_id: Option<PropertyId>,
 }
 
 /// An amount as the dialog shows it back for editing: no trailing zeros.
@@ -504,13 +504,13 @@ pub struct RoomForm {
     pub name: TextField,
     touched: bool,
     inventory: Inventory,
-    property: u32,
+    property: PropertyId,
     /// The Room being edited; `None` on Add.
-    own_id: Option<u32>,
+    own_id: Option<RoomId>,
 }
 
 impl RoomForm {
-    pub fn for_add(inventory: Inventory, property: u32) -> Self {
+    pub fn for_add(inventory: Inventory, property: PropertyId) -> Self {
         Self {
             name: TextField::default(),
             touched: false,
@@ -520,7 +520,7 @@ impl RoomForm {
         }
     }
 
-    pub fn for_edit(inventory: Inventory, property: u32, room: &inventory::Room) -> Self {
+    pub fn for_edit(inventory: Inventory, property: PropertyId, room: &inventory::Room) -> Self {
         Self {
             name: TextField::new(room.name.clone()),
             touched: false,
@@ -1027,7 +1027,7 @@ mod tests {
 
     #[test]
     fn the_room_blocked_notice_confirms_with_enter_and_swallows_tab() {
-        let mut dialog = InventoryDialog::RoomBlocked(1);
+        let mut dialog = InventoryDialog::RoomBlocked(RoomId::seed(1));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Tab),
             DialogOutcome::Handled
@@ -1106,7 +1106,7 @@ mod tests {
     #[test]
     fn remove_property_with_holdings_confirms_only_on_the_typed_name() {
         let mut dialog = OpenDialog::Inventory(InventoryDialog::Remove(
-            1,
+            PropertyId::seed(1),
             RemovePropertyForm::new("Elm St", true),
         ));
         type_text(&mut dialog, "Elm");
@@ -1124,7 +1124,7 @@ mod tests {
     #[test]
     fn remove_room_select_first_esc_closes_it_and_enter_needs_a_destination() {
         let mut dialog = OpenDialog::Inventory(InventoryDialog::RemoveRoom(
-            1,
+            RoomId::seed(1),
             RemoveRoomForm::new(vec!["Kitchen".to_string()], None, true),
         ));
         assert_eq!(
@@ -1143,7 +1143,7 @@ mod tests {
 
     #[test]
     fn the_room_blocked_notice_confirms_with_enter_and_swallows_tab_in_the_host() {
-        let mut dialog = OpenDialog::Inventory(InventoryDialog::RoomBlocked(1));
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::RoomBlocked(RoomId::seed(1)));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Tab),
             DialogOutcome::Handled

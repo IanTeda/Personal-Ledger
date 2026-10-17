@@ -84,12 +84,14 @@ impl DateStyle {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for DateStyle {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for DateStyle {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
@@ -98,6 +100,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for DateStyle {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for DateStyle {
     fn encode_by_ref(
         &self,

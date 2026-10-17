@@ -4,7 +4,7 @@
 //! records an upsert per row it wrote (ADR-0039).
 
 use chrono::NaiveDate;
-use lib_core::{Money, TransactionStatus};
+use lib_core::{AccountId, CategoryId, Money, PayeeId, TransactionId, TransactionStatus};
 use lib_payees::{Payee, PayeeDraft, PayeeError, alias_owner, insert_payee};
 use lib_transactions::{Split, Transaction};
 
@@ -13,7 +13,7 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 /// Who an imported row's Split pays.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BookingPayee {
-    Existing(u32),
+    Existing(PayeeId),
     /// A Payee to create, once per name however many rows name it. `alias` is the match rule to
     /// remember on it, skipped when another Payee already owns it (#282).
     Create {
@@ -30,7 +30,7 @@ pub struct ImportBooking {
     pub description: String,
     pub amount: Money,
     pub payee: BookingPayee,
-    pub category_id: u32,
+    pub category_id: CategoryId,
 }
 
 /// What an Import's commit wrote, for its Toast.
@@ -45,12 +45,12 @@ impl Ledger {
     /// first.
     pub fn commit_import(
         &mut self,
-        account_id: u32,
+        account_id: AccountId,
         bookings: Vec<ImportBooking>,
     ) -> Result<ImportCommitted, PayeeError> {
         let mut payees = self.payees.clone();
-        let mut created: Vec<(String, u32)> = Vec::new();
-        let mut touched: Vec<u32> = Vec::new();
+        let mut created: Vec<(String, PayeeId)> = Vec::new();
+        let mut touched: Vec<PayeeId> = Vec::new();
         let mut payee_ids = Vec::with_capacity(bookings.len());
         for booking in &bookings {
             let id = match &booking.payee {
@@ -94,11 +94,10 @@ impl Ledger {
             }
         }
 
-        let first_id = self.transactions.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         let count = bookings.len();
-        for (id, (booking, payee_id)) in (first_id..).zip(bookings.into_iter().zip(payee_ids)) {
+        for (booking, payee_id) in bookings.into_iter().zip(payee_ids) {
             let transaction = Transaction {
-                id,
+                id: TransactionId::new(),
                 date: booking.date,
                 account_id,
                 status: TransactionStatus::Cleared,
@@ -128,7 +127,7 @@ impl Ledger {
 /// [`Ledger::commit_import`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommitImport {
-    pub account_id: u32,
+    pub account_id: AccountId,
     pub bookings: Vec<ImportBooking>,
 }
 
@@ -153,7 +152,7 @@ mod tests {
             description: description.to_owned(),
             amount: Money(BigDecimal::new((-100).into(), 2)),
             payee,
-            category_id: 10,
+            category_id: CategoryId::seed(10),
         }
     }
 
@@ -172,7 +171,7 @@ mod tests {
         ledger.drain_changes();
 
         let committed = CommitImport {
-            account_id: 2,
+            account_id: AccountId::seed(2),
             bookings: vec![
                 booking("OLD", BookingPayee::Existing(existing), 1),
                 booking("NEW", create("Corner Shop", None), 28),
@@ -201,10 +200,10 @@ mod tests {
             .find(|t| t.description.as_deref() == Some("NEW"))
             .unwrap();
         let shop = find_by_name(ledger.payees(), "Corner Shop").unwrap();
-        assert_eq!(booked.account_id, 2);
+        assert_eq!(booked.account_id, AccountId::seed(2));
         assert_eq!(booked.status, TransactionStatus::Cleared);
         assert_eq!(booked.splits[0].payee_id, Some(shop));
-        assert_eq!(booked.splits[0].category_id, 10);
+        assert_eq!(booked.splits[0].category_id, CategoryId::seed(10));
 
         let changes = ledger.drain_changes();
         assert_eq!(changes.len(), 3);
@@ -227,7 +226,7 @@ mod tests {
 
         let committed = ledger
             .commit_import(
-                2,
+                AccountId::seed(2),
                 vec![
                     booking("SP CANDLE", create("Candle Co", Some("CANDLE CO")), 3),
                     booking("SP CANDLE 2", create("candle co", Some("CANDLE CO")), 4),
@@ -257,7 +256,7 @@ mod tests {
 
         ledger
             .commit_import(
-                2,
+                AccountId::seed(2),
                 vec![booking(
                     "X",
                     create("Fresh Name", Some(&owner.aliases[0])),
@@ -279,7 +278,7 @@ mod tests {
         ledger.drain_changes();
 
         let refused = CommitImport {
-            account_id: 2,
+            account_id: AccountId::seed(2),
             bookings: vec![
                 booking("FIRST", create("Fine New Name", None), 3),
                 booking("SECOND", create(&taken, None), 4),

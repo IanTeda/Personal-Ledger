@@ -8,7 +8,7 @@
 use std::{collections::HashSet, rc::Rc};
 
 use gpui::{AnyElement, App, Context, Render, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_core::{Money, UnitKind};
+use lib_core::{Money, PropertyId, UnitKind};
 use lib_locale::format::{Unit, format_money, upper};
 
 use super::{InventoryPage, InventoryRow};
@@ -18,14 +18,14 @@ use crate::{
 };
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnPropertyClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+type OnPropertyClick = Rc<dyn Fn(PropertyId, &mut Window, &mut App)>;
 type OnRowClick = Rc<dyn Fn(InventoryRow, &mut Window, &mut App)>;
 
 /// What the page draws from: its rows, and a click handler bound to the page for each action.
 struct InventoryPageProps<'a> {
     inventory: &'a Inventory,
     /// The Properties shown open.
-    expanded: &'a HashSet<u32>,
+    expanded: &'a HashSet<PropertyId>,
     selected: Option<InventoryRow>,
     on_add_property_click: OnPlainClick,
     on_add_room_click: OnPropertyClick,
@@ -72,7 +72,7 @@ impl Render for InventoryPage {
             on_click
         };
         let by_property =
-            |handler: fn(&mut InventoryPage, u32, &mut Context<'_, InventoryPage>)| {
+            |handler: fn(&mut InventoryPage, PropertyId, &mut Context<'_, InventoryPage>)| {
                 let entity = entity.clone();
                 let on_click: OnPropertyClick = Rc::new(move |id, _window, cx| {
                     entity.update(cx, |page, cx| handler(page, id, cx))
@@ -507,14 +507,16 @@ fn actions(
         color::border(cx)
     };
     let (kind, id) = match row {
-        InventoryRow::Property(id) => ("property", id),
-        InventoryRow::Room(id) => ("room", id),
+        InventoryRow::Property(id) => ("property", id.to_string()),
+        InventoryRow::Room(id) => ("room", id.to_string()),
     };
     let on_edit = props.on_edit_click.clone();
     let on_remove = props.on_remove_click.clone();
     // Only a Property row carries **+ room**, and its wider column makes room for it.
     let (width, add_room) = match row {
-        InventoryRow::Property(_) => (150.0, Some(props.on_add_room_click.clone())),
+        InventoryRow::Property(property) => {
+            (150.0, Some((props.on_add_room_click.clone(), property)))
+        }
         InventoryRow::Room(_) => (118.0, None),
     };
     div()
@@ -523,12 +525,12 @@ fn actions(
         .flex()
         .justify_end()
         .gap(px(4.0))
-        .when_some(add_room, |this, on_add_room| {
+        .when_some(add_room, |this, (on_add_room, property)| {
             this.child(row_action_button(
                 SharedString::from(format!("settings-inventory-property-add-room-{id}")),
                 crate::msg::desktop_inventory_row_add_room(),
                 border,
-                Rc::new(move |window: &mut Window, cx: &mut App| on_add_room(id, window, cx)),
+                Rc::new(move |window: &mut Window, cx: &mut App| on_add_room(property, window, cx)),
                 cx,
             ))
         })

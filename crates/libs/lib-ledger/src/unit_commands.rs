@@ -96,6 +96,7 @@ impl LedgerCommand for DeleteUnit {
 mod tests {
     use super::*;
     use crate::LedgerChange;
+    use lib_core::AccountId;
 
     fn id_at(ledger: &Ledger, index: usize) -> UnitId {
         ledger.units()[index].id
@@ -214,7 +215,7 @@ mod tests {
     #[test]
     fn editing_a_units_code_keeps_its_accounts_on_that_unit() {
         let mut ledger = Ledger::stub();
-        let on_btc: Vec<u32> = ledger
+        let on_btc: Vec<AccountId> = ledger
             .accounts()
             .iter()
             .filter(|account| account.unit == UnitId::SEED_BTC)

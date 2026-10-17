@@ -23,7 +23,7 @@ use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{Money, TransactionStatus};
+use lib_core::{AccountId, CategoryId, Money, PayeeId, TransactionId, TransactionStatus};
 use lib_payees::{self as payees, Payee};
 use lib_tags::{self as tags, Tag};
 use lib_transactions::{Split, Transaction, takes_transactions};
@@ -76,11 +76,11 @@ struct Lookup<'a> {
 }
 
 impl Lookup<'_> {
-    fn category(&self, name: &str) -> Option<u32> {
+    fn category(&self, name: &str) -> Option<CategoryId> {
         categories::find_by_name(self.categories, name)
     }
 
-    fn payee(&self, name: &str) -> Option<u32> {
+    fn payee(&self, name: &str) -> Option<PayeeId> {
         payees::find_by_name(self.payees, name)
     }
 
@@ -280,7 +280,7 @@ fn random_transaction(
     lookup: &Lookup<'_>,
     template: &Template,
     scale_percent: i64,
-    account_id: u32,
+    account_id: AccountId,
     today: NaiveDate,
 ) -> Option<Transaction> {
     let age = rng.range(0, HISTORY_DAYS - 1);
@@ -343,7 +343,7 @@ fn random_transaction(
         .then(|| (*rng.pick(template.memos)).to_string());
 
     Some(Transaction {
-        id: 0,
+        id: TransactionId::seed(0),
         date,
         account_id,
         status: status_for(rng, age),
@@ -370,9 +370,9 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
         Some((
             account,
             Transaction {
-                id: 0,
+                id: TransactionId::seed(0),
                 date: day(days),
-                account_id: 0,
+                account_id: AccountId::seed(0),
                 status,
                 is_flagged,
                 description: description.map(str::to_string),
@@ -565,7 +565,9 @@ pub fn default_transactions(
             .take(wanted)
             .collect();
 
-        let mut rng = Rng(DEFAULT_SEED ^ u64::from(account.id).wrapping_mul(0xA24B_AED4_963E_E407));
+        let mut rng =
+            Rng(DEFAULT_SEED
+                ^ u64::from(account.id.seed_number()).wrapping_mul(0xA24B_AED4_963E_E407));
         while mine.len() < wanted {
             let name = weighted(&mut rng, weights);
             let Some(template) = TEMPLATES.iter().find(|t| t.category == name) else {
@@ -582,7 +584,7 @@ pub fn default_transactions(
 
     all.sort_by_key(|transaction| (transaction.date, transaction.account_id));
     for (index, transaction) in all.iter_mut().enumerate() {
-        transaction.id = index as u32 + 1;
+        transaction.id = TransactionId::seed(index as u32 + 1);
     }
     all.reverse();
     all
@@ -668,7 +670,7 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), transactions.len());
-        assert_eq!(ids[0], 1);
+        assert_eq!(ids[0], TransactionId::seed(1));
     }
 
     #[test]
@@ -708,22 +710,22 @@ mod tests {
     #[test]
     fn a_transactions_total_is_the_sum_of_its_splits() {
         let receipt = Transaction {
-            id: 1,
+            id: TransactionId::seed(1),
             date: today(),
-            account_id: 1,
+            account_id: AccountId::seed(1),
             status: TransactionStatus::Open,
             is_flagged: false,
             description: None,
             splits: vec![
                 Split {
                     amount: cents_money(-18_000),
-                    category_id: 7,
+                    category_id: CategoryId::seed(7),
                     payee_id: None,
                     tag_ids: vec![],
                 },
                 Split {
                     amount: cents_money(-3_430),
-                    category_id: 10,
+                    category_id: CategoryId::seed(10),
                     payee_id: None,
                     tag_ids: vec![],
                 },

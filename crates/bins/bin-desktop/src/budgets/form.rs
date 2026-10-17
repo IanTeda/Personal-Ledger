@@ -12,7 +12,7 @@
 //! - Edit mode locks Unit and Method and has no Start from: it is the one place to rename a
 //!   Budget or change its Accounts.
 
-use lib_core::UnitId;
+use lib_core::{AccountId, BudgetId, UnitId};
 use lib_units::UnitRow;
 
 use crate::{
@@ -55,11 +55,11 @@ pub struct BudgetOptions {
     /// Unit codes: every Unit some Account taking Transactions is kept in.
     pub units: Vec<String>,
     /// The Accounts taking Transactions in the form's Unit: id and name.
-    pub accounts: Vec<(u32, String)>,
+    pub accounts: Vec<(AccountId, String)>,
 }
 
 /// An Account that takes Transactions, as the form needs it: id, name and Unit.
-type Candidate = (u32, String, String);
+type Candidate = (AccountId, String, String);
 
 fn unit_code_of(units: &[UnitRow], id: UnitId) -> String {
     units
@@ -102,7 +102,7 @@ impl BudgetOptions {
         }
     }
 
-    fn account_ids(&self) -> Vec<u32> {
+    fn account_ids(&self) -> Vec<AccountId> {
         self.accounts.iter().map(|(id, _)| *id).collect()
     }
 }
@@ -112,26 +112,26 @@ impl BudgetOptions {
 pub enum BudgetDraft {
     Create(NewBudget),
     Edit {
-        id: u32,
+        id: BudgetId,
         name: String,
-        account_ids: Vec<u32>,
+        account_ids: Vec<AccountId>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetForm {
     /// The Budget being edited; `None` while creating one.
-    pub editing: Option<u32>,
+    pub editing: Option<BudgetId>,
     pub name: TextField,
     pub unit: SelectState,
     /// The on-budget Accounts, in no particular order.
-    pub account_ids: Vec<u32>,
+    pub account_ids: Vec<AccountId>,
     /// The keyboard cursor among the Account chips.
     pub account_cursor: usize,
     pub start_from: StartChoice,
     /// The Budget "Copy categories from" names: the one on show when the dialog opened, with its
     /// Unit.
-    pub copy_source: Option<(u32, String)>,
+    pub copy_source: Option<(BudgetId, String)>,
     /// The Accounts that take Transactions, copied in as the Dialog opens: the Unit select's
     /// options and the Accounts on offer are worked out from them as the Unit changes.
     takes_transactions: Vec<Candidate>,
@@ -346,7 +346,7 @@ impl BudgetForm {
     }
 
     /// A click on an Account chip.
-    pub fn toggle_account(&mut self, id: u32) {
+    pub fn toggle_account(&mut self, id: AccountId) {
         self.focus(BudgetField::Accounts);
         if let Some(at) = self
             .options()
@@ -473,6 +473,7 @@ mod tests {
     use crate::budgets::{self, Budgets};
     use lib_accounts::default_accounts;
     use lib_categories::default_categories;
+    use lib_core::CategoryId;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()
@@ -840,7 +841,7 @@ mod tests {
     fn stop_form_steps_months_and_the_first_esc_closes_its_list() {
         let options = limit_options(budgets::limit_form::STOP_MONTHS);
         let form = budgets::limit_form::StopForm::new(
-            1,
+            CategoryId::seed(1),
             crate::period::Period::of(budgets_today()),
             &options,
         );
@@ -993,7 +994,11 @@ mod tests {
     fn category_detail_moves_its_cursor_and_hands_off_on_t_enter_or_e() {
         use crate::budgets::{Detail, DetailRequest};
         let month = crate::period::Period::of(budgets_today());
-        let mut dialog = budgets_dialog(BudgetsDialog::CategoryDetail(Detail::new(1, month, 3)));
+        let mut dialog = budgets_dialog(BudgetsDialog::CategoryDetail(Detail::new(
+            CategoryId::seed(1),
+            month,
+            3,
+        )));
         handle_key(&mut dialog, DialogKey::Char('j'));
         handle_key(&mut dialog, DialogKey::Down);
         handle_key(&mut dialog, DialogKey::Down);

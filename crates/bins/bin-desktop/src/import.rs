@@ -11,7 +11,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
-use lib_core::Money;
+use lib_core::{AccountId, CategoryId, Money, PayeeId};
 use lib_ledger::{BookingPayee, ImportBooking};
 
 use crate::settings::payees::form::PayeeOptions;
@@ -23,7 +23,7 @@ use crate::form::select::SelectState;
 pub const STATEMENT_FILE: &str = "statement.csv";
 
 /// The Account the seeded statement imports into (the Accounts stub's "ANZ Everyday").
-pub const EVERYDAY_ACCOUNT_ID: u32 = 2;
+pub const EVERYDAY_ACCOUNT_ID: AccountId = AccountId::seed(2);
 
 /// The seeded statement: the handoff's seven visible lines plus eleven more, 18 in all -- 14 an
 /// alias matches and 4 that need a Payee (`(raw description, amount in cents, days ago)`).
@@ -145,15 +145,15 @@ pub fn cleaned_token(raw: &str) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RowPayee {
     /// An alias matched this active Payee.
-    Rule(u32),
+    Rule(PayeeId),
     /// An existing active Payee, picked by hand or by the cleaned name equalling its name.
-    Existing(u32),
+    Existing(PayeeId),
     /// A new Payee with this name, created on **continue**.
     Create(String),
 }
 
 impl RowPayee {
-    fn id(&self) -> Option<u32> {
+    fn id(&self) -> Option<PayeeId> {
         match self {
             Self::Rule(id) | Self::Existing(id) => Some(*id),
             Self::Create(_) => None,
@@ -178,7 +178,7 @@ pub struct ImportRow {
     pub date: NaiveDate,
     pub payee: Option<RowPayee>,
     /// A leaf Category id.
-    pub category: Option<u32>,
+    pub category: Option<CategoryId>,
 }
 
 impl ImportRow {
@@ -201,7 +201,7 @@ fn cents_money(cents: i64) -> Money {
 }
 
 /// The active Payee named `name`, case-insensitively.
-fn active_named(payees: &[Payee], name: &str) -> Option<u32> {
+fn active_named(payees: &[Payee], name: &str) -> Option<PayeeId> {
     let folded = name.to_lowercase();
     payees
         .iter()
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn inactive_payees_neither_match_nor_are_offered() {
         let mut payees = default_payees();
-        lib_payees::set_active(&mut payees, 1, false).unwrap();
+        lib_payees::set_active(&mut payees, PayeeId::seed(1), false).unwrap();
         let row = match_row(&payees, "WOOLWORTHS 99", cents_money(-100), today());
         assert_eq!(row.payee, None);
         let offered = choices(&payees, "WOOLWORTHS 99");
@@ -710,7 +710,7 @@ mod tests {
             .position(|l| l == "Household")
             .unwrap();
         state.choose(household, &payees, &payee_choices, &categories);
-        assert_eq!(state.rows[index].category, Some(10));
+        assert_eq!(state.rows[index].category, Some(CategoryId::seed(10)));
         assert_eq!(state.rows[index].status(), RowStatus::NewPayee);
         assert_eq!(state.open_select, None);
     }
@@ -736,8 +736,8 @@ mod tests {
         }
         state.handle_select_key(SelectKey::Commit, &payees, &payee_choices, &categories);
         let row = &state.rows[index];
-        assert_eq!(row.payee, Some(RowPayee::Existing(2)));
-        assert_eq!(row.category, Some(7));
+        assert_eq!(row.payee, Some(RowPayee::Existing(PayeeId::seed(2))));
+        assert_eq!(row.category, Some(CategoryId::seed(7)));
         assert_eq!(row.status(), RowStatus::Matched);
     }
 
@@ -774,7 +774,7 @@ mod tests {
     fn resolve_all(state: &mut ImportState) {
         for row in &mut state.rows {
             if row.category.is_none() {
-                row.category = Some(10);
+                row.category = Some(CategoryId::seed(10));
             }
         }
     }
@@ -838,7 +838,7 @@ mod tests {
         assert_eq!(imported.account_id, EVERYDAY_ACCOUNT_ID);
         assert_eq!(imported.splits.len(), 1);
         assert_eq!(imported.splits[0].payee_id, Some(candle));
-        assert_eq!(imported.splits[0].category_id, 10);
+        assert_eq!(imported.splits[0].category_id, CategoryId::seed(10));
         // Still newest first.
         assert!(
             ledger
@@ -865,7 +865,7 @@ mod tests {
         let rows: Vec<ImportRow> = ["SP AUSSIE CANDLE CO", "SP AUSSIE CANDLE CO 2"]
             .iter()
             .map(|raw| ImportRow {
-                category: Some(10),
+                category: Some(CategoryId::seed(10)),
                 ..match_row(&payees, raw, cents_money(-100), today())
             })
             .collect();

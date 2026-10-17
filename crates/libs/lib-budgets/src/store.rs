@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money, Period, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, UnitId};
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
@@ -49,7 +49,7 @@ pub enum BudgetError {
 pub enum StartFrom {
     Empty,
     /// The source Budget's current-month amounts plus Rollover.
-    Copy(u32),
+    Copy(BudgetId),
     /// The 3-month average on the chosen Accounts; a 0 average leaves the Category Unbudgeted.
     LastThreeMonths,
 }
@@ -59,7 +59,7 @@ pub enum StartFrom {
 pub struct NewBudget {
     pub name: String,
     pub unit: UnitId,
-    pub account_ids: Vec<u32>,
+    pub account_ids: Vec<AccountId>,
     pub start_from: StartFrom,
 }
 
@@ -87,7 +87,7 @@ impl Budgets {
         &self.list
     }
 
-    pub fn get(&self, id: u32) -> Option<&Budget> {
+    pub fn get(&self, id: BudgetId) -> Option<&Budget> {
         self.list.iter().find(|budget| budget.id == id)
     }
 
@@ -104,14 +104,14 @@ impl Budgets {
         self.list.iter().find(|budget| budget.is_default)
     }
 
-    fn get_mut(&mut self, id: u32) -> Result<&mut Budget, BudgetError> {
+    fn get_mut(&mut self, id: BudgetId) -> Result<&mut Budget, BudgetError> {
         self.list
             .iter_mut()
             .find(|budget| budget.id == id)
             .ok_or(BudgetError::NotFound)
     }
 
-    fn editable_mut(&mut self, id: u32) -> Result<&mut Budget, BudgetError> {
+    fn editable_mut(&mut self, id: BudgetId) -> Result<&mut Budget, BudgetError> {
         let budget = self.get_mut(id)?;
         if budget.is_archived() {
             return Err(BudgetError::Archived);
@@ -119,11 +119,7 @@ impl Budgets {
         Ok(budget)
     }
 
-    fn next_id(&self) -> u32 {
-        self.list.iter().map(|b| b.id).max().unwrap_or(0) + 1
-    }
-
-    fn name_taken(&self, name: &str, except: Option<u32>) -> bool {
+    fn name_taken(&self, name: &str, except: Option<BudgetId>) -> bool {
         self.list
             .iter()
             .any(|b| Some(b.id) != except && b.name.eq_ignore_ascii_case(name))
@@ -135,7 +131,7 @@ impl Budgets {
         new: &NewBudget,
         ledger: &BudgetSources<'_>,
         today: NaiveDate,
-    ) -> Result<u32, BudgetError> {
+    ) -> Result<BudgetId, BudgetError> {
         let name = new.name.trim();
         if name.is_empty() {
             return Err(BudgetError::NameRequired);
@@ -152,7 +148,7 @@ impl Budgets {
         };
         let current = Period::of(today);
         let mut budget = Budget {
-            id: self.next_id(),
+            id: BudgetId::new(),
             name: name.to_string(),
             method: Method::Limits,
             unit: new.unit,
@@ -201,9 +197,9 @@ impl Budgets {
     /// stay locked).
     pub fn edit(
         &mut self,
-        id: u32,
+        id: BudgetId,
         name: &str,
-        account_ids: Vec<u32>,
+        account_ids: Vec<AccountId>,
         accounts: &[Account],
     ) -> Result<(), BudgetError> {
         let name = name.trim();
@@ -222,7 +218,7 @@ impl Budgets {
 
     /// Copies Unit, Method, Accounts and the full chains as "<name> copy" (numbered when taken).
     /// The copy is never the default and is never archived.
-    pub fn duplicate(&mut self, id: u32) -> Result<u32, BudgetError> {
+    pub fn duplicate(&mut self, id: BudgetId) -> Result<BudgetId, BudgetError> {
         let source = self.get(id).ok_or(BudgetError::NotFound)?.clone();
         let mut name = format!("{} copy", source.name);
         let mut number = 2;
@@ -231,7 +227,7 @@ impl Budgets {
             number += 1;
         }
         let copy = Budget {
-            id: self.next_id(),
+            id: BudgetId::new(),
             name,
             is_default: false,
             archived_at: None,
@@ -243,7 +239,7 @@ impl Budgets {
     }
 
     /// Archiving never deletes, and never the default.
-    pub fn archive(&mut self, id: u32, today: NaiveDate) -> Result<(), BudgetError> {
+    pub fn archive(&mut self, id: BudgetId, today: NaiveDate) -> Result<(), BudgetError> {
         let budget = self.get_mut(id)?;
         if budget.is_default {
             return Err(BudgetError::DefaultCannotBeArchived);
@@ -252,13 +248,13 @@ impl Budgets {
         Ok(())
     }
 
-    pub fn restore(&mut self, id: u32) -> Result<(), BudgetError> {
+    pub fn restore(&mut self, id: BudgetId) -> Result<(), BudgetError> {
         self.get_mut(id)?.archived_at = None;
         Ok(())
     }
 
     /// Makes an active Budget the one default.
-    pub fn set_default(&mut self, id: u32) -> Result<(), BudgetError> {
+    pub fn set_default(&mut self, id: BudgetId) -> Result<(), BudgetError> {
         self.editable_mut(id)?;
         for budget in &mut self.list {
             budget.is_default = budget.id == id;
@@ -274,9 +270,9 @@ impl Budgets {
     )]
     pub fn set_amount(
         &mut self,
-        id: u32,
+        id: BudgetId,
         categories: &[Category],
-        category_id: u32,
+        category_id: CategoryId,
         month: Period,
         span: Span,
         amount: Money,
@@ -303,9 +299,9 @@ impl Budgets {
     /// has nothing to stop, so nothing is written.
     pub fn stop(
         &mut self,
-        id: u32,
+        id: BudgetId,
         categories: &[Category],
-        category_id: u32,
+        category_id: CategoryId,
         month: Period,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
@@ -333,8 +329,8 @@ impl Budgets {
     /// Onward value. Returns whether one was removed.
     pub fn clear_month_only(
         &mut self,
-        id: u32,
-        category_id: u32,
+        id: BudgetId,
+        category_id: CategoryId,
         month: Period,
         today: NaiveDate,
     ) -> Result<bool, BudgetError> {
@@ -356,8 +352,8 @@ impl Budgets {
     /// current month with the same amount.
     pub fn cycle_rollover(
         &mut self,
-        id: u32,
-        category_id: u32,
+        id: BudgetId,
+        category_id: CategoryId,
         today: NaiveDate,
     ) -> Result<Rollover, BudgetError> {
         let current = Period::of(today);
@@ -389,9 +385,9 @@ impl Budgets {
     )]
     pub fn save_cell(
         &mut self,
-        id: u32,
+        id: BudgetId,
         categories: &[Category],
-        category_id: u32,
+        category_id: CategoryId,
         month: Period,
         span: Span,
         text: &str,
@@ -438,7 +434,7 @@ impl Budgets {
     /// them. Returns how many Categories it wrote.
     pub fn fill(
         &mut self,
-        id: u32,
+        id: BudgetId,
         ledger: &BudgetSources<'_>,
         target: Period,
         source: FillSource,
@@ -468,9 +464,9 @@ impl Budgets {
     /// Stop from it, and an unchanged value writes nothing. Returns whether it wrote.
     pub fn set_monthly_limit(
         &mut self,
-        id: u32,
+        id: BudgetId,
         categories: &[Category],
-        category_id: u32,
+        category_id: CategoryId,
         amount: Option<Money>,
         today: NaiveDate,
     ) -> Result<bool, BudgetError> {
@@ -503,9 +499,9 @@ impl Budgets {
     /// read-only rollup: the sum of its budgeted leaves, `None` when none is.
     pub fn monthly_limit(
         &self,
-        id: u32,
+        id: BudgetId,
         categories: &[Category],
-        category_id: u32,
+        category_id: CategoryId,
         today: NaiveDate,
     ) -> Option<Money> {
         let budget = self.get(id)?;
@@ -520,7 +516,7 @@ impl Budgets {
     }
 
     /// How many Budgets hold a chain for the Category: the Delete Category dialog's count.
-    pub fn limit_count(&self, category_id: u32) -> usize {
+    pub fn limit_count(&self, category_id: CategoryId) -> usize {
         self.list
             .iter()
             .filter(|budget| budget.limits.contains_key(&category_id))
@@ -528,7 +524,7 @@ impl Budgets {
     }
 
     /// A deleted Category's records go with it, in every Budget (archived ones too).
-    pub fn remove_category(&mut self, category_id: u32) {
+    pub fn remove_category(&mut self, category_id: CategoryId) {
         for budget in &mut self.list {
             budget.limits.remove(&category_id);
         }
@@ -537,7 +533,11 @@ impl Budgets {
     /// A budgeted leaf that gained a child gets an automatic Stop from the current month and loses
     /// any later record, in every active Budget; a parent only ever rolls up. Returns the Categories
     /// stopped.
-    pub fn stop_new_parents(&mut self, categories: &[Category], today: NaiveDate) -> Vec<u32> {
+    pub fn stop_new_parents(
+        &mut self,
+        categories: &[Category],
+        today: NaiveDate,
+    ) -> Vec<CategoryId> {
         let current = Period::of(today);
         let mut stopped = Vec::new();
         for budget in self.list.iter_mut().filter(|b| !b.is_archived()) {
@@ -565,7 +565,7 @@ impl Budgets {
     }
 }
 
-pub fn check_leaf(categories: &[Category], category_id: u32) -> Result<(), BudgetError> {
+pub fn check_leaf(categories: &[Category], category_id: CategoryId) -> Result<(), BudgetError> {
     let expense = categories
         .iter()
         .any(|c| c.id == category_id && c.category_type == CategoryTypes::Expense);
@@ -584,7 +584,11 @@ fn check_open_month(month: Period, today: NaiveDate) -> Result<(), BudgetError> 
     }
 }
 
-pub fn check_accounts(accounts: &[Account], unit: UnitId, ids: &[u32]) -> Result<(), BudgetError> {
+pub fn check_accounts(
+    accounts: &[Account],
+    unit: UnitId,
+    ids: &[AccountId],
+) -> Result<(), BudgetError> {
     for id in ids {
         let account = accounts
             .iter()

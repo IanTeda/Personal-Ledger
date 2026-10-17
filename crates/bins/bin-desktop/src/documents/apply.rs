@@ -5,6 +5,7 @@
 //! The link picker answers with a request that needs the live rows and may open another Dialog,
 //! so it stays `Shell`'s.
 
+use lib_core::DocumentId;
 use std::path::Path;
 
 use chrono::NaiveDate;
@@ -33,13 +34,13 @@ pub fn exists_on_disk(path: &Path) -> bool {
 pub enum DocumentCommand {
     /// Add (`editing` is `None`) or save a Filed Document from the form.
     Save {
-        editing: Option<u32>,
+        editing: Option<DocumentId>,
         form: Box<DocumentForm>,
     },
     /// Every typed path that exists lands in the Inbox.
     Import(ImportForm),
     SetFacts {
-        id: u32,
+        id: DocumentId,
         facts: ExtractedFacts,
     },
     AcceptAll,
@@ -49,11 +50,11 @@ pub enum DocumentCommand {
 #[derive(Debug, Clone)]
 pub enum DocumentOutcome {
     Added {
-        id: u32,
+        id: DocumentId,
         title: String,
     },
     Saved {
-        id: u32,
+        id: DocumentId,
         title: String,
     },
     Imported {
@@ -61,7 +62,7 @@ pub enum DocumentOutcome {
         skipped: usize,
     },
     FactsSaved {
-        id: u32,
+        id: DocumentId,
         title: String,
     },
     /// Accept all filed this batch, or `None` when nothing was strong enough.
@@ -118,7 +119,7 @@ impl DialogForm for DocumentsDialog {
 pub struct DocumentsApply {
     pub ledger: Entity<LedgerStore>,
     pub today: NaiveDate,
-    pub focus: Option<u32>,
+    pub focus: Option<DocumentId>,
 }
 
 impl Apply<DocumentCommand> for DocumentsApply {

@@ -2,6 +2,7 @@
 //! select's options and the dialog they sit behind. `gpui`-free, like the rest of this domain;
 //! `settings::payees::dialogs` renders it.
 
+use lib_core::{CategoryId, PayeeId};
 use lib_ledger::PayeeUse;
 
 use crate::{
@@ -18,7 +19,7 @@ use lib_payees::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normali
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayeeOptions {
     pub labels: Vec<String>,
-    pub ids: Vec<Option<u32>>,
+    pub ids: Vec<Option<CategoryId>>,
 }
 
 impl PayeeOptions {
@@ -49,14 +50,14 @@ impl PayeeOptions {
         Self { labels, ids }
     }
 
-    fn label_for(&self, id: Option<u32>) -> Option<String> {
+    fn label_for(&self, id: Option<CategoryId>) -> Option<String> {
         self.ids
             .iter()
             .position(|candidate| *candidate == id)
             .map(|index| self.labels[index].clone())
     }
 
-    fn id_for(&self, label: &str) -> Option<u32> {
+    fn id_for(&self, label: &str) -> Option<CategoryId> {
         self.labels
             .iter()
             .position(|candidate| candidate == label)
@@ -96,7 +97,7 @@ pub struct PayeeForm {
     /// Every Payee when the dialog opened, what names and rules are checked against.
     payees: Vec<Payee>,
     /// The Payee being edited (`None` for Add), so its own name and rules don't count as taken.
-    own_id: Option<u32>,
+    own_id: Option<PayeeId>,
 }
 
 impl PayeeForm {
@@ -371,7 +372,7 @@ mod tests {
     use lib_tags::default_tags;
     use lib_transactions::Transaction;
 
-    fn id_of(payees: &[Payee], name: &str) -> u32 {
+    fn id_of(payees: &[Payee], name: &str) -> PayeeId {
         find_by_name(payees, name).unwrap()
     }
 
@@ -535,7 +536,7 @@ mod tests {
         assert_eq!(form.name.text(), "Woolworths");
         assert_eq!(form.default_category.value(), Some("Groceries"));
         assert_eq!(form.rules, woolworths.aliases);
-        assert_eq!(form.draft().default_category, Some(7));
+        assert_eq!(form.draft().default_category, Some(CategoryId::seed(7)));
     }
 
     // The page's usage and delete-action tests.

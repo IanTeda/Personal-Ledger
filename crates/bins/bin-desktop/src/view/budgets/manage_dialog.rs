@@ -4,6 +4,7 @@
 //! left off the default and `archive` is refused on it (#400). `Shell` owns the row cursor and
 //! every keystroke.
 
+use lib_core::BudgetId;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -30,13 +31,13 @@ const DEFAULT_WIDTH: gpui::Pixels = px(60.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(250.0);
 
 /// Called with the Budget's id and the action clicked.
-pub type OnActionClick = Rc<dyn Fn(u32, ManageAction, &mut Window, &mut App)>;
+pub type OnActionClick = Rc<dyn Fn(BudgetId, ManageAction, &mut Window, &mut App)>;
 /// Called with a row's position.
 pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 /// One Budget, already worded.
 pub struct ManageRow {
-    pub id: u32,
+    pub id: BudgetId,
     pub name: String,
     pub method: Method,
     pub accounts: String,

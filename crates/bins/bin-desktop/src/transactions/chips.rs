@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
-use lib_core::DateStyle;
+use lib_core::{AccountId, DateStyle};
 
 use crate::{
     transactions::Transaction,
@@ -203,7 +203,7 @@ pub fn clear_field(filters: &mut TransactionFilters, field: FilterField, today: 
 
 /// `700 transactions across 4 accounts`: the whole ledger, and how many accounts hold any of it.
 pub fn count_line(transactions: &[Transaction]) -> String {
-    let accounts: HashSet<u32> = transactions.iter().map(|t| t.account_id).collect();
+    let accounts: HashSet<AccountId> = transactions.iter().map(|t| t.account_id).collect();
     crate::msg::desktop_transactions_count_line(
         i64::try_from(transactions.len()).unwrap_or(i64::MAX),
         i64::try_from(accounts.len()).unwrap_or(i64::MAX),
@@ -293,6 +293,7 @@ mod tests {
     use chrono::Duration;
     use lib_accounts::default_accounts;
     use lib_categories::default_categories;
+    use lib_core::CategoryId;
     use lib_payees::default_payees;
     use lib_tags::default_tags;
 
@@ -489,8 +490,8 @@ mod tests {
     #[test]
     fn clearing_a_field_resets_just_that_filter_to_its_default() {
         let mut filters = TransactionFilters::defaults(today());
-        filters.account = Some(3);
-        filters.category = Some(7);
+        filters.account = Some(AccountId::seed(3));
+        filters.category = Some(CategoryId::seed(7));
         filters.payee = "x".to_string();
         filters.tag = "y".to_string();
         filters.status = StatusFilter::Open;
@@ -498,7 +499,11 @@ mod tests {
 
         clear_field(&mut filters, FilterField::Payee, today());
         assert!(filters.payee.is_empty());
-        assert_eq!(filters.account, Some(3), "the others are untouched");
+        assert_eq!(
+            filters.account,
+            Some(AccountId::seed(3)),
+            "the others are untouched"
+        );
         clear_field(&mut filters, FilterField::Account, today());
         clear_field(&mut filters, FilterField::Category, today());
         clear_field(&mut filters, FilterField::Tag, today());

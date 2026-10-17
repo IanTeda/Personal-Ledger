@@ -3,6 +3,7 @@
 //! `Shell`'s accessor fills them in.
 
 use gpui::App;
+use lib_core::CategoryId;
 
 use super::state::BudgetsView;
 
@@ -46,7 +47,7 @@ pub struct BudgetsSnapshot {
     /// The Fill dialog's chosen source, `PreviousMonth` or `Average`.
     pub fill_source: Option<String>,
     /// The Category the open Stop dialog is for.
-    pub stop_category: Option<u32>,
+    pub stop_category: Option<CategoryId>,
 }
 
 impl BudgetsView {

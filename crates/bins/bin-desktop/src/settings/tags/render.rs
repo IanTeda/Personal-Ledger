@@ -352,6 +352,7 @@ fn row_action_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lib_core::TagId;
 
     #[test]
     fn scope_text_reads_the_count_alone_when_nothing_is_flagged() {
@@ -368,8 +369,8 @@ mod tests {
         crate::locale::init_for_tests();
         let rows = lib_tags::default_tags();
         let groups = [DuplicateGroup {
-            target: 1,
-            duplicates: vec![2],
+            target: TagId::seed(1),
+            duplicates: vec![TagId::seed(2)],
         }];
         assert_eq!(
             scope_text(&rows, &groups),

@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Entity, Render, SharedString, Window, div, prelude::*, px};
 use lib_categories::{Category, TreeNode};
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 use lib_locale::format::upper;
 
 use super::CategoriesPage;
@@ -20,9 +20,9 @@ use crate::theme::color;
 pub struct CategoriesPageProps<'a> {
     pub categories: &'a [Category],
     /// The ids of the parents shown open.
-    pub expanded: &'a [u32],
+    pub expanded: &'a [CategoryId],
     /// The selected row's Category id.
-    pub selected: Option<u32>,
+    pub selected: Option<CategoryId>,
     pub on_add_click: OnPlainClick,
     pub on_add_sub_click: OnIdClick,
     pub on_edit_click: OnIdClick,
@@ -32,7 +32,7 @@ pub struct CategoriesPageProps<'a> {
 }
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnIdClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+type OnIdClick = Rc<dyn Fn(CategoryId, &mut Window, &mut App)>;
 type OnAddClick = OnPlainClick;
 type OnAddSubClick = OnIdClick;
 type OnEditClick = OnIdClick;
@@ -71,7 +71,7 @@ fn on_plain(
 /// A click handler that runs `act` on the page with the clicked Category's id.
 fn on_id(
     entity: &Entity<CategoriesPage>,
-    act: fn(&mut CategoriesPage, u32, &mut Context<'_, CategoriesPage>),
+    act: fn(&mut CategoriesPage, CategoryId, &mut Context<'_, CategoriesPage>),
 ) -> OnIdClick {
     let entity = entity.clone();
     Rc::new(move |id, _window, cx| entity.update(cx, |page, cx| act(page, id, cx)))

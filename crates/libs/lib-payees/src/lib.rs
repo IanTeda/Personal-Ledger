@@ -15,24 +15,24 @@
 //! - A default Category is an optional leaf that only pre-fills new Splits.
 
 use bigdecimal::BigDecimal;
-use lib_core::{Money, UnitId};
+use lib_core::{AccountId, CategoryId, Money, PayeeId, UnitId};
 
 use lib_accounts::Account;
 use lib_transactions::Transaction;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payee {
-    pub id: u32,
+    pub id: PayeeId,
     /// The current, canonical name.
     pub name: String,
     /// Payee Aliases: former names and hand-authored match rules, normalised by [`normalise_alias`].
     pub aliases: Vec<String>,
     /// A leaf the Category id that pre-fills new Splits for this Payee.
-    pub default_category: Option<u32>,
+    pub default_category: Option<CategoryId>,
     pub is_active: bool,
 }
 
-fn payee(id: u32, name: &str, default_category: Option<u32>, aliases: &[&str]) -> Payee {
+fn payee(id: PayeeId, name: &str, default_category: Option<CategoryId>, aliases: &[&str]) -> Payee {
     Payee {
         id,
         name: name.to_string(),
@@ -45,72 +45,122 @@ fn payee(id: u32, name: &str, default_category: Option<u32>, aliases: &[&str]) -
 /// The handoff's sample Payees first (J Smith with no default Category), then the rest of the
 /// names the Transactions seed draws on. Category ids are `categories::default_categories`' leaves.
 pub fn default_payees() -> Vec<Payee> {
-    const RENT: u32 = 2;
-    const ELECTRICITY: u32 = 4;
-    const WATER: u32 = 5;
-    const GROCERIES: u32 = 7;
-    const DINING: u32 = 8;
-    const TRANSPORT: u32 = 9;
-    const HOUSEHOLD: u32 = 10;
-    const SALARY: u32 = 11;
-    const INTEREST: u32 = 12;
+    const RENT: CategoryId = CategoryId::seed(2);
+    const ELECTRICITY: CategoryId = CategoryId::seed(4);
+    const WATER: CategoryId = CategoryId::seed(5);
+    const GROCERIES: CategoryId = CategoryId::seed(7);
+    const DINING: CategoryId = CategoryId::seed(8);
+    const TRANSPORT: CategoryId = CategoryId::seed(9);
+    const HOUSEHOLD: CategoryId = CategoryId::seed(10);
+    const SALARY: CategoryId = CategoryId::seed(11);
+    const INTEREST: CategoryId = CategoryId::seed(12);
     let mut payees = vec![
         payee(
-            1,
+            PayeeId::seed(1),
             "Woolworths",
             Some(GROCERIES),
             &["WOOLWORTHS", "WW SUPERMARKET", "WOOLIES"],
         ),
-        payee(2, "Coles", Some(GROCERIES), &["COLES", "COLES ONLINE"]),
-        payee(3, "Netflix", Some(HOUSEHOLD), &["NETFLIX.COM"]),
-        payee(4, "BP", Some(TRANSPORT), &["BP SERVICE STN", "BP CONNECT"]),
         payee(
-            5,
+            PayeeId::seed(2),
+            "Coles",
+            Some(GROCERIES),
+            &["COLES", "COLES ONLINE"],
+        ),
+        payee(
+            PayeeId::seed(3),
+            "Netflix",
+            Some(HOUSEHOLD),
+            &["NETFLIX.COM"],
+        ),
+        payee(
+            PayeeId::seed(4),
+            "BP",
+            Some(TRANSPORT),
+            &["BP SERVICE STN", "BP CONNECT"],
+        ),
+        payee(
+            PayeeId::seed(5),
             "Origin Energy",
             Some(ELECTRICITY),
             &["ORIGIN ENERGY", "ORIGIN DIRECT DEBIT"],
         ),
-        payee(6, "Officeworks", Some(HOUSEHOLD), &["OFFICEWORKS"]),
         payee(
-            7,
+            PayeeId::seed(6),
+            "Officeworks",
+            Some(HOUSEHOLD),
+            &["OFFICEWORKS"],
+        ),
+        payee(
+            PayeeId::seed(7),
             "Employer Pty Ltd",
             Some(SALARY),
             &["EMPLOYER PTY LTD PAY"],
         ),
-        payee(8, "J Smith", None, &[]),
-        payee(9, "Aldi Kelvin Grove", Some(GROCERIES), &["ALDI"]),
-        payee(10, "Kura Sushi", Some(DINING), &[]),
-        payee(11, "Cafe Vittoria", Some(DINING), &[]),
-        payee(12, "Uber", Some(TRANSPORT), &["UBER"]),
-        payee(13, "Bunnings Warehouse", Some(HOUSEHOLD), &["BUNNINGS"]),
-        payee(14, "Kmart", Some(HOUSEHOLD), &["KMART"]),
-        payee(15, "Sydney Water", Some(WATER), &["SYDNEY WATER"]),
-        payee(16, "ANZ Banking Group", Some(INTEREST), &["ANZ INTEREST"]),
-        payee(17, "Hudson News", None, &[]),
-        payee(18, "Don Quijote", None, &[]),
-        payee(19, "Ray White Rentals", Some(RENT), &["RAY WHITE"]),
+        payee(PayeeId::seed(8), "J Smith", None, &[]),
+        payee(
+            PayeeId::seed(9),
+            "Aldi Kelvin Grove",
+            Some(GROCERIES),
+            &["ALDI"],
+        ),
+        payee(PayeeId::seed(10), "Kura Sushi", Some(DINING), &[]),
+        payee(PayeeId::seed(11), "Cafe Vittoria", Some(DINING), &[]),
+        payee(PayeeId::seed(12), "Uber", Some(TRANSPORT), &["UBER"]),
+        payee(
+            PayeeId::seed(13),
+            "Bunnings Warehouse",
+            Some(HOUSEHOLD),
+            &["BUNNINGS"],
+        ),
+        payee(PayeeId::seed(14), "Kmart", Some(HOUSEHOLD), &["KMART"]),
+        payee(
+            PayeeId::seed(15),
+            "Sydney Water",
+            Some(WATER),
+            &["SYDNEY WATER"],
+        ),
+        payee(
+            PayeeId::seed(16),
+            "ANZ Banking Group",
+            Some(INTEREST),
+            &["ANZ INTEREST"],
+        ),
+        payee(PayeeId::seed(17), "Hudson News", None, &[]),
+        payee(PayeeId::seed(18), "Don Quijote", None, &[]),
+        payee(
+            PayeeId::seed(19),
+            "Ray White Rentals",
+            Some(RENT),
+            &["RAY WHITE"],
+        ),
         // The Bills handoff's sample Bill Plans' Payees.
-        payee(20, "Telstra", Some(HOUSEHOLD), &["TELSTRA"]),
-        payee(21, "Fitness First", Some(HOUSEHOLD), &[]),
-        payee(22, "AAMI", Some(TRANSPORT), &[]),
-        payee(23, "Brisbane City Council", Some(HOUSEHOLD), &[]),
+        payee(PayeeId::seed(20), "Telstra", Some(HOUSEHOLD), &["TELSTRA"]),
+        payee(PayeeId::seed(21), "Fitness First", Some(HOUSEHOLD), &[]),
+        payee(PayeeId::seed(22), "AAMI", Some(TRANSPORT), &[]),
+        payee(
+            PayeeId::seed(23),
+            "Brisbane City Council",
+            Some(HOUSEHOLD),
+            &[],
+        ),
     ];
     // One inactive Payee, so the list's dimmed "inactive" state has something to show.
-    if let Some(don_quijote) = payees.iter_mut().find(|p| p.id == 18) {
+    if let Some(don_quijote) = payees.iter_mut().find(|p| p.id == PayeeId::seed(18)) {
         don_quijote.is_active = false;
     }
     payees
 }
 
 /// The id of the Payee named `name` (exact, first match), if any.
-pub fn find_by_name(payees: &[Payee], name: &str) -> Option<u32> {
+pub fn find_by_name(payees: &[Payee], name: &str) -> Option<PayeeId> {
     payees
         .iter()
         .find(|payee| payee.name == name)
         .map(|payee| payee.id)
 }
 
-pub fn get(payees: &[Payee], id: u32) -> Option<&Payee> {
+pub fn get(payees: &[Payee], id: PayeeId) -> Option<&Payee> {
     payees.iter().find(|payee| payee.id == id)
 }
 
@@ -142,7 +192,7 @@ pub enum PayeeError {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PayeeDraft {
     pub name: String,
-    pub default_category: Option<u32>,
+    pub default_category: Option<CategoryId>,
     pub aliases: Vec<String>,
 }
 
@@ -150,7 +200,7 @@ pub struct PayeeDraft {
 /// Payee than `own_id`.
 fn clean_aliases(
     payees: &[Payee],
-    own_id: Option<u32>,
+    own_id: Option<PayeeId>,
     aliases: &[String],
 ) -> Result<Vec<String>, PayeeError> {
     let mut cleaned: Vec<String> = Vec::new();
@@ -178,7 +228,11 @@ pub fn alias_owner<'a>(payees: &'a [Payee], alias: &str) -> Option<&'a Payee> {
 
 /// Checks `name` is present, not another Payee's name and not another Payee's alias; returns it
 /// trimmed.
-pub fn clean_name(payees: &[Payee], own_id: Option<u32>, name: &str) -> Result<String, PayeeError> {
+pub fn clean_name(
+    payees: &[Payee],
+    own_id: Option<PayeeId>,
+    name: &str,
+) -> Result<String, PayeeError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(PayeeError::NameRequired);
@@ -206,10 +260,10 @@ pub fn name_available(payees: &[Payee], name: &str) -> bool {
 }
 
 /// Adds a new, active Payee and returns its id.
-pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<u32, PayeeError> {
+pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
     let name = clean_name(payees, None, &draft.name)?;
     let aliases = clean_aliases(payees, None, &draft.aliases)?;
-    let id = payees.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+    let id = PayeeId::new();
     payees.push(Payee {
         id,
         name,
@@ -222,7 +276,7 @@ pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<u32, 
 
 /// Replaces Payee `id`'s name, default Category and aliases with `draft`'s. A rename keeps the old
 /// name as an alias, and drops the alias the new name equals.
-pub fn edit_payee(payees: &mut [Payee], id: u32, draft: &PayeeDraft) -> Result<(), PayeeError> {
+pub fn edit_payee(payees: &mut [Payee], id: PayeeId, draft: &PayeeDraft) -> Result<(), PayeeError> {
     let current = get(payees, id).ok_or(PayeeError::NotFound)?;
     let name = clean_name(payees, Some(id), &draft.name)?;
     let mut typed = draft.aliases.clone();
@@ -245,7 +299,7 @@ pub fn edit_payee(payees: &mut [Payee], id: u32, draft: &PayeeDraft) -> Result<(
 
 /// Removes Payee `id` and its aliases and returns the row. Whether anything still names it is a
 /// cross-domain rule, so `Ledger::delete_payee` checks that before calling this.
-pub fn delete_payee(payees: &mut Vec<Payee>, id: u32) -> Result<Payee, PayeeError> {
+pub fn delete_payee(payees: &mut Vec<Payee>, id: PayeeId) -> Result<Payee, PayeeError> {
     let index = payees
         .iter()
         .position(|p| p.id == id)
@@ -254,7 +308,7 @@ pub fn delete_payee(payees: &mut Vec<Payee>, id: u32) -> Result<Payee, PayeeErro
 }
 
 /// Deactivates or reactivates Payee `id`.
-pub fn set_active(payees: &mut [Payee], id: u32, is_active: bool) -> Result<(), PayeeError> {
+pub fn set_active(payees: &mut [Payee], id: PayeeId, is_active: bool) -> Result<(), PayeeError> {
     let payee = payees
         .iter_mut()
         .find(|p| p.id == id)
@@ -264,7 +318,7 @@ pub fn set_active(payees: &mut [Payee], id: u32, is_active: bool) -> Result<(), 
 }
 
 /// Whether any Split carries Payee `id`.
-pub fn is_referenced(transactions: &[Transaction], id: u32) -> bool {
+pub fn is_referenced(transactions: &[Transaction], id: PayeeId) -> bool {
     transactions
         .iter()
         .flat_map(|t| &t.splits)
@@ -273,7 +327,7 @@ pub fn is_referenced(transactions: &[Transaction], id: u32) -> bool {
 
 /// The active Payee whose alias `raw` contains (case-insensitively): the longest alias wins, then
 /// the Payee name alphabetically.
-pub fn match_alias(payees: &[Payee], raw: &str) -> Option<u32> {
+pub fn match_alias(payees: &[Payee], raw: &str) -> Option<PayeeId> {
     let haystack = raw.to_uppercase();
     payees
         .iter()
@@ -302,9 +356,9 @@ pub fn usage(
     transactions: &[Transaction],
     accounts: &[Account],
     base_unit: Option<UnitId>,
-    id: u32,
+    id: PayeeId,
 ) -> PayeeUsage {
-    let in_base_unit = |account_id: u32| {
+    let in_base_unit = |account_id: AccountId| {
         accounts
             .iter()
             .find(|a| a.id == account_id)
@@ -361,11 +415,14 @@ mod tests {
         let mut payees = default_payees();
         let seeded = payees.len();
 
-        let removed = delete_payee(&mut payees, 1).unwrap();
-        assert_eq!(removed.id, 1);
+        let removed = delete_payee(&mut payees, PayeeId::seed(1)).unwrap();
+        assert_eq!(removed.id, PayeeId::seed(1));
         assert_eq!(payees.len(), seeded - 1);
-        assert!(get(&payees, 1).is_none());
-        assert_eq!(delete_payee(&mut payees, 1), Err(PayeeError::NotFound));
+        assert!(get(&payees, PayeeId::seed(1)).is_none());
+        assert_eq!(
+            delete_payee(&mut payees, PayeeId::seed(1)),
+            Err(PayeeError::NotFound)
+        );
     }
 
     #[test]
@@ -380,7 +437,7 @@ mod tests {
 
         assert!(insert_payee(&mut payees, &draft).is_err());
         assert!(edit_payee(&mut payees, before[1].id, &draft).is_err());
-        assert!(edit_payee(&mut payees, u32::MAX, &draft).is_err());
+        assert!(edit_payee(&mut payees, PayeeId::seed(u32::MAX), &draft).is_err());
         assert_eq!(payees, before);
     }
 
@@ -394,7 +451,7 @@ mod tests {
         }
     }
 
-    fn id_of(payees: &[Payee], name: &str) -> u32 {
+    fn id_of(payees: &[Payee], name: &str) -> PayeeId {
         find_by_name(payees, name).unwrap()
     }
 
@@ -432,7 +489,7 @@ mod tests {
     #[test]
     fn find_by_name_is_exact_and_aliases_are_not_names() {
         let payees = default_payees();
-        assert_eq!(find_by_name(&payees, "Woolworths"), Some(1));
+        assert_eq!(find_by_name(&payees, "Woolworths"), Some(PayeeId::seed(1)));
         assert_eq!(find_by_name(&payees, "WOOLIES"), None);
         assert!(payees[0].aliases.contains(&"WOOLIES".to_string()));
     }
@@ -447,18 +504,17 @@ mod tests {
     #[test]
     fn insert_normalises_and_dedupes_aliases_and_assigns_a_fresh_id() {
         let mut payees = default_payees();
-        let max = payees.iter().map(|p| p.id).max().unwrap();
         let mut new = draft(
             " Aussie Candle Co ",
             &["aussie candle", "AUSSIE CANDLE ", " ", ""],
         );
-        new.default_category = Some(10);
+        new.default_category = Some(CategoryId::seed(10));
         let id = insert_payee(&mut payees, &new).unwrap();
-        assert_eq!(id, max + 1);
+        assert!(!default_payees().iter().any(|p| p.id == id));
         let payee = get(&payees, id).unwrap();
         assert_eq!(payee.name, "Aussie Candle Co");
         assert_eq!(payee.aliases, vec!["AUSSIE CANDLE".to_string()]);
-        assert_eq!(payee.default_category, Some(10));
+        assert_eq!(payee.default_category, Some(CategoryId::seed(10)));
         assert!(payee.is_active);
     }
 
@@ -504,11 +560,11 @@ mod tests {
         let mut payees = default_payees();
         let coles = id_of(&payees, "Coles");
         let mut change = draft("Coles", &["coles express"]);
-        change.default_category = Some(10);
+        change.default_category = Some(CategoryId::seed(10));
         edit_payee(&mut payees, coles, &change).unwrap();
         let payee = get(&payees, coles).unwrap();
         assert_eq!(payee.aliases, vec!["COLES EXPRESS".to_string()]);
-        assert_eq!(payee.default_category, Some(10));
+        assert_eq!(payee.default_category, Some(CategoryId::seed(10)));
     }
 
     #[test]
@@ -587,7 +643,7 @@ mod tests {
         set_active(&mut payees, j_smith, true).unwrap();
         assert_eq!(active_count(&payees), active);
         assert_eq!(
-            set_active(&mut payees, 999, true),
+            set_active(&mut payees, PayeeId::seed(999), true),
             Err(PayeeError::NotFound)
         );
     }

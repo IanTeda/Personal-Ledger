@@ -22,7 +22,7 @@
 //!   [`SplitRef`] rather than as a `bill_schedule_id` on the Split, so the shared Transactions stub
 //!   keeps its shape; a Transaction "carries a Bill" when any entry points at one of its Splits.
 //!
-//! Plan and Transaction ids are the stubs' `u32`s, matching every other desktop stub.
+//! Plan and Transaction ids are the Ledger's `lib_core` id newtypes (ADR-0040).
 
 pub(crate) mod apply;
 pub(crate) mod form;
@@ -35,6 +35,7 @@ use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
 };
+use lib_core::BillPlanId;
 
 pub use lib_bills::*;
 
@@ -61,7 +62,7 @@ impl BillsTab {
 pub enum BillsDialog {
     Add(BillPlanForm),
     /// Editing the Bill Plan with this [`BillPlan::id`].
-    Edit(u32, BillPlanForm),
+    Edit(BillPlanId, BillPlanForm),
     Pay(PayForm),
     /// Confirming a skip of this entry: nothing to edit, so no form.
     Skip(EntryId),
@@ -137,6 +138,7 @@ mod tests {
     use chrono::{Datelike, NaiveDate};
     use lib_accounts::{Account, default_accounts};
     use lib_categories::{Category, default_categories};
+    use lib_core::{AccountId, CategoryId, PayeeId};
     use lib_core::{Money, Total, TransactionStatus};
     use lib_payees::default_payees;
     use lib_tags::default_tags;
@@ -180,10 +182,10 @@ mod tests {
     fn draft(recurrence: Recurrence, first_due: NaiveDate) -> BillPlanDraft {
         BillPlanDraft {
             name: "Water".to_string(),
-            category_id: 5,
+            category_id: CategoryId::seed(5),
             unit: lib_core::UnitId::SEED_AUD,
-            account_id: 2,
-            payee_id: Some(15),
+            account_id: AccountId::seed(2),
+            payee_id: Some(PayeeId::seed(15)),
             planned_amount: cents_money(9_000),
             amount_kind: AmountKind::Estimated,
             recurrence,
@@ -193,7 +195,7 @@ mod tests {
         }
     }
 
-    fn dues(w: &World, plan_id: u32) -> Vec<NaiveDate> {
+    fn dues(w: &World, plan_id: BillPlanId) -> Vec<NaiveDate> {
         let mut dates: Vec<NaiveDate> = w
             .entries
             .iter()
@@ -204,11 +206,11 @@ mod tests {
         dates
     }
 
-    fn plan_id(w: &World, name: &str) -> u32 {
+    fn plan_id(w: &World, name: &str) -> BillPlanId {
         w.plans.iter().find(|p| p.name == name).unwrap().id
     }
 
-    fn id(plan_id: u32, due: NaiveDate) -> EntryId {
+    fn id(plan_id: BillPlanId, due: NaiveDate) -> EntryId {
         EntryId { plan_id, due }
     }
 
@@ -243,7 +245,7 @@ mod tests {
         let t = w.transactions.iter().find(|t| t.id == tid).unwrap();
         assert_eq!(t.status, TransactionStatus::Open);
         assert_eq!(t.total(), cents_money(-8_900));
-        assert_eq!(t.account_id, 2);
+        assert_eq!(t.account_id, AccountId::seed(2));
         assert!(carries_bill(&w.entries, tid));
         let e = entry(&w.entries, due).unwrap();
         assert_eq!(status(e, today()), BillStatus::Paid);

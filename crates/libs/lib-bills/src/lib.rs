@@ -30,7 +30,7 @@ pub mod seed;
 pub use seed::*;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
-use lib_core::{Money, UnitId};
+use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
 
 /// How often a Bill Plan falls due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,15 +95,15 @@ pub enum AmountKind {
 /// The recurring definition of an expected payment obligation (glossary: Bill Plan).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillPlan {
-    pub id: u32,
+    pub id: BillPlanId,
     pub name: String,
     /// A leaf Expense Category id.
-    pub category_id: u32,
+    pub category_id: CategoryId,
     /// The Unit, always the Account's; locked after creation.
     pub unit: UnitId,
     /// The Account id it's paid from; one that takes Transactions.
-    pub account_id: u32,
-    pub payee_id: Option<u32>,
+    pub account_id: AccountId,
+    pub payee_id: Option<PayeeId>,
     /// Positive: the magnitude of the expected payment.
     pub planned_amount: Money,
     pub amount_kind: AmountKind,
@@ -123,14 +123,14 @@ pub struct BillPlan {
 /// due_date)` key), so every generation of the same date finds the same row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntryId {
-    pub plan_id: u32,
+    pub plan_id: BillPlanId,
     pub due: NaiveDate,
 }
 
 /// One Split of one Transaction: what a Bill Schedule entry is Matched to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SplitRef {
-    pub transaction_id: u32,
+    pub transaction_id: TransactionId,
     pub split_index: usize,
 }
 
@@ -148,7 +148,7 @@ pub enum Resolution {
 /// One dated instance of a Bill Plan (glossary: Bill Schedule).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillScheduleEntry {
-    pub plan_id: u32,
+    pub plan_id: BillPlanId,
     pub due: NaiveDate,
     pub resolution: Resolution,
     /// Replaced by a Bill Plan edit or deactivation: kept, but ignored by every view and figure.
@@ -220,7 +220,7 @@ pub fn attention_entries(
     ids
 }
 
-pub fn get(plans: &[BillPlan], id: u32) -> Option<&BillPlan> {
+pub fn get(plans: &[BillPlan], id: BillPlanId) -> Option<&BillPlan> {
     plans.iter().find(|plan| plan.id == id)
 }
 
@@ -318,7 +318,7 @@ pub fn populate(plans: &[BillPlan], entries: &mut Vec<BillScheduleEntry>, today:
 }
 
 /// Marks `plan_id`'s unresolved entries due today or later as superseded.
-pub fn supersede_from(entries: &mut [BillScheduleEntry], plan_id: u32, today: NaiveDate) {
+pub fn supersede_from(entries: &mut [BillScheduleEntry], plan_id: BillPlanId, today: NaiveDate) {
     for entry in entries
         .iter_mut()
         .filter(|e| e.plan_id == plan_id && e.is_unresolved() && e.due >= today)
@@ -373,7 +373,7 @@ mod tests {
 
     fn open(due: NaiveDate) -> BillScheduleEntry {
         BillScheduleEntry {
-            plan_id: 1,
+            plan_id: BillPlanId::seed(1),
             due,
             resolution: Resolution::Unresolved,
             superseded: false,
@@ -384,7 +384,7 @@ mod tests {
     fn service_edit_changes_plans_and_entries_together() {
         let mut service = BillService::from_rows(Vec::new(), vec![open(date(2026, 9, 20))]);
         let superseded = service.edit(|_plans, entries| {
-            supersede_from(entries, 1, today());
+            supersede_from(entries, BillPlanId::seed(1), today());
             entries.iter().filter(|e| e.superseded).count()
         });
         assert_eq!(superseded, 1);

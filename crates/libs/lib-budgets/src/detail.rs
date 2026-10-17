@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money, Period};
+use lib_core::{AccountId, CategoryId, CategoryTypes, Money, PayeeId, Period};
 
 use lib_categories as categories;
 
@@ -21,8 +21,8 @@ const TRACK_MONTHS: usize = 6;
 #[derive(Debug, Clone, PartialEq)]
 pub struct DetailLine {
     pub date: NaiveDate,
-    pub account_id: u32,
-    pub payee_id: Option<u32>,
+    pub account_id: AccountId,
+    pub payee_id: Option<PayeeId>,
     /// Signed like Spent: positive when money went out.
     pub amount: Money,
 }
@@ -40,7 +40,7 @@ pub struct TrackRecord {
 /// Everything 9d shows for a Category (a leaf or a parent's rollup) and month.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryDetail {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub month: Period,
     /// The same figures as the Progress row.
     pub figures: CategoryFigures,
@@ -61,11 +61,11 @@ fn detail_leaves(
     budget: &Budget,
     index: &SpentIndex,
     ledger: &BudgetSources<'_>,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
-) -> Vec<u32> {
-    let below: Vec<u32> = categories::descendants_inclusive(ledger.categories, category_id)
+) -> Vec<CategoryId> {
+    let below: Vec<CategoryId> = categories::descendants_inclusive(ledger.categories, category_id)
         .into_iter()
         .filter(|id| {
             categories::is_leaf(ledger.categories, *id)
@@ -75,7 +75,7 @@ fn detail_leaves(
                     .any(|c| c.id == *id && c.category_type == CategoryTypes::Expense)
         })
         .collect();
-    let budgeted: Vec<u32> = below
+    let budgeted: Vec<CategoryId> = below
         .iter()
         .copied()
         .filter(|id| effective(budget, index, *id, month, today).is_some())
@@ -88,7 +88,7 @@ fn detail_leaves(
 pub fn category_detail(
     budget: &Budget,
     ledger: &BudgetSources<'_>,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Option<CategoryDetail> {
@@ -99,7 +99,7 @@ pub fn category_detail(
     let index = SpentIndex::build(budget, ledger);
     let is_parent = !categories::is_leaf(ledger.categories, category_id);
     let leaves = detail_leaves(budget, &index, ledger, category_id, month, today);
-    let figures: BTreeMap<u32, LeafFigures> = leaves
+    let figures: BTreeMap<CategoryId, LeafFigures> = leaves
         .iter()
         .map(|id| {
             let (known, known_count) = known_costs(budget, ledger, *id, month, today);
@@ -113,7 +113,7 @@ pub fn category_detail(
         })
         .collect();
     let row = if is_parent {
-        let under: Vec<(&u32, &LeafFigures)> = figures.iter().collect();
+        let under: Vec<(&CategoryId, &LeafFigures)> = figures.iter().collect();
         parent_row(category_id, &under)
     } else {
         figures
@@ -173,7 +173,7 @@ pub fn category_detail(
 fn track_record(
     budget: &Budget,
     index: &SpentIndex,
-    leaves: &[u32],
+    leaves: &[CategoryId],
     month: Period,
     today: NaiveDate,
 ) -> Option<TrackRecord> {

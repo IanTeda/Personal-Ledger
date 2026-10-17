@@ -28,7 +28,7 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, NaiveDate};
-use lib_core::{Money, TransactionStatus, UnitId};
+use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionStatus, UnitId};
 
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
@@ -66,18 +66,18 @@ impl StatusFilter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionFilters {
     /// An [`Account::id`].
-    pub account: Option<u32>,
+    pub account: Option<AccountId>,
     /// Exactly these [`Account::id`]s; empty is "any". A Budget's on-budget Accounts, which the
     /// single-Account filter can't say.
-    pub account_ids: Vec<u32>,
+    pub account_ids: Vec<AccountId>,
     /// A [`Category::id`]; a parent matches its descendants.
-    pub category: Option<u32>,
+    pub category: Option<CategoryId>,
     pub payee: String,
     /// An exact [`Payee::id`]: what "view transactions" on the Payees page hands over.
-    pub payee_id: Option<u32>,
+    pub payee_id: Option<PayeeId>,
     pub tag: String,
     /// An exact [`Tag::id`]: what "view transactions" on the Tags page hands over.
-    pub tag_id: Option<u32>,
+    pub tag_id: Option<TagId>,
     /// Inclusive lower bound; `None` is unbounded.
     pub from: Option<NaiveDate>,
     /// Inclusive upper bound; `None` is unbounded.
@@ -110,7 +110,7 @@ impl TransactionFilters {
     }
 
     /// The defaults narrowed to one account: what "open ledger" on the Accounts page hands over.
-    pub fn for_account(today: NaiveDate, account: u32) -> Self {
+    pub fn for_account(today: NaiveDate, account: AccountId) -> Self {
         Self {
             account: Some(account),
             ..Self::defaults(today)
@@ -118,7 +118,7 @@ impl TransactionFilters {
     }
 
     /// The defaults narrowed to one category: what "open transactions" on the Categories page hands over.
-    pub fn for_category(today: NaiveDate, category: u32) -> Self {
+    pub fn for_category(today: NaiveDate, category: CategoryId) -> Self {
         Self {
             category: Some(category),
             ..Self::defaults(today)
@@ -128,9 +128,9 @@ impl TransactionFilters {
     /// One Category over one month on a Budget's on-budget Accounts: what the Budgets Category
     /// detail's "open in Transactions" hands over.
     pub fn for_budget_category(
-        category: u32,
+        category: CategoryId,
         month: lib_core::Period,
-        account_ids: &[u32],
+        account_ids: &[AccountId],
     ) -> Self {
         Self {
             category: Some(category),
@@ -142,7 +142,7 @@ impl TransactionFilters {
     }
 
     /// The defaults narrowed to one Payee by id: what "view transactions" on the Payees page hands over.
-    pub fn for_payee(today: NaiveDate, payee: u32) -> Self {
+    pub fn for_payee(today: NaiveDate, payee: PayeeId) -> Self {
         Self {
             payee_id: Some(payee),
             ..Self::defaults(today)
@@ -150,7 +150,7 @@ impl TransactionFilters {
     }
 
     /// The defaults narrowed to one Tag by id: what "view transactions" on the Tags page hands over.
-    pub fn for_tag(today: NaiveDate, tag: u32) -> Self {
+    pub fn for_tag(today: NaiveDate, tag: TagId) -> Self {
         Self {
             tag_id: Some(tag),
             ..Self::defaults(today)
@@ -217,8 +217,8 @@ fn add(a: &Money, b: &Money) -> Money {
 
 /// Case-folded lookups built once per query, so matching a Split is a map read.
 struct Names {
-    payees: HashMap<u32, String>,
-    tags: HashMap<u32, String>,
+    payees: HashMap<PayeeId, String>,
+    tags: HashMap<TagId, String>,
 }
 
 impl Names {
@@ -241,11 +241,11 @@ impl Names {
 /// The active Split-level conditions, ready to test a Split against.
 struct SplitFilter {
     /// The chosen category and everything nested under it.
-    categories: Option<Vec<u32>>,
+    categories: Option<Vec<CategoryId>>,
     payee: String,
-    payee_id: Option<u32>,
+    payee_id: Option<PayeeId>,
     tag: String,
-    tag_id: Option<u32>,
+    tag_id: Option<TagId>,
 }
 
 impl SplitFilter {
@@ -389,7 +389,7 @@ pub fn query<'a>(
         });
     }
 
-    let unit_of = |account_id: u32| -> Option<UnitId> {
+    let unit_of = |account_id: AccountId| -> Option<UnitId> {
         ledger
             .accounts
             .iter()
@@ -495,11 +495,11 @@ mod tests {
             }
         }
 
-        fn account(&self, name: &str) -> u32 {
+        fn account(&self, name: &str) -> AccountId {
             self.accounts.iter().find(|a| a.name == name).unwrap().id
         }
 
-        fn category(&self, name: &str) -> u32 {
+        fn category(&self, name: &str) -> CategoryId {
             categories::find_by_name(&self.categories, name).unwrap()
         }
     }
@@ -1019,8 +1019,8 @@ mod tests {
 
     #[test]
     fn for_account_sets_the_account_and_keeps_other_defaults() {
-        let filters = TransactionFilters::for_account(today(), 42);
-        assert_eq!(filters.account, Some(42));
+        let filters = TransactionFilters::for_account(today(), AccountId::seed(42));
+        assert_eq!(filters.account, Some(AccountId::seed(42)));
         assert_eq!(filters.category, None);
         assert_eq!(filters.from, NaiveDate::from_ymd_opt(2026, 1, 1));
         assert_eq!(filters.to, Some(today()));
@@ -1030,8 +1030,8 @@ mod tests {
 
     #[test]
     fn for_category_sets_the_category_and_keeps_other_defaults() {
-        let filters = TransactionFilters::for_category(today(), 99);
-        assert_eq!(filters.category, Some(99));
+        let filters = TransactionFilters::for_category(today(), CategoryId::seed(99));
+        assert_eq!(filters.category, Some(CategoryId::seed(99)));
         assert_eq!(filters.account, None);
         assert_eq!(filters.from, NaiveDate::from_ymd_opt(2026, 1, 1));
         assert_eq!(filters.to, Some(today()));

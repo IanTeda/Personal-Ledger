@@ -3,6 +3,7 @@
 //! handles its own input in its Entity (`view::transactions`, ADR-0037).
 
 use super::Shell;
+use lib_core::{PayeeId, TagId};
 
 use crate::{
     navigation::nav::{FocusZone, Noun},
@@ -40,13 +41,13 @@ impl Shell {
 
     /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
     /// a name substring that would over-match ("BP").
-    pub(super) fn open_payee_transactions(&mut self, id: u32, cx: &mut App) {
+    pub(super) fn open_payee_transactions(&mut self, id: PayeeId, cx: &mut App) {
         self.open_transactions_filtered(TransactionFilters::for_payee(self.today, id), cx);
     }
 
     /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
     /// name substring that would over-match ("trip").
-    pub(super) fn open_tag_transactions(&mut self, id: u32, cx: &mut App) {
+    pub(super) fn open_tag_transactions(&mut self, id: TagId, cx: &mut App) {
         self.open_transactions_filtered(TransactionFilters::for_tag(self.today, id), cx);
     }
 }

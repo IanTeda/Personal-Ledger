@@ -3,7 +3,7 @@
 //! so the wording rules (which flags are red, what a chip says) are unit-tested without a window.
 
 use chrono::{Datelike, NaiveDate};
-use lib_core::DateStyle;
+use lib_core::{DateStyle, DocumentId, TransactionId};
 use lib_locale::format::{format_date, format_year_month, upper};
 
 use lib_payees::Payee;
@@ -64,7 +64,7 @@ pub enum RowTail {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowView {
-    pub id: u32,
+    pub id: DocumentId,
     /// `PDF` / `JPG` / `PNG`, drawn inside the file glyph.
     pub extension: &'static str,
     pub title: String,
@@ -90,7 +90,7 @@ pub struct LinkRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetailView {
-    pub id: u32,
+    pub id: DocumentId,
     pub extension: &'static str,
     pub title: String,
     pub meta: String,
@@ -374,7 +374,7 @@ pub enum InboxState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboxRowView {
-    pub id: u32,
+    pub id: DocumentId,
     pub extension: &'static str,
     pub name: String,
     /// "Scanned 29 Sep", "Downloads · 26 Sep".
@@ -386,14 +386,14 @@ pub struct InboxRowView {
     pub hint: String,
     pub signals: Option<Signals>,
     /// The Transaction Accept would link.
-    pub best: Option<u32>,
+    pub best: Option<TransactionId>,
     pub skipped: bool,
 }
 
 /// One Transaction offered in the detail pane: the suggested one, or another candidate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CandidateView {
-    pub transaction_id: u32,
+    pub transaction_id: TransactionId,
     /// "29 Sep · Woolworths · −212.40".
     pub line: String,
     /// "ANZ Platinum · no document yet"; empty for an Other candidate.
@@ -404,7 +404,7 @@ pub struct CandidateView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboxDetailView {
-    pub id: u32,
+    pub id: DocumentId,
     pub extension: &'static str,
     pub title: String,
     pub meta: String,

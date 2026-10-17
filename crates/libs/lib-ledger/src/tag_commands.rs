@@ -6,6 +6,7 @@
 //! removing or merging a Tag rewrites the Splits that carry it, so those Transactions are recorded
 //! as written too.
 
+use lib_core::TagId;
 use lib_tags::{
     Tag, TagDraft, TagError, edit_tag, get, insert_tag, merge_tags, remove_tag, set_active,
     transaction_count,
@@ -15,7 +16,7 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 
 impl Ledger {
     /// Adds a new, active Tag and returns its id.
-    pub fn add_tag(&mut self, draft: &TagDraft) -> Result<u32, TagError> {
+    pub fn add_tag(&mut self, draft: &TagDraft) -> Result<TagId, TagError> {
         let id = insert_tag(&mut self.tags, draft)?;
         self.record_tag(id);
         Ok(id)
@@ -23,7 +24,12 @@ impl Ledger {
 
     /// Saves Tag `id`'s name and colour, then its Active flag, as one write: if either is refused
     /// neither lands.
-    pub fn edit_tag(&mut self, id: u32, draft: &TagDraft, is_active: bool) -> Result<(), TagError> {
+    pub fn edit_tag(
+        &mut self,
+        id: TagId,
+        draft: &TagDraft,
+        is_active: bool,
+    ) -> Result<(), TagError> {
         let mut tags = self.tags.clone();
         edit_tag(&mut tags, id, draft)?;
         set_active(&mut tags, id, is_active)?;
@@ -34,7 +40,7 @@ impl Ledger {
 
     /// Hard-deletes Tag `id`, used or not, and untags every Split that carried it. Returns how
     /// many Transactions were untagged.
-    pub fn remove_tag(&mut self, id: u32) -> Result<usize, TagError> {
+    pub fn remove_tag(&mut self, id: TagId) -> Result<usize, TagError> {
         let untagged = transaction_count(&self.transactions, id);
         let mut tags = self.tags.clone();
         let mut transactions = self.transactions.clone();
@@ -47,7 +53,7 @@ impl Ledger {
 
     /// Folds Tag `source` into `target` and deletes the source. Returns how many Transactions
     /// carried the source and so were retagged.
-    pub fn merge_tags(&mut self, source: u32, target: u32) -> Result<usize, TagError> {
+    pub fn merge_tags(&mut self, source: TagId, target: TagId) -> Result<usize, TagError> {
         let retagged = transaction_count(&self.transactions, source);
         let mut tags = self.tags.clone();
         let mut transactions = self.transactions.clone();
@@ -69,7 +75,7 @@ impl Ledger {
         self.transactions = transactions;
     }
 
-    fn record_tag(&mut self, id: u32) {
+    fn record_tag(&mut self, id: TagId) {
         if let Some(tag) = get(&self.tags, id) {
             self.pending.push(LedgerChange::UpsertTag(Tag::clone(tag)));
         }
@@ -81,9 +87,9 @@ impl Ledger {
 pub struct AddTag(pub TagDraft);
 
 impl LedgerCommand for AddTag {
-    type Outcome = u32;
+    type Outcome = TagId;
     type Refusal = TagError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, TagError> {
+    fn run(self, ledger: &mut Ledger) -> Result<TagId, TagError> {
         ledger.add_tag(&self.0)
     }
 }
@@ -91,7 +97,7 @@ impl LedgerCommand for AddTag {
 /// [`Ledger::edit_tag`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditTag {
-    pub id: u32,
+    pub id: TagId,
     pub draft: TagDraft,
     pub is_active: bool,
 }
@@ -106,7 +112,7 @@ impl LedgerCommand for EditTag {
 
 /// [`Ledger::remove_tag`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RemoveTag(pub u32);
+pub struct RemoveTag(pub TagId);
 
 impl LedgerCommand for RemoveTag {
     type Outcome = usize;
@@ -119,8 +125,8 @@ impl LedgerCommand for RemoveTag {
 /// [`Ledger::merge_tags`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MergeTags {
-    pub source: u32,
-    pub target: u32,
+    pub source: TagId,
+    pub target: TagId,
 }
 
 impl LedgerCommand for MergeTags {
@@ -142,7 +148,7 @@ mod tests {
         }
     }
 
-    fn id_of(ledger: &Ledger, name: &str) -> u32 {
+    fn id_of(ledger: &Ledger, name: &str) -> TagId {
         ledger
             .tags()
             .iter()
@@ -182,7 +188,7 @@ mod tests {
         );
         assert_eq!(
             EditTag {
-                id: 999,
+                id: TagId::seed(999),
                 draft: draft("x"),
                 is_active: true,
             }
@@ -240,7 +246,10 @@ mod tests {
         let mut ledger = Ledger::stub();
         let before = ledger.transactions().to_vec();
 
-        assert_eq!(RemoveTag(999).run(&mut ledger), Err(TagError::NotFound));
+        assert_eq!(
+            RemoveTag(TagId::seed(999)).run(&mut ledger),
+            Err(TagError::NotFound)
+        );
         assert_eq!(ledger.transactions(), before);
         assert!(ledger.drain_changes().is_empty());
     }
@@ -280,7 +289,7 @@ mod tests {
         );
         assert_eq!(
             MergeTags {
-                source: 999,
+                source: TagId::seed(999),
                 target: gift,
             }
             .run(&mut ledger),

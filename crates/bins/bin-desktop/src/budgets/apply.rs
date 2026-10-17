@@ -7,6 +7,7 @@
 
 use chrono::NaiveDate;
 use gpui::{App, Entity};
+use lib_core::{BudgetId, CategoryId};
 use lib_ledger::{
     AddBudget, EditBudget, FillBudget, LedgerCommand, SetBudgetAmount, StopBudgeting,
 };
@@ -26,7 +27,10 @@ pub enum BudgetCommand {
     /// 9e: write the Category's amount.
     SetLimit(LimitDraft),
     /// 9g: stop budgeting the Category from the month.
-    Stop { category_id: u32, month: Period },
+    Stop {
+        category_id: CategoryId,
+        month: Period,
+    },
     /// 9f: write the chosen source's Month-only amounts into the Budget on show.
     Fill { month: Period, source: FillSource },
 }
@@ -35,7 +39,7 @@ pub enum BudgetCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetOutcome {
     /// A Budget was created: the surface switches to it.
-    Created(u32),
+    Created(BudgetId),
     Saved,
 }
 
@@ -93,7 +97,7 @@ impl DialogForm for BudgetsDialog {
 /// Runs [`BudgetCommand`]s against the Ledger; `current` is the Budget on show.
 pub struct BudgetsApply {
     pub ledger: Entity<LedgerStore>,
-    pub current: u32,
+    pub current: BudgetId,
     pub today: NaiveDate,
 }
 
@@ -223,7 +227,7 @@ mod tests {
         let refused = cx.update(|cx| {
             apply.apply(
                 BudgetCommand::Stop {
-                    category_id: 9999,
+                    category_id: CategoryId::seed(9999),
                     month,
                 },
                 cx,

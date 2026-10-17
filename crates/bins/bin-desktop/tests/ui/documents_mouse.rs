@@ -13,6 +13,7 @@ use super::common;
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
 use gpui::TestAppContext;
+use lib_documents::DocumentType;
 
 const STRONG_RECEIPT: &str = "IMG_4471.jpg";
 const UNREADABLE_SCAN: &str = "scan0012.pdf";
@@ -73,10 +74,13 @@ fn index_rail_facets_narrow_the_library(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     let all = ui.documents().library_rows;
 
-    ui.click("documents-rail-Scope(Type(DocumentType(1)))");
+    ui.click(&format!(
+        "documents-rail-Scope(Type({:?}))",
+        DocumentType::RECEIPTS
+    ));
 
     let page = ui.documents();
-    assert_eq!(page.scope, "type:1");
+    assert_eq!(page.scope, format!("type:{}", DocumentType::RECEIPTS.0));
     assert_eq!(page.mode, "library");
     assert!(page.library_rows < all, "a type facet narrows the list");
 }

@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{HexColor, Money, UnitId};
+use lib_core::{AccountId, HexColor, Money, TagId, UnitId};
 
 use lib_accounts::Account;
 use lib_core::Total;
@@ -32,7 +32,7 @@ use lib_transactions::Transaction;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
-    pub id: u32,
+    pub id: TagId,
     pub name: String,
     /// `None` shows no swatch.
     pub color: Option<HexColor>,
@@ -71,7 +71,7 @@ pub fn default_tags() -> Vec<Tag> {
     .into_iter()
     .zip(1u32..)
     .map(|((name, color, is_active), id)| Tag {
-        id,
+        id: TagId::seed(id),
         name: name.to_string(),
         color,
         is_active,
@@ -88,14 +88,14 @@ pub fn normalise(name: &str) -> String {
 }
 
 /// The id of the Tag named `name`, ignoring case (not spaces or punctuation), if any.
-pub fn find_by_name(tags: &[Tag], name: &str) -> Option<u32> {
+pub fn find_by_name(tags: &[Tag], name: &str) -> Option<TagId> {
     let folded = name.trim().to_lowercase();
     tags.iter()
         .find(|tag| tag.name.to_lowercase() == folded)
         .map(|tag| tag.id)
 }
 
-pub fn get(tags: &[Tag], id: u32) -> Option<&Tag> {
+pub fn get(tags: &[Tag], id: TagId) -> Option<&Tag> {
     tags.iter().find(|tag| tag.id == id)
 }
 
@@ -125,7 +125,7 @@ pub struct TagDraft {
 
 /// Checks `name` is present, has a letter or digit and isn't another Tag's once normalised;
 /// returns it trimmed. `own_id` is the Tag being edited.
-fn clean_name(tags: &[Tag], own_id: Option<u32>, name: &str) -> Result<String, TagError> {
+fn clean_name(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Result<String, TagError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(TagError::NameRequired);
@@ -145,14 +145,14 @@ fn clean_name(tags: &[Tag], own_id: Option<u32>, name: &str) -> Result<String, T
 
 /// The problem with `name` for Tag `own_id` (or a new Tag), if any; an empty name is reported too,
 /// so a dialog decides for itself whether to show that one.
-pub fn name_error(tags: &[Tag], own_id: Option<u32>, name: &str) -> Option<TagError> {
+pub fn name_error(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Option<TagError> {
     clean_name(tags, own_id, name).err()
 }
 
 /// Adds a new, active Tag and returns its id.
-pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<u32, TagError> {
+pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<TagId, TagError> {
     let name = clean_name(tags, None, &draft.name)?;
-    let id = tags.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+    let id = TagId::new();
     tags.push(Tag {
         id,
         name,
@@ -163,7 +163,7 @@ pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<u32, TagError
 }
 
 /// Renames and recolours Tag `id` in place: Splits refer to it by id, so nothing is re-tagged.
-pub fn edit_tag(tags: &mut [Tag], id: u32, draft: &TagDraft) -> Result<(), TagError> {
+pub fn edit_tag(tags: &mut [Tag], id: TagId, draft: &TagDraft) -> Result<(), TagError> {
     get(tags, id).ok_or(TagError::NotFound)?;
     let name = clean_name(tags, Some(id), &draft.name)?;
     let tag = tags
@@ -176,7 +176,7 @@ pub fn edit_tag(tags: &mut [Tag], id: u32, draft: &TagDraft) -> Result<(), TagEr
 }
 
 /// Deactivates or reactivates Tag `id`.
-pub fn set_active(tags: &mut [Tag], id: u32, is_active: bool) -> Result<(), TagError> {
+pub fn set_active(tags: &mut [Tag], id: TagId, is_active: bool) -> Result<(), TagError> {
     let tag = tags
         .iter_mut()
         .find(|t| t.id == id)
@@ -190,7 +190,7 @@ pub fn set_active(tags: &mut [Tag], id: u32, is_active: bool) -> Result<(), TagE
 pub fn remove_tag(
     tags: &mut Vec<Tag>,
     transactions: &mut [Transaction],
-    id: u32,
+    id: TagId,
 ) -> Result<(), TagError> {
     get(tags, id).ok_or(TagError::NotFound)?;
     for split in transactions.iter_mut().flat_map(|t| &mut t.splits) {
@@ -206,8 +206,8 @@ pub fn remove_tag(
 pub fn merge_tags(
     tags: &mut Vec<Tag>,
     transactions: &mut [Transaction],
-    source: u32,
-    target: u32,
+    source: TagId,
+    target: TagId,
 ) -> Result<(), TagError> {
     if source == target {
         return Err(TagError::MergeIntoItself);
@@ -231,7 +231,7 @@ pub fn merge_tags(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SplitTag {
     /// An exact case-insensitive match: reuse that Tag.
-    Existing(u32),
+    Existing(TagId),
     /// Nothing takes the name: a new Tag would be created.
     New,
 }
@@ -251,7 +251,7 @@ pub fn active_count(tags: &[Tag]) -> usize {
 }
 
 /// Whether any Split on `transaction` carries Tag `id`.
-fn carries(transaction: &Transaction, id: u32) -> bool {
+fn carries(transaction: &Transaction, id: TagId) -> bool {
     transaction
         .splits
         .iter()
@@ -260,7 +260,7 @@ fn carries(transaction: &Transaction, id: u32) -> bool {
 
 /// Distinct Transactions carrying Tag `id`: the TRANSACTIONS column, the figure the Remove and
 /// Merge dialogs quote, and the sort key.
-pub fn transaction_count(transactions: &[Transaction], id: u32) -> usize {
+pub fn transaction_count(transactions: &[Transaction], id: TagId) -> usize {
     transactions.iter().filter(|t| carries(t, id)).count()
 }
 
@@ -281,10 +281,11 @@ pub struct TagUsage {
 pub fn usage(
     transactions: &[Transaction],
     accounts: &[Account],
-    id: u32,
+    id: TagId,
     unit_code: impl Fn(UnitId) -> String,
 ) -> TagUsage {
-    let unit_of = |account_id: u32| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
+    let unit_of =
+        |account_id: AccountId| accounts.iter().find(|a| a.id == account_id).map(|a| a.unit);
     let mut count = 0;
     let mut last_used: Option<NaiveDate> = None;
     let mut unit: Option<UnitId> = None;
@@ -349,7 +350,7 @@ pub fn sorted_by_name(tags: &[Tag]) -> Vec<&Tag> {
     sorted
 }
 
-fn counts(tags: &[Tag], transactions: &[Transaction]) -> HashMap<u32, usize> {
+fn counts(tags: &[Tag], transactions: &[Transaction]) -> HashMap<TagId, usize> {
     tags.iter()
         .map(|tag| (tag.id, transaction_count(transactions, tag.id)))
         .collect()
@@ -360,8 +361,8 @@ fn counts(tags: &[Tag], transactions: &[Transaction]) -> HashMap<u32, usize> {
 /// duplicate of" it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DuplicateGroup {
-    pub target: u32,
-    pub duplicates: Vec<u32>,
+    pub target: TagId,
+    pub duplicates: Vec<TagId>,
 }
 
 /// Every group of two or more Tags sharing a normalised name, ordered by their lowest id.
@@ -396,7 +397,7 @@ pub fn duplicate_groups(tags: &[Tag], transactions: &[Transaction]) -> Vec<Dupli
 }
 
 /// The suggested merge target Tag `id` is flagged as a likely duplicate of, if it is flagged.
-pub fn duplicate_of(groups: &[DuplicateGroup], id: u32) -> Option<u32> {
+pub fn duplicate_of(groups: &[DuplicateGroup], id: TagId) -> Option<TagId> {
     groups
         .iter()
         .find(|group| group.duplicates.contains(&id))
@@ -410,8 +411,9 @@ mod tests {
     use lib_transactions::Split;
 
     use super::*;
+    use lib_core::{CategoryId, TransactionId};
 
-    fn tag(id: u32, name: &str) -> Tag {
+    fn tag(id: TagId, name: &str) -> Tag {
         Tag {
             id,
             name: name.to_string(),
@@ -427,7 +429,7 @@ mod tests {
         }
     }
 
-    fn transaction(id: u32, account_id: u32, tag_sets: &[&[u32]]) -> Transaction {
+    fn transaction(id: TransactionId, account_id: AccountId, tag_sets: &[&[TagId]]) -> Transaction {
         Transaction {
             id,
             date: NaiveDate::from_ymd_opt(2026, 9, 1).expect("a fixed valid date"),
@@ -439,7 +441,7 @@ mod tests {
                 .iter()
                 .map(|tags| Split {
                     amount: Money(BigDecimal::from(1)),
-                    category_id: 1,
+                    category_id: CategoryId::seed(1),
                     payee_id: None,
                     tag_ids: tags.to_vec(),
                 })
@@ -455,7 +457,7 @@ mod tests {
 
     #[test]
     fn insert_refuses_a_name_taken_once_normalised() {
-        let mut tags = vec![tag(1, "work-trip")];
+        let mut tags = vec![tag(TagId::seed(1), "work-trip")];
 
         assert_eq!(
             insert_tag(&mut tags, &draft("work trip")),
@@ -466,9 +468,12 @@ mod tests {
 
     #[test]
     fn edit_keeps_its_own_name_when_only_the_case_changes() {
-        let mut tags = vec![tag(1, "work-trip")];
+        let mut tags = vec![tag(TagId::seed(1), "work-trip")];
 
-        assert_eq!(edit_tag(&mut tags, 1, &draft("Work-Trip")), Ok(()));
+        assert_eq!(
+            edit_tag(&mut tags, TagId::seed(1), &draft("Work-Trip")),
+            Ok(())
+        );
         assert_eq!(tags[0].name, "Work-Trip");
     }
 
@@ -484,47 +489,67 @@ mod tests {
 
     #[test]
     fn merge_refuses_a_tag_into_itself() {
-        let mut tags = vec![tag(1, "a")];
+        let mut tags = vec![tag(TagId::seed(1), "a")];
 
         assert_eq!(
-            merge_tags(&mut tags, &mut [], 1, 1),
+            merge_tags(&mut tags, &mut [], TagId::seed(1), TagId::seed(1)),
             Err(TagError::MergeIntoItself)
         );
     }
 
     #[test]
     fn merge_does_not_double_a_split_that_already_carries_the_target() {
-        let mut tags = vec![tag(1, "source"), tag(2, "target")];
-        let mut transactions = vec![transaction(1, 1, &[&[1, 2]])];
+        let mut tags = vec![tag(TagId::seed(1), "source"), tag(TagId::seed(2), "target")];
+        let mut transactions = vec![transaction(
+            TransactionId::seed(1),
+            AccountId::seed(1),
+            &[&[TagId::seed(1), TagId::seed(2)]],
+        )];
 
-        merge_tags(&mut tags, &mut transactions, 1, 2).expect("both tags exist");
+        merge_tags(&mut tags, &mut transactions, TagId::seed(1), TagId::seed(2))
+            .expect("both tags exist");
 
-        assert_eq!(transactions[0].splits[0].tag_ids, vec![2]);
+        assert_eq!(transactions[0].splits[0].tag_ids, vec![TagId::seed(2)]);
         assert_eq!(tags.len(), 1);
     }
 
     #[test]
     fn remove_untags_every_split_and_deletes_the_tag() {
-        let mut tags = vec![tag(1, "gone"), tag(3, "kept")];
-        let mut transactions = vec![transaction(1, 1, &[&[1, 3]])];
+        let mut tags = vec![tag(TagId::seed(1), "gone"), tag(TagId::seed(3), "kept")];
+        let mut transactions = vec![transaction(
+            TransactionId::seed(1),
+            AccountId::seed(1),
+            &[&[TagId::seed(1), TagId::seed(3)]],
+        )];
 
-        remove_tag(&mut tags, &mut transactions, 1).expect("the tag exists");
+        remove_tag(&mut tags, &mut transactions, TagId::seed(1)).expect("the tag exists");
 
-        assert_eq!(transactions[0].splits[0].tag_ids, vec![3]);
-        assert_eq!(tags, vec![tag(3, "kept")]);
+        assert_eq!(transactions[0].splits[0].tag_ids, vec![TagId::seed(3)]);
+        assert_eq!(tags, vec![tag(TagId::seed(3), "kept")]);
     }
 
     #[test]
     fn transaction_count_counts_each_transaction_once() {
-        let transactions = vec![transaction(1, 1, &[&[7], &[7]]), transaction(2, 1, &[&[8]])];
+        let transactions = vec![
+            transaction(
+                TransactionId::seed(1),
+                AccountId::seed(1),
+                &[&[TagId::seed(7)], &[TagId::seed(7)]],
+            ),
+            transaction(
+                TransactionId::seed(2),
+                AccountId::seed(1),
+                &[&[TagId::seed(8)]],
+            ),
+        ];
 
-        assert_eq!(transaction_count(&transactions, 7), 1);
+        assert_eq!(transaction_count(&transactions, TagId::seed(7)), 1);
     }
 
     #[test]
     fn an_unused_tag_has_no_total_and_no_last_used_date() {
         let accounts = default_accounts();
-        let usage = usage(&[], &accounts, 1, |_| String::new());
+        let usage = usage(&[], &accounts, TagId::seed(1), |_| String::new());
 
         assert_eq!(usage.transactions, 0);
         assert_eq!(usage.total, Total::Empty);
@@ -533,11 +558,11 @@ mod tests {
 
     #[test]
     fn resolve_split_tag_reuses_an_exact_match_and_refuses_a_near_one() {
-        let tags = vec![tag(1, "work-trip")];
+        let tags = vec![tag(TagId::seed(1), "work-trip")];
 
         assert_eq!(
             resolve_split_tag(&tags, "WORK-TRIP"),
-            Ok(SplitTag::Existing(1))
+            Ok(SplitTag::Existing(TagId::seed(1)))
         );
         assert_eq!(
             resolve_split_tag(&tags, "work trip"),

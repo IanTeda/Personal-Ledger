@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
-use lib_core::{DateStyle, UnitKind};
+use lib_core::{DateStyle, PropertyId, RoomId, UnitKind};
 use lib_ledger::{Domain, MoveRoom};
 use lib_toast::ToastKind;
 
@@ -41,12 +41,12 @@ pub use render::scope_text;
 /// One selectable row: a Property, or a Room of an expanded Property.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRow {
-    Property(u32),
-    Room(u32),
+    Property(PropertyId),
+    Room(RoomId),
 }
 
 /// The rows `j`/`k` walk, in screen order: each Property, then its Rooms when it is expanded.
-pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<u32>) -> Vec<InventoryRow> {
+pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<PropertyId>) -> Vec<InventoryRow> {
     let mut rows = Vec::new();
     for property in &inventory.properties {
         rows.push(InventoryRow::Property(property.id));
@@ -75,7 +75,7 @@ pub struct InventoryPage {
     date_style: Option<DateStyle>,
     /// It may name a row that is gone or hidden, so read it through [`Self::selected_row`].
     selected: Option<InventoryRow>,
-    expanded: HashSet<u32>,
+    expanded: HashSet<PropertyId>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -240,19 +240,19 @@ impl InventoryPage {
     }
 
     /// Shows Property `id` open. Returns whether it was closed before.
-    fn expand(&mut self, id: u32, cx: &mut Context<'_, Self>) -> bool {
+    fn expand(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) -> bool {
         cx.notify();
         self.expanded.insert(id)
     }
 
     /// Shows Property `id` closed. Returns whether it was open before.
-    fn collapse(&mut self, id: u32, cx: &mut Context<'_, Self>) -> bool {
+    fn collapse(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) -> bool {
         cx.notify();
         self.expanded.remove(&id)
     }
 
     /// The Property the selected row belongs to.
-    fn selected_property(&self, cx: &App) -> Option<u32> {
+    fn selected_property(&self, cx: &App) -> Option<PropertyId> {
         match self.selected_row(cx)? {
             InventoryRow::Property(id) => Some(id),
             InventoryRow::Room(id) => self.inventory(cx).room(id).map(|(property, _)| property.id),
@@ -358,7 +358,7 @@ impl InventoryPage {
 
     /// The disclosure control of a Property row: opens or closes it. Closing keeps the selection
     /// on screen by moving a hidden Room's selection up to its Property.
-    pub(crate) fn click_toggle(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_toggle(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
         cx.emit(RowClicked);
         if self.collapse(id, cx) {
             if let Some(InventoryRow::Room(room)) = self.selected
@@ -395,7 +395,7 @@ impl InventoryPage {
     }
 
     /// **+ Add room** under an open Property, or **+ room** on its row.
-    pub(crate) fn click_add_room(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_add_room(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
         cx.emit(RowClicked);
         self.open_add_room_dialog(id, cx);
     }
@@ -463,7 +463,7 @@ impl InventoryPage {
         open_dialog(InventoryDialog::Add(form), cx);
     }
 
-    fn open_edit_property_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_property_dialog(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
         let Some(property) = self.inventory(cx).property(id) else {
             return;
         };
@@ -471,7 +471,7 @@ impl InventoryPage {
         open_dialog(InventoryDialog::Edit(id, form), cx);
     }
 
-    fn open_remove_property_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_remove_property_dialog(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
         let Some(property) = inventory.property(id) else {
             return;
@@ -483,7 +483,7 @@ impl InventoryPage {
         open_dialog(InventoryDialog::Remove(id, form), cx);
     }
 
-    fn open_add_room_dialog(&mut self, property: u32, cx: &mut Context<'_, Self>) {
+    fn open_add_room_dialog(&mut self, property: PropertyId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
         if inventory.property(property).is_none() {
             return;
@@ -492,7 +492,7 @@ impl InventoryPage {
         open_dialog(InventoryDialog::AddRoom(property, form), cx);
     }
 
-    fn open_edit_room_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_room_dialog(&mut self, id: RoomId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
         let Some((property, room)) = inventory.room(id) else {
             return;
@@ -503,7 +503,7 @@ impl InventoryPage {
 
     /// An empty Room gets a plain confirm; one with Items a destination picker pre-selecting the
     /// Room above (below when first); the last Room with Items a notice.
-    fn open_remove_room_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_remove_room_dialog(&mut self, id: RoomId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
         let Some((property, _)) = inventory.room(id) else {
             return;
@@ -572,6 +572,7 @@ impl InventoryPage {
                 })
                 .collect(),
             inventory_dialog: None,
+            inventory_property_ids: inventory.properties.iter().map(|p| p.id).collect(),
             inventory_properties: inventory
                 .properties
                 .iter()
@@ -605,12 +606,14 @@ pub struct SettingsInventorySnapshot {
     /// and each Property as `(name, unit code, insurer)`.
     pub inventory_dialog: Option<String>,
     pub inventory_properties: Vec<(String, String, Option<String>)>,
+    /// Each Property's id, in the same order.
+    pub inventory_property_ids: Vec<PropertyId>,
     /// Each Room's name with its Item count, in page order.
     pub inventory_room_items: Vec<(String, usize)>,
 }
 
 /// The names of the Property's other Rooms, in tab order: where a removed Room's Items can go.
-fn room_destinations(inventory: &Inventory, room: u32) -> Vec<String> {
+fn room_destinations(inventory: &Inventory, room: RoomId) -> Vec<String> {
     inventory.room(room).map_or_else(Vec::new, |(property, _)| {
         property
             .rooms

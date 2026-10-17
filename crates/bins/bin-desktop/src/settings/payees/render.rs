@@ -6,6 +6,7 @@
 //! [`PayeesPage`] draws it, and every click is bound to the same handler its key reaches
 //! (`n`/`e`/`d`). A row click only selects: the Transactions hand-off stays on the old page.
 
+use lib_core::PayeeId;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Entity, Rgba, SharedString, Window, div, prelude::*, px};
@@ -130,8 +131,8 @@ impl PayeesPage {
 /// A click handler that runs `act` on the page with the clicked Payee's id.
 fn on_payee(
     entity: &Entity<PayeesPage>,
-    id: u32,
-    act: fn(&mut PayeesPage, u32, &mut Context<'_, PayeesPage>),
+    id: PayeeId,
+    act: fn(&mut PayeesPage, PayeeId, &mut Context<'_, PayeesPage>),
 ) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |view, cx| act(view, id, cx)))

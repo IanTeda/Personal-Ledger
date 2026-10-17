@@ -5,6 +5,7 @@
 //! Single-entity rules stay in `lib_inventory`. What lives here is the rule that crosses domains: a
 //! removed Property drops the Document Links to its Items, since a Document names an Item by id.
 
+use lib_core::{ItemId, PropertyId, RoomId};
 use lib_inventory::{PropertyDraft, PropertyError, RemovedProperty, RemovedRoom, RoomError};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
@@ -22,21 +23,25 @@ impl Ledger {
         &mut self,
         draft: &PropertyDraft,
         unit: &str,
-    ) -> Result<u32, PropertyError> {
+    ) -> Result<PropertyId, PropertyError> {
         let id = self.inventory.add_property(draft, unit)?;
         self.record_property(id);
         Ok(id)
     }
 
     /// Edits a Property's name, address and cover. Its Unit is fixed once added.
-    pub fn edit_property(&mut self, id: u32, draft: &PropertyDraft) -> Result<(), PropertyError> {
+    pub fn edit_property(
+        &mut self,
+        id: PropertyId,
+        draft: &PropertyDraft,
+    ) -> Result<(), PropertyError> {
         self.inventory.edit_property(id, draft)?;
         self.record_property(id);
         Ok(())
     }
 
     /// Removes a Property with its Rooms and Items, and drops the Document Links to those Items.
-    pub fn remove_property(&mut self, id: u32) -> Result<RemovedProperty, PropertyError> {
+    pub fn remove_property(&mut self, id: PropertyId) -> Result<RemovedProperty, PropertyError> {
         let removed = self.inventory.remove_property(id)?;
         for room in &removed.rooms {
             self.pending.push(LedgerChange::DeleteRoom(*room));
@@ -50,14 +55,14 @@ impl Ledger {
     }
 
     /// Adds a Room at the end of a Property's tabs and returns its id.
-    pub fn add_room(&mut self, property: u32, name: &str) -> Result<u32, RoomError> {
+    pub fn add_room(&mut self, property: PropertyId, name: &str) -> Result<RoomId, RoomError> {
         let id = self.inventory.add_room(property, name)?;
         self.record_room(id);
         Ok(id)
     }
 
     /// Renames a Room.
-    pub fn edit_room(&mut self, room: u32, name: &str) -> Result<(), RoomError> {
+    pub fn edit_room(&mut self, room: RoomId, name: &str) -> Result<(), RoomError> {
         self.inventory.edit_room(room, name)?;
         self.record_room(room);
         Ok(())
@@ -66,8 +71,8 @@ impl Ledger {
     /// Removes a Room, moving its Items to `destination` first when it holds any.
     pub fn remove_room(
         &mut self,
-        room: u32,
-        destination: Option<u32>,
+        room: RoomId,
+        destination: Option<RoomId>,
     ) -> Result<RemovedRoom, RoomError> {
         let removed = self.inventory.remove_room(room, destination)?;
         for item in &removed.moved_items {
@@ -79,7 +84,7 @@ impl Ledger {
 
     /// Moves a Room one place down (`delta` > 0) or up within its Property. The Room and the
     /// neighbour it swapped with both change position.
-    pub fn move_room(&mut self, room: u32, delta: isize) -> Result<(), MoveRoomRefusal> {
+    pub fn move_room(&mut self, room: RoomId, delta: isize) -> Result<(), MoveRoomRefusal> {
         let [moved, neighbour] = self
             .inventory
             .move_room(room, delta)
@@ -89,14 +94,14 @@ impl Ledger {
         Ok(())
     }
 
-    fn record_property(&mut self, id: u32) {
+    fn record_property(&mut self, id: PropertyId) {
         if let Some(property) = self.inventory.property(id) {
             self.pending
                 .push(LedgerChange::UpsertProperty(property.clone()));
         }
     }
 
-    fn record_room(&mut self, room: u32) {
+    fn record_room(&mut self, room: RoomId) {
         if let Some((property, room)) = self.inventory.room(room) {
             self.pending.push(LedgerChange::UpsertRoom {
                 property: property.id,
@@ -105,7 +110,7 @@ impl Ledger {
         }
     }
 
-    fn record_item(&mut self, item: u32) {
+    fn record_item(&mut self, item: ItemId) {
         if let Some(item) = self.inventory.item(item) {
             self.pending.push(LedgerChange::UpsertItem(item.clone()));
         }
@@ -120,9 +125,9 @@ pub struct AddProperty {
 }
 
 impl LedgerCommand for AddProperty {
-    type Outcome = u32;
+    type Outcome = PropertyId;
     type Refusal = PropertyError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, PropertyError> {
+    fn run(self, ledger: &mut Ledger) -> Result<PropertyId, PropertyError> {
         ledger.add_property(&self.draft, &self.unit)
     }
 }
@@ -130,7 +135,7 @@ impl LedgerCommand for AddProperty {
 /// [`Ledger::edit_property`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditProperty {
-    pub id: u32,
+    pub id: PropertyId,
     pub draft: PropertyDraft,
 }
 
@@ -144,7 +149,7 @@ impl LedgerCommand for EditProperty {
 
 /// [`Ledger::remove_property`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RemoveProperty(pub u32);
+pub struct RemoveProperty(pub PropertyId);
 
 impl LedgerCommand for RemoveProperty {
     type Outcome = RemovedProperty;
@@ -157,14 +162,14 @@ impl LedgerCommand for RemoveProperty {
 /// [`Ledger::add_room`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddRoom {
-    pub property: u32,
+    pub property: PropertyId,
     pub name: String,
 }
 
 impl LedgerCommand for AddRoom {
-    type Outcome = u32;
+    type Outcome = RoomId;
     type Refusal = RoomError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, RoomError> {
+    fn run(self, ledger: &mut Ledger) -> Result<RoomId, RoomError> {
         ledger.add_room(self.property, &self.name)
     }
 }
@@ -172,7 +177,7 @@ impl LedgerCommand for AddRoom {
 /// [`Ledger::edit_room`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditRoom {
-    pub room: u32,
+    pub room: RoomId,
     pub name: String,
 }
 
@@ -187,8 +192,8 @@ impl LedgerCommand for EditRoom {
 /// [`Ledger::remove_room`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoveRoom {
-    pub room: u32,
-    pub destination: Option<u32>,
+    pub room: RoomId,
+    pub destination: Option<RoomId>,
 }
 
 impl LedgerCommand for RemoveRoom {
@@ -202,7 +207,7 @@ impl LedgerCommand for RemoveRoom {
 /// [`Ledger::move_room`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveRoom {
-    pub room: u32,
+    pub room: RoomId,
     pub delta: isize,
 }
 
@@ -245,7 +250,7 @@ mod tests {
 
     /// A Room in the seed that holds Items, with another Room of the same Property to receive
     /// them, and the Property both belong to.
-    fn room_with_items(inventory: &Inventory) -> (u32, u32, u32) {
+    fn room_with_items(inventory: &Inventory) -> (PropertyId, RoomId, RoomId) {
         let item = inventory.items.first().expect("seeded Items");
         let (property, room) = inventory.room(item.room).expect("an Item's Room exists");
         let other = property
@@ -321,12 +326,12 @@ mod tests {
     fn remove_property_records_its_rooms_items_and_the_property() {
         let mut ledger = ledger();
         let id = ledger.inventory().properties[0].id;
-        let rooms: Vec<u32> = ledger.inventory().properties[0]
+        let rooms: Vec<RoomId> = ledger.inventory().properties[0]
             .rooms
             .iter()
             .map(|r| r.id)
             .collect();
-        let items: Vec<u32> = ledger
+        let items: Vec<ItemId> = ledger
             .inventory()
             .items
             .iter()
@@ -385,7 +390,7 @@ mod tests {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
         assert_eq!(
-            ledger.remove_property(9_999).unwrap_err(),
+            ledger.remove_property(PropertyId::seed(9_999)).unwrap_err(),
             PropertyError::Unknown
         );
         assert_untouched(&mut ledger, &before);
@@ -435,7 +440,7 @@ mod tests {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
         assert_eq!(
-            ledger.edit_room(9_999, "Nowhere"),
+            ledger.edit_room(RoomId::seed(9_999), "Nowhere"),
             Err(RoomError::UnknownRoom)
         );
         assert_untouched(&mut ledger, &before);
@@ -445,7 +450,7 @@ mod tests {
     fn remove_room_moves_its_items_and_records_each_one() {
         let mut ledger = ledger();
         let (_, room, other) = room_with_items(ledger.inventory());
-        let moving: Vec<u32> = ledger
+        let moving: Vec<ItemId> = ledger
             .inventory()
             .items
             .iter()

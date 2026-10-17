@@ -127,6 +127,7 @@ impl CategoryTypes {
 ///
 /// This implementation allows `CategoryTypes` to be stored in any SQLx-supported
 /// database using the "any" driver. Values are stored as strings in the database.
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Any> for CategoryTypes {
     fn type_info() -> sqlx::any::AnyTypeInfo {
         <String as sqlx::Type<sqlx::Any>>::type_info()
@@ -135,12 +136,14 @@ impl sqlx::Type<sqlx::Any> for CategoryTypes {
 
 // Also provide Sqlite-specific trait impls so the query_as! macro can resolve
 // types for the sqlite driver at compile time.
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for CategoryTypes {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for CategoryTypes {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
@@ -150,6 +153,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for CategoryTypes {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for CategoryTypes {
     fn encode_by_ref(
         &self,
@@ -164,6 +168,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for CategoryTypes {
 /// This implementation reads string values from the database and converts them
 /// to `CategoryTypes` variants using the `FromStr` implementation. Invalid values
 /// in the database will result in a decoding error.
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Any> for CategoryTypes {
     fn decode(value: sqlx::any::AnyValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         use std::str::FromStr;
@@ -185,6 +190,7 @@ pub struct UtcDateTime(pub chrono::DateTime<chrono::Utc>);
 ///
 /// Timestamps are stored as strings in RFC 3339 format for compatibility
 /// across different database backends.
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Any> for UtcDateTime {
     fn type_info() -> sqlx::any::AnyTypeInfo {
         <String as sqlx::Type<sqlx::Any>>::type_info()
@@ -196,6 +202,7 @@ impl sqlx::Type<sqlx::Any> for UtcDateTime {
 /// This implementation reads RFC 3339 formatted strings from the database and
 /// converts them to UTC timestamps. Invalid datetime strings will result in
 /// a decoding error.
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Any> for UtcDateTime {
     fn decode(value: sqlx::any::AnyValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Any>>::decode(value)?;

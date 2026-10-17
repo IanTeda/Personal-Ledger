@@ -17,7 +17,7 @@
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::{Datelike, Months, NaiveDate};
-use lib_core::{Money, Period};
+use lib_core::{AccountId, BillPlanId, CategoryId, Money, Period};
 use lib_transactions::Transaction;
 
 use crate::{BillPlan, BillScheduleEntry, BillStatus, Recurrence, Resolution, ScheduleRow, bills};
@@ -64,9 +64,9 @@ pub struct BillFilters {
     /// The toggled-on status chips.
     pub statuses: Vec<BillStatus>,
     /// Scoped to one Bill Plan: the stat callout shows.
-    pub plan_id: Option<u32>,
-    pub category_id: Option<u32>,
-    pub account_id: Option<u32>,
+    pub plan_id: Option<BillPlanId>,
+    pub category_id: Option<CategoryId>,
+    pub account_id: Option<AccountId>,
 }
 
 impl Default for BillFilters {

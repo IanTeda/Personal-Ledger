@@ -82,6 +82,7 @@ mod tests {
     use lib_ledger::{DeletePayee, LedgerParts};
 
     use super::*;
+    use lib_core::PayeeId;
 
     fn store(cx: &mut TestAppContext) -> (Entity<LedgerStore>, Rc<RefCell<Vec<LedgerChanged>>>) {
         let store = cx.new(|_| {
@@ -126,7 +127,11 @@ mod tests {
         let (store, events) = store(cx);
 
         store.update(cx, |store, cx| {
-            assert!(store.apply(cx, DeletePayee(u32::MAX)).is_err());
+            assert!(
+                store
+                    .apply(cx, DeletePayee(PayeeId::seed(u32::MAX)))
+                    .is_err()
+            );
         });
         cx.run_until_parked();
 

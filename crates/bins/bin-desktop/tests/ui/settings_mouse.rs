@@ -3,6 +3,7 @@
 //! `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
+use lib_core::CategoryId;
 
 use bin_desktop::{
     WindowSize,
@@ -51,7 +52,7 @@ fn a_categories_edit_action_selects_the_row_and_opens_its_dialog(app: &mut TestA
     let mut ui = on_settings(app);
     ui.click("settings-index-Categories");
 
-    ui.click("settings-categories-edit-1");
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(1)));
     let categories_page = ui.settings_categories();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditCategory"));

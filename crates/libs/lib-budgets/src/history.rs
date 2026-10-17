@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money, Period};
+use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use lib_categories::{self as categories, Category};
 
@@ -23,7 +23,7 @@ pub struct HistoryCell {
 /// `—` of an unbudgeted month).
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryRow {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub is_parent: bool,
     pub cells: Vec<Option<HistoryCell>>,
     /// Mean Spent over the closed months shown in which the row was budgeted.
@@ -82,26 +82,27 @@ pub fn history(
     }
 
     // month index -> leaf -> cell
-    let leaf_cells: BTreeMap<u32, Vec<Option<HistoryCell>>> = expense_leaves(ledger.categories)
-        .into_iter()
-        .map(|id| {
-            let cells = months
-                .iter()
-                .map(|&month| {
-                    effective(budget, &index, id, month, today).map(|found| {
-                        let total = found.total();
-                        let spent = index.spent(id, month);
-                        HistoryCell {
-                            over: spent > total.0,
-                            budget: total,
-                            spent: Money(spent),
-                        }
+    let leaf_cells: BTreeMap<CategoryId, Vec<Option<HistoryCell>>> =
+        expense_leaves(ledger.categories)
+            .into_iter()
+            .map(|id| {
+                let cells = months
+                    .iter()
+                    .map(|&month| {
+                        effective(budget, &index, id, month, today).map(|found| {
+                            let total = found.total();
+                            let spent = index.spent(id, month);
+                            HistoryCell {
+                                over: spent > total.0,
+                                budget: total,
+                                spent: Money(spent),
+                            }
+                        })
                     })
-                })
-                .collect();
-            (id, cells)
-        })
-        .collect();
+                    .collect();
+                (id, cells)
+            })
+            .collect();
 
     let month_totals = months
         .iter()
@@ -184,7 +185,7 @@ pub fn history(
 }
 
 fn history_row(
-    category_id: u32,
+    category_id: CategoryId,
     is_parent: bool,
     cells: Vec<Option<HistoryCell>>,
     months: &[Period],

@@ -8,7 +8,10 @@ use lib_bills::{
     self as bills, AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, Recurrence,
 };
 use lib_categories::{self as categories, Category, default_categories};
-use lib_core::{CategoryTypes, Money, Period, TransactionStatus, UnitId};
+use lib_core::{
+    AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, TransactionId,
+    TransactionStatus, UnitId,
+};
 use lib_transactions::{Split, Transaction};
 
 use super::*;
@@ -29,8 +32,8 @@ fn money(text: &str) -> Money {
     text.parse().expect("a valid test amount")
 }
 
-fn category_id(categories: &[Category], name: &str) -> u32 {
-    categories::find_by_name(categories, name).unwrap_or_default()
+fn category_id(categories: &[Category], name: &str) -> CategoryId {
+    categories::find_by_name(categories, name).expect("a seeded Category")
 }
 
 /// A tiny hand-built Ledger, so figures are exact rather than random.
@@ -65,15 +68,15 @@ impl World {
         }
     }
 
-    fn account(&self, name: &str) -> u32 {
+    fn account(&self, name: &str) -> AccountId {
         self.accounts
             .iter()
             .find(|a| a.name == name)
             .map(|a| a.id)
-            .unwrap_or_default()
+            .expect("a seeded Account")
     }
 
-    fn category(&self, name: &str) -> u32 {
+    fn category(&self, name: &str) -> CategoryId {
         category_id(&self.categories, name)
     }
 
@@ -82,7 +85,7 @@ impl World {
         let id = self.next_transaction;
         self.next_transaction += 1;
         self.transactions.push(Transaction {
-            id,
+            id: TransactionId::seed(id),
             date: on,
             account_id: self.account(account),
             status: TransactionStatus::Open,
@@ -123,7 +126,7 @@ impl World {
     }
 
     /// An empty Budget on the two ANZ accounts.
-    fn budgets(&self) -> (Budgets, u32) {
+    fn budgets(&self) -> (Budgets, BudgetId) {
         let mut budgets = Budgets::default();
         let id = budgets
             .create(
@@ -136,7 +139,7 @@ impl World {
                 &self.ledger(),
                 today(),
             )
-            .unwrap_or_default();
+            .expect("a valid test Budget");
         (budgets, id)
     }
 }
@@ -148,7 +151,7 @@ impl World {
 fn set(
     budgets: &mut Budgets,
     world: &World,
-    id: u32,
+    id: BudgetId,
     category: &str,
     month: Period,
     span: Span,
@@ -168,7 +171,7 @@ fn set(
     assert_eq!(done, Ok(()));
 }
 
-fn row(figures: &PeriodFigures, category_id: u32) -> Option<&CategoryFigures> {
+fn row(figures: &PeriodFigures, category_id: CategoryId) -> Option<&CategoryFigures> {
     figures.rows.iter().find(|r| r.category_id == category_id)
 }
 
@@ -280,7 +283,7 @@ fn a_record_marks_its_own_month_for_the_bold_cell() {
 
 fn unreachable_budget() -> Budget {
     Budget {
-        id: 0,
+        id: BudgetId::seed(0),
         name: String::new(),
         method: Method::Limits,
         unit: UnitId::SEED_AUD,
@@ -293,12 +296,8 @@ fn unreachable_budget() -> Budget {
 
 /// A Budget whose Electricity chain starts in July with the given Rollover.
 fn electricity_budget(world: &World, rollover: Rollover) -> Budget {
-    let mut budget = world
-        .budgets()
-        .0
-        .get(1)
-        .cloned()
-        .unwrap_or_else(unreachable_budget);
+    let (budgets, id) = world.budgets();
+    let mut budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     budget.limits.insert(
         world.category("Electricity"),
         vec![LimitRecord {
@@ -427,7 +426,7 @@ fn a_month_only_amount_carries_on_its_own_rollover() {
 // -- period figures ---------------------------------------------------------------------------
 
 /// Dining budgeted 250 and Groceries 500 from September; Dining overspent by 68.40.
-fn september() -> (World, Budgets, u32) {
+fn september() -> (World, Budgets, BudgetId) {
     let mut world = World::new();
     world.post("ANZ Everyday", "Dining", date(2026, 9, 3), "-200.00");
     world.post("ANZ Offset", "Dining", date(2026, 9, 12), "-118.40");
@@ -776,12 +775,8 @@ fn history_world() -> (World, Budget) {
     world.post("ANZ Everyday", "Dining", date(2026, 7, 4), "-350.00");
     world.post("ANZ Everyday", "Dining", date(2026, 8, 4), "-200.00");
     world.post("ANZ Everyday", "Dining", date(2026, 9, 4), "-400.00");
-    let mut budget = world
-        .budgets()
-        .0
-        .get(1)
-        .cloned()
-        .unwrap_or_else(unreachable_budget);
+    let (budgets, id) = world.budgets();
+    let mut budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     budget.limits.insert(
         world.category("Dining"),
         vec![LimitRecord {
@@ -1048,7 +1043,7 @@ fn fill_targets_the_first_open_month_at_or_after_the_cursor() {
 
 /// Dining 250 Onward with a Month-only 400 in September, Groceries 500 Onward, Rent 1000 with
 /// its own October record, Transport budgeted from October only.
-fn fill_world() -> (World, Budgets, u32) {
+fn fill_world() -> (World, Budgets, BudgetId) {
     let mut world = World::new();
     for month in [6, 7, 8] {
         world.post("ANZ Everyday", "Dining", date(2026, month, 4), "-312.00");
@@ -1687,7 +1682,7 @@ fn a_budget_needs_a_unique_name_and_same_unit_accounts_that_take_transactions() 
         Err(BudgetError::AccountNotInUnit)
     );
     let mut missing = new_budget(&world, "Missing", StartFrom::Empty);
-    missing.account_ids = vec![9_999];
+    missing.account_ids = vec![AccountId::seed(9_999)];
     assert_eq!(
         create(&mut budgets, missing),
         Err(BudgetError::AccountNotFound)
@@ -1803,8 +1798,8 @@ fn duplicating_copies_the_chains_and_numbers_a_taken_name() {
         "250.00",
         Some(Rollover::CarryUnspent),
     );
-    let first = budgets.duplicate(id).unwrap_or_default();
-    let second = budgets.duplicate(id).unwrap_or_default();
+    let first = budgets.duplicate(id).expect("the id exists");
+    let second = budgets.duplicate(id).expect("the id exists");
     assert_eq!(
         budgets.get(first).map(|b| b.name.as_str()),
         Some("Test copy")
@@ -1826,7 +1821,10 @@ fn duplicating_copies_the_chains_and_numbers_a_taken_name() {
             .map(|b| b.chain(world.category("Dining")))
             .unwrap_or_default()
     );
-    assert_eq!(budgets.duplicate(99), Err(BudgetError::NotFound));
+    assert_eq!(
+        budgets.duplicate(BudgetId::seed(99)),
+        Err(BudgetError::NotFound)
+    );
 }
 
 #[test]
@@ -1839,7 +1837,7 @@ fn the_default_cant_be_archived_but_another_can_be_archived_and_restored() {
             &world.ledger(),
             today(),
         )
-        .unwrap_or_default();
+        .expect("the id exists");
     assert_eq!(
         budgets.archive(first, today()),
         Err(BudgetError::DefaultCannotBeArchived)
@@ -1865,14 +1863,14 @@ fn set_default_moves_the_flag_and_refuses_an_archived_budget() {
             &world.ledger(),
             today(),
         )
-        .unwrap_or_default();
+        .expect("the id exists");
     let third = budgets
         .create(
             &new_budget(&world, "Third", StartFrom::Empty),
             &world.ledger(),
             today(),
         )
-        .unwrap_or_default();
+        .expect("the id exists");
     assert_eq!(budgets.archive(third, today()), Ok(()));
     assert_eq!(budgets.set_default(third), Err(BudgetError::Archived));
     assert_eq!(budgets.set_default(second), Ok(()));
@@ -1903,7 +1901,7 @@ fn an_archived_budget_is_read_only_but_still_computed() {
             &world.ledger(),
             today(),
         )
-        .unwrap_or_default();
+        .expect("the id exists");
     set(
         &mut budgets,
         &world,
@@ -1949,7 +1947,7 @@ fn overlapping_budgets_count_the_same_split_independently() {
             &world.ledger(),
             today(),
         )
-        .unwrap_or_default();
+        .expect("the id exists");
     set(
         &mut budgets,
         &world,
@@ -2081,7 +2079,7 @@ fn category_detail_is_none_for_a_non_expense_category() {
         .iter()
         .find(|c| c.category_type == CategoryTypes::Income)
         .map(|c| c.id)
-        .unwrap_or_default();
+        .expect("the id exists");
     assert_eq!(
         category_detail(budget, &world.ledger(), income, sep(), today()),
         None
@@ -2093,7 +2091,7 @@ fn category_detail_is_none_for_a_non_expense_category() {
 fn save(
     budgets: &mut Budgets,
     world: &World,
-    id: u32,
+    id: BudgetId,
     category: &str,
     month: Period,
     span: Span,
@@ -2110,7 +2108,7 @@ fn save(
     )
 }
 
-fn chain_of(budgets: &Budgets, world: &World, id: u32, category: &str) -> Vec<LimitRecord> {
+fn chain_of(budgets: &Budgets, world: &World, id: BudgetId, category: &str) -> Vec<LimitRecord> {
     budgets
         .get(id)
         .map(|budget| budget.chain(world.category(category)).to_vec())
@@ -2341,7 +2339,7 @@ fn a_closed_month_or_a_bad_amount_is_refused() {
 
 #[test]
 fn the_first_key_replaces_the_prefilled_amount_and_later_keys_edit_it() {
-    let mut edit = PlanEdit::new(1, sep(), Some(&money("250.00")));
+    let mut edit = PlanEdit::new(CategoryId::seed(1), sep(), Some(&money("250.00")));
     assert_eq!(edit.text, "250.00");
     edit.type_char('3');
     edit.type_char('x');
@@ -2356,7 +2354,7 @@ fn the_first_key_replaces_the_prefilled_amount_and_later_keys_edit_it() {
 
 #[test]
 fn backspace_on_a_prefilled_cell_clears_it_at_once() {
-    let mut edit = PlanEdit::new(1, sep(), Some(&money("250.00")));
+    let mut edit = PlanEdit::new(CategoryId::seed(1), sep(), Some(&money("250.00")));
     edit.backspace();
     assert_eq!(edit.text, "");
 }

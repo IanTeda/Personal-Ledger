@@ -8,43 +8,47 @@
 
 use chrono::NaiveDate;
 use lib_budgets::{BudgetError, BudgetSources, Budgets, FillSource, NewBudget, Rollover, Span};
-use lib_core::{Money, Period};
+use lib_core::{AccountId, BudgetId, CategoryId, Money, Period};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
 impl Ledger {
     /// Creates the Budget `new` describes and returns its id.
-    pub fn add_budget(&mut self, new: &NewBudget, today: NaiveDate) -> Result<u32, BudgetError> {
+    pub fn add_budget(
+        &mut self,
+        new: &NewBudget,
+        today: NaiveDate,
+    ) -> Result<BudgetId, BudgetError> {
         self.write_budgets(|budgets, sources| budgets.create(new, sources, today))
     }
 
     /// Saves Budget `id`'s name and Accounts.
     pub fn edit_budget(
         &mut self,
-        id: u32,
+        id: BudgetId,
         name: &str,
-        account_ids: Vec<u32>,
+        account_ids: Vec<AccountId>,
     ) -> Result<(), BudgetError> {
         self.write_budgets(|budgets, sources| budgets.edit(id, name, account_ids, sources.accounts))
     }
 
     /// Copies Budget `id` and returns the copy's id.
-    pub fn duplicate_budget(&mut self, id: u32) -> Result<u32, BudgetError> {
+    pub fn duplicate_budget(&mut self, id: BudgetId) -> Result<BudgetId, BudgetError> {
         self.write_budgets(|budgets, _| budgets.duplicate(id))
     }
 
     /// Archives Budget `id`, which makes it read-only.
-    pub fn archive_budget(&mut self, id: u32, today: NaiveDate) -> Result<(), BudgetError> {
+    pub fn archive_budget(&mut self, id: BudgetId, today: NaiveDate) -> Result<(), BudgetError> {
         self.write_budgets(|budgets, _| budgets.archive(id, today))
     }
 
     /// Brings archived Budget `id` back.
-    pub fn restore_budget(&mut self, id: u32) -> Result<(), BudgetError> {
+    pub fn restore_budget(&mut self, id: BudgetId) -> Result<(), BudgetError> {
         self.write_budgets(|budgets, _| budgets.restore(id))
     }
 
     /// Makes Budget `id` the default, which unmarks the one that was.
-    pub fn set_default_budget(&mut self, id: u32) -> Result<(), BudgetError> {
+    pub fn set_default_budget(&mut self, id: BudgetId) -> Result<(), BudgetError> {
         self.write_budgets(|budgets, _| budgets.set_default(id))
     }
 
@@ -67,8 +71,8 @@ impl Ledger {
     /// Stops budgeting a Category from `month` on.
     pub fn stop_budgeting(
         &mut self,
-        budget_id: u32,
-        category_id: u32,
+        budget_id: BudgetId,
+        category_id: CategoryId,
         month: Period,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
@@ -95,8 +99,8 @@ impl Ledger {
     /// Moves a Category's Rollover on to the next choice and returns it.
     pub fn cycle_budget_rollover(
         &mut self,
-        budget_id: u32,
-        category_id: u32,
+        budget_id: BudgetId,
+        category_id: CategoryId,
         today: NaiveDate,
     ) -> Result<Rollover, BudgetError> {
         self.write_budgets(|budgets, _| budgets.cycle_rollover(budget_id, category_id, today))
@@ -105,7 +109,7 @@ impl Ledger {
     /// Fills `target`'s Month-only amounts from `source` and returns how many Categories changed.
     pub fn fill_budget(
         &mut self,
-        budget_id: u32,
+        budget_id: BudgetId,
         target: Period,
         source: FillSource,
         today: NaiveDate,
@@ -147,8 +151,8 @@ impl Ledger {
 /// What 9e and the Plan grid write for one Category and month.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetBudgetAmount {
-    pub budget_id: u32,
-    pub category_id: u32,
+    pub budget_id: BudgetId,
+    pub category_id: CategoryId,
     pub month: Period,
     pub span: Span,
     pub amount: Money,
@@ -160,8 +164,8 @@ pub struct SetBudgetAmount {
 /// The text typed into one Plan cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBudgetCell {
-    pub budget_id: u32,
-    pub category_id: u32,
+    pub budget_id: BudgetId,
+    pub category_id: CategoryId,
     pub month: Period,
     pub span: Span,
     pub text: String,
@@ -176,9 +180,9 @@ pub struct AddBudget {
 }
 
 impl LedgerCommand for AddBudget {
-    type Outcome = u32;
+    type Outcome = BudgetId;
     type Refusal = BudgetError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, BudgetError> {
+    fn run(self, ledger: &mut Ledger) -> Result<BudgetId, BudgetError> {
         ledger.add_budget(&self.new, self.today)
     }
 }
@@ -186,9 +190,9 @@ impl LedgerCommand for AddBudget {
 /// [`Ledger::edit_budget`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditBudget {
-    pub id: u32,
+    pub id: BudgetId,
     pub name: String,
-    pub account_ids: Vec<u32>,
+    pub account_ids: Vec<AccountId>,
 }
 
 impl LedgerCommand for EditBudget {
@@ -201,12 +205,12 @@ impl LedgerCommand for EditBudget {
 
 /// [`Ledger::duplicate_budget`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DuplicateBudget(pub u32);
+pub struct DuplicateBudget(pub BudgetId);
 
 impl LedgerCommand for DuplicateBudget {
-    type Outcome = u32;
+    type Outcome = BudgetId;
     type Refusal = BudgetError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, BudgetError> {
+    fn run(self, ledger: &mut Ledger) -> Result<BudgetId, BudgetError> {
         ledger.duplicate_budget(self.0)
     }
 }
@@ -214,7 +218,7 @@ impl LedgerCommand for DuplicateBudget {
 /// [`Ledger::archive_budget`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArchiveBudget {
-    pub id: u32,
+    pub id: BudgetId,
     pub today: NaiveDate,
 }
 
@@ -228,7 +232,7 @@ impl LedgerCommand for ArchiveBudget {
 
 /// [`Ledger::restore_budget`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RestoreBudget(pub u32);
+pub struct RestoreBudget(pub BudgetId);
 
 impl LedgerCommand for RestoreBudget {
     type Outcome = ();
@@ -240,7 +244,7 @@ impl LedgerCommand for RestoreBudget {
 
 /// [`Ledger::set_default_budget`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SetDefaultBudget(pub u32);
+pub struct SetDefaultBudget(pub BudgetId);
 
 impl LedgerCommand for SetDefaultBudget {
     type Outcome = ();
@@ -261,8 +265,8 @@ impl LedgerCommand for SetBudgetAmount {
 /// [`Ledger::stop_budgeting`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StopBudgeting {
-    pub budget_id: u32,
-    pub category_id: u32,
+    pub budget_id: BudgetId,
+    pub category_id: CategoryId,
     pub month: Period,
     pub today: NaiveDate,
 }
@@ -286,8 +290,8 @@ impl LedgerCommand for SaveBudgetCell {
 /// [`Ledger::cycle_budget_rollover`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CycleBudgetRollover {
-    pub budget_id: u32,
-    pub category_id: u32,
+    pub budget_id: BudgetId,
+    pub category_id: CategoryId,
     pub today: NaiveDate,
 }
 
@@ -302,7 +306,7 @@ impl LedgerCommand for CycleBudgetRollover {
 /// [`Ledger::fill_budget`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FillBudget {
-    pub budget_id: u32,
+    pub budget_id: BudgetId,
     pub target: Period,
     pub source: FillSource,
     pub today: NaiveDate,
@@ -331,7 +335,7 @@ mod tests {
         Ledger::stub_on(today())
     }
 
-    fn budget_ids(changes: &[LedgerChange]) -> Vec<u32> {
+    fn budget_ids(changes: &[LedgerChange]) -> Vec<BudgetId> {
         changes
             .iter()
             .map(|change| match change {
@@ -413,7 +417,7 @@ mod tests {
             .expect("the seeded Budget exists");
         assert_eq!(budget_ids(&ledger.drain_changes()), vec![copy]);
         assert_eq!(
-            ledger.duplicate_budget(u32::MAX),
+            ledger.duplicate_budget(BudgetId::seed(u32::MAX)),
             Err(BudgetError::NotFound)
         );
         assert!(ledger.drain_changes().is_empty());
@@ -481,7 +485,7 @@ mod tests {
         assert!(ledger.drain_changes().is_empty());
     }
 
-    fn budgetable_leaf(ledger: &Ledger) -> u32 {
+    fn budgetable_leaf(ledger: &Ledger) -> CategoryId {
         let budget = ledger.budgets().get(PERSONAL_SPENDING_ID).expect("seeded");
         *budget
             .limits
@@ -513,7 +517,12 @@ mod tests {
         );
 
         assert_eq!(
-            ledger.stop_budgeting(PERSONAL_SPENDING_ID, u32::MAX, month, today()),
+            ledger.stop_budgeting(
+                PERSONAL_SPENDING_ID,
+                CategoryId::seed(u32::MAX),
+                month,
+                today()
+            ),
             Err(BudgetError::NotAnExpenseLeaf)
         );
         assert!(ledger.drain_changes().is_empty());
@@ -636,7 +645,10 @@ mod tests {
     #[test]
     fn a_refusal_on_a_ledger_with_no_budgets_leaves_it_empty() {
         let mut ledger = Ledger::from_parts(LedgerParts::default());
-        assert_eq!(ledger.restore_budget(1), Err(BudgetError::NotFound));
+        assert_eq!(
+            ledger.restore_budget(BudgetId::seed(1)),
+            Err(BudgetError::NotFound)
+        );
         assert!(ledger.budgets().all().is_empty());
         assert!(ledger.drain_changes().is_empty());
     }

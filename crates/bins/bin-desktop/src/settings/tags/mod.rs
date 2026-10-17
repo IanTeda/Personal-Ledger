@@ -13,6 +13,7 @@ pub mod form;
 mod render;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_core::TagId;
 use lib_ledger::Domain;
 use lib_tags::{DuplicateGroup, Tag};
 
@@ -40,7 +41,7 @@ impl EventEmitter<RowClicked> for TagsPage {}
 pub struct TagsPage {
     ledger: Entity<LedgerStore>,
     /// It may name a Tag that no longer exists, so read it through [`Self::selected_id`].
-    selected: Option<u32>,
+    selected: Option<TagId>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -124,7 +125,7 @@ impl TagsPage {
         let Some(step) = movement.step() else {
             return;
         };
-        let ids: Vec<u32> = lib_tags::sorted_by_name(self.tags(cx))
+        let ids: Vec<TagId> = lib_tags::sorted_by_name(self.tags(cx))
             .iter()
             .map(|tag| tag.id)
             .collect();
@@ -161,13 +162,13 @@ impl TagsPage {
 
     /// The selected Tag's id: the stored id while it still exists, else the first row, so a
     /// removed or merged-away Tag never leaves the page with nothing under the cursor.
-    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+    pub fn selected_id(&self, cx: &App) -> Option<TagId> {
         let sorted = lib_tags::sorted_by_name(self.tags(cx));
         lib_list_cursor::resolve(sorted.iter().map(|tag| tag.id), self.selected)
     }
 
     /// Selects Tag `id`, if it still exists.
-    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn select_id(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         if lib_tags::get(self.tags(cx), id).is_some() {
             self.selected = Some(id);
             cx.notify();
@@ -179,7 +180,7 @@ impl TagsPage {
     // -----------------------------------------------------------------------------------------
 
     /// A click on a row: selects it and moves focus into the page.
-    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_row(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         cx.emit(RowClicked);
     }
@@ -189,18 +190,18 @@ impl TagsPage {
         self.open_add_dialog(cx);
     }
 
-    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_edit(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_edit_dialog(id, cx);
     }
 
     /// A flagged Tag's **merge** opens the merge dialog on it, with its suggested target chosen.
-    pub(crate) fn click_merge(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_merge(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_merge_dialog(Some(id), cx);
     }
 
-    pub(crate) fn click_remove(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_remove(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_remove_dialog(id, cx);
     }
@@ -215,7 +216,7 @@ impl TagsPage {
     }
 
     /// Opens the Edit dialog pre-filled from Tag `id`. A no-op if the Tag is gone.
-    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_dialog(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         let rows = self.tags(cx);
         let Some(tag) = lib_tags::get(rows, id) else {
             return;
@@ -225,7 +226,7 @@ impl TagsPage {
     }
 
     /// Opens the Remove dialog on Tag `id`, counting its Transactions. A no-op if the Tag is gone.
-    fn open_remove_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_remove_dialog(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         let Some(tag) = lib_tags::get(self.tags(cx), id) else {
             return;
         };
@@ -239,7 +240,7 @@ impl TagsPage {
     /// Opens the merge dialog with `source` as the source Tag and, when it is flagged as a likely
     /// duplicate, its suggested target (#354). `None` (the palette's `tags merge`) leaves both
     /// selects empty.
-    pub fn open_merge_dialog(&mut self, source: Option<u32>, cx: &mut Context<'_, Self>) {
+    pub fn open_merge_dialog(&mut self, source: Option<TagId>, cx: &mut Context<'_, Self>) {
         let groups = self.duplicate_groups(cx);
         let target = source.and_then(|id| lib_tags::duplicate_of(&groups, id));
         let form = MergeTagsForm::new(self.merge_options(cx), source, target);
@@ -270,6 +271,8 @@ fn open_dialog(dialog: TagsDialog, cx: &mut Context<'_, TagsPage>) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsTagsSnapshot {
     pub tag_names: Vec<String>,
+    /// Each Tag's id, in the same order as the names.
+    pub tag_ids: Vec<TagId>,
     pub selected_tag: Option<String>,
     pub merge_pair: Option<(String, String)>,
 }
@@ -282,6 +285,10 @@ impl TagsPage {
             tag_names: lib_tags::sorted_by_name(rows)
                 .into_iter()
                 .map(|tag| tag.name.clone())
+                .collect(),
+            tag_ids: lib_tags::sorted_by_name(rows)
+                .into_iter()
+                .map(|tag| tag.id)
                 .collect(),
             selected_tag: self
                 .selected_id(cx)
@@ -311,12 +318,12 @@ mod tests {
     fn only_the_non_target_members_count_as_likely_duplicates() {
         let groups = [
             DuplicateGroup {
-                target: 1,
-                duplicates: vec![2, 3],
+                target: TagId::seed(1),
+                duplicates: vec![TagId::seed(2), TagId::seed(3)],
             },
             DuplicateGroup {
-                target: 4,
-                duplicates: vec![5],
+                target: TagId::seed(4),
+                duplicates: vec![TagId::seed(5)],
             },
         ];
         assert_eq!(likely_duplicate_count(&groups), 3);
@@ -330,6 +337,8 @@ mod tests {
     use lib_transactions::Transaction;
 
     use super::*;
+    use lib_core::TransactionId;
+    use lib_core::{AccountId, CategoryId};
     use lib_tags::*;
 
     use crate::transactions::default_transactions;
@@ -354,7 +363,7 @@ mod tests {
         (accounts, tags, transactions)
     }
 
-    fn id(tags: &[Tag], name: &str) -> u32 {
+    fn id(tags: &[Tag], name: &str) -> TagId {
         tags.iter().find(|t| t.name == name).unwrap().id
     }
 
@@ -365,16 +374,21 @@ mod tests {
         }
     }
 
-    fn split(cents: i64, tag_ids: &[u32]) -> Split {
+    fn split(cents: i64, tag_ids: &[TagId]) -> Split {
         Split {
             amount: Money(BigDecimal::new(cents.into(), 2)),
-            category_id: 7,
+            category_id: CategoryId::seed(7),
             payee_id: None,
             tag_ids: tag_ids.to_vec(),
         }
     }
 
-    fn transaction(id: u32, account_id: u32, date: NaiveDate, splits: Vec<Split>) -> Transaction {
+    fn transaction(
+        id: TransactionId,
+        account_id: AccountId,
+        date: NaiveDate,
+        splits: Vec<Split>,
+    ) -> Transaction {
         Transaction {
             id,
             date,
@@ -386,7 +400,7 @@ mod tests {
         }
     }
 
-    fn account_id(accounts: &[Account], name: &str) -> u32 {
+    fn account_id(accounts: &[Account], name: &str) -> AccountId {
         accounts.iter().find(|a| a.name == name).unwrap().id
     }
 
@@ -502,7 +516,7 @@ mod tests {
             Err(TagError::DuplicateName("gift".to_string()))
         );
         assert_eq!(
-            edit_tag(&mut tags, 999, &draft("x")),
+            edit_tag(&mut tags, TagId::seed(999), &draft("x")),
             Err(TagError::NotFound)
         );
     }
@@ -515,7 +529,10 @@ mod tests {
         assert!(!get(&tags, gift).unwrap().is_active);
         set_active(&mut tags, gift, true).unwrap();
         assert!(get(&tags, gift).unwrap().is_active);
-        assert_eq!(set_active(&mut tags, 999, false), Err(TagError::NotFound));
+        assert_eq!(
+            set_active(&mut tags, TagId::seed(999), false),
+            Err(TagError::NotFound)
+        );
     }
 
     #[test]
@@ -550,17 +567,31 @@ mod tests {
     #[test]
     fn merge_retags_without_doubling_and_deletes_the_source() {
         let mut tags = default_tags();
-        let (source, target, other) = (id(&tags, "Work Trip"), id(&tags, "work-trip"), 1);
+        let (source, target, other) = (
+            id(&tags, "Work Trip"),
+            id(&tags, "work-trip"),
+            TagId::seed(1),
+        );
         let day = today();
         let mut transactions = vec![
-            transaction(1, 2, day, vec![split(-100, &[source])]),
             transaction(
-                2,
-                2,
+                TransactionId::seed(1),
+                AccountId::seed(2),
+                day,
+                vec![split(-100, &[source])],
+            ),
+            transaction(
+                TransactionId::seed(2),
+                AccountId::seed(2),
                 day,
                 vec![split(-200, &[source, target]), split(-50, &[other])],
             ),
-            transaction(3, 2, day, vec![split(-300, &[target])]),
+            transaction(
+                TransactionId::seed(3),
+                AccountId::seed(2),
+                day,
+                vec![split(-300, &[target])],
+            ),
         ];
         merge_tags(&mut tags, &mut transactions, source, target).unwrap();
         assert!(get(&tags, source).is_none());
@@ -584,7 +615,7 @@ mod tests {
             Err(TagError::MergeIntoItself)
         );
         assert_eq!(
-            merge_tags(&mut tags, &mut transactions, 999, gift),
+            merge_tags(&mut tags, &mut transactions, TagId::seed(999), gift),
             Err(TagError::NotFound)
         );
         let expected =
@@ -616,21 +647,32 @@ mod tests {
         let day = today();
         let transactions = vec![
             transaction(
-                1,
+                TransactionId::seed(1),
                 everyday,
                 day - chrono::Duration::days(3),
-                vec![split(-1_000, &[5]), split(-250, &[5]), split(-9_999, &[])],
+                vec![
+                    split(-1_000, &[TagId::seed(5)]),
+                    split(-250, &[TagId::seed(5)]),
+                    split(-9_999, &[]),
+                ],
             ),
             // Future-dated still counts as last used.
             transaction(
-                2,
+                TransactionId::seed(2),
                 everyday,
                 day + chrono::Duration::days(2),
-                vec![split(-500, &[5])],
+                vec![split(-500, &[TagId::seed(5)])],
             ),
-            transaction(3, everyday, day, vec![split(-700, &[6])]),
+            transaction(
+                TransactionId::seed(3),
+                everyday,
+                day,
+                vec![split(-700, &[TagId::seed(6)])],
+            ),
         ];
-        let used = usage(&transactions, &accounts, 5, |_| "aud".to_string());
+        let used = usage(&transactions, &accounts, TagId::seed(5), |_| {
+            "aud".to_string()
+        });
         assert_eq!(used.transactions, 2);
         assert_eq!(
             used.total,
@@ -648,23 +690,27 @@ mod tests {
         let day = today();
         let transactions = vec![
             transaction(
-                1,
+                TransactionId::seed(1),
                 account_id(&accounts, "ANZ Everyday"),
                 day,
-                vec![split(-1_000, &[5])],
+                vec![split(-1_000, &[TagId::seed(5)])],
             ),
             transaction(
-                2,
+                TransactionId::seed(2),
                 account_id(&accounts, "Bitcoin"),
                 day,
-                vec![split(-500, &[5])],
+                vec![split(-500, &[TagId::seed(5)])],
             ),
         ];
         assert_eq!(
-            usage(&transactions, &accounts, 5, |_| "aud".to_string()).total,
+            usage(&transactions, &accounts, TagId::seed(5), |_| "aud"
+                .to_string())
+            .total,
             Total::Mixed
         );
-        let unused = usage(&transactions, &accounts, 6, |_| "aud".to_string());
+        let unused = usage(&transactions, &accounts, TagId::seed(6), |_| {
+            "aud".to_string()
+        });
         assert_eq!(
             (unused.transactions, unused.total, unused.last_used),
             (0, Total::Empty, None)
@@ -675,30 +721,35 @@ mod tests {
     fn sort_ties_fall_back_to_the_name() {
         let tags = vec![
             Tag {
-                id: 1,
+                id: TagId::seed(1),
                 name: "zeta".to_string(),
                 color: None,
                 is_active: true,
             },
             Tag {
-                id: 2,
+                id: TagId::seed(2),
                 name: "Alpha".to_string(),
                 color: None,
                 is_active: true,
             },
             Tag {
-                id: 3,
+                id: TagId::seed(3),
                 name: "beta".to_string(),
                 color: None,
                 is_active: true,
             },
         ];
-        let transactions = vec![transaction(1, 2, today(), vec![split(-1, &[3])])];
-        let order: Vec<u32> = sorted_by_usage(&tags, &transactions)
+        let transactions = vec![transaction(
+            TransactionId::seed(1),
+            AccountId::seed(2),
+            today(),
+            vec![split(-1, &[TagId::seed(3)])],
+        )];
+        let order: Vec<TagId> = sorted_by_usage(&tags, &transactions)
             .iter()
             .map(|t| t.id)
             .collect();
-        assert_eq!(order, [3, 2, 1]);
+        assert_eq!(order, [TagId::seed(3), TagId::seed(2), TagId::seed(1)]);
     }
 
     #[test]
@@ -710,37 +761,47 @@ mod tests {
             is_active,
         };
         let day = today();
-        let used = |id, tag_id| transaction(id, 2, day, vec![split(-1, &[tag_id])]);
+        let used =
+            |id, tag_id| transaction(id, AccountId::seed(2), day, vec![split(-1, &[tag_id])]);
 
         // More Transactions wins among active Tags.
-        let tags = vec![tag(1, "Shared", true), tag(2, "shared", true)];
-        let transactions = vec![used(1, 2)];
+        let tags = vec![
+            tag(TagId::seed(1), "Shared", true),
+            tag(TagId::seed(2), "shared", true),
+        ];
+        let transactions = vec![used(TransactionId::seed(1), TagId::seed(2))];
         let groups = duplicate_groups(&tags, &transactions);
         assert_eq!(
             groups[0],
             DuplicateGroup {
-                target: 2,
-                duplicates: vec![1]
+                target: TagId::seed(2),
+                duplicates: vec![TagId::seed(1)]
             }
         );
-        assert_eq!(duplicate_of(&groups, 1), Some(2));
-        assert_eq!(duplicate_of(&groups, 2), None);
+        assert_eq!(duplicate_of(&groups, TagId::seed(1)), Some(TagId::seed(2)));
+        assert_eq!(duplicate_of(&groups, TagId::seed(2)), None);
 
         // Active beats more used.
-        let tags = vec![tag(1, "Shared", true), tag(2, "shared", false)];
-        assert_eq!(duplicate_groups(&tags, &transactions)[0].target, 1);
+        let tags = vec![
+            tag(TagId::seed(1), "Shared", true),
+            tag(TagId::seed(2), "shared", false),
+        ];
+        assert_eq!(
+            duplicate_groups(&tags, &transactions)[0].target,
+            TagId::seed(1)
+        );
 
         // A tie goes to the older (lower id); every other member is flagged against it.
         let tags = vec![
-            tag(4, "work trip", true),
-            tag(3, "Work-Trip", true),
-            tag(5, "WORK_TRIP", false),
+            tag(TagId::seed(4), "work trip", true),
+            tag(TagId::seed(3), "Work-Trip", true),
+            tag(TagId::seed(5), "WORK_TRIP", false),
         ];
         assert_eq!(
             duplicate_groups(&tags, &[]),
             vec![DuplicateGroup {
-                target: 3,
-                duplicates: vec![4, 5]
+                target: TagId::seed(3),
+                duplicates: vec![TagId::seed(4), TagId::seed(5)]
             }]
         );
     }

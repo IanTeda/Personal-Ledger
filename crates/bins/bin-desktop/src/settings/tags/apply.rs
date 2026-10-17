@@ -2,6 +2,7 @@
 //! that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_core::TagId;
 use lib_toast::ToastKind;
 
 use lib_ledger::{AddTag, EditTag, MergeTags, RemoveTag};
@@ -18,11 +19,11 @@ use crate::{
 pub enum TagCommand {
     Add(TagDraft),
     /// Save the Tag's name and colour, then its Active flag.
-    Edit(u32, TagDraft, bool),
-    Remove(u32),
+    Edit(TagId, TagDraft, bool),
+    Remove(TagId),
     Merge {
-        source: u32,
-        target: u32,
+        source: TagId,
+        target: TagId,
     },
 }
 
@@ -30,7 +31,7 @@ pub enum TagCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagOutcome {
     /// Added or edited: the Tag to select.
-    Saved(u32),
+    Saved(TagId),
     /// Removed; the name is read before the write removes it.
     Removed { name: String },
     /// Merged: both names, read before the write, and how many Transactions were retagged.
@@ -38,7 +39,7 @@ pub enum TagOutcome {
         source_name: String,
         target_name: String,
         retagged: usize,
-        target: u32,
+        target: TagId,
     },
 }
 
@@ -198,7 +199,7 @@ mod tests {
     #[gpui::test]
     fn a_vanished_tag_stays_open_with_the_refusal(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let mut dialog = TagsDialog::Remove(999, RemoveTagForm::new("Gone", 0));
+        let mut dialog = TagsDialog::Remove(TagId::seed(999), RemoveTagForm::new("Gone", 0));
         let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
         assert_eq!(outcome, None);
         assert!(matches!(&dialog, TagsDialog::Remove(_, form) if form.error.is_some()));

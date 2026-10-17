@@ -17,7 +17,7 @@
 //!   the applied filters. `apply` commits the draft; `Esc` discards it.
 
 use chrono::NaiveDate;
-use lib_core::DateStyle;
+use lib_core::{AccountId, CategoryId, DateStyle, PayeeId, TagId};
 use lib_locale::format::{
     DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
 };
@@ -92,12 +92,12 @@ impl FormField {
 /// "any" entries); plus the Payee and Tag names an id hand-off pre-fills.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormOptions {
-    accounts: Vec<(Option<u32>, String)>,
-    categories: Vec<(Option<u32>, String)>,
+    accounts: Vec<(Option<AccountId>, String)>,
+    categories: Vec<(Option<CategoryId>, String)>,
     account_labels: Vec<String>,
     category_labels: Vec<String>,
-    payees: Vec<(u32, String)>,
-    tags: Vec<(u32, String)>,
+    payees: Vec<(PayeeId, String)>,
+    tags: Vec<(TagId, String)>,
 }
 
 impl FormOptions {
@@ -119,9 +119,9 @@ impl FormOptions {
                 .into_iter()
                 .map(|(id, path)| (Some(id), path)),
         );
-        let labels = |options: &[(Option<u32>, String)]| {
+        fn labels<T>(options: &[(Option<T>, String)]) -> Vec<String> {
             options.iter().map(|(_, label)| label.clone()).collect()
-        };
+        }
         Self {
             account_labels: labels(&account_options),
             category_labels: labels(&category_options),
@@ -133,12 +133,12 @@ impl FormOptions {
     }
 
     /// `(id, name)` for a Payee id hand-off, if the Payee exists.
-    fn payee(&self, id: Option<u32>) -> Option<(u32, &str)> {
+    fn payee(&self, id: Option<PayeeId>) -> Option<(PayeeId, &str)> {
         named(&self.payees, id?)
     }
 
     /// `(id, name)` for a Tag id hand-off, if the Tag exists.
-    fn tag(&self, id: Option<u32>) -> Option<(u32, &str)> {
+    fn tag(&self, id: Option<TagId>) -> Option<(TagId, &str)> {
         named(&self.tags, id?)
     }
 
@@ -151,28 +151,28 @@ impl FormOptions {
         }
     }
 
-    fn account_label(&self, id: Option<u32>) -> String {
+    fn account_label(&self, id: Option<AccountId>) -> String {
         self.accounts
             .iter()
             .find(|(candidate, _)| *candidate == id)
             .map_or_else(all_accounts, |(_, label)| label.clone())
     }
 
-    fn category_label(&self, id: Option<u32>) -> String {
+    fn category_label(&self, id: Option<CategoryId>) -> String {
         self.categories
             .iter()
             .find(|(candidate, _)| *candidate == id)
             .map_or_else(any_category, |(_, label)| label.clone())
     }
 
-    fn account_id(&self, label: &str) -> Option<u32> {
+    fn account_id(&self, label: &str) -> Option<AccountId> {
         self.accounts
             .iter()
             .find(|(_, candidate)| candidate == label)
             .and_then(|(id, _)| *id)
     }
 
-    fn category_id(&self, label: &str) -> Option<u32> {
+    fn category_id(&self, label: &str) -> Option<CategoryId> {
         self.categories
             .iter()
             .find(|(_, candidate)| candidate == label)
@@ -180,7 +180,7 @@ impl FormOptions {
     }
 }
 
-fn named(names: &[(u32, String)], id: u32) -> Option<(u32, &str)> {
+fn named<T: Copy + PartialEq>(names: &[(T, String)], id: T) -> Option<(T, &str)> {
     names
         .iter()
         .find(|(candidate, _)| *candidate == id)
@@ -189,7 +189,7 @@ fn named(names: &[(u32, String)], id: u32) -> Option<(u32, &str)> {
 
 /// A text field's draft for an id hand-off: `(id, name)` pre-fills the empty field with the name
 /// and keeps the id; otherwise the text as applied.
-fn prefill(text: &str, handed_off: Option<(u32, &str)>) -> (String, Option<u32>) {
+fn prefill<T: Copy>(text: &str, handed_off: Option<(T, &str)>) -> (String, Option<T>) {
     match handed_off {
         Some((id, name)) if text.trim().is_empty() => (name.to_string(), Some(id)),
         _ => (text.to_string(), None),
@@ -198,7 +198,7 @@ fn prefill(text: &str, handed_off: Option<(u32, &str)>) -> (String, Option<u32>)
 
 /// The applied `(text, id)` for a text field: the id alone while the text still reads the
 /// hand-off's name, else the trimmed text as a substring filter.
-fn resolve(text: &str, handed_off: Option<(u32, &str)>) -> (String, Option<u32>) {
+fn resolve<T: Copy>(text: &str, handed_off: Option<(T, &str)>) -> (String, Option<T>) {
     let text = text.trim();
     match handed_off {
         Some((id, name)) if name == text => (String::new(), Some(id)),
@@ -242,10 +242,10 @@ pub struct FilterForm {
     pub category: SelectState,
     pub payee: String,
     /// The Payees page's hand-off id, kept while `payee` reads its name.
-    pub payee_id: Option<u32>,
+    pub payee_id: Option<PayeeId>,
     pub tag: String,
     /// The Tags page's hand-off id, kept while `tag` reads its name.
-    pub tag_id: Option<u32>,
+    pub tag_id: Option<TagId>,
     /// The From text as typed.
     pub from: String,
     /// The To text as typed.

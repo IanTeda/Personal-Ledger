@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::{Datelike, NaiveDate};
-use lib_core::{CategoryTypes, Money, Period};
+use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
@@ -26,11 +26,11 @@ pub struct BudgetSources<'a> {
 
 /// Spent per (leaf Category, month) on one Budget's Accounts, built once per query so the carry's
 /// walk down a chain doesn't rescan the Transactions for every month.
-pub(super) struct SpentIndex(BTreeMap<(u32, Period), BigDecimal>);
+pub(super) struct SpentIndex(BTreeMap<(CategoryId, Period), BigDecimal>);
 
 impl SpentIndex {
     pub(super) fn build(budget: &Budget, ledger: &BudgetSources<'_>) -> Self {
-        let mut spent: BTreeMap<(u32, Period), BigDecimal> = BTreeMap::new();
+        let mut spent: BTreeMap<(CategoryId, Period), BigDecimal> = BTreeMap::new();
         for transaction in ledger
             .transactions
             .iter()
@@ -44,7 +44,7 @@ impl SpentIndex {
         Self(spent)
     }
 
-    pub(super) fn spent(&self, category_id: u32, month: Period) -> BigDecimal {
+    pub(super) fn spent(&self, category_id: CategoryId, month: Period) -> BigDecimal {
         self.0
             .get(&(category_id, month))
             .cloned()
@@ -56,7 +56,7 @@ impl SpentIndex {
 pub(super) fn carry_in(
     chain: &[LimitRecord],
     index: &SpentIndex,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> BigDecimal {
@@ -105,7 +105,7 @@ impl Effective {
 pub(super) fn effective(
     budget: &Budget,
     index: &SpentIndex,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Option<Effective> {
@@ -123,7 +123,7 @@ pub(super) fn effective(
 pub fn effective_budget(
     budget: &Budget,
     ledger: &BudgetSources<'_>,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Option<Effective> {
@@ -141,7 +141,7 @@ pub fn effective_budget(
 pub(super) fn known_costs(
     budget: &Budget,
     ledger: &BudgetSources<'_>,
-    category_id: u32,
+    category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> (BigDecimal, usize) {
@@ -176,7 +176,7 @@ pub(super) fn known_costs(
 /// One row of the Progress table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryFigures {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     /// A rollup of its budgeted leaves: no edit action, and never counted as over.
     pub is_parent: bool,
     /// Effective budget (amount plus carry); `None` when Unbudgeted, which for a parent means no
@@ -271,7 +271,7 @@ impl LeafFigures {
     }
 }
 
-pub(super) fn expense_leaves(categories: &[Category]) -> Vec<u32> {
+pub(super) fn expense_leaves(categories: &[Category]) -> Vec<CategoryId> {
     categories
         .iter()
         .filter(|c| {
@@ -283,7 +283,11 @@ pub(super) fn expense_leaves(categories: &[Category]) -> Vec<u32> {
 
 /// The leaf Expense Categories with no Budget Amount in `month` (never budgeted, or Stopped):
 /// what 9e's Category picker offers.
-pub fn unbudgeted_leaves(budget: &Budget, categories: &[Category], month: Period) -> Vec<u32> {
+pub fn unbudgeted_leaves(
+    budget: &Budget,
+    categories: &[Category],
+    month: Period,
+) -> Vec<CategoryId> {
     expense_leaves(categories)
         .into_iter()
         .filter(|id| applied(budget.chain(*id), month).is_none())
@@ -298,7 +302,7 @@ pub fn period_figures(
     today: NaiveDate,
 ) -> PeriodFigures {
     let index = SpentIndex::build(budget, ledger);
-    let leaves: BTreeMap<u32, LeafFigures> = expense_leaves(ledger.categories)
+    let leaves: BTreeMap<CategoryId, LeafFigures> = expense_leaves(ledger.categories)
         .into_iter()
         .map(|id| {
             let (known, known_count) = known_costs(budget, ledger, id, month, today);
@@ -327,7 +331,7 @@ pub fn period_figures(
             }
             continue;
         }
-        let under: Vec<(&u32, &LeafFigures)> =
+        let under: Vec<(&CategoryId, &LeafFigures)> =
             categories::descendants_inclusive(ledger.categories, id)
                 .iter()
                 .filter_map(|below| leaves.get_key_value(below))
@@ -381,7 +385,7 @@ pub fn period_figures(
     }
 }
 
-pub(super) fn leaf_row(category_id: u32, leaf: &LeafFigures) -> CategoryFigures {
+pub(super) fn leaf_row(category_id: CategoryId, leaf: &LeafFigures) -> CategoryFigures {
     let budget = leaf.effective.as_ref().map(Effective::total);
     let left = budget
         .as_ref()
@@ -404,7 +408,10 @@ pub(super) fn leaf_row(category_id: u32, leaf: &LeafFigures) -> CategoryFigures 
 
 /// A parent rolls up its budgeted leaves only: an unbudgeted child is listed on its own row and
 /// never inflates the parent's Spent.
-pub(super) fn parent_row(category_id: u32, under: &[(&u32, &LeafFigures)]) -> CategoryFigures {
+pub(super) fn parent_row(
+    category_id: CategoryId,
+    under: &[(&CategoryId, &LeafFigures)],
+) -> CategoryFigures {
     let budgeted: Vec<&LeafFigures> = under
         .iter()
         .map(|(_, l)| *l)
@@ -458,7 +465,7 @@ pub const DASHBOARD_BARS: usize = 4;
 /// One bar of the Dashboard's budget list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DashboardBar {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub budget: Money,
     pub spent: Money,
     pub over: bool,

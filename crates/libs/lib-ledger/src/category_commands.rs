@@ -12,7 +12,7 @@ use lib_categories::{
     Category, CategoryError, change_category_type, edit_category, get, get_or_create_uncategorised,
     insert_category, is_leaf, move_category,
 };
-use lib_core::{CategoryTypes, Money};
+use lib_core::{BudgetId, CategoryId, CategoryTypes, Money};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -20,7 +20,7 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 /// month, or a Stop when `limit` is `None`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonthlyBudget {
-    pub budget_id: u32,
+    pub budget_id: BudgetId,
     pub today: NaiveDate,
     pub limit: Option<Money>,
 }
@@ -63,10 +63,10 @@ impl Ledger {
     pub fn add_category(
         &mut self,
         name: String,
-        parent_id: Option<u32>,
+        parent_id: Option<CategoryId>,
         category_type: CategoryTypes,
         monthly: Option<&MonthlyBudget>,
-    ) -> Result<u32, SaveCategoryRefusal> {
+    ) -> Result<CategoryId, SaveCategoryRefusal> {
         self.atomic(|ledger| {
             let id = insert_category(&mut ledger.categories, name, parent_id, category_type)?;
             ledger.record_category(id);
@@ -77,14 +77,18 @@ impl Ledger {
         })
     }
 
-    pub fn rename_category(&mut self, id: u32, name: String) -> Result<(), CategoryError> {
+    pub fn rename_category(&mut self, id: CategoryId, name: String) -> Result<(), CategoryError> {
         edit_category(&mut self.categories, id, name)?;
         self.record_category(id);
         Ok(())
     }
 
     /// Moves Category `id` under `parent_id` (`None` for top level).
-    pub fn move_category(&mut self, id: u32, parent_id: Option<u32>) -> Result<(), CategoryError> {
+    pub fn move_category(
+        &mut self,
+        id: CategoryId,
+        parent_id: Option<CategoryId>,
+    ) -> Result<(), CategoryError> {
         move_category(&mut self.categories, id, parent_id)?;
         self.record_category(id);
         Ok(())
@@ -93,12 +97,12 @@ impl Ledger {
     /// Changes Category `id`'s type and its descendants', recording each row that changed.
     pub fn change_category_type(
         &mut self,
-        id: u32,
+        id: CategoryId,
         category_type: CategoryTypes,
     ) -> Result<(), CategoryError> {
         let before = self.categories.clone();
         change_category_type(&mut self.categories, id, category_type)?;
-        let changed: Vec<u32> = self
+        let changed: Vec<CategoryId> = self
             .categories
             .iter()
             .filter(|now| before.iter().find(|c| c.id == now.id) != Some(now))
@@ -112,9 +116,9 @@ impl Ledger {
     /// lands whole or not at all.
     pub fn edit_category(
         &mut self,
-        id: u32,
+        id: CategoryId,
         name: String,
-        parent_id: Option<u32>,
+        parent_id: Option<CategoryId>,
         monthly: Option<&MonthlyBudget>,
     ) -> Result<(), SaveCategoryRefusal> {
         self.atomic(|ledger| {
@@ -131,7 +135,7 @@ impl Ledger {
     /// wrote.
     pub fn set_category_monthly_limit(
         &mut self,
-        id: u32,
+        id: CategoryId,
         monthly: &MonthlyBudget,
     ) -> Result<bool, BudgetError> {
         let wrote = self.budgets.set_monthly_limit(
@@ -151,7 +155,10 @@ impl Ledger {
     /// Deletes leaf Category `id`. Its Splits and Bill Plans move to the Uncategorised Category of
     /// its type (created only if something moves), Payees that default to it lose the default,
     /// and every Budget drops its Category Limits.
-    pub fn delete_category(&mut self, id: u32) -> Result<CategoryDeleted, DeleteCategoryRefusal> {
+    pub fn delete_category(
+        &mut self,
+        id: CategoryId,
+    ) -> Result<CategoryDeleted, DeleteCategoryRefusal> {
         let category = get(&self.categories, id)
             .ok_or(DeleteCategoryRefusal::NotFound)?
             .clone();
@@ -227,7 +234,7 @@ impl Ledger {
         }
 
         // `Budgets::remove_category` doesn't say which Budgets it touched, so list them first.
-        let budgeted: Vec<u32> = self
+        let budgeted: Vec<BudgetId> = self
             .budgets
             .all()
             .iter()
@@ -267,7 +274,7 @@ impl Ledger {
         result
     }
 
-    fn record_category(&mut self, id: u32) {
+    fn record_category(&mut self, id: CategoryId) {
         if let Some(category) = get(&self.categories, id) {
             self.pending
                 .push(LedgerChange::UpsertCategory(Category::clone(category)));
@@ -279,15 +286,15 @@ impl Ledger {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddCategory {
     pub name: String,
-    pub parent_id: Option<u32>,
+    pub parent_id: Option<CategoryId>,
     pub category_type: CategoryTypes,
     pub monthly: Option<MonthlyBudget>,
 }
 
 impl LedgerCommand for AddCategory {
-    type Outcome = u32;
+    type Outcome = CategoryId;
     type Refusal = SaveCategoryRefusal;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, SaveCategoryRefusal> {
+    fn run(self, ledger: &mut Ledger) -> Result<CategoryId, SaveCategoryRefusal> {
         ledger.add_category(
             self.name,
             self.parent_id,
@@ -300,7 +307,7 @@ impl LedgerCommand for AddCategory {
 /// [`Ledger::rename_category`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameCategory {
-    pub id: u32,
+    pub id: CategoryId,
     pub name: String,
 }
 
@@ -315,8 +322,8 @@ impl LedgerCommand for RenameCategory {
 /// [`Ledger::move_category`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveCategory {
-    pub id: u32,
-    pub parent_id: Option<u32>,
+    pub id: CategoryId,
+    pub parent_id: Option<CategoryId>,
 }
 
 impl LedgerCommand for MoveCategory {
@@ -330,7 +337,7 @@ impl LedgerCommand for MoveCategory {
 /// [`Ledger::change_category_type`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangeCategoryType {
-    pub id: u32,
+    pub id: CategoryId,
     pub category_type: CategoryTypes,
 }
 
@@ -345,9 +352,9 @@ impl LedgerCommand for ChangeCategoryType {
 /// [`Ledger::edit_category`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditCategory {
-    pub id: u32,
+    pub id: CategoryId,
     pub name: String,
-    pub parent_id: Option<u32>,
+    pub parent_id: Option<CategoryId>,
     pub monthly: Option<MonthlyBudget>,
 }
 
@@ -361,7 +368,7 @@ impl LedgerCommand for EditCategory {
 
 /// [`Ledger::delete_category`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeleteCategory(pub u32);
+pub struct DeleteCategory(pub CategoryId);
 
 impl LedgerCommand for DeleteCategory {
     type Outcome = CategoryDeleted;
@@ -384,7 +391,7 @@ mod tests {
         Ledger::stub_on(today())
     }
 
-    fn category_id(ledger: &Ledger, name: &str) -> u32 {
+    fn category_id(ledger: &Ledger, name: &str) -> CategoryId {
         lib_categories::find_by_name(ledger.categories(), name).expect("a seeded Category")
     }
 
@@ -450,7 +457,7 @@ mod tests {
         let mut ledger = ledger();
         let before = snapshot(&ledger);
         let missing_budget = MonthlyBudget {
-            budget_id: u32::MAX,
+            budget_id: BudgetId::seed(u32::MAX),
             ..monthly(Some(money("5")))
         };
 
@@ -513,7 +520,7 @@ mod tests {
             .change_category_type(food, CategoryTypes::Income)
             .expect("a top-level Category");
 
-        let changed: Vec<u32> = ledger
+        let changed: Vec<CategoryId> = ledger
             .drain_changes()
             .into_iter()
             .filter_map(|c| match c {
@@ -535,7 +542,7 @@ mod tests {
         let before = snapshot(&ledger);
 
         assert_eq!(
-            ledger.delete_category(u32::MAX),
+            ledger.delete_category(CategoryId::seed(u32::MAX)),
             Err(DeleteCategoryRefusal::NotFound)
         );
         assert_eq!(

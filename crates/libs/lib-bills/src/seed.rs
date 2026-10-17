@@ -6,13 +6,13 @@ use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{Money, Period, TransactionStatus};
+use lib_core::{BillPlanId, Money, Period, TransactionId, TransactionStatus};
 use lib_payees::{self as payees, Payee};
 use lib_transactions::{Split, Transaction};
 
 use crate::{
-    AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, Recurrence, insert_plan, pay,
-    set_active, skip,
+    AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, Recurrence, insert_plan_as,
+    pay_as, set_active, skip,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -282,7 +282,8 @@ pub fn default_bills(
             ends_on: seed.ends_on.map(|(offset, day)| day_in(today, offset, day)),
             attention_lead: seed.lead,
         };
-        let Ok(id) = insert_plan(
+        let Ok(id) = insert_plan_as(
+            BillPlanId::seed(u32::try_from(plans.len() + 1).unwrap_or_default()),
             &mut plans,
             &mut entries,
             &draft,
@@ -318,7 +319,10 @@ pub fn default_bills(
                     let shift = i64::from(index % 3) - 1;
                     let date = (entry_id.due + Duration::days(shift)).min(today);
                     let cents = paid_cents(seed, index, cycles);
-                    if let Ok(transaction_id) = pay(
+                    if let Ok(transaction_id) = pay_as(
+                        TransactionId::seed(
+                            u32::try_from(transactions.len() + 1).unwrap_or_default(),
+                        ),
                         &plans,
                         &mut entries,
                         transactions,
@@ -347,7 +351,7 @@ pub fn default_bills(
         payees::find_by_name(payees, "Telstra"),
     ) {
         let date = today - Duration::days(1);
-        let id = transactions.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+        let id = TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default());
         let at = transactions
             .iter()
             .position(|t| t.date <= date)

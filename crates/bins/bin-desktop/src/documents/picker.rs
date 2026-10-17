@@ -4,6 +4,7 @@
 //! same split `chrome/palette.rs` and `documents/mod.rs` use. `app/documents_ui.rs` owns the keys and the
 //! effects of a pick; `view/documents/dialogs.rs` draws it.
 
+use lib_core::DocumentId;
 use std::ops::Range;
 
 use chrono::NaiveDate;
@@ -76,15 +77,15 @@ impl KindFilter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     /// Library `l` / **+ Link to…**: `enter` toggles a Link on a Filed Document.
-    Link(u32),
+    Link(DocumentId),
     /// Inbox **File…** / **Link elsewhere…**: a pick files the Unfiled Document.
-    File(u32),
+    File(DocumentId),
     /// Library `L` on a Document with several Links: `enter` follows one.
-    Follow(u32),
+    Follow(DocumentId),
 }
 
 impl Purpose {
-    pub fn document(self) -> u32 {
+    pub fn document(self) -> DocumentId {
         match self {
             Purpose::Link(id) | Purpose::File(id) | Purpose::Follow(id) => id,
         }
@@ -596,7 +597,7 @@ mod tests {
         let account = world.accounts[1].id;
         let current = [DocumentLink::Account(account)];
         let listed = rows(
-            &state(&world, Purpose::Link(1)),
+            &state(&world, Purpose::Link(DocumentId::seed(1))),
             &Sources {
                 lookups: &lookups,
                 current: &current,
@@ -616,7 +617,7 @@ mod tests {
     fn transactions_come_nearest_first_then_the_other_kinds_in_blocks() {
         let world = world();
         let lookups = world.lookups();
-        let state = state(&world, Purpose::Link(1));
+        let state = state(&world, Purpose::Link(DocumentId::seed(1)));
         let listed = rows(
             &state,
             &Sources {
@@ -656,7 +657,7 @@ mod tests {
     fn a_payee_block_is_alphabetical() {
         let world = world();
         let lookups = world.lookups();
-        let mut state = state(&world, Purpose::Link(1));
+        let mut state = state(&world, Purpose::Link(DocumentId::seed(1)));
         state.kind = KindFilter::Payee;
         let listed = rows(
             &state,
@@ -688,7 +689,7 @@ mod tests {
             format!("{head},{tail}")
         };
         for query in [whole.clone(), grouped, format!("-{plain}")] {
-            let mut state = state(&world, Purpose::Link(1));
+            let mut state = state(&world, Purpose::Link(DocumentId::seed(1)));
             state.query = TextField::new(query.clone());
             state.kind = KindFilter::Transaction;
             let listed = rows(
@@ -711,7 +712,7 @@ mod tests {
     fn a_search_reaches_transactions_past_the_near_window_after_the_near_ones() {
         let world = world();
         let lookups = world.lookups();
-        let mut browse = state(&world, Purpose::Link(1));
+        let mut browse = state(&world, Purpose::Link(DocumentId::seed(1)));
         browse.kind = KindFilter::Transaction;
         let near = rows(
             &browse,
@@ -738,7 +739,7 @@ mod tests {
         let world = world();
         let lookups = world.lookups();
         let listed = rows(
-            &state(&world, Purpose::File(1)),
+            &state(&world, Purpose::File(DocumentId::seed(1))),
             &Sources {
                 lookups: &lookups,
                 current: &[],
@@ -757,7 +758,7 @@ mod tests {
             DocumentLink::Payee(world.payees[0].id),
         ];
         let listed = rows(
-            &state(&world, Purpose::Follow(1)),
+            &state(&world, Purpose::Follow(DocumentId::seed(1))),
             &Sources {
                 lookups: &lookups,
                 current: &current,
@@ -780,7 +781,7 @@ mod tests {
     #[test]
     fn the_type_select_starts_at_the_first_and_wraps() {
         let world = world();
-        let mut state = state(&world, Purpose::File(1));
+        let mut state = state(&world, Purpose::File(DocumentId::seed(1)));
         let all: Vec<_> = crate::documents::types::default_types()
             .iter()
             .map(|row| DocumentType(row.id))

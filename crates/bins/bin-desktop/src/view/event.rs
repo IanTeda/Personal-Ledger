@@ -2,6 +2,7 @@
 //! `cx.emit` and never holds a handle to `Shell` (ADR-0032): `Shell` subscribes to each View
 //! and handles every event in one place (`app/view_events.rs`).
 
+use lib_core::{AccountId, BillPlanId, PayeeId, TransactionId};
 use lib_toast::ToastKind;
 
 use crate::{
@@ -65,19 +66,19 @@ impl ViewMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reveal {
     /// A Transaction, by id, selected on the Transactions page.
-    Transaction(u32),
+    Transaction(TransactionId),
     /// A Bill Schedule entry, selected on the Schedule tab in the period that shows it.
     BillEntry(EntryId),
     /// A Bill Plan, by id, selected on the Planner tab.
-    BillPlan(u32),
+    BillPlan(BillPlanId),
     /// The Bills Schedule tab on a period, with no filter hiding its rows.
     BillsPeriod(Period),
     /// An Account, by id, selected on Settings › Accounts.
-    Account(u32),
+    Account(AccountId),
     /// An Account's ledger: Transactions filtered to the Account, from their first row.
-    AccountTransactions(u32),
+    AccountTransactions(AccountId),
     /// A Payee, by id, selected on Settings › Payees.
-    Payee(u32),
+    Payee(PayeeId),
 }
 
 impl Reveal {

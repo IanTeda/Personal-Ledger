@@ -2,7 +2,7 @@
 //! `gpui`-free, like the rest of this domain; `dialogs/` renders it and `dialogs::TagsDialog`
 //! holds it while it is open.
 
-use lib_core::HexColor;
+use lib_core::{HexColor, TagId};
 use lib_tags::{Tag, TagDraft, TagError, name_error, sorted_by_usage, swatches, transaction_count};
 
 use crate::{
@@ -44,7 +44,7 @@ pub struct TagForm {
     /// Every Tag, copied in when the Dialog opens so the name check needs nothing from `Shell`.
     tags: Vec<Tag>,
     /// The Tag being edited; `None` on Add.
-    own_id: Option<u32>,
+    own_id: Option<TagId>,
     /// What the domain refused the confirm with, shown in place of the live name check.
     pub error: Option<TagError>,
 }
@@ -277,7 +277,7 @@ pub fn merge_options(
 /// are, so the selects key their value on the label and map it back to the id here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeOption {
-    pub id: u32,
+    pub id: TagId,
     pub label: String,
 }
 
@@ -302,7 +302,7 @@ pub struct MergeTagsForm {
     options: Vec<MergeOption>,
 }
 
-fn label_of(options: &[MergeOption], id: Option<u32>) -> Option<String> {
+fn label_of(options: &[MergeOption], id: Option<TagId>) -> Option<String> {
     let id = id?;
     options
         .iter()
@@ -310,7 +310,7 @@ fn label_of(options: &[MergeOption], id: Option<u32>) -> Option<String> {
         .map(|option| option.label.clone())
 }
 
-fn id_of(options: &[MergeOption], label: Option<&str>) -> Option<u32> {
+fn id_of(options: &[MergeOption], label: Option<&str>) -> Option<TagId> {
     let label = label?;
     options
         .iter()
@@ -320,7 +320,7 @@ fn id_of(options: &[MergeOption], label: Option<&str>) -> Option<u32> {
 
 impl MergeTagsForm {
     /// Opens on `source` and `target` (ignored if equal), focusing the first one still empty.
-    pub fn new(options: Vec<MergeOption>, source: Option<u32>, target: Option<u32>) -> Self {
+    pub fn new(options: Vec<MergeOption>, source: Option<TagId>, target: Option<TagId>) -> Self {
         let target = target.filter(|target| Some(*target) != source);
         let focused = if source.is_some() && target.is_none() {
             MergeField::Target
@@ -336,11 +336,11 @@ impl MergeTagsForm {
         }
     }
 
-    pub fn source_id(&self) -> Option<u32> {
+    pub fn source_id(&self) -> Option<TagId> {
         id_of(&self.options, self.source.value())
     }
 
-    pub fn target_id(&self) -> Option<u32> {
+    pub fn target_id(&self) -> Option<TagId> {
         id_of(&self.options, self.target.value())
     }
 
@@ -356,7 +356,7 @@ impl MergeTagsForm {
     }
 
     /// Whether **Merge** is live: both chosen, and different.
-    pub fn pair(&self) -> Option<(u32, u32)> {
+    pub fn pair(&self) -> Option<(TagId, TagId)> {
         let source = self.source_id()?;
         let target = self.target_id()?;
         (source != target).then_some((source, target))
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     fn an_edit_form_is_pre_filled_and_only_it_tabs_to_active() {
         let tag = Tag {
-            id: 7,
+            id: TagId::seed(7),
             name: "gift".to_string(),
             color: Some(swatches()[2].clone()),
             is_active: false,
@@ -639,11 +639,11 @@ mod tests {
         handle_key(dialog, DialogKey::Char(ch));
     }
 
-    fn merge_options_of(ids: &[u32]) -> Vec<MergeOption> {
+    fn merge_options_of(ids: &[TagId]) -> Vec<MergeOption> {
         ids.iter()
             .map(|id| MergeOption {
                 id: *id,
-                label: format!("tag {id}"),
+                label: format!("tag {}", id.seed_number()),
             })
             .collect()
     }
@@ -671,61 +671,62 @@ mod tests {
 
     #[test]
     fn a_merge_form_opens_on_its_pair_and_focuses_the_first_empty_select() {
-        let options = merge_options_of(&[1, 2, 3]);
-        let both = MergeTagsForm::new(options.clone(), Some(2), Some(1));
-        assert_eq!(both.pair(), Some((2, 1)));
+        let options = merge_options_of(&[TagId::seed(1), TagId::seed(2), TagId::seed(3)]);
+        let both = MergeTagsForm::new(options.clone(), Some(TagId::seed(2)), Some(TagId::seed(1)));
+        assert_eq!(both.pair(), Some((TagId::seed(2), TagId::seed(1))));
         assert_eq!(both.focused, MergeField::Source);
 
-        let source_only = MergeTagsForm::new(options.clone(), Some(2), None);
+        let source_only = MergeTagsForm::new(options.clone(), Some(TagId::seed(2)), None);
         assert_eq!(source_only.pair(), None);
         assert_eq!(source_only.focused, MergeField::Target);
 
-        let same = MergeTagsForm::new(options.clone(), Some(2), Some(2));
+        let same = MergeTagsForm::new(options.clone(), Some(TagId::seed(2)), Some(TagId::seed(2)));
         assert_eq!(same.target_id(), None);
     }
 
     #[test]
     fn the_target_list_leaves_out_the_source() {
-        let options = merge_options_of(&[1, 2, 3]);
-        let form = MergeTagsForm::new(options.clone(), Some(2), None);
+        let options = merge_options_of(&[TagId::seed(1), TagId::seed(2), TagId::seed(3)]);
+        let form = MergeTagsForm::new(options.clone(), Some(TagId::seed(2)), None);
         assert_eq!(form.labels(MergeField::Source).len(), 3);
         assert_eq!(form.labels(MergeField::Target), ["tag 1", "tag 3"]);
     }
 
     #[test]
     fn moving_the_source_onto_the_target_clears_the_target() {
-        let options = merge_options_of(&[1, 2, 3]);
-        let mut form = MergeTagsForm::new(options.clone(), Some(1), Some(2));
+        let options = merge_options_of(&[TagId::seed(1), TagId::seed(2), TagId::seed(3)]);
+        let mut form =
+            MergeTagsForm::new(options.clone(), Some(TagId::seed(1)), Some(TagId::seed(2)));
         form.step(1);
-        assert_eq!(form.source_id(), Some(2));
+        assert_eq!(form.source_id(), Some(TagId::seed(2)));
         assert_eq!(form.target_id(), None);
         assert_eq!(form.pair(), None);
     }
 
     #[test]
     fn toggling_opens_then_commits_and_choose_picks_a_row() {
-        let options = merge_options_of(&[1, 2, 3]);
-        let mut form = MergeTagsForm::new(options.clone(), Some(1), None);
+        let options = merge_options_of(&[TagId::seed(1), TagId::seed(2), TagId::seed(3)]);
+        let mut form = MergeTagsForm::new(options.clone(), Some(TagId::seed(1)), None);
         form.toggle(MergeField::Target);
         assert!(form.target.is_open());
         form.step(1);
         form.toggle(MergeField::Target);
         assert!(!form.is_open());
-        assert_eq!(form.pair(), Some((1, 3)));
+        assert_eq!(form.pair(), Some((TagId::seed(1), TagId::seed(3))));
 
         form.toggle(MergeField::Source);
         form.choose(MergeField::Source, 2);
         assert_eq!(form.pair(), None);
-        assert_eq!(form.source_id(), Some(3));
+        assert_eq!(form.source_id(), Some(TagId::seed(3)));
     }
 
     #[test]
     fn tab_commits_the_open_list_and_moves_on() {
-        let options = merge_options_of(&[1, 2, 3]);
+        let options = merge_options_of(&[TagId::seed(1), TagId::seed(2), TagId::seed(3)]);
         let mut form = MergeTagsForm::new(options.clone(), None, None);
         form.toggle(MergeField::Source);
         form.cycle_focus();
-        assert_eq!(form.source_id(), Some(1));
+        assert_eq!(form.source_id(), Some(TagId::seed(1)));
         assert_eq!(form.focused, MergeField::Target);
         assert!(!Dialog::close_open_select(&mut form));
     }
@@ -738,7 +739,7 @@ mod tests {
             .iter()
             .zip(1..)
             .map(|(label, id)| MergeOption {
-                id,
+                id: TagId::seed(id),
                 label: (*label).to_string(),
             })
             .collect()
@@ -791,7 +792,10 @@ mod tests {
 
     #[test]
     fn remove_tag_with_transactions_confirms_only_on_the_typed_name() {
-        let mut dialog = OpenDialog::Tags(TagsDialog::Remove(1, RemoveTagForm::new("travel", 3)));
+        let mut dialog = OpenDialog::Tags(TagsDialog::Remove(
+            TagId::seed(1),
+            RemoveTagForm::new("travel", 3),
+        ));
         type_text(&mut dialog, "trav");
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
@@ -808,7 +812,7 @@ mod tests {
     fn merge_tags_first_esc_closes_the_select_and_enter_needs_a_pair() {
         let mut dialog = OpenDialog::Tags(TagsDialog::Merge(MergeTagsForm::new(
             tag_options(),
-            Some(1),
+            Some(TagId::seed(1)),
             None,
         )));
         assert_eq!(

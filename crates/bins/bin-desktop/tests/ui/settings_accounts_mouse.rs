@@ -3,6 +3,7 @@
 //! tagged with `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
+use lib_core::AccountId;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -39,7 +40,7 @@ fn clicking_an_account_row_selects_it(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
     let first = ui.settings_accounts().selected_account;
-    ui.click("settings-accounts-row-2");
+    ui.click(&format!("settings-accounts-row-{}", AccountId::seed(2)));
     let second = ui.settings_accounts().selected_account;
     assert!(second.is_some());
     assert_ne!(first, second);
@@ -49,7 +50,7 @@ fn clicking_an_account_row_selects_it(app: &mut TestAppContext) {
 fn an_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
-    ui.click("settings-accounts-edit-2");
+    ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(2)));
     let accounts_page = ui.settings_accounts();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
@@ -63,7 +64,7 @@ fn a_delete_action_needs_the_name_typed_back(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
     let before = ui.settings_accounts().account_names.len();
 
-    ui.click("settings-accounts-delete-2");
+    ui.click(&format!("settings-accounts-delete-{}", AccountId::seed(2)));
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
     ui.click("delete-account-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
@@ -76,7 +77,7 @@ fn a_delete_action_needs_the_name_typed_back(app: &mut TestAppContext) {
 fn clicking_an_account_row_opens_its_ledger(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
-    ui.click("settings-accounts-row-2");
+    ui.click(&format!("settings-accounts-row-{}", AccountId::seed(2)));
     let name = ui
         .settings_accounts()
         .selected_account
@@ -94,7 +95,7 @@ fn clicking_an_account_row_opens_its_ledger(app: &mut TestAppContext) {
 fn an_edit_action_saved_keeps_the_edited_account_selected(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
-    ui.click("settings-accounts-edit-2");
+    ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(2)));
     let name = ui.settings().dialog_name.expect("the Edit dialog is open");
     ui.press("x");
     ui.click("edit-account-confirm");

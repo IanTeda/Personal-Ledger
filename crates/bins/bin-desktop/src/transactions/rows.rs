@@ -7,7 +7,7 @@
 //! Payees (`—` if none has one); TAGS is the first chip of the Splits' combined, deduplicated Tags
 //! with `+N` when there are more (`—` if none). A single-Split row reads exactly as the mockup's.
 
-use lib_core::{DateStyle, HexColor};
+use lib_core::{DateStyle, HexColor, PayeeId, TagId};
 
 use lib_payees::Payee;
 
@@ -62,7 +62,7 @@ pub struct RowView {
 
 /// The PAYEE cell: the first Payee among the Splits, then `+N` for each further *different* Payee.
 pub fn payee_summary(transaction: &Transaction, payees: &[Payee]) -> String {
-    let ids: Vec<u32> = transaction
+    let ids: Vec<PayeeId> = transaction
         .splits
         .iter()
         .filter_map(|s| s.payee_id)
@@ -75,7 +75,7 @@ pub fn payee_summary(transaction: &Transaction, payees: &[Payee]) -> String {
         .find(|payee| payee.id == first)
         .map(|payee| payee.name.as_str())
         .unwrap_or(EMPTY_CELL);
-    let mut others: Vec<u32> = ids.into_iter().filter(|id| *id != first).collect();
+    let mut others: Vec<PayeeId> = ids.into_iter().filter(|id| *id != first).collect();
     others.sort_unstable();
     others.dedup();
     if others.is_empty() {
@@ -101,7 +101,7 @@ pub fn category_summary(transaction: &Transaction, all: &[lib_categories::Catego
 
 /// The TAGS cell: the union of every Split's Tags in first-seen order.
 pub fn tags_summary(transaction: &Transaction, tags: &[Tag]) -> TagsCell {
-    let mut ids: Vec<u32> = Vec::new();
+    let mut ids: Vec<TagId> = Vec::new();
     for split in &transaction.splits {
         for id in &split.tag_ids {
             if !ids.contains(id) {
@@ -314,17 +314,23 @@ mod tests {
             tags_summary(tokyo, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
-                color: lib_tags::get(&w.tags, 1).unwrap().color.clone(),
+                color: lib_tags::get(&w.tags, TagId::seed(1))
+                    .unwrap()
+                    .color
+                    .clone(),
                 more: 0
             }
         );
         let mut many = tokyo.clone();
-        many.splits[1].tag_ids = vec![2, 1, 3];
+        many.splits[1].tag_ids = vec![TagId::seed(2), TagId::seed(1), TagId::seed(3)];
         assert_eq!(
             tags_summary(&many, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
-                color: lib_tags::get(&w.tags, 1).unwrap().color.clone(),
+                color: lib_tags::get(&w.tags, TagId::seed(1))
+                    .unwrap()
+                    .color
+                    .clone(),
                 more: 2
             },
             "the duplicated Japan tag counts once"

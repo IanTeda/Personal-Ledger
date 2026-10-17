@@ -3,6 +3,7 @@
 //! `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
+use lib_core::BillPlanId;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -133,8 +134,8 @@ fn a_planner_edit_button_opens_the_edit_dialog(app: &mut TestAppContext) {
 
     let first = ui.bills().plans.len();
     assert!(first > 0);
-    ui.click("bills-plan-row-1");
-    ui.click("bills-plan-edit-1");
+    ui.click(&format!("bills-plan-row-{}", BillPlanId::seed(1)));
+    ui.click(&format!("bills-plan-edit-{}", BillPlanId::seed(1)));
 
     assert_eq!(ui.bills().dialog.as_deref(), Some("Edit"));
 }

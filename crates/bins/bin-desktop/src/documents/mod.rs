@@ -17,6 +17,7 @@ mod tests {
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
     use lib_core::Money;
+    use lib_core::{DocumentId, TransactionId};
     use lib_payees::Payee;
     use lib_payees::default_payees;
     use lib_transactions::Transaction;
@@ -147,12 +148,18 @@ mod tests {
         } = world();
         let before = documents.clone();
         assert_eq!(strong_count(&documents, &transactions, &payees), 2);
-        let record =
-            accept_all_strong(&types(), &mut documents, &transactions, &payees, Some(42)).unwrap();
+        let record = accept_all_strong(
+            &types(),
+            &mut documents,
+            &transactions,
+            &payees,
+            Some(DocumentId::seed(42)),
+        )
+        .unwrap();
         assert_eq!(record.entries.len(), 2);
         assert_eq!(inbox_count(&documents), 5);
         assert_eq!(strong_count(&documents, &transactions, &payees), 0);
-        assert_eq!(undo(&mut documents, record), Some(42));
+        assert_eq!(undo(&mut documents, record), Some(DocumentId::seed(42)));
         assert_eq!(documents, before);
     }
 
@@ -266,10 +273,11 @@ mod tests {
         let first = world();
         let second = world();
         assert_eq!(first.documents, second.documents);
-        let mut ids: Vec<u32> = first.documents.iter().map(|d| d.id).collect();
+        let mut ids: Vec<DocumentId> = first.documents.iter().map(|d| d.id).collect();
         ids.dedup();
         assert_eq!(ids.len(), first.documents.len());
-        let mut transaction_ids: Vec<u32> = first.transactions.iter().map(|t| t.id).collect();
+        let mut transaction_ids: Vec<TransactionId> =
+            first.transactions.iter().map(|t| t.id).collect();
         transaction_ids.sort_unstable();
         transaction_ids.dedup();
         assert_eq!(transaction_ids.len(), first.transactions.len());
@@ -351,7 +359,7 @@ mod tests {
         assert_eq!(
             edit_metadata(
                 &mut world.documents,
-                9_999,
+                DocumentId::seed(9_999),
                 "X",
                 DocumentType::TAX,
                 today(),

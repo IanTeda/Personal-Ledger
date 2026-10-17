@@ -2,6 +2,7 @@
 //! tagged with `debug_selector` are clicked.
 
 use super::common;
+use lib_core::DocumentTypeId;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -18,7 +19,10 @@ fn on_documents(app: &mut TestAppContext) -> Harness<'_> {
 fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
 
-    ui.click("settings-documents-row-4");
+    ui.click(&format!(
+        "settings-documents-row-{}",
+        DocumentTypeId::seed(4)
+    ));
     let document_types_page = ui.settings_document_types();
     let page = ui.settings();
     assert_eq!(
@@ -32,7 +36,10 @@ fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
 fn the_edit_action_opens_the_edit_dialog_and_save_applies_it(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
 
-    ui.click("settings-documents-edit-6");
+    ui.click(&format!(
+        "settings-documents-edit-{}",
+        DocumentTypeId::seed(6)
+    ));
     let document_types_page = ui.settings_document_types();
     assert_eq!(
         document_types_page.selected_document_type.as_deref(),
@@ -53,11 +60,32 @@ fn the_remove_action_opens_the_dialog_and_other_has_no_button(app: &mut TestAppC
     let mut ui = on_documents(app);
 
     // Other (id 9) is drawn with edit but no remove button; a normal row has both.
-    assert!(ui.cx.debug_bounds("settings-documents-edit-9").is_some());
-    assert!(ui.cx.debug_bounds("settings-documents-remove-9").is_none());
-    assert!(ui.cx.debug_bounds("settings-documents-remove-3").is_some());
+    assert!(
+        ui.cx
+            .debug_bounds(Box::leak(
+                format!("settings-documents-edit-{}", DocumentTypeId::seed(9)).into_boxed_str()
+            ))
+            .is_some()
+    );
+    assert!(
+        ui.cx
+            .debug_bounds(Box::leak(
+                format!("settings-documents-remove-{}", DocumentTypeId::seed(9)).into_boxed_str()
+            ))
+            .is_none()
+    );
+    assert!(
+        ui.cx
+            .debug_bounds(Box::leak(
+                format!("settings-documents-remove-{}", DocumentTypeId::seed(3)).into_boxed_str()
+            ))
+            .is_some()
+    );
 
-    ui.click("settings-documents-remove-3");
+    ui.click(&format!(
+        "settings-documents-remove-{}",
+        DocumentTypeId::seed(3)
+    ));
     let document_types_page = ui.settings_document_types();
     assert_eq!(
         document_types_page.selected_document_type.as_deref(),
@@ -78,7 +106,10 @@ fn the_remove_action_opens_the_dialog_and_other_has_no_button(app: &mut TestAppC
 fn the_destination_dropdown_picks_with_a_click(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
 
-    ui.click("settings-documents-remove-3");
+    ui.click(&format!(
+        "settings-documents-remove-{}",
+        DocumentTypeId::seed(3)
+    ));
     ui.click("document-type-destination");
     // Other is highlighted, so the capped list scrolls to show the last six options: the third,
     // Insurance, is its first row.
@@ -94,7 +125,10 @@ fn the_destination_dropdown_picks_with_a_click(app: &mut TestAppContext) {
 fn cancel_closes_the_remove_dialog_without_removing(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
 
-    ui.click("settings-documents-remove-3");
+    ui.click(&format!(
+        "settings-documents-remove-{}",
+        DocumentTypeId::seed(3)
+    ));
     ui.click("remove-document-type-cancel");
 
     let document_types_page = ui.settings_document_types();

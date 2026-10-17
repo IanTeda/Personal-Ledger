@@ -1,4 +1,5 @@
 use super::*;
+use lib_core::{AccountId, CategoryId, DocumentId, PayeeId, TransactionId};
 use lib_payees::default_payees;
 
 fn types() -> Vec<DocumentTypeRow> {
@@ -18,27 +19,27 @@ fn by_title<'a>(documents: &'a [Document], title: &str) -> &'a Document {
 }
 
 fn filed(id: u32, doc_type: DocumentType, on: NaiveDate) -> Document {
-    Draft::filed("file.pdf", &format!("Doc {id}"), doc_type, on).build(id)
+    Draft::filed("file.pdf", &format!("Doc {id}"), doc_type, on).build(DocumentId::seed(id))
 }
 
 fn unfiled(id: u32, facts: ExtractedFacts) -> Document {
-    Draft::unfiled("IMG.jpg", Source::Scanned, today(), facts).build(id)
+    Draft::unfiled("IMG.jpg", Source::Scanned, today(), facts).build(DocumentId::seed(id))
 }
 
-fn payee_split(cents: i64, payee_id: Option<u32>) -> Split {
+fn payee_split(cents: i64, payee_id: Option<PayeeId>) -> Split {
     Split {
         amount: cents_money(cents),
-        category_id: 1,
+        category_id: CategoryId::seed(1),
         payee_id,
         tag_ids: Vec::new(),
     }
 }
 
-fn txn(id: u32, on: NaiveDate, cents: i64, payee_id: Option<u32>) -> Transaction {
+fn txn(id: u32, on: NaiveDate, cents: i64, payee_id: Option<PayeeId>) -> Transaction {
     Transaction {
-        id,
+        id: TransactionId::seed(id),
         date: on,
-        account_id: 1,
+        account_id: AccountId::seed(1),
         status: TransactionStatus::Cleared,
         is_flagged: false,
         description: None,
@@ -179,7 +180,7 @@ fn expiring_sorts_need_review_then_upcoming_then_stale_descending_then_none() {
         keyed(6, -100),
         keyed(7, 100),
     ];
-    let ids: Vec<u32> = library_rows(
+    let ids: Vec<DocumentId> = library_rows(
         &types(),
         &documents,
         LibraryScope::All,
@@ -190,7 +191,18 @@ fn expiring_sorts_need_review_then_upcoming_then_stale_descending_then_none() {
     .iter()
     .map(|d| d.id)
     .collect();
-    assert_eq!(ids, [4, 3, 7, 1, 6, 2, 5]);
+    assert_eq!(
+        ids,
+        [
+            DocumentId::seed(4),
+            DocumentId::seed(3),
+            DocumentId::seed(7),
+            DocumentId::seed(1),
+            DocumentId::seed(6),
+            DocumentId::seed(2),
+            DocumentId::seed(5)
+        ]
+    );
 }
 
 #[test]
@@ -208,7 +220,10 @@ fn expiring_ties_go_to_the_newest_document_then_title() {
         LibrarySort::Expiring,
         today(),
     );
-    assert_eq!(rows.iter().map(|d| d.id).collect::<Vec<_>>(), [2, 1]);
+    assert_eq!(
+        rows.iter().map(|d| d.id).collect::<Vec<_>>(),
+        [DocumentId::seed(2), DocumentId::seed(1)]
+    );
 }
 
 #[test]
@@ -248,7 +263,7 @@ fn newest_sorts_by_document_date_then_title() {
     b.title = "A".to_string();
     let c = filed(3, DocumentType::RECEIPTS, date(2026, 5, 1));
     let documents = vec![a, b, c];
-    let ids: Vec<u32> = library_rows(
+    let ids: Vec<DocumentId> = library_rows(
         &types(),
         &documents,
         LibraryScope::All,
@@ -259,18 +274,33 @@ fn newest_sorts_by_document_date_then_title() {
     .iter()
     .map(|d| d.id)
     .collect();
-    assert_eq!(ids, [3, 2, 1]);
+    assert_eq!(
+        ids,
+        [
+            DocumentId::seed(3),
+            DocumentId::seed(2),
+            DocumentId::seed(1)
+        ]
+    );
 }
 
 #[test]
 fn removing_the_last_link_leaves_the_document_filed() {
     let mut documents = vec![filed(1, DocumentType::RECEIPTS, today())];
     assert_eq!(
-        toggle_link(&mut documents, 1, DocumentLink::Payee(4)),
+        toggle_link(
+            &mut documents,
+            DocumentId::seed(1),
+            DocumentLink::Payee(PayeeId::seed(4))
+        ),
         Some(true)
     );
     assert_eq!(
-        toggle_link(&mut documents, 1, DocumentLink::Payee(4)),
+        toggle_link(
+            &mut documents,
+            DocumentId::seed(1),
+            DocumentLink::Payee(PayeeId::seed(4))
+        ),
         Some(false)
     );
     assert!(documents[0].links.is_empty());
@@ -285,7 +315,7 @@ fn woolworths() -> Vec<Payee> {
 
 #[test]
 fn three_agreeing_signals_are_strong() {
-    let transactions = vec![txn(1, today(), -21_240, Some(1))];
+    let transactions = vec![txn(1, today(), -21_240, Some(PayeeId::seed(1)))];
     let document = unfiled(
         1,
         facts(Some("Woolworths Metro"), Some(today()), Some(21_240)),
@@ -340,17 +370,20 @@ fn without_an_extracted_date_the_window_centres_on_received_and_date_never_agree
         &[],
     );
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].transaction_id, 1);
+    assert_eq!(found[0].transaction_id, TransactionId::seed(1));
     assert!(!found[0].signals.date);
 }
 
 #[test]
 fn payee_resolves_by_alias_then_by_name_contained_in_the_merchant() {
     let payees = default_payees();
-    assert_eq!(merchant_payee(&payees, "WW SUPERMARKET 1234"), Some(1));
+    assert_eq!(
+        merchant_payee(&payees, "WW SUPERMARKET 1234"),
+        Some(PayeeId::seed(1))
+    );
     assert_eq!(
         merchant_payee(&payees, "Cafe Vittoria Paddington"),
-        Some(11)
+        Some(PayeeId::seed(11))
     );
     assert_eq!(merchant_payee(&payees, "Australian Taxation Office"), None);
 }
@@ -359,21 +392,32 @@ fn payee_resolves_by_alias_then_by_name_contained_in_the_merchant() {
 fn ranking_prefers_strength_then_amount_then_gap_then_unlinked_then_id() {
     let payees = default_payees();
     let transactions = vec![
-        txn(1, today(), -999, Some(1)),                     // payee + date
-        txn(2, today() - Duration::days(5), -500, Some(1)), // amount + payee
-        txn(3, today() - Duration::days(2), -500, None),    // amount + date
-        txn(4, today() - Duration::days(1), -500, None),    // amount + date, nearer
-        txn(5, today() - Duration::days(1), -500, None),    // as 4, but linked
+        txn(1, today(), -999, Some(PayeeId::seed(1))), // payee + date
+        txn(2, today() - Duration::days(5), -500, Some(PayeeId::seed(1))), // amount + payee
+        txn(3, today() - Duration::days(2), -500, None), // amount + date
+        txn(4, today() - Duration::days(1), -500, None), // amount + date, nearer
+        txn(5, today() - Duration::days(1), -500, None), // as 4, but linked
     ];
     let mut linker = filed(9, DocumentType::RECEIPTS, today());
-    linker.links.push(DocumentLink::Transaction(4));
+    linker
+        .links
+        .push(DocumentLink::Transaction(TransactionId::seed(4)));
     let document = unfiled(1, facts(Some("Woolworths"), Some(today()), Some(500)));
     let documents = vec![linker, document.clone()];
-    let ids: Vec<u32> = candidates(&document, &documents, &transactions, &payees)
+    let ids: Vec<TransactionId> = candidates(&document, &documents, &transactions, &payees)
         .iter()
         .map(|c| c.transaction_id)
         .collect();
-    assert_eq!(ids, [5, 4, 3, 2, 1]);
+    assert_eq!(
+        ids,
+        [
+            TransactionId::seed(5),
+            TransactionId::seed(4),
+            TransactionId::seed(3),
+            TransactionId::seed(2),
+            TransactionId::seed(1)
+        ]
+    );
 }
 
 #[test]
@@ -383,16 +427,16 @@ fn others_are_the_next_two() {
     let Suggestion::Link { best, others } = suggestion(&document, &[], &transactions, &[]) else {
         panic!("expected a Suggested Link");
     };
-    assert_eq!(best.transaction_id, 1);
+    assert_eq!(best.transaction_id, TransactionId::seed(1));
     assert_eq!(
         others.iter().map(|c| c.transaction_id).collect::<Vec<_>>(),
-        [2, 3]
+        [TransactionId::seed(2), TransactionId::seed(3)]
     );
 }
 
 #[test]
 fn no_total_is_unreadable() {
-    let transactions = vec![txn(1, today(), -500, Some(1))];
+    let transactions = vec![txn(1, today(), -500, Some(PayeeId::seed(1)))];
     let document = unfiled(1, facts(Some("Woolworths"), Some(today()), None));
     assert_eq!(
         suggestion(&document, &[], &transactions, &default_payees()),
@@ -409,10 +453,20 @@ fn accept_files_with_the_link_extracted_type_and_date() {
     if let Some(intake) = documents[0].intake.as_mut() {
         intake.facts.doc_type = Some(DocumentType::BILLS);
     }
-    accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
+    accept(
+        &types(),
+        &mut documents,
+        &transactions,
+        DocumentId::seed(1),
+        TransactionId::seed(7),
+    )
+    .unwrap();
     let document = &documents[0];
     assert!(document.is_filed());
-    assert_eq!(document.links, [DocumentLink::Transaction(7)]);
+    assert_eq!(
+        document.links,
+        [DocumentLink::Transaction(TransactionId::seed(7))]
+    );
     assert_eq!(document.doc_type, DocumentType::BILLS);
     assert_eq!(document.date, today());
 }
@@ -422,11 +476,24 @@ fn accept_without_extracted_type_or_date_uses_the_default_type_and_the_transacti
     let on = today() - Duration::days(2);
     let transactions = vec![txn(7, on, -500, None)];
     let mut documents = vec![unfiled(1, facts(None, None, Some(500)))];
-    accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
+    accept(
+        &types(),
+        &mut documents,
+        &transactions,
+        DocumentId::seed(1),
+        TransactionId::seed(7),
+    )
+    .unwrap();
     assert_eq!(documents[0].doc_type, DocumentType::OTHER);
     assert_eq!(documents[0].date, on);
     assert_eq!(
-        accept(&types(), &mut documents, &transactions, 1, 7),
+        accept(
+            &types(),
+            &mut documents,
+            &transactions,
+            DocumentId::seed(1),
+            TransactionId::seed(7)
+        ),
         Err(FilingError::AlreadyFiled)
     );
 }
@@ -434,7 +501,13 @@ fn accept_without_extracted_type_or_date_uses_the_default_type_and_the_transacti
 #[test]
 fn file_by_hand_takes_the_chosen_type_and_an_optional_link() {
     let mut documents = vec![unfiled(1, ExtractedFacts::default())];
-    file_by_hand(&mut documents, 1, DocumentType::IDENTITY, None).unwrap();
+    file_by_hand(
+        &mut documents,
+        DocumentId::seed(1),
+        DocumentType::IDENTITY,
+        None,
+    )
+    .unwrap();
     assert!(documents[0].is_filed());
     assert!(documents[0].links.is_empty());
     assert_eq!(documents[0].doc_type, DocumentType::IDENTITY);
@@ -446,16 +519,23 @@ fn undo_returns_a_single_accept_to_unfiled_as_it_was() {
     let transactions = vec![txn(7, today(), -500, None)];
     let mut documents = vec![unfiled(1, facts(None, None, Some(500)))];
     let before = documents[0].clone();
-    let entry = accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
+    let entry = accept(
+        &types(),
+        &mut documents,
+        &transactions,
+        DocumentId::seed(1),
+        TransactionId::seed(7),
+    )
+    .unwrap();
     let focus = undo(
         &mut documents,
         FilingUndo {
             entries: vec![entry],
-            focus: Some(1),
+            focus: Some(DocumentId::seed(1)),
         },
     );
     assert_eq!(documents[0], before);
-    assert_eq!(focus, Some(1));
+    assert_eq!(focus, Some(DocumentId::seed(1)));
 }
 
 #[test]
@@ -470,18 +550,37 @@ fn skipped_rows_sort_last_and_editing_clears_the_skip() {
             .map(|d| d.id)
             .collect::<Vec<_>>()
     };
-    assert_eq!(order(&documents), [2, 1]);
-    skip(&mut documents, 2).unwrap();
-    assert_eq!(order(&documents), [1, 2]);
-    edit_facts(&mut documents, 2, facts(None, None, Some(100))).unwrap();
-    assert_eq!(order(&documents), [2, 1]);
+    assert_eq!(
+        order(&documents),
+        [DocumentId::seed(2), DocumentId::seed(1)]
+    );
+    skip(&mut documents, DocumentId::seed(2)).unwrap();
+    assert_eq!(
+        order(&documents),
+        [DocumentId::seed(1), DocumentId::seed(2)]
+    );
+    edit_facts(
+        &mut documents,
+        DocumentId::seed(2),
+        facts(None, None, Some(100)),
+    )
+    .unwrap();
+    assert_eq!(
+        order(&documents),
+        [DocumentId::seed(2), DocumentId::seed(1)]
+    );
 }
 
 #[test]
 fn clearing_the_total_makes_a_document_unreadable() {
     let transactions = vec![txn(1, today(), -500, None)];
     let mut documents = vec![unfiled(1, facts(None, Some(today()), Some(500)))];
-    edit_facts(&mut documents, 1, facts(None, Some(today()), None)).unwrap();
+    edit_facts(
+        &mut documents,
+        DocumentId::seed(1),
+        facts(None, Some(today()), None),
+    )
+    .unwrap();
     assert_eq!(
         suggestion(&documents[0], &documents, &transactions, &[]),
         Suggestion::Unreadable
@@ -758,7 +857,7 @@ fn an_import_batch_reports_each_line() {
     assert_eq!(
         outcomes,
         vec![
-            ImportOutcome::Imported(1),
+            ImportOutcome::Imported(documents[0].id),
             ImportOutcome::NotFound("/tmp/none.pdf".to_string()),
             ImportOutcome::Unsupported("/tmp/readme.txt".to_string()),
             ImportOutcome::Already("coles-receipt".to_string()),
@@ -785,7 +884,7 @@ fn a_dropped_batch_lands_in_the_inbox_as_dropped() {
     assert_eq!(
         outcomes,
         vec![
-            ImportOutcome::Imported(1),
+            ImportOutcome::Imported(documents[0].id),
             ImportOutcome::Unsupported("/tmp/x.txt".to_string()),
         ]
     );

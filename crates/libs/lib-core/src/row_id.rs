@@ -29,7 +29,9 @@
 /// - Serialized as UUID strings in JSON
 /// - Validated on creation and deserialization to ensure version 7
 /// - Copy-able for efficient passing by value
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct RowID(uuid::Uuid);
 
 impl From<uuid::Error> for RowIDError {
@@ -42,12 +44,14 @@ impl From<uuid::Error> for RowIDError {
 }
 
 // SQLx implementations for RowID with validation
+#[cfg(feature = "sqlx")]
 impl sqlx::Type<sqlx::Sqlite> for RowID {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for RowID {
     fn encode_by_ref(
         &self,
@@ -58,6 +62,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for RowID {
     }
 }
 
+#[cfg(feature = "sqlx")]
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for RowID {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;

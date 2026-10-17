@@ -46,7 +46,7 @@ use crate::{
     },
 };
 use gpui::Context;
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 use lib_toast::ToastKind;
 
 impl Shell {
@@ -346,7 +346,7 @@ impl Shell {
 
     pub(super) fn handle_categories_dialog_parent_change(
         &mut self,
-        parent_id: Option<u32>,
+        parent_id: Option<CategoryId>,
         cx: &mut Context<'_, Self>,
     ) {
         // A child takes its parent's type.

@@ -11,7 +11,7 @@ use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle,
 };
-use lib_core::DateStyle;
+use lib_core::{DateStyle, DocumentId, DocumentTypeId, TransactionId};
 use lib_ledger::{
     AcceptDocument, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink, UndoFiling,
 };
@@ -476,7 +476,7 @@ impl DocumentsView {
     }
 
     /// A Document Type has gone: a Library scoped to it falls back to All documents.
-    pub fn type_removed(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn type_removed(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         if self.state.scope == LibraryScope::Type(documents::DocumentType(id)) {
             self.state.scope = LibraryScope::All;
             cx.notify();
@@ -543,7 +543,7 @@ impl DocumentsView {
 
     /// Puts the Library on All documents, clears the search and selects `id`, so a Document just
     /// added or edited is on screen whatever scope was showing.
-    pub fn select_document(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn select_document(&mut self, id: DocumentId, cx: &mut Context<'_, Self>) {
         let in_scope = self
             .documents(cx)
             .iter()
@@ -568,7 +568,7 @@ impl DocumentsView {
     }
 
     /// Focuses `id` in the Inbox, wherever it now sits (editing its facts clears a skip).
-    pub fn focus_inbox_document(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn focus_inbox_document(&mut self, id: DocumentId, cx: &mut Context<'_, Self>) {
         if let Some(at) = self
             .inbox_rows(cx)
             .iter()
@@ -632,7 +632,11 @@ impl DocumentsView {
     }
 
     /// An Other candidate, accepted instead of the Suggested Link.
-    pub(super) fn click_candidate(&mut self, transaction_id: u32, cx: &mut Context<'_, Self>) {
+    pub(super) fn click_candidate(
+        &mut self,
+        transaction_id: TransactionId,
+        cx: &mut Context<'_, Self>,
+    ) {
         if let Some(id) = self.selected_document(cx).map(|document| document.id) {
             self.accept(id, transaction_id, cx);
         }
@@ -779,7 +783,7 @@ impl DocumentsView {
     }
 
     /// The Transaction the Document's Suggested Link points at, if it has one.
-    fn suggestion_for(&self, document: &Document, cx: &App) -> Option<u32> {
+    fn suggestion_for(&self, document: &Document, cx: &App) -> Option<TransactionId> {
         documents::suggestion(
             document,
             self.documents(cx),
@@ -819,10 +823,9 @@ impl DocumentsView {
 
     /// The text a Link reads as in the picker, for toasts.
     fn link_name(&self, link: DocumentLink, cx: &App) -> String {
-        let id = self
-            .selected_document(cx)
-            .map(|document| document.id)
-            .unwrap_or_default();
+        let Some(id) = self.selected_document(cx).map(|document| document.id) else {
+            return String::new();
+        };
         let state = PickerState::new(Purpose::Follow(id), self.today, None);
         let lookups = self.lookups(cx);
         documents::picker::rows(
@@ -856,7 +859,12 @@ impl DocumentsView {
     }
 
     /// Files `id` under `transaction_id`, remembers it for `u` and moves focus to the next row.
-    pub fn accept(&mut self, id: u32, transaction_id: u32, cx: &mut Context<'_, Self>) {
+    pub fn accept(
+        &mut self,
+        id: DocumentId,
+        transaction_id: TransactionId,
+        cx: &mut Context<'_, Self>,
+    ) {
         let before = self.before_filing(id, cx);
         let Ok(entry) = self.apply(cx, AcceptDocument { id, transaction_id }) else {
             return;
@@ -867,7 +875,7 @@ impl DocumentsView {
     /// Files `id` by hand with a Document Type and at most one Link, as one filing action.
     pub fn file_by_hand(
         &mut self,
-        id: u32,
+        id: DocumentId,
         doc_type: documents::DocumentType,
         link: Option<DocumentLink>,
         cx: &mut Context<'_, Self>,
@@ -880,7 +888,7 @@ impl DocumentsView {
     }
 
     /// Where `id` sits in the Inbox and what it is called, read before it leaves the Inbox.
-    fn before_filing(&self, id: u32, cx: &App) -> (Option<usize>, usize, String) {
+    fn before_filing(&self, id: DocumentId, cx: &App) -> (Option<usize>, usize, String) {
         let rows = self.inbox_rows(cx);
         (
             rows.iter().position(|document| document.id == id),
@@ -895,7 +903,7 @@ impl DocumentsView {
     /// and raises the Toast.
     fn after_filing(
         &mut self,
-        id: u32,
+        id: DocumentId,
         (at, len, title): (Option<usize>, usize, String),
         entry: documents::FiledEntry,
         cx: &mut Context<'_, Self>,

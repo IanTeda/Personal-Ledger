@@ -7,6 +7,7 @@ pub mod add_edit;
 pub mod remove;
 
 use gpui::{AnyElement, App};
+use lib_core::DocumentTypeId;
 use lib_documents::types::{DocumentTypeRow, RemindLead, TracksDate};
 
 use super::form::{DocumentTypeForm, FormField, RemoveForm};
@@ -21,9 +22,9 @@ use add_edit::OnFieldClick;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentTypesDialog {
     Add(DocumentTypeForm),
-    Edit(u32, DocumentTypeForm),
+    Edit(DocumentTypeId, DocumentTypeForm),
     /// Removing the type with this id; the select is where its Filed files move to.
-    Remove(u32, RemoveForm),
+    Remove(DocumentTypeId, RemoveForm),
     /// Other has no remove action, so this only says why.
     DefaultNotice,
 }

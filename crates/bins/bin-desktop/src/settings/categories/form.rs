@@ -2,7 +2,7 @@
 //! `gpui`-free, like the rest of this page's domain. `dialogs::CategoriesDialog` holds them behind
 //! the Dialog host, and `dialogs/` renders them.
 
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 
 use crate::{
     chrome::dialog_host::{DialogKey, DialogOutcome},
@@ -43,7 +43,7 @@ pub enum BudgetLock {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryForm {
     pub name: TextField,
-    pub parent_id: Option<u32>,
+    pub parent_id: Option<CategoryId>,
     pub category_type: Option<CategoryTypes>,
     pub budget: TextField,
     /// `Some` makes the Monthly budget field read-only; saving then leaves the Budget alone.
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn delete_category_confirms_only_on_the_exact_name() {
         let mut dialog = OpenDialog::Categories(CategoriesDialog::Delete(
-            4,
+            CategoryId::seed(4),
             DeleteCategoryForm::new("Groceries"),
         ));
         type_text(&mut dialog, "groceries");

@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 
 use lib_categories::Category;
 
@@ -20,14 +20,14 @@ use crate::{
 pub const WIDTH: gpui::Pixels = px(440.0);
 
 pub type OnFieldClick = Rc<dyn Fn(CategoryField, &mut Window, &mut App)>;
-pub type OnParentChange = Rc<dyn Fn(Option<u32>, &mut Window, &mut App)>;
+pub type OnParentChange = Rc<dyn Fn(Option<CategoryId>, &mut Window, &mut App)>;
 pub type OnTypeChange = Rc<dyn Fn(CategoryTypes, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
 #[derive(Clone)]
 pub struct ParentOption {
-    pub id: Option<u32>,
+    pub id: Option<CategoryId>,
     pub label: String,
     pub is_available: bool,
 }
@@ -235,7 +235,7 @@ fn type_field(
 }
 
 fn parent_field(
-    selected_parent: Option<u32>,
+    selected_parent: Option<CategoryId>,
     options: &[ParentOption],
     focused: bool,
     on_field_click: OnFieldClick,

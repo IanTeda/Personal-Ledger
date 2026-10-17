@@ -5,6 +5,7 @@
 //! Single-Payee rules (names, aliases) stay in `lib_payees`. What lives here is the rule that
 //! crosses domains: a Payee that a Split or a Bill Plan names can only be deactivated.
 
+use lib_core::PayeeId;
 use lib_payees::{PayeeDraft, PayeeError, delete_payee, edit_payee, get, insert_payee};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
@@ -40,7 +41,7 @@ pub enum SetPayeeActiveRefusal {
 
 impl Ledger {
     /// How many Splits and Bill Plans name Payee `id`.
-    pub fn payee_use(&self, id: u32) -> PayeeUse {
+    pub fn payee_use(&self, id: PayeeId) -> PayeeUse {
         PayeeUse {
             splits: self
                 .transactions
@@ -57,20 +58,20 @@ impl Ledger {
     }
 
     /// Adds a new, active Payee and returns its id.
-    pub fn add_payee(&mut self, draft: &PayeeDraft) -> Result<u32, PayeeError> {
+    pub fn add_payee(&mut self, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
         let id = insert_payee(&mut self.payees, draft)?;
         self.record_payee(id);
         Ok(id)
     }
 
-    pub fn edit_payee(&mut self, id: u32, draft: &PayeeDraft) -> Result<(), PayeeError> {
+    pub fn edit_payee(&mut self, id: PayeeId, draft: &PayeeDraft) -> Result<(), PayeeError> {
         edit_payee(&mut self.payees, id, draft)?;
         self.record_payee(id);
         Ok(())
     }
 
     /// Hard-deletes Payee `id`, refused while a Split or a Bill Plan names it.
-    pub fn delete_payee(&mut self, id: u32) -> Result<(), DeletePayeeRefusal> {
+    pub fn delete_payee(&mut self, id: PayeeId) -> Result<(), DeletePayeeRefusal> {
         get(&self.payees, id).ok_or(DeletePayeeRefusal::NotFound)?;
         let PayeeUse { splits, bill_plans } = self.payee_use(id);
         if splits + bill_plans > 0 {
@@ -83,7 +84,7 @@ impl Ledger {
 
     pub fn set_payee_active(
         &mut self,
-        id: u32,
+        id: PayeeId,
         is_active: bool,
     ) -> Result<(), SetPayeeActiveRefusal> {
         lib_payees::set_active(&mut self.payees, id, is_active)
@@ -92,7 +93,7 @@ impl Ledger {
         Ok(())
     }
 
-    fn record_payee(&mut self, id: u32) {
+    fn record_payee(&mut self, id: PayeeId) {
         if let Some(payee) = get(&self.payees, id) {
             self.pending.push(LedgerChange::UpsertPayee(payee.clone()));
         }
@@ -104,9 +105,9 @@ impl Ledger {
 pub struct AddPayee(pub PayeeDraft);
 
 impl LedgerCommand for AddPayee {
-    type Outcome = u32;
+    type Outcome = PayeeId;
     type Refusal = PayeeError;
-    fn run(self, ledger: &mut Ledger) -> Result<u32, PayeeError> {
+    fn run(self, ledger: &mut Ledger) -> Result<PayeeId, PayeeError> {
         ledger.add_payee(&self.0)
     }
 }
@@ -114,7 +115,7 @@ impl LedgerCommand for AddPayee {
 /// [`Ledger::edit_payee`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditPayee {
-    pub id: u32,
+    pub id: PayeeId,
     pub draft: PayeeDraft,
 }
 
@@ -128,7 +129,7 @@ impl LedgerCommand for EditPayee {
 
 /// [`Ledger::delete_payee`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeletePayee(pub u32);
+pub struct DeletePayee(pub PayeeId);
 
 impl LedgerCommand for DeletePayee {
     type Outcome = ();
@@ -141,7 +142,7 @@ impl LedgerCommand for DeletePayee {
 /// [`Ledger::set_payee_active`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetPayeeActive {
-    pub id: u32,
+    pub id: PayeeId,
     pub is_active: bool,
 }
 
@@ -165,7 +166,7 @@ mod tests {
         }
     }
 
-    fn id_of(ledger: &Ledger, name: &str) -> u32 {
+    fn id_of(ledger: &Ledger, name: &str) -> PayeeId {
         lib_payees::find_by_name(ledger.payees(), name).expect("seeded Payee")
     }
 
@@ -187,7 +188,7 @@ mod tests {
         assert!(AddPayee(draft(&taken)).run(&mut ledger).is_err());
         assert!(
             EditPayee {
-                id: u32::MAX,
+                id: PayeeId::seed(u32::MAX),
                 draft: draft("x")
             }
             .run(&mut ledger)
@@ -269,7 +270,7 @@ mod tests {
     fn deleting_an_unknown_payee_is_not_found() {
         let mut ledger = Ledger::stub();
         assert_eq!(
-            DeletePayee(u32::MAX).run(&mut ledger),
+            DeletePayee(PayeeId::seed(u32::MAX)).run(&mut ledger),
             Err(DeletePayeeRefusal::NotFound)
         );
     }
@@ -290,7 +291,7 @@ mod tests {
         assert_eq!(ledger.drain_changes(), vec![LedgerChange::UpsertPayee(row)]);
         assert_eq!(
             SetPayeeActive {
-                id: u32::MAX,
+                id: PayeeId::seed(u32::MAX),
                 is_active: true
             }
             .run(&mut ledger),

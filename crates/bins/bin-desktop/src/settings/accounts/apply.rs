@@ -4,6 +4,7 @@
 use chrono::Local;
 use gpui::{App, Entity};
 use lib_accounts::{AccountDraft, AccountError, NewAccount};
+use lib_core::AccountId;
 use lib_ledger::{AddAccount, DeleteAccount, EditAccount};
 
 use super::{dialogs::AccountsDialog, form::AccountForm};
@@ -18,16 +19,16 @@ pub enum AccountCommand {
     /// Add the account. The Unit's kind decides how the opening balance is padded, which the form
     /// can't know, so the padding happens in [`AccountsApply`].
     Add(Box<AccountForm>),
-    Edit(u32, AccountDraft),
+    Edit(AccountId, AccountDraft),
     /// Delete the account and the Transactions booked to it.
-    Delete(u32),
+    Delete(AccountId),
 }
 
 /// What a landed [`AccountCommand`] did, for the selection and Toast that follow it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountOutcome {
     /// Added or edited: the account to select.
-    Saved(u32),
+    Saved(AccountId),
     /// Deleted: the name, and how many Transactions went with it.
     Deleted { name: String, transactions: usize },
 }

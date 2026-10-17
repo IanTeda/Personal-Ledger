@@ -17,7 +17,7 @@ doctest = false
 [dependencies]
 ## -- Internal Dependencies --
 lib_config = { path = "../../../crates/libs/lib-config" }
-lib_core = { path = "../../../crates/libs/lib-core" }
+lib_core = { path = "../../../crates/libs/lib-core", features = ["sqlx"] }
 
 ## -- Workspace Shared Dependencies --
 bigdecimal = { workspace = true }

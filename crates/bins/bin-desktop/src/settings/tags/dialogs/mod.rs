@@ -8,6 +8,7 @@ pub mod merge;
 pub mod remove;
 
 use gpui::{AnyElement, App};
+use lib_core::TagId;
 use lib_tags::{Tag, get, transaction_count};
 
 use super::form::{MergeTagsForm, RemoveTagForm, TagForm};
@@ -27,9 +28,9 @@ use merge::{OnFieldClick as OnMergeFieldClick, OnOptionClick};
 pub enum TagsDialog {
     Add(TagForm),
     /// Editing the Tag with this [`Tag::id`].
-    Edit(u32, TagForm),
+    Edit(TagId, TagForm),
     /// Removing the Tag with this [`Tag::id`].
-    Remove(u32, RemoveTagForm),
+    Remove(TagId, RemoveTagForm),
     /// Merging one Tag into another; either select is empty until chosen (the palette's
     /// `tags merge` opens with neither, `m` on an unflagged Tag with only the source).
     Merge(MergeTagsForm),

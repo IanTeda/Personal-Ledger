@@ -6,6 +6,7 @@ use crate::{
     form::field::TextField,
     period::Period,
 };
+use lib_core::{BudgetId, CategoryId};
 
 use super::form::BudgetForm;
 use super::limit_form::{LimitForm, StopForm};
@@ -61,14 +62,14 @@ pub struct Switcher {
     /// Index into [`Self::ids`] for the query.
     pub selected: usize,
     /// Every Budget's id and name: active ones in creation order, then archived ones.
-    entries: Vec<(u32, String)>,
+    entries: Vec<(BudgetId, String)>,
     pub request: SwitcherRequest,
 }
 
 impl Switcher {
     /// Opens with `current` highlighted.
-    pub fn new(budgets: &Budgets, current: u32) -> Self {
-        let entries: Vec<(u32, String)> = budgets
+    pub fn new(budgets: &Budgets, current: BudgetId) -> Self {
+        let entries: Vec<(BudgetId, String)> = budgets
             .active()
             .chain(budgets.archived())
             .map(|budget| (budget.id, budget.name.clone()))
@@ -84,7 +85,7 @@ impl Switcher {
     }
 
     /// The rows for the query, as [`switcher_ids`] gives them.
-    pub fn ids(&self) -> Vec<u32> {
+    pub fn ids(&self) -> Vec<BudgetId> {
         let query = self.query.text().trim().to_lowercase();
         self.entries
             .iter()
@@ -104,7 +105,7 @@ impl Switcher {
     }
 
     /// The highlighted Budget, if any row matches.
-    pub fn chosen(&self) -> Option<u32> {
+    pub fn chosen(&self) -> Option<BudgetId> {
         let ids = self.ids();
         ids.get(self.selected.min(ids.len().saturating_sub(1)))
             .copied()
@@ -158,7 +159,7 @@ impl Dialog for Switcher {
 
 /// The Switcher's rows: active Budgets in creation order, then archived ones, keeping those whose
 /// name contains `query` whatever its case.
-pub fn switcher_ids(budgets: &Budgets, query: &str) -> Vec<u32> {
+pub fn switcher_ids(budgets: &Budgets, query: &str) -> Vec<BudgetId> {
     let query = query.trim().to_lowercase();
     budgets
         .active()
@@ -183,7 +184,7 @@ pub enum ManageAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManageRequest {
     New,
-    Action(u32, ManageAction),
+    Action(BudgetId, ManageAction),
 }
 
 /// 11f: the row cursor over the Switcher's rows, and the last refused action. The rows' ids and
@@ -192,13 +193,13 @@ pub enum ManageRequest {
 pub struct Manage {
     pub selected: usize,
     pub error: Option<BudgetError>,
-    rows: Vec<(u32, bool)>,
+    rows: Vec<(BudgetId, bool)>,
     pub request: Option<ManageRequest>,
 }
 
 impl Manage {
     /// Opens with Budget `current` under the cursor.
-    pub fn new(budgets: &Budgets, current: u32) -> Self {
+    pub fn new(budgets: &Budgets, current: BudgetId) -> Self {
         let mut manage = Self {
             selected: 0,
             error: None,
@@ -211,7 +212,7 @@ impl Manage {
 
     /// Rebuilds the rows and follows `id` to where it now sits. Archiving or restoring moves a
     /// row between the two sections.
-    pub fn refresh(&mut self, budgets: &Budgets, id: u32) {
+    pub fn refresh(&mut self, budgets: &Budgets, id: BudgetId) {
         self.rows = budgets
             .active()
             .map(|budget| (budget.id, false))
@@ -275,7 +276,7 @@ pub enum DetailRequest {
 /// `listed` rows counted as it opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Detail {
-    pub category_id: u32,
+    pub category_id: CategoryId,
     pub month: Period,
     pub selected: usize,
     pub listed: usize,
@@ -283,7 +284,7 @@ pub struct Detail {
 }
 
 impl Detail {
-    pub fn new(category_id: u32, month: Period, listed: usize) -> Self {
+    pub fn new(category_id: CategoryId, month: Period, listed: usize) -> Self {
         Self {
             category_id,
             month,

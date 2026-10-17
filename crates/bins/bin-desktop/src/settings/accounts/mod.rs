@@ -13,6 +13,7 @@ pub mod snapshot;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_accounts::{Account, NO_INSTITUTION, NameLookup, NetWorth, display_order, find_by_name};
+use lib_core::AccountId;
 use lib_ledger::Domain;
 use lib_locale::Label;
 
@@ -220,13 +221,13 @@ impl AccountsPage {
     }
 
     /// The selected account's id, or `None` when the page has no rows.
-    pub fn selected_id(&self, cx: &App) -> Option<u32> {
+    pub fn selected_id(&self, cx: &App) -> Option<AccountId> {
         let index = self.selected_index(cx)?;
         self.accounts(cx).get(index).map(|account| account.id)
     }
 
     /// Selects the row for account `id`, if it still exists.
-    pub fn select_id(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub fn select_id(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         let rows = self.accounts(cx);
         let Some(index) = rows.iter().position(|account| account.id == id) else {
             return;
@@ -250,7 +251,7 @@ impl AccountsPage {
     // -----------------------------------------------------------------------------------------
 
     /// A click on an account row: selects it and, as `enter` does, opens its ledger.
-    pub(crate) fn click_row(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_row(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         open_ledger(id, cx);
     }
@@ -260,12 +261,12 @@ impl AccountsPage {
         self.open_add_dialog("", cx);
     }
 
-    pub(crate) fn click_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_edit(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_edit_dialog(id, cx);
     }
 
-    pub(crate) fn click_delete(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    pub(crate) fn click_delete(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
         self.open_delete_dialog(id, cx);
     }
@@ -297,7 +298,7 @@ impl AccountsPage {
     }
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
-    fn open_edit_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_edit_dialog(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         let options = self.dialog_options(cx);
         let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
             return;
@@ -307,7 +308,7 @@ impl AccountsPage {
     }
 
     /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
-    fn open_delete_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+    fn open_delete_dialog(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
         let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
             return;
         };
@@ -367,7 +368,7 @@ impl AccountsPage {
 
 /// Asks `Shell` for the account's ledger: Transactions filtered to it, from their first row. The
 /// selection is untouched, so returning to Accounts finds the same row selected.
-fn open_ledger(id: u32, cx: &mut Context<'_, AccountsPage>) {
+fn open_ledger(id: AccountId, cx: &mut Context<'_, AccountsPage>) {
     cx.emit(ViewEvent::Reveal(Reveal::AccountTransactions(id)));
 }
 
@@ -390,7 +391,7 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, 1).expect("test dates are valid")
     }
 
-    fn account(id: u32, name: &str, account_type: AccountType) -> Account {
+    fn account(id: AccountId, name: &str, account_type: AccountType) -> Account {
         Account {
             id,
             name: name.to_string(),
@@ -446,7 +447,7 @@ mod tests {
     fn net_worth_count_text_is_singular_for_one_account() {
         crate::locale::init_for_tests();
         let net = net_worth(
-            &[account(1, "Only", AccountType::Cash)],
+            &[account(AccountId::seed(1), "Only", AccountType::Cash)],
             Some(lib_core::UnitId::SEED_AUD),
         );
         assert_eq!(count_text(&net), "1 account");

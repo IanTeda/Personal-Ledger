@@ -8,21 +8,26 @@
 
 use bigdecimal::BigDecimal;
 use chrono::Datelike;
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryId, CategoryTypes, Money};
 
 /// Joins a category's ancestors in a path label: `Food › Groceries`.
 pub const PATH_SEPARATOR: &str = " \u{203a} ";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Category {
-    pub id: u32,
+    pub id: CategoryId,
     pub name: String,
     /// `None` for a top-level category.
-    pub parent: Option<u32>,
+    pub parent: Option<CategoryId>,
     pub category_type: CategoryTypes,
 }
 
-fn category(id: u32, name: &str, parent: Option<u32>, category_type: CategoryTypes) -> Category {
+fn category(
+    id: CategoryId,
+    name: &str,
+    parent: Option<CategoryId>,
+    category_type: CategoryTypes,
+) -> Category {
     Category {
         id,
         name: name.to_string(),
@@ -36,35 +41,65 @@ fn category(id: u32, name: &str, parent: Option<u32>, category_type: CategoryTyp
 pub fn default_categories() -> Vec<Category> {
     use CategoryTypes::{Expense, Income};
     vec![
-        category(1, "Housing", None, Expense),
-        category(2, "Rent", Some(1), Expense),
-        category(3, "Utilities", Some(1), Expense),
-        category(4, "Electricity", Some(3), Expense),
-        category(5, "Water", Some(3), Expense),
-        category(6, "Food", None, Expense),
-        category(7, "Groceries", Some(6), Expense),
-        category(8, "Dining", Some(6), Expense),
-        category(9, "Transport", None, Expense),
-        category(10, "Household", None, Expense),
-        category(11, "Salary", None, Income),
-        category(12, "Interest", None, Income),
+        category(CategoryId::seed(1), "Housing", None, Expense),
+        category(
+            CategoryId::seed(2),
+            "Rent",
+            Some(CategoryId::seed(1)),
+            Expense,
+        ),
+        category(
+            CategoryId::seed(3),
+            "Utilities",
+            Some(CategoryId::seed(1)),
+            Expense,
+        ),
+        category(
+            CategoryId::seed(4),
+            "Electricity",
+            Some(CategoryId::seed(3)),
+            Expense,
+        ),
+        category(
+            CategoryId::seed(5),
+            "Water",
+            Some(CategoryId::seed(3)),
+            Expense,
+        ),
+        category(CategoryId::seed(6), "Food", None, Expense),
+        category(
+            CategoryId::seed(7),
+            "Groceries",
+            Some(CategoryId::seed(6)),
+            Expense,
+        ),
+        category(
+            CategoryId::seed(8),
+            "Dining",
+            Some(CategoryId::seed(6)),
+            Expense,
+        ),
+        category(CategoryId::seed(9), "Transport", None, Expense),
+        category(CategoryId::seed(10), "Household", None, Expense),
+        category(CategoryId::seed(11), "Salary", None, Income),
+        category(CategoryId::seed(12), "Interest", None, Income),
     ]
 }
 
 /// The id of the category named `name` (first match), if any.
-pub fn find_by_name(categories: &[Category], name: &str) -> Option<u32> {
+pub fn find_by_name(categories: &[Category], name: &str) -> Option<CategoryId> {
     categories
         .iter()
         .find(|category| category.name == name)
         .map(|category| category.id)
 }
 
-pub fn get(categories: &[Category], id: u32) -> Option<&Category> {
+pub fn get(categories: &[Category], id: CategoryId) -> Option<&Category> {
     categories.iter().find(|category| category.id == id)
 }
 
 /// `Food › Groceries`: the category's ancestors then its own name. `None` for an unknown id.
-pub fn path(categories: &[Category], id: u32) -> Option<String> {
+pub fn path(categories: &[Category], id: CategoryId) -> Option<String> {
     let mut names = vec![get(categories, id)?.name.as_str()];
     let mut current = get(categories, id)?.parent;
     // Bounded by the category count so a malformed cycle can't loop forever.
@@ -79,14 +114,14 @@ pub fn path(categories: &[Category], id: u32) -> Option<String> {
 }
 
 /// Whether nothing is nested under `id` -- only leaves take Splits.
-pub fn is_leaf(categories: &[Category], id: u32) -> bool {
+pub fn is_leaf(categories: &[Category], id: CategoryId) -> bool {
     !categories
         .iter()
         .any(|category| category.parent == Some(id))
 }
 
 /// `id` and every category nested under it, at any depth -- what a filter on a parent matches.
-pub fn descendants_inclusive(categories: &[Category], id: u32) -> Vec<u32> {
+pub fn descendants_inclusive(categories: &[Category], id: CategoryId) -> Vec<CategoryId> {
     let mut found = vec![id];
     let mut index = 0;
     while index < found.len() {
@@ -103,8 +138,12 @@ pub fn descendants_inclusive(categories: &[Category], id: u32) -> Vec<u32> {
 
 /// Every category with its [`path`], depth-first from each top-level category in list order --
 /// the Category filter's option list, parents included (choosing a parent matches its descendants).
-pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(u32, String)> {
-    fn walk(categories: &[Category], parent: Option<u32>, out: &mut Vec<(u32, String)>) {
+pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(CategoryId, String)> {
+    fn walk(
+        categories: &[Category],
+        parent: Option<CategoryId>,
+        out: &mut Vec<(CategoryId, String)>,
+    ) {
         for category in categories.iter().filter(|c| c.parent == parent) {
             if let Some(label) = path(categories, category.id) {
                 out.push((category.id, label));
@@ -118,7 +157,7 @@ pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(u32, String)> {
 }
 
 /// The depth of a category in the tree (0 for top-level, capped at 3).
-pub fn depth(categories: &[Category], id: u32) -> u32 {
+pub fn depth(categories: &[Category], id: CategoryId) -> u32 {
     let mut d = 0;
     let mut current = get(categories, id).and_then(|c| c.parent);
     while let Some(parent_id) = current {
@@ -137,7 +176,7 @@ pub fn month_to_date_spent(
     categories: &[Category],
     transactions: &[lib_transactions::Transaction],
     _accounts: &[lib_accounts::Account],
-    category_id: u32,
+    category_id: CategoryId,
     today: chrono::NaiveDate,
 ) -> Money {
     let category_ids = descendants_inclusive(categories, category_id);
@@ -166,7 +205,7 @@ pub fn rollup_month_to_date(
     categories: &[Category],
     transactions: &[lib_transactions::Transaction],
     accounts: &[lib_accounts::Account],
-    category_id: u32,
+    category_id: CategoryId,
     today: chrono::NaiveDate,
 ) -> Money {
     let children: Vec<_> = categories
@@ -192,7 +231,7 @@ pub fn rollup_month_to_date(
 pub fn get_or_create_uncategorised(
     categories: &mut Vec<Category>,
     category_type: CategoryTypes,
-) -> u32 {
+) -> CategoryId {
     if let Some(cat) = categories.iter().find(|c| {
         c.name == "Uncategorised" && c.category_type == category_type && c.parent.is_none()
     }) {
@@ -200,7 +239,7 @@ pub fn get_or_create_uncategorised(
     }
 
     // Find next available id
-    let next_id = categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+    let next_id = CategoryId::new();
     categories.push(Category {
         id: next_id,
         name: "Uncategorised".to_string(),
@@ -231,7 +270,7 @@ pub enum CategoryError {
 }
 
 /// Whether `child_id` is a descendant of `parent_id` (cycle detection).
-fn is_descendant(categories: &[Category], parent_id: u32, child_id: u32) -> bool {
+fn is_descendant(categories: &[Category], parent_id: CategoryId, child_id: CategoryId) -> bool {
     if parent_id == child_id {
         return true;
     }
@@ -253,9 +292,9 @@ fn is_descendant(categories: &[Category], parent_id: u32, child_id: u32) -> bool
 pub fn insert_category(
     categories: &mut Vec<Category>,
     name: String,
-    parent_id: Option<u32>,
+    parent_id: Option<CategoryId>,
     category_type: CategoryTypes,
-) -> Result<u32, CategoryError> {
+) -> Result<CategoryId, CategoryError> {
     if let Some(parent_id) = parent_id {
         let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
         // Type must match
@@ -268,7 +307,7 @@ pub fn insert_category(
         }
     }
 
-    let next_id = categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+    let next_id = CategoryId::new();
     categories.push(Category {
         id: next_id,
         name,
@@ -281,7 +320,7 @@ pub fn insert_category(
 /// Edit a category's name (parent changes use `move_category`).
 pub fn edit_category(
     categories: &mut [Category],
-    id: u32,
+    id: CategoryId,
     name: String,
 ) -> Result<(), CategoryError> {
     let category = categories
@@ -299,8 +338,8 @@ pub fn edit_category(
 /// - No cycles allowed
 pub fn move_category(
     categories: &mut [Category],
-    id: u32,
-    new_parent_id: Option<u32>,
+    id: CategoryId,
+    new_parent_id: Option<CategoryId>,
 ) -> Result<(), CategoryError> {
     let category = categories
         .iter()
@@ -333,7 +372,7 @@ pub fn move_category(
 /// Change a category's type and cascade to all descendants.
 pub fn change_category_type(
     categories: &mut [Category],
-    id: u32,
+    id: CategoryId,
     new_type: CategoryTypes,
 ) -> Result<(), CategoryError> {
     let _category = categories
@@ -353,7 +392,7 @@ pub fn change_category_type(
 /// Information about a category in the tree view (used for rendering).
 #[derive(Debug, Clone)]
 pub struct TreeNode {
-    pub id: u32,
+    pub id: CategoryId,
     pub name: String,
     pub depth: u32,
     pub is_leaf: bool,
@@ -363,11 +402,11 @@ pub struct TreeNode {
 
 /// Get tree view rows in display order, respecting expand/collapse state.
 /// Only includes nodes and their descendants if the node is expanded.
-pub fn tree_rows(categories: &[Category], expanded: &[u32]) -> Vec<TreeNode> {
+pub fn tree_rows(categories: &[Category], expanded: &[CategoryId]) -> Vec<TreeNode> {
     fn walk(
         categories: &[Category],
-        expanded: &[u32],
-        parent: Option<u32>,
+        expanded: &[CategoryId],
+        parent: Option<CategoryId>,
         out: &mut Vec<TreeNode>,
     ) {
         for category in categories.iter().filter(|c| c.parent == parent) {
@@ -396,7 +435,7 @@ pub fn tree_rows(categories: &[Category], expanded: &[u32]) -> Vec<TreeNode> {
 }
 
 /// Toggle the expanded state of a category (only for non-leaf categories).
-pub fn toggle_expanded(expanded: &mut Vec<u32>, id: u32, is_leaf: bool) {
+pub fn toggle_expanded(expanded: &mut Vec<CategoryId>, id: CategoryId, is_leaf: bool) {
     if is_leaf {
         return;
     }
@@ -409,7 +448,7 @@ pub fn toggle_expanded(expanded: &mut Vec<u32>, id: u32, is_leaf: bool) {
 
 /// The Settings page's visible rows, top to bottom: the Expense tree, then the Income tree, each
 /// in tree order and respecting `expanded`. `j`/`k` walk exactly this list.
-pub fn settings_rows(categories: &[Category], expanded: &[u32]) -> Vec<TreeNode> {
+pub fn settings_rows(categories: &[Category], expanded: &[CategoryId]) -> Vec<TreeNode> {
     let rows = tree_rows(categories, expanded);
     let is_expense = |row: &TreeNode| {
         get(categories, row.id).is_some_and(|c| c.category_type == CategoryTypes::Expense)
@@ -429,7 +468,7 @@ pub fn levels_deep(categories: &[Category]) -> u32 {
 }
 
 /// How many Categories sit directly under `id`.
-pub fn child_count(categories: &[Category], id: u32) -> usize {
+pub fn child_count(categories: &[Category], id: CategoryId) -> usize {
     categories.iter().filter(|c| c.parent == Some(id)).count()
 }
 
@@ -471,7 +510,7 @@ mod tests {
         );
         let transport = find_by_name(&categories, "Transport").unwrap();
         assert_eq!(path(&categories, transport).as_deref(), Some("Transport"));
-        assert_eq!(path(&categories, 999), None);
+        assert_eq!(path(&categories, CategoryId::seed(999)), None);
     }
 
     #[test]
@@ -630,7 +669,7 @@ mod tests {
         let result = insert_category(
             &mut categories,
             "Invalid".to_string(),
-            Some(999),
+            Some(CategoryId::seed(999)),
             CategoryTypes::Expense,
         );
         assert_eq!(result, Err(CategoryError::ParentNotFound));
@@ -696,7 +735,15 @@ mod tests {
     #[test]
     fn tree_rows_includes_all_when_all_expanded() {
         let categories = default_categories();
-        let expanded = vec![1, 3, 6, 9, 10, 11, 12]; // All parents expanded
+        let expanded = vec![
+            CategoryId::seed(1),
+            CategoryId::seed(3),
+            CategoryId::seed(6),
+            CategoryId::seed(9),
+            CategoryId::seed(10),
+            CategoryId::seed(11),
+            CategoryId::seed(12),
+        ]; // All parents expanded
         let rows = tree_rows(&categories, &expanded);
         assert_eq!(
             rows.len(),
@@ -708,26 +755,30 @@ mod tests {
     #[test]
     fn tree_rows_respects_collapsed_state() {
         let categories = default_categories();
-        let expanded = vec![1]; // Only Housing expanded, not Food
+        let expanded = vec![CategoryId::seed(1)]; // Only Housing expanded, not Food
         let rows = tree_rows(&categories, &expanded);
 
         // Should include Housing and its children (Rent, Utilities, Electricity, Water)
         // All top-level categories appear, but Food's children don't (it's not expanded)
-        assert!(rows.iter().any(|r| r.id == 1)); // Housing (expanded)
-        assert!(rows.iter().any(|r| r.id == 2)); // Rent (child of Housing, shown)
-        assert!(rows.iter().any(|r| r.id == 6)); // Food (top-level, always shown)
-        assert!(!rows.iter().any(|r| r.id == 7)); // Groceries (child of Food, not shown because Food not expanded)
+        assert!(rows.iter().any(|r| r.id == CategoryId::seed(1))); // Housing (expanded)
+        assert!(rows.iter().any(|r| r.id == CategoryId::seed(2))); // Rent (child of Housing, shown)
+        assert!(rows.iter().any(|r| r.id == CategoryId::seed(6))); // Food (top-level, always shown)
+        assert!(!rows.iter().any(|r| r.id == CategoryId::seed(7))); // Groceries (child of Food, not shown because Food not expanded)
     }
 
     #[test]
     fn tree_rows_depth_increases_for_nested() {
         let categories = default_categories();
-        let expanded = vec![1, 3, 6];
+        let expanded = vec![
+            CategoryId::seed(1),
+            CategoryId::seed(3),
+            CategoryId::seed(6),
+        ];
         let rows = tree_rows(&categories, &expanded);
 
-        let housing = rows.iter().find(|r| r.id == 1).unwrap();
-        let utilities = rows.iter().find(|r| r.id == 3).unwrap();
-        let electricity = rows.iter().find(|r| r.id == 4).unwrap();
+        let housing = rows.iter().find(|r| r.id == CategoryId::seed(1)).unwrap();
+        let utilities = rows.iter().find(|r| r.id == CategoryId::seed(3)).unwrap();
+        let electricity = rows.iter().find(|r| r.id == CategoryId::seed(4)).unwrap();
 
         assert_eq!(housing.depth, 0);
         assert_eq!(utilities.depth, 1);
@@ -736,7 +787,7 @@ mod tests {
 
     #[test]
     fn toggle_expanded_adds_and_removes() {
-        let mut expanded = vec![1];
+        let mut expanded = vec![CategoryId::seed(1)];
         let food = find_by_name(&default_categories(), "Food").unwrap();
 
         toggle_expanded(&mut expanded, food, false);
@@ -761,7 +812,7 @@ mod tests {
     #[test]
     fn settings_rows_list_expense_before_income_and_skip_collapsed_children() {
         let categories = default_categories();
-        let names = |expanded: &[u32]| -> Vec<String> {
+        let names = |expanded: &[CategoryId]| -> Vec<String> {
             settings_rows(&categories, expanded)
                 .into_iter()
                 .map(|row| row.name)
@@ -779,7 +830,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            names(&[1, 3]),
+            names(&[CategoryId::seed(1), CategoryId::seed(3)]),
             [
                 "Housing",
                 "Rent",
@@ -800,7 +851,7 @@ mod tests {
         let categories = default_categories();
         assert_eq!(levels_deep(&categories), 3);
         assert_eq!(levels_deep(&[]), 0);
-        assert_eq!(child_count(&categories, 1), 2);
-        assert_eq!(child_count(&categories, 2), 0);
+        assert_eq!(child_count(&categories, CategoryId::seed(1)), 2);
+        assert_eq!(child_count(&categories, CategoryId::seed(2)), 0);
     }
 }

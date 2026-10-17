@@ -2,6 +2,7 @@
 //! [`Apply`] that runs it against the Ledger.
 
 use gpui::{App, Entity};
+use lib_core::DocumentTypeId;
 use lib_ledger::{AddDocumentType, EditDocumentType, RemoveDocumentType};
 
 use lib_documents::types::{self, RemoveError};
@@ -16,10 +17,10 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentTypeCommand {
     Add(DocumentTypeForm),
-    Edit(u32, DocumentTypeForm),
+    Edit(DocumentTypeId, DocumentTypeForm),
     /// Remove the type, moving its Filed files to the type named `destination` (or the Default).
     Remove {
-        id: u32,
+        id: DocumentTypeId,
         destination: Option<String>,
     },
     /// The Default's notice: nothing to change, the Dialog only closes.
@@ -30,11 +31,11 @@ pub enum DocumentTypeCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentTypeOutcome {
     /// Added or edited: the type to select.
-    Saved(u32),
+    Saved(DocumentTypeId),
     /// Removed: the type that now sits where it did, to select. Its Filed files have moved.
     Removed {
-        id: u32,
-        selected: Option<u32>,
+        id: DocumentTypeId,
+        selected: Option<DocumentTypeId>,
     },
     Dismissed,
 }
@@ -140,14 +141,15 @@ mod tests {
     ) {
         let mut apply = apply(cx);
         let rows = types::default_types();
-        let mut remove = DocumentTypesDialog::Remove(3, RemoveForm::new(&rows, 3));
+        let mut remove = DocumentTypesDialog::Remove(
+            DocumentTypeId::seed(3),
+            RemoveForm::new(&rows, DocumentTypeId::seed(3)),
+        );
         let outcome = cx.update(|cx| confirm(&mut remove, &mut apply, cx));
         assert!(matches!(
             outcome,
-            Some(DocumentTypeOutcome::Removed {
-                id: 3,
-                selected: Some(_)
-            })
+            Some(DocumentTypeOutcome::Removed { id, selected: Some(_) })
+                if id == DocumentTypeId::seed(3)
         ));
 
         let mut notice = DocumentTypesDialog::DefaultNotice;
@@ -160,7 +162,10 @@ mod tests {
         let mut apply = apply(cx);
         let rows = types::default_types();
         // A type removed while its dialog was open: the form is valid, the domain refuses.
-        let mut dialog = DocumentTypesDialog::Remove(999, RemoveForm::new(&rows, 999));
+        let mut dialog = DocumentTypesDialog::Remove(
+            DocumentTypeId::seed(999),
+            RemoveForm::new(&rows, DocumentTypeId::seed(999)),
+        );
         let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
         assert_eq!(outcome, None);
         assert!(matches!(
