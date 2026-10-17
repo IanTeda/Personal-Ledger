@@ -113,7 +113,7 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-061 | 15h | `desktop-mockups/15-reports/Reports.dc.html` |
 | DESKTOP-062 | 15i | `desktop-mockups/15-reports/Reports.dc.html` |
 | DESKTOP-063 | 16a | `desktop-mockups/16-settings/Settings.dc.html` |
-| DESKTOP-064 | 16f | `desktop-mockups/16-settings/display/Display.dc.html` |
+| DESKTOP-064 | 16f | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-065 | 16g | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-066 | 16h | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-067 | 16o | `desktop-mockups/16-settings/Settings.dc.html` |
@@ -178,8 +178,8 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-126 | — | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-127 | — | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-128 | — | `desktop-mockups/16-settings/Settings.dc.html` |
-| DESKTOP-129 | — | `desktop-mockups/16-settings/display/Display.dc.html` |
-| DESKTOP-130 | — | `desktop-mockups/16-settings/display/Display.dc.html` |
-| DESKTOP-131 | — | `desktop-mockups/16-settings/display/Display.dc.html` |
-| DESKTOP-132 | — | `desktop-mockups/16-settings/display/Display.dc.html` |
-| DESKTOP-133 | — | `desktop-mockups/16-settings/display/Display.dc.html` |
+| DESKTOP-129 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-130 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-131 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-132 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-133 | — | `desktop-mockups/16-settings/Settings.dc.html` |

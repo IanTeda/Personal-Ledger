@@ -1,16 +1,6 @@
 # Handoff: Settings (paged) — v5
 
-> **Package 16 of 20 · Settings** — an index deck plus one sub deck per Settings page. `Settings.dc.html` opens on the page list, which links to each sub deck; pages without a sub deck yet keep their frames in it: pages 16a, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16v, 16k, 16l, 16m, 16u, 16n, then dialogs 16c, 16d, 16e, 16r, 16s, 16t, 16w, 16x, 16y, plus the Window Size cards for General and Units. Open the decks through `mise run mockups`. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
-
-## Sub decks
-
-Each Settings page moves into its own sub deck, a folder named after the page's `crates/bins/bin-desktop/src/settings/<page>/` folder, holding `README.md` and `<Page>.dc.html`. A sub deck draws the page and its Dialogs in Medium (960 × 1040), Large (1280 × 800) and X-Large (1920 × 1080) rows ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md), [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)). Cards keep their `DESKTOP-NNN` IDs, and the label names the Window Size. When a page moves, its frames, its Pages-table row and its Window Size notes move with it, and this README keeps a pointer.
-
-| Page | Sub deck | Cards |
-| --- | --- | --- |
-| Display | [`display/`](display/README.md) | DESKTOP-129 to 133 and the v5 DESKTOP-064 (16f) |
-
-The rest of the pages get their sub decks as they come up, one ticket each.
+> **Package 16 of 20 · Settings** — one deck, `Settings.dc.html`, which opens on the page list linking to each page's frames: pages 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16v, 16k, 16l, 16m, 16u, 16n, then dialogs 16c, 16d, 16e, 16r, 16s, 16t, 16w, 16x, 16y, plus the Window Size cards for General, Display and Units. Open the deck through `mise run mockups`. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Settings navigation per Window Size
 
@@ -109,7 +99,7 @@ The v5 frames are **1280 × 800**, and Window Size cards use their reference fra
 | Frame | Page | Heading note | Content |
 | --- | --- | --- | --- |
 | **16a** | General | preferences · synced · ledger identity | Ledger name, Owner, Financial year starts (july / january / april), Base unit (aud — Australian Dollar / btc — Bitcoin) in a 320px field column, beside a THIS LEDGER summary (accounts 7 · transactions 680 · units 3 · institutions 7). Footnote: General settings are ledger-scoped Preferences that travel with the ledger as Change Sets; client-only Configuration is under Display. |
-| **16f** | Display | configuration · local · never synced | **Moved to the [`display/`](display/README.md) sub deck.** Segmented controls: Date format (12 sep 2026 / 12/09/2026 / ISO), Decimal & thousands separator (1,234.56 / 1.234,56 / 1 234.56) and Row density (compact / regular / roomy). Radios: Status glyphs (unicode — ○ ◐ ● ⚑ / ascii fallback — o / x !). Beside them, a live PREVIEW (DATE · PAYEE · AMOUNT): ● 12 sep 2026 Woolworths Metro −86.40 · ◐ 10 sep 2026 Telstra −99.00 · ⚑ 09 sep 2026 Dept of Education +4,210.00. A footnote says these values are read from `personal-ledger.conf` at start-up and written back here. Below the field column, a **Sidebar** field group (same `.field` label style as Status glyphs, `margin-top:18px`, 300px max) with two checkboxes (14×14, `accent-color:#201e1d`, square; bold 12.5px label over an 11.5px #605d5d hint): **Hide sidebar** (off) — "Start with the primary rail hidden. **b** or the header toggle still shows it for the session." · **Show keyboard navigation hints** (on) — "Show each destination's **g**-jump, e.g. **g d**, at the right of its row. The jumps work either way." |
+| **16f** | Display | configuration · local · never synced | Segmented controls: Date format (12 sep 2026 / 12/09/2026 / ISO), Decimal & thousands separator (1,234.56 / 1.234,56 / 1 234.56) and Row density (compact / regular / roomy). Radios: Status glyphs (unicode — ○ ◐ ● ⚑ / ascii fallback — o / x !). Beside them, a live PREVIEW (DATE · PAYEE · AMOUNT): ● 12 sep 2026 Woolworths Metro −86.40 · ◐ 10 sep 2026 Telstra −99.00 · ⚑ 09 sep 2026 Dept of Education +4,210.00. A footnote says these values are read from `personal-ledger.conf` at start-up and written back here. Below the field column, a **Sidebar** field group (same `.field` label style as Status glyphs, `margin-top:18px`, 300px max) with two checkboxes (14×14, `accent-color:#201e1d`, square; bold 12.5px label over an 11.5px #605d5d hint): **Hide sidebar** (off) — "Start with the primary rail hidden. **b** or the header toggle still shows it for the session." · **Show keyboard navigation hints** (on) — "Show each destination's **g**-jump, e.g. **g d**, at the right of its row. The jumps work either way." |
 | **16g** | Units | ledger data · synced · 3 units | UNITS table: CODE 100 · NAME 180 · FLAGS flex · SOURCE 130 · TYPE 80 · ACTIONS 120. Rows: aud Australian Dollar · USD · currency (carries the `base` `.tag-accent` and `default` `.tag-outline` flags) · btc Bitcoin · CoinGecko · crypto · vas Vanguard Aus Shares · Manual entry · etf. Then **+ Add unit**. PRICE SOURCES table: NAME 130 · SOURCE flex · LAST UPDATED 130 · ACTIONS 170 (test · edit · delete). Rows: Bitcoin · CoinGecko — auto, every 15 min · 5 minutes ago, and Vanguard Aus Shares · Manual entry · —. Then **+ Add price source**. |
 | **16h** | Institutions | ledger data · synced · 7 institutions | INSTITUTION flex · ACCOUNT TYPE 140 · ACTIONS 120. Rows: ANZ Banking Group (savings · offset), American Express (credit card), Vanguard Investments (investment), Westpac Banking (savings), Cryptocurrency Exchange (crypto), Superannuation Fund (retirement). Then **+ Add institution** (opens 16e). |
 | **16o** | Accounts | ledger data · synced · 7 accounts · net worth **83,995.87 aud** | Kicker BY TYPE + **+ Add account**. Grouped tables (BANK, CREDIT CARD, LOAN, INVESTMENT), each with NAME flex · INSTITUTION 130 · UNIT 90 · BALANCE 120 (right, tabular) · ACTIONS 150 (edit · delete). Rows are `padding:8px 16px`. BANK: ANZ Everyday 4,182.55 · ANZ Offset 61,204.10 (ANZ, aud). CREDIT CARD: Amex Platinum −2,318.44. LOAN: Home Loan (ANZ) −381,311.34. INVESTMENT: Vanguard VAS 1,240 u (vas) · Bitcoin (Crypto.com) 0.4120 u (btc). Add and edit reuse the account form from section 17 (17b/17c). Status bar: `j/k row · enter open ledger · e edit · d delete · n new`. |
@@ -132,7 +122,56 @@ The v5 frames are **1280 × 800**, and Window Size cards use their reference fra
 - **DESKTOP-127 · Large (1280 × 800):** expanded rail (206px) and the docked 232px Settings index with General selected. Heading **General** alone. The two columns take 760px of the 782px View.
 - **DESKTOP-128 · X-Large (1920 × 1080):** the same Chrome as Large. The content stops at 840px and the rest of the View stays empty.
 
-**16f at each Window Size** (DESKTOP-129–133) is in the [`display/`](display/README.md) sub deck.
+**16f at each Window Size.** Five cards after 16f draw the Display page in the Window Size Chrome from `../01-shell/README.md#window-sizes`, and add the Toasts field and the Colour Theme group. The code lives in `crates/bins/bin-desktop/src/settings/display/`. Display has no Dialogs: every field saves on change.
+
+Rows run Medium, Large and X-Large, the order the Chrome is designed in ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md)). The fields, PREVIEW and Sidebar group are 16f's; the Toasts field and the Colour Theme group below them are new to these cards. Everything is capped at 840px; only the Chrome, the heading, the space beside the PREVIEW and how far the page scrolls change.
+
+| Card | Window Size | Frame | Chrome | Heading | Content |
+| --- | --- | --- | --- | --- | --- |
+| **DESKTOP-129** | Medium | 960 × 1040 | icon rail (52px), no docked index | breadcrumb **Settings › Display ▾** with the page picker caret | The PREVIEW takes the 500px beside the 300px field column; the Sidebar group sits below the fields, then the Toasts field and the Colour Theme group, four cards to a row. The page runs about 120px past the View, so it scrolls. |
+| **DESKTOP-130** | Large | 1280 × 800 | expanded rail (206px), docked 232px Settings index with Display selected | **Display** alone | The PREVIEW flexes to the View's edge. The page is taller than the View: a vertical scroll bar shows and the Toasts field and Colour Theme group start below the fold. |
+| **DESKTOP-132** | Large | 1280 × 800 | as DESKTOP-130 | **Display** alone, scrolled with the page | DESKTOP-130 scrolled to the end, so the Toasts field and the Colour Theme group show in full. |
+| **DESKTOP-133** | Large | 1280 × 800 | as DESKTOP-130, in Modernist's Dark Colour Variant | **Display** alone, scrolled with the page | DESKTOP-132 with Appearance set to Dark and a `[theme.dark] positive = "#2a6340"` override: every card draws its Dark roles with that `positive`, and the override note and contrast line sit under the grid. |
+| **DESKTOP-131** | X-Large | 1920 × 1080 | the same Chrome as Large | **Display** alone | The PREVIEW stops with the page at 840px and the rest of the View stays empty. Even at 1080px the page runs about 80px past the View, so a short scroll bar shows. Settings docks no detail pane. |
+| DESKTOP-064 | — (v5) | 1280 × 800 | the v5 Chrome: expanded rail, 214px index, header breadcrumb | **Settings – Display** | Kept as the reference for the field values below. Where it differs from DESKTOP-130, DESKTOP-130 is correct. |
+
+- **Status line at Medium:** `j/k section · [/] pages · p picker · esc settings`, with the ledger path shortened to `…/teda.pldb`. At Large and X-Large the form-page hints under Frame & shell apply.
+- **Stacking:** at 960 the two columns sit side by side. Below about 700px of page width, as at the 720px floor with the icon rail, the PREVIEW wraps under the field column instead of crushing the payee.
+
+#### 16f content
+
+- **Heading note:** `configuration · local · never synced`.
+- **Segmented controls:** Date format (12 sep 2026 / 12/09/2026 / ISO), Decimal & thousands separator (1,234.56 / 1.234,56 / 1 234.56) and Row density (compact / regular / roomy).
+- **Radios:** Status glyphs (unicode — ○ ◐ ● ⚑ / ascii fallback — o / x !).
+- **PREVIEW (DATE · PAYEE · AMOUNT):** ● 12 sep 2026 Woolworths Metro −86.40 · ◐ 10 sep 2026 Telstra −99.00 · ⚑ 09 sep 2026 Dept of Education +4,210.00. It redraws as the fields change.
+- **Sidebar group** (`margin-top:18px`, 300px max), two checkboxes (14×14, square, `accent-color:#201e1d`; bold 12.5px label over an 11.5px #605d5d hint):
+  - **Hide sidebar** (off): "Start with the primary rail hidden. **b** or the header toggle still shows it for the session." It applies at Large and X-Large only; Medium always starts with the icon rail.
+  - **Show keyboard navigation hints** (on): "Show each destination's **g**-jump, e.g. **g d**, at the right of its row. The jumps work either way."
+- **Toasts** (`margin-top:24px`, 300px, below the Sidebar group; `toasts_field` in `render.rs`, [ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)): an On / Off segmented control with 88px options, On in the sample, over the 12px #605d5d note "Errors still show". Off sends Toasts to the status line instead; Errors still toast.
+- **Colour Theme group** (full width, `margin-top:28px`, below the Toasts field), per `docs/colour-themes-design.md` "Settings":
+  - **Appearance:** a Light / Dark / System segmented control, the same as the other segmented fields. System is chosen in the sample, with the 12px #605d5d note "System (currently Light)" under it; if the OS reports nothing it reads "System (not detected, using Dark)".
+  - **Colour theme:** a wrapping grid (`gap:12px`) of 160px cards, one per built-in Colour Theme in order: Modernist, High Contrast, Catppuccin, Gruvbox, Nord. Each card is a miniature ledger 84px tall in that Colour Theme's Colour Variant in effect (Light in most frames, Dark in DESKTOP-133), run through `resolve` with this Client's `[theme]` overrides: an 18px chrome band with a muted bar and an accent chip, then three 14px rows, the middle one selected (the `foreground`/`background` swap), carrying a positive, a negative and a muted amount. The name sits 6px under it in 12px.
+  - **Chosen card:** a 2px border in the current Colour Theme's `accent` and a bold name; the rest have a 1px border. Keyboard focus draws a 1px `foreground` ring 2px outside the card, so focus and choice never hide each other.
+  - **Override and contrast notes** (DESKTOP-133): while `[theme]` overrides any role in the Colour Variant drawn, a 12px `muted` note 6px under the grid reads "positive overridden by [theme] in your configuration file. Restart to change them."; each contrast failure adds a 12px line 4px below in the negative text shade, "positive on background is 2.6:1, needs 3:1". The override is still used.
+- **Footnote:** these values are read from `personal-ledger.conf` at start-up and written back here; ledger-scoped Preferences are under **General**. DESKTOP-064 still says "Ledger & units".
+
+#### 16f keyboard
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Next / previous field. |
+| `tab` | Next field. |
+| `tab` onto the grid, then arrows or `h`/`j`/`k`/`l` | Move focus between Colour Theme cards; `enter` chooses. Focus and hover never preview. |
+| `[` / `]` | Medium only: previous / next page, General and Units. |
+| `p` | Medium only: open the page picker. |
+| `esc` | Medium only: back to the Settings index. |
+
+#### 16f known gaps
+
+Two differences from the code in `settings/display/render.rs` remain, both inherited from 16f:
+
+- **Locale isn't drawn.** The code opens the field column with a read-only Locale field (`locale_field`: the effective Locale, where it came from, and a hint that it changes through the `locale` setting or `--locale` and a restart, per [ADR-0021](../../../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md)). No frame shows it.
+- **Decimal & thousands separator isn't in the code.** The frames draw it from 16f, but the Desktop has no such field: number formatting follows the Locale (ADR-0021).
 
 **16g at each Window Size.** Three cards after 16g draw the Units page in the Window Size Chrome from `../01-shell/README.md#window-sizes`. The page content, both tables and their columns are 16g's, capped at 840px; only the Chrome and the heading change.
 
@@ -283,8 +322,7 @@ Build to the intent, not the literal mockup:
 13. **Inventory counts are derived.** ITEMS and VALUE come from the inventory items; never store them. Rooms order = the room tabs in Inventory (8a).
 
 ## Files
-- `Settings.dc.html` — the index deck (section 16): the page list, linking to each sub deck, then the frames of pages without one: 16a, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then 16u, then dialogs 16c–16e and 16r–16t. Links to other sections point to the sibling package folders.
+- `Settings.dc.html` — section 16: the page list, then the frames of every page, each followed by its Window Size cards: 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then 16u, then dialogs 16c–16e and 16r–16t. Links to other sections point to the sibling package folders.
 - `styles.css`, `_ds_bundle.js` — Modernist tokens and components.
 - `support.js` — runtime for viewing the reference.
-- `display/` — the Display sub deck (`README.md`, `Display.dc.html`).
 - `README.md` — this document.
