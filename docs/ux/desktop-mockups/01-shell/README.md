@@ -1,6 +1,6 @@
 # Handoff: Desktop Chrome & Navigation
 
-> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-106, DESKTOP-107 and DESKTOP-116 to DESKTOP-121. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-106, DESKTOP-107 and DESKTOP-116 to DESKTOP-122. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
@@ -22,7 +22,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 **Purpose**: The shell's structural baseline, shown in its **cold-start state**. The primary rail groups the domain nouns under headings and carries each item's `g`-jump binding in a right-hand column. No second rail: the landing view has no entity to scope to.
 
 **Layout**:
-- **Header** (48px): app glyph, "Personal Ledger" wordmark, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
+- **Header** (48px): panel toggle, Back and Forward chevrons (faint until there is somewhere to go), "Personal Ledger" wordmark, Undo with a caret listing the last 6 actions, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
 - **Primary rail** (206px): grouped nav
   - `LEDGER` — Dashboard `g d`, Transactions `g l`, Documents `g f` (receipts, statements, policies, tax papers — linked to what they prove), Events `g e` (milestones, occasions, incidents and balance checks on the timeline), Notifications `g m` (+ red unread badge)
   - `NET WORTH` — Cash `g c`, Inventory `g o`, Loans `g n`, Credit cards `g k`, Investments `g i`
@@ -121,7 +121,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 
 - **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
 - **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
-- **Header:** the wordmark alone on every View, with no breadcrumb or View suffix: the View's own heading says where the user is (DESKTOP-116). The wordmark, sync status and window controls never shrink.
+- **Header:** the wordmark alone on every View, with no breadcrumb or View suffix: the View's own heading says where the user is (DESKTOP-116). Back and Forward sit before the wordmark and Undo with its recent-actions caret after it (DESKTOP-122). The wordmark, history buttons, sync status and window controls never shrink.
 - **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
 - **Dialogs:** stay 420px wide at every Window Size.
 - **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
@@ -283,11 +283,14 @@ fileExplorer
 - **1b** is now the Dashboard (see above).
 - **Settings rail** lists Backup, History and Logs in place of Data & backup and Tracing (Logs).
 
+## Changes (17 October 2026)
+- **Header:** Back and Forward return as chevrons between the panel toggle and the wordmark, stepping through the Views visited (mouse only, no key binding yet). Undo follows the wordmark, with a caret opening a list of the last 6 actions; the Desktop draws representative actions and reports "undo — not yet built" until the Ledger keeps an Undo history. Every frame's header draws them (faint at the 1a and 1e cold start, Back live elsewhere), and DESKTOP-122 shows the list open.
+
 ## Changes (16 October 2026)
 - **Deck** renamed from "Shell & navigation" to **Chrome & Navigation**.
 - **Status bar right-hand slot** now shows the file path of the open `.pldb` ledger (`~/documents/ledgers/teda.pldb`) in every frame with a ledger loaded (1b, 1c, 1d, 1f), replacing the context labels and `esc close …` hints. The no-ledger frames (1a, 1e) show "No ledger open…".
 
 ## Changes (17 October 2026)
 
-- **Window Sizes:** turns 2 and 3 draw the Chrome at Medium, Large and X-Large (DESKTOP-106, DESKTOP-107, DESKTOP-116 to DESKTOP-121), Medium first. See [Window Sizes](#window-sizes).
+- **Window Sizes:** turns 2 and 3 draw the Chrome at Medium, Large and X-Large (DESKTOP-106, DESKTOP-107, DESKTOP-116 to DESKTOP-122), Medium first. See [Window Sizes](#window-sizes).
 - **Medium Settings navigation:** a drill-down index with a `Settings › <Page> ▾` page heading, picked in #692. DESKTOP-105, the Medium baseline with the docked index, is retired.
