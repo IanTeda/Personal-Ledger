@@ -1,6 +1,31 @@
 # Handoff: Settings (paged) — v5
 
-> **Package 16 of 20 · Settings** — 24 frames: pages 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16v, 16k, 16l, 16m, 16u, 16n, then dialogs 16c, 16d, 16e, 16r, 16s, 16t, 16w, 16x, 16y. Open `Settings.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 16 of 20 · Settings** — an index deck plus one sub deck per Settings page. `Settings.dc.html` opens on the page list, which links to each sub deck; pages without a sub deck yet keep their frames in it: pages 16a, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16v, 16k, 16l, 16m, 16u, 16n, then dialogs 16c, 16d, 16e, 16r, 16s, 16t, 16w, 16x, 16y, plus the Window Size cards for General and Units. Open the decks through `mise run mockups`. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+
+## Sub decks
+
+Each Settings page moves into its own sub deck, a folder named after the page's `crates/bins/bin-desktop/src/settings/<page>/` folder, holding `README.md` and `<Page>.dc.html`. A sub deck draws the page and its Dialogs in Medium (960 × 1040), Large (1280 × 800) and X-Large (1920 × 1080) rows ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md), [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)). Cards keep their `DESKTOP-NNN` IDs, and the label names the Window Size. When a page moves, its frames, its Pages-table row and its Window Size notes move with it, and this README keeps a pointer.
+
+| Page | Sub deck | Cards |
+| --- | --- | --- |
+| Display | [`display/`](display/README.md) | DESKTOP-129, 130, 131 and the v5 DESKTOP-064 (16f) |
+
+The rest of the pages get their sub decks as they come up, one ticket each.
+
+## Settings navigation per Window Size
+
+The Chrome around Settings follows `../01-shell/README.md#window-sizes`; these are the parts every Settings page shares.
+
+| Window Size | Primary rail | Settings index | Page heading | Status line hints |
+| --- | --- | --- | --- | --- |
+| Medium (720 – 1199) | icons, 52px | none docked: `g s` opens a full-page index (DESKTOP-119) | the breadcrumb **Settings › <Page> ▾**: **Settings** goes back to the index, the caret (or `p`) opens the page picker (DESKTOP-120) | `j/k section · [/] pages · p picker · esc settings`, ledger path `…/teda.pldb` |
+| Large (1200 – 1599) | expanded, 206px | docked, 232px, the page selected | **<Page>** alone | the form or list hints below |
+| X-Large (≥ 1600) | expanded, 206px | docked, 232px, the page selected | **<Page>** alone | the form or list hints below |
+
+- **`[` / `]`** step to the previous and next page in index order at Medium; the status line is their only hint. `[` does nothing on General and `]` nothing on About.
+- **Content width:** every page caps its content at 840px at every Window Size. At X-Large the rest of the View stays empty; Settings docks no detail pane.
+- **Chrome header:** the wordmark alone, so the page heading is the only trail.
+- **Dialogs** stay 420px wide (or their own stated width) at every Window Size.
 
 ## Overview
 Personal Ledger's **Settings** destination. Each section of the settings index opens its own page, and modal dialogs handle unit and institution management. Reference data that used to live in the primary rail now lives here: Accounts, Categories, Tags and Payees.
@@ -44,7 +69,7 @@ This package supersedes `design_handoff_settings_v4/` and older (v3, v2, single-
 **High fidelity.** Colours, typography, spacing, rules and states are final.
 
 ## Frame & shell
-Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
+The v5 frames are **1280 × 800**, and Window Size cards use their reference frame: header 48px, body `flex:1`, status bar 28px.
 
 - **Header breadcrumb:** `settings › <page>` (lower case). The right of the header reads `Synced 14:22`.
 - **Status bar:** the NORMAL chip, then per-page hints on the left and a status on the right.
@@ -84,7 +109,7 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 | Frame | Page | Heading note | Content |
 | --- | --- | --- | --- |
 | **16a** | General | preferences · synced · ledger identity | Ledger name, Owner, Financial year starts (july / january / april), Base unit (aud — Australian Dollar / btc — Bitcoin) in a 320px field column, beside a THIS LEDGER summary (accounts 7 · transactions 680 · units 3 · institutions 7). Footnote: General settings are ledger-scoped Preferences that travel with the ledger as Change Sets; client-only Configuration is under Display. |
-| **16f** | Display | configuration · local · never synced | Segmented controls: Date format (12 sep 2026 / 12/09/2026 / ISO), Decimal & thousands separator (1,234.56 / 1.234,56 / 1 234.56) and Row density (compact / regular / roomy). Radios: Status glyphs (unicode — ○ ◐ ● ⚑ / ascii fallback — o / x !). Beside them, a live PREVIEW (DATE · PAYEE · AMOUNT): ● 12 sep 2026 Woolworths Metro −86.40 · ◐ 10 sep 2026 Telstra −99.00 · ⚑ 09 sep 2026 Dept of Education +4,210.00. A footnote says these values are read from `personal-ledger.conf` at start-up and written back here. Below the field column, a **Sidebar** field group (same `.field` label style as Status glyphs, `margin-top:18px`, 300px max) with two checkboxes (14×14, `accent-color:#201e1d`, square; bold 12.5px label over an 11.5px #605d5d hint): **Hide sidebar** (off) — "Start with the primary rail hidden. **b** or the header toggle still shows it for the session." · **Show keyboard navigation hints** (on) — "Show each destination's **g**-jump, e.g. **g d**, at the right of its row. The jumps work either way." |
+| **16f** | Display | configuration · local · never synced | **Moved to the [`display/`](display/README.md) sub deck.** Segmented controls: Date format (12 sep 2026 / 12/09/2026 / ISO), Decimal & thousands separator (1,234.56 / 1.234,56 / 1 234.56) and Row density (compact / regular / roomy). Radios: Status glyphs (unicode — ○ ◐ ● ⚑ / ascii fallback — o / x !). Beside them, a live PREVIEW (DATE · PAYEE · AMOUNT): ● 12 sep 2026 Woolworths Metro −86.40 · ◐ 10 sep 2026 Telstra −99.00 · ⚑ 09 sep 2026 Dept of Education +4,210.00. A footnote says these values are read from `personal-ledger.conf` at start-up and written back here. Below the field column, a **Sidebar** field group (same `.field` label style as Status glyphs, `margin-top:18px`, 300px max) with two checkboxes (14×14, `accent-color:#201e1d`, square; bold 12.5px label over an 11.5px #605d5d hint): **Hide sidebar** (off) — "Start with the primary rail hidden. **b** or the header toggle still shows it for the session." · **Show keyboard navigation hints** (on) — "Show each destination's **g**-jump, e.g. **g d**, at the right of its row. The jumps work either way." |
 | **16g** | Units | ledger data · synced · 3 units | UNITS table: CODE 100 · NAME 180 · FLAGS flex · SOURCE 130 · TYPE 80 · ACTIONS 120. Rows: aud Australian Dollar · USD · currency (carries the `base` `.tag-accent` and `default` `.tag-outline` flags) · btc Bitcoin · CoinGecko · crypto · vas Vanguard Aus Shares · Manual entry · etf. Then **+ Add unit**. PRICE SOURCES table: NAME 130 · SOURCE flex · LAST UPDATED 130 · ACTIONS 170 (test · edit · delete). Rows: Bitcoin · CoinGecko — auto, every 15 min · 5 minutes ago, and Vanguard Aus Shares · Manual entry · —. Then **+ Add price source**. |
 | **16h** | Institutions | ledger data · synced · 7 institutions | INSTITUTION flex · ACCOUNT TYPE 140 · ACTIONS 120. Rows: ANZ Banking Group (savings · offset), American Express (credit card), Vanguard Investments (investment), Westpac Banking (savings), Cryptocurrency Exchange (crypto), Superannuation Fund (retirement). Then **+ Add institution** (opens 16e). |
 | **16o** | Accounts | ledger data · synced · 7 accounts · net worth **83,995.87 aud** | Kicker BY TYPE + **+ Add account**. Grouped tables (BANK, CREDIT CARD, LOAN, INVESTMENT), each with NAME flex · INSTITUTION 130 · UNIT 90 · BALANCE 120 (right, tabular) · ACTIONS 150 (edit · delete). Rows are `padding:8px 16px`. BANK: ANZ Everyday 4,182.55 · ANZ Offset 61,204.10 (ANZ, aud). CREDIT CARD: Amex Platinum −2,318.44. LOAN: Home Loan (ANZ) −381,311.34. INVESTMENT: Vanguard VAS 1,240 u (vas) · Bitcoin (Crypto.com) 0.4120 u (btc). Add and edit reuse the account form from section 17 (17b/17c). Status bar: `j/k row · enter open ledger · e edit · d delete · n new`. |
@@ -107,11 +132,7 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 - **DESKTOP-127 · Large (1280 × 800):** expanded rail (206px) and the docked 232px Settings index with General selected. Heading **General** alone. The two columns take 760px of the 782px View.
 - **DESKTOP-128 · X-Large (1920 × 1080):** the same Chrome as Large. The content stops at 840px and the rest of the View stays empty.
 
-**16f at each Window Size.** Three cards after 16f draw the Display page the same way. The fields, PREVIEW and Sidebar group are 16f's, capped at 840px. The footnote names **General** as the home of ledger-scoped Preferences, where 16f still says "Ledger & units".
-
-- **DESKTOP-129 · Medium (960 × 1040):** icon rail, no docked index. Breadcrumb **Settings › Display ▾**; `[`/`]` step to General and Units. The PREVIEW takes the 500px beside the 300px field column. Same status line as DESKTOP-126.
-- **DESKTOP-130 · Large (1280 × 800):** expanded rail and the docked index with Display selected. Heading **Display** alone; the PREVIEW flexes to the View's edge.
-- **DESKTOP-131 · X-Large (1920 × 1080):** the same Chrome as Large. The PREVIEW stops with the page at 840px and the rest of the View stays empty.
+**16f at each Window Size** (DESKTOP-129–131) is in the [`display/`](display/README.md) sub deck.
 
 **16g at each Window Size.** Three cards after 16g draw the Units page in the Window Size Chrome from `../01-shell/README.md#window-sizes`. The page content, both tables and their columns are 16g's, capped at 840px; only the Chrome and the heading change.
 
@@ -262,7 +283,8 @@ Build to the intent, not the literal mockup:
 13. **Inventory counts are derived.** ITEMS and VALUE come from the inventory items; never store them. Rooms order = the room tabs in Inventory (8a).
 
 ## Files
-- `Settings.dc.html` — design reference (section 16): 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then 16u, then dialogs 16c–16e and 16r–16t. Links to other sections point to the sibling package folders.
+- `Settings.dc.html` — the index deck (section 16): the page list, linking to each sub deck, then the frames of pages without one: 16a, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then 16u, then dialogs 16c–16e and 16r–16t. Links to other sections point to the sibling package folders.
 - `styles.css`, `_ds_bundle.js` — Modernist tokens and components.
 - `support.js` — runtime for viewing the reference.
+- `display/` — the Display sub deck (`README.md`, `Display.dc.html`).
 - `README.md` — this document.
