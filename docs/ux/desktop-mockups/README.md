@@ -34,7 +34,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 | `14-budgets-v2` | Budgets v2: multiple budgets, four methods | 14a–14f | PLAN · `g b` |
 | `15-reports` | Reports | 15a–15i | PLAN · `g r` |
 | `16-settings` | Settings index deck, one page per section | 16a–16v, dialogs 16c–16e, 16r–16t | pinned · `g s` |
-| `16-settings/display` | Settings › Display sub deck, at Medium, Large and X-Large | 16f · DESKTOP-129–131 | Settings › Display |
+| `16-settings/display` | Settings › Display sub deck, at Medium, Large and X-Large | 16f · DESKTOP-129–132 | Settings › Display |
 | `17-accounts` | Account management & forms | 17a–17d | Settings › Accounts |
 | `18-categories` | Category dialogs | 18a–18d | Settings › Categories |
 | `19-tags` | Tag dialogs & merge | 19a–19e | Settings › Tags |

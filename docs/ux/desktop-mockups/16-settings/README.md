@@ -8,7 +8,7 @@ Each Settings page moves into its own sub deck, a folder named after the page's 
 
 | Page | Sub deck | Cards |
 | --- | --- | --- |
-| Display | [`display/`](display/README.md) | DESKTOP-129, 130, 131 and the v5 DESKTOP-064 (16f) |
+| Display | [`display/`](display/README.md) | DESKTOP-129, 130, 131, 132 and the v5 DESKTOP-064 (16f) |
 
 The rest of the pages get their sub decks as they come up, one ticket each.
 
