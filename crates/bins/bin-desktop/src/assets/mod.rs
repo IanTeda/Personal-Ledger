@@ -63,6 +63,15 @@ const ICONS: &[(&str, &[u8])] = &[
     // icon here.
     icon!("folder"),
     icon!("file"),
+    // The Medium Settings index page's rows (DESKTOP-119), for the pages no rail noun already
+    // gives an icon. Lucide's nearest to the mockup's hand-drawn glyphs.
+    icon!("sliders-horizontal"),
+    icon!("monitor"),
+    icon!("circle-dollar-sign"),
+    icon!("refresh-cw"),
+    icon!("database"),
+    icon!("square-terminal"),
+    icon!("info"),
 ];
 
 pub struct Assets;

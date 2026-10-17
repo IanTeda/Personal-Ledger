@@ -195,3 +195,53 @@ fn at_medium_the_index_page_has_a_scrollbar_and_scrolls_by_wheel(app: &mut TestA
     ui.click("settings-index-page-About");
     assert_eq!(ui.settings().page, "About");
 }
+
+#[gpui::test]
+fn at_medium_every_index_row_carries_its_icon(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+
+    for page in [
+        "General",
+        "Display",
+        "Units",
+        "Institutions",
+        "Accounts",
+        "Categories",
+        "Tags",
+        "Payees",
+        "Documents",
+        "Inventory",
+        "SyncServer",
+        "DataBackup",
+        "Tracing",
+        "About",
+    ] {
+        let row = ui.bounds(&format!("settings-index-page-{page}"));
+        let icon = ui.bounds(&format!("settings-index-page-{page}-icon"));
+        assert!(
+            row.contains(&icon.center()) && icon.left() < row.center().x,
+            "{page}'s icon leads its row"
+        );
+    }
+}
+
+#[gpui::test]
+fn display_stacks_the_preview_under_the_fields_only_at_the_medium_floor(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+    ui.click("settings-index-page-Display");
+    assert_eq!(ui.settings().page, "Display");
+
+    let fields = ui.bounds("display-fields");
+    let preview = ui.bounds("display-preview");
+    assert!(preview.left() > fields.right(), "side by side at 960px");
+
+    ui.resize(gpui::size(gpui::px(720.0), gpui::px(480.0)));
+    let fields = ui.bounds("display-fields");
+    let preview = ui.bounds("display-preview");
+    assert!(preview.top() > fields.bottom(), "stacked at 720px");
+    assert_eq!(preview.left(), fields.left());
+}

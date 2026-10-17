@@ -1,5 +1,6 @@
 //! Shell chrome driven by the mouse: primary rail rows (expanded and collapsed) and the topbar's
-//! rail toggle, Back/Forward and Undo with its recent-actions list. Only the elements clicked are tagged with `debug_selector`.
+//! rail toggle, Back/Forward and Undo with its recent-actions list, and how the status line fits a
+//! narrow window. Only the elements clicked or measured are tagged with `debug_selector`.
 
 use super::common;
 
@@ -141,4 +142,53 @@ fn clicking_outside_the_undo_list_or_its_caret_again_closes_it(app: &mut TestApp
         Noun::Dashboard,
         "the click outside only closes the list"
     );
+}
+
+#[gpui::test]
+fn at_medium_the_status_line_shortens_the_ledger_path(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    assert_eq!(ui.status(), None, "the Dashboard shows the ledger path");
+    let x_large = ui.bounds("status-right").size.width;
+
+    ui.resize_to(WindowSize::Medium);
+    let medium = ui.bounds("status-right").size.width;
+    assert!(
+        medium < x_large,
+        "{medium:?} is not shorter than {x_large:?}"
+    );
+
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(ui.bounds("status-right").size.width, x_large);
+}
+
+#[gpui::test]
+fn at_the_medium_floor_the_status_line_drops_hints_from_the_end(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize(gpui::size(gpui::px(720.0), gpui::px(480.0)));
+    // Settings › Inventory, focused: the longest legend, with Medium's page keys on the end.
+    ui.press("g s");
+    ui.press(&["j"; 9].join(" "));
+    ui.press("enter");
+    let legend = ui.status().expect("Inventory has a legend").hints.len();
+
+    // gpui keeps the bounds of a strip drawn earlier, so only a count never drawn before proves
+    // what this frame shows: the index page's legend was 2 long.
+    assert!(
+        !ui.is_drawn(&format!("status-page-hints-shown-{legend}")),
+        "the whole {legend}-hint legend doesn't fit at 720px"
+    );
+    assert!(
+        (3..legend).any(|shown| ui.is_drawn(&format!("status-page-hints-shown-{shown}"))),
+        "the first hints still show"
+    );
+    let right = ui.bounds("status-right");
+    assert!(
+        right.right() <= gpui::px(720.0),
+        "the context note keeps its place"
+    );
+
+    // Widened, the legend loses Medium's page keys, and all of what's left shows.
+    ui.resize_to(WindowSize::XLarge);
+    let legend = ui.status().expect("Inventory has a legend").hints.len();
+    assert!(ui.is_drawn(&format!("status-page-hints-shown-{legend}")));
 }

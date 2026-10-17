@@ -47,6 +47,15 @@ pub enum DesktopIcon {
     Folder,
     /// The "1e" file explorer's row icon for any non-folder entry, openable or not.
     File,
+    /// The Settings pages with no rail noun of their own, on the Medium index page's rows
+    /// (DESKTOP-119).
+    SettingsGeneral,
+    SettingsDisplay,
+    SettingsUnits,
+    SettingsSyncServer,
+    SettingsDataBackup,
+    SettingsTracing,
+    SettingsAbout,
 }
 
 impl DesktopIcon {
@@ -82,6 +91,13 @@ impl DesktopIcon {
             Self::UndoMenu => "icons/chevron-down.svg",
             Self::Folder => "icons/folder.svg",
             Self::File => "icons/file.svg",
+            Self::SettingsGeneral => "icons/sliders-horizontal.svg",
+            Self::SettingsDisplay => "icons/monitor.svg",
+            Self::SettingsUnits => "icons/circle-dollar-sign.svg",
+            Self::SettingsSyncServer => "icons/refresh-cw.svg",
+            Self::SettingsDataBackup => "icons/database.svg",
+            Self::SettingsTracing => "icons/square-terminal.svg",
+            Self::SettingsAbout => "icons/info.svg",
         }
     }
 

@@ -312,7 +312,9 @@ fn shell_hints() -> Vec<(&'static str, String)> {
         .collect()
 }
 
-/// The shell-wide hints, the first `shown` of them, each a click target for its key's action.
+/// The shell-wide hints, the first `shown` of them, each a click target for its key's action. The
+/// strip is tagged with `shown`: gpui keeps an element's bounds after it stops drawing, so a test
+/// can't see a hint drop by its own tag, only a count that was never drawn before.
 fn hint_strip(on_hint: Option<OnHint>, shown: usize, cx: &App) -> impl IntoElement {
     let entry = |id: &'static str, action: HintAction, key: &'static str, label: String| {
         let on_hint = on_hint.clone();
@@ -339,22 +341,29 @@ fn hint_strip(on_hint: Option<OnHint>, shown: usize, cx: &App) -> impl IntoEleme
             .into_any_element()
     };
 
-    div().flex().items_center().gap(HINT_GAP).children(
-        shell_hint_entries()
-            .into_iter()
-            .take(shown)
-            .enumerate()
-            .flat_map(|(index, (id, action, key, label))| {
-                let separator = (index > 0).then(|| div().child("\u{b7}").into_any_element());
-                separator.into_iter().chain([entry(id, action, key, label)])
-            }),
-    )
+    div()
+        .debug_selector(move || format!("status-hints-shown-{shown}"))
+        .flex()
+        .items_center()
+        .gap(HINT_GAP)
+        .children(
+            shell_hint_entries()
+                .into_iter()
+                .take(shown)
+                .enumerate()
+                .flat_map(|(index, (id, action, key, label))| {
+                    let separator = (index > 0).then(|| div().child("\u{b7}").into_any_element());
+                    separator.into_iter().chain([entry(id, action, key, label)])
+                }),
+        )
 }
 
 /// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the
-/// shell-wide hint strip's own.
+/// shell-wide hint strip's own. Tagged with how many hints it shows, as [`hint_strip`] is.
 fn page_hint_strip(hints: &[(&'static str, String)], cx: &App) -> impl IntoElement {
+    let shown = hints.len();
     div()
+        .debug_selector(move || format!("status-page-hints-shown-{shown}"))
         .flex()
         .items_center()
         .gap(HINT_GAP)

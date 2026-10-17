@@ -1,5 +1,7 @@
 //! The page enum: which pages Settings has, their index order, and their label, scope note and id.
 
+use crate::assets::icon::DesktopIcon;
+
 /// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
 /// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
 /// Tags and Payees joined the original eight when they left the primary rail.
@@ -66,6 +68,28 @@ impl SettingsPage {
             Self::DataBackup => crate::msg::desktop_settings_section_data_backup(),
             Self::Tracing => crate::msg::desktop_settings_section_tracing(),
             Self::About => crate::msg::desktop_settings_section_about(),
+        }
+    }
+
+    /// The icon beside the page's name on the Medium index page (DESKTOP-119). A page that was a
+    /// rail noun keeps that noun's icon, so it reads the same wherever it shows; Institutions
+    /// shares Loans' bank.
+    pub fn icon(self) -> DesktopIcon {
+        match self {
+            Self::General => DesktopIcon::SettingsGeneral,
+            Self::Display => DesktopIcon::SettingsDisplay,
+            Self::Units => DesktopIcon::SettingsUnits,
+            Self::Institutions => DesktopIcon::Loans,
+            Self::Accounts => DesktopIcon::Accounts,
+            Self::Categories => DesktopIcon::Categories,
+            Self::Tags => DesktopIcon::Tags,
+            Self::Payees => DesktopIcon::Payees,
+            Self::Documents => DesktopIcon::Documents,
+            Self::Inventory => DesktopIcon::Inventory,
+            Self::SyncServer => DesktopIcon::SettingsSyncServer,
+            Self::DataBackup => DesktopIcon::SettingsDataBackup,
+            Self::Tracing => DesktopIcon::SettingsTracing,
+            Self::About => DesktopIcon::SettingsAbout,
         }
     }
 

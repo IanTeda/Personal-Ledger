@@ -46,6 +46,10 @@ pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// PREVIEW beside it.
 const FIELD_COLUMN_WIDTH: gpui::Pixels =
     px(DATE_STYLE_CHOICES.len() as f32 * UNIFORM_OPTION_WIDTH + 2.0);
+/// The narrowest the PREVIEW draws beside the field column: its fixed glyph, date and amount
+/// columns plus a readable payee. Below it, as at the 720px floor with the icon rail, the PREVIEW
+/// wraps under the field column instead of crushing the payee.
+const PREVIEW_MIN_WIDTH: gpui::Pixels = px(300.0);
 const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
 const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
 const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
@@ -57,7 +61,9 @@ impl Render for DisplayPage {
         let field_focus = self.field_focus();
         let columns = div()
             .flex()
-            .gap(px(40.0))
+            .flex_wrap()
+            .gap_x(px(40.0))
+            .gap_y(px(24.0))
             .child(field_column(
                 display.date_style,
                 display.row_density,
@@ -129,6 +135,7 @@ fn field_column(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector(|| "display-fields".to_string())
         .w(FIELD_COLUMN_WIDTH)
         .flex_none()
         .flex()
@@ -363,8 +370,9 @@ fn preview_column(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector(|| "display-preview".to_string())
         .flex_1()
-        .min_w(px(0.0))
+        .min_w(PREVIEW_MIN_WIDTH)
         .max_w(px(460.0))
         .child(
             div()

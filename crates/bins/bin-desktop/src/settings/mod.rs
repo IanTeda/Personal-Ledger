@@ -27,7 +27,10 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Pixels, SharedString, Window, div, prelude::*, px};
 
-use gpui_component::scroll::{Scrollbar, ScrollbarShow};
+use gpui_component::{
+    Sizable,
+    scroll::{Scrollbar, ScrollbarShow},
+};
 
 use crate::{chrome::rail::settings_index::SettingsIndexRail, navigation::nav::Noun, theme::color};
 
@@ -430,6 +433,21 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
             })
             .when(!active, |this| this.hover(|this| this.bg(color::hover(cx))))
             .on_click(move |_event, window, cx| on_row_click(page, window, cx))
+            .child(
+                div()
+                    .debug_selector(move || format!("settings-index-page-{page:?}-icon"))
+                    .flex_none()
+                    .child(
+                        page.icon()
+                            .icon()
+                            .with_size(px(16.0))
+                            .text_color(if active {
+                                color::selection_text(cx)
+                            } else {
+                                color::foreground(cx)
+                            }),
+                    ),
+            )
             .child(
                 div()
                     .flex_1()
