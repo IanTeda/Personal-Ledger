@@ -27,6 +27,8 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Pixels, SharedString, Window, div, prelude::*, px};
 
+use gpui_component::scroll::{Scrollbar, ScrollbarShow};
+
 use crate::{chrome::rail::settings_index::SettingsIndexRail, navigation::nav::Noun, theme::color};
 
 use picker::PagePicker;
@@ -38,6 +40,10 @@ pub const CONTENT_MAX_WIDTH: Pixels = px(840.0);
 
 /// The page picker's own width, under the page name.
 const PICKER_WIDTH: Pixels = px(280.0);
+
+/// Where the Medium index page's rows start among its scrolled children, after the heading and
+/// its rule, so the selected row can be scrolled to.
+const INDEX_PAGE_FIRST_ROW: usize = 2;
 
 type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 type OnPageClick = Rc<dyn Fn(SettingsPage, &mut Window, &mut App)>;
@@ -67,14 +73,38 @@ impl Render for SettingsView {
             };
             return div()
                 .id("settings")
+                .relative()
                 .flex_1()
                 .min_w(px(0.0))
                 .h_full()
-                .overflow_y_scroll()
-                .track_scroll(&self.scroll_handle)
-                .py(px(22.0))
-                .px(px(28.0))
-                .child(index_page(selected, on_row_click, cx))
+                .child(
+                    div()
+                        .id("settings-index-scroll")
+                        .debug_selector(|| "settings-index-page".to_string())
+                        .size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.index_scroll)
+                        .pt(px(22.0))
+                        .pb(px(70.0))
+                        .px(px(28.0))
+                        .flex()
+                        .flex_col()
+                        .children(index_page(selected, on_row_click, cx)),
+                )
+                .child(
+                    div()
+                        .debug_selector(|| "settings-index-scrollbar".to_string())
+                        .occlude()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .w(px(12.0))
+                        .child(
+                            Scrollbar::vertical(&self.index_scroll)
+                                .scrollbar_show(ScrollbarShow::Always),
+                        ),
+                )
                 .into_any_element();
         }
         let accounts = self.sources().accounts.clone();
@@ -354,91 +384,93 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
 }
 
 /// The Settings index as a page of its own, at Medium (DESKTOP-119): a plain **Settings** heading,
-/// then one row per page with its one-line description. The page on show stays selected.
-fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> impl IntoElement {
+/// then one row per page with its one-line description. The page on show stays selected. Each is
+/// a child of the scroll on its own, from [`INDEX_PAGE_FIRST_ROW`], so a row can be scrolled to.
+fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Vec<AnyElement> {
     let count = i64::try_from(SettingsPage::ALL.len()).unwrap_or(i64::MAX);
-    div()
-        .debug_selector(|| "settings-index-page".to_string())
-        .w_full()
-        .max_w(CONTENT_MAX_WIDTH)
+    let heading = div()
         .flex()
-        .flex_col()
-        .mb(px(48.0))
+        .items_baseline()
+        .justify_between()
         .child(
             div()
-                .flex()
-                .items_baseline()
-                .justify_between()
-                .child(
-                    div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(28.0))
-                        .text_color(color::foreground(cx))
-                        .child(Noun::Settings.label()),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(color::faint_text(cx))
-                        .child(crate::msg::desktop_settings_index_count(count)),
-                ),
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(28.0))
+                .text_color(color::foreground(cx))
+                .child(Noun::Settings.label()),
         )
         .child(
             div()
-                .h(px(2.0))
-                .bg(color::structural_rule(cx))
-                .mt(px(14.0))
-                .mb(px(6.0)),
-        )
-        .children(SettingsPage::ALL.into_iter().map(|page| {
-            let on_row_click = on_row_click.clone();
-            let active = page == selected;
-            div()
-                .id(SharedString::from(format!("settings-index-page-{page:?}")))
-                .debug_selector(move || format!("settings-index-page-{page:?}"))
-                .cursor_pointer()
-                .flex()
-                .items_center()
-                .gap(px(14.0))
-                .py(px(10.0))
-                .px(px(12.0))
-                .border_b_1()
-                .border_color(color::hairline(cx))
-                .when(active, |this| {
-                    this.bg(color::selection_background(cx))
-                        .text_color(color::selection_text(cx))
-                })
-                .when(!active, |this| this.hover(|this| this.bg(color::hover(cx))))
-                .on_click(move |_event, window, cx| on_row_click(page, window, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.0))
-                        .child(
-                            div()
-                                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                                .child(page.label()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.5))
-                                .when(!active, |this| this.text_color(color::muted(cx)))
-                                .truncate()
-                                .child(page.description()),
-                        ),
-                )
-                .child("\u{203a}")
-        }))
-        .child(
-            div()
-                .pt(px(10.0))
                 .text_size(px(11.5))
                 .text_color(color::faint_text(cx))
-                .child(crate::msg::desktop_settings_index_footer()),
-        )
+                .child(crate::msg::desktop_settings_index_count(count)),
+        );
+    let rule = div()
+        .h(px(2.0))
+        .bg(color::structural_rule(cx))
+        .mt(px(14.0))
+        .mb(px(6.0));
+    let rows = SettingsPage::ALL.into_iter().map(|page| {
+        let on_row_click = on_row_click.clone();
+        let active = page == selected;
+        div()
+            .id(SharedString::from(format!("settings-index-page-{page:?}")))
+            .debug_selector(move || format!("settings-index-page-{page:?}"))
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .gap(px(14.0))
+            .py(px(10.0))
+            .px(px(12.0))
+            .border_b_1()
+            .border_color(color::hairline(cx))
+            .when(active, |this| {
+                this.bg(color::selection_background(cx))
+                    .text_color(color::selection_text(cx))
+            })
+            .when(!active, |this| this.hover(|this| this.bg(color::hover(cx))))
+            .on_click(move |_event, window, cx| on_row_click(page, window, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                            .child(page.label()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .when(!active, |this| this.text_color(color::muted(cx)))
+                            .truncate()
+                            .child(page.description()),
+                    ),
+            )
+            .child("\u{203a}")
+            .into_any_element()
+    });
+    let footer = div()
+        .pt(px(10.0))
+        .text_size(px(11.5))
+        .text_color(color::faint_text(cx))
+        .child(crate::msg::desktop_settings_index_footer());
+    [heading.into_any_element(), rule.into_any_element()]
+        .into_iter()
+        .chain(rows)
+        .chain([footer.into_any_element()])
+        .map(|child| {
+            div()
+                .w_full()
+                .max_w(CONTENT_MAX_WIDTH)
+                .flex_none()
+                .child(child)
+                .into_any_element()
+        })
+        .collect()
 }
 
 /// A page that isn't rebuilt yet.

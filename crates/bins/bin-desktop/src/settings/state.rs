@@ -201,6 +201,8 @@ pub struct SettingsView {
     focus: SettingsFocus,
     /// The page body's scroll, which also gives the Colour Theme grid its width.
     pub(super) scroll_handle: ScrollHandle,
+    /// The Medium index page's scroll, its own so moving the selection doesn't reset it.
+    pub(super) index_scroll: ScrollHandle,
     /// Whether the View zone has focus, told by `Shell` as it draws the View.
     pub(super) zone_focused: bool,
     /// The Window Size the View was last drawn at, told by `Shell` as it draws the View, so its
@@ -245,6 +247,7 @@ impl SettingsView {
             selected_section: SettingsPage::default(),
             focus: SettingsFocus::default(),
             scroll_handle: ScrollHandle::new(),
+            index_scroll: ScrollHandle::new(),
             zone_focused: false,
             window_size: WindowSize::Large,
             picker: None,
@@ -625,6 +628,21 @@ impl SettingsView {
         self.sources
             .display
             .update(cx, |page, cx| page.clear_focus(cx));
+        self.reveal_index_row();
+    }
+
+    /// Scrolls the Medium index page just enough to show the selected row, as the selection moves
+    /// or the index comes back on show.
+    fn reveal_index_row(&self) {
+        if !self.drill_down() {
+            return;
+        }
+        let row = SettingsPage::ALL
+            .iter()
+            .position(|page| *page == self.selected_section)
+            .unwrap_or(0);
+        self.index_scroll
+            .scroll_to_item(super::INDEX_PAGE_FIRST_ROW + row);
     }
 
     fn apply_section_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
@@ -641,6 +659,7 @@ impl SettingsView {
             _ => last,
         };
         self.select_page(pages[next], cx);
+        self.reveal_index_row();
     }
 
     /// An index entry's click: swaps the body to that page and leaves focus on the index.

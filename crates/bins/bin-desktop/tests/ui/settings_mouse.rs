@@ -161,3 +161,37 @@ fn at_x_large_the_docked_index_swaps_the_capped_page(app: &mut TestAppContext) {
     );
     assert!(!ui.is_drawn("settings-crumb-picker"));
 }
+
+/// Whether the wheel brought About, the last row, wholly inside the index page's scroll.
+fn index_row_bottom_on_show(ui: &mut Harness<'_>) -> bool {
+    let frame = ui.bounds("settings-index-page");
+    ui.bounds("settings-index-page-About").bottom() <= frame.bottom()
+}
+
+#[gpui::test]
+fn at_medium_the_index_page_has_a_scrollbar_and_scrolls_by_wheel(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize(gpui::size(gpui::px(960.0), gpui::px(480.0)));
+    ui.press("g s");
+
+    let frame = ui.bounds("settings-index-page");
+    let scrollbar = ui.bounds("settings-index-scrollbar");
+    assert_eq!(
+        scrollbar.right(),
+        frame.right(),
+        "the bar runs down the right edge"
+    );
+    assert_eq!(scrollbar.size.height, frame.size.height);
+
+    let before = ui.bounds("settings-index-page-About").top();
+    ui.scroll_at(
+        frame.center(),
+        gpui::point(gpui::px(0.0), gpui::px(-2000.0)),
+    );
+    let after = ui.bounds("settings-index-page-About").top();
+    assert!(after < before, "the wheel scrolls the rows up");
+    assert!(index_row_bottom_on_show(&mut ui));
+
+    ui.click("settings-index-page-About");
+    assert_eq!(ui.settings().page, "About");
+}

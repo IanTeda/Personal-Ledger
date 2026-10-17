@@ -192,6 +192,58 @@ fn at_medium_g_s_lands_on_the_index_page(app: &mut TestAppContext) {
     assert_eq!(hint_keys(&mut ui), ["j/k", "l/enter"]);
 }
 
+/// Whether the row tagged `row` sits wholly inside the Medium index page's scroll.
+fn index_row_on_show(ui: &mut Harness<'_>, row: &str) -> bool {
+    let frame = ui.bounds("settings-index-page");
+    let row = ui.bounds(row);
+    row.top() >= frame.top() && row.bottom() <= frame.bottom()
+}
+
+#[gpui::test]
+fn at_medium_j_and_k_scroll_the_index_page_to_keep_the_selected_row_on_show(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.resize(gpui::size(gpui::px(960.0), gpui::px(480.0)));
+    ui.press("g s");
+    assert!(index_row_on_show(&mut ui, "settings-index-page-General"));
+    assert!(
+        !index_row_on_show(&mut ui, "settings-index-page-About"),
+        "a 480px window can't show every row"
+    );
+
+    for page in &PAGES[1..] {
+        ui.press("j");
+        assert!(
+            index_row_on_show(&mut ui, &format!("settings-index-page-{page}")),
+            "{page} scrolled into view"
+        );
+    }
+    assert!(!index_row_on_show(&mut ui, "settings-index-page-General"));
+
+    for page in PAGES[..PAGES.len() - 1].iter().rev() {
+        ui.press("k");
+        assert!(
+            index_row_on_show(&mut ui, &format!("settings-index-page-{page}")),
+            "{page} scrolled back into view"
+        );
+    }
+}
+
+#[gpui::test]
+fn at_medium_esc_back_to_the_index_shows_the_page_it_left(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize(gpui::size(gpui::px(960.0), gpui::px(480.0)));
+    ui.press("g s enter p k");
+    ui.press(&vec!["j"; PAGES.len()].join(" "));
+    ui.press("enter");
+    assert_eq!(ui.settings().page, "About");
+
+    ui.press("escape");
+
+    assert!(index_row_on_show(&mut ui, "settings-index-page-About"));
+}
+
 #[gpui::test]
 fn at_medium_enter_opens_a_page_in_the_index_s_place_and_esc_goes_back(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
