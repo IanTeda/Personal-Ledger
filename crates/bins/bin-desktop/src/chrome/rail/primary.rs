@@ -207,7 +207,7 @@ impl PrimaryRail {
             .pt(px(14.0))
             .pb(px(10.0))
             .bg(color::chrome(cx))
-            .border_r(px(2.0))
+            .border_r(px(1.0))
             .border_color(if self.focused {
                 color::foreground(cx)
             } else {
@@ -257,7 +257,7 @@ impl PrimaryRail {
             .py(px(12.0))
             .gap(px(2.0))
             .bg(color::chrome(cx))
-            .border_r(px(2.0))
+            .border_r(px(1.0))
             .border_color(if self.focused {
                 color::foreground(cx)
             } else {

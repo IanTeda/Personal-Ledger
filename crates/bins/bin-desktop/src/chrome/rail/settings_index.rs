@@ -44,9 +44,10 @@ impl RenderOnce for SettingsIndexRail {
             .flex_col()
             .bg(color::background(cx))
             .border_r(px(2.0))
-            .border_color(color::structural_rule(cx))
-            .when(self.focused, |this| {
-                this.border_l(px(2.0)).border_color(color::foreground(cx))
+            .border_color(if self.focused {
+                color::foreground(cx)
+            } else {
+                color::structural_rule(cx)
             })
             .child(
                 div()
