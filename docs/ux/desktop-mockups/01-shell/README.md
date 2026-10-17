@@ -127,7 +127,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 - **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
 - **Toasts:** at most 420px, or the window width minus 16px each side when that is narrower. At the 720px floor that is 688px, so a toast never actually shrinks; the rule only guards against a smaller minimum later (DESKTOP-116).
 - **Horizontal scroll:** a View whose content is wider than the space the Chrome leaves it shows a horizontal scroll bar at the View's bottom edge and scrolls inside the View. The page title, header, rails and status line never scroll sideways (DESKTOP-118).
-- **X-Large:** a View may dock a detail pane and decides that per View. Settings docks none.
+- **X-Large:** a View may dock a detail pane and decides that per View. Settings pages dock none, except Units, which docks a 400px pane whose ACTIVITY list takes its outcomes in place of Toasts (DESKTOP-125).
 
 ---
 
