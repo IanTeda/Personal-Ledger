@@ -161,6 +161,23 @@ desktop-settings-units-delete-warning = This unit is referenced by { $accounts -
 desktop-settings-units-delete-held = { $name } · { $quantity } held in { $name } account
 desktop-settings-units-delete-confirm-label = Type { $code } to confirm
 
+## The Units detail pane docked at X-Large.
+
+desktop-settings-units-pane-unit = Unit
+desktop-settings-units-pane-none = —
+desktop-settings-units-pane-title = { $code } · { $name }
+desktop-settings-units-pane-meta = { $kind } · valued in { $base }
+desktop-settings-units-pane-edit-unit = Edit unit
+desktop-settings-units-pane-delete-unit = Delete unit
+desktop-settings-units-pane-test = Test
+desktop-settings-units-pane-edit-source = Edit source
+desktop-settings-units-pane-delete-source = Delete source
+desktop-settings-units-pane-add-source = Add price source
+desktop-settings-units-pane-activity = Activity
+desktop-settings-units-pane-activity-note = This session's Units outcomes, newest first. Errors still toast.
+desktop-settings-units-activity-saved = Saved unit { $code }
+desktop-settings-units-activity-deleted = Deleted unit { $code }
+
 ## Institutions. `$glyph` is the plus sign on the add button.
 
 desktop-settings-institutions-add =

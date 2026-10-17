@@ -21,6 +21,7 @@ use crate::settings::documents::{DocumentsPage, RowClicked as DocumentsRowClicke
 use crate::settings::inventory::{InventoryPage, RowClicked as InventoryRowClicked};
 use crate::settings::payees::{PayeesPage, RowClicked};
 use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
+use crate::settings::units::UnitsRowClicked;
 use crate::{
     chrome::{statusline::PageStatus, window_size::WindowSize},
     navigation::key_router::Movement,
@@ -218,6 +219,7 @@ pub struct SettingsView {
     _tags_row_clicked: Subscription,
     _documents_row_clicked: Subscription,
     _inventory_row_clicked: Subscription,
+    _units_row_clicked: Subscription,
 }
 
 impl SettingsView {
@@ -242,6 +244,10 @@ impl SettingsView {
             &sources.inventory,
             |view, _page, _event: &InventoryRowClicked, cx| view.focus_page_from_click(cx),
         );
+        let _units_row_clicked = cx.subscribe(
+            &sources.units,
+            |view, _page, _event: &UnitsRowClicked, cx| view.focus_page_from_click(cx),
+        );
         Self {
             sources,
             selected_section: SettingsPage::default(),
@@ -256,6 +262,7 @@ impl SettingsView {
             _tags_row_clicked,
             _documents_row_clicked,
             _inventory_row_clicked,
+            _units_row_clicked,
         }
     }
 
@@ -346,6 +353,9 @@ impl SettingsView {
     /// Medium draws.
     pub fn set_window_size(&mut self, window_size: WindowSize, cx: &mut Context<'_, Self>) {
         self.window_size = window_size;
+        self.sources
+            .units
+            .update(cx, |page, cx| page.set_window_size(window_size, cx));
         if window_size != WindowSize::Medium && self.picker.is_some() {
             self.close_picker(cx);
         }

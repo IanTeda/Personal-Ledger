@@ -21,6 +21,8 @@ desktop-hint-toggle-sidebar = toggle sidebar
 ## A page's own hint strip, beside its keys.
 
 desktop-hint-row = row
+desktop-hint-unit = unit
+desktop-hint-test-source = test source
 desktop-hint-open-ledger = open ledger
 desktop-hint-open = open
 desktop-hint-edit = edit

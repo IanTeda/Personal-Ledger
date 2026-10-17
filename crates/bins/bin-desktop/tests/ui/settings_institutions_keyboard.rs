@@ -4,7 +4,10 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{InputMode, Noun},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -91,6 +94,7 @@ fn escape_discards_an_add_unit_draft(app: &mut TestAppContext) {
 #[gpui::test]
 fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
+    ui.resize_to(WindowSize::Large);
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
     ui.click("unit-edit-0");

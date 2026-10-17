@@ -5,7 +5,10 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{InputMode, Noun},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -157,6 +160,7 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
 #[gpui::test]
 fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
+    ui.resize_to(WindowSize::Large);
     let (code, name, _) = ui.settings_units().unit_rows[0].clone();
 
     ui.click("unit-edit-0");
@@ -175,6 +179,7 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
 #[gpui::test]
 fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
+    ui.resize_to(WindowSize::Large);
 
     // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
     ui.click("unit-edit-2");
@@ -187,6 +192,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
 #[gpui::test]
 fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
+    ui.resize_to(WindowSize::Large);
 
     ui.click("price-source-test-0");
     assert_eq!(

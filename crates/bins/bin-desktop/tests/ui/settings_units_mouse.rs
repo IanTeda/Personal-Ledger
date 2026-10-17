@@ -4,12 +4,18 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::{
+    WindowSize,
+    navigation::nav::{InputMode, Noun},
+};
 use common::Harness;
 use gpui::TestAppContext;
 
+/// Below X-Large the rows carry their own Edit and Delete buttons, so the older cases run at
+/// Large; the X-Large cases below drive the detail pane.
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Units");
@@ -220,4 +226,92 @@ fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContex
         Some("add price source \u{2014} not yet built")
     );
     assert_eq!(ui.settings().dialog, None);
+}
+
+fn on_units_xlarge(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s");
+    ui.click("settings-index-Units");
+    assert_eq!(ui.settings().page, "Units");
+    ui
+}
+
+#[gpui::test]
+fn at_x_large_the_rows_drop_their_buttons_and_the_pane_docks(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(ui.is_drawn("units-detail-pane"));
+    assert!(!ui.is_drawn("unit-edit-0"));
+    assert!(!ui.is_drawn("unit-delete-0"));
+    assert!(!ui.is_drawn("price-source-test-0"));
+    assert!(ui.is_drawn("units-pane-unit"));
+    assert!(ui.is_drawn("units-pane-source"));
+    assert!(ui.is_drawn("units-pane-activity"));
+}
+
+#[gpui::test]
+fn at_x_large_clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(!ui.settings().page_focused);
+
+    ui.click("unit-row-1");
+    assert_eq!(ui.settings_units().selected_code.as_deref(), Some("btc"));
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn at_x_large_the_pane_buttons_open_the_dialogs_for_the_selected_unit(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("unit-row-1");
+
+    ui.click("units-pane-edit-unit");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
+    ui.press("escape");
+
+    ui.click("units-pane-delete-unit");
+    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    ui.click("delete-unit-cancel");
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn at_x_large_a_unit_without_a_source_offers_to_add_one(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(ui.is_drawn("units-pane-add-source"));
+    assert!(!ui.is_drawn("units-pane-test-source"));
+
+    ui.click("unit-row-1");
+    assert!(ui.is_drawn("units-pane-test-source"));
+    ui.click("units-pane-test-source");
+    assert!(status(&mut ui).is_some());
+}
+
+#[gpui::test]
+fn at_x_large_a_confirmed_delete_lands_in_activity_and_raises_no_toast(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("unit-row-1");
+    ui.click("units-pane-delete-unit");
+    for ch in "btc".chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.click("delete-unit-confirm");
+
+    assert_eq!(
+        ui.settings_units().activity,
+        vec!["Deleted unit btc".to_string()]
+    );
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn below_x_large_a_confirmed_delete_still_raises_its_toast(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("unit-delete-1");
+    for ch in "btc".chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.click("delete-unit-confirm");
+
+    assert!(ui.settings_units().activity.is_empty());
+    assert_eq!(ui.toasts().visible.len(), 1);
 }

@@ -94,11 +94,15 @@ impl Shell {
                 let mut apply = UnitsApply {
                     ledger: self.ledger.clone(),
                 };
-                let toast = self
-                    .confirm_dialog::<UnitsDialog, _>(&mut apply, cx)
-                    .and_then(|outcome| outcome.toast());
-                if let Some((kind, message)) = toast {
-                    self.raise_toast(kind, message);
+                let page = self.views.settings.read(cx).units().clone();
+                if let Some(outcome) = self.confirm_dialog::<UnitsDialog, _>(&mut apply, cx) {
+                    // The docked detail pane is already in view beside the row, so it logs the
+                    // outcome in ACTIVITY instead of raising a Toast (DESKTOP-125).
+                    if page.read(cx).docked() {
+                        page.update(cx, |page, cx| page.land(&outcome, cx));
+                    } else if let Some((kind, message)) = outcome.toast() {
+                        self.raise_toast(kind, message);
+                    }
                 }
             }
             Some(OpenDialog::Institutions(_)) => {

@@ -125,6 +125,8 @@ impl Render for SettingsView {
         let tracing = self.sources().tracing.clone();
         let display = self.sources().display.clone();
         let units = self.sources().units.clone();
+        let units_page = units.clone();
+        let units_docked = units.read(cx).docked();
         let institutions = self.sources().institutions.clone();
         let sync_server = self.sources().sync_server.clone();
         let data_backup = self.sources().data_backup.clone();
@@ -222,6 +224,9 @@ impl Render for SettingsView {
             plain_heading(selected, cx).into_any_element()
         };
         let body = body.child(section_block(selected, heading, meta, content, cx));
+        // Units docks its detail pane at X-Large, at the View's right edge.
+        let pane = (selected == SettingsPage::Units && units_docked)
+            .then(|| units::detail_pane(units_page.read(cx), &units_page, cx));
         div()
             .id("settings")
             .flex_1()
@@ -236,6 +241,7 @@ impl Render for SettingsView {
                 ))
             })
             .child(body)
+            .children(pane)
             .into_any_element()
     }
 }

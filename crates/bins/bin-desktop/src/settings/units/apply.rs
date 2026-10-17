@@ -41,7 +41,7 @@ pub enum UnitsCommand {
 /// What a landed [`UnitsCommand`] did, for the Toast that follows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitsOutcome {
-    Saved,
+    Saved { code: String },
     Deleted { code: String },
 }
 
@@ -49,7 +49,7 @@ impl UnitsOutcome {
     /// The Toast `Shell` raises once the Dialog has closed: only a delete has one.
     pub fn toast(&self) -> Option<(ToastKind, String)> {
         match self {
-            Self::Saved => None,
+            Self::Saved { .. } => None,
             Self::Deleted { code } => Some((
                 ToastKind::Success,
                 lib_locale::msg::toast_unit_deleted(code),
@@ -105,30 +105,33 @@ impl Apply<UnitsCommand> for UnitsApply {
     fn apply(&mut self, command: UnitsCommand, cx: &mut App) -> Result<UnitsOutcome, UnitGone> {
         match command {
             UnitsCommand::Add { code, name, kind } => {
+                let saved = code.clone();
                 let Ok(()) = self.ledger.update(cx, |store, cx| {
                     store.apply(cx, AddUnit { code, name, kind })
                 });
-                Ok(UnitsOutcome::Saved)
+                Ok(UnitsOutcome::Saved { code: saved })
             }
             UnitsCommand::Edit {
                 id,
                 code,
                 name,
                 kind,
-            } => self
-                .ledger
-                .update(cx, |store, cx| {
-                    store.apply(
-                        cx,
-                        EditUnit {
-                            id,
-                            code,
-                            name,
-                            kind,
-                        },
-                    )
-                })
-                .map(|()| UnitsOutcome::Saved),
+            } => {
+                let saved = code.clone();
+                self.ledger
+                    .update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            EditUnit {
+                                id,
+                                code,
+                                name,
+                                kind,
+                            },
+                        )
+                    })
+                    .map(|()| UnitsOutcome::Saved { code: saved })
+            }
             UnitsCommand::Delete { id } => self
                 .ledger
                 .update(cx, |store, cx| store.apply(cx, DeleteUnit { id }))
@@ -191,7 +194,7 @@ mod tests {
                 cx,
             )
         });
-        assert_eq!(landed, Ok(UnitsOutcome::Saved));
+        assert_eq!(landed, Ok(UnitsOutcome::Saved { code: "eth".into() }));
         let edited = cx.update(|cx| {
             apply.apply(
                 UnitsCommand::Edit {
@@ -203,7 +206,7 @@ mod tests {
                 cx,
             )
         });
-        assert_eq!(edited, Ok(UnitsOutcome::Saved));
+        assert_eq!(edited, Ok(UnitsOutcome::Saved { code: "aud".into() }));
 
         cx.read(|cx| {
             let units = apply.ledger.read(cx).ledger().units();
@@ -240,7 +243,7 @@ mod tests {
     #[test]
     fn only_a_delete_raises_a_toast() {
         crate::locale::init_for_tests();
-        assert_eq!(UnitsOutcome::Saved.toast(), None);
+        assert_eq!(UnitsOutcome::Saved { code: "btc".into() }.toast(), None);
         assert_eq!(
             UnitsOutcome::Deleted { code: "btc".into() }.toast(),
             Some((
