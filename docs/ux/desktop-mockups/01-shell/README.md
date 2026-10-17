@@ -1,6 +1,6 @@
 # Handoff: Desktop Chrome & Navigation
 
-> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f). Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-105 to DESKTOP-118. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
@@ -12,7 +12,7 @@ This package contains the design for **Personal Ledger's application shell** —
 **High-fidelity.** Final colors, typography, exact spacing, and interaction states. Recreate faithfully; translate HTML structure into GPUI idioms.
 
 ## Frame
-All four variants are drawn at **1280 × 800** — the reference desktop window size. The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
+Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Window Size frames (turns 2–4) are drawn at each Window Size's reference frame; see [Window Sizes](#window-sizes). The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
 
 ---
 
@@ -82,6 +82,54 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
   - Footer: helper text "only **.pldb** files can be opened" left, Cancel (secondary) + Open (primary, dark) right
 
 **Why it matters**: `.pldb` is the only openable extension — everything else in the list (folders, `.csv`, `.pldb.bak`) is present specifically to test that the row-type distinction reads correctly at a glance, and that Open is meaningfully gated on selecting a real `.pldb` row.
+
+## Window Sizes
+
+The Chrome arranges itself by the Window Size, picked from the window's width alone ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md), [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)). The Chrome is designed Medium-first. Turns 2–4 of `Shell.dc.html` draw it; every card's label starts with its Window Size and frame.
+
+| Window Size | Width | Reference frame | Primary rail | Settings index | Ledger path |
+| --- | --- | --- | --- | --- | --- |
+| Medium | 720 – 1199 | 960 × 1040 | icons, 52px | to be picked (see below) | `…/teda.pldb` |
+| Large | 1200 – 1599 | 1280 × 800 | expanded, 206px | docked, 232px | `~/documents/ledgers/teda.pldb` |
+| X-Large | ≥ 1600 | 1920 × 1080 | expanded, 206px | docked, 232px | `~/documents/ledgers/teda.pldb` |
+
+### Reference frames (turn 2)
+
+- **DESKTOP-105 · Medium:** the baseline, today's Chrome with only the icon rail applied. The docked 232px index leaves the page 676px, so the Display preview stacks under the form. The navigation options below replace this layout.
+- **DESKTOP-106 · Large:** today's Chrome, unchanged.
+- **DESKTOP-107 · X-Large:** the same Chrome as Large. The Settings page caps its content at 840px and leaves the rest of the View empty.
+
+### Chrome at each Window Size
+
+- **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
+- **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
+- **Header breadcrumb:** truncates from the left with `…`, so the leaf always shows (DESKTOP-116). The wordmark, sync status and window controls never shrink.
+- **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
+- **Dialogs:** stay 420px wide at every Window Size.
+- **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
+- **Toasts:** at most 420px, or the window width minus 16px each side when that is narrower. At the 720px floor that is 688px, so a toast never actually shrinks; the rule only guards against a smaller minimum later (DESKTOP-116).
+- **Horizontal scroll:** a View whose content is wider than the space the Chrome leaves it shows a horizontal scroll bar at the View's bottom edge and scrolls inside the View. The page title, header, rails and status line never scroll sideways (DESKTOP-118).
+- **X-Large:** a View may dock a detail pane and decides that per View. Settings docks none.
+
+### Medium Settings navigation (turn 3)
+
+Each option is drawn at 960 (the reference) and 720 (the floor). The 960 card shows the option while navigating; the 720 card shows it at rest on a page.
+
+| Option | Cards | Page width at 960 / 720 | How you move |
+| --- | --- | --- | --- |
+| (a) Drawer | DESKTOP-108, DESKTOP-109 | 908 / 668 | `\` or the ☰ Settings button slides the index over the dimmed View; `enter` opens a page and closes the drawer, `esc` closes it, `/` filters. |
+| (b) Drill-down | DESKTOP-110, DESKTOP-111 | 908 / 668 | `g s` lands on a full-page index with a one-line description per page; `enter` replaces it with the page; `esc`, the ‹ Settings link or the `settings` breadcrumb segment goes back. |
+| (c) Header picker | DESKTOP-112, DESKTOP-113 | 908 / 668 | The page title is a `Display ▾` menu (click or `p`, type to filter); `[` and `]` step to the previous and next page, named on chips beside the title. |
+| (d) Docked but narrow | DESKTOP-114, DESKTOP-115 | 788 / 548 | A 120px index of icons and short labels (Sync, Backup, Logs) is always visible; `j/k` moves in it as today. |
+
+Trade-offs:
+
+- **(a) Drawer:** widest page and one key to the index, but the page list is out of sight, and the drawer adds an overlay the Chrome doesn't have yet.
+- **(b) Drill-down:** the index has room to explain each page, and it matches how a breadcrumb already reads, but moving between two pages costs two steps.
+- **(c) Header picker:** no extra column and quick neighbour stepping, but a far jump needs the menu, and the title doubles as a control.
+- **(d) Docked but narrow:** closest to Large (same model, narrower), always glanceable and nothing to open, but it costs 120px and puts two icon columns side by side.
+
+**Decision:** not yet picked. The chosen option is recorded here and in [#519](https://github.com/IanTeda/Personal-Ledger/issues/519)'s Decisions; the other options' cards leave the deck.
 
 ---
 
