@@ -46,7 +46,6 @@ mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
-pub(crate) use key_dispatch::typed_char;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]

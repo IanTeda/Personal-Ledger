@@ -142,7 +142,7 @@ fn at_medium_the_caret_opens_the_picker_and_a_row_jumps_to_its_page(app: &mut Te
     ui.click("settings-picker-Tracing");
     let settings = ui.settings();
     assert_eq!(settings.page, "Tracing");
-    assert_eq!(settings.picker_query, None);
+    assert_eq!(settings.picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 

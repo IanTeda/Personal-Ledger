@@ -722,26 +722,20 @@ impl SettingsView {
         cx.emit(ViewEvent::ExitMode);
     }
 
-    /// Every key while the picker is open: `↑`/`↓` move, `enter` opens the chosen page, `backspace`
-    /// and typing edit the filter. `Esc` comes back as [`Self::escape`].
+    /// Every key while the picker is open: `j`/`k` or `↓`/`↑` move, `enter` opens the chosen page.
+    /// Anything else is swallowed. `Esc` comes back as [`Self::escape`].
     fn picker_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) {
         let Some(picker) = self.picker.as_mut() else {
             return;
         };
         match keystroke.key.as_str() {
-            "up" => picker.step(Step::Prev),
-            "down" => picker.step(Step::Next),
-            "backspace" => picker.backspace(),
+            "k" | "up" => picker.step(Step::Prev),
+            "j" | "down" => picker.step(Step::Next),
             "enter" => {
-                if let Some(section) = picker.chosen() {
-                    self.click_picker_page(section, cx);
-                }
+                let section = picker.chosen();
+                self.click_picker_page(section, cx);
             }
-            _ => {
-                if let Some(ch) = crate::app::typed_char(keystroke) {
-                    picker.push(ch);
-                }
-            }
+            _ => {}
         }
     }
 

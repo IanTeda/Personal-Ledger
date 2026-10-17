@@ -236,27 +236,64 @@ fn at_medium_brackets_step_through_every_page(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn at_medium_p_opens_the_picker_and_enter_jumps_to_the_chosen_page(app: &mut TestAppContext) {
+fn at_medium_p_opens_the_picker_and_j_k_enter_jump_to_the_chosen_page(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Medium);
     ui.press("g s j enter p");
 
     assert_eq!(mode(&mut ui), InputMode::Filter);
-    let settings = ui.settings();
-    assert_eq!(settings.picker_pages, PAGES);
-    assert_eq!(settings.picker_chosen.as_deref(), Some("Display"));
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("Display"));
 
-    ui.press("t a");
-    let settings = ui.settings();
-    assert_eq!(settings.picker_query.as_deref(), Some("ta"));
-    assert_eq!(settings.picker_pages, ["Tags", "DataBackup"]);
-    ui.press("down enter");
+    ui.press("j j");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("Institutions"));
+    ui.press("k");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("Units"));
+    assert_eq!(
+        ui.settings().page,
+        "Display",
+        "moving leaves the page on show"
+    );
+
+    ui.press("enter");
 
     let settings = ui.settings();
-    assert_eq!(settings.page, "DataBackup");
+    assert_eq!(settings.page, "Units");
     assert!(settings.page_focused);
-    assert_eq!(settings.picker_query, None);
+    assert_eq!(settings.picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn at_medium_the_picker_moves_with_the_arrows_and_stops_at_either_end(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter p");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("General"));
+
+    ui.press("k up");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("General"));
+    ui.press("down");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("Display"));
+    ui.press("up");
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("General"));
+
+    ui.press(&vec!["j"; PAGES.len()].join(" "));
+    assert_eq!(ui.settings().picker_chosen.as_deref(), Some("About"));
+}
+
+#[gpui::test]
+fn at_medium_the_open_picker_swallows_every_other_key(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter p");
+
+    ui.press("g t ] h");
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    let settings = ui.settings();
+    assert_eq!(settings.page, "General");
+    assert_eq!(settings.picker_chosen.as_deref(), Some("General"));
+    assert_eq!(mode(&mut ui), InputMode::Filter);
 }
 
 #[gpui::test]
@@ -268,7 +305,7 @@ fn at_medium_escape_closes_the_picker_and_leaves_the_page(app: &mut TestAppConte
     ui.press("escape");
 
     let settings = ui.settings();
-    assert_eq!(settings.picker_query, None);
+    assert_eq!(settings.picker_chosen, None);
     assert_eq!(settings.page, "Display");
     assert!(settings.page_focused);
     assert_eq!(mode(&mut ui), InputMode::Normal);
@@ -282,7 +319,7 @@ fn leaving_medium_closes_the_picker_and_docks_the_index(app: &mut TestAppContext
 
     ui.resize_to(WindowSize::Large);
 
-    assert_eq!(ui.settings().picker_query, None);
+    assert_eq!(ui.settings().picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert!(ui.is_drawn("settings-index-Display"));
     assert!(ui.is_drawn("topbar-trail"));
@@ -309,6 +346,6 @@ fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut Tes
         // `[`, `]` and `p` are Medium's; here they leave the page alone.
         ui.press("l ] p");
         assert_eq!(ui.settings().page, "About");
-        assert_eq!(ui.settings().picker_query, None);
+        assert_eq!(ui.settings().picker_chosen, None);
     }
 }

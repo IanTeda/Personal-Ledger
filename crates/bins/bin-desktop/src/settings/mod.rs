@@ -316,7 +316,7 @@ fn crumb_heading(
         .children(picker.map(|picker| gpui::deferred(page_picker(picker, on_pick, cx))))
 }
 
-/// The picker under the page name: the pages matching what has been typed, in index order.
+/// The picker under the page name: every page, in index order, with the chosen one highlighted.
 fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElement {
     let chosen = picker.chosen();
     div()
@@ -333,7 +333,7 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
         .font_weight(gpui::FontWeight::NORMAL)
         .text_size(px(13.0))
         .occlude()
-        .children(picker.matches().into_iter().map(|page| {
+        .children(SettingsPage::ALL.into_iter().map(|page| {
             let on_pick = on_pick.clone();
             div()
                 .id(SharedString::from(format!("settings-picker-{page:?}")))
@@ -341,7 +341,7 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
                 .cursor_pointer()
                 .py(px(7.0))
                 .px(px(12.0))
-                .when(Some(page) == chosen, |this| {
+                .when(page == chosen, |this| {
                     this.bg(color::selection_background(cx))
                         .text_color(color::selection_text(cx))
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)

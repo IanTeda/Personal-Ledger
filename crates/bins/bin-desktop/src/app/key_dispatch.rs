@@ -423,7 +423,7 @@ fn dialog_key(keystroke: &Keystroke) -> DialogKey {
 
 /// The one character an unmodified keystroke types into a text field, or `None` for a modified
 /// key (a chord this field gives no meaning to) or anything that isn't a single character.
-pub(crate) fn typed_char(keystroke: &Keystroke) -> Option<char> {
+fn typed_char(keystroke: &Keystroke) -> Option<char> {
     let modifiers = &keystroke.modifiers;
     if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
         return None;
