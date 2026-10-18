@@ -17,7 +17,11 @@ tracked locally, without a cloud dependency or subscription.
 
 **Unit**:
 The fixed thing a balance, principal, or holding quantity is denominated in — either fiat money (e.g. AUD) or a tradeable non-currency instrument (e.g. a stock ticker like AAPL, or bitcoin). Every Account, of any Account Kind (see below), has exactly one Unit, fixed at creation. Personal Ledger does not convert between Units in V1: a Transaction Account or Credit Card Account only ever holds Transactions in its own Unit, and a Transaction may only move to another Transaction Account or Credit Card Account sharing that same Unit (see `docs/product-requirements.md`, Constraints) — Trade (see below) is the deliberate exception, crossing from a Transaction Account into a differently-Unit-denominated Investment Account by design, not by relaxing this rule; a Repayment still crosses from Transaction Account into Loan Account as a different Account Kind, but typically stays within one Unit since a Loan Account and the Transaction Account repaying it are usually the same currency.
-_Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
+_Avoid_: asset class, exchange rate, conversion; Currency and Commodity name a Unit Kind (see below), never the Unit itself.
+
+**Unit Kind**:
+The fixed, descriptive grouping a Unit carries, one of six: **Currency** (fiat money, e.g. AUD), **Crypto** (coins and tokens, stablecoins included, e.g. BTC, ETH, USDC), **Equity** (shares, ETFs, LICs, REITs, managed funds and employee shares or options, e.g. BHP, VAS), **Fixed Income** (bonds and other market-priced debt; a term deposit is AUD held in an Account, not a Unit), **Commodity** (precious metals and other raw goods, e.g. XAU) and **Custom** (the catch-all for anything else a person tracks, e.g. loyalty points, store credit, collectibles). It also matches a Unit to the Price Sources able to price it.
+_Avoid_: Fiat, Stock, Share, ETF, Precious metal, Other, asset class.
 
 **Price Source**:
 Where a Unit's prices come from, listed under the Units on the Units Settings page. It has no stored data and no writes yet, and pricing never converts between Units.
@@ -47,7 +51,7 @@ Client-scoped (stored locally, never synced); which kind a given Preference is g
 decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
 As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md) and
 [ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
-the Preferences are the default Unit for new Accounts, Colour Theme, Colour Appearance and date style — all four Ledger-scoped, so they sync across a user's own Clients rather than being set separately on each one. The Colour Theme and Colour Appearance are nullable like the date style ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). The date style is nullable: no value means "use the Locale's
+the Preferences are the base Unit (which new Accounts default to; there is no separate default Unit), Colour Theme, Colour Appearance and date style — all four Ledger-scoped, so they sync across a user's own Clients rather than being set separately on each one. The Colour Theme and Colour Appearance are nullable like the date style ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). The date style is nullable: no value means "use the Locale's
 default", and only an explicit choice is stored and synced. The Locale is not a Preference
 (see Locale, below). The first Client-scoped Preference is Toasts on/off, default on
 ([ADR-0027](docs/adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)),
