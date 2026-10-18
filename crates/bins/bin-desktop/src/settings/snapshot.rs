@@ -16,12 +16,6 @@ pub struct SettingsSnapshot {
     pub page: String,
     /// Whether the page, not the index rail, holds keyboard focus.
     pub page_focused: bool,
-    /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
-    /// dialog is ever open.
-    pub dialog: Option<String>,
-    /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
-    pub dialog_name: Option<String>,
-    pub dialog_confirm: Option<String>,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
     /// The page the open Medium page picker has highlighted, the one `enter` opens.
@@ -43,14 +37,11 @@ pub struct SettingsDisplaySnapshot {
 }
 
 impl SettingsView {
-    /// The page on show and where focus sits. The dialog and status message are left empty.
+    /// The page on show and where focus sits. The status message is left empty.
     pub fn snapshot(&self) -> SettingsSnapshot {
         SettingsSnapshot {
             page: format!("{:?}", self.selected_section()),
             page_focused: self.focus() == SettingsFocus::Page,
-            dialog: None,
-            dialog_name: None,
-            dialog_confirm: None,
             status_message: None,
             picker_chosen: self.picker().map(|picker| format!("{:?}", picker.chosen())),
         }

@@ -4,10 +4,6 @@
 use super::Shell;
 use crate::navigation::nav::Noun;
 use crate::settings::inventory::InventoryPage;
-use crate::settings::tracing::{
-    apply::{TracingApply, TracingOutcome},
-    dialogs::TracingDialog,
-};
 use crate::view::help::HelpDialog;
 use crate::{
     chrome::{
@@ -18,7 +14,6 @@ use crate::{
     settings::accounts::AccountsPage,
 };
 use gpui::Context;
-use lib_toast::ToastKind;
 
 impl Shell {
     /// Opens `dialog` in the Dialog host, entering `InputMode::Dialog` with it.
@@ -100,7 +95,6 @@ impl Shell {
         }
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
-            Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
             Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
@@ -108,7 +102,8 @@ impl Shell {
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
             Some(
-                OpenDialog::Tags(_)
+                OpenDialog::Tracing(_)
+                | OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
                 | OpenDialog::Units(_)
                 | OpenDialog::Institutions(_)
@@ -129,22 +124,6 @@ impl Shell {
     /// The Accounts page's Entity, which the Settings View owns.
     pub(super) fn accounts_page(&self, cx: &gpui::App) -> gpui::Entity<AccountsPage> {
         self.views.settings.read(cx).accounts().clone()
-    }
-
-    /// Confirms the open Tracing dialog through the host's cycle; Clear logs empties the capture
-    /// and toasts.
-    fn confirm_tracing_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(TracingOutcome::LogsConfirmed) =
-            self.confirm_dialog::<TracingDialog, _>(&mut TracingApply, cx)
-        else {
-            return;
-        };
-        let tracing = self.views.settings.read(cx).tracing().clone();
-        tracing.update(cx, |page, cx| page.clear_log(cx));
-        self.raise_toast(
-            ToastKind::Info,
-            crate::msg::desktop_settings_tracing_toast_cleared(),
-        );
     }
 
     /// Confirms the open `T` Dialog through the host's cycle (ADR-0037): the form's command runs

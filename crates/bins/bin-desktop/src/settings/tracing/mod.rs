@@ -1,8 +1,9 @@
 //! The **Tracing (Logs)** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! live log capture. [`TracingPage`] owns the log mirror and the virtualised list that shows it,
 //! renders itself (`render.rs`), builds the Clear logs Dialog (`dialogs/`) and reaches `Shell`
-//! only through [`ViewEvent`]; `Shell`'s Dialog host draws it and confirms it through `apply.rs`,
-//! and `Shell`'s capture feed (`app/log_feed.rs`) pushes new entries in. The Settings View
+//! only through [`ViewEvent`]. Its Dialog draws and confirms itself through the Dialog host, and
+//! confirms through `apply.rs`; the page takes the outcome back in [`TracingPage::land`]. The
+//! capture feed (`app/log_feed.rs`) pushes new entries in. The Settings View
 //! forwards the page's keys and status to it while the page has focus. The page has no form: the
 //! level radios filter the mirror at once.
 
@@ -14,11 +15,12 @@ mod render;
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     navigation::key_router::Movement,
     settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
     view::event::ViewEvent,
 };
+use apply::TracingOutcome;
 use dialogs::TracingDialog;
 use log::{LogChange, LogView, TracingLevel};
 
@@ -93,8 +95,15 @@ impl TracingPage {
     }
 
     /// Empties the capture, once Clear logs is confirmed.
-    pub fn clear_log(&mut self, cx: &mut Context<'_, Self>) {
+    fn clear_log(&mut self, cx: &mut Context<'_, Self>) {
         self.update_log(cx, LogView::clear);
+    }
+
+    /// Takes a landed Dialog's outcome back: Clear logs empties the capture.
+    pub fn land(&mut self, outcome: TracingOutcome, cx: &mut Context<'_, Self>) {
+        match outcome {
+            TracingOutcome::LogsConfirmed => self.clear_log(cx),
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -176,7 +185,7 @@ impl TracingPage {
     /// **Clear logs** (and `c`) asks first, since the capture is emptied for good (#502).
     fn click_clear_logs(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(ViewEvent::SetStatus(None));
-        open_dialog(TracingDialog::ClearLogs, cx);
+        open_dialog(TracingDialog::ClearLogs, Self::land, cx);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -212,9 +221,4 @@ pub struct SettingsTracingSnapshot {
     pub log_lines: Vec<String>,
     pub log_hidden_count: usize,
     pub log_scroll_top: usize,
-}
-
-/// Asks `Shell`'s Dialog host to open a Tracing Dialog.
-fn open_dialog(dialog: TracingDialog, cx: &mut Context<'_, TracingPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Tracing(dialog))));
 }

@@ -23,7 +23,6 @@ use crate::{
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
     period::Period,
-    settings::tracing::dialogs::TracingDialog,
     theme::{color, type_scale},
     view::{
         active::{ActiveViewEntity, ShellView},
@@ -380,13 +379,6 @@ impl Render for Shell {
                     .as_ref()
                     .and_then(|dialog| dialog.render(&self.dialog_scope(), &dialog_actions, cx)),
             )
-            .children(self.dialog::<TracingDialog>().map(|dialog| {
-                dialog.render(
-                    on_settings_dialog_cancel.clone(),
-                    on_settings_dialog_confirm.clone(),
-                    cx,
-                )
-            }))
             // Last: above every dialog, the palette and their scrim, never over the status line.
             .children(toast_layer)
     }

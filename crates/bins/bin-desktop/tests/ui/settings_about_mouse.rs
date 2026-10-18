@@ -25,7 +25,7 @@ fn clicking_the_about_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
     let page = ui.settings();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(ui.is_drawn("settings-about-version"));
 }
 

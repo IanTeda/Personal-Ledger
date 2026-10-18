@@ -192,12 +192,11 @@ fn c_asks_before_clearing_and_escape_keeps_the_logs(app: &mut TestAppContext) {
     let mut ui = focused(Harness::with_logs(app, one_of_each(), Some(Levels::INFO)));
 
     ui.press("c");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("ClearLogs"));
+    assert_eq!(ui.dialog(), Some("ClearLogs"));
     ui.press("escape");
 
     let tracing_page = ui.settings_tracing();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 3);
 }
 
@@ -208,8 +207,7 @@ fn enter_in_the_confirm_clears_every_entry(app: &mut TestAppContext) {
     ui.press("c enter");
 
     let tracing_page = ui.settings_tracing();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 0);
     assert_eq!(tracing_page.log_hidden_count, 0);
     assert!(

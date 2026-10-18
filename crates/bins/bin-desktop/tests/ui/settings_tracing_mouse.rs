@@ -67,12 +67,11 @@ fn clear_logs_asks_and_cancel_keeps_the_entries(app: &mut TestAppContext) {
     let mut ui = on_page(Harness::with_logs(app, captured(), Some(Levels::DEBUG)));
 
     ui.click("settings-clear-logs");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("ClearLogs"));
+    assert_eq!(ui.dialog(), Some("ClearLogs"));
     ui.click("clear-logs-cancel");
 
     let tracing_page = ui.settings_tracing();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 2);
 }
 
@@ -84,8 +83,7 @@ fn confirming_clear_logs_empties_the_box(app: &mut TestAppContext) {
     ui.click("clear-logs-confirm");
 
     let tracing_page = ui.settings_tracing();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 0);
     assert_eq!(
         tracing_page.tracing_level, "Debug",

@@ -25,7 +25,7 @@ fn shift_g_from_the_index_swaps_to_about_with_focus_on_the_index(app: &mut TestA
     let page = ui.settings();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -60,7 +60,7 @@ fn movement_keys_at_the_bottom_of_the_index_leave_about_unchanged(app: &mut Test
     let page = ui.settings();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(page.status_message, None);
     assert_eq!(ui.toasts(), toasts_before);
     assert_eq!(ui.noun(), Noun::Settings);

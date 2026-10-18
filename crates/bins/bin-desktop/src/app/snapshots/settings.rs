@@ -18,44 +18,17 @@ pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 pub use crate::settings::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::tracing::SettingsTracingSnapshot;
-use crate::settings::tracing::dialogs::TracingDialog;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
 
-/// What the open Settings dialog shows, read once for the snapshots that report it.
-#[derive(Default)]
-struct OpenDialog {
-    label: Option<&'static str>,
-    name: Option<String>,
-    confirm: Option<String>,
-}
-
 impl Shell {
-    /// The open Settings dialog, whichever page owns it.
-    fn open_settings_dialog(&self) -> OpenDialog {
-        let mut open_dialog = OpenDialog::default();
-        if let Some(open) = self.dialog::<TracingDialog>() {
-            let (label, name, confirm) = match open {
-                TracingDialog::ClearLogs => ("ClearLogs", None, None),
-            };
-            open_dialog.label = Some(label);
-            open_dialog.name = name;
-            open_dialog.confirm = confirm;
-        }
-        open_dialog
-    }
-
     /// The Settings shell for a test: the page on show, as the View builds it, and the open
     /// dialog.
     #[doc(hidden)]
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
-        let dialog = self.open_settings_dialog();
         SettingsSnapshot {
-            dialog: dialog.label.map(str::to_string),
-            dialog_name: dialog.name,
-            dialog_confirm: dialog.confirm,
             status_message: self.chrome.status_message.clone(),
             ..self.views.settings.read(cx).snapshot()
         }

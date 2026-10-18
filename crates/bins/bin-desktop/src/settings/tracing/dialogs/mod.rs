@@ -1,31 +1,22 @@
 //! The Tracing page's Dialogs: just the Clear logs confirm. [`TracingDialog`] is the value
-//! `Shell`'s Dialog host holds while it is open (`OpenDialog::Tracing`).
+//! `Shell`'s Dialog host holds while it is open (`OpenDialog::Tracing`). It draws itself
+//! (`Dialog::render`), reads itself back for the UI tests and confirms itself through `apply.rs`.
 
 pub mod clear_logs;
 
 use gpui::{AnyElement, App};
 
-use crate::{chrome::dialog_host::Dialog, dialog, form::field::TextField, settings::hints};
+use crate::{
+    chrome::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
+    form::field::TextField,
+    settings::hints,
+};
 
 /// The open Tracing Dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracingDialog {
     /// Clear logs confirm: nothing to fill in.
     ClearLogs,
-}
-
-impl TracingDialog {
-    /// Draws the open Dialog.
-    pub fn render(
-        &self,
-        on_cancel: dialog::OnClick,
-        on_confirm: dialog::OnClick,
-        cx: &App,
-    ) -> AnyElement {
-        match self {
-            Self::ClearLogs => clear_logs::render(on_cancel, on_confirm, cx),
-        }
-    }
 }
 
 impl Dialog for TracingDialog {
@@ -40,5 +31,31 @@ impl Dialog for TracingDialog {
     /// Clear logs is a confirm.
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         Some(hints::confirm_dialog_hints())
+    }
+
+    fn render(
+        &self,
+        _scope: &DialogScope,
+        actions: &DialogActions,
+        cx: &App,
+    ) -> Option<AnyElement> {
+        match self {
+            Self::ClearLogs => Some(clear_logs::render(
+                actions.cancel.clone(),
+                actions.confirm.clone(),
+                cx,
+            )),
+        }
+    }
+
+    /// Clear logs shows no field, so its readback is the kind alone.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let kind = match self {
+            Self::ClearLogs => "ClearLogs",
+        };
+        Some(DialogReadback {
+            kind,
+            values: Vec::new(),
+        })
     }
 }

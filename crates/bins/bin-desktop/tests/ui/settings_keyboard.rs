@@ -39,7 +39,7 @@ fn opens_on_general_with_focus_on_the_index(app: &mut TestAppContext) {
     let page = ui.settings();
     assert_eq!(page.page, "General");
     assert!(!page.page_focused);
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
