@@ -1,5 +1,6 @@
-//! The Dialog host plumbing of `Shell`: opening, closing, confirming and the typed per-domain
-//! accessors. An `impl Shell` block, not the Dialog host itself (`chrome::dialog_host`).
+//! The Dialog host plumbing of `Shell`: opening, closing and confirming, the Bills, Budgets and
+//! Documents Dialogs it still confirms by variant, and the page accessors the palette commands
+//! and snapshots use. An `impl Shell` block, not the Dialog host itself (`chrome::dialog_host`).
 
 use super::Shell;
 use crate::navigation::nav::Noun;

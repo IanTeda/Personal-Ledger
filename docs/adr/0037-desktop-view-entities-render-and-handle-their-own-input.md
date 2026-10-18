@@ -60,4 +60,4 @@ The Settings page folders (#666) and the page trait above still left each page's
 - **A form holds its edits until confirm.** A change a Dialog makes is held on its form and applied on confirm, so Cancel reverts it. The Edit Category type change was the one exception and was fixed in #702.
 - **`OpenDialog` stays an enum**, one variant per feature, with `DialogVariant` finding the open Dialog by type. Bills, Budgets and Documents have not moved: their Dialogs return `None` from `render` and `readback`, and `Shell` still draws and confirms them by variant until review candidate 4 moves them.
 
-Consequences: a hosted Dialog lives wholly in its page's `dialogs/` folder and `apply.rs`, and a new or changed one needs no edit under `bin-desktop/src/app/`. Open, confirm and outcome are unit-tested without `Shell`.
+Consequences: a hosted Dialog lives wholly in its page's `dialogs/` folder and `apply.rs`, and changing one needs no edit under `bin-desktop/src/app/`. A new page's Dialogs still add their `OpenDialog` variant and its name in the hosted arm of `Shell::confirm_open_dialog`. Open, confirm and outcome are unit-tested without `Shell`.
