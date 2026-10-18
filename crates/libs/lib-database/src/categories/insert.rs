@@ -713,8 +713,9 @@ mod tests {
     /// Generates a category with realistic fake data for testing purposes.
     /// Uses the fake crate to create varied test scenarios.
     fn create_random_category() -> crate::Categories {
+        // Suffix a RowID so batches never collide on the UNIQUE name and url_slug columns
         let words: Vec<String> = Words(1..3).fake();
-        let name = words.join(" ");
+        let name = format!("{} {}", words.join(" "), RowID::new());
 
         let description = if Boolean(60).fake() {
             Some(Sentence(3..8).fake())

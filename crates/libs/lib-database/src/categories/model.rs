@@ -181,19 +181,22 @@ impl Categories {
 
     /// Generates a mock category name using lorem ipsum words.
     ///
-    /// Creates realistic category names by combining 1-2 random words.
-    /// Examples: "Food", "Office Supplies", "Travel Expenses".
+    /// Combines 1-2 random lorem words, then appends a `RowID` so names are
+    /// unique. Lorem words alone collide often enough to trip the UNIQUE
+    /// constraint on `categories.name`. The suffix makes names long, so they
+    /// are not display-realistic.
+    /// Examples: "Food 0190…", "Office Supplies 0190…".
     ///
     /// # Returns
     ///
-    /// A string containing 1-2 space-separated words suitable for a category name.
+    /// A string of 1-2 space-separated words followed by a unique `RowID` suffix.
     #[cfg(test)]
     fn generate_mock_name() -> String {
         use fake::Fake;
         use fake::faker::lorem::en::Words;
 
         let words: Vec<String> = Words(1..3).fake();
-        words.join(" ")
+        format!("{} {}", words.join(" "), lib_core::RowID::new())
     }
 
     /// Generates a mock category description with 50% probability.
@@ -297,6 +300,20 @@ mod tests {
         assert!(cat.updated_on <= chrono::Utc::now());
     }
 
+    /// Tests that mock names and URL slugs never collide across a test's inserts.
+    ///
+    /// `categories.name` and `categories.url_slug` are both UNIQUE, so a
+    /// lorem-only name would make multi-insert tests flake on the constraint.
+    #[test]
+    fn mock_names_and_slugs_are_unique() {
+        let cats: Vec<Categories> = (0..200).map(|_| Categories::mock()).collect();
+        let names: std::collections::HashSet<_> = cats.iter().map(|c| c.name.as_str()).collect();
+        let slugs: std::collections::HashSet<_> =
+            cats.iter().filter_map(|c| c.url_slug.as_ref()).collect();
+        assert_eq!(names.len(), cats.len());
+        assert_eq!(slugs.len(), cats.len());
+    }
+
     /// Tests that mock data generation properly randomises optional fields.
     ///
     /// Runs multiple mock generations to ensure that optional fields like
@@ -354,13 +371,23 @@ mod tests {
 
     /// Tests that `generate_mock_name()` produces valid category names.
     ///
-    /// Verifies that generated names are non-empty and contain only
-    /// alphabetic characters and whitespace.
+    /// Verifies that generated names are non-empty, that the lorem words are
+    /// alphabetic, and that the trailing suffix is a valid `RowID`.
     #[test]
     fn generate_mock_name_produces_non_empty_string() {
         let name = Categories::generate_mock_name();
         assert!(!name.is_empty());
-        assert!(name.chars().all(|c| c.is_alphabetic() || c.is_whitespace()));
+
+        let (words, suffix) = name
+            .rsplit_once(' ')
+            .expect("name should end in a RowID suffix");
+        assert!(!words.is_empty());
+        assert!(
+            words
+                .chars()
+                .all(|c| c.is_alphabetic() || c.is_whitespace())
+        );
+        assert!(suffix.parse::<lib_core::RowID>().is_ok());
     }
 
     /// Tests that `generate_mock_description()` properly randomises output.
