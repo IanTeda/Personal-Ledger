@@ -21,7 +21,6 @@ pub use crate::settings::tracing::SettingsTracingSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
-    settings::documents::dialogs::DocumentTypesDialog,
     settings::inventory::dialogs::InventoryDialog, settings::tracing::dialogs::TracingDialog,
 };
 
@@ -98,19 +97,12 @@ impl Shell {
         &self,
         cx: &gpui::App,
     ) -> SettingsDocumentTypesSnapshot {
-        let page = self
-            .views
+        self.views
             .settings
             .read(cx)
             .documents()
             .read(cx)
-            .snapshot(cx);
-        SettingsDocumentTypesSnapshot {
-            document_type_dialog: self
-                .dialog::<DocumentTypesDialog>()
-                .map(|dialog| dialog.kind().to_string()),
-            ..page
-        }
+            .snapshot(cx)
     }
 
     /// The Settings Inventory page for a test.

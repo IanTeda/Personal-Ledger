@@ -19,12 +19,13 @@ use lib_documents::types::{self as types, DocumentTypeRow};
 use lib_ledger::{Domain, MoveDocumentType};
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_documents_hints,
     view::event::ViewEvent,
 };
+use apply::DocumentTypeOutcome;
 use dialogs::DocumentTypesDialog;
 use form::{DocumentTypeForm, RemoveForm};
 pub use render::scope_text;
@@ -210,9 +211,22 @@ impl DocumentsPage {
     // Dialogs
     // -----------------------------------------------------------------------------------------
 
+    /// Lands a confirmed Dialog: a save or a removal selects the type the Dialog named.
+    fn land(&mut self, outcome: DocumentTypeOutcome, cx: &mut Context<'_, Self>) {
+        match outcome {
+            DocumentTypeOutcome::Saved(id) => self.select_id(id, cx),
+            DocumentTypeOutcome::Removed { selected } => {
+                if let Some(id) = selected {
+                    self.select_id(id, cx);
+                }
+            }
+            DocumentTypeOutcome::Dismissed => {}
+        }
+    }
+
     fn open_add_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let form = DocumentTypeForm::new(self.types(cx));
-        open_dialog(DocumentTypesDialog::Add(form), cx);
+        open_dialog(DocumentTypesDialog::Add(form), Self::land, cx);
     }
 
     /// Opens the Edit dialog filled from type `id`. A no-op if the type is gone.
@@ -222,7 +236,7 @@ impl DocumentsPage {
             return;
         };
         let form = DocumentTypeForm::from_row(row, rows);
-        open_dialog(DocumentTypesDialog::Edit(id, form), cx);
+        open_dialog(DocumentTypesDialog::Edit(id, form), Self::land, cx);
     }
 
     /// Other, the Default, has no remove action: it gets a notice instead, and the status line
@@ -240,15 +254,14 @@ impl DocumentsPage {
         } else {
             DocumentTypesDialog::Remove(id, RemoveForm::new(rows, id))
         };
-        open_dialog(dialog, cx);
+        open_dialog(dialog, Self::land, cx);
     }
 
     // -----------------------------------------------------------------------------------------
     // Tests
     // -----------------------------------------------------------------------------------------
 
-    /// The type names in order, the selected row's name, and each type's Filed file count. The
-    /// open Dialog is `Shell`'s, which fills it in.
+    /// The type names in order, the selected row's name, and each type's Filed file count.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsDocumentTypesSnapshot {
         let rows = self.types(cx);
@@ -260,13 +273,12 @@ impl DocumentsPage {
                 .and_then(|id| types::get(rows, id))
                 .map(|row| row.name.clone()),
             document_type_files: rows.iter().map(|row| row.files).collect(),
-            document_type_dialog: None,
         }
     }
 }
 
-/// The Document Types page: names in order, the selected row's name, each type's Filed file count,
-/// and the open dialog's kind (`add`, `edit`, `remove` or `notice`), which `Shell` fills in.
+/// The Document Types page: names in order, the selected row's name and each type's Filed file
+/// count. The open Dialog is read back through the Dialog host, not here.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsDocumentTypesSnapshot {
@@ -275,25 +287,4 @@ pub struct SettingsDocumentTypesSnapshot {
     pub document_type_ids: Vec<DocumentTypeId>,
     pub selected_document_type: Option<String>,
     pub document_type_files: Vec<u32>,
-    pub document_type_dialog: Option<String>,
-}
-
-impl DocumentTypesDialog {
-    /// The kind of dialog, for the Settings snapshot.
-    #[doc(hidden)]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Add(_) => "add",
-            Self::Edit(..) => "edit",
-            Self::Remove(..) => "remove",
-            Self::DefaultNotice => "notice",
-        }
-    }
-}
-
-/// Asks `Shell`'s Dialog host to open a Document types dialog.
-fn open_dialog(dialog: DocumentTypesDialog, cx: &mut Context<'_, DocumentsPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::DocumentTypes(
-        dialog,
-    ))));
 }

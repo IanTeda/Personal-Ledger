@@ -11,7 +11,7 @@ use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle,
 };
-use lib_core::{DateStyle, DocumentId, DocumentTypeId, TransactionId};
+use lib_core::{DateStyle, DocumentId, TransactionId};
 use lib_ledger::{
     AcceptDocument, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink, UndoFiling,
 };
@@ -29,9 +29,9 @@ use crate::{
         form::{DocumentForm, DocumentOptions, DocumentsDialog, FactsForm, ImportForm},
         model::Lookups,
         picker::{PickerRow, PickerState, Purpose},
-        types::DocumentTypeRow,
+        types::{self, DocumentTypeRow},
     },
-    ledger_store::{LedgerStore, notify_on},
+    ledger_store::{LedgerChanged, LedgerStore, notify_on},
     navigation::{key_router::Movement, nav::Noun},
     view::event::{Reveal, ViewEvent, ViewMode},
 };
@@ -103,6 +103,8 @@ pub struct DocumentsView {
     _accounts_changed: Subscription,
     /// Repaints the page when the Payees its rows and filters name change.
     _payees_changed: Subscription,
+    /// Falls back to All documents when the Document Type its Library is scoped to goes.
+    _types_changed: Subscription,
 }
 
 /// The Key date select's label for each kind.
@@ -120,6 +122,13 @@ impl DocumentsView {
     pub fn new(sources: DocumentsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
+        // `notify_on` only repaints, but a removed type must also move the scope, so this
+        // handles the event itself.
+        let _types_changed = cx.subscribe(&sources.ledger, |this, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::DocumentTypes) {
+                this.drop_missing_type_scope(cx);
+            }
+        });
         Self {
             sources,
             today,
@@ -129,6 +138,7 @@ impl DocumentsView {
             state: DocumentsState::default(),
             _accounts_changed,
             _payees_changed,
+            _types_changed,
         }
     }
 
@@ -475,9 +485,12 @@ impl DocumentsView {
         }
     }
 
-    /// A Document Type has gone: a Library scoped to it falls back to All documents.
-    pub fn type_removed(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
-        if self.state.scope == LibraryScope::Type(documents::DocumentType(id)) {
+    /// A Library scoped to a Document Type that has gone falls back to All documents. It follows
+    /// every change to the types, so a removal needs no caller to report it.
+    fn drop_missing_type_scope(&mut self, cx: &mut Context<'_, Self>) {
+        if let LibraryScope::Type(documents::DocumentType(id)) = self.state.scope
+            && types::get(self.types(cx), id).is_none()
+        {
             self.state.scope = LibraryScope::All;
             cx.notify();
         }

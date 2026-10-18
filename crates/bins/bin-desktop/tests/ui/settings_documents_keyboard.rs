@@ -113,21 +113,15 @@ fn n_opens_the_add_dialog_and_enter_adds_a_type_at_the_end(app: &mut TestAppCont
     let mut ui = in_documents(app);
 
     ui.press("n");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
     // Nothing typed yet: enter is a no-op.
     ui.press("enter");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
     ui.press("l e a s e s");
     ui.press("enter");
 
     let document_types_page = ui.settings_document_types();
-    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 10);
     assert_eq!(
         document_types_page
@@ -149,13 +143,10 @@ fn add_refuses_a_name_another_type_has_ignoring_case(app: &mut TestAppContext) {
     ui.press("n");
     ui.press("t a x");
     ui.press("enter");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
     assert_eq!(ui.settings_document_types().document_type_names.len(), 9);
     ui.press("escape");
-    assert_eq!(ui.settings_document_types().document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -164,16 +155,13 @@ fn edit_renames_keeping_the_row_and_its_files(app: &mut TestAppContext) {
     ui.press("j j");
 
     ui.press("e");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("edit")
-    );
+    assert_eq!(ui.dialog(), Some("EditDocumentType"));
     ui.press("backspace backspace backspace");
     ui.press("t a x e s");
     ui.press("enter");
 
     let document_types_page = ui.settings_document_types();
-    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names[2], "taxes");
     assert_eq!(document_types_page.document_type_files[2], 31);
     assert_eq!(
@@ -192,7 +180,7 @@ fn edit_keeps_its_own_name_valid_in_another_case(app: &mut TestAppContext) {
     ui.press("T A X");
     ui.press("enter");
 
-    assert_eq!(ui.settings_document_types().document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_document_types().document_type_names[2], "TAX");
 }
 
@@ -202,14 +190,11 @@ fn x_asks_for_a_destination_and_moves_the_files_to_other(app: &mut TestAppContex
     ui.press("j j");
 
     ui.press("x");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("remove")
-    );
+    assert_eq!(ui.dialog(), Some("RemoveDocumentType"));
     ui.press("enter");
 
     let document_types_page = ui.settings_document_types();
-    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 8);
     assert!(
         !document_types_page
@@ -244,10 +229,7 @@ fn x_on_a_type_with_no_files_removes_it_with_a_plain_confirm(app: &mut TestAppCo
     ui.press("enter");
 
     ui.press("x");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("remove")
-    );
+    assert_eq!(ui.dialog(), Some("RemoveDocumentType"));
     ui.press("enter");
 
     let document_types_page = ui.settings_document_types();
@@ -266,7 +248,7 @@ fn escape_cancels_remove_and_changes_nothing(app: &mut TestAppContext) {
     ui.press("escape");
 
     let document_types_page = ui.settings_document_types();
-    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 9);
 }
 
@@ -276,14 +258,11 @@ fn x_on_other_opens_the_notice_and_enter_closes_it(app: &mut TestAppContext) {
 
     ui.press("shift-g");
     ui.press("x");
-    assert_eq!(
-        ui.settings_document_types().document_type_dialog.as_deref(),
-        Some("notice")
-    );
+    assert_eq!(ui.dialog(), Some("DefaultNotice"));
     ui.press("enter");
 
     let document_types_page = ui.settings_document_types();
-    assert_eq!(document_types_page.document_type_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 9);
 }
 
@@ -337,4 +316,34 @@ fn a_type_added_in_settings_gets_a_facet_on_the_documents_rail(app: &mut TestApp
     let page = ui.documents();
     assert_eq!(page.scope, format!("type:{added}"));
     assert_eq!(page.library_rows, 0);
+}
+
+#[gpui::test]
+fn removing_the_type_a_library_is_scoped_to_falls_back_to_all_documents(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    ui.press("n");
+    ui.press("l e a s e s");
+    ui.press("enter");
+    let added = ui
+        .settings_document_types()
+        .document_type_ids
+        .last()
+        .copied()
+        .expect("the added type");
+    ui.press("g f");
+    ui.click(&format!(
+        "documents-rail-Scope(Type({:?}))",
+        DocumentType(added)
+    ));
+    assert_eq!(ui.documents().scope, format!("type:{added}"));
+
+    ui.press("g s");
+    if !ui.settings().page_focused {
+        ui.press("l");
+    }
+    // The added type is selected, has no Filed files, and goes on a plain confirm.
+    ui.press("x");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.documents().scope, "all");
 }

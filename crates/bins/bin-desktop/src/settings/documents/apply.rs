@@ -9,7 +9,10 @@ use lib_documents::types::{self, RemoveError};
 
 use super::{dialogs::DocumentTypesDialog, form::DocumentTypeForm};
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
 
@@ -34,7 +37,6 @@ pub enum DocumentTypeOutcome {
     Saved(DocumentTypeId),
     /// Removed: the type that now sits where it did, to select. Its Filed files have moved.
     Removed {
-        id: DocumentTypeId,
         selected: Option<DocumentTypeId>,
     },
     Dismissed,
@@ -72,6 +74,26 @@ pub struct DocumentTypesApply {
     pub ledger: Entity<LedgerStore>,
 }
 
+impl ConfirmDialog for DocumentTypesDialog {
+    type Outcome = DocumentTypeOutcome;
+
+    /// Every outcome closes the Dialog with no Toast: a save or a removal selects its type.
+    fn confirm(
+        &mut self,
+        scope: &DialogScope,
+        cx: &mut App,
+    ) -> Option<Landed<DocumentTypeOutcome>> {
+        let mut apply = DocumentTypesApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: None,
+            outcome,
+        })
+    }
+}
+
 impl Apply<DocumentTypeCommand> for DocumentTypesApply {
     type Outcome = DocumentTypeOutcome;
     type Refusal = RemoveError;
@@ -107,7 +129,7 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
                 let selected = rows
                     .get(position.min(rows.len().saturating_sub(1)))
                     .map(|row| row.id);
-                Ok(DocumentTypeOutcome::Removed { id, selected })
+                Ok(DocumentTypeOutcome::Removed { selected })
             }
             DocumentTypeCommand::Dismiss => Ok(DocumentTypeOutcome::Dismissed),
         }
@@ -148,9 +170,15 @@ mod tests {
         let outcome = cx.update(|cx| confirm(&mut remove, &mut apply, cx));
         assert!(matches!(
             outcome,
-            Some(DocumentTypeOutcome::Removed { id, selected: Some(_) })
-                if id == DocumentTypeId::seed(3)
+            Some(DocumentTypeOutcome::Removed { selected: Some(selected) })
+                if selected != DocumentTypeId::seed(3)
         ));
+        let remaining = cx.read(|cx| apply.ledger.read(cx).ledger().document_types().to_vec());
+        assert!(
+            remaining
+                .iter()
+                .all(|row| row.id != DocumentTypeId::seed(3))
+        );
 
         let mut notice = DocumentTypesDialog::DefaultNotice;
         let outcome = cx.update(|cx| confirm(&mut notice, &mut apply, cx));

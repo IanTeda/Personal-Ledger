@@ -2,11 +2,6 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Shell;
-use crate::settings::documents::dialogs::{
-    DocumentTypesDialog, DocumentTypesDialogHandlers,
-    add_edit::OnFieldClick as DocumentTypeFieldClick,
-};
-use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
 
 use gpui_component::scroll::{Scrollbar, ScrollbarShow};
@@ -215,67 +210,6 @@ impl Render for Shell {
             },
             cancel: on_settings_dialog_cancel.clone(),
             confirm: on_settings_dialog_confirm.clone(),
-        };
-        let documents_dialog_handlers = {
-            let on_field_click: DocumentTypeFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
-                            dialog.click_field(field)
-                        });
-                    });
-                })
-            };
-            let on_tracks_click: crate::form::fields::OnSegmentClick<Option<TracksDate>> = {
-                let entity = entity.clone();
-                Rc::new(move |option, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
-                            dialog.click_tracks(option)
-                        });
-                    });
-                })
-            };
-            let on_remind_click: crate::form::fields::OnSegmentClick<Option<RemindLead>> = {
-                let entity = entity.clone();
-                Rc::new(move |option, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
-                            dialog.click_remind(option)
-                        });
-                    });
-                })
-            };
-            let on_destination_field_click: crate::dialog::OnClick = {
-                let entity = entity.clone();
-                Rc::new(move |_window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
-                            dialog.click_destination_field()
-                        });
-                    });
-                })
-            };
-            let on_destination_option_click: crate::form::select_field::OnOptionClick = {
-                let entity = entity.clone();
-                Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut DocumentTypesDialog| {
-                            dialog.click_destination_option(index)
-                        });
-                    });
-                })
-            };
-            DocumentTypesDialogHandlers {
-                on_field_click,
-                on_tracks_click,
-                on_remind_click,
-                on_destination_field_click,
-                on_destination_option_click,
-                on_cancel: on_settings_dialog_cancel.clone(),
-                on_confirm: on_settings_dialog_confirm.clone(),
-            }
         };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
         let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
@@ -486,13 +420,6 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, rail_mode, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(self.dialog::<DocumentTypesDialog>().and_then(|dialog| {
-                dialog.render(
-                    self.ledger.read(cx).ledger().document_types(),
-                    documents_dialog_handlers,
-                    cx,
-                )
-            }))
             .children(self.dialog::<InventoryDialog>().and_then(|dialog| {
                 dialog.render(
                     self.ledger.read(cx).ledger().inventory(),

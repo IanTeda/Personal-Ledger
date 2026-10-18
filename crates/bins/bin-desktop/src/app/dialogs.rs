@@ -3,11 +3,6 @@
 
 use super::Shell;
 use crate::navigation::nav::Noun;
-use crate::settings::documents::{
-    DocumentsPage,
-    apply::{DocumentTypeOutcome, DocumentTypesApply},
-    dialogs::DocumentTypesDialog,
-};
 use crate::settings::inventory::{InventoryPage, apply::InventoryApply, dialogs::InventoryDialog};
 use crate::settings::tracing::{
     apply::{TracingApply, TracingOutcome},
@@ -106,28 +101,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::DocumentTypes(_)) => {
-                let mut apply = DocumentTypesApply {
-                    ledger: self.ledger.clone(),
-                };
-                let page = self.documents_page(cx);
-                match self.confirm_dialog::<DocumentTypesDialog, _>(&mut apply, cx) {
-                    Some(DocumentTypeOutcome::Saved(id)) => {
-                        page.update(cx, |page, cx| page.select_id(id, cx));
-                    }
-                    // A removed type's Filed files have moved, and a Documents scope that was
-                    // on the type drops back to All.
-                    Some(DocumentTypeOutcome::Removed { id, selected }) => {
-                        self.views
-                            .documents
-                            .update(cx, |view, cx| view.type_removed(id, cx));
-                        if let Some(selected) = selected {
-                            page.update(cx, |page, cx| page.select_id(selected, cx));
-                        }
-                    }
-                    Some(DocumentTypeOutcome::Dismissed) | None => {}
-                }
-            }
             Some(OpenDialog::Inventory(_)) => {
                 let mut apply = InventoryApply {
                     ledger: self.ledger.clone(),
@@ -153,15 +126,11 @@ impl Shell {
                 | OpenDialog::Units(_)
                 | OpenDialog::Institutions(_)
                 | OpenDialog::Accounts(_)
-                | OpenDialog::Payees(_),
+                | OpenDialog::Payees(_)
+                | OpenDialog::DocumentTypes(_),
             )
             | None => {}
         }
-    }
-
-    /// The Document Types page's Entity, which the Settings View owns.
-    pub(super) fn documents_page(&self, cx: &gpui::App) -> gpui::Entity<DocumentsPage> {
-        self.views.settings.read(cx).documents().clone()
     }
 
     /// The Inventory page's Entity, which the Settings View owns.

@@ -1,18 +1,23 @@
 //! The Document type dialogs: Add, Edit and Remove a type, and the notice Other gets instead of a
 //! Remove. [`DocumentTypesDialog`] is the value `Shell`'s Dialog host holds while one is open
-//! (`OpenDialog::DocumentTypes`); [`DocumentTypesDialog::render`] draws whichever is open, and
-//! every click inside it reaches the form through the handlers `Shell` builds.
+//! (`OpenDialog::DocumentTypes`). It draws itself (`Dialog::render`), every click reaching the form
+//! through the host's one edit callback, reads itself back for the UI tests and confirms itself
+//! through `apply.rs`.
 
 pub mod add_edit;
 pub mod remove;
 
-use gpui::{AnyElement, App};
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Window};
 use lib_core::DocumentTypeId;
-use lib_documents::types::{DocumentTypeRow, RemindLead, TracksDate};
+use lib_documents::types::{RemindLead, TracksDate};
 
 use super::form::{DocumentTypeForm, FormField, RemoveForm};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     dialog::OnClick,
     form::{field::TextField, fields::OnSegmentClick, select_field::OnOptionClick},
 };
@@ -27,18 +32,6 @@ pub enum DocumentTypesDialog {
     Remove(DocumentTypeId, RemoveForm),
     /// Other has no remove action, so this only says why.
     DefaultNotice,
-}
-
-/// Every click the open Document type dialog can make. `Shell` builds it once and each dialog
-/// takes the part it draws.
-pub struct DocumentTypesDialogHandlers {
-    pub on_field_click: OnFieldClick,
-    pub on_tracks_click: OnSegmentClick<Option<TracksDate>>,
-    pub on_remind_click: OnSegmentClick<Option<RemindLead>>,
-    pub on_destination_field_click: OnClick,
-    pub on_destination_option_click: OnOptionClick,
-    pub on_cancel: OnClick,
-    pub on_confirm: OnClick,
 }
 
 impl DocumentTypesDialog {
@@ -90,20 +83,61 @@ impl DocumentTypesDialog {
         }
     }
 
-    /// Draws the open dialog. Edit and Remove read their type from `types`; a type that has gone
+    /// Draws the open dialog. Edit and Remove read their type from the Ledger; a type that has gone
     /// draws nothing rather than panicking mid-render.
-    pub fn render(
-        &self,
-        types: &[DocumentTypeRow],
-        handlers: DocumentTypesDialogHandlers,
-        cx: &App,
-    ) -> Option<AnyElement> {
+    fn draw(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let types = scope.ledger.read(cx).ledger().document_types();
+        let on_field_click: OnFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_field(field);
+                    None
+                });
+            })
+        };
+        let on_tracks_click: OnSegmentClick<Option<TracksDate>> = {
+            let actions = actions.clone();
+            Rc::new(move |option, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_tracks(option);
+                    None
+                });
+            })
+        };
+        let on_remind_click: OnSegmentClick<Option<RemindLead>> = {
+            let actions = actions.clone();
+            Rc::new(move |option, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_remind(option);
+                    None
+                });
+            })
+        };
+        let on_destination_field_click: OnClick = {
+            let actions = actions.clone();
+            Rc::new(move |_window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_destination_field();
+                    None
+                });
+            })
+        };
+        let on_destination_option_click: OnOptionClick = {
+            let actions = actions.clone();
+            Rc::new(move |index, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_destination_option(index);
+                    None
+                });
+            })
+        };
         let form_handlers = || add_edit::FormHandlers {
-            on_field_click: handlers.on_field_click.clone(),
-            on_tracks_click: handlers.on_tracks_click.clone(),
-            on_remind_click: handlers.on_remind_click.clone(),
-            on_cancel: handlers.on_cancel.clone(),
-            on_confirm: handlers.on_confirm.clone(),
+            on_field_click: on_field_click.clone(),
+            on_tracks_click: on_tracks_click.clone(),
+            on_remind_click: on_remind_click.clone(),
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
         };
         match self {
             Self::Add(form) => Some(add_edit::render_form(
@@ -138,16 +172,16 @@ impl DocumentTypesDialog {
                         destination: &form.select,
                         error: form.error,
                         handlers: remove::RemoveHandlers {
-                            on_field_click: handlers.on_destination_field_click,
-                            on_option_click: handlers.on_destination_option_click,
-                            on_cancel: handlers.on_cancel,
-                            on_confirm: handlers.on_confirm,
+                            on_field_click: on_destination_field_click,
+                            on_option_click: on_destination_option_click,
+                            on_cancel: actions.cancel.clone(),
+                            on_confirm: actions.confirm.clone(),
                         },
                     },
                     cx,
                 ))
             }
-            Self::DefaultNotice => Some(remove::render_default_notice(handlers.on_cancel, cx)),
+            Self::DefaultNotice => Some(remove::render_default_notice(actions.cancel.clone(), cx)),
         }
     }
 }
@@ -205,5 +239,26 @@ impl Dialog for DocumentTypesDialog {
             hints.push(("tab", crate::msg::desktop_hint_next_field()));
         }
         Some(hints)
+    }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        self.draw(scope, actions, cx)
+    }
+
+    /// Reads back an Add or Edit form's name; the Remove and notice have no typed value.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let (kind, name) = match self {
+            Self::Add(form) => ("AddDocumentType", Some(form.name.text())),
+            Self::Edit(_, form) => ("EditDocumentType", Some(form.name.text())),
+            Self::Remove(..) => ("RemoveDocumentType", None),
+            Self::DefaultNotice => ("DefaultNotice", None),
+        };
+        Some(DialogReadback {
+            kind,
+            values: name
+                .map(|name| ("name", name.to_string()))
+                .into_iter()
+                .collect(),
+        })
     }
 }
