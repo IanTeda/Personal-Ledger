@@ -287,3 +287,41 @@ fn escape_closes_an_open_row_menu_before_leaving_the_page(app: &mut TestAppConte
     assert_eq!(ui.settings_units().menu, None);
     assert!(ui.settings().page_focused);
 }
+
+/// Both tables fill the page from Medium's floor to X-Large, past the 840px other pages cap at,
+/// and never draw narrower than the page at the floor.
+#[gpui::test]
+fn both_tables_fill_the_page_from_the_medium_floor_to_x_large(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s j j enter");
+    assert_eq!(ui.settings().page, "Units");
+    // The page's width in a window at Medium's 720px floor, where the tables stop shrinking.
+    const MIN_WIDTH: gpui::Pixels = gpui::px(610.0);
+    let floor = gpui::size(gpui::px(720.0), gpui::px(800.0));
+    let mut widths = Vec::new();
+    for resize in [
+        Some(floor),
+        None,
+        Some(WindowSize::Large.reference_frame()),
+        Some(WindowSize::XLarge.reference_frame()),
+    ] {
+        if let Some(size) = resize {
+            ui.resize(size);
+        } else {
+            ui.resize_to(WindowSize::Medium);
+        }
+        let page = ui.bounds("settings-page").size.width;
+        for table in ["settings-units-table", "settings-price-sources-table"] {
+            let width = ui.bounds(table).size.width;
+            assert_eq!(width, page, "{table} fills the page");
+            assert!(width >= MIN_WIDTH, "{table} keeps its minimum");
+        }
+        widths.push(page);
+    }
+    assert_eq!(widths[0], MIN_WIDTH);
+    assert!(
+        widths[3] > gpui::px(840.0),
+        "X-Large draws past the Settings cap"
+    );
+}

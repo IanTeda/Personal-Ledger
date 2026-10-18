@@ -256,7 +256,8 @@ impl SettingsView {
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
 /// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
 /// margin ownership is how this gap goes missing, so it's carried on a single edge, here). The
-/// whole block caps at [`CONTENT_MAX_WIDTH`], except Units, whose tables take the View's full width.
+/// whole block caps at [`CONTENT_MAX_WIDTH`], except Units, whose tables fill the View's width
+/// down to their 610px minimum.
 fn section_block(
     section: SettingsPage,
     heading: AnyElement,

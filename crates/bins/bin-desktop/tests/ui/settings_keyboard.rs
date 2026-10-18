@@ -384,8 +384,9 @@ fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut Tes
             }
             assert_eq!(ui.settings().page, page);
             assert!(ui.is_drawn(&format!("settings-index-{page}")));
+            // Units' tables fill the View instead (`settings_units_keyboard`).
             assert!(
-                ui.bounds("settings-page").size.width <= gpui::px(840.0),
+                page == "Units" || ui.bounds("settings-page").size.width <= gpui::px(840.0),
                 "{page} caps its content at {window_size:?}"
             );
         }

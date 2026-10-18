@@ -28,6 +28,10 @@ type OnMenuAction = Rc<dyn Fn(MenuAction, &mut Window, &mut App)>;
 
 /// The context menu's width (`width:190px`).
 const MENU_WIDTH: f32 = 190.0;
+
+/// The narrowest both tables draw: the width the page gets in a window at Medium's 720px floor
+/// (ADR-0042). Any wider window, up to X-Large beside the docked pane, they fill.
+const TABLE_MIN_WIDTH: Pixels = px(610.0);
 /// The square **+** beside each table title (`26px`).
 const ADD_BUTTON_SIZE: Pixels = px(26.0);
 
@@ -244,6 +248,8 @@ fn table(
         MenuTarget::Source(_) => None,
     });
     div()
+        .debug_selector(|| "settings-units-table".to_string())
+        .min_w(TABLE_MIN_WIDTH)
         .flex()
         .flex_col()
         .mb(px(16.0))
@@ -416,6 +422,8 @@ fn price_source_table(
         MenuTarget::Unit(_) => None,
     });
     div()
+        .debug_selector(|| "settings-price-sources-table".to_string())
+        .min_w(TABLE_MIN_WIDTH)
         .flex()
         .flex_col()
         .mb(px(16.0))
