@@ -97,7 +97,7 @@ use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
-    navigation::key_router::{self, Movement},
+    navigation::key_router,
     navigation::nav::{NavState, RailMode},
     settings::tracing::{
         TracingPage,
@@ -121,9 +121,6 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 pub struct Shell {
     nav: NavState,
     focus_handle: FocusHandle,
-    /// Drives the `View` zone's own scroll when it's focused (`Movement::*`) -- rails don't
-    /// scroll at all yet (their content always fits; overflow is a future ticket's problem).
-    view_scroll_handle: ScrollHandle,
     /// The View area's sideways scroll, for a View wider than the space the Chrome leaves it
     /// (ADR-0042). The Chrome itself never scrolls sideways.
     view_x_scroll_handle: ScrollHandle,
@@ -341,7 +338,6 @@ impl Shell {
         Self {
             nav,
             focus_handle,
-            view_scroll_handle: ScrollHandle::new(),
             view_x_scroll_handle: ScrollHandle::new(),
             pending_g: None,
             view_mode: None,
@@ -583,10 +579,6 @@ impl Shell {
             .inventory()
             .clone()
             .update(cx, |page, _| page.set_date_style(date_style));
-    }
-
-    fn scroll_view(&mut self, movement: Movement) {
-        crate::view::scroll_by_movement(&self.view_scroll_handle, movement);
     }
 }
 

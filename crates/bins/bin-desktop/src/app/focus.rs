@@ -27,7 +27,6 @@ impl Shell {
     /// fresh noun starts scrolled to the top, and the View that is now the destination is told
     /// (`on_enter`), so it can reset its own scroll and focus.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
-        self.view_scroll_handle.set_offset(gpui::Point::default());
         self.view_x_scroll_handle.set_offset(gpui::Point::default());
         self.active_view_entity(cx).on_enter(cx);
     }
@@ -85,7 +84,8 @@ impl Shell {
             }
         };
         match view {
-            ShellView::Placeholder(_) => self.scroll_view(movement),
+            // A placeholder has no content to move through, so movement leaves it where it is.
+            ShellView::Placeholder(_) => {}
         }
     }
 }

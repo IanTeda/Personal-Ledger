@@ -636,12 +636,9 @@ impl Render for Shell {
                                 },
                             )
                             .child(match active_entity {
-                                ActiveViewEntity::Shell(view) => render_view(
-                                    view,
-                                    focus == FocusZone::View,
-                                    &self.view_scroll_handle,
-                                    cx,
-                                ),
+                                ActiveViewEntity::Shell(view) => {
+                                    render_view(view, focus == FocusZone::View, cx)
+                                }
                                 _ => view_frame(
                                     active_element,
                                     active_entity.min_width(),
@@ -857,19 +854,24 @@ impl Render for Shell {
     }
 }
 
-/// The active noun's own view interior, for a View `Shell` still draws: the placeholder Nouns. The pane is scrollable
-/// and focus-bordered, both properties of the `View` zone itself.
-fn render_view(
-    view: ShellView,
-    focused: bool,
-    scroll_handle: &ScrollHandle,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
+/// The active noun's own view interior, for a View `Shell` still draws: the placeholder Nouns. The
+/// pane is focus-bordered, a property of the `View` zone itself, and does not scroll: a placeholder
+/// has no content to move through.
+fn render_view(view: ShellView, focused: bool, cx: &gpui::App) -> gpui::AnyElement {
     let content = match view {
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
     };
 
-    scrolling_pane(content, focused, scroll_handle, cx)
+    div()
+        .id("view")
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .when(focused, |this| {
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
+        })
+        .child(content)
+        .into_any_element()
 }
 
 /// The focus-bordered frame a View that renders itself sits in (ADR-0037): the View draws its own
@@ -934,26 +936,5 @@ fn view_frame(
                     Scrollbar::horizontal(x_scroll_handle).scrollbar_show(ScrollbarShow::Always),
                 ),
         )
-        .into_any_element()
-}
-
-/// The scrollable, focus-bordered frame every non-Settings View sits in.
-fn scrolling_pane(
-    content: impl IntoElement,
-    focused: bool,
-    scroll_handle: &ScrollHandle,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
-    div()
-        .id("view")
-        .flex_1()
-        .min_w(px(0.0))
-        .h_full()
-        .overflow_y_scroll()
-        .track_scroll(scroll_handle)
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
-        .child(content)
         .into_any_element()
 }
