@@ -14,7 +14,7 @@ fn add_dialog(app: &mut TestAppContext) -> Harness<'_> {
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Accounts");
     ui.click("settings-accounts-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     ui
 }
 
@@ -86,14 +86,13 @@ fn the_confirm_button_adds_only_a_valid_form(app: &mut TestAppContext) {
     let before = ui.settings_accounts().account_names.len();
 
     ui.click("add-account-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(ui.settings_accounts().account_names.len(), before);
 
     ui.press("r a i n y");
     ui.click("add-account-confirm");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before + 1);
     assert!(
         accounts_page

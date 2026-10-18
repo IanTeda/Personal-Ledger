@@ -1,17 +1,27 @@
-//! The Accounts page's Dialogs: Add, Edit and Delete account. [`AccountsDialog`] is the value
-//! `Shell`'s Dialog host holds while one is open (`OpenDialog::Accounts`); the Dialog host draws it
-//! through `add`, `edit` and `delete`, and confirms it through `apply.rs`.
+//! The Accounts page's Dialogs: Add, Edit and Delete account. [`AccountsDialog`] is the value the
+//! Dialog host holds while one is open (`OpenDialog::Accounts`). It draws itself through `add`,
+//! `edit` and `delete` (`Dialog::render`), every click reaching the form through the host's one
+//! edit callback, reads itself back for the UI tests and confirms itself through `apply.rs`.
 
 pub mod add;
 pub mod delete;
 pub mod edit;
 
-use super::form::{AccountField, AccountForm, DeleteAccountForm};
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Window, div, prelude::*};
+use lib_core::AccountId;
+
+use super::{
+    dialog_options,
+    form::{AccountField, AccountForm, DeleteAccountForm},
+};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     form::field::TextField,
 };
-use lib_core::AccountId;
 
 /// The dialogs' shared width: `docs/ux/desktop-mockups/17-accounts/README.md`'s "Dialog" row.
 pub const WIDTH: gpui::Pixels = gpui::px(440.0);
@@ -72,6 +82,101 @@ impl Dialog for AccountsDialog {
 
     fn close_open_select(&mut self) -> bool {
         self.form_mut().is_some_and(AccountForm::close_open_select)
+    }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let on_field_click: add::OnFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window: &mut Window, cx| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_field(field);
+                    None
+                });
+            })
+        };
+        let on_option_click: add::OnOptionClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, index, _window: &mut Window, cx| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.choose_option(field, index);
+                    None
+                });
+            })
+        };
+        let ledger = scope.ledger.read(cx).ledger();
+        let account = |id: &AccountId| ledger.accounts().iter().find(|a| a.id == *id);
+        Some(match self {
+            Self::Add(form) => add::render(
+                form,
+                &dialog_options(&scope.ledger, cx),
+                on_field_click,
+                on_option_click,
+                actions.cancel.clone(),
+                actions.confirm.clone(),
+                cx,
+            ),
+            Self::Edit(id, form) => match account(id) {
+                Some(account) => edit::render(
+                    form,
+                    account,
+                    &dialog_options(&scope.ledger, cx),
+                    on_field_click,
+                    on_option_click,
+                    actions.cancel.clone(),
+                    actions.confirm.clone(),
+                    cx,
+                ),
+                // Defensive only: the id comes from a live row when the dialog opens.
+                None => div().into_any_element(),
+            },
+            Self::Delete(id, form) => match account(id) {
+                Some(account) => delete::render(
+                    account,
+                    ledger.unit_code(account.unit),
+                    form,
+                    actions.cancel.clone(),
+                    actions.confirm.clone(),
+                    cx,
+                ),
+                // Defensive only: the id comes from a live row when the dialog opens.
+                None => div().into_any_element(),
+            },
+        })
+    }
+
+    /// Reads back an Add or Edit form's focused field (its `AccountField` variant name), drafts,
+    /// selects and whether it would confirm; a Delete's typed-back `confirm`.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let (kind, form) = match self {
+            Self::Add(form) => ("AddAccount", form),
+            Self::Edit(_, form) => ("EditAccount", form),
+            Self::Delete(_, form) => {
+                return Some(DialogReadback {
+                    kind: "DeleteAccount",
+                    values: vec![("confirm", form.confirm_input.text().to_string())],
+                });
+            }
+        };
+        Some(DialogReadback {
+            kind,
+            values: vec![
+                ("focused", format!("{:?}", form.focused)),
+                ("name", form.name.text().to_string()),
+                (
+                    "institution",
+                    form.institution.value().unwrap_or_default().to_string(),
+                ),
+                (
+                    "type",
+                    form.account_type.value().unwrap_or_default().to_string(),
+                ),
+                ("unit", form.unit.value().unwrap_or_default().to_string()),
+                ("opening_balance", form.opening_balance.text().to_string()),
+                ("account_number", form.account_number.text().to_string()),
+                ("select_open", form.any_select_open().to_string()),
+                ("valid", form.is_valid().to_string()),
+            ],
+        })
     }
 }
 

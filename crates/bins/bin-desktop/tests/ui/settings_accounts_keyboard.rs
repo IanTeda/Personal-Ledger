@@ -67,10 +67,10 @@ fn n_opens_add_account_and_escape_cancels_it(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
 
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -81,11 +81,10 @@ fn typing_a_name_and_pressing_enter_adds_the_account(app: &mut TestAppContext) {
 
     ui.press("n");
     ui.press("r a i n y");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("rainy"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("rainy"));
     ui.press("enter");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before + 1);
     assert!(
         accounts_page
@@ -104,14 +103,12 @@ fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppCo
         .expect("seeded accounts");
 
     ui.press("e");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
-    assert_eq!(page.dialog_name.as_deref(), Some(name.as_str()));
+    assert_eq!(ui.dialog(), Some("EditAccount"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some(name.as_str()));
     ui.press("x");
     ui.press("enter");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(accounts_page.account_names.contains(&format!("{name}x")));
 }
 
@@ -125,9 +122,9 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
         .expect("seeded accounts");
 
     ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
     assert_eq!(ui.settings_accounts().account_names.len(), before);
     for ch in name.chars() {
         ui.press(&if ch == ' ' {
@@ -136,11 +133,10 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
             ch.to_string()
         });
     }
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(name.as_str()));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some(name.as_str()));
     ui.press("enter");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before - 1);
     assert!(!accounts_page.account_names.contains(&name));
 }
@@ -176,7 +172,7 @@ fn h_steps_back_to_the_index_and_the_page_keys_stop(app: &mut TestAppContext) {
     ui.press("h");
     assert!(!ui.settings().page_focused);
     ui.press("n");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.press("j");
     assert_eq!(ui.settings().page, "Categories", "j walks the index again");
 }
@@ -200,7 +196,7 @@ fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut 
     ui.press("d");
     type_text(&mut ui, &name);
     ui.press("enter");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.settings_accounts().selected_account.as_ref(),
         names.get(2),
@@ -226,8 +222,8 @@ fn the_accounts_command_opens_the_page_and_its_dialog(app: &mut TestAppContext) 
     let page = ui.settings();
     assert_eq!(page.page, "Accounts");
     assert!(page.page_focused);
-    assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
-    assert_eq!(page.dialog_name.as_deref(), Some(name.as_str()));
+    assert_eq!(ui.dialog(), Some("EditAccount"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some(name.as_str()));
     assert_eq!(ui.settings_accounts().selected_account, Some(name));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
 }
@@ -241,7 +237,7 @@ fn the_accounts_command_names_an_account_it_cannot_find(app: &mut TestAppContext
     ui.press("enter");
     let page = ui.settings();
     assert_eq!(page.page, "Accounts");
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         page.status_message.as_deref(),
         Some(":accounts delete \u{2014} no account named \"rainy\"")

@@ -28,10 +28,10 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
     let mut ui = on_accounts(app);
 
     ui.click("settings-accounts-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.click("add-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -52,11 +52,10 @@ fn an_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
 
     ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(2)));
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditAccount"));
-    assert_eq!(page.dialog_name, accounts_page.selected_account);
+    assert_eq!(ui.dialog(), Some("EditAccount"));
+    assert_eq!(ui.dialog_value("name"), accounts_page.selected_account);
     ui.click("edit-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -65,12 +64,12 @@ fn a_delete_action_needs_the_name_typed_back(app: &mut TestAppContext) {
     let before = ui.settings_accounts().account_names.len();
 
     ui.click(&format!("settings-accounts-delete-{}", AccountId::seed(2)));
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
     ui.click("delete-account-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteAccount"));
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
     assert_eq!(ui.settings_accounts().account_names.len(), before);
     ui.click("delete-account-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -96,10 +95,10 @@ fn an_edit_action_saved_keeps_the_edited_account_selected(app: &mut TestAppConte
     let mut ui = on_accounts(app);
 
     ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(2)));
-    let name = ui.settings().dialog_name.expect("the Edit dialog is open");
+    let name = ui.dialog_value("name").expect("the Edit dialog is open");
     ui.press("x");
     ui.click("edit-account-confirm");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert_eq!(
         ui.settings_accounts().selected_account,

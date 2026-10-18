@@ -12,12 +12,11 @@
 use bin_desktop::{
     ShellBindings, ShellLogs, WindowSize,
     app::{
-        AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,
-        DocumentsSnapshot, ImportSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
-        SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot,
-        SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot,
-        TransactionsSnapshot,
+        BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
+        SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
+        SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
+        SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
+        SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
     },
     build_shell,
     locale::init_for_tests,
@@ -44,6 +43,24 @@ pub struct Harness<'a> {
     pub cx: &'a mut VisualTestContext,
     /// The Shell's live log capture: push entries here, then [`Harness::settle_logs`].
     pub logs: lib_tracing::LogBuffer,
+}
+
+/// The open Add or Edit account dialog's form: plain values, as `Harness::account_form` reads
+/// them back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountFormSnapshot {
+    /// The focused field, as its `AccountField` variant name.
+    pub focused: String,
+    pub name: String,
+    pub institution: Option<String>,
+    pub account_type: Option<String>,
+    pub unit: Option<String>,
+    pub opening_balance: String,
+    pub account_number: String,
+    /// Whether any select's option list is showing.
+    pub select_open: bool,
+    /// Whether the form would confirm.
+    pub valid: bool,
 }
 
 impl<'a> Harness<'a> {
@@ -303,10 +320,26 @@ impl<'a> Harness<'a> {
         self.read_app(Shell::settings_units_snapshot)
     }
 
-    /// The open Add or Edit account dialog's form; panics if none is open.
+    /// The open Add or Edit account dialog's form, read back through the Dialog itself; panics if
+    /// none is open.
     pub fn account_form(&mut self) -> AccountFormSnapshot {
-        self.read(Shell::account_form_snapshot)
-            .expect("an Add or Edit account dialog is open")
+        let readback = self
+            .read_app(Shell::dialog_readback)
+            .filter(|readback| matches!(readback.kind, "AddAccount" | "EditAccount"))
+            .expect("an Add or Edit account dialog is open");
+        let text = |label: &str| readback.value(label).unwrap_or_default().to_string();
+        let choice = |label: &str| Some(text(label)).filter(|value| !value.is_empty());
+        AccountFormSnapshot {
+            focused: text("focused"),
+            name: text("name"),
+            institution: choice("institution"),
+            account_type: choice("type"),
+            unit: choice("unit"),
+            opening_balance: text("opening_balance"),
+            account_number: text("account_number"),
+            select_open: text("select_open") == "true",
+            valid: text("valid") == "true",
+        }
     }
 
     /// The Colour Theme id and Appearance now chosen, read from the colours Global.

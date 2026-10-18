@@ -21,7 +21,7 @@ pub use crate::settings::tracing::SettingsTracingSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
-    settings::accounts::dialogs::AccountsDialog, settings::documents::dialogs::DocumentTypesDialog,
+    settings::documents::dialogs::DocumentTypesDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tracing::dialogs::TracingDialog,
 };
@@ -36,64 +36,11 @@ struct OpenDialog {
     confirm: Option<String>,
 }
 
-/// The open Add or Edit account dialog's form: plain values, so the private form type stays
-/// private.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountFormSnapshot {
-    /// The focused field, as its `AccountField` variant name.
-    pub focused: String,
-    pub name: String,
-    pub institution: Option<String>,
-    pub account_type: Option<String>,
-    pub unit: Option<String>,
-    pub opening_balance: String,
-    pub account_number: String,
-    /// Whether any select's option list is showing.
-    pub select_open: bool,
-    /// Whether the form would confirm.
-    pub valid: bool,
-}
-
 impl Shell {
-    /// The open Add or Edit account dialog's form for a test; `None` for any other dialog.
-    #[doc(hidden)]
-    pub fn account_form_snapshot(&self) -> Option<AccountFormSnapshot> {
-        let form = self.dialog::<AccountsDialog>()?.form()?;
-        Some(AccountFormSnapshot {
-            focused: format!("{:?}", form.focused),
-            name: form.name.text().to_string(),
-            institution: form.institution.value().map(str::to_string),
-            account_type: form.account_type.value().map(str::to_string),
-            unit: form.unit.value().map(str::to_string),
-            opening_balance: form.opening_balance.text().to_string(),
-            account_number: form.account_number.text().to_string(),
-            select_open: form.any_select_open(),
-            valid: form.is_valid(),
-        })
-    }
-
     /// The open Settings dialog, whichever page owns it.
     fn open_settings_dialog(&self) -> OpenDialog {
         let mut open_dialog = OpenDialog::default();
-        if let Some(open) = self.dialog::<AccountsDialog>() {
-            let (label, name, confirm) = match open {
-                AccountsDialog::Add(form) => {
-                    ("AddAccount", Some(form.name.text().to_string()), None)
-                }
-                AccountsDialog::Edit(_, form) => {
-                    ("EditAccount", Some(form.name.text().to_string()), None)
-                }
-                AccountsDialog::Delete(_, form) => (
-                    "DeleteAccount",
-                    None,
-                    Some(form.confirm_input.text().to_string()),
-                ),
-            };
-            open_dialog.label = Some(label);
-            open_dialog.name = name;
-            open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<PayeesDialog>() {
+        if let Some(open) = self.dialog::<PayeesDialog>() {
             let (label, name, confirm) = match open {
                 PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
                 PayeesDialog::Edit(_, form) => {

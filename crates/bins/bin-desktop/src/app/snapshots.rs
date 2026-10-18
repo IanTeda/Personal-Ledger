@@ -18,10 +18,10 @@ pub use documents::DocumentsSnapshot;
 pub use overlays::{ToastSnapshot, ToastsSnapshot};
 pub use palette::PaletteSnapshot;
 pub use settings::{
-    AccountFormSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
-    SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot,
-    SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot,
+    SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
+    SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
+    SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
+    SettingsUnitsSnapshot,
 };
 pub use status::StatusSnapshot;
 pub use transactions::{ChipSnapshot, ImportRowSnapshot, ImportSnapshot, TransactionsSnapshot};

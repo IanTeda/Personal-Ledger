@@ -22,11 +22,7 @@ use crate::{
     },
     navigation::nav::InputMode,
     settings::{
-        accounts::{
-            AccountsPage,
-            apply::{AccountOutcome, AccountsApply},
-            dialogs::AccountsDialog,
-        },
+        accounts::AccountsPage,
         payees::{
             apply::{PayeeOutcome, PayeesApply},
             dialogs::PayeesDialog,
@@ -117,7 +113,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
             Some(OpenDialog::Payees(_)) => {
                 let mut apply = PayeesApply {
                     ledger: self.ledger.clone(),
@@ -176,7 +171,8 @@ impl Shell {
                 OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
                 | OpenDialog::Units(_)
-                | OpenDialog::Institutions(_),
+                | OpenDialog::Institutions(_)
+                | OpenDialog::Accounts(_),
             )
             | None => {}
         }
@@ -263,35 +259,5 @@ impl Shell {
 
     pub(super) fn dialog_mut<T: DialogVariant>(&mut self) -> Option<&mut T> {
         T::from_open_mut(self.chrome.dialog.as_mut()?)
-    }
-}
-
-impl Shell {
-    /// Confirms the open Accounts dialog through the host's cycle: the form's command runs against
-    /// the Ledger, and a landed one closes the dialog. Add and Edit select the account (an Edit
-    /// regroups it if its Type changed); Delete toasts the count of Transactions that went with it
-    /// and keeps the selection in range, so it lands on the account that slid into the deleted
-    /// row's place (or the last one).
-    pub(super) fn confirm_accounts_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        let mut apply = AccountsApply {
-            ledger: self.ledger.clone(),
-        };
-        let Some(outcome) = self.confirm_dialog::<AccountsDialog, _>(&mut apply, cx) else {
-            return;
-        };
-        let page = self.accounts_page(cx);
-        match outcome {
-            AccountOutcome::Saved(id) => page.update(cx, |page, cx| page.select_id(id, cx)),
-            AccountOutcome::Deleted { name, transactions } => {
-                self.raise_toast(
-                    ToastKind::Success,
-                    lib_locale::msg::toast_account_deleted(
-                        &name,
-                        i64::try_from(transactions).unwrap_or(i64::MAX),
-                    ),
-                );
-                page.update(cx, |page, cx| page.clamp_selection(cx));
-            }
-        }
     }
 }

@@ -9,9 +9,13 @@ use lib_ledger::{AddAccount, DeleteAccount, EditAccount};
 
 use super::{dialogs::AccountsDialog, form::AccountForm};
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
+use lib_toast::ToastKind;
 
 /// What confirming an Accounts Dialog asks for.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +56,29 @@ impl DialogForm for AccountsDialog {
     /// A refusal here means the account vanished under an open, valid form, so there is nothing
     /// left for the form to correct: the Dialog stays open and `Esc` closes it.
     fn refuse(&mut self, _refusal: AccountError) {}
+}
+
+impl ConfirmDialog for AccountsDialog {
+    type Outcome = AccountOutcome;
+
+    /// A delete raises the Toast naming the account and how many Transactions went with it.
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<AccountOutcome>> {
+        let mut apply = AccountsApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        let toast = match &outcome {
+            AccountOutcome::Saved(_) => None,
+            AccountOutcome::Deleted { name, transactions } => Some((
+                ToastKind::Success,
+                lib_locale::msg::toast_account_deleted(
+                    name,
+                    i64::try_from(*transactions).unwrap_or(i64::MAX),
+                ),
+            )),
+        };
+        Some(Landed { toast, outcome })
+    }
 }
 
 /// Runs [`AccountCommand`]s against the Ledger as Ledger commands. Deleting an account deletes its

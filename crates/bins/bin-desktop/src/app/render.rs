@@ -21,7 +21,6 @@ use gpui::{
     Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, Window, div, prelude::*, px,
 };
 
-use crate::settings::accounts::dialogs as accounts_dialogs;
 use crate::{
     bills::{self},
     budgets,
@@ -35,7 +34,6 @@ use crate::{
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
     period::Period,
-    settings::accounts::dialogs::AccountsDialog,
     settings::tracing::dialogs::TracingDialog,
     theme::{color, type_scale},
     view::{
@@ -200,36 +198,6 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
-        let on_accounts_dialog_field_click: accounts_dialogs::add::OnFieldClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.edit_dialog(cx, |dialog: &mut AccountsDialog| dialog.click_field(field))
-                });
-            })
-        };
-        let on_accounts_dialog_option_click: accounts_dialogs::add::OnOptionClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.edit_dialog(cx, |dialog: &mut AccountsDialog| {
-                        dialog.choose_option(field, index)
-                    })
-                });
-            })
-        };
-        let on_accounts_dialog_cancel: accounts_dialogs::add::OnCancel = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
-            })
-        };
-        let on_accounts_dialog_confirm: accounts_dialogs::add::OnConfirm = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
-            })
-        };
         // The hosted Dialogs' clicks: an edit runs on the open Dialog and raises the Toast it
         // returns; cancel and confirm run the host's cycle.
         let dialog_actions = DialogActions {
@@ -252,7 +220,6 @@ impl Render for Shell {
             cancel: on_settings_dialog_cancel.clone(),
             confirm: on_settings_dialog_confirm.clone(),
         };
-        let account_options = crate::settings::accounts::dialog_options(&self.ledger, cx);
         let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -571,61 +538,6 @@ impl Render for Shell {
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
-            .children(self.dialog::<AccountsDialog>().map(|dialog| match dialog {
-                AccountsDialog::Add(form) => accounts_dialogs::add::render(
-                    form,
-                    &account_options,
-                    on_accounts_dialog_field_click,
-                    on_accounts_dialog_option_click,
-                    on_accounts_dialog_cancel,
-                    on_accounts_dialog_confirm,
-                    cx,
-                ),
-                AccountsDialog::Edit(id, form) => {
-                    match self
-                        .ledger
-                        .read(cx)
-                        .ledger()
-                        .accounts()
-                        .iter()
-                        .find(|account| account.id == *id)
-                    {
-                        Some(account) => accounts_dialogs::edit::render(
-                            form,
-                            account,
-                            &account_options,
-                            on_accounts_dialog_field_click,
-                            on_accounts_dialog_option_click,
-                            on_accounts_dialog_cancel,
-                            on_accounts_dialog_confirm,
-                            cx,
-                        ),
-                        // Defensive only: the id comes from a live row when the dialog opens.
-                        None => div().into_any_element(),
-                    }
-                }
-                AccountsDialog::Delete(id, form) => {
-                    match self
-                        .ledger
-                        .read(cx)
-                        .ledger()
-                        .accounts()
-                        .iter()
-                        .find(|account| account.id == *id)
-                    {
-                        Some(account) => accounts_dialogs::delete::render(
-                            account,
-                            self.ledger.read(cx).ledger().unit_code(account.unit),
-                            form,
-                            on_accounts_dialog_cancel,
-                            on_accounts_dialog_confirm,
-                            cx,
-                        ),
-                        // Defensive only: the id comes from a live row when the dialog opens.
-                        None => div().into_any_element(),
-                    }
-                }
-            }))
             .children(self.render_bills_dialog(&entity, cx))
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))

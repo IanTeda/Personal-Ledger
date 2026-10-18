@@ -24,7 +24,7 @@ fn on_accounts(app: &mut TestAppContext) -> Harness<'_> {
 fn add_dialog(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = on_accounts(app);
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     ui
 }
 
@@ -89,7 +89,7 @@ fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     let before = ui.settings_accounts().account_names.len();
 
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     assert!(!ui.account_form().valid);
 
@@ -97,8 +97,7 @@ fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     assert!(ui.account_form().valid);
     ui.press("enter");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before + 1);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -109,7 +108,7 @@ fn enter_on_a_select_opens_it_instead_of_confirming(app: &mut TestAppContext) {
     ui.press("o k");
 
     ui.press("tab enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert!(ui.account_form().select_open);
 }
 
@@ -148,11 +147,11 @@ fn the_first_escape_closes_an_open_list_and_the_next_closes_the_dialog(app: &mut
     let form = ui.account_form();
     assert!(!form.select_open, "the list closed");
     assert_eq!(form.institution, before, "without committing the highlight");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddAccount"));
+    assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
 
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -190,7 +189,7 @@ fn a_cash_account_has_no_institution_to_pick(app: &mut TestAppContext) {
 fn editing_fixes_the_unit_and_balance_and_tab_skips_them(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
     ui.press("e");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditAccount"));
+    assert_eq!(ui.dialog(), Some("EditAccount"));
 
     // The seeded selection may be Cash (which also skips Institution), so assert the rule that
     // always holds: a full lap never lands on Unit or Opening balance, and wraps to Name.
@@ -218,8 +217,7 @@ fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     ui.press("backspace");
     ui.press("enter");
     let accounts_page = ui.settings_accounts();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     let mut shorter = name.clone();
     shorter.pop();
     assert!(accounts_page.account_names.contains(&shorter));

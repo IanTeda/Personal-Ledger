@@ -1,8 +1,9 @@
 //! The **Accounts** Settings page (ADR-0037's amendment: one folder per page). [`AccountsPage`] is
 //! the page's Entity: it owns the selection, renders itself (`render.rs`), handles the page's keys
-//! and movement, builds its Dialogs and reaches `Shell` only through [`ViewEvent`]. `Shell`'s Dialog
-//! host draws the Dialogs (`dialogs/`) and confirms them through `apply.rs`. The Settings View
-//! forwards to the page while it is open.
+//! and movement, builds its Dialogs and reaches `Shell` only through [`ViewEvent`]. The Dialog host
+//! holds the Dialogs, and they draw, read back and confirm themselves (`dialogs/`, `apply.rs`),
+//! handing each outcome back to [`AccountsPage::land`]. The Settings View forwards to the page
+//! while it is open.
 
 pub mod apply;
 pub mod dialogs;
@@ -17,12 +18,13 @@ use lib_core::AccountId;
 use lib_ledger::Domain;
 use lib_locale::Label;
 
+use apply::AccountOutcome;
 use dialogs::AccountsDialog;
 use form::{AccountForm, AccountOptions, DeleteAccountForm};
 use hints::accounts_hints;
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::{command::AccountsVerb, key_router::Movement},
@@ -238,6 +240,16 @@ impl AccountsPage {
         }
     }
 
+    /// Lands a confirmed Dialog. Add and Edit select the account (an Edit regroups it if its Type
+    /// changed); Delete keeps the selection in range, so it lands on the account that slid into the
+    /// deleted row's place (or the last one). The Toast is the host's.
+    fn land(&mut self, outcome: AccountOutcome, cx: &mut Context<'_, Self>) {
+        match outcome {
+            AccountOutcome::Saved(id) => self.select_id(id, cx),
+            AccountOutcome::Deleted { .. } => self.clamp_selection(cx),
+        }
+    }
+
     /// Keeps the selection in range after rows are removed, so it lands on the account that
     /// slid into the deleted row's place (or the last one).
     pub fn clamp_selection(&mut self, cx: &mut Context<'_, Self>) {
@@ -294,7 +306,7 @@ impl AccountsPage {
             .map(|unit| unit.code.as_str());
         let mut form = AccountForm::new(&options, default_unit);
         form.name = TextField::new(name.trim());
-        open_dialog(AccountsDialog::Add(form), cx);
+        open_dialog(AccountsDialog::Add(form), Self::land, cx);
     }
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
@@ -304,7 +316,7 @@ impl AccountsPage {
             return;
         };
         let form = AccountForm::from_account(account, &options);
-        open_dialog(AccountsDialog::Edit(id, form), cx);
+        open_dialog(AccountsDialog::Edit(id, form), Self::land, cx);
     }
 
     /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
@@ -313,7 +325,7 @@ impl AccountsPage {
             return;
         };
         let form = DeleteAccountForm::new(account.name.as_str());
-        open_dialog(AccountsDialog::Delete(id, form), cx);
+        open_dialog(AccountsDialog::Delete(id, form), Self::land, cx);
     }
 
     /// `accounts new|edit|delete [<account name>]`, once `Shell` has opened the page: opens the
@@ -370,13 +382,6 @@ impl AccountsPage {
 /// selection is untouched, so returning to Accounts finds the same row selected.
 fn open_ledger(id: AccountId, cx: &mut Context<'_, AccountsPage>) {
     cx.emit(ViewEvent::Reveal(Reveal::AccountTransactions(id)));
-}
-
-/// Asks `Shell`'s Dialog host to open an Accounts dialog.
-fn open_dialog(dialog: AccountsDialog, cx: &mut Context<'_, AccountsPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Accounts(
-        dialog,
-    ))));
 }
 
 #[cfg(test)]
