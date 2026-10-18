@@ -13,12 +13,12 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{
-    AccountId, CategoryId, DocumentTypeId, ItemId, PayeeId, PropertyId, RoomId, TagId,
+    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, TagId,
     TransactionId, UnitId,
 };
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
-use lib_inventory::{Item, Property, Room};
+use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
@@ -64,14 +64,14 @@ pub enum LedgerChange {
     UpsertDocument(Document),
     UpsertDocumentType(DocumentTypeRow),
     DeleteDocumentType(DocumentTypeId),
-    UpsertProperty(Property),
-    DeleteProperty(PropertyId),
-    /// A Room names its Property, since a Room row is keyed by its own id.
-    UpsertRoom {
-        property: PropertyId,
-        room: Room,
+    UpsertLocation(Location),
+    DeleteLocation(LocationId),
+    /// An Area names its Location, since an Area row is keyed by its own id.
+    UpsertArea {
+        location: LocationId,
+        area: Area,
     },
-    DeleteRoom(RoomId),
+    DeleteArea(AreaId),
     UpsertItem(Item),
     DeleteItem(ItemId),
     UpsertInstitution(InstitutionRow),
@@ -91,10 +91,10 @@ impl LedgerChange {
             Self::UpsertBudget(_) => Domain::Budgets,
             Self::UpsertDocument(_) => Domain::Documents,
             Self::UpsertDocumentType(_) | Self::DeleteDocumentType(_) => Domain::DocumentTypes,
-            Self::UpsertProperty(_)
-            | Self::DeleteProperty(_)
-            | Self::UpsertRoom { .. }
-            | Self::DeleteRoom(_)
+            Self::UpsertLocation(_)
+            | Self::DeleteLocation(_)
+            | Self::UpsertArea { .. }
+            | Self::DeleteArea(_)
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
             Self::UpsertInstitution(_) => Domain::Institutions,

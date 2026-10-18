@@ -25,6 +25,12 @@ fn status(ui: &mut Harness<'_>) -> Option<String> {
     ui.read(|shell| shell.status_message().map(str::to_string))
 }
 
+/// Right-clicks the row and picks an entry of its context menu: the rows carry no buttons.
+fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
+    ui.right_click(row);
+    ui.click(&format!("settings-units-menu-{action}"));
+}
+
 #[gpui::test]
 fn institution_edit_and_delete_buttons_flash_a_not_yet_built_message(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
@@ -163,7 +169,7 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
     ui.resize_to(WindowSize::Large);
     let (code, name, _) = ui.settings_units().unit_rows[0].clone();
 
-    ui.click("unit-edit-0");
+    row_action(&mut ui, "unit-row-0", "edit-unit");
     ui.click("edit-unit-type-1");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
@@ -182,7 +188,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
     ui.resize_to(WindowSize::Large);
 
     // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
-    ui.click("unit-edit-2");
+    row_action(&mut ui, "unit-row-2", "edit-unit");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
         Some("Stock")
@@ -194,17 +200,17 @@ fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContex
     let mut ui = on_page(app, "Units");
     ui.resize_to(WindowSize::Large);
 
-    ui.click("price-source-test-0");
+    row_action(&mut ui, "price-source-row-0", "test-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("test price source \u{2014} not yet built")
     );
-    ui.click("price-source-edit-0");
+    row_action(&mut ui, "price-source-row-0", "edit-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("edit price source \u{2014} not yet built")
     );
-    ui.click("price-source-delete-1");
+    row_action(&mut ui, "price-source-row-1", "delete-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("delete price source \u{2014} not yet built")

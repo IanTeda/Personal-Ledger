@@ -1,14 +1,14 @@
 //! The Inventory Dialogs' confirm cycle (ADR-0037): the command each form describes and the
 //! [`Apply`] that runs it against the Ledger, which also drops the Document Links a removed
-//! Property's Items had.
+//! Location's Items had.
 
 use gpui::{App, Entity};
-use lib_core::{PropertyId, RoomId};
-use lib_inventory::{Inventory, PropertyDraft, PropertyError, RoomError};
-use lib_ledger::{AddProperty, AddRoom, EditProperty, EditRoom, RemoveProperty, RemoveRoom};
+use lib_core::{AreaId, LocationId};
+use lib_inventory::{AreaError, Inventory, LocationDraft, LocationError};
+use lib_ledger::{AddArea, AddLocation, EditArea, EditLocation, RemoveArea, RemoveLocation};
 use lib_toast::ToastKind;
 
-use super::{InventoryRow, dialogs::InventoryDialog, form::Problem};
+use super::{InventoryRow, dialogs::InventoryDialog};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
     chrome::dialog_host::Dialog,
@@ -18,57 +18,57 @@ use crate::{
 /// What confirming an Inventory Dialog asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryCommand {
-    AddProperty {
-        draft: PropertyDraft,
+    AddLocation {
+        draft: LocationDraft,
         unit: String,
     },
-    EditProperty(PropertyId, PropertyDraft),
-    RemoveProperty(PropertyId),
-    AddRoom {
-        property: PropertyId,
+    EditLocation(LocationId, LocationDraft),
+    RemoveLocation(LocationId),
+    AddArea {
+        location: LocationId,
         name: String,
     },
-    EditRoom {
-        id: RoomId,
+    EditArea {
+        id: AreaId,
         name: String,
     },
-    /// Remove the Room, moving its Items to the Room named `destination`.
-    RemoveRoom {
-        id: RoomId,
+    /// Remove the Area, moving its Items to the Area named `destination`.
+    RemoveArea {
+        id: AreaId,
         destination: Option<String>,
     },
-    /// The Room-blocked notice: nothing to change, the Dialog only closes.
+    /// The Area-blocked notice: nothing to change, the Dialog only closes.
     Dismiss,
 }
 
 /// What a landed [`InventoryCommand`] did, for the selection and Toast that follow it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryOutcome {
-    PropertyAdded {
-        id: PropertyId,
+    LocationAdded {
+        id: LocationId,
         name: String,
     },
-    PropertySaved {
-        id: PropertyId,
+    LocationSaved {
+        id: LocationId,
         name: String,
     },
     /// Removed: the name, read before the write, and the row the cursor lands on.
-    PropertyRemoved {
-        id: PropertyId,
+    LocationRemoved {
+        id: LocationId,
         name: String,
         selected: Option<InventoryRow>,
     },
-    RoomAdded {
-        property: PropertyId,
-        id: RoomId,
+    AreaAdded {
+        location: LocationId,
+        id: AreaId,
         name: String,
     },
-    RoomSaved {
-        id: RoomId,
+    AreaSaved {
+        id: AreaId,
         name: String,
     },
-    /// Removed: how many Items moved, and to which Room, read before the write.
-    RoomRemoved {
+    /// Removed: how many Items moved, and to which Area, read before the write.
+    AreaRemoved {
         name: String,
         items: usize,
         destination: Option<String>,
@@ -78,34 +78,34 @@ pub enum InventoryOutcome {
 }
 
 impl InventoryOutcome {
-    /// The Toast a landed command raises; the Room-blocked notice raises none.
+    /// The Toast a landed command raises; the Area-blocked notice raises none.
     pub fn toast(&self) -> Option<(ToastKind, String)> {
         let message = match self {
-            Self::PropertyAdded { name, .. } => {
-                crate::msg::desktop_inventory_toast_property_added(name)
+            Self::LocationAdded { name, .. } => {
+                crate::msg::desktop_inventory_toast_location_added(name)
             }
-            Self::PropertySaved { name, .. } => {
-                crate::msg::desktop_inventory_toast_property_saved(name)
+            Self::LocationSaved { name, .. } => {
+                crate::msg::desktop_inventory_toast_location_saved(name)
             }
-            Self::PropertyRemoved { name, .. } => {
-                crate::msg::desktop_inventory_toast_property_removed(name)
+            Self::LocationRemoved { name, .. } => {
+                crate::msg::desktop_inventory_toast_location_removed(name)
             }
-            Self::RoomAdded { name, .. } => crate::msg::desktop_inventory_toast_room_added(name),
-            Self::RoomSaved { name, .. } => crate::msg::desktop_inventory_toast_room_saved(name),
-            Self::RoomRemoved {
+            Self::AreaAdded { name, .. } => crate::msg::desktop_inventory_toast_area_added(name),
+            Self::AreaSaved { name, .. } => crate::msg::desktop_inventory_toast_area_saved(name),
+            Self::AreaRemoved {
                 name,
                 items,
                 destination,
                 ..
             } => match destination {
-                Some(to) if *items > 0 => crate::msg::desktop_inventory_toast_room_removed_moved(
+                Some(to) if *items > 0 => crate::msg::desktop_inventory_toast_area_removed_moved(
                     name,
                     &crate::msg::desktop_inventory_count_items(
                         i64::try_from(*items).unwrap_or(i64::MAX),
                     ),
                     to,
                 ),
-                _ => crate::msg::desktop_inventory_toast_room_removed(name),
+                _ => crate::msg::desktop_inventory_toast_area_removed(name),
             },
             Self::Dismissed => return None,
         };
@@ -114,11 +114,11 @@ impl InventoryOutcome {
 }
 
 /// Why an Inventory command didn't land. The forms check the same rules live, so this only
-/// happens when the Property or Room was removed while its Dialog was open.
+/// happens when the Location or Area was removed while its Dialog was open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRefusal {
-    Property(PropertyError),
-    Room(RoomError),
+    Location(LocationError),
+    Area(AreaError),
 }
 
 impl DialogForm for InventoryDialog {
@@ -132,36 +132,36 @@ impl DialogForm for InventoryDialog {
         match self {
             Self::Add(form) => {
                 let unit = form.unit_code().ok_or(FormError)?.to_string();
-                let draft = form.draft().map_err(|_: Problem| FormError)?;
-                Ok(InventoryCommand::AddProperty { draft, unit })
+                let draft = form.draft();
+                Ok(InventoryCommand::AddLocation { draft, unit })
             }
             Self::Edit(id, form) => {
-                let draft = form.draft().map_err(|_: Problem| FormError)?;
-                Ok(InventoryCommand::EditProperty(*id, draft))
+                let draft = form.draft();
+                Ok(InventoryCommand::EditLocation(*id, draft))
             }
-            Self::Remove(id, _) => Ok(InventoryCommand::RemoveProperty(*id)),
-            Self::AddRoom(property, form) => Ok(InventoryCommand::AddRoom {
-                property: *property,
+            Self::Remove(id, _) => Ok(InventoryCommand::RemoveLocation(*id)),
+            Self::AddArea(location, form) => Ok(InventoryCommand::AddArea {
+                location: *location,
                 name: form.name.text().trim().to_string(),
             }),
-            Self::EditRoom(id, form) => Ok(InventoryCommand::EditRoom {
+            Self::EditArea(id, form) => Ok(InventoryCommand::EditArea {
                 id: *id,
                 name: form.name.text().trim().to_string(),
             }),
-            Self::RemoveRoom(id, form) => Ok(InventoryCommand::RemoveRoom {
+            Self::RemoveArea(id, form) => Ok(InventoryCommand::RemoveArea {
                 id: *id,
                 destination: form.select.value().map(str::to_string),
             }),
-            Self::RoomBlocked(_) => Ok(InventoryCommand::Dismiss),
+            Self::AreaBlocked(_) => Ok(InventoryCommand::Dismiss),
         }
     }
 
-    /// The forms check names, cover and Unit live, so a refusal means the row vanished under an
+    /// The forms check names and Unit live, so a refusal means the row vanished under an
     /// open, valid form: there is nothing left for the form to correct, and `Esc` closes it.
     fn refuse(&mut self, _refusal: InventoryRefusal) {}
 }
 
-/// Runs [`InventoryCommand`]s against the Ledger as Ledger commands. Removing a Property drops the
+/// Runs [`InventoryCommand`]s against the Ledger as Ledger commands. Removing a Location drops the
 /// Document Links of its Items in the same command.
 pub struct InventoryApply {
     pub ledger: Entity<LedgerStore>,
@@ -183,123 +183,123 @@ impl Apply<InventoryCommand> for InventoryApply {
         cx: &mut App,
     ) -> Result<InventoryOutcome, InventoryRefusal> {
         match command {
-            InventoryCommand::AddProperty { draft, unit } => {
+            InventoryCommand::AddLocation { draft, unit } => {
                 let name = draft.name.trim().to_string();
                 let id = self
                     .ledger
                     .update(cx, |store, cx| {
                         store.apply(
                             cx,
-                            AddProperty {
+                            AddLocation {
                                 draft: draft.clone(),
                                 unit,
                             },
                         )
                     })
-                    .map_err(InventoryRefusal::Property)?;
-                Ok(InventoryOutcome::PropertyAdded { id, name })
+                    .map_err(InventoryRefusal::Location)?;
+                Ok(InventoryOutcome::LocationAdded { id, name })
             }
-            InventoryCommand::EditProperty(id, draft) => {
+            InventoryCommand::EditLocation(id, draft) => {
                 let name = draft.name.trim().to_string();
                 self.ledger
-                    .update(cx, |store, cx| store.apply(cx, EditProperty { id, draft }))
-                    .map_err(InventoryRefusal::Property)?;
-                Ok(InventoryOutcome::PropertySaved { id, name })
+                    .update(cx, |store, cx| store.apply(cx, EditLocation { id, draft }))
+                    .map_err(InventoryRefusal::Location)?;
+                Ok(InventoryOutcome::LocationSaved { id, name })
             }
-            InventoryCommand::RemoveProperty(id) => {
+            InventoryCommand::RemoveLocation(id) => {
                 let inventory = self.inventory(cx);
                 let name = inventory
-                    .property(id)
-                    .map(|property| property.name.clone())
-                    .ok_or(InventoryRefusal::Property(PropertyError::Unknown))?;
+                    .location(id)
+                    .map(|location| location.name.clone())
+                    .ok_or(InventoryRefusal::Location(LocationError::Unknown))?;
                 // The cursor lands on the neighbour that takes the removed row's place.
                 let position = inventory
-                    .properties
+                    .locations
                     .iter()
-                    .position(|property| property.id == id)
+                    .position(|location| location.id == id)
                     .unwrap_or(0);
-                // The command also drops the Document Links to the Property's Items.
+                // The command also drops the Document Links to the Location's Items.
                 self.ledger
-                    .update(cx, |store, cx| store.apply(cx, RemoveProperty(id)))
-                    .map_err(InventoryRefusal::Property)?;
-                let properties = &self.inventory(cx).properties;
-                let selected = properties
-                    .get(position.min(properties.len().saturating_sub(1)))
-                    .map(|property| InventoryRow::Property(property.id));
-                Ok(InventoryOutcome::PropertyRemoved { id, name, selected })
+                    .update(cx, |store, cx| store.apply(cx, RemoveLocation(id)))
+                    .map_err(InventoryRefusal::Location)?;
+                let locations = &self.inventory(cx).locations;
+                let selected = locations
+                    .get(position.min(locations.len().saturating_sub(1)))
+                    .map(|location| InventoryRow::Location(location.id));
+                Ok(InventoryOutcome::LocationRemoved { id, name, selected })
             }
-            InventoryCommand::AddRoom { property, name } => {
+            InventoryCommand::AddArea { location, name } => {
                 let id = self
                     .ledger
                     .update(cx, |store, cx| {
                         store.apply(
                             cx,
-                            AddRoom {
-                                property,
+                            AddArea {
+                                location,
                                 name: name.clone(),
                             },
                         )
                     })
-                    .map_err(InventoryRefusal::Room)?;
-                Ok(InventoryOutcome::RoomAdded { property, id, name })
+                    .map_err(InventoryRefusal::Area)?;
+                Ok(InventoryOutcome::AreaAdded { location, id, name })
             }
-            InventoryCommand::EditRoom { id, name } => {
+            InventoryCommand::EditArea { id, name } => {
                 self.ledger
                     .update(cx, |store, cx| {
                         store.apply(
                             cx,
-                            EditRoom {
-                                room: id,
+                            EditArea {
+                                area: id,
                                 name: name.clone(),
                             },
                         )
                     })
-                    .map_err(InventoryRefusal::Room)?;
-                Ok(InventoryOutcome::RoomSaved { id, name })
+                    .map_err(InventoryRefusal::Area)?;
+                Ok(InventoryOutcome::AreaSaved { id, name })
             }
-            InventoryCommand::RemoveRoom { id, destination } => {
+            InventoryCommand::RemoveArea { id, destination } => {
                 let inventory = self.inventory(cx);
-                let (property, room) = inventory
-                    .room(id)
-                    .ok_or(InventoryRefusal::Room(RoomError::UnknownRoom))?;
-                let (property_id, name) = (property.id, room.name.clone());
-                let position = property
-                    .rooms
+                let (location, area) = inventory
+                    .area(id)
+                    .ok_or(InventoryRefusal::Area(AreaError::UnknownArea))?;
+                let (location_id, name) = (location.id, area.name.clone());
+                let position = location
+                    .areas
                     .iter()
-                    .position(|room| room.id == id)
+                    .position(|area| area.id == id)
                     .unwrap_or(0);
-                let items = inventory.room_items(id);
+                let items = inventory.area_items(id);
                 let destination = destination.and_then(|chosen| {
-                    property
-                        .rooms
+                    location
+                        .areas
                         .iter()
-                        .find(|room| room.id != id && room.name == chosen)
-                        .map(|room| (room.id, room.name.clone()))
+                        .find(|area| area.id != id && area.name == chosen)
+                        .map(|area| (area.id, area.name.clone()))
                 });
                 let destination_id = destination.as_ref().map(|(id, _)| *id);
                 self.ledger
                     .update(cx, |store, cx| {
                         store.apply(
                             cx,
-                            RemoveRoom {
-                                room: id,
+                            RemoveArea {
+                                area: id,
                                 destination: destination_id,
                             },
                         )
                     })
-                    .map_err(InventoryRefusal::Room)?;
-                // The cursor lands on the Room that takes the removed row's place, else the Property.
-                let rooms = self
+                    .map_err(InventoryRefusal::Area)?;
+                // The cursor lands on the Area that takes the removed row's place, else the Location.
+                let areas = self
                     .inventory(cx)
-                    .property(property_id)
-                    .map(|property| property.rooms.as_slice())
+                    .location(location_id)
+                    .map(|location| location.areas.as_slice())
                     .unwrap_or_default();
-                let selected = rooms
-                    .get(position.min(rooms.len().saturating_sub(1)))
-                    .map_or(InventoryRow::Property(property_id), |room| {
-                        InventoryRow::Room(room.id)
+                let selected = areas
+                    .get(position.min(areas.len().saturating_sub(1)))
+                    .map_or(InventoryRow::Location(location_id), |area| {
+                        InventoryRow::Area(area.id)
                     });
-                Ok(InventoryOutcome::RoomRemoved {
+                Ok(InventoryOutcome::AreaRemoved {
                     name,
                     items,
                     destination: destination.map(|(_, name)| name),
@@ -333,33 +333,33 @@ mod tests {
     }
 
     #[gpui::test]
-    fn removing_a_property_selects_its_neighbour(cx: &mut TestAppContext) {
+    fn removing_a_location_selects_its_neighbour(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let first = cx.read(|cx| apply.inventory(cx).properties[0].id);
+        let first = cx.read(|cx| apply.inventory(cx).locations[0].id);
         let outcome = cx
-            .update(|cx| apply.apply(InventoryCommand::RemoveProperty(first), cx))
-            .expect("the seeded Property exists");
+            .update(|cx| apply.apply(InventoryCommand::RemoveLocation(first), cx))
+            .expect("the seeded Location exists");
         assert!(matches!(
             outcome,
-            InventoryOutcome::PropertyRemoved { id, selected: Some(_), .. } if id == first
+            InventoryOutcome::LocationRemoved { id, selected: Some(_), .. } if id == first
         ));
     }
 
     #[gpui::test]
-    fn a_vanished_room_is_refused_and_the_notice_only_closes(cx: &mut TestAppContext) {
+    fn a_vanished_area_is_refused_and_the_notice_only_closes(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
         let refused = cx.update(|cx| {
             apply.apply(
-                InventoryCommand::RemoveRoom {
-                    id: RoomId::seed(9999),
+                InventoryCommand::RemoveArea {
+                    id: AreaId::seed(9999),
                     destination: None,
                 },
                 cx,
             )
         });
-        assert_eq!(refused, Err(InventoryRefusal::Room(RoomError::UnknownRoom)));
+        assert_eq!(refused, Err(InventoryRefusal::Area(AreaError::UnknownArea)));
 
-        let mut notice = InventoryDialog::RoomBlocked(RoomId::seed(1));
+        let mut notice = InventoryDialog::AreaBlocked(AreaId::seed(1));
         let outcome = cx.update(|cx| confirm(&mut notice, &mut apply, cx));
         assert_eq!(outcome, Some(InventoryOutcome::Dismissed));
     }

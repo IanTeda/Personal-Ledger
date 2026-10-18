@@ -40,3 +40,12 @@ The Settings page moves (#618, #620) met every rule above but left each page's f
 - **A page reads `LedgerStore` directly** and filters `LedgerChanged` on `what`; there are no per-domain stores (ADR-0038).
 - **Tests keep their names.** A page's headless tests stay `tests/ui/settings_<page>_keyboard.rs` and `_mouse.rs`, and a page without them gets them before it moves.
 - **Destinations are not yet decided.** Whether destination Views copy this layout is decided on [#588](https://github.com/IanTeda/Personal-Ledger/issues/588) once it has been tested on the Settings pages.
+
+## Amendment: Settings pages forward through a trait with default methods
+
+The folder moves (#666) left `SettingsView` forwarding to its pages through a `FocusedPage` enum: 7 methods matched over 9 pages, 63 arms, many of them stubs that return `false`, beside separate matches for rendering, the cheat sheet and `reveal`, and Display- and Units-only branches. `Shell` also built all 13 page Entities and their subscriptions and handed them over as `SettingsSources`. Decided in the 2026-10-18 architecture review (candidate 3). Destination Views keep `ActiveViewEntity` and the decision above; this applies inside Settings only.
+
+- **A trait for Settings pages.** Every Settings page, static pages and General included, implements one trait whose methods have defaults (`key_ahead`, `escape`, `start_search` and `search_key` → `false`, `apply_movement` → not taken, `reveal` and `set_frame` → nothing), so a page writes only what it handles. One adapter over `Entity<T>` adds `view()`, so the open page is a single `dyn` handle. The trait earns its place here where it didn't for destinations: 14 pages share most of the defaults, and the defaults are what shrink the interface.
+- **One match.** `SettingsPages` holds a typed field per page and one `get(SettingsPage)` match; rendering, keys, movement, Esc, Search, status, the cheat sheet and `reveal` all go through it. A new page fails to compile there and in `SettingsPage::ALL`.
+- **The frame is told, not passed.** `set_frame(PageFrame { window_size, body_width })` reaches the open page before its keys and draw; Display and Units override it.
+- **Settings builds its pages.** `SettingsView::new` builds the page Entities from the `LedgerStore` and `today`, re-emits their `ViewEvent`s and repaints on their changes, so `Shell` keeps one subscription and one observer. Pages with rows emit one shared `PageRowClicked`. `Shell`'s typed accessors stay until the Dialog host is deepened.

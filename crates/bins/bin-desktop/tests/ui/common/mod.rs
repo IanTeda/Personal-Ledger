@@ -27,8 +27,8 @@ use bin_desktop::{
 };
 use chrono::NaiveDate;
 use gpui::{
-    App, Bounds, Entity, Modifiers, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
-    TestAppContext, VisualTestContext,
+    App, Bounds, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
+    ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
 use std::time::Duration;
@@ -160,6 +160,48 @@ impl<'a> Harness<'a> {
             .debug_bounds(key)
             .unwrap_or_else(|| panic!("no element tagged `{selector}` was drawn"));
         self.cx.simulate_click(bounds.center(), Modifiers::none());
+        self.cx.run_until_parked();
+    }
+
+    /// Right-clicks the centre of the element tagged `debug_selector(selector)`, as opening a
+    /// row's context menu does.
+    pub fn right_click(&mut self, selector: &str) {
+        let position = self.bounds(selector).center();
+        self.cx.simulate_event(MouseDownEvent {
+            button: MouseButton::Right,
+            position,
+            modifiers: Modifiers::none(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        self.cx.simulate_event(MouseUpEvent {
+            button: MouseButton::Right,
+            position,
+            modifiers: Modifiers::none(),
+            click_count: 1,
+        });
+        self.cx.run_until_parked();
+    }
+
+    /// Double-clicks the centre of the element tagged `debug_selector(selector)`: two presses, the
+    /// second reporting a click count of 2, as the platform does.
+    pub fn double_click(&mut self, selector: &str) {
+        let position = self.bounds(selector).center();
+        for click_count in [1, 2] {
+            self.cx.simulate_event(MouseDownEvent {
+                button: MouseButton::Left,
+                position,
+                modifiers: Modifiers::none(),
+                click_count,
+                first_mouse: false,
+            });
+            self.cx.simulate_event(MouseUpEvent {
+                button: MouseButton::Left,
+                position,
+                modifiers: Modifiers::none(),
+                click_count,
+            });
+        }
         self.cx.run_until_parked();
     }
 

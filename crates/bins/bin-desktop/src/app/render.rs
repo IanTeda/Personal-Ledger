@@ -517,7 +517,7 @@ impl Render for Shell {
                     });
                 on_click
             };
-            let on_field_click: crate::settings::inventory::dialogs::property::OnFieldClick = {
+            let on_field_click: crate::settings::inventory::dialogs::location::OnFieldClick = {
                 let entity = entity.clone();
                 Rc::new(move |field, _window, cx| {
                     entity.update(cx, |shell, cx| {
@@ -527,23 +527,12 @@ impl Render for Shell {
                     });
                 })
             };
-            let on_suggestion_click: crate::settings::inventory::dialogs::property::OnSuggestionClick = {
-                let entity = entity.clone();
-                Rc::new(move |insurer, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
-                            dialog.click_suggestion(&insurer)
-                        });
-                    });
-                })
-            };
             InventoryDialogHandlers {
                 on_field_click,
-                on_suggestion_click,
                 on_unit_field_click: edit(InventoryDialog::click_unit_field),
                 on_unit_option_click: choose(InventoryDialog::click_unit_option),
-                // The Room form has one field, already focused: a click only repaints.
-                on_room_name_click: edit(|_| {}),
+                // The Area form has one field, already focused: a click only repaints.
+                on_area_name_click: edit(|_| {}),
                 on_destination_field_click: edit(InventoryDialog::click_destination_field),
                 on_destination_option_click: choose(InventoryDialog::click_destination_option),
                 on_cancel: on_settings_dialog_cancel.clone(),

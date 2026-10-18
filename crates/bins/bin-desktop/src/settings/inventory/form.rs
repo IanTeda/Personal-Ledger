@@ -1,176 +1,111 @@
-//! The **Property** (#494) and **Room** (#495) dialogs' drafts: the typed text of every field, the
-//! focus between them and the checks that turn it into an [`inventory::PropertyDraft`]. `gpui`-free, so each rule is unit-tested without a window; the
-//! model's own rules (unique name, the cover's amounts) stay in `inventory` and this module only
-//! words them per field.
+//! The **Location** (#494) and **Area** (#495) dialogs' drafts: the typed text of every field, the
+//! focus between them and the checks that turn it into an [`inventory::LocationDraft`]. `gpui`-free,
+//! so each rule is unit-tested without a window; the model's own rules (unique names) stay in
+//! `inventory` and this module only words them per field.
 //!
-//! Everything a check needs from the page (the Inventory, today, the date style, the fiat Units) is
-//! copied in when the Dialog opens, so no form reaches back into it.
+//! Everything a check needs from the page (the Inventory, the fiat Units) is copied in when the
+//! Dialog opens, so no form reaches back into it.
 //!
-//! An empty Insurer means no cover, and emptying it clears the other four cover fields.
+//! Settings sets up only a Location's name and Unit (16q). Its address and cover are edited from
+//! the Inventory surface, so Edit starts its draft from the Location as it is and changes only the
+//! name: nothing else is lost.
 
-use bigdecimal::BigDecimal;
-use chrono::NaiveDate;
-use lib_core::{DateStyle, Money, PropertyId, RoomId};
+use lib_core::{AreaId, LocationId};
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectState,
-    inventory::{
-        self, CoverDraft, CoverError, Inventory, NameError, Property, PropertyDraft, PropertyError,
-    },
-    transactions::filter_form::parse_date,
+    inventory::{self, Inventory, Location, LocationDraft, LocationError, NameError},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PropertyField {
+pub enum LocationField {
     Name,
-    Address,
-    /// Add only: a Property's Unit is fixed when it is created.
+    /// Add only: a Location's Unit is fixed when it is created.
     Unit,
-    Insurer,
-    PolicyNo,
-    RenewsOn,
-    SumInsured,
-    ItemLimit,
 }
 
 /// What is wrong with the draft, one field at a time.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Problem {
     NameEmpty,
     NameTaken,
-    /// The text of the Message `parse_date` built.
-    RenewsOn(String),
-    Amount(PropertyField),
-    SumMissing,
-    SumNotPositive,
-    LimitNotPositive,
-    LimitAboveSum,
     /// Add with no fiat Unit to pick.
     UnitMissing,
 }
 
 impl Problem {
-    pub fn field(&self) -> PropertyField {
+    pub fn field(self) -> LocationField {
         match self {
-            Self::NameEmpty | Self::NameTaken => PropertyField::Name,
-            Self::RenewsOn(_) => PropertyField::RenewsOn,
-            Self::Amount(field) => *field,
-            Self::SumMissing | Self::SumNotPositive => PropertyField::SumInsured,
-            Self::LimitNotPositive | Self::LimitAboveSum => PropertyField::ItemLimit,
-            Self::UnitMissing => PropertyField::Unit,
+            Self::NameEmpty | Self::NameTaken => LocationField::Name,
+            Self::UnitMissing => LocationField::Unit,
         }
     }
 }
 
-/// What the Property form checks against, copied from the page when the Dialog opens.
+/// What the Location form checks against, copied from the page when the Dialog opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PropertyContext {
+pub struct LocationContext {
     pub inventory: Inventory,
-    pub today: NaiveDate,
-    pub date_style: Option<DateStyle>,
-    /// The fiat Units a Property can be kept in: each one's option label, then its code.
+    /// The fiat Units a Location can be kept in: each one's option label, then its code.
     pub unit_choices: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PropertyForm {
+pub struct LocationForm {
     pub name: TextField,
-    pub address: TextField,
     pub unit: SelectState,
-    pub insurer: TextField,
-    pub policy_no: TextField,
-    pub renews_on: TextField,
-    pub sum_insured: TextField,
-    pub item_limit: TextField,
-    pub focused: PropertyField,
+    pub focused: LocationField,
     /// Whether this is Add, which is when the Unit is chosen.
     pub adding: bool,
-    /// The fields that have been typed in, which is when their errors start to show.
-    touched: Vec<PropertyField>,
-    context: PropertyContext,
-    /// The Property being edited; `None` on Add.
-    own_id: Option<PropertyId>,
+    /// Whether the name has been typed in, which is when its error starts to show.
+    touched: bool,
+    context: LocationContext,
+    /// The Location being edited; `None` on Add.
+    own_id: Option<LocationId>,
+    /// The details the dialog doesn't show (address and cover), carried through unchanged.
+    kept: LocationDraft,
 }
 
-/// An amount as the dialog shows it back for editing: no trailing zeros.
-fn amount_text(amount: &Money) -> String {
-    amount.0.normalized().to_string()
-}
-
-impl PropertyForm {
+impl LocationForm {
     /// Add: `unit` is the option label to pre-select.
-    pub fn for_add(unit: Option<String>, context: PropertyContext) -> Self {
+    pub fn for_add(unit: Option<String>, context: LocationContext) -> Self {
         Self {
             name: TextField::default(),
-            address: TextField::default(),
             unit: SelectState::new(unit),
-            insurer: TextField::default(),
-            policy_no: TextField::default(),
-            renews_on: TextField::default(),
-            sum_insured: TextField::default(),
-            item_limit: TextField::default(),
-            focused: PropertyField::Name,
+            focused: LocationField::Name,
             adding: true,
-            touched: Vec::new(),
+            touched: false,
             context,
             own_id: None,
+            kept: LocationDraft::default(),
         }
     }
 
-    pub fn from_property(property: &Property, context: PropertyContext) -> Self {
-        let cover = property.cover.as_ref();
+    pub fn from_location(location: &Location, context: LocationContext) -> Self {
         Self {
-            name: TextField::new(property.name.clone()),
-            address: TextField::new(property.address.clone()),
-            unit: SelectState::new(Some(property.unit.clone())),
-            insurer: TextField::new(cover.map(|c| c.insurer.clone()).unwrap_or_default()),
-            policy_no: TextField::new(cover.and_then(|c| c.policy_no.clone()).unwrap_or_default()),
-            renews_on: TextField::new(
-                cover
-                    .and_then(|c| c.renews_on)
-                    // ISO, which `parse_date` always takes back; the Locale's short form has a
-                    // two-digit year it refuses.
-                    .map(|date| date.format("%Y-%m-%d").to_string())
-                    .unwrap_or_default(),
-            ),
-            sum_insured: TextField::new(
-                cover
-                    .map(|c| amount_text(&c.sum_insured))
-                    .unwrap_or_default(),
-            ),
-            item_limit: TextField::new(
-                cover
-                    .and_then(|c| c.item_limit.as_ref())
-                    .map(amount_text)
-                    .unwrap_or_default(),
-            ),
-            focused: PropertyField::Name,
+            name: TextField::new(location.name.clone()),
+            unit: SelectState::new(Some(location.unit.clone())),
+            focused: LocationField::Name,
             adding: false,
-            touched: Vec::new(),
+            touched: false,
             context,
-            own_id: Some(property.id),
+            own_id: Some(location.id),
+            kept: LocationDraft::from(location),
         }
     }
 
-    /// The fields `tab` walks, in screen order.
-    pub fn fields(&self) -> Vec<PropertyField> {
-        let mut fields = vec![PropertyField::Name, PropertyField::Address];
+    /// The fields `tab` walks, in screen order: Edit has the name alone.
+    pub fn fields(&self) -> Vec<LocationField> {
         if self.adding {
-            fields.push(PropertyField::Unit);
+            vec![LocationField::Name, LocationField::Unit]
+        } else {
+            vec![LocationField::Name]
         }
-        fields.extend([
-            PropertyField::Insurer,
-            PropertyField::PolicyNo,
-            PropertyField::RenewsOn,
-            PropertyField::SumInsured,
-            PropertyField::ItemLimit,
-        ]);
-        fields
     }
 
-    pub fn focus(&mut self, field: PropertyField) {
+    pub fn focus(&mut self, field: LocationField) {
         if self.fields().contains(&field) {
             self.focused = field;
         }
@@ -185,44 +120,6 @@ impl PropertyForm {
             (at + 1) % fields.len()
         };
         self.focused = fields[next];
-    }
-
-    fn field_mut(&mut self, field: PropertyField) -> Option<&mut TextField> {
-        match field {
-            PropertyField::Name => Some(&mut self.name),
-            PropertyField::Address => Some(&mut self.address),
-            PropertyField::Insurer => Some(&mut self.insurer),
-            PropertyField::PolicyNo => Some(&mut self.policy_no),
-            PropertyField::RenewsOn => Some(&mut self.renews_on),
-            PropertyField::SumInsured => Some(&mut self.sum_insured),
-            PropertyField::ItemLimit => Some(&mut self.item_limit),
-            PropertyField::Unit => None,
-        }
-    }
-
-    pub fn text(&self, field: PropertyField) -> &str {
-        match field {
-            PropertyField::Name => self.name.text(),
-            PropertyField::Address => self.address.text(),
-            PropertyField::Insurer => self.insurer.text(),
-            PropertyField::PolicyNo => self.policy_no.text(),
-            PropertyField::RenewsOn => self.renews_on.text(),
-            PropertyField::SumInsured => self.sum_insured.text(),
-            PropertyField::ItemLimit => self.item_limit.text(),
-            PropertyField::Unit => "",
-        }
-    }
-
-    fn mark_touched(&mut self, field: PropertyField) {
-        if !self.touched.contains(&field) {
-            self.touched.push(field);
-        }
-    }
-
-    /// Fills the Insurer from a suggestion.
-    pub fn set_insurer(&mut self, insurer: &str) {
-        self.insurer = TextField::new(insurer);
-        self.mark_touched(PropertyField::Insurer);
     }
 
     /// The fiat Units' option labels, in order: the Unit select's list.
@@ -246,7 +143,7 @@ impl PropertyForm {
 
     /// A click on the Unit field: focuses it and toggles its list.
     pub fn click_unit(&mut self) {
-        self.focus(PropertyField::Unit);
+        self.focus(LocationField::Unit);
         if self.unit.is_open() {
             self.unit.cancel();
         } else {
@@ -258,153 +155,53 @@ impl PropertyForm {
         self.unit.choose(&self.unit_labels(), index);
     }
 
-    /// Whether the cover section has an insurer, and so a cover to check.
-    pub fn has_cover(&self) -> bool {
-        !self.insurer.is_blank()
-    }
-
-    fn amount(&self, field: PropertyField) -> Result<Option<Money>, Problem> {
-        let text: String = self
-            .text(field)
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
-        if text.is_empty() {
-            return Ok(None);
-        }
-        // A comma is a thousands separator only between groups of three digits: "1,5" is
-        // refused rather than read as 15.
-        let whole = text.split('.').next().unwrap_or_default();
-        let mut groups = whole.split(',');
-        let first_ok = groups.next().is_some_and(|g| !g.is_empty());
-        if !first_ok || groups.any(|g| g.len() != 3) {
-            return Err(Problem::Amount(field));
-        }
-        let text = text.replace(',', "");
-        text.parse::<BigDecimal>()
-            .map(|amount| Some(Money(amount.round(2))))
-            .map_err(|_| Problem::Amount(field))
-    }
-
-    /// The draft the model checks, or the first thing wrong with what was typed.
-    pub fn draft(&self) -> Result<PropertyDraft, Problem> {
-        let cover = if self.has_cover() {
-            let renews_on = parse_date(
-                self.renews_on.text(),
-                self.context.today,
-                self.context.date_style,
-            )
-            .map_err(Problem::RenewsOn)?;
-            CoverDraft {
-                insurer: self.insurer.text().to_string(),
-                policy_no: self.policy_no.text().to_string(),
-                renews_on,
-                sum_insured: self.amount(PropertyField::SumInsured)?,
-                item_limit: self.amount(PropertyField::ItemLimit)?,
-            }
-        } else {
-            CoverDraft::default()
-        };
-        Ok(PropertyDraft {
+    /// The draft the model checks: the typed name over the details the dialog doesn't show.
+    pub fn draft(&self) -> LocationDraft {
+        LocationDraft {
             name: self.name.text().to_string(),
-            address: self.address.text().to_string(),
-            cover,
-        })
+            ..self.kept.clone()
+        }
     }
 
     /// The first problem with the draft, in screen order.
     pub fn problem(&self) -> Option<Problem> {
         let unit = self.unit_code();
-        let inventory = &self.context.inventory;
-        let draft = match self.draft() {
-            Ok(draft) => draft,
-            Err(problem) => {
-                // A name problem comes first on screen, so it wins over a later field's.
-                return self
-                    .name_problem()
-                    .or(self.unit_problem(unit))
-                    .or(Some(problem));
-            }
-        };
-        let mut scratch = inventory.clone();
+        let draft = self.draft();
+        let mut scratch = self.context.inventory.clone();
         let result = match self.own_id {
-            Some(id) => scratch.edit_property(id, &draft),
+            Some(id) => scratch.edit_location(id, &draft),
             None => scratch
-                .add_property(&draft, unit.unwrap_or("-"))
+                .add_location(&draft, unit.unwrap_or("-"))
                 .map(|_| ()),
         };
         match result {
-            Ok(()) => self.unit_problem(unit),
-            Err(PropertyError::Name(NameError::Empty)) => Some(Problem::NameEmpty),
-            Err(PropertyError::Name(NameError::Taken)) => Some(Problem::NameTaken),
-            Err(PropertyError::Cover(CoverError::SumMissing)) => Some(Problem::SumMissing),
-            Err(PropertyError::Cover(CoverError::SumNotPositive)) => Some(Problem::SumNotPositive),
-            Err(PropertyError::Cover(CoverError::LimitNotPositive)) => {
-                Some(Problem::LimitNotPositive)
+            Err(LocationError::Name(NameError::Empty)) => Some(Problem::NameEmpty),
+            Err(LocationError::Name(NameError::Taken)) => Some(Problem::NameTaken),
+            Err(LocationError::UnitMissing) => Some(Problem::UnitMissing),
+            // Settings never edits the cover, so a cover refusal can only be the Location's own.
+            Ok(()) | Err(LocationError::Unknown | LocationError::Cover(_)) => {
+                (self.adding && unit.is_none()).then_some(Problem::UnitMissing)
             }
-            Err(PropertyError::Cover(CoverError::LimitAboveSum)) => Some(Problem::LimitAboveSum),
-            Err(PropertyError::UnitMissing) => Some(Problem::UnitMissing),
-            Err(PropertyError::Unknown) => None,
         }
     }
 
-    fn name_problem(&self) -> Option<Problem> {
-        let name = self.name.text().trim();
-        if name.is_empty() {
-            return Some(Problem::NameEmpty);
+    /// Whether `problem` has been earned yet: the name was typed in. A missing Unit always shows,
+    /// since nothing typed can fix it. A fresh Add dialog opens with its confirm disabled and no
+    /// error showing.
+    pub fn shows(&self, problem: Problem) -> bool {
+        match problem.field() {
+            LocationField::Name => self.touched,
+            LocationField::Unit => true,
         }
-        self.context
-            .inventory
-            .properties
-            .iter()
-            .any(|p| Some(p.id) != self.own_id && p.name.to_lowercase() == name.to_lowercase())
-            .then_some(Problem::NameTaken)
-    }
-
-    fn unit_problem(&self, unit: Option<&str>) -> Option<Problem> {
-        (self.adding && unit.is_none()).then_some(Problem::UnitMissing)
-    }
-
-    /// Whether `problem` has been earned yet: its field was typed in, or (for a missing sum) the
-    /// Insurer was. A fresh Add dialog opens with its confirm disabled and no error showing.
-    pub fn shows(&self, problem: &Problem) -> bool {
-        self.touched.contains(&problem.field())
-            || (*problem == Problem::SumMissing && self.touched.contains(&PropertyField::Insurer))
-    }
-
-    /// Marks the focused field typed in and, when the key would empty the Insurer, clears the
-    /// other four cover fields with it. Typing itself falls through to the shared handling.
-    fn note_edit(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        let field = self.focused;
-        self.mark_touched(field);
-        if field != PropertyField::Insurer {
-            return None;
-        }
-        let mut next = self.insurer.clone();
-        match key {
-            DialogKey::Char(ch) => next.push(ch),
-            DialogKey::Backspace => next.backspace(),
-            _ => {}
-        }
-        if !next.is_blank() {
-            return None;
-        }
-        // No insurer, no cover: the other four fields go with it.
-        self.insurer = TextField::default();
-        self.policy_no = TextField::default();
-        self.renews_on = TextField::default();
-        self.sum_insured = TextField::default();
-        self.item_limit = TextField::default();
-        Some(DialogOutcome::Handled)
     }
 }
 
-impl Dialog for PropertyForm {
+impl Dialog for LocationForm {
     /// `Up`/`Down` walk the Unit list or step its value, `Space` opens it or commits the
     /// highlight and `Enter` commits an open list, all while the Unit is focused (which a
     /// control swallows typing on); `Shift-Tab` goes back a field.
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        let on_unit = self.focused == PropertyField::Unit;
+        let on_unit = self.focused == LocationField::Unit;
         match key {
             DialogKey::BackTab => {
                 self.unit.cancel();
@@ -431,15 +228,18 @@ impl Dialog for PropertyForm {
                 self.unit.commit(&self.unit_labels());
             }
             DialogKey::Char(_) | DialogKey::Backspace if on_unit => {}
-            DialogKey::Char(_) | DialogKey::Backspace => return self.note_edit(key),
+            DialogKey::Char(_) | DialogKey::Backspace => {
+                // Typing falls through to the shared handling; this only marks the name typed in.
+                self.touched = true;
+                return None;
+            }
             _ => return None,
         }
         Some(DialogOutcome::Handled)
     }
 
     fn focused_text(&mut self) -> Option<&mut TextField> {
-        let field = self.focused;
-        self.field_mut(field)
+        (self.focused == LocationField::Name).then_some(&mut self.name)
     }
 
     fn cycle_field(&mut self) {
@@ -458,16 +258,16 @@ impl Dialog for PropertyForm {
     }
 }
 
-/// The Remove **Property** dialog's draft. Whether the name must be typed is copied in at open.
+/// The Remove **Location** dialog's draft. Whether the name must be typed is copied in at open.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemovePropertyForm {
+pub struct RemoveLocationForm {
     name: String,
     pub typed: TextField,
-    /// Only a Property holding Rooms or Items asks for its name back.
+    /// Only a Location holding Areas or Items asks for its name back.
     needs_typed_name: bool,
 }
 
-impl RemovePropertyForm {
+impl RemoveLocationForm {
     pub fn new(name: impl Into<String>, needs_typed_name: bool) -> Self {
         Self {
             name: name.into(),
@@ -477,7 +277,7 @@ impl RemovePropertyForm {
     }
 }
 
-impl Dialog for RemovePropertyForm {
+impl Dialog for RemoveLocationForm {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         // With nothing to confirm by typing, the field swallows typing rather than leaking it.
         match key {
@@ -497,50 +297,50 @@ impl Dialog for RemovePropertyForm {
     }
 }
 
-/// The Add and Edit **Room** dialog's draft (#495): a name and whether it has been typed in, which
+/// The Add and Edit **Area** dialog's draft (#495): a name and whether it has been typed in, which
 /// is when its error starts to show. The rules stay in `inventory`; this only words them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RoomForm {
+pub struct AreaForm {
     pub name: TextField,
     touched: bool,
     inventory: Inventory,
-    property: PropertyId,
-    /// The Room being edited; `None` on Add.
-    own_id: Option<RoomId>,
+    location: LocationId,
+    /// The Area being edited; `None` on Add.
+    own_id: Option<AreaId>,
 }
 
-impl RoomForm {
-    pub fn for_add(inventory: Inventory, property: PropertyId) -> Self {
+impl AreaForm {
+    pub fn for_add(inventory: Inventory, location: LocationId) -> Self {
         Self {
             name: TextField::default(),
             touched: false,
             inventory,
-            property,
+            location,
             own_id: None,
         }
     }
 
-    pub fn for_edit(inventory: Inventory, property: PropertyId, room: &inventory::Room) -> Self {
+    pub fn for_edit(inventory: Inventory, location: LocationId, area: &inventory::Area) -> Self {
         Self {
-            name: TextField::new(room.name.clone()),
+            name: TextField::new(area.name.clone()),
             touched: false,
             inventory,
-            property,
-            own_id: Some(room.id),
+            location,
+            own_id: Some(area.id),
         }
     }
 
-    /// What is wrong with the name, if anything. The name is unique within the Property only, so
-    /// the same name in another Property is fine.
+    /// What is wrong with the name, if anything. The name is unique within the Location only, so
+    /// the same name in another Location is fine.
     pub fn problem(&self) -> Option<NameError> {
         let mut scratch = self.inventory.clone();
         let name = self.name.text();
         let result = match self.own_id {
-            Some(id) => scratch.edit_room(id, name),
-            None => scratch.add_room(self.property, name).map(|_| ()),
+            Some(id) => scratch.edit_area(id, name),
+            None => scratch.add_area(self.location, name).map(|_| ()),
         };
         match result {
-            Err(inventory::RoomError::Name(error)) => Some(error),
+            Err(inventory::AreaError::Name(error)) => Some(error),
             _ => None,
         }
     }
@@ -550,7 +350,7 @@ impl RoomForm {
     }
 }
 
-impl Dialog for RoomForm {
+impl Dialog for AreaForm {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         // Typing falls through to the shared handling; this only marks the name typed in.
         if matches!(key, DialogKey::Char(_) | DialogKey::Backspace) {
@@ -568,17 +368,17 @@ impl Dialog for RoomForm {
     }
 }
 
-/// The Remove **Room** dialog's destination select. The other Rooms' names and whether Items need
+/// The Remove **Area** dialog's destination select. The other Areas' names and whether Items need
 /// a home are copied in at open.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemoveRoomForm {
-    /// The Property's other Rooms, in tab order: where a removed Room's Items can go.
+pub struct RemoveAreaForm {
+    /// The Location's other Areas, in tab order: where a removed Area's Items can go.
     pub destinations: Vec<String>,
     pub select: SelectState,
     needs_destination: bool,
 }
 
-impl RemoveRoomForm {
+impl RemoveAreaForm {
     pub fn new(destinations: Vec<String>, preselected: Option<String>, holds_items: bool) -> Self {
         Self {
             destinations,
@@ -601,7 +401,7 @@ impl RemoveRoomForm {
     }
 }
 
-impl Dialog for RemoveRoomForm {
+impl Dialog for RemoveAreaForm {
     /// `Up`/`Down` walk the open list or step the value; `Space` opens it or commits the
     /// highlight; `Enter` commits an open list, else falls through to confirm.
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
@@ -639,53 +439,22 @@ impl Dialog for RemoveRoomForm {
     }
 }
 
-/// The insurers already on a Property, A-Z, each once ignoring case: the Insurer field's
-/// suggestions.
-pub fn insurers_in_use(inventory: &Inventory) -> Vec<String> {
-    let mut insurers: Vec<String> = Vec::new();
-    for cover in inventory.properties.iter().filter_map(|p| p.cover.as_ref()) {
-        if !insurers
-            .iter()
-            .any(|i| i.to_lowercase() == cover.insurer.to_lowercase())
-        {
-            insurers.push(cover.insurer.clone());
-        }
-    }
-    insurers.sort_by_key(|i| i.to_lowercase());
-    insurers
-}
-
-/// The suggestions for what is typed: insurers in use that contain it, ignoring case, bar an exact
-/// match.
-pub fn suggestions(inventory: &Inventory, typed: &str) -> Vec<String> {
-    let typed = typed.trim().to_lowercase();
-    insurers_in_use(inventory)
-        .into_iter()
-        .filter(|i| {
-            let lower = i.to_lowercase();
-            lower != typed && lower.contains(&typed)
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::settings::inventory::dialogs::InventoryDialog;
 
-    fn today() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()
+    fn today() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()
     }
 
     fn seed() -> Inventory {
         inventory::default_inventory(today())
     }
 
-    fn context() -> PropertyContext {
-        PropertyContext {
+    fn context() -> LocationContext {
+        LocationContext {
             inventory: seed(),
-            today: today(),
-            date_style: None,
             unit_choices: vec![
                 ("AUD".to_string(), "aud".to_string()),
                 ("NZD".to_string(), "nzd".to_string()),
@@ -694,12 +463,12 @@ mod tests {
     }
 
     /// An Add form with the AUD Unit picked, as the page opens it.
-    fn add_form() -> PropertyForm {
-        PropertyForm::for_add(Some("AUD".to_string()), context())
+    fn add_form() -> LocationForm {
+        LocationForm::for_add(Some("AUD".to_string()), context())
     }
 
-    fn edit_form(property: &Property) -> PropertyForm {
-        PropertyForm::from_property(property, context())
+    fn edit_form(location: &Location) -> LocationForm {
+        LocationForm::from_location(location, context())
     }
 
     fn type_text(dialog: &mut impl Dialog, text: &str) {
@@ -708,12 +477,53 @@ mod tests {
         }
     }
 
-    fn type_into(form: &mut PropertyForm, field: PropertyField, text: &str) {
+    fn type_into(form: &mut LocationForm, field: LocationField, text: &str) {
         form.focus(field);
         type_text(form, text);
     }
 
-    fn problem(form: &PropertyForm) -> Option<Problem> {
+    #[test]
+    fn tab_walks_name_and_unit_on_add_and_edit_has_the_name_alone() {
+        let inventory = seed();
+        let mut edit = edit_form(&inventory.locations[0]);
+        assert_eq!(edit.fields(), [LocationField::Name]);
+        edit.focus(LocationField::Unit);
+        assert_eq!(
+            edit.focused,
+            LocationField::Name,
+            "a disabled field takes no focus"
+        );
+        handle_key(&mut edit, DialogKey::Tab);
+        assert_eq!(edit.focused, LocationField::Name);
+
+        let mut add = add_form();
+        handle_key(&mut add, DialogKey::Tab);
+        assert_eq!(add.focused, LocationField::Unit);
+        handle_key(&mut add, DialogKey::BackTab);
+        assert_eq!(add.focused, LocationField::Name);
+    }
+
+    #[test]
+    fn edit_renames_and_keeps_the_address_and_cover_settings_does_not_show() {
+        let inventory = seed();
+        let covered = inventory
+            .locations
+            .iter()
+            .find(|l| l.cover.is_some())
+            .expect("the seed has a covered Location");
+        let mut form = edit_form(covered);
+        form.name = TextField::new("Renamed");
+        let draft = form.draft();
+        assert_eq!(draft.name, "Renamed");
+        assert_eq!(draft.address, covered.address);
+        assert_eq!(
+            draft.cover,
+            inventory::CoverDraft::from(covered.cover.as_ref().unwrap())
+        );
+        assert_eq!(form.problem(), None);
+    }
+
+    fn problem(form: &LocationForm) -> Option<Problem> {
         form.problem()
     }
 
@@ -722,33 +532,33 @@ mod tests {
         let form = add_form();
         let found = problem(&form);
         assert_eq!(found, Some(Problem::NameEmpty));
-        assert!(!form.shows(&found.unwrap()));
+        assert!(!form.shows(found.unwrap()));
         assert!(!form.is_valid());
     }
 
     #[test]
-    fn a_name_alone_is_valid_with_no_cover() {
+    fn a_name_and_unit_are_all_add_needs() {
         let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
+        type_into(&mut form, LocationField::Name, "Beach house");
         assert_eq!(problem(&form), None);
         assert!(form.is_valid());
     }
 
     #[test]
     fn an_add_with_no_fiat_unit_is_refused() {
-        let mut form = PropertyForm::for_add(None, context());
-        type_into(&mut form, PropertyField::Name, "Beach house");
+        let mut form = LocationForm::for_add(None, context());
+        type_into(&mut form, LocationField::Name, "Beach house");
         assert_eq!(problem(&form), Some(Problem::UnitMissing));
     }
 
     #[test]
-    fn a_taken_name_is_refused_ignoring_case_but_not_for_the_property_itself() {
+    fn a_taken_name_is_refused_ignoring_case_but_not_for_the_location_itself() {
         let inventory = seed();
-        let existing = inventory.properties[0].clone();
+        let existing = inventory.locations[0].clone();
         let mut form = add_form();
         type_into(
             &mut form,
-            PropertyField::Name,
+            LocationField::Name,
             &existing.name.to_uppercase(),
         );
         assert_eq!(problem(&form), Some(Problem::NameTaken));
@@ -758,114 +568,9 @@ mod tests {
     }
 
     #[test]
-    fn an_insurer_needs_a_sum_insured() {
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
-        type_into(&mut form, PropertyField::Insurer, "NRMA");
-        assert_eq!(problem(&form), Some(Problem::SumMissing));
-        assert!(form.shows(&Problem::SumMissing));
-        type_into(&mut form, PropertyField::SumInsured, "250,000");
-        assert_eq!(problem(&form), None);
-    }
-
-    #[test]
-    fn amounts_must_be_numbers_and_positive() {
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
-        type_into(&mut form, PropertyField::Insurer, "NRMA");
-        type_into(&mut form, PropertyField::SumInsured, "abc");
-        assert_eq!(
-            problem(&form),
-            Some(Problem::Amount(PropertyField::SumInsured))
-        );
-        form.sum_insured = TextField::new("0");
-        assert_eq!(problem(&form), Some(Problem::SumNotPositive));
-    }
-
-    #[test]
-    fn a_comma_is_only_a_thousands_separator() {
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
-        type_into(&mut form, PropertyField::Insurer, "NRMA");
-        type_into(&mut form, PropertyField::SumInsured, "1,5");
-        assert_eq!(
-            problem(&form),
-            Some(Problem::Amount(PropertyField::SumInsured))
-        );
-        form.sum_insured = TextField::new("1,500.50");
-        assert_eq!(problem(&form), None);
-    }
-
-    #[test]
-    fn the_item_limit_is_positive_and_no_more_than_the_sum() {
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
-        type_into(&mut form, PropertyField::Insurer, "NRMA");
-        type_into(&mut form, PropertyField::SumInsured, "1000");
-        type_into(&mut form, PropertyField::ItemLimit, "0");
-        assert_eq!(problem(&form), Some(Problem::LimitNotPositive));
-        form.item_limit = TextField::new("1000.01");
-        assert_eq!(problem(&form), Some(Problem::LimitAboveSum));
-        form.item_limit = TextField::new("1000");
-        assert_eq!(problem(&form), None);
-    }
-
-    #[test]
-    fn a_bad_renewal_date_is_refused_only_with_cover() {
-        crate::locale::init_for_tests();
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Name, "Beach house");
-        form.renews_on = TextField::new("not a date");
-        assert_eq!(problem(&form), None, "no insurer, so no cover to check");
-        type_into(&mut form, PropertyField::Insurer, "NRMA");
-        type_into(&mut form, PropertyField::SumInsured, "1000");
-        assert!(matches!(problem(&form), Some(Problem::RenewsOn(_))));
-    }
-
-    #[test]
-    fn emptying_the_insurer_clears_the_other_cover_fields() {
-        let mut form = add_form();
-        type_into(&mut form, PropertyField::Insurer, "AA");
-        type_into(&mut form, PropertyField::PolicyNo, "P1");
-        type_into(&mut form, PropertyField::SumInsured, "1000");
-        form.focus(PropertyField::Insurer);
-        handle_key(&mut form, DialogKey::Backspace);
-        assert!(form.has_cover());
-        assert_eq!(form.policy_no.text(), "P1");
-        handle_key(&mut form, DialogKey::Backspace);
-        assert!(!form.has_cover());
-        assert_eq!(form.policy_no.text(), "");
-        assert_eq!(form.sum_insured.text(), "");
-        let draft = form.draft().unwrap();
-        assert_eq!(draft.cover, CoverDraft::default());
-    }
-
-    #[test]
-    fn tab_skips_the_unit_on_edit_and_wraps() {
-        let inventory = seed();
-        let mut edit = edit_form(&inventory.properties[0]);
-        assert!(!edit.fields().contains(&PropertyField::Unit));
-        edit.focus(PropertyField::Unit);
-        assert_eq!(
-            edit.focused,
-            PropertyField::Name,
-            "a disabled field takes no focus"
-        );
-        handle_key(&mut edit, DialogKey::BackTab);
-        assert_eq!(edit.focused, PropertyField::ItemLimit);
-        handle_key(&mut edit, DialogKey::Tab);
-        assert_eq!(edit.focused, PropertyField::Name);
-
-        let mut add = add_form();
-        handle_key(&mut add, DialogKey::Tab);
-        handle_key(&mut add, DialogKey::Tab);
-        assert_eq!(add.focused, PropertyField::Unit);
-    }
-
-    #[test]
     fn the_unit_select_walks_commits_and_first_esc_closes_it() {
         let mut form = add_form();
-        form.focus(PropertyField::Unit);
+        form.focus(LocationField::Unit);
         // Typing on the select is swallowed, not appended anywhere.
         assert_eq!(
             handle_key(&mut form, DialogKey::Char('x')),
@@ -889,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_confirms_only_when_the_property_form_is_valid() {
+    fn enter_confirms_only_when_the_location_form_is_valid() {
         let mut form = add_form();
         assert_eq!(
             handle_key(&mut form, DialogKey::Enter),
@@ -903,50 +608,18 @@ mod tests {
     }
 
     #[test]
-    fn edit_starts_from_the_property_as_it_is() {
-        crate::locale::init_for_tests();
+    fn an_area_name_is_unique_within_its_location_only() {
         let inventory = seed();
-        let covered = inventory
-            .properties
-            .iter()
-            .find(|p| p.cover.is_some())
-            .expect("the seed has a covered Property");
-        let form = edit_form(covered);
-        let cover = covered.cover.as_ref().unwrap();
-        assert_eq!(form.insurer.text(), cover.insurer);
-        let draft = form.draft().unwrap();
-        assert_eq!(draft.cover.sum_insured, Some(cover.sum_insured.clone()));
-        assert_eq!(draft.cover.renews_on, cover.renews_on);
-    }
-
-    #[test]
-    fn suggestions_are_the_insurers_in_use_matching_what_is_typed() {
-        let inventory = seed();
-        let all = insurers_in_use(&inventory);
-        assert!(!all.is_empty());
-        assert_eq!(suggestions(&inventory, ""), all);
-        let first = all[0].clone();
-        assert!(
-            suggestions(&inventory, &first).is_empty(),
-            "an exact match needs no suggestion"
-        );
-        let part = first[..2].to_lowercase();
-        assert!(suggestions(&inventory, &part).contains(&first));
-    }
-
-    #[test]
-    fn a_room_name_is_unique_within_its_property_only() {
-        let inventory = seed();
-        let elm = &inventory.properties[0];
-        let storage = &inventory.properties[1];
-        let mut form = RoomForm::for_add(inventory.clone(), elm.id);
+        let elm = &inventory.locations[0];
+        let storage = &inventory.locations[1];
+        let mut form = AreaForm::for_add(inventory.clone(), elm.id);
         assert_eq!(form.problem(), Some(NameError::Empty));
         assert!(!form.shows_problem(), "a fresh dialog shows no error yet");
         assert_eq!(
             handle_key(&mut form, DialogKey::Enter),
             DialogOutcome::Handled
         );
-        type_text(&mut form, &elm.rooms[1].name.to_uppercase());
+        type_text(&mut form, &elm.areas[1].name.to_uppercase());
         assert!(form.shows_problem());
         assert_eq!(form.problem(), Some(NameError::Taken));
         assert_eq!(
@@ -954,12 +627,12 @@ mod tests {
             DialogOutcome::Handled
         );
 
-        let mut editing = RoomForm::for_edit(inventory.clone(), elm.id, &elm.rooms[1]);
-        editing.name = TextField::new(elm.rooms[1].name.to_uppercase());
+        let mut editing = AreaForm::for_edit(inventory.clone(), elm.id, &elm.areas[1]);
+        editing.name = TextField::new(elm.areas[1].name.to_uppercase());
         assert_eq!(editing.problem(), None);
 
-        let mut elsewhere = RoomForm::for_add(inventory.clone(), storage.id);
-        elsewhere.name = TextField::new(elm.rooms[1].name.to_uppercase());
+        let mut elsewhere = AreaForm::for_add(inventory.clone(), storage.id);
+        elsewhere.name = TextField::new(elm.areas[1].name.to_uppercase());
         assert_eq!(elsewhere.problem(), None);
         assert_eq!(
             handle_key(&mut elsewhere, DialogKey::Enter),
@@ -968,8 +641,8 @@ mod tests {
     }
 
     #[test]
-    fn remove_property_asks_for_the_name_only_when_it_holds_something() {
-        let mut empty = RemovePropertyForm::new("Shed", false);
+    fn remove_location_asks_for_the_name_only_when_it_holds_something() {
+        let mut empty = RemoveLocationForm::new("Shed", false);
         assert_eq!(
             handle_key(&mut empty, DialogKey::Char('x')),
             DialogOutcome::Handled
@@ -980,7 +653,7 @@ mod tests {
             DialogOutcome::Confirm
         );
 
-        let mut full = RemovePropertyForm::new("Elm St", true);
+        let mut full = RemoveLocationForm::new("Elm St", true);
         assert_eq!(
             handle_key(&mut full, DialogKey::Enter),
             DialogOutcome::Handled
@@ -999,15 +672,15 @@ mod tests {
     }
 
     #[test]
-    fn remove_room_needs_a_destination_only_when_it_holds_items() {
+    fn remove_area_needs_a_destination_only_when_it_holds_items() {
         let names = vec!["Kitchen".to_string(), "Garage".to_string()];
-        let mut empty = RemoveRoomForm::new(names.clone(), None, false);
+        let mut empty = RemoveAreaForm::new(names.clone(), None, false);
         assert_eq!(
             handle_key(&mut empty, DialogKey::Enter),
             DialogOutcome::Confirm
         );
 
-        let mut full = RemoveRoomForm::new(names, None, true);
+        let mut full = RemoveAreaForm::new(names, None, true);
         assert_eq!(
             handle_key(&mut full, DialogKey::Enter),
             DialogOutcome::Handled
@@ -1026,8 +699,8 @@ mod tests {
     }
 
     #[test]
-    fn the_room_blocked_notice_confirms_with_enter_and_swallows_tab() {
-        let mut dialog = InventoryDialog::RoomBlocked(RoomId::seed(1));
+    fn the_area_blocked_notice_confirms_with_enter_and_swallows_tab() {
+        let mut dialog = InventoryDialog::AreaBlocked(AreaId::seed(1));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Tab),
             DialogOutcome::Handled
@@ -1040,11 +713,9 @@ mod tests {
 
     use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
-    fn property_context() -> PropertyContext {
-        PropertyContext {
+    fn location_context() -> LocationContext {
+        LocationContext {
             inventory: Inventory::default(),
-            today: NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid date"),
-            date_style: None,
             unit_choices: vec![
                 ("AUD".to_string(), "aud".to_string()),
                 ("NZD".to_string(), "nzd".to_string()),
@@ -1052,38 +723,38 @@ mod tests {
         }
     }
 
-    fn add_property() -> OpenDialog {
-        OpenDialog::Inventory(InventoryDialog::Add(PropertyForm::for_add(
+    fn add_location() -> OpenDialog {
+        OpenDialog::Inventory(InventoryDialog::Add(LocationForm::for_add(
             Some("AUD".to_string()),
-            property_context(),
+            location_context(),
         )))
     }
 
-    fn property_form(dialog: &OpenDialog) -> &PropertyForm {
+    fn location_form(dialog: &OpenDialog) -> &LocationForm {
         match dialog {
             OpenDialog::Inventory(InventoryDialog::Add(form) | InventoryDialog::Edit(_, form)) => {
                 form
             }
-            other => panic!("expected a property form, got {other:?}"),
+            other => panic!("expected a location form, got {other:?}"),
         }
     }
 
     #[test]
-    fn property_typing_tab_and_enter_only_when_valid() {
-        let mut dialog = add_property();
+    fn location_typing_tab_and_enter_only_when_valid() {
+        let mut dialog = add_location();
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Handled
         );
         type_text(&mut dialog, "Beach housex");
         handle_key(&mut dialog, DialogKey::Backspace);
-        assert_eq!(property_form(&dialog).name.text(), "Beach house");
+        assert_eq!(location_form(&dialog).name.text(), "Beach house");
         handle_key(&mut dialog, DialogKey::Tab);
-        assert_eq!(property_form(&dialog).focused, PropertyField::Address);
-        type_text(&mut dialog, "1 Beach Rd");
-        assert_eq!(property_form(&dialog).address.text(), "1 Beach Rd");
+        assert_eq!(location_form(&dialog).focused, LocationField::Unit);
+        type_text(&mut dialog, "x");
+        assert_eq!(location_form(&dialog).name.text(), "Beach house");
         handle_key(&mut dialog, DialogKey::BackTab);
-        assert_eq!(property_form(&dialog).focused, PropertyField::Name);
+        assert_eq!(location_form(&dialog).focused, LocationField::Name);
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Confirm
@@ -1091,23 +762,22 @@ mod tests {
     }
 
     #[test]
-    fn property_unit_select_first_esc_closes_it_and_keeps_the_dialog() {
-        let mut dialog = add_property();
+    fn location_unit_select_first_esc_closes_it_and_keeps_the_dialog() {
+        let mut dialog = add_location();
         handle_key(&mut dialog, DialogKey::Tab);
-        handle_key(&mut dialog, DialogKey::Tab);
-        assert_eq!(property_form(&dialog).focused, PropertyField::Unit);
+        assert_eq!(location_form(&dialog).focused, LocationField::Unit);
         handle_key(&mut dialog, DialogKey::Char(' '));
-        assert!(property_form(&dialog).unit.is_open());
+        assert!(location_form(&dialog).unit.is_open());
         assert!(dialog.close_open_select());
         assert!(!dialog.close_open_select());
-        assert_eq!(property_form(&dialog).unit.value(), Some("AUD"));
+        assert_eq!(location_form(&dialog).unit.value(), Some("AUD"));
     }
 
     #[test]
-    fn remove_property_with_holdings_confirms_only_on_the_typed_name() {
+    fn remove_location_with_holdings_confirms_only_on_the_typed_name() {
         let mut dialog = OpenDialog::Inventory(InventoryDialog::Remove(
-            PropertyId::seed(1),
-            RemovePropertyForm::new("Elm St", true),
+            LocationId::seed(1),
+            RemoveLocationForm::new("Elm St", true),
         ));
         type_text(&mut dialog, "Elm");
         assert_eq!(
@@ -1122,10 +792,10 @@ mod tests {
     }
 
     #[test]
-    fn remove_room_select_first_esc_closes_it_and_enter_needs_a_destination() {
-        let mut dialog = OpenDialog::Inventory(InventoryDialog::RemoveRoom(
-            RoomId::seed(1),
-            RemoveRoomForm::new(vec!["Kitchen".to_string()], None, true),
+    fn remove_area_select_first_esc_closes_it_and_enter_needs_a_destination() {
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::RemoveArea(
+            AreaId::seed(1),
+            RemoveAreaForm::new(vec!["Kitchen".to_string()], None, true),
         ));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
@@ -1142,8 +812,8 @@ mod tests {
     }
 
     #[test]
-    fn the_room_blocked_notice_confirms_with_enter_and_swallows_tab_in_the_host() {
-        let mut dialog = OpenDialog::Inventory(InventoryDialog::RoomBlocked(RoomId::seed(1)));
+    fn the_area_blocked_notice_confirms_with_enter_and_swallows_tab_in_the_host() {
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::AreaBlocked(AreaId::seed(1)));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Tab),
             DialogOutcome::Handled

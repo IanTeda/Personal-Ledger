@@ -3,7 +3,7 @@
 > **Package 08 of 20 · Inventory** — frames 8a–8b (8a, 8b). Open `Inventory.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
-**Inventory** (`g o`, under NET WORTH) is a home-contents register built for insurance. It keeps one register per home or policy, and the first thing it answers is **"am I covered?"**: replacement value against sum insured, with any shortfall in red.
+**Inventory** (`g o`, under NET WORTH) is a home-contents register built for insurance. It keeps one register per **Location** (a house, a storage unit, a car, a boat), each split into **Areas**, and the first thing it answers is **"am I covered?"**: replacement value against sum insured, with any shortfall in red.
 
 Every item carries its proof (receipt, photo, serial). Items above the policy's single-item limit are flagged until they are specified. Items link to the purchase transaction and to documents.
 
@@ -34,7 +34,8 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 `flex; align-items:flex-end; justify-content:space-between; margin-bottom:14px`.
 - **Left: inventory switcher.**
   - `h2` "12 Elm St contents" (28px/800) followed by a chevron-down icon, gap 8, `cursor:pointer`, `margin-bottom:4px`.
-  - Clicking it or pressing `o` opens a menu of inventories (one per home or policy) plus **+ New inventory…**.
+  - Clicking it or pressing `o` opens a menu of locations, then **Edit cover…** for the shown location and **+ New location…**.
+  - **Edit cover…** edits the location's address (a vehicle's registration) and its insurance cover: insurer, policy number, renewal date, sum insured and single-item limit. Settings › Inventory (16q) sets up only the location's name, Unit and Areas. The dialog is not drawn yet.
   - Subline (11.5px #9b9797): "Insured with NRMA · policy HC-4471902 · renews 14 Jan 2027".
 - **Right:** **Export for insurer…** (`.btn.btn-secondary`, 36px) and **+ Add item** (`.btn.btn-primary`, 36px), gap 8.
 
@@ -48,7 +49,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 | Label | Value | Note | Logic |
 | --- | --- | --- | --- |
 | REPLACEMENT VALUE | 163,480 | 214 items · new-for-old | Sum of item replacement values. |
-| SUM INSURED | 150,000 | **13,480 under-insured** (800 `#ae1800`) | From the policy. When covered, the note reads "13,480 headroom" in #605d5d. |
+| SUM INSURED | 150,000 | **13,480 under-insured** (800 `#ae1800`) | From the location's cover (**Edit cover…**). When covered, the note reads "13,480 headroom" in #605d5d. |
 | MISSING PROOF | 41 | no receipt or photo | Items with neither R nor P. |
 | WARRANTIES | 2 end soon | Sony camera · Dec 2026 | Warranties ending within 90 days; the note names the soonest. |
 
@@ -56,7 +57,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
   - Fill `#201e1d` = min(insured, replacement) ÷ replacement.
   - A `#ec3013` segment, right-aligned, = shortfall ÷ replacement (8.2% here).
 
-### 3. Room tabs
+### 3. Area tabs
 `flex; gap:2px; align-items:stretch`.
 - **Tab:** `padding:7px 12px; flex column; gap:2px`. Name 800 12.5px, then "count · value" (10.5px #9b9797 tabular, value in `k`).
 - **Active tab:** `background:#201e1d; color:#f3f2f2`, with the meta in `#bab6b6`.
@@ -78,7 +79,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
   | --- | --- | --- |
   | thumb | 26px | |
   | ITEM | flex 2.4 | |
-  | ROOM | flex .9 | |
+  | AREA | flex .9 | |
   | BOUGHT | flex 1 | #605d5d |
   | REPLACE | flex .9 | right, 800 |
   | PROOF | flex .8 | `padding-left:14px` |
@@ -95,11 +96,11 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
   - Missing: `border:1px dashed #9b9797`, `#9b9797` text.
 - **Warranty:** "Mar 2027", "expired" (#9b9797), or "—".
 - **Selected row:** `background:#201e1d; color:#f3f2f2`. The sub-line becomes #bab6b6 and the date #d7d3d3. Present chips invert to `#f3f2f2` fill with `#201e1d` text.
-- **Footer note** (11px #9b9797, `margin-top:8px`): "Showing 8 of 214 · sorted by room · purchases in Transactions can be added as items from the transaction".
+- **Footer note** (11px #9b9797, `margin-top:8px`): "Showing 8 of 214 · sorted by area · purchases in Transactions can be added as items from the transaction".
 
 **Sample rows:**
 
-| Item | Room | Bought | Replace | Proof | Warranty |
+| Item | Area | Bought | Replace | Proof | Warranty |
 | --- | --- | --- | --- | --- | --- |
 | MacBook Pro 14" | Office | 12 Mar 2024 | 3,999 | R P S | Mar 2027 |
 | Samsung 75" QLED TV | Living | 18 Nov 2023 | 2,299 | R P S | expired |
@@ -113,7 +114,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 ### 6. Detail pane (300px)
 - **Photo well:** 150px, `#d7d3d3`, 2px bottom rule, with a centred icon and "3 photos · camera, lens, serial plate" (11px #605d5d). In the app, show the first photo with a filmstrip and arrows.
 - **Body:** `padding:12px 16px; flex column; gap:10px`.
-  - **Title:** "Sony A7 IV + 24–70 lens" (16px/800), then "Office · Electronics › Camera" (11.5px #605d5d) for room and category.
+  - **Title:** "Sony A7 IV + 24–70 lens" (16px/800), then "Office · Electronics › Camera" (11.5px #605d5d) for area and category.
   - **Over-limit callout:** `border:2px solid #ec3013; background:#f3f2f2; padding:8px 10px; 11.5px/1.4`. "**Over the 2,000 single-item limit.**" in `#ae1800`, then "Unspecified, this pays at most 2,000 in a claim. Specify it on the policy to cover the full 4,590." Shown only for OVER LIMIT items.
   - **Fact rows:** `flex; space-between; padding:5px 0; border-bottom:1px solid rgba(32,30,29,.15); 12px`, label #605d5d, value tabular.
     - Bought: 4 Dec 2023 · Camera House
@@ -135,7 +136,7 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 - **Body:** `padding:14px 18px; flex column; gap:14px`. Field labels are 11.5px #605d5d, `margin-bottom:5px`.
   - **Purpose:** a full-width segmented control (`border:1px solid rgba(32,30,29,.30)`, segments `padding:7px 10px; 12px`, active `#201e1d` / `#f3f2f2` 800). Options are **Claim** · Renewal review · Off-site copy.
   - **Items / Event date:** two columns, gap 10.
-    - **Items:** a select (32px, focused here with `border:2px solid #201e1d`) showing "**Living**" with "38 items ▾" (11px #9b9797). Options: All, each room, Over limit, Missing proof, a custom selection.
+    - **Items:** a select (32px, focused here with `border:2px solid #201e1d`) showing "**Living**" with "38 items ▾" (11px #9b9797). Options: All, each area, Over limit, Missing proof, a custom selection.
     - **Event date:** 32px, "28 Sep 2026". Shown only for **Claim**.
   - **Include:** checkboxes (14×14, `border:2px solid #201e1d`, checked = filled with a white check; `padding:4px 0; gap:9px`), each with an 11px #605d5d hint:
     - **Photos** ✓, "first photo per item, full set in the zip"
@@ -152,10 +153,10 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 **Export output:**
 - **PDF schedule:**
   - Cover: policy, purpose, event date, totals.
-  - One row per item: photo, name, room, bought, replacement, serial, proof status.
+  - One row per item: photo, name, area, bought, replacement, serial, proof status.
   - Items without proof are listed with "No receipt or photo on file", never dropped.
-- **Zip:** the PDF plus the original documents and photos, in folders by room. File names are `<room>/<item>/<original name>`.
-- **CSV:** item, room, category, bought, replacement, paid (if ticked), serial, specified, proof flags.
+- **Zip:** the PDF plus the original documents and photos, in folders by area. File names are `<area>/<item>/<original name>`.
+- **CSV:** item, area, category, bought, replacement, paid (if ticked), serial, specified, proof flags.
 
 ---
 
@@ -172,15 +173,15 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 - **Notifications:** the "Item missing proof" and "Warranty expiring" rules (section 5) read from here.
 - **Net worth:** Inventory counts at depreciated value, not replacement value (see Dashboard 2c).
 - **Empty inventory:** "No items yet" with **+ Add item** and "Add from a transaction" guidance.
-- **Search** matches name, brand, model, serial and room.
+- **Search** matches name, brand, model, serial and area.
 
 ## Keyboard
 | Key | Action |
 | --- | --- |
-| `g o` | Open Inventory (last inventory used). |
-| `o` | Switch inventory. |
+| `g o` | Open Inventory (last location used). |
+| `o` | Switch location (the menu also holds Edit cover…). |
 | `j` / `k` | Next / previous item. |
-| `[` / `]` | Previous / next room tab. |
+| `[` / `]` | Previous / next area tab. |
 | `/` | Focus search. |
 | `n` | Add item. |
 | `e` | Edit item. |
@@ -191,29 +192,29 @@ The shell (header, primary rail, status bar) is specified in `../01-shell + 16-s
 | `esc` | Close a dialog or menu. |
 
 **Status bar (to add):**
-- **Left:** `NORMAL` · `j/k item · [ ] room · n add · p proof · s specify · x export · o switch`
+- **Left:** `NORMAL` · `j/k item · [ ] area · n add · p proof · s specify · x export · o switch`
 - **Right:** "NRMA · single-item limit 2,000"
 
 ## State
 ```
 inventory
-  inventoryId: InventoryId
-  room: All | RoomId
+  locationId: LocationId
+  area: All | AreaId
   filter: All | MissingProof | OverLimit
   query: String
   selectedItemId: Option<ItemId>
-  dialog: None | Export(ExportDraft) | ItemEditor(ItemDraft) | SwitchInventory
+  dialog: None | Export(ExportDraft) | ItemEditor(ItemDraft) | SwitchLocation | EditCover(LocationId)
 
-Inventory { id, name, address?, policy?: { insurer, number, renewsOn, sumInsured, singleItemLimit } }
-Item      { id, inventoryId, name, roomId, category, brand?, model?, serial?,
+Location  { id, name, unit, address?, policy?: { insurer, number, renewsOn, sumInsured, singleItemLimit } }
+Item      { id, locationId, name, areaId, category, brand?, model?, serial?,
             boughtOn?, paid?, replacement, replacementCheckedOn?, warrantyEnds?,
             specified: bool, reviewed: bool, photos: Vec<FileRef>,
             documents: Vec<DocumentId>, transactionId?: TransactionId }
-Room      { id, inventoryId, name, order }
-ExportDraft { purpose: Claim|Renewal|OffSite, scope: All|Room(id)|OverLimit|MissingProof|Selection(ids),
+Area      { id, locationId, name, order }
+ExportDraft { purpose: Claim|Renewal|OffSite, scope: All|Area(id)|OverLimit|MissingProof|Selection(ids),
               eventDate?, include: { photos, documents, serials, pricePaid } }
 ```
-- The cover strip, room totals, proof flags and OVER LIMIT are all derived.
+- The cover strip, area totals, proof flags and OVER LIMIT are all derived.
 - `NEW` is shown when `reviewed == false`.
 - Photos and documents are files kept beside the ledger, as in Documents.
 

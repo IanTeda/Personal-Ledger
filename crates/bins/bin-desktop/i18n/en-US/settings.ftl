@@ -116,10 +116,9 @@ desktop-settings-density-roomy = roomy
 desktop-settings-glyphs-unicode = unicode — { $glyphs }
 desktop-settings-glyphs-ascii = ascii fallback — { $glyphs }
 
-## Units and price sources. `$glyph` is the plus sign on an add button.
+## Units and price sources.
 
 desktop-settings-units-add =
-    .button = { $glyph } Add unit
     .title = Add unit
     .submit = Add
 
@@ -132,7 +131,6 @@ desktop-settings-units-delete =
     .submit = Delete unit
 
 desktop-settings-price-sources-heading = Price sources
-desktop-settings-price-sources-add = { $glyph } Add price source
 desktop-settings-units-code-placeholder = e.g. usd
 desktop-settings-units-name-placeholder = e.g. US Dollar
 desktop-settings-units-column-flags = Flags
@@ -140,7 +138,13 @@ desktop-settings-units-column-source = Source
 desktop-settings-units-column-last-updated = Last updated
 desktop-settings-units-flag-base = base
 desktop-settings-units-flag-default = default
-desktop-settings-units-test = test
+desktop-settings-units-column-price-source = Price source
+desktop-settings-units-legend-base = base unit
+desktop-settings-units-menu-edit-unit = Edit unit…
+desktop-settings-units-menu-delete-unit = Delete unit…
+desktop-settings-units-menu-test-source = Test price source
+desktop-settings-units-menu-edit-source = Edit price source…
+desktop-settings-units-menu-delete-source = Delete price source…
 
 desktop-settings-units-usage-notice = Used by { $accounts ->
     [one] { $accounts } account
@@ -165,6 +169,17 @@ desktop-settings-units-delete-confirm-label = Type { $code } to confirm
 
 desktop-settings-units-pane-unit = Unit
 desktop-settings-units-pane-none = —
+desktop-settings-units-pane-used-by = Used by
+desktop-settings-units-pane-used-by-value = { $accounts ->
+    [one] { $accounts } account
+   *[other] { $accounts } accounts
+} · { $transactions ->
+    [one] { $transactions } transaction
+   *[other] { $transactions } transactions
+}
+desktop-settings-units-pane-accounts = Accounts
+desktop-settings-units-pane-accounts-total = Total
+desktop-settings-units-pane-accounts-none = No accounts use this unit.
 desktop-settings-units-pane-title = { $code } · { $name }
 desktop-settings-units-pane-meta = { $kind } · valued in { $base }
 desktop-settings-units-pane-edit-unit = Edit unit

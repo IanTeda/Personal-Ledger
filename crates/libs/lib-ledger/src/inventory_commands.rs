@@ -3,109 +3,109 @@
 //! wrote (ADR-0039).
 //!
 //! Single-entity rules stay in `lib_inventory`. What lives here is the rule that crosses domains: a
-//! removed Property drops the Document Links to its Items, since a Document names an Item by id.
+//! removed Location drops the Document Links to its Items, since a Document names an Item by id.
 
-use lib_core::{ItemId, PropertyId, RoomId};
-use lib_inventory::{PropertyDraft, PropertyError, RemovedProperty, RemovedRoom, RoomError};
+use lib_core::{AreaId, ItemId, LocationId};
+use lib_inventory::{AreaError, LocationDraft, LocationError, RemovedArea, RemovedLocation};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
-/// Why a Room did not move: it is unknown, or already at the end it was asked to move past.
+/// Why an Area did not move: it is unknown, or already at the end it was asked to move past.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum MoveRoomRefusal {
-    #[error("room did not move")]
+pub enum MoveAreaRefusal {
+    #[error("area did not move")]
     NotMoved,
 }
 
 impl Ledger {
-    /// Adds a Property with no Rooms and returns its id.
-    pub fn add_property(
+    /// Adds a Location with no Areas and returns its id.
+    pub fn add_location(
         &mut self,
-        draft: &PropertyDraft,
+        draft: &LocationDraft,
         unit: &str,
-    ) -> Result<PropertyId, PropertyError> {
-        let id = self.inventory.add_property(draft, unit)?;
-        self.record_property(id);
+    ) -> Result<LocationId, LocationError> {
+        let id = self.inventory.add_location(draft, unit)?;
+        self.record_location(id);
         Ok(id)
     }
 
-    /// Edits a Property's name, address and cover. Its Unit is fixed once added.
-    pub fn edit_property(
+    /// Edits a Location's name, address and cover. Its Unit is fixed once added.
+    pub fn edit_location(
         &mut self,
-        id: PropertyId,
-        draft: &PropertyDraft,
-    ) -> Result<(), PropertyError> {
-        self.inventory.edit_property(id, draft)?;
-        self.record_property(id);
+        id: LocationId,
+        draft: &LocationDraft,
+    ) -> Result<(), LocationError> {
+        self.inventory.edit_location(id, draft)?;
+        self.record_location(id);
         Ok(())
     }
 
-    /// Removes a Property with its Rooms and Items, and drops the Document Links to those Items.
-    pub fn remove_property(&mut self, id: PropertyId) -> Result<RemovedProperty, PropertyError> {
-        let removed = self.inventory.remove_property(id)?;
-        for room in &removed.rooms {
-            self.pending.push(LedgerChange::DeleteRoom(*room));
+    /// Removes a Location with its Areas and Items, and drops the Document Links to those Items.
+    pub fn remove_location(&mut self, id: LocationId) -> Result<RemovedLocation, LocationError> {
+        let removed = self.inventory.remove_location(id)?;
+        for area in &removed.areas {
+            self.pending.push(LedgerChange::DeleteArea(*area));
         }
         for item in &removed.items {
             self.pending.push(LedgerChange::DeleteItem(*item));
         }
-        self.pending.push(LedgerChange::DeleteProperty(id));
+        self.pending.push(LedgerChange::DeleteLocation(id));
         self.drop_document_inventory_links(&removed.items);
         Ok(removed)
     }
 
-    /// Adds a Room at the end of a Property's tabs and returns its id.
-    pub fn add_room(&mut self, property: PropertyId, name: &str) -> Result<RoomId, RoomError> {
-        let id = self.inventory.add_room(property, name)?;
-        self.record_room(id);
+    /// Adds an Area at the end of a Location's tabs and returns its id.
+    pub fn add_area(&mut self, location: LocationId, name: &str) -> Result<AreaId, AreaError> {
+        let id = self.inventory.add_area(location, name)?;
+        self.record_area(id);
         Ok(id)
     }
 
-    /// Renames a Room.
-    pub fn edit_room(&mut self, room: RoomId, name: &str) -> Result<(), RoomError> {
-        self.inventory.edit_room(room, name)?;
-        self.record_room(room);
+    /// Renames an Area.
+    pub fn edit_area(&mut self, area: AreaId, name: &str) -> Result<(), AreaError> {
+        self.inventory.edit_area(area, name)?;
+        self.record_area(area);
         Ok(())
     }
 
-    /// Removes a Room, moving its Items to `destination` first when it holds any.
-    pub fn remove_room(
+    /// Removes an Area, moving its Items to `destination` first when it holds any.
+    pub fn remove_area(
         &mut self,
-        room: RoomId,
-        destination: Option<RoomId>,
-    ) -> Result<RemovedRoom, RoomError> {
-        let removed = self.inventory.remove_room(room, destination)?;
+        area: AreaId,
+        destination: Option<AreaId>,
+    ) -> Result<RemovedArea, AreaError> {
+        let removed = self.inventory.remove_area(area, destination)?;
         for item in &removed.moved_items {
             self.record_item(*item);
         }
-        self.pending.push(LedgerChange::DeleteRoom(room));
+        self.pending.push(LedgerChange::DeleteArea(area));
         Ok(removed)
     }
 
-    /// Moves a Room one place down (`delta` > 0) or up within its Property. The Room and the
+    /// Moves an Area one place down (`delta` > 0) or up within its Location. The Area and the
     /// neighbour it swapped with both change position.
-    pub fn move_room(&mut self, room: RoomId, delta: isize) -> Result<(), MoveRoomRefusal> {
+    pub fn move_area(&mut self, area: AreaId, delta: isize) -> Result<(), MoveAreaRefusal> {
         let [moved, neighbour] = self
             .inventory
-            .move_room(room, delta)
-            .ok_or(MoveRoomRefusal::NotMoved)?;
-        self.record_room(moved);
-        self.record_room(neighbour);
+            .move_area(area, delta)
+            .ok_or(MoveAreaRefusal::NotMoved)?;
+        self.record_area(moved);
+        self.record_area(neighbour);
         Ok(())
     }
 
-    fn record_property(&mut self, id: PropertyId) {
-        if let Some(property) = self.inventory.property(id) {
+    fn record_location(&mut self, id: LocationId) {
+        if let Some(location) = self.inventory.location(id) {
             self.pending
-                .push(LedgerChange::UpsertProperty(property.clone()));
+                .push(LedgerChange::UpsertLocation(location.clone()));
         }
     }
 
-    fn record_room(&mut self, room: RoomId) {
-        if let Some((property, room)) = self.inventory.room(room) {
-            self.pending.push(LedgerChange::UpsertRoom {
-                property: property.id,
-                room: room.clone(),
+    fn record_area(&mut self, area: AreaId) {
+        if let Some((location, area)) = self.inventory.area(area) {
+            self.pending.push(LedgerChange::UpsertArea {
+                location: location.id,
+                area: area.clone(),
             });
         }
     }
@@ -117,105 +117,105 @@ impl Ledger {
     }
 }
 
-/// [`Ledger::add_property`] as a value.
+/// [`Ledger::add_location`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddProperty {
-    pub draft: PropertyDraft,
+pub struct AddLocation {
+    pub draft: LocationDraft,
     pub unit: String,
 }
 
-impl LedgerCommand for AddProperty {
-    type Outcome = PropertyId;
-    type Refusal = PropertyError;
-    fn run(self, ledger: &mut Ledger) -> Result<PropertyId, PropertyError> {
-        ledger.add_property(&self.draft, &self.unit)
+impl LedgerCommand for AddLocation {
+    type Outcome = LocationId;
+    type Refusal = LocationError;
+    fn run(self, ledger: &mut Ledger) -> Result<LocationId, LocationError> {
+        ledger.add_location(&self.draft, &self.unit)
     }
 }
 
-/// [`Ledger::edit_property`] as a value.
+/// [`Ledger::edit_location`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EditProperty {
-    pub id: PropertyId,
-    pub draft: PropertyDraft,
+pub struct EditLocation {
+    pub id: LocationId,
+    pub draft: LocationDraft,
 }
 
-impl LedgerCommand for EditProperty {
+impl LedgerCommand for EditLocation {
     type Outcome = ();
-    type Refusal = PropertyError;
-    fn run(self, ledger: &mut Ledger) -> Result<(), PropertyError> {
-        ledger.edit_property(self.id, &self.draft)
+    type Refusal = LocationError;
+    fn run(self, ledger: &mut Ledger) -> Result<(), LocationError> {
+        ledger.edit_location(self.id, &self.draft)
     }
 }
 
-/// [`Ledger::remove_property`] as a value.
+/// [`Ledger::remove_location`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RemoveProperty(pub PropertyId);
+pub struct RemoveLocation(pub LocationId);
 
-impl LedgerCommand for RemoveProperty {
-    type Outcome = RemovedProperty;
-    type Refusal = PropertyError;
-    fn run(self, ledger: &mut Ledger) -> Result<RemovedProperty, PropertyError> {
-        ledger.remove_property(self.0)
+impl LedgerCommand for RemoveLocation {
+    type Outcome = RemovedLocation;
+    type Refusal = LocationError;
+    fn run(self, ledger: &mut Ledger) -> Result<RemovedLocation, LocationError> {
+        ledger.remove_location(self.0)
     }
 }
 
-/// [`Ledger::add_room`] as a value.
+/// [`Ledger::add_area`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddRoom {
-    pub property: PropertyId,
+pub struct AddArea {
+    pub location: LocationId,
     pub name: String,
 }
 
-impl LedgerCommand for AddRoom {
-    type Outcome = RoomId;
-    type Refusal = RoomError;
-    fn run(self, ledger: &mut Ledger) -> Result<RoomId, RoomError> {
-        ledger.add_room(self.property, &self.name)
+impl LedgerCommand for AddArea {
+    type Outcome = AreaId;
+    type Refusal = AreaError;
+    fn run(self, ledger: &mut Ledger) -> Result<AreaId, AreaError> {
+        ledger.add_area(self.location, &self.name)
     }
 }
 
-/// [`Ledger::edit_room`] as a value.
+/// [`Ledger::edit_area`] as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EditRoom {
-    pub room: RoomId,
+pub struct EditArea {
+    pub area: AreaId,
     pub name: String,
 }
 
-impl LedgerCommand for EditRoom {
+impl LedgerCommand for EditArea {
     type Outcome = ();
-    type Refusal = RoomError;
-    fn run(self, ledger: &mut Ledger) -> Result<(), RoomError> {
-        ledger.edit_room(self.room, &self.name)
+    type Refusal = AreaError;
+    fn run(self, ledger: &mut Ledger) -> Result<(), AreaError> {
+        ledger.edit_area(self.area, &self.name)
     }
 }
 
-/// [`Ledger::remove_room`] as a value.
+/// [`Ledger::remove_area`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RemoveRoom {
-    pub room: RoomId,
-    pub destination: Option<RoomId>,
+pub struct RemoveArea {
+    pub area: AreaId,
+    pub destination: Option<AreaId>,
 }
 
-impl LedgerCommand for RemoveRoom {
-    type Outcome = RemovedRoom;
-    type Refusal = RoomError;
-    fn run(self, ledger: &mut Ledger) -> Result<RemovedRoom, RoomError> {
-        ledger.remove_room(self.room, self.destination)
+impl LedgerCommand for RemoveArea {
+    type Outcome = RemovedArea;
+    type Refusal = AreaError;
+    fn run(self, ledger: &mut Ledger) -> Result<RemovedArea, AreaError> {
+        ledger.remove_area(self.area, self.destination)
     }
 }
 
-/// [`Ledger::move_room`] as a value.
+/// [`Ledger::move_area`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MoveRoom {
-    pub room: RoomId,
+pub struct MoveArea {
+    pub area: AreaId,
     pub delta: isize,
 }
 
-impl LedgerCommand for MoveRoom {
+impl LedgerCommand for MoveArea {
     type Outcome = ();
-    type Refusal = MoveRoomRefusal;
-    fn run(self, ledger: &mut Ledger) -> Result<(), MoveRoomRefusal> {
-        ledger.move_room(self.room, self.delta)
+    type Refusal = MoveAreaRefusal;
+    fn run(self, ledger: &mut Ledger) -> Result<(), MoveAreaRefusal> {
+        ledger.move_area(self.area, self.delta)
     }
 }
 
@@ -241,25 +241,25 @@ mod tests {
         })
     }
 
-    fn draft(name: &str) -> PropertyDraft {
-        PropertyDraft {
+    fn draft(name: &str) -> LocationDraft {
+        LocationDraft {
             name: name.to_string(),
-            ..PropertyDraft::default()
+            ..LocationDraft::default()
         }
     }
 
-    /// A Room in the seed that holds Items, with another Room of the same Property to receive
-    /// them, and the Property both belong to.
-    fn room_with_items(inventory: &Inventory) -> (PropertyId, RoomId, RoomId) {
+    /// An Area in the seed that holds Items, with another Area of the same Location to receive
+    /// them, and the Location both belong to.
+    fn area_with_items(inventory: &Inventory) -> (LocationId, AreaId, AreaId) {
         let item = inventory.items.first().expect("seeded Items");
-        let (property, room) = inventory.room(item.room).expect("an Item's Room exists");
-        let other = property
-            .rooms
+        let (location, area) = inventory.area(item.area).expect("an Item's Area exists");
+        let other = location
+            .areas
             .iter()
-            .find(|r| r.id != room.id)
-            .expect("the seed's Property has a second Room")
+            .find(|r| r.id != area.id)
+            .expect("the seed's Location has a second Area")
             .id;
-        (property.id, room.id, other)
+        (location.id, area.id, other)
     }
 
     /// The Ledger must come out of a refused command exactly as it went in.
@@ -269,65 +269,65 @@ mod tests {
     }
 
     #[test]
-    fn add_property_records_the_new_property() {
+    fn add_location_records_the_new_location() {
         let mut ledger = ledger();
         let id = ledger
-            .add_property(&draft("Beach shack"), "nzd")
+            .add_location(&draft("Beach shack"), "nzd")
             .expect("a new name lands");
         let changes = ledger.drain_changes();
         assert_eq!(changes.len(), 1);
         match &changes[0] {
-            LedgerChange::UpsertProperty(property) => {
-                assert_eq!(property.id, id);
-                assert_eq!(property.name, "Beach shack");
-                assert_eq!(property.unit, "nzd");
+            LedgerChange::UpsertLocation(location) => {
+                assert_eq!(location.id, id);
+                assert_eq!(location.name, "Beach shack");
+                assert_eq!(location.unit, "nzd");
             }
-            other => panic!("expected an upsert of the Property, got {other:?}"),
+            other => panic!("expected an upsert of the Location, got {other:?}"),
         }
     }
 
     #[test]
-    fn a_refused_add_property_leaves_the_ledger_untouched() {
+    fn a_refused_add_location_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let refused = ledger.add_property(&draft("  "), "aud");
-        assert_eq!(refused, Err(PropertyError::Name(NameError::Empty)));
+        let refused = ledger.add_location(&draft("  "), "aud");
+        assert_eq!(refused, Err(LocationError::Name(NameError::Empty)));
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn edit_property_records_the_saved_property() {
+    fn edit_location_records_the_saved_location() {
         let mut ledger = ledger();
-        let id = ledger.inventory().properties[0].id;
+        let id = ledger.inventory().locations[0].id;
         ledger
-            .edit_property(id, &draft("Renamed place"))
+            .edit_location(id, &draft("Renamed place"))
             .expect("a free name lands");
         let changes = ledger.drain_changes();
         assert!(matches!(
             changes.as_slice(),
-            [LedgerChange::UpsertProperty(p)] if p.id == id && p.name == "Renamed place"
+            [LedgerChange::UpsertLocation(p)] if p.id == id && p.name == "Renamed place"
         ));
     }
 
     #[test]
-    fn a_refused_edit_property_leaves_the_ledger_untouched() {
+    fn a_refused_edit_location_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let taken = ledger.inventory().properties[1].name.clone();
-        let id = ledger.inventory().properties[0].id;
+        let taken = ledger.inventory().locations[1].name.clone();
+        let id = ledger.inventory().locations[0].id;
         assert_eq!(
-            ledger.edit_property(id, &draft(&taken)),
-            Err(PropertyError::Name(NameError::Taken))
+            ledger.edit_location(id, &draft(&taken)),
+            Err(LocationError::Name(NameError::Taken))
         );
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn remove_property_records_its_rooms_items_and_the_property() {
+    fn remove_location_records_its_areas_items_and_the_location() {
         let mut ledger = ledger();
-        let id = ledger.inventory().properties[0].id;
-        let rooms: Vec<RoomId> = ledger.inventory().properties[0]
-            .rooms
+        let id = ledger.inventory().locations[0].id;
+        let areas: Vec<AreaId> = ledger.inventory().locations[0]
+            .areas
             .iter()
             .map(|r| r.id)
             .collect();
@@ -335,19 +335,19 @@ mod tests {
             .inventory()
             .items
             .iter()
-            .filter(|i| i.property == id)
+            .filter(|i| i.location == id)
             .map(|i| i.id)
             .collect();
-        assert!(!items.is_empty(), "the seeded Property holds Items");
+        assert!(!items.is_empty(), "the seeded Location holds Items");
 
-        let removed = ledger.remove_property(id).expect("the Property exists");
-        assert_eq!(removed.rooms, rooms);
+        let removed = ledger.remove_location(id).expect("the Location exists");
+        assert_eq!(removed.areas, areas);
         assert_eq!(removed.items, items);
 
         let changes = ledger.drain_changes();
-        assert!(changes.contains(&LedgerChange::DeleteProperty(id)));
-        for room in &rooms {
-            assert!(changes.contains(&LedgerChange::DeleteRoom(*room)));
+        assert!(changes.contains(&LedgerChange::DeleteLocation(id)));
+        for area in &areas {
+            assert!(changes.contains(&LedgerChange::DeleteArea(*area)));
         }
         for item in &items {
             assert!(changes.contains(&LedgerChange::DeleteItem(*item)));
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_property_drops_the_document_links_to_its_items() {
+    fn remove_location_drops_the_document_links_to_its_items() {
         let mut ledger = Ledger::stub_on(today());
         let linked = ledger
             .documents()
@@ -366,15 +366,15 @@ mod tests {
                 _ => None,
             })
             .expect("the stub links a Document to an Inventory Item");
-        let property = ledger
+        let location = ledger
             .inventory()
             .item(linked)
             .expect("the Item exists")
-            .property;
+            .location;
 
         ledger
-            .remove_property(property)
-            .expect("the Property exists");
+            .remove_location(location)
+            .expect("the Location exists");
 
         let still_linked = ledger
             .documents()
@@ -386,81 +386,81 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_remove_property_leaves_the_ledger_untouched() {
+    fn a_refused_remove_location_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
         assert_eq!(
-            ledger.remove_property(PropertyId::seed(9_999)).unwrap_err(),
-            PropertyError::Unknown
+            ledger.remove_location(LocationId::seed(9_999)).unwrap_err(),
+            LocationError::Unknown
         );
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn add_room_records_the_new_room_under_its_property() {
+    fn add_area_records_the_new_area_under_its_location() {
         let mut ledger = ledger();
-        let property = ledger.inventory().properties[0].id;
+        let location = ledger.inventory().locations[0].id;
         let id = ledger
-            .add_room(property, "Attic")
+            .add_area(location, "Attic")
             .expect("a free name lands");
         let changes = ledger.drain_changes();
         assert!(matches!(
             changes.as_slice(),
-            [LedgerChange::UpsertRoom { property: p, room }] if *p == property && room.id == id && room.name == "Attic"
+            [LedgerChange::UpsertArea { location: p, area }] if *p == location && area.id == id && area.name == "Attic"
         ));
     }
 
     #[test]
-    fn a_refused_add_room_leaves_the_ledger_untouched() {
+    fn a_refused_add_area_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let property = ledger.inventory().properties[0].id;
-        let taken = ledger.inventory().properties[0].rooms[0].name.clone();
+        let location = ledger.inventory().locations[0].id;
+        let taken = ledger.inventory().locations[0].areas[0].name.clone();
         assert_eq!(
-            ledger.add_room(property, &taken),
-            Err(RoomError::Name(NameError::Taken))
+            ledger.add_area(location, &taken),
+            Err(AreaError::Name(NameError::Taken))
         );
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn edit_room_records_the_renamed_room() {
+    fn edit_area_records_the_renamed_area() {
         let mut ledger = ledger();
-        let room = ledger.inventory().properties[0].rooms[0].id;
-        ledger.edit_room(room, "Lounge").expect("a free name lands");
+        let area = ledger.inventory().locations[0].areas[0].id;
+        ledger.edit_area(area, "Lounge").expect("a free name lands");
         let changes = ledger.drain_changes();
         assert!(matches!(
             changes.as_slice(),
-            [LedgerChange::UpsertRoom { room: r, .. }] if r.id == room && r.name == "Lounge"
+            [LedgerChange::UpsertArea { area: r, .. }] if r.id == area && r.name == "Lounge"
         ));
     }
 
     #[test]
-    fn a_refused_edit_room_leaves_the_ledger_untouched() {
+    fn a_refused_edit_area_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
         assert_eq!(
-            ledger.edit_room(RoomId::seed(9_999), "Nowhere"),
-            Err(RoomError::UnknownRoom)
+            ledger.edit_area(AreaId::seed(9_999), "Nowhere"),
+            Err(AreaError::UnknownArea)
         );
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn remove_room_moves_its_items_and_records_each_one() {
+    fn remove_area_moves_its_items_and_records_each_one() {
         let mut ledger = ledger();
-        let (_, room, other) = room_with_items(ledger.inventory());
+        let (_, area, other) = area_with_items(ledger.inventory());
         let moving: Vec<ItemId> = ledger
             .inventory()
             .items
             .iter()
-            .filter(|i| i.room == room)
+            .filter(|i| i.area == area)
             .map(|i| i.id)
             .collect();
 
         let removed = ledger
-            .remove_room(room, Some(other))
-            .expect("the destination is another Room of the Property");
+            .remove_area(area, Some(other))
+            .expect("the destination is another Area of the Location");
         assert_eq!(removed.moved_items, moving);
 
         let changes = ledger.drain_changes();
@@ -469,50 +469,50 @@ mod tests {
                 ledger.inventory().item(*item).unwrap().clone()
             )));
         }
-        assert!(changes.contains(&LedgerChange::DeleteRoom(room)));
+        assert!(changes.contains(&LedgerChange::DeleteArea(area)));
     }
 
     #[test]
-    fn a_refused_remove_room_leaves_the_ledger_untouched() {
+    fn a_refused_remove_area_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let (_, room, _) = room_with_items(&before);
+        let (_, area, _) = area_with_items(&before);
         assert_eq!(
-            ledger.remove_room(room, None),
-            Err(RoomError::NeedsDestination)
+            ledger.remove_area(area, None),
+            Err(AreaError::NeedsDestination)
         );
         assert_untouched(&mut ledger, &before);
     }
 
     #[test]
-    fn move_room_records_both_rooms_that_swapped() {
+    fn move_area_records_both_areas_that_swapped() {
         let mut ledger = ledger();
-        let property = &ledger.inventory().properties[0];
-        let (first, second) = (property.rooms[0].id, property.rooms[1].id);
+        let location = &ledger.inventory().locations[0];
+        let (first, second) = (location.areas[0].id, location.areas[1].id);
 
         ledger
-            .move_room(first, 1)
-            .expect("the first Room can move down");
+            .move_area(first, 1)
+            .expect("the first Area can move down");
 
         let changes = ledger.drain_changes();
         assert_eq!(changes.len(), 2);
         assert!(changes.iter().any(|c| matches!(
-            c, LedgerChange::UpsertRoom { room, .. } if room.id == first
+            c, LedgerChange::UpsertArea { area, .. } if area.id == first
         )));
         assert!(changes.iter().any(|c| matches!(
-            c, LedgerChange::UpsertRoom { room, .. } if room.id == second
+            c, LedgerChange::UpsertArea { area, .. } if area.id == second
         )));
     }
 
     #[test]
-    fn a_refused_move_room_leaves_the_ledger_untouched() {
+    fn a_refused_move_area_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let last = ledger.inventory().properties[0].rooms.last().unwrap().id;
+        let last = ledger.inventory().locations[0].areas.last().unwrap().id;
         assert_eq!(
-            ledger.move_room(last, 1),
-            Err(MoveRoomRefusal::NotMoved),
-            "the last Room cannot move further down"
+            ledger.move_area(last, 1),
+            Err(MoveAreaRefusal::NotMoved),
+            "the last Area cannot move further down"
         );
         assert_untouched(&mut ledger, &before);
     }

@@ -1,7 +1,7 @@
 //! The Settings Units page driven by keys: reaching the page down the index, and the Add, Edit
 //! and Delete unit dialogs' keys once open: typing, `tab` between the Code and Name fields,
 //! `enter` to save or confirm, and `escape` to cancel. The page has no keys of its own, so each
-//! dialog is opened with its row button or Add button. State is read back from `Shell`.
+//! dialog is opened with the square + button or a row's context menu. State is read back from `Shell`.
 
 use super::common;
 
@@ -12,8 +12,8 @@ use bin_desktop::{
 use common::Harness;
 use gpui::TestAppContext;
 
-/// Below X-Large the rows carry their own Edit and Delete buttons, so the older cases run at
-/// Large; the X-Large cases below drive the detail pane.
+/// Below X-Large the page keeps no selected row, so the older cases run at Large; the X-Large
+/// cases below drive the detail pane.
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Large);
@@ -26,6 +26,12 @@ fn on_units(app: &mut TestAppContext) -> Harness<'_> {
 
 fn mode(ui: &mut Harness<'_>) -> InputMode {
     ui.read(|shell| shell.nav().mode())
+}
+
+/// Right-clicks the row and picks an entry of its context menu: the rows carry no buttons.
+fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
+    ui.right_click(row);
+    ui.click(&format!("settings-units-menu-{action}"));
 }
 
 #[gpui::test]
@@ -115,7 +121,7 @@ fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
-    ui.click("unit-edit-0");
+    row_action(&mut ui, "unit-row-0", "edit-unit");
     assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
     ui.press("tab");
     ui.press("x");
@@ -132,7 +138,7 @@ fn escape_discards_an_edit_unit_change(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     let before = ui.settings_units().unit_rows.clone();
 
-    ui.click("unit-edit-0");
+    row_action(&mut ui, "unit-row-0", "edit-unit");
     ui.press("tab");
     ui.press("x");
     ui.press("escape");
@@ -147,7 +153,7 @@ fn delete_unit_enter_refuses_until_the_code_is_typed_back(app: &mut TestAppConte
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
-    ui.click("unit-delete-0");
+    row_action(&mut ui, "unit-row-0", "delete-unit");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
     ui.press("enter");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
@@ -182,7 +188,7 @@ fn escape_closes_the_delete_unit_dialog_without_a_write(app: &mut TestAppContext
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
-    ui.click("unit-delete-0");
+    row_action(&mut ui, "unit-row-0", "delete-unit");
     for ch in code.chars() {
         ui.press(&ch.to_string());
     }
@@ -280,4 +286,16 @@ fn below_x_large_the_page_keeps_no_keys_of_its_own(app: &mut TestAppContext) {
     assert!(!ui.is_drawn("units-detail-pane"));
     ui.press("n");
     assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn escape_closes_an_open_row_menu_before_leaving_the_page(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l");
+    ui.right_click("unit-row-0");
+    assert!(ui.settings_units().menu.is_some());
+
+    ui.press("escape");
+    assert_eq!(ui.settings_units().menu, None);
+    assert!(ui.settings().page_focused);
 }

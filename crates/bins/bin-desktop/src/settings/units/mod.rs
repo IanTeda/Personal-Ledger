@@ -13,7 +13,7 @@ mod render;
 pub(super) use render::detail_pane;
 
 use chrono::Local;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
 use lib_ledger::Domain;
 use lib_list_cursor::{resolve, step_id};
 use lib_units::{PriceSourceRow, UnitId, UnitRow};
@@ -41,6 +41,65 @@ pub struct UnitsRowClicked;
 
 impl EventEmitter<UnitsRowClicked> for UnitsPage {}
 
+/// The row a context menu is open on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuTarget {
+    Unit(UnitId),
+    /// An index into the Price Sources table.
+    Source(usize),
+}
+
+/// An entry of a row's context menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    EditUnit,
+    DeleteUnit,
+    TestSource,
+    EditSource,
+    DeleteSource,
+}
+
+impl MenuAction {
+    /// A row's entries in menu order, the destructive one last.
+    pub fn for_target(target: MenuTarget) -> &'static [Self] {
+        match target {
+            MenuTarget::Unit(_) => &[Self::EditUnit, Self::DeleteUnit],
+            MenuTarget::Source(_) => &[Self::TestSource, Self::EditSource, Self::DeleteSource],
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::EditUnit => crate::msg::desktop_settings_units_menu_edit_unit(),
+            Self::DeleteUnit => crate::msg::desktop_settings_units_menu_delete_unit(),
+            Self::TestSource => crate::msg::desktop_settings_units_menu_test_source(),
+            Self::EditSource => crate::msg::desktop_settings_units_menu_edit_source(),
+            Self::DeleteSource => crate::msg::desktop_settings_units_menu_delete_source(),
+        }
+    }
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::EditUnit => "edit-unit",
+            Self::DeleteUnit => "delete-unit",
+            Self::TestSource => "test-source",
+            Self::EditSource => "edit-source",
+            Self::DeleteSource => "delete-source",
+        }
+    }
+
+    pub fn is_destructive(self) -> bool {
+        matches!(self, Self::DeleteUnit | Self::DeleteSource)
+    }
+}
+
+/// The context menu open on a row, drawn at the pointer that opened it (window coordinates).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RowMenu {
+    pub target: MenuTarget,
+    pub position: Point<Pixels>,
+}
+
 /// One line of the detail pane's ACTIVITY: a Units outcome, with the time it landed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityEntry {
@@ -48,7 +107,7 @@ pub struct ActivityEntry {
     pub text: String,
 }
 
-/// The Units page. Below X-Large every row is reached by its buttons; at X-Large the page keeps a
+/// The Units page. Below X-Large a row is reached by double-click and right-click; at X-Large the page keeps a
 /// selected row, the detail pane beside it carries the actions, and the page's Success outcomes
 /// land in the pane's ACTIVITY instead of raising Toasts (DESKTOP-125).
 pub struct UnitsPage {
@@ -59,6 +118,8 @@ pub struct UnitsPage {
     docked: bool,
     /// This session's outcomes, newest first.
     activity: Vec<ActivityEntry>,
+    /// The row menu, if one is open.
+    menu: Option<RowMenu>,
     _units_changed: Subscription,
 }
 
@@ -70,6 +131,7 @@ impl UnitsPage {
             selected: None,
             docked: false,
             activity: Vec::new(),
+            menu: None,
             _units_changed,
         }
     }
@@ -105,6 +167,17 @@ impl UnitsPage {
             .find(|source| source.unit_name == unit.name)
     }
 
+    /// The Accounts counted in `unit`, in ledger order.
+    fn accounts_in<'a>(&self, unit: &UnitRow, cx: &'a App) -> Vec<&'a lib_accounts::Account> {
+        self.ledger
+            .read(cx)
+            .ledger()
+            .accounts()
+            .iter()
+            .filter(|account| account.unit == unit.id)
+            .collect()
+    }
+
     /// Records a landed Dialog's outcome in ACTIVITY, newest first.
     pub fn land(&mut self, outcome: &UnitsOutcome, cx: &mut Context<'_, Self>) {
         let text = match outcome {
@@ -137,6 +210,7 @@ impl UnitsPage {
     /// At X-Large the page's bare `n`, `e`, `d` and `t`, each through the handler its button
     /// uses; below it each Dialog opens from its button. Returns whether the key was one of them.
     pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        self.close_menu(cx);
         let modifiers = &keystroke.modifiers;
         if !self.docked
             || modifiers.control
@@ -159,6 +233,7 @@ impl UnitsPage {
     /// At X-Large `j`/`k` walk the Units; below it there is no selection to move, so the page
     /// takes no movement and the Settings View scrolls its body instead.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
+        self.close_menu(cx);
         if !self.docked {
             return false;
         }
@@ -170,10 +245,10 @@ impl UnitsPage {
         true
     }
 
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    /// `Esc` closes an open row menu; otherwise it is left to Settings, which steps back to the
+    /// index.
+    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        self.close_menu(cx)
     }
 
     /// The page has no Search: `/` is inert there.
@@ -209,11 +284,71 @@ impl UnitsPage {
 
     /// A click on row `index` selects it and hands the page focus.
     fn click_select(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.menu = None;
         if let Some(unit) = self.units(cx).get(index) {
             self.selected = Some(unit.id);
         }
         cx.emit(UnitsRowClicked);
         cx.notify();
+    }
+
+    /// A double-click on a Units row opens its Edit dialog, as the keyboard's `e` does.
+    fn double_click_unit(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.click_select(index, cx);
+        self.click_edit(index, cx);
+    }
+
+    /// A right-click on a row opens its menu at the pointer. A Units row is selected as well.
+    fn open_menu(
+        &mut self,
+        target: MenuTarget,
+        position: Point<Pixels>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let MenuTarget::Unit(id) = target {
+            self.selected = Some(id);
+        }
+        self.menu = Some(RowMenu { target, position });
+        cx.emit(UnitsRowClicked);
+        cx.notify();
+    }
+
+    /// Closes the row menu. Returns whether one was open.
+    fn close_menu(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        let was_open = self.menu.take().is_some();
+        if was_open {
+            cx.notify();
+        }
+        was_open
+    }
+
+    /// An entry of the open row menu: closes it and runs the handler its button or key has.
+    fn click_menu_action(&mut self, action: MenuAction, cx: &mut Context<'_, Self>) {
+        let Some(RowMenu { target, .. }) = self.menu.take() else {
+            return;
+        };
+        cx.notify();
+        let unit_index = match target {
+            MenuTarget::Unit(id) => self.units(cx).iter().position(|unit| unit.id == id),
+            MenuTarget::Source(_) => None,
+        };
+        match (action, unit_index) {
+            (MenuAction::EditUnit, Some(index)) => self.click_edit(index, cx),
+            (MenuAction::DeleteUnit, Some(index)) => self.click_delete(index, cx),
+            (MenuAction::TestSource, _) => self.not_built(
+                crate::msg::desktop_status_test_price_source_not_yet_built(),
+                cx,
+            ),
+            (MenuAction::EditSource, _) => self.not_built(
+                crate::msg::desktop_status_edit_price_source_not_yet_built(),
+                cx,
+            ),
+            (MenuAction::DeleteSource, _) => self.not_built(
+                crate::msg::desktop_status_delete_price_source_not_yet_built(),
+                cx,
+            ),
+            (MenuAction::EditUnit | MenuAction::DeleteUnit, None) => {}
+        }
     }
 
     fn edit_selected(&mut self, cx: &mut Context<'_, Self>) {
@@ -246,12 +381,12 @@ impl UnitsPage {
         self.units(cx).iter().position(|unit| unit.id == id)
     }
 
-    /// **+ Add unit** opens the Add unit dialog.
+    /// The square **+** beside UNITS opens the Add unit dialog.
     fn click_add(&mut self, cx: &mut Context<'_, Self>) {
         open_dialog(UnitsDialog::Add(UnitForm::default()), cx);
     }
 
-    /// A Units row's **edit** opens the Edit unit dialog filled from the row.
+    /// Edit unit (double-click, menu or pane) opens the Edit unit dialog filled from the row.
     fn click_edit(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let Some(row) = self.units(cx).get(index) else {
             return;
@@ -299,6 +434,25 @@ impl UnitsPage {
             unit_dialog_kind: None,
             unit_dialog_field: None,
             selected_code: self.selected_unit(cx).map(|unit| unit.code.clone()),
+            menu: self.menu.map(|menu| {
+                let row = match menu.target {
+                    MenuTarget::Unit(id) => units
+                        .iter()
+                        .find(|unit| unit.id == id)
+                        .map(|unit| format!("unit:{}", unit.code)),
+                    MenuTarget::Source(index) => self
+                        .price_sources(cx)
+                        .get(index)
+                        .map(|source| format!("source:{}", source.unit_name)),
+                };
+                (
+                    row.unwrap_or_default(),
+                    MenuAction::for_target(menu.target)
+                        .iter()
+                        .map(|action| action.slug().to_string())
+                        .collect(),
+                )
+            }),
             activity: self
                 .activity
                 .iter()
@@ -320,6 +474,9 @@ pub struct SettingsUnitsSnapshot {
     pub unit_dialog_field: Option<String>,
     /// The selected row's code, which is the first row's until another is chosen.
     pub selected_code: Option<String>,
+    /// The open row menu: the row it is on (`unit:btc`, `source:Bitcoin`) and its entries' slugs
+    /// in order.
+    pub menu: Option<(String, Vec<String>)>,
     /// ACTIVITY's lines, newest first.
     pub activity: Vec<String>,
 }

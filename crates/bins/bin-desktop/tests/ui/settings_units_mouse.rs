@@ -31,6 +31,17 @@ fn status(ui: &mut Harness<'_>) -> Option<String> {
     ui.read(|shell| shell.status_message().map(str::to_string))
 }
 
+/// The open row menu: the row it is on and its entries' slugs.
+fn menu(ui: &mut Harness<'_>) -> Option<(String, Vec<String>)> {
+    ui.settings_units().menu
+}
+
+/// Right-clicks the row and picks an entry of its context menu: the rows carry no buttons.
+fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
+    ui.right_click(row);
+    ui.click(&format!("settings-units-menu-{action}"));
+}
+
 #[gpui::test]
 fn clicking_the_units_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
@@ -106,7 +117,7 @@ fn the_edit_unit_button_opens_a_dialog_prefilled_from_the_row(app: &mut TestAppC
     let mut ui = on_units(app);
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
-    ui.click("unit-edit-0");
+    row_action(&mut ui, "unit-row-0", "edit-unit");
     let units_page = ui.settings_units();
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
@@ -122,7 +133,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
     let mut ui = on_units(app);
 
     // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
-    ui.click("unit-edit-2");
+    row_action(&mut ui, "unit-row-2", "edit-unit");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
         Some("Stock")
@@ -134,7 +145,7 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
     let mut ui = on_units(app);
     let (code, name, _) = ui.settings_units().unit_rows[0].clone();
 
-    ui.click("unit-edit-0");
+    row_action(&mut ui, "unit-row-0", "edit-unit");
     ui.click("edit-unit-type-1");
     assert_eq!(
         ui.settings_units().unit_dialog_kind.as_deref(),
@@ -153,7 +164,7 @@ fn the_delete_unit_button_opens_a_dialog_and_cancel_closes_without_a_write(
     let mut ui = on_units(app);
     let before = ui.settings_units().unit_codes.clone();
 
-    ui.click("unit-delete-0");
+    row_action(&mut ui, "unit-row-0", "delete-unit");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
     ui.click("delete-unit-cancel");
     assert_eq!(ui.settings().dialog, None);
@@ -167,7 +178,7 @@ fn the_delete_unit_confirm_button_refuses_until_the_code_is_typed_back(app: &mut
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
-    ui.click("unit-delete-0");
+    row_action(&mut ui, "unit-row-0", "delete-unit");
     ui.click("delete-unit-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
     assert_eq!(ui.settings_units().unit_codes, before);
@@ -190,7 +201,7 @@ fn the_delete_unit_confirm_button_removes_the_row_once_the_code_matches(app: &mu
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
-    ui.click("unit-delete-0");
+    row_action(&mut ui, "unit-row-0", "delete-unit");
     for ch in code.chars() {
         ui.press(&ch.to_string());
     }
@@ -205,17 +216,17 @@ fn the_delete_unit_confirm_button_removes_the_row_once_the_code_matches(app: &mu
 fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContext) {
     let mut ui = on_units(app);
 
-    ui.click("price-source-test-0");
+    row_action(&mut ui, "price-source-row-0", "test-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("test price source \u{2014} not yet built")
     );
-    ui.click("price-source-edit-0");
+    row_action(&mut ui, "price-source-row-0", "edit-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("edit price source \u{2014} not yet built")
     );
-    ui.click("price-source-delete-1");
+    row_action(&mut ui, "price-source-row-1", "delete-source");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("delete price source \u{2014} not yet built")
@@ -238,14 +249,12 @@ fn on_units_xlarge(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 #[gpui::test]
-fn at_x_large_the_rows_drop_their_buttons_and_the_pane_docks(app: &mut TestAppContext) {
+fn at_x_large_the_pane_docks_with_its_groups(app: &mut TestAppContext) {
     let mut ui = on_units_xlarge(app);
     assert!(ui.is_drawn("units-detail-pane"));
-    assert!(!ui.is_drawn("unit-edit-0"));
-    assert!(!ui.is_drawn("unit-delete-0"));
-    assert!(!ui.is_drawn("price-source-test-0"));
     assert!(ui.is_drawn("units-pane-unit"));
     assert!(ui.is_drawn("units-pane-source"));
+    assert!(ui.is_drawn("units-pane-accounts"));
     assert!(ui.is_drawn("units-pane-activity"));
 }
 
@@ -306,7 +315,7 @@ fn at_x_large_a_confirmed_delete_lands_in_activity_and_raises_no_toast(app: &mut
 #[gpui::test]
 fn below_x_large_a_confirmed_delete_still_raises_its_toast(app: &mut TestAppContext) {
     let mut ui = on_units(app);
-    ui.click("unit-delete-1");
+    row_action(&mut ui, "unit-row-1", "delete-unit");
     for ch in "btc".chars() {
         ui.press(&ch.to_string());
     }
@@ -314,4 +323,106 @@ fn below_x_large_a_confirmed_delete_still_raises_its_toast(app: &mut TestAppCont
 
     assert!(ui.settings_units().activity.is_empty());
     assert_eq!(ui.toasts().visible.len(), 1);
+}
+
+#[gpui::test]
+fn rows_carry_no_buttons_at_any_size(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    for selector in [
+        "unit-edit-0",
+        "unit-delete-0",
+        "price-source-test-0",
+        "price-source-edit-0",
+        "price-source-delete-0",
+    ] {
+        assert!(!ui.is_drawn(selector), "{selector} should not be drawn");
+    }
+    assert!(ui.is_drawn("settings-add-unit"));
+    assert!(ui.is_drawn("settings-add-price-source"));
+}
+
+#[gpui::test]
+fn double_clicking_a_unit_row_opens_its_edit_dialog(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let (code, _, _) = ui.settings_units().unit_rows[2].clone();
+
+    ui.double_click("unit-row-2");
+    let page = ui.settings();
+    assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
+    assert_eq!(page.dialog_name.as_deref(), Some(code.as_str()));
+}
+
+#[gpui::test]
+fn double_clicking_a_price_source_row_says_edit_is_not_yet_built(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.double_click("price-source-row-0");
+    assert_eq!(
+        status(&mut ui).as_deref(),
+        Some("edit price source \u{2014} not yet built")
+    );
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn right_clicking_a_unit_row_opens_a_menu_with_edit_then_delete(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    assert_eq!(menu(&mut ui), None);
+
+    ui.right_click("unit-row-1");
+    assert_eq!(
+        menu(&mut ui),
+        Some((
+            "unit:btc".to_string(),
+            vec!["edit-unit".to_string(), "delete-unit".to_string()]
+        ))
+    );
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn right_clicking_a_price_source_row_opens_test_edit_delete(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.right_click("price-source-row-0");
+    assert_eq!(
+        menu(&mut ui),
+        Some((
+            "source:Bitcoin".to_string(),
+            vec![
+                "test-source".to_string(),
+                "edit-source".to_string(),
+                "delete-source".to_string()
+            ]
+        ))
+    );
+}
+
+#[gpui::test]
+fn a_menu_entry_closes_the_menu_and_runs_its_action(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let (code, _, _) = ui.settings_units().unit_rows[1].clone();
+
+    row_action(&mut ui, "unit-row-1", "edit-unit");
+    assert_eq!(menu(&mut ui), None);
+    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
+    assert_eq!(ui.settings().dialog_name.as_deref(), Some(code.as_str()));
+}
+
+#[gpui::test]
+fn a_press_outside_the_menu_closes_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.right_click("unit-row-2");
+    assert!(menu(&mut ui).is_some());
+    ui.click("unit-row-0");
+    assert_eq!(menu(&mut ui), None);
+    assert_eq!(ui.settings().dialog, None);
+}
+
+#[gpui::test]
+fn at_x_large_the_accounts_group_lists_the_selected_units_accounts(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+
+    assert!(ui.is_drawn("units-pane-accounts"));
 }

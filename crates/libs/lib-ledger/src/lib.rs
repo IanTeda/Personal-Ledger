@@ -40,8 +40,8 @@ pub use document_commands::{
 };
 pub use institution_commands::AddInstitution;
 pub use inventory_commands::{
-    AddProperty, AddRoom, EditProperty, EditRoom, MoveRoom, MoveRoomRefusal, RemoveProperty,
-    RemoveRoom,
+    AddArea, AddLocation, EditArea, EditLocation, MoveArea, MoveAreaRefusal, RemoveArea,
+    RemoveLocation,
 };
 pub use payee_commands::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,

@@ -165,7 +165,7 @@ impl Ledger {
         Some(batch)
     }
 
-    /// Drops every Link to the given Inventory Items, as removing a Property does. Returns how
+    /// Drops every Link to the given Inventory Items, as removing a Location does. Returns how
     /// many Documents lost a Link.
     pub fn drop_document_inventory_links(&mut self, removed_items: &[ItemId]) -> usize {
         let affected = drop_inventory_links(&mut self.documents, removed_items);

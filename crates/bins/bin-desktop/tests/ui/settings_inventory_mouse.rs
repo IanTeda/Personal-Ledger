@@ -1,8 +1,9 @@
-//! The Settings Inventory page driven by clicks: row selection, the disclosure toggle, the
-//! row actions and the Add buttons. Only elements tagged with `debug_selector` are clicked.
+//! The Settings Inventory page driven by the mouse (16q): row selection, the disclosure toggle,
+//! double-click to edit, the right-click row menus and the square Add location button. Only
+//! elements tagged with `debug_selector` are clicked.
 
 use super::common;
-use lib_core::{PropertyId, RoomId};
+use lib_core::{AreaId, LocationId};
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -15,20 +16,38 @@ fn on_inventory(app: &mut TestAppContext) -> Harness<'_> {
     ui
 }
 
-/// The first Property's id and the second's, from the seed's creation order.
-const ELM: PropertyId = PropertyId::seed(1);
-const STORAGE: PropertyId = PropertyId::seed(2);
+/// The seed's Locations' ids, in creation order.
+const ELM: LocationId = LocationId::seed(1);
+const STORAGE: LocationId = LocationId::seed(2);
+const HILUX: LocationId = LocationId::seed(3);
+
+fn location_row(id: LocationId) -> String {
+    format!("settings-inventory-location-{id}")
+}
+
+fn area_row(id: AreaId) -> String {
+    format!("settings-inventory-area-{id}")
+}
+
+/// The open row menu's row and entries, as the snapshot reads them.
+fn menu(ui: &mut Harness<'_>) -> Option<(String, Vec<String>)> {
+    ui.settings_inventory().inventory_menu
+}
+
+fn dialog(ui: &mut Harness<'_>) -> Option<String> {
+    ui.settings_inventory().inventory_dialog
+}
 
 #[gpui::test]
-fn clicking_a_property_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
+fn clicking_a_location_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
-    ui.click(&format!("settings-inventory-property-{STORAGE}"));
+    ui.click(&format!("settings-inventory-location-{STORAGE}"));
     let inventory_page = ui.settings_inventory();
     let page = ui.settings();
     assert_eq!(
         inventory_page.selected_inventory.as_deref(),
-        Some("property:Storage unit")
+        Some("location:Storage unit")
     );
     assert!(page.page_focused);
 }
@@ -42,157 +61,219 @@ fn the_disclosure_toggle_opens_and_closes_without_selecting(app: &mut TestAppCon
     assert!(inventory_page.inventory_rows.len() > 2);
     assert_eq!(
         inventory_page.selected_inventory.as_deref(),
-        Some("property:12 Elm St contents")
+        Some("location:12 Elm St contents")
     );
     ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
-    assert_eq!(ui.settings_inventory().inventory_rows.len(), 2);
+    assert_eq!(ui.settings_inventory().inventory_rows.len(), 3);
 }
 
 #[gpui::test]
-fn clicking_a_room_selects_it_and_closing_its_property_reselects_the_property(
+fn clicking_an_area_selects_it_and_closing_its_location_reselects_the_location(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_inventory(app);
 
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
-    let room = ui.settings_inventory().inventory_rows[1].clone();
-    assert!(room.starts_with("room:"));
-    ui.click(&format!("settings-inventory-room-{}", RoomId::seed(1)));
-    assert_eq!(ui.settings_inventory().selected_inventory, Some(room));
+    let area = ui.settings_inventory().inventory_rows[1].clone();
+    assert!(area.starts_with("area:"));
+    ui.click(&format!("settings-inventory-area-{}", AreaId::seed(1)));
+    assert_eq!(ui.settings_inventory().selected_inventory, Some(area));
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
     assert_eq!(
         ui.settings_inventory().selected_inventory.as_deref(),
-        Some("property:12 Elm St contents")
+        Some("location:12 Elm St contents")
     );
 }
 
 #[gpui::test]
-fn the_row_actions_select_the_row_and_ask_for_their_dialogs(app: &mut TestAppContext) {
+fn double_clicking_a_row_opens_its_edit_dialog(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
-    ui.click(&format!("settings-inventory-edit-property-{STORAGE}"));
-    let inventory_page = ui.settings_inventory();
+    ui.double_click(&location_row(STORAGE));
     assert_eq!(
-        inventory_page.selected_inventory.as_deref(),
-        Some("property:Storage unit")
+        ui.settings_inventory().selected_inventory.as_deref(),
+        Some("location:Storage unit")
     );
-    assert_eq!(inventory_page.inventory_dialog.as_deref(), Some("edit"));
-    ui.click("edit-property-cancel");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
-    ui.click(&format!("settings-inventory-remove-property-{ELM}"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("edit"));
+    ui.click("edit-location-cancel");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove")
+        ui.settings_inventory().inventory_rows.len(),
+        3,
+        "a double-click doesn't expand: only the disclosure does"
     );
-    ui.click("remove-property-cancel");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
 
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
-    ui.click(&format!("settings-inventory-edit-room-{}", RoomId::seed(1)));
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("edit-room")
-    );
-    ui.click("edit-room-cancel");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
-    assert!(
-        ui.settings_inventory()
-            .selected_inventory
-            .is_some_and(|row| row.starts_with("room:"))
-    );
+    ui.double_click(&area_row(AreaId::seed(1)));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("edit-area"));
+    ui.click("edit-area-cancel");
+    assert_eq!(dialog(&mut ui), None);
 }
 
 #[gpui::test]
-fn the_add_buttons_ask_for_their_dialogs(app: &mut TestAppContext) {
+fn right_clicking_a_location_opens_its_menu_and_escape_closes_it(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
-    ui.click("settings-inventory-add-property");
+    ui.right_click(&location_row(HILUX));
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add")
+        menu(&mut ui),
+        Some((
+            "location:Hilux".to_string(),
+            vec![
+                "add-area".to_string(),
+                "edit-location".to_string(),
+                "remove-location".to_string()
+            ]
+        ))
+    );
+    assert_eq!(
+        ui.settings_inventory().selected_inventory.as_deref(),
+        Some("location:Hilux")
     );
     assert!(ui.settings().page_focused);
-    ui.click("add-property-cancel");
-
-    // + Add room exists only under an open Property, and is not a selectable row.
+    ui.press("escape");
+    assert_eq!(menu(&mut ui), None);
     assert!(
-        ui.cx
-            .debug_bounds(Box::leak(
-                format!("settings-inventory-add-room-{}", RoomId::seed(1)).into_boxed_str()
-            ))
-            .is_none()
+        ui.settings().page_focused,
+        "the first Esc only closes the menu"
     );
-    ui.click(&format!("settings-inventory-toggle-{ELM}"));
-    let selected = ui.settings_inventory().selected_inventory;
-    ui.click(&format!("settings-inventory-add-room-{ELM}"));
-    let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog.as_deref(), Some("add-room"));
-    assert_eq!(inventory_page.selected_inventory, selected);
 }
 
 #[gpui::test]
-fn the_empty_state_keeps_the_add_property_button(app: &mut TestAppContext) {
+fn a_press_outside_the_menu_closes_it(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+
+    ui.right_click(&location_row(HILUX));
+    assert!(menu(&mut ui).is_some());
+    ui.click(&location_row(ELM));
+    assert_eq!(menu(&mut ui), None);
+    assert_eq!(
+        ui.settings_inventory().selected_inventory.as_deref(),
+        Some("location:12 Elm St contents")
+    );
+}
+
+#[gpui::test]
+fn the_location_menu_asks_for_its_dialogs(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+
+    ui.right_click(&location_row(STORAGE));
+    ui.click("settings-inventory-menu-edit-location");
+    assert_eq!(menu(&mut ui), None);
+    assert_eq!(dialog(&mut ui).as_deref(), Some("edit"));
+    ui.click("edit-location-cancel");
+
+    ui.right_click(&location_row(ELM));
+    ui.click("settings-inventory-menu-remove-location");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("remove"));
+    ui.click("remove-location-cancel");
+    assert_eq!(dialog(&mut ui), None);
+}
+
+#[gpui::test]
+fn add_area_from_a_collapsed_location_expands_it_and_adds_by_the_button(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    let before = ui.settings_inventory().inventory_areas[1].1.len();
+
+    ui.right_click(&location_row(STORAGE));
+    ui.click("settings-inventory-menu-add-area");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("add-area"));
+    assert!(
+        ui.settings_inventory()
+            .inventory_rows
+            .contains(&"area:Storage".to_string()),
+        "Add area expands the Location"
+    );
+    ui.click("area-name");
+    ui.press("l o f t");
+    ui.click("add-area-confirm");
+    let inventory_page = ui.settings_inventory();
+    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(inventory_page.inventory_areas[1].1.len(), before + 1);
+    assert_eq!(
+        inventory_page.selected_inventory.as_deref(),
+        Some("area:loft")
+    );
+}
+
+#[gpui::test]
+fn the_area_menu_moves_edits_and_removes(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    ui.click(&format!("settings-inventory-toggle-{HILUX}"));
+    let names = |ui: &mut Harness<'_>| ui.settings_inventory().inventory_areas[2].1.clone();
+    assert_eq!(names(&mut ui), ["Cab", "Tray", "Toolbox"]);
+    let tray = AreaId::seed(13);
+
+    ui.right_click(&area_row(tray));
+    assert_eq!(
+        menu(&mut ui).map(|(_, entries)| entries),
+        Some(vec![
+            "edit-area".to_string(),
+            "move-up".to_string(),
+            "move-down".to_string(),
+            "remove-area".to_string()
+        ])
+    );
+    ui.click("settings-inventory-menu-move-down");
+    assert_eq!(names(&mut ui), ["Cab", "Toolbox", "Tray"]);
+    ui.right_click(&area_row(tray));
+    ui.click("settings-inventory-menu-move-up");
+    ui.right_click(&area_row(tray));
+    ui.click("settings-inventory-menu-move-up");
+    assert_eq!(names(&mut ui), ["Tray", "Cab", "Toolbox"]);
+
+    ui.right_click(&area_row(tray));
+    ui.click("settings-inventory-menu-edit-area");
+    ui.click("area-name");
+    ui.press("s");
+    ui.click("edit-area-confirm");
+    assert_eq!(names(&mut ui), ["Trays", "Cab", "Toolbox"]);
+
+    ui.right_click(&area_row(tray));
+    ui.click("settings-inventory-menu-remove-area");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("remove-area"));
+}
+
+#[gpui::test]
+fn the_add_location_button_asks_for_its_dialog(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+
+    ui.click("settings-inventory-add-location");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("add"));
+    assert!(ui.settings().page_focused);
+    ui.click("add-location-cancel");
+    assert_eq!(dialog(&mut ui), None);
+}
+
+#[gpui::test]
+fn the_empty_state_keeps_the_add_location_button(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.empty_inventory();
     ui.press("g s");
     ui.click("settings-index-Inventory");
 
     assert!(ui.settings_inventory().inventory_rows.is_empty());
-    assert!(
-        ui.cx
-            .debug_bounds("settings-inventory-add-property")
-            .is_some()
-    );
-    ui.click("settings-inventory-add-property");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add")
-    );
+    assert!(ui.is_drawn("settings-inventory-add-location"));
+    ui.click("settings-inventory-add-location");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("add"));
 }
 
 #[gpui::test]
-fn the_add_dialog_submits_by_its_button_and_picks_an_insurer_suggestion(app: &mut TestAppContext) {
+fn the_add_dialog_asks_only_for_the_name_and_unit(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
-    ui.click("settings-inventory-add-property");
-    ui.click("property-name");
+    ui.click("settings-inventory-add-location");
+    assert!(ui.is_drawn("location-name"));
+    assert!(ui.is_drawn("location-unit"));
+    assert!(!ui.is_drawn("location-address"));
+    assert!(!ui.is_drawn("location-insurer"));
+    ui.click("location-name");
     ui.press("c a b i n");
-    ui.click("add-property-confirm");
+    ui.click("add-location-confirm");
     let inventory_page = ui.settings_inventory();
     assert_eq!(inventory_page.inventory_dialog, None);
     assert_eq!(
-        inventory_page
-            .inventory_properties
-            .last()
-            .map(|p| p.0.as_str()),
-        Some("cabin")
-    );
-}
-
-#[gpui::test]
-fn the_add_dialog_fills_the_insurer_from_a_suggestion(app: &mut TestAppContext) {
-    let mut ui = on_inventory(app);
-    let insurer = ui
-        .settings_inventory()
-        .inventory_properties
-        .iter()
-        .find_map(|p| p.2.clone())
-        .expect("the seed has an insured Property");
-
-    ui.click("settings-inventory-add-property");
-    ui.click("property-name");
-    ui.press("c a b i n");
-    ui.click("property-insurer");
-    ui.click("property-insurer-suggestion-0");
-    ui.click("property-sum-insured");
-    ui.press("5 0 0");
-    ui.click("add-property-confirm");
-    assert_eq!(
-        ui.settings_inventory()
-            .inventory_properties
-            .last()
-            .and_then(|p| p.2.clone()),
-        Some(insurer)
+        inventory_page.inventory_locations.last().cloned(),
+        Some(("cabin".to_string(), "aud".to_string(), None))
     );
 }
 
@@ -200,133 +281,61 @@ fn the_add_dialog_fills_the_insurer_from_a_suggestion(app: &mut TestAppContext) 
 fn the_remove_dialog_confirms_by_its_button(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
-    ui.click("settings-inventory-add-property");
-    ui.click("property-name");
+    ui.click("settings-inventory-add-location");
+    ui.click("location-name");
     ui.press("c a b i n");
-    ui.click("add-property-confirm");
+    ui.click("add-location-confirm");
     let cabin = ui
         .settings_inventory()
-        .inventory_property_ids
+        .inventory_location_ids
         .last()
         .copied()
-        .expect("the added Property");
-    ui.click(&format!("settings-inventory-remove-property-{cabin}"));
-    ui.click("remove-property-confirm");
-    assert_eq!(ui.settings_inventory().inventory_properties.len(), 2);
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+        .expect("the added Location");
+    ui.right_click(&location_row(cabin));
+    ui.click("settings-inventory-menu-remove-location");
+    ui.click("remove-location-confirm");
+    assert_eq!(ui.settings_inventory().inventory_locations.len(), 3);
+    assert_eq!(dialog(&mut ui), None);
 }
 
 #[gpui::test]
-fn add_room_submits_by_its_button_under_the_clicked_property(app: &mut TestAppContext) {
-    let mut ui = on_inventory(app);
-    ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
-    let before = ui.settings_inventory().inventory_rooms[1].1.len();
-
-    ui.click(&format!("settings-inventory-add-room-{STORAGE}"));
-    ui.click("room-name");
-    ui.press("l o f t");
-    ui.click("add-room-confirm");
-    let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
-    assert_eq!(inventory_page.inventory_rooms[1].1.len(), before + 1);
-    assert_eq!(
-        inventory_page.inventory_rooms[1]
-            .1
-            .last()
-            .map(String::as_str),
-        Some("loft")
-    );
-    assert_eq!(
-        inventory_page.selected_inventory.as_deref(),
-        Some("room:loft")
-    );
-}
-
-#[gpui::test]
-fn a_property_row_has_its_own_add_room_button(app: &mut TestAppContext) {
-    let mut ui = on_inventory(app);
-    // Collapsed: the + room button on the Property row still opens the dialog (16q).
-    let selected = ui.settings_inventory().selected_inventory;
-    ui.click(&format!("settings-inventory-property-add-room-{STORAGE}"));
-    let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog.as_deref(), Some("add-room"));
-    assert_eq!(inventory_page.selected_inventory, selected);
-
-    ui.click("room-name");
-    ui.press("l o f t");
-    ui.click("add-room-confirm");
-    let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
-    assert_eq!(
-        inventory_page.inventory_rooms[1]
-            .1
-            .last()
-            .map(String::as_str),
-        Some("loft")
-    );
-}
-
-#[gpui::test]
-fn edit_room_saves_by_its_button(app: &mut TestAppContext) {
+fn remove_area_moves_items_by_the_picker_and_the_confirm_button(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
-
-    ui.click(&format!("settings-inventory-edit-room-{}", RoomId::seed(1)));
-    ui.click("room-name");
-    ui.press("s");
-    ui.click("edit-room-confirm");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
-    assert!(ui.settings_inventory().inventory_rooms[0].1[0].ends_with('s'));
-}
-
-#[gpui::test]
-fn remove_room_moves_items_by_the_picker_and_the_confirm_button(app: &mut TestAppContext) {
-    let mut ui = on_inventory(app);
-    ui.click(&format!("settings-inventory-toggle-{ELM}"));
-    let rooms = ui.settings_inventory().inventory_rooms[0].1.clone();
+    let areas = ui.settings_inventory().inventory_areas[0].1.clone();
     let count = |ui: &mut Harness<'_>, name: &str| {
         ui.settings_inventory()
-            .inventory_room_items
+            .inventory_area_items
             .iter()
-            .find(|(room, _)| room == name)
+            .find(|(area, _)| area == name)
             .map_or(0, |(_, items)| *items)
     };
-    let moving = count(&mut ui, &rooms[0]);
-    let third = count(&mut ui, &rooms[2]);
+    let moving = count(&mut ui, &areas[0]);
+    let third = count(&mut ui, &areas[2]);
 
-    ui.click(&format!(
-        "settings-inventory-remove-room-{}",
-        RoomId::seed(1)
-    ));
+    ui.right_click(&area_row(AreaId::seed(1)));
+    ui.click("settings-inventory-menu-remove-area");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("remove-area"));
+    ui.click("area-destination");
+    ui.click("area-destination-option-1");
+    ui.click("remove-area-confirm");
+    assert_eq!(dialog(&mut ui), None);
+    assert_eq!(count(&mut ui, &areas[2]), third + moving);
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove-room")
-    );
-    ui.click("room-destination");
-    ui.click("room-destination-option-1");
-    ui.click("remove-room-confirm");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
-    assert_eq!(count(&mut ui, &rooms[2]), third + moving);
-    assert_eq!(
-        ui.settings_inventory().inventory_rooms[0].1.len(),
-        rooms.len() - 1
+        ui.settings_inventory().inventory_areas[0].1.len(),
+        areas.len() - 1
     );
 }
 
 #[gpui::test]
-fn the_last_room_with_items_shows_the_notice_which_closes_by_its_button(app: &mut TestAppContext) {
+fn the_last_area_with_items_shows_the_notice_which_closes_by_its_button(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
     ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
 
-    ui.click(&format!(
-        "settings-inventory-remove-room-{}",
-        RoomId::seed(11)
-    ));
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("room-blocked")
-    );
-    ui.click("room-blocked-close");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
-    assert_eq!(ui.settings_inventory().inventory_rooms[1].1.len(), 1);
+    ui.right_click(&area_row(AreaId::seed(11)));
+    ui.click("settings-inventory-menu-remove-area");
+    assert_eq!(dialog(&mut ui).as_deref(), Some("area-blocked"));
+    ui.click("area-blocked-close");
+    assert_eq!(dialog(&mut ui), None);
+    assert_eq!(ui.settings_inventory().inventory_areas[1].1.len(), 1);
 }

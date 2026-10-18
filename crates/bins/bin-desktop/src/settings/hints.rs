@@ -30,24 +30,24 @@ pub(crate) fn settings_inventory_hints(
     selected: Option<InventoryRow>,
 ) -> Vec<(&'static str, String)> {
     match selected {
-        Some(InventoryRow::Property(_)) => vec![
+        Some(InventoryRow::Location(_)) => vec![
             ("j/k", crate::msg::desktop_inventory_hint_move()),
             ("\u{2192}/\u{2190}", crate::msg::desktop_hint_expand()),
             ("e", crate::msg::desktop_hint_edit()),
             ("x", crate::msg::desktop_hint_remove()),
-            ("n", crate::msg::desktop_inventory_hint_new_property()),
-            ("r", crate::msg::desktop_inventory_hint_new_room()),
+            ("n", crate::msg::desktop_inventory_hint_new_location()),
+            ("a", crate::msg::desktop_inventory_hint_new_area()),
         ],
-        Some(InventoryRow::Room(_)) => vec![
+        Some(InventoryRow::Area(_)) => vec![
             ("j/k", crate::msg::desktop_inventory_hint_move()),
-            ("\u{2190}", crate::msg::desktop_inventory_hint_property()),
+            ("\u{2190}", crate::msg::desktop_inventory_hint_location()),
             ("J/K", crate::msg::desktop_hint_reorder()),
             ("e", crate::msg::desktop_hint_edit()),
             ("x", crate::msg::desktop_hint_remove()),
-            ("r", crate::msg::desktop_inventory_hint_new_room()),
-            ("n", crate::msg::desktop_inventory_hint_new_property()),
+            ("a", crate::msg::desktop_inventory_hint_new_area()),
+            ("n", crate::msg::desktop_inventory_hint_new_location()),
         ],
-        None => vec![("n", crate::msg::desktop_inventory_hint_new_property())],
+        None => vec![("n", crate::msg::desktop_inventory_hint_new_location())],
     }
 }
 

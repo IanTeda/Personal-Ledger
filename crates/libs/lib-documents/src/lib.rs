@@ -1253,7 +1253,7 @@ pub struct DocumentsSeed {
     pub documents: Vec<Document>,
 }
 
-/// Drops every Link to the given Items, as removing a Property does. The Documents themselves
+/// Drops every Link to the given Items, as removing a Location does. The Documents themselves
 /// stay, whatever Links they have left; returns the ids of those that lost a Link.
 pub fn drop_inventory_links(
     documents: &mut [Document],

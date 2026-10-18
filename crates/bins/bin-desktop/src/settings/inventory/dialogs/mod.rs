@@ -1,18 +1,16 @@
-//! The Inventory page's Dialogs: Add, Edit and Remove a **Property** (`property.rs`) and a
-//! **Room** (`room.rs`), and the notice the last Room holding Items gets instead of a Remove.
+//! The Inventory page's Dialogs: Add, Edit and Remove a **Location** (`location.rs`) and a
+//! **Area** (`area.rs`), and the notice the last Area holding Items gets instead of a Remove.
 //! [`InventoryDialog`] is the value `Shell`'s Dialog host holds while one is open
 //! (`OpenDialog::Inventory`); [`InventoryDialog::render`] draws whichever is open, and every click
 //! inside it reaches the form through the handlers `Shell` builds.
 
-pub mod property;
-pub mod room;
+pub mod area;
+pub mod location;
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_core::{ItemId, PropertyId, RoomId};
+use lib_core::{AreaId, ItemId, LocationId};
 
-use super::form::{
-    PropertyField, PropertyForm, RemovePropertyForm, RemoveRoomForm, RoomForm, suggestions,
-};
+use super::form::{AreaForm, LocationField, LocationForm, RemoveAreaForm, RemoveLocationForm};
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     dialog::OnClick,
@@ -21,22 +19,22 @@ use crate::{
     inventory::Inventory,
     theme::color,
 };
-use property::{OnFieldClick, OnSuggestionClick};
+use location::OnFieldClick;
 
-/// The dialog open over the Inventory page: Property and Room dialogs.
+/// The dialog open over the Inventory page: Location and Area dialogs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryDialog {
-    Add(PropertyForm),
-    Edit(PropertyId, PropertyForm),
-    /// The Property and the name typed so far, which only a Property holding something asks for.
-    Remove(PropertyId, RemovePropertyForm),
-    /// Add room to the Property.
-    AddRoom(PropertyId, RoomForm),
-    EditRoom(RoomId, RoomForm),
-    /// The Room, and the chosen destination for its Items (unused while it is empty).
-    RemoveRoom(RoomId, RemoveRoomForm),
-    /// The Room is its Property's last and holds Items.
-    RoomBlocked(RoomId),
+    Add(LocationForm),
+    Edit(LocationId, LocationForm),
+    /// The Location and the name typed so far, which only a Location holding something asks for.
+    Remove(LocationId, RemoveLocationForm),
+    /// Add area to the Location.
+    AddArea(LocationId, AreaForm),
+    EditArea(AreaId, AreaForm),
+    /// The Area, and the chosen destination for its Items (unused while it is empty).
+    RemoveArea(AreaId, RemoveAreaForm),
+    /// The Area is its Location's last and holds Items.
+    AreaBlocked(AreaId),
 }
 
 impl InventoryDialog {
@@ -44,9 +42,9 @@ impl InventoryDialog {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             Self::Remove(_, form) => Some(form),
-            Self::AddRoom(_, form) | Self::EditRoom(_, form) => Some(form),
-            Self::RemoveRoom(_, form) => Some(form),
-            Self::RoomBlocked(_) => None,
+            Self::AddArea(_, form) | Self::EditArea(_, form) => Some(form),
+            Self::RemoveArea(_, form) => Some(form),
+            Self::AreaBlocked(_) => None,
         }
     }
 
@@ -54,9 +52,9 @@ impl InventoryDialog {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             Self::Remove(_, form) => Some(form),
-            Self::AddRoom(_, form) | Self::EditRoom(_, form) => Some(form),
-            Self::RemoveRoom(_, form) => Some(form),
-            Self::RoomBlocked(_) => None,
+            Self::AddArea(_, form) | Self::EditArea(_, form) => Some(form),
+            Self::RemoveArea(_, form) => Some(form),
+            Self::AreaBlocked(_) => None,
         }
     }
 }
@@ -84,13 +82,13 @@ impl Dialog for InventoryDialog {
         self.inner_mut().is_some_and(Dialog::close_open_select)
     }
 
-    /// The legend: only the Property form has several fields to `tab` through.
+    /// The legend: only Add location has several fields (name and Unit) to `tab` through.
     fn hints(&self) -> Option<Vec<(&'static str, String)>> {
         let mut hints = vec![
             ("esc", crate::msg::desktop_hint_cancel()),
             ("enter", crate::msg::desktop_hint_confirm()),
         ];
-        if matches!(self, Self::Add(_) | Self::Edit(..)) {
+        if matches!(self, Self::Add(_)) {
             hints.push(("tab", crate::msg::desktop_hint_next_field()));
         }
         Some(hints)
@@ -101,10 +99,9 @@ impl Dialog for InventoryDialog {
 /// the part it draws.
 pub struct InventoryDialogHandlers {
     pub on_field_click: OnFieldClick,
-    pub on_suggestion_click: OnSuggestionClick,
     pub on_unit_field_click: OnClick,
     pub on_unit_option_click: OnOptionClick,
-    pub on_room_name_click: OnClick,
+    pub on_area_name_click: OnClick,
     pub on_destination_field_click: OnClick,
     pub on_destination_option_click: OnOptionClick,
     pub on_cancel: OnClick,
@@ -113,18 +110,18 @@ pub struct InventoryDialogHandlers {
 
 /// What Remove would take with it.
 struct Holdings {
-    rooms: usize,
+    areas: usize,
     items: usize,
     documents: usize,
 }
 
-/// The Rooms and Items Property `id` holds, and the Documents that Link to one of its Items.
-fn holdings(inventory: &Inventory, documents: &[Document], id: PropertyId) -> Holdings {
-    let rooms = inventory.property(id).map_or(0, |p| p.rooms.len());
+/// The Areas and Items Location `id` holds, and the Documents that Link to one of its Items.
+fn holdings(inventory: &Inventory, documents: &[Document], id: LocationId) -> Holdings {
+    let areas = inventory.location(id).map_or(0, |p| p.areas.len());
     let items: Vec<ItemId> = inventory
         .items
         .iter()
-        .filter(|item| item.property == id)
+        .filter(|item| item.location == id)
         .map(|item| item.id)
         .collect();
     let documents = documents
@@ -136,16 +133,16 @@ fn holdings(inventory: &Inventory, documents: &[Document], id: PropertyId) -> Ho
         })
         .count();
     Holdings {
-        rooms,
+        areas,
         items: items.len(),
         documents,
     }
 }
 
-/// Whether removing Property `id` asks for its name typed: only when it holds Rooms or Items.
-pub(super) fn needs_typed_name(inventory: &Inventory, id: PropertyId) -> bool {
+/// Whether removing Location `id` asks for its name typed: only when it holds Areas or Items.
+pub(super) fn needs_typed_name(inventory: &Inventory, id: LocationId) -> bool {
     let holdings = holdings(inventory, &[], id);
-    holdings.rooms > 0 || holdings.items > 0
+    holdings.areas > 0 || holdings.items > 0
 }
 
 fn count(len: usize) -> i64 {
@@ -165,49 +162,41 @@ fn note(text: String, error: bool, cx: &App) -> impl IntoElement {
 }
 
 impl InventoryDialog {
-    fn property_form_mut(&mut self) -> Option<&mut PropertyForm> {
+    fn location_form_mut(&mut self) -> Option<&mut LocationForm> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             _ => None,
         }
     }
 
-    /// A click on a field of the Property form focuses it.
-    pub fn click_field(&mut self, field: PropertyField) {
-        if let Some(form) = self.property_form_mut() {
+    /// A click on a field of the Location form focuses it.
+    pub fn click_field(&mut self, field: LocationField) {
+        if let Some(form) = self.location_form_mut() {
             form.focus(field);
         }
     }
 
-    /// A click on an insurer suggestion fills the Insurer.
-    pub fn click_suggestion(&mut self, insurer: &str) {
-        if let Some(form) = self.property_form_mut() {
-            form.focus(PropertyField::Insurer);
-            form.set_insurer(insurer);
-        }
-    }
-
     pub fn click_unit_field(&mut self) {
-        if let Some(form) = self.property_form_mut() {
+        if let Some(form) = self.location_form_mut() {
             form.click_unit();
         }
     }
 
     pub fn click_unit_option(&mut self, index: usize) {
-        if let Some(form) = self.property_form_mut() {
+        if let Some(form) = self.location_form_mut() {
             form.choose_unit(index);
         }
     }
 
-    /// A click on the Remove room dialog's destination field opens or closes its select.
+    /// A click on the Remove area dialog's destination field opens or closes its select.
     pub fn click_destination_field(&mut self) {
-        if let Self::RemoveRoom(_, form) = self {
+        if let Self::RemoveArea(_, form) = self {
             form.click_select();
         }
     }
 
     pub fn click_destination_option(&mut self, index: usize) {
-        if let Self::RemoveRoom(_, form) = self {
+        if let Self::RemoveArea(_, form) = self {
             form.choose(index);
         }
     }
@@ -219,14 +208,14 @@ impl InventoryDialog {
             Self::Add(_) => "add",
             Self::Edit(..) => "edit",
             Self::Remove(..) => "remove",
-            Self::AddRoom(..) => "add-room",
-            Self::EditRoom(..) => "edit-room",
-            Self::RemoveRoom(..) => "remove-room",
-            Self::RoomBlocked(_) => "room-blocked",
+            Self::AddArea(..) => "add-area",
+            Self::EditArea(..) => "edit-area",
+            Self::RemoveArea(..) => "remove-area",
+            Self::AreaBlocked(_) => "area-blocked",
         }
     }
 
-    /// Draws the open dialog. Its Property or Room is read from `inventory`; one that has gone
+    /// Draws the open dialog. Its Location or Area is read from `inventory`; one that has gone
     /// draws nothing rather than panicking mid-render.
     pub fn render(
         &self,
@@ -235,15 +224,15 @@ impl InventoryDialog {
         handlers: InventoryDialogHandlers,
         cx: &App,
     ) -> Option<AnyElement> {
-        let room_form = |adding: bool, property: &str, form: &RoomForm| {
-            room::render_room_form(
-                room::RoomFormProps {
+        let area_form = |adding: bool, location: &str, form: &AreaForm| {
+            area::render_area_form(
+                area::AreaFormProps {
                     adding,
-                    property,
+                    location,
                     form,
                     problem: form.problem(),
-                    handlers: room::RoomFormHandlers {
-                        on_name_click: handlers.on_room_name_click.clone(),
+                    handlers: area::AreaFormHandlers {
+                        on_name_click: handlers.on_area_name_click.clone(),
                         on_cancel: handlers.on_cancel.clone(),
                         on_confirm: handlers.on_confirm.clone(),
                     },
@@ -251,21 +240,17 @@ impl InventoryDialog {
                 cx,
             )
         };
-        let property_form = |form: &PropertyForm, fixed_unit: Option<String>| {
-            let problem = form.problem();
-            property::render_form(
-                property::FormProps {
+        let location_form = |form: &LocationForm, fixed_unit: Option<String>| {
+            location::render_form(
+                location::FormProps {
                     form,
                     fixed_unit,
                     unit_options: &form.unit_labels(),
-                    suggestions: &suggestions(inventory, form.insurer.text()),
-                    valid: problem.is_none(),
-                    problem,
-                    handlers: property::FormHandlers {
+                    problem: form.problem(),
+                    handlers: location::FormHandlers {
                         on_field_click: handlers.on_field_click.clone(),
                         on_unit_click: handlers.on_unit_field_click.clone(),
                         on_unit_option_click: handlers.on_unit_option_click.clone(),
-                        on_suggestion_click: handlers.on_suggestion_click.clone(),
                         on_cancel: handlers.on_cancel.clone(),
                         on_confirm: handlers.on_confirm.clone(),
                     },
@@ -274,23 +259,23 @@ impl InventoryDialog {
             )
         };
         match self {
-            Self::AddRoom(property, form) => {
-                let name = &inventory.property(*property)?.name;
-                Some(room_form(true, name, form))
+            Self::AddArea(location, form) => {
+                let name = &inventory.location(*location)?.name;
+                Some(area_form(true, name, form))
             }
-            Self::EditRoom(id, form) => {
-                let (property, _) = inventory.room(*id)?;
-                Some(room_form(false, &property.name, form))
+            Self::EditArea(id, form) => {
+                let (location, _) = inventory.area(*id)?;
+                Some(area_form(false, &location.name, form))
             }
-            Self::RemoveRoom(id, form) => {
-                let (_, room) = inventory.room(*id)?;
-                Some(room::render_room_remove(
-                    room::RoomRemoveProps {
-                        name: &room.name,
-                        items: inventory.room_items(*id),
+            Self::RemoveArea(id, form) => {
+                let (_, area) = inventory.area(*id)?;
+                Some(area::render_area_remove(
+                    area::AreaRemoveProps {
+                        name: &area.name,
+                        items: inventory.area_items(*id),
                         destinations: &form.destinations,
                         destination: &form.select,
-                        handlers: room::RoomRemoveHandlers {
+                        handlers: area::AreaRemoveHandlers {
                             on_field_click: handlers.on_destination_field_click.clone(),
                             on_option_click: handlers.on_destination_option_click.clone(),
                             on_cancel: handlers.on_cancel.clone(),
@@ -300,34 +285,34 @@ impl InventoryDialog {
                     cx,
                 ))
             }
-            Self::RoomBlocked(id) => {
-                let (property, room) = inventory.room(*id)?;
-                Some(room::render_room_blocked(
-                    &room.name,
-                    &property.name,
-                    inventory.room_items(*id),
+            Self::AreaBlocked(id) => {
+                let (location, area) = inventory.area(*id)?;
+                Some(area::render_area_blocked(
+                    &area.name,
+                    &location.name,
+                    inventory.area_items(*id),
                     handlers.on_cancel.clone(),
                     cx,
                 ))
             }
-            Self::Add(form) => Some(property_form(form, None)),
+            Self::Add(form) => Some(location_form(form, None)),
             Self::Edit(id, form) => {
-                let property = inventory.property(*id)?;
+                let location = inventory.location(*id)?;
                 let fixed =
-                    crate::msg::desktop_inventory_field_unit_fixed(&property.unit.to_uppercase());
-                Some(property_form(form, Some(fixed)))
+                    crate::msg::desktop_inventory_field_unit_fixed(&location.unit.to_uppercase());
+                Some(location_form(form, Some(fixed)))
             }
             Self::Remove(id, form) => {
-                let property = inventory.property(*id)?;
+                let location = inventory.location(*id)?;
                 let holdings = holdings(inventory, documents, *id);
-                Some(property::render_remove(
-                    property::RemoveProps {
-                        name: &property.name,
-                        rooms: holdings.rooms,
+                Some(location::render_remove(
+                    location::RemoveProps {
+                        name: &location.name,
+                        areas: holdings.areas,
                         items: holdings.items,
                         documents: holdings.documents,
                         typed: form.typed.text(),
-                        handlers: property::RemoveHandlers {
+                        handlers: location::RemoveHandlers {
                             on_cancel: handlers.on_cancel.clone(),
                             on_confirm: handlers.on_confirm.clone(),
                         },

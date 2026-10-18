@@ -147,13 +147,13 @@ ledger_id!(
     8
 );
 ledger_id!(
-    /// An Inventory Property's id.
-    PropertyId,
+    /// An Inventory Location's id.
+    LocationId,
     9
 );
 ledger_id!(
-    /// An Inventory Room's id.
-    RoomId,
+    /// An Inventory Area's id.
+    AreaId,
     10
 );
 ledger_id!(

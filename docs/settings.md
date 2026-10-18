@@ -247,22 +247,23 @@ A reminder only does something when the type tracks a date, and reminders don't 
 
 ### Inventory page
 
-The Inventory page is where you set up the places whose contents you keep a register of. A **Property** is one such place, such as a house or a storage unit, and each Property holds any number of **Rooms**. Each Property is one Inventory register, so its Rooms become that register's room tabs, in the order shown here. Like the rest of Inventory, it runs on sample data for now, so nothing you change is saved.
+The Inventory page is where you set up the things whose contents you keep a register of. A **Location** is one such thing, such as a house, a storage unit, a car or a boat, and each Location holds any number of **Areas**: a house's Kitchen and Garage, a ute's Cab, Tray and Toolbox. Each Location is one Inventory register, so its Areas become that register's area tabs, in the order shown here. Areas are one level deep: an Area never holds other Areas. Like the rest of Inventory, it runs on sample data for now, so nothing you change is saved.
 
-The page is a table with a row per Property: its name and address, its insurance policy (insurer and policy number), its sum insured, its single-item limit and how many items it holds. Properties are listed in the order you added them. They all start collapsed. Expanding one shows its Rooms in the order of the room tabs, each with its item count and value, and a clickable **+ Add room** row at the end. A line under the table counts what you have, for example "2 properties · 11 rooms · 232 items". With no Properties the table is replaced by "No properties yet. Press n to add one."
+Settings sets up only a Location's name, its Unit and its Areas. A Location's address (for a vehicle, its registration) and its insurance cover are kept on its register in Inventory, and are edited there.
 
-- Press `j` and `k` to move through the visible rows, Properties and the Rooms of expanded Properties alike. `e` and `x` act on whichever row is selected.
-- Press `→` to expand a collapsed Property, or to move to the first Room of an expanded one. Press `←` to collapse an expanded Property, or to move from a Room to its Property.
-- Press `n` to add a Property. A dialog asks for a name (unique across your Properties, ignoring capitals), an address and a fiat Unit. The Unit is fixed once the Property is added, because every value in it is in that Unit. The new Property opens expanded.
-- Insurance cover is optional. Fill in the insurer, the sum insured and, if you like, a policy number, a renewal date and a single-item limit. Leave the insurer empty for no cover, which clears the other cover fields. The renewal date is for display and changes nothing when it passes. The single-item limit can't be more than the sum insured.
-- Press `r` to add a Room to the selected Property, or to the Property of the selected Room. A collapsed Property expands so you see the new Room. Room names must be different within a Property, ignoring capitals, but two Properties can each have a Kitchen.
-- Press `e` to edit the selected Property or Room. Renaming a Room keeps its items.
-- Press `shift`+`j` or `shift`+`k` to move the selected Room down or up within its Property. They do nothing on a Property row or at the ends of the list.
+The page is one LOCATIONS list with a single NAME column, drawn like the Categories page. Each Location shows its name in bold and a short note of how many Areas and items it holds, for example "10 areas · 214 items". Locations are listed in the order you added them, and they all start collapsed. Expanding one shows its Areas indented under it, by name, in the order of the area tabs. The heading counts what you have, for example "3 locations · 14 areas · 241 items". With no Locations the list is replaced by "No locations yet. Press n to add one."
+
+Rows have no buttons. Double-click a row to edit it, and right-click it for its menu: a Location's menu has **Add area…**, **Edit location…** and **Remove location…**; an Area's has **Edit area…**, **Move up**, **Move down** and **Remove area…**. `Esc` or a click elsewhere closes the menu. The **+** beside LOCATIONS adds a Location.
+
+- Press `j` and `k` to move through the visible rows, Locations and the Areas of expanded Locations alike. `e` and `x` act on whichever row is selected.
+- Press `→` to expand a collapsed Location, or to move to the first Area of an expanded one. Press `←` to collapse an expanded Location, or to move from an Area to its Location. Clicking the ▸/▾ beside a Location does the same; double-clicking a row doesn't expand it.
+- Press `n` to add a Location. A dialog asks only for a name (unique across your Locations, ignoring capitals) and a fiat Unit. The Unit is fixed once the Location is added, because every value in it is in that Unit. The new Location opens expanded.
+- Press `a` to add an Area to the selected Location, or to the Location of the selected Area. A collapsed Location expands so you see the new Area. Area names must be different within a Location, ignoring capitals, but two Locations can each have a Kitchen.
+- Press `e` to edit the selected Location or Area. Editing a Location changes only its name, and keeps its address and cover. Renaming an Area keeps its items.
+- Press `shift`+`j` or `shift`+`k` to move the selected Area down or up within its Location. They do nothing on a Location row or at the ends of the list.
 - Press `x` to remove the selected row.
-  - A Room with items asks which Room of the same Property takes them, with the one above pre-selected. A Property's only Room can't be removed while it holds items; the dialog tells you to add another Room first or remove the Property.
-  - A Property that holds Rooms or items asks you to type its name to confirm. Its Rooms and items are removed with it, and any Document that linked to those items loses that link. The Documents and the transactions that bought the items are kept. You can remove your last Property.
-
-Sum insured and Item limit are what the Inventory register uses for its cover check and its over-limit flag. The register itself isn't built yet.
+  - An Area with items asks which Area of the same Location takes them, with the one above pre-selected. A Location's only Area can't be removed while it holds items; the dialog tells you to add another Area first or remove the Location.
+  - A Location that holds Areas or items asks you to type its name to confirm. Its Areas and items are removed with it, and any Document that linked to those items loses that link. The Documents and the transactions that bought the items are kept. You can remove your last Location.
 
 ### Tracing page
 

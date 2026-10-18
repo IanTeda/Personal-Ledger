@@ -1,5 +1,5 @@
 //! The **Inventory** Settings page (ADR-0037, and its amendment's one folder per page):
-//! `SettingsPage::Inventory`, the Ledger's Properties and, under each open one, its Rooms.
+//! `SettingsPage::Inventory`, the Ledger's Locations and, under each open one, its Areas.
 //! [`InventoryPage`] reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its
 //! keys and movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through
 //! [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms them through `apply.rs`. The
@@ -9,8 +9,9 @@
 //! page: both read the `gpui`-free model through `crate::inventory`, a re-export of
 //! `lib_inventory`.
 //!
-//! Selection is one flat list over the visible Property and Room rows; **+ Add room** is never
-//! part of it.
+//! Selection is one flat list over the visible Location and Area rows. A row carries no buttons
+//! (16q, the Units table principles): a double-click edits it and a right-click opens its
+//! [`RowMenu`], whose actions are the same handlers the keys reach.
 
 pub mod apply;
 pub mod dialogs;
@@ -19,10 +20,9 @@ pub(crate) mod render;
 
 use std::collections::HashSet;
 
-use chrono::NaiveDate;
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
-use lib_core::{DateStyle, PropertyId, RoomId, UnitKind};
-use lib_ledger::{Domain, MoveRoom};
+use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
+use lib_core::{AreaId, LocationId, UnitKind};
+use lib_ledger::{Domain, MoveArea};
 use lib_toast::ToastKind;
 
 use crate::{
@@ -35,23 +35,87 @@ use crate::{
 };
 use apply::InventoryOutcome;
 use dialogs::InventoryDialog;
-use form::{PropertyContext, PropertyForm, RemovePropertyForm, RemoveRoomForm, RoomForm};
+use form::{AreaForm, LocationContext, LocationForm, RemoveAreaForm, RemoveLocationForm};
 pub use render::scope_text;
 
-/// One selectable row: a Property, or a Room of an expanded Property.
+/// One selectable row: a Location, or an Area of an expanded Location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRow {
-    Property(PropertyId),
-    Room(RoomId),
+    Location(LocationId),
+    Area(AreaId),
 }
 
-/// The rows `j`/`k` walk, in screen order: each Property, then its Rooms when it is expanded.
-pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<PropertyId>) -> Vec<InventoryRow> {
+/// An entry of a row's context menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    AddArea,
+    EditLocation,
+    RemoveLocation,
+    EditArea,
+    MoveUp,
+    MoveDown,
+    RemoveArea,
+}
+
+impl MenuAction {
+    /// A row's entries in menu order, the destructive one last.
+    pub fn for_row(row: InventoryRow) -> &'static [Self] {
+        match row {
+            InventoryRow::Location(_) => &[Self::AddArea, Self::EditLocation, Self::RemoveLocation],
+            InventoryRow::Area(_) => &[
+                Self::EditArea,
+                Self::MoveUp,
+                Self::MoveDown,
+                Self::RemoveArea,
+            ],
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::AddArea => crate::msg::desktop_inventory_menu_add_area(),
+            Self::EditLocation => crate::msg::desktop_inventory_menu_edit_location(),
+            Self::RemoveLocation => crate::msg::desktop_inventory_menu_remove_location(),
+            Self::EditArea => crate::msg::desktop_inventory_menu_edit_area(),
+            Self::MoveUp => crate::msg::desktop_inventory_menu_move_up(),
+            Self::MoveDown => crate::msg::desktop_inventory_menu_move_down(),
+            Self::RemoveArea => crate::msg::desktop_inventory_menu_remove_area(),
+        }
+    }
+
+    /// Drawn in red below a rule.
+    pub fn is_destructive(self) -> bool {
+        matches!(self, Self::RemoveLocation | Self::RemoveArea)
+    }
+
+    /// The entry's `debug_selector` suffix and snapshot name.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::AddArea => "add-area",
+            Self::EditLocation => "edit-location",
+            Self::RemoveLocation => "remove-location",
+            Self::EditArea => "edit-area",
+            Self::MoveUp => "move-up",
+            Self::MoveDown => "move-down",
+            Self::RemoveArea => "remove-area",
+        }
+    }
+}
+
+/// The context menu open on a row, drawn at the pointer that opened it (window coordinates).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RowMenu {
+    pub row: InventoryRow,
+    pub position: Point<Pixels>,
+}
+
+/// The rows `j`/`k` walk, in screen order: each Location, then its Areas when it is expanded.
+pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<LocationId>) -> Vec<InventoryRow> {
     let mut rows = Vec::new();
-    for property in &inventory.properties {
-        rows.push(InventoryRow::Property(property.id));
-        if expanded.contains(&property.id) {
-            rows.extend(property.rooms.iter().map(|r| InventoryRow::Room(r.id)));
+    for location in &inventory.locations {
+        rows.push(InventoryRow::Location(location.id));
+        if expanded.contains(&location.id) {
+            rows.extend(location.areas.iter().map(|r| InventoryRow::Area(r.id)));
         }
     }
     rows
@@ -66,16 +130,14 @@ pub struct RowClicked;
 
 impl EventEmitter<RowClicked> for InventoryPage {}
 
-/// The Inventory page's own state: the row under the cursor and the Properties shown open.
+/// The Inventory page's own state: the row under the cursor, the Locations shown open and the
+/// row menu, if one is open.
 pub struct InventoryPage {
     ledger: Entity<LedgerStore>,
-    /// The date a Property's Renews on is checked against.
-    today: NaiveDate,
-    /// How a typed Renews on is read, told by `Shell` with the other Display Preferences.
-    date_style: Option<DateStyle>,
     /// It may name a row that is gone or hidden, so read it through [`Self::selected_row`].
     selected: Option<InventoryRow>,
-    expanded: HashSet<PropertyId>,
+    expanded: HashSet<LocationId>,
+    menu: Option<RowMenu>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     pub(crate) page_focused: bool,
@@ -86,15 +148,14 @@ pub struct InventoryPage {
 }
 
 impl InventoryPage {
-    pub fn new(ledger: Entity<LedgerStore>, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
         let _inventory_changed = notify_on(&ledger, Domain::Inventory, cx);
         let _units_changed = notify_on(&ledger, Domain::Units, cx);
         Self {
             ledger,
-            today,
-            date_style: None,
             selected: None,
             expanded: HashSet::new(),
+            menu: None,
             page_focused: false,
             _inventory_changed,
             _units_changed,
@@ -109,16 +170,12 @@ impl InventoryPage {
         self.page_focused = focused;
     }
 
-    pub fn set_date_style(&mut self, date_style: Option<DateStyle>) {
-        self.date_style = date_style;
-    }
-
     // -----------------------------------------------------------------------------------------
     // The interface the Settings View forwards to while the page is open (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// `J`/`K` move the selected Room a place within its Property (inert on a Property row), and
-    /// `left` closes an open Property or climbs from a Room to it. The router and Settings' focus
+    /// `J`/`K` move the selected Area a place within its Location (inert on a Location row), `a`
+    /// adds an Area, and `left` closes an open Location or climbs from an Area to it. The router and Settings' focus
     /// keys would otherwise take them, so the page claims them ahead of both; a `left` with
     /// nothing to close or climb is left to Settings, which steps back to the index.
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
@@ -132,12 +189,16 @@ impl InventoryPage {
                 "k" => -1,
                 _ => return false,
             };
-            // A Room already at the end of its Property stays put.
-            if let Some(InventoryRow::Room(room)) = self.selected_row(cx) {
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, MoveRoom { room, delta }))
-                    .ok();
+            self.close_menu(cx);
+            if let Some(InventoryRow::Area(area)) = self.selected_row(cx) {
+                self.move_area(area, delta, cx);
             }
+            return true;
+        }
+        // `a` is the router's Insert key everywhere else, so the page takes it first.
+        if keystroke.key == "a" {
+            self.close_menu(cx);
+            self.add_area_for_selection(cx);
             return true;
         }
         if keystroke.key == "left" && self.left_is_local(cx) {
@@ -147,17 +208,19 @@ impl InventoryPage {
         false
     }
 
-    /// The page's bare `n`, `r`, `e` and `x`, each through the same handler its button uses, and
-    /// `right`, which opens a closed Property or steps into an open one's first Room. Returns
-    /// whether the key was one of them.
+    /// The page's bare `n`, `e` and `x`, each through the same handler its menu entry or button
+    /// uses, and `right`, which opens a closed Location or steps into an open one's first
+    /// Area. Returns whether the key was one of them.
     pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
         }
+        if matches!(keystroke.key.as_str(), "n" | "e" | "x" | "right") {
+            self.close_menu(cx);
+        }
         match keystroke.key.as_str() {
-            "n" => self.open_add_property_dialog(cx),
-            "r" => self.add_room_for_selection(cx),
+            "n" => self.open_add_location_dialog(cx),
             "e" => {
                 if let Some(row) = self.selected_row(cx) {
                     self.open_edit_dialog(row, cx);
@@ -174,7 +237,7 @@ impl InventoryPage {
         true
     }
 
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Property and Room rows as one list.
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Location and Area rows as one list.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         let Some(step) = movement.step() else {
             return;
@@ -183,14 +246,15 @@ impl InventoryPage {
         if rows.is_empty() {
             return;
         }
+        self.close_menu(cx);
         self.selected = lib_list_cursor::step_id(&rows, self.selected_row(cx), step);
         cx.notify();
     }
 
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    /// `Esc` closes an open row menu; otherwise it is left to Settings, which steps back to the
+    /// index.
+    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        self.close_menu(cx)
     }
 
     /// The page has no Search: `/` is inert there.
@@ -202,7 +266,7 @@ impl InventoryPage {
         false
     }
 
-    /// The page's legend for the selected row, and its Property, Room and Item counts.
+    /// The page's legend for the selected row, and its Location, Area and Item counts.
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: settings_inventory_hints(self.selected_row(cx)),
@@ -210,7 +274,7 @@ impl InventoryPage {
         })
     }
 
-    /// The heading's meta: how many Properties, Rooms and Items.
+    /// The heading's meta: how many Locations, Areas and Items.
     pub fn scope_note(&self, cx: &App) -> String {
         scope_text(self.inventory(cx))
     }
@@ -229,7 +293,7 @@ impl InventoryPage {
     }
 
     /// The selected row: the stored one while it is still on screen, else the first row, so the
-    /// cursor is never lost. `None` only with no Properties.
+    /// cursor is never lost. `None` only with no Locations.
     pub fn selected_row(&self, cx: &App) -> Option<InventoryRow> {
         lib_list_cursor::resolve(self.rows(cx), self.selected)
     }
@@ -239,107 +303,107 @@ impl InventoryPage {
         cx.notify();
     }
 
-    /// Shows Property `id` open. Returns whether it was closed before.
-    fn expand(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) -> bool {
+    /// Shows Location `id` open. Returns whether it was closed before.
+    fn expand(&mut self, id: LocationId, cx: &mut Context<'_, Self>) -> bool {
         cx.notify();
         self.expanded.insert(id)
     }
 
-    /// Shows Property `id` closed. Returns whether it was open before.
-    fn collapse(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) -> bool {
+    /// Shows Location `id` closed. Returns whether it was open before.
+    fn collapse(&mut self, id: LocationId, cx: &mut Context<'_, Self>) -> bool {
         cx.notify();
         self.expanded.remove(&id)
     }
 
-    /// The Property the selected row belongs to.
-    fn selected_property(&self, cx: &App) -> Option<PropertyId> {
+    /// The Location the selected row belongs to.
+    fn selected_location(&self, cx: &App) -> Option<LocationId> {
         match self.selected_row(cx)? {
-            InventoryRow::Property(id) => Some(id),
-            InventoryRow::Room(id) => self.inventory(cx).room(id).map(|(property, _)| property.id),
+            InventoryRow::Location(id) => Some(id),
+            InventoryRow::Area(id) => self.inventory(cx).area(id).map(|(location, _)| location.id),
         }
     }
 
-    /// Whether `left` has something to do: close an open Property, or climb from a Room to its
-    /// Property.
+    /// Whether `left` has something to do: close an open Location, or climb from an Area to its
+    /// Location.
     fn left_is_local(&self, cx: &App) -> bool {
         match self.selected_row(cx) {
-            Some(InventoryRow::Room(_)) => true,
-            Some(InventoryRow::Property(id)) => self.expanded.contains(&id),
+            Some(InventoryRow::Area(_)) => true,
+            Some(InventoryRow::Location(id)) => self.expanded.contains(&id),
             None => false,
         }
     }
 
-    /// `right`: open a closed Property, or step from an open one to its first Room.
+    /// `right`: open a closed Location, or step from an open one to its first Area.
     fn step_in(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(InventoryRow::Property(id)) = self.selected_row(cx) else {
+        let Some(InventoryRow::Location(id)) = self.selected_row(cx) else {
             return;
         };
         if self.expand(id, cx) {
             return;
         }
-        let first_room = self
+        let first_area = self
             .inventory(cx)
-            .property(id)
-            .and_then(|property| property.rooms.first().map(|room| room.id));
-        if let Some(room) = first_room {
-            self.select(Some(InventoryRow::Room(room)), cx);
+            .location(id)
+            .and_then(|location| location.areas.first().map(|area| area.id));
+        if let Some(area) = first_area {
+            self.select(Some(InventoryRow::Area(area)), cx);
         }
     }
 
-    /// `left`: climb from a Room to its Property, or close an open Property.
+    /// `left`: climb from an Area to its Location, or close an open Location.
     fn step_out(&mut self, cx: &mut Context<'_, Self>) {
         match self.selected_row(cx) {
-            Some(InventoryRow::Room(id)) => {
-                let property = self.inventory(cx).room(id).map(|(property, _)| property.id);
-                if let Some(property) = property {
-                    self.select(Some(InventoryRow::Property(property)), cx);
+            Some(InventoryRow::Area(id)) => {
+                let location = self.inventory(cx).area(id).map(|(location, _)| location.id);
+                if let Some(location) = location {
+                    self.select(Some(InventoryRow::Location(location)), cx);
                 }
             }
-            Some(InventoryRow::Property(id)) => {
+            Some(InventoryRow::Location(id)) => {
                 self.collapse(id, cx);
             }
             None => {}
         }
     }
 
-    /// `r`: Add room for the selected Property (or the selected Room's), opening it so the new
-    /// Room shows. With no Property it is a Toast.
-    fn add_room_for_selection(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(property) = self.selected_property(cx) else {
+    /// `a`: Add area for the selected Location (or the selected Area's), opening it so the new
+    /// Area shows. With no Location it is a Toast.
+    fn add_area_for_selection(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(location) = self.selected_location(cx) else {
             if self.selected_row(cx).is_none() {
                 cx.emit(ViewEvent::RaiseToast {
                     kind: ToastKind::Info,
-                    text: crate::msg::desktop_inventory_toast_no_property(),
+                    text: crate::msg::desktop_inventory_toast_no_location(),
                 });
             }
             return;
         };
-        self.expand(property, cx);
-        self.open_add_room_dialog(property, cx);
+        self.expand(location, cx);
+        self.open_add_area_dialog(location, cx);
     }
 
     /// Selects and opens what a landed Dialog left the cursor on.
     pub fn land(&mut self, outcome: &InventoryOutcome, cx: &mut Context<'_, Self>) {
         match outcome {
-            InventoryOutcome::PropertyAdded { id, .. } => {
+            InventoryOutcome::LocationAdded { id, .. } => {
                 self.expand(*id, cx);
-                self.select(Some(InventoryRow::Property(*id)), cx);
+                self.select(Some(InventoryRow::Location(*id)), cx);
             }
-            InventoryOutcome::PropertySaved { id, .. } => {
-                self.select(Some(InventoryRow::Property(*id)), cx);
+            InventoryOutcome::LocationSaved { id, .. } => {
+                self.select(Some(InventoryRow::Location(*id)), cx);
             }
-            InventoryOutcome::PropertyRemoved { id, selected, .. } => {
+            InventoryOutcome::LocationRemoved { id, selected, .. } => {
                 self.collapse(*id, cx);
                 self.select(*selected, cx);
             }
-            InventoryOutcome::RoomAdded { property, id, .. } => {
-                self.expand(*property, cx);
-                self.select(Some(InventoryRow::Room(*id)), cx);
+            InventoryOutcome::AreaAdded { location, id, .. } => {
+                self.expand(*location, cx);
+                self.select(Some(InventoryRow::Area(*id)), cx);
             }
-            InventoryOutcome::RoomSaved { id, .. } => {
-                self.select(Some(InventoryRow::Room(*id)), cx);
+            InventoryOutcome::AreaSaved { id, .. } => {
+                self.select(Some(InventoryRow::Area(*id)), cx);
             }
-            InventoryOutcome::RoomRemoved { selected, .. } => {
+            InventoryOutcome::AreaRemoved { selected, .. } => {
                 self.select(Some(*selected), cx);
             }
             InventoryOutcome::Dismissed => {}
@@ -356,55 +420,92 @@ impl InventoryPage {
         cx.emit(RowClicked);
     }
 
-    /// The disclosure control of a Property row: opens or closes it. Closing keeps the selection
-    /// on screen by moving a hidden Room's selection up to its Property.
-    pub(crate) fn click_toggle(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
+    /// The disclosure control of a Location row: opens or closes it. Closing keeps the selection
+    /// on screen by moving a hidden Area's selection up to its Location.
+    pub(crate) fn click_toggle(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
         cx.emit(RowClicked);
         if self.collapse(id, cx) {
-            if let Some(InventoryRow::Room(room)) = self.selected
+            if let Some(InventoryRow::Area(area)) = self.selected
                 && self
                     .inventory(cx)
-                    .room(room)
-                    .is_some_and(|(property, _)| property.id == id)
+                    .area(area)
+                    .is_some_and(|(location, _)| location.id == id)
             {
-                self.select(Some(InventoryRow::Property(id)), cx);
+                self.select(Some(InventoryRow::Location(id)), cx);
             }
         } else {
             self.expand(id, cx);
         }
     }
 
-    /// **edit** on a row: selects it and asks for its Edit dialog.
-    pub(crate) fn click_edit(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+    /// A double-click on a row: selects it and asks for its Edit dialog, as `e` does.
+    pub(crate) fn double_click_row(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
         self.select(Some(row), cx);
         cx.emit(RowClicked);
         self.open_edit_dialog(row, cx);
     }
 
-    /// **remove** on a row: selects it and asks for its Remove dialog.
-    pub(crate) fn click_remove(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
+    /// A right-click on a row: selects it and opens its menu at the pointer.
+    pub(crate) fn open_menu(
+        &mut self,
+        row: InventoryRow,
+        position: Point<Pixels>,
+        cx: &mut Context<'_, Self>,
+    ) {
         self.select(Some(row), cx);
         cx.emit(RowClicked);
-        self.open_remove_dialog(row, cx);
+        self.menu = Some(RowMenu { row, position });
     }
 
-    /// **+ Add property**: the same handler `n` reaches.
-    pub(crate) fn click_add_property(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(RowClicked);
-        self.open_add_property_dialog(cx);
+    /// Closes the row menu. Returns whether one was open.
+    pub(crate) fn close_menu(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        cx.notify();
+        self.menu.take().is_some()
     }
 
-    /// **+ Add room** under an open Property, or **+ room** on its row.
-    pub(crate) fn click_add_room(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
+    /// An entry of the open row menu: closes it and runs the same handler as the entry's key.
+    pub(crate) fn click_menu_action(&mut self, action: MenuAction, cx: &mut Context<'_, Self>) {
+        let Some(RowMenu { row, .. }) = self.menu.take() else {
+            return;
+        };
+        cx.notify();
+        match (action, row) {
+            (MenuAction::AddArea, InventoryRow::Location(id)) => {
+                self.expand(id, cx);
+                self.open_add_area_dialog(id, cx);
+            }
+            (MenuAction::EditLocation | MenuAction::EditArea, row) => {
+                self.open_edit_dialog(row, cx);
+            }
+            (MenuAction::RemoveLocation | MenuAction::RemoveArea, row) => {
+                self.open_remove_dialog(row, cx);
+            }
+            (MenuAction::MoveUp, InventoryRow::Area(area)) => self.move_area(area, -1, cx),
+            (MenuAction::MoveDown, InventoryRow::Area(area)) => self.move_area(area, 1, cx),
+            // An entry is only drawn on the kind of row it acts on.
+            (MenuAction::AddArea, InventoryRow::Area(_))
+            | (MenuAction::MoveUp | MenuAction::MoveDown, InventoryRow::Location(_)) => {}
+        }
+    }
+
+    /// The square **+** beside LOCATIONS: the same handler `n` reaches.
+    pub(crate) fn click_add_location(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(RowClicked);
-        self.open_add_room_dialog(id, cx);
+        self.open_add_location_dialog(cx);
+    }
+
+    /// Moves an Area a place within its Location; one already at that end stays put.
+    fn move_area(&mut self, area: AreaId, delta: isize, cx: &mut Context<'_, Self>) {
+        self.ledger
+            .update(cx, |store, cx| store.apply(cx, MoveArea { area, delta }))
+            .ok();
     }
 
     // -----------------------------------------------------------------------------------------
     // Dialogs
     // -----------------------------------------------------------------------------------------
 
-    /// The fiat Units a Property can be kept in, as option labels, with each one's code.
+    /// The fiat Units a Location can be kept in, as option labels, with each one's code.
     fn unit_choices(&self, cx: &App) -> Vec<(String, String)> {
         self.ledger
             .read(cx)
@@ -424,103 +525,101 @@ impl InventoryPage {
             .collect()
     }
 
-    /// What the Property form checks against, copied in when it opens.
-    fn property_context(&self, cx: &App) -> PropertyContext {
-        PropertyContext {
+    /// What the Location form checks against, copied in when it opens.
+    fn location_context(&self, cx: &App) -> LocationContext {
+        LocationContext {
             inventory: self.inventory(cx).clone(),
-            today: self.today,
-            date_style: self.date_style,
             unit_choices: self.unit_choices(cx),
         }
     }
 
-    /// `e` or **edit**: a Property opens its dialog; a Room opens its own.
+    /// `e`, a double-click or **Edit …**: a Location opens its dialog; an Area opens its own.
     fn open_edit_dialog(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
         match row {
-            InventoryRow::Property(id) => self.open_edit_property_dialog(id, cx),
-            InventoryRow::Room(id) => self.open_edit_room_dialog(id, cx),
+            InventoryRow::Location(id) => self.open_edit_location_dialog(id, cx),
+            InventoryRow::Area(id) => self.open_edit_area_dialog(id, cx),
         }
     }
 
-    /// `x` or **remove**: same split as [`Self::open_edit_dialog`].
+    /// `x` or **Remove …**: same split as [`Self::open_edit_dialog`].
     fn open_remove_dialog(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
         match row {
-            InventoryRow::Property(id) => self.open_remove_property_dialog(id, cx),
-            InventoryRow::Room(id) => self.open_remove_room_dialog(id, cx),
+            InventoryRow::Location(id) => self.open_remove_location_dialog(id, cx),
+            InventoryRow::Area(id) => self.open_remove_area_dialog(id, cx),
         }
     }
 
-    fn open_add_property_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        // The selected Property's Unit, else the first fiat Unit.
+    fn open_add_location_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        // The selected Location's Unit, else the first fiat Unit.
         let choices = self.unit_choices(cx);
         let preferred = self
-            .selected_property(cx)
-            .and_then(|id| self.inventory(cx).property(id))
-            .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
+            .selected_location(cx)
+            .and_then(|id| self.inventory(cx).location(id))
+            .and_then(|location| choices.iter().find(|(_, code)| *code == location.unit))
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
-        let form = PropertyForm::for_add(preferred, self.property_context(cx));
+        let form = LocationForm::for_add(preferred, self.location_context(cx));
         open_dialog(InventoryDialog::Add(form), cx);
     }
 
-    fn open_edit_property_dialog(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
-        let Some(property) = self.inventory(cx).property(id) else {
+    fn open_edit_location_dialog(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
+        let Some(location) = self.inventory(cx).location(id) else {
             return;
         };
-        let form = PropertyForm::from_property(property, self.property_context(cx));
+        let form = LocationForm::from_location(location, self.location_context(cx));
         open_dialog(InventoryDialog::Edit(id, form), cx);
     }
 
-    fn open_remove_property_dialog(&mut self, id: PropertyId, cx: &mut Context<'_, Self>) {
+    fn open_remove_location_dialog(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
-        let Some(property) = inventory.property(id) else {
+        let Some(location) = inventory.location(id) else {
             return;
         };
-        let form = RemovePropertyForm::new(
-            property.name.clone(),
+        let form = RemoveLocationForm::new(
+            location.name.clone(),
             dialogs::needs_typed_name(inventory, id),
         );
         open_dialog(InventoryDialog::Remove(id, form), cx);
     }
 
-    fn open_add_room_dialog(&mut self, property: PropertyId, cx: &mut Context<'_, Self>) {
+    fn open_add_area_dialog(&mut self, location: LocationId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
-        if inventory.property(property).is_none() {
+        if inventory.location(location).is_none() {
             return;
         }
-        let form = RoomForm::for_add(inventory.clone(), property);
-        open_dialog(InventoryDialog::AddRoom(property, form), cx);
+        let form = AreaForm::for_add(inventory.clone(), location);
+        open_dialog(InventoryDialog::AddArea(location, form), cx);
     }
 
-    fn open_edit_room_dialog(&mut self, id: RoomId, cx: &mut Context<'_, Self>) {
+    fn open_edit_area_dialog(&mut self, id: AreaId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
-        let Some((property, room)) = inventory.room(id) else {
+        let Some((location, area)) = inventory.area(id) else {
             return;
         };
-        let form = RoomForm::for_edit(inventory.clone(), property.id, room);
-        open_dialog(InventoryDialog::EditRoom(id, form), cx);
+        let form = AreaForm::for_edit(inventory.clone(), location.id, area);
+        open_dialog(InventoryDialog::EditArea(id, form), cx);
     }
 
-    /// An empty Room gets a plain confirm; one with Items a destination picker pre-selecting the
-    /// Room above (below when first); the last Room with Items a notice.
-    fn open_remove_room_dialog(&mut self, id: RoomId, cx: &mut Context<'_, Self>) {
+    /// An empty Area gets a plain confirm; one with Items a destination picker pre-selecting the
+    /// Area above (below when first); the last Area with Items a notice.
+    fn open_remove_area_dialog(&mut self, id: AreaId, cx: &mut Context<'_, Self>) {
         let inventory = self.inventory(cx);
-        let Some((property, _)) = inventory.room(id) else {
+        let Some((location, _)) = inventory.area(id) else {
             return;
         };
-        let items = inventory.room_items(id);
-        let dialog = if items > 0 && property.rooms.len() == 1 {
-            InventoryDialog::RoomBlocked(id)
+        let items = inventory.area_items(id);
+        let dialog = if items > 0 && location.areas.len() == 1 {
+            InventoryDialog::AreaBlocked(id)
         } else {
             let preselected = (items > 0)
                 .then(|| inventory::default_destination(inventory, id))
                 .flatten()
-                .and_then(|to| inventory.room(to))
-                .map(|(_, room)| room.name.clone());
-            let destinations = room_destinations(inventory, id);
-            InventoryDialog::RemoveRoom(
+                .and_then(|to| inventory.area(to))
+                .map(|(_, area)| area.name.clone());
+            let destinations = area_destinations(inventory, id);
+            InventoryDialog::RemoveArea(
                 id,
-                RemoveRoomForm::new(destinations, preselected, items > 0),
+                RemoveAreaForm::new(destinations, preselected, items > 0),
             )
         };
         open_dialog(dialog, cx);
@@ -530,23 +629,23 @@ impl InventoryPage {
     // Tests
     // -----------------------------------------------------------------------------------------
 
-    /// An Inventory row as `property:<name>` or `room:<name>`.
+    /// An Inventory row as `location:<name>` or `area:<name>`.
     fn row_label(&self, row: InventoryRow, cx: &App) -> String {
         let inventory = self.inventory(cx);
         match row {
-            InventoryRow::Property(id) => inventory
-                .property(id)
-                .map(|property| format!("property:{}", property.name))
+            InventoryRow::Location(id) => inventory
+                .location(id)
+                .map(|location| format!("location:{}", location.name))
                 .unwrap_or_default(),
-            InventoryRow::Room(id) => inventory
-                .room(id)
-                .map(|(_, room)| format!("room:{}", room.name))
+            InventoryRow::Area(id) => inventory
+                .area(id)
+                .map(|(_, area)| format!("area:{}", area.name))
                 .unwrap_or_default(),
         }
     }
 
-    /// The visible rows and the selected one, each Property's Rooms, Units and insurers, and each
-    /// Room's Item count. The open Dialog is `Shell`'s, which fills it in.
+    /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
+    /// Area's Item count. The open Dialog is `Shell`'s, which fills it in.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsInventorySnapshot {
         let inventory = self.inventory(cx);
@@ -557,24 +656,33 @@ impl InventoryPage {
                 .map(|row| self.row_label(row, cx))
                 .collect(),
             selected_inventory: self.selected_row(cx).map(|row| self.row_label(row, cx)),
-            inventory_rooms: inventory
-                .properties
+            inventory_areas: inventory
+                .locations
                 .iter()
-                .map(|property| {
+                .map(|location| {
                     (
-                        property.name.clone(),
-                        property
-                            .rooms
+                        location.name.clone(),
+                        location
+                            .areas
                             .iter()
-                            .map(|room| room.name.clone())
+                            .map(|area| area.name.clone())
                             .collect(),
                     )
                 })
                 .collect(),
             inventory_dialog: None,
-            inventory_property_ids: inventory.properties.iter().map(|p| p.id).collect(),
-            inventory_properties: inventory
-                .properties
+            inventory_menu: self.menu.map(|menu| {
+                (
+                    self.row_label(menu.row, cx),
+                    MenuAction::for_row(menu.row)
+                        .iter()
+                        .map(|action| action.slug().to_string())
+                        .collect(),
+                )
+            }),
+            inventory_location_ids: inventory.locations.iter().map(|p| p.id).collect(),
+            inventory_locations: inventory
+                .locations
                 .iter()
                 .map(|p| {
                     (
@@ -584,41 +692,43 @@ impl InventoryPage {
                     )
                 })
                 .collect(),
-            inventory_room_items: inventory
-                .properties
+            inventory_area_items: inventory
+                .locations
                 .iter()
-                .flat_map(|p| p.rooms.iter())
-                .map(|room| (room.name.clone(), inventory.room_items(room.id)))
+                .flat_map(|p| p.areas.iter())
+                .map(|area| (area.name.clone(), inventory.area_items(area.id)))
                 .collect(),
         }
     }
 }
 
-/// The Inventory page's visible rows and the selected one, as `property:<name>` or `room:<name>`,
-/// each Property's Rooms in order, and the dialog last asked for.
+/// The Inventory page's visible rows and the selected one, as `location:<name>` or `area:<name>`,
+/// each Location's Areas in order, and the dialog last asked for.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsInventorySnapshot {
     pub inventory_rows: Vec<String>,
     pub selected_inventory: Option<String>,
-    pub inventory_rooms: Vec<(String, Vec<String>)>,
-    /// The open dialog's kind (`add`, `edit`, `remove`, `add-room`, ...), which `Shell` fills in,
-    /// and each Property as `(name, unit code, insurer)`.
+    pub inventory_areas: Vec<(String, Vec<String>)>,
+    /// The open dialog's kind (`add`, `edit`, `remove`, `add-area`, ...), which `Shell` fills in,
+    /// and each Location as `(name, unit code, insurer)`.
     pub inventory_dialog: Option<String>,
-    pub inventory_properties: Vec<(String, String, Option<String>)>,
-    /// Each Property's id, in the same order.
-    pub inventory_property_ids: Vec<PropertyId>,
-    /// Each Room's name with its Item count, in page order.
-    pub inventory_room_items: Vec<(String, usize)>,
+    /// The open row menu: the row it is on, as above, and its entries' slugs in order.
+    pub inventory_menu: Option<(String, Vec<String>)>,
+    pub inventory_locations: Vec<(String, String, Option<String>)>,
+    /// Each Location's id, in the same order.
+    pub inventory_location_ids: Vec<LocationId>,
+    /// Each Area's name with its Item count, in page order.
+    pub inventory_area_items: Vec<(String, usize)>,
 }
 
-/// The names of the Property's other Rooms, in tab order: where a removed Room's Items can go.
-fn room_destinations(inventory: &Inventory, room: RoomId) -> Vec<String> {
-    inventory.room(room).map_or_else(Vec::new, |(property, _)| {
-        property
-            .rooms
+/// The names of the Location's other Areas, in tab order: where a removed Area's Items can go.
+fn area_destinations(inventory: &Inventory, area: AreaId) -> Vec<String> {
+    inventory.area(area).map_or_else(Vec::new, |(location, _)| {
+        location
+            .areas
             .iter()
-            .filter(|r| r.id != room)
+            .filter(|r| r.id != area)
             .map(|r| r.name.clone())
             .collect()
     })
@@ -636,17 +746,17 @@ mod tests {
     use super::*;
 
     fn seed() -> Inventory {
-        inventory::default_inventory(NaiveDate::from_ymd_opt(2026, 10, 2).unwrap())
+        inventory::default_inventory(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).unwrap())
     }
 
     #[test]
-    fn collapsed_properties_hide_their_rooms() {
+    fn collapsed_locations_hide_their_areas() {
         let inventory = seed();
         let rows = visible_rows(&inventory, &HashSet::new());
-        assert_eq!(rows.len(), 2);
-        let first = &inventory.properties[0];
+        assert_eq!(rows.len(), 3);
+        let first = &inventory.locations[0];
         let rows = visible_rows(&inventory, &HashSet::from([first.id]));
-        assert_eq!(rows.len(), 2 + first.rooms.len());
-        assert_eq!(rows[1], InventoryRow::Room(first.rooms[0].id));
+        assert_eq!(rows.len(), 3 + first.areas.len());
+        assert_eq!(rows[1], InventoryRow::Area(first.areas[0].id));
     }
 }

@@ -1,16 +1,16 @@
-//! The Ledger's Inventory: Properties, their Rooms and the Items in them (`GLOSSARY.md`'s
-//! Property, Room and Inventory Item). `gpui`-free and side-effect free, so every rule is
+//! The Ledger's Inventory: Locations, their Areas and the Items in them (`GLOSSARY.md`'s
+//! Location, Area and Inventory Item). `gpui`-free and side-effect free, so every rule is
 //! unit-tested without a window.
 //!
 //! Documents depends on this module (a Document Link names an Item by id), never the reverse, so
-//! removing a Property reports the Items that went and leaves the Documents to drop their Links.
-//! Amounts are in the owning Property's Unit, at two decimal places like the Transaction stubs.
+//! removing a Location reports the Items that went and leaves the Documents to drop their Links.
+//! Amounts are in the owning Location's Unit, at two decimal places like the Transaction stubs.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{ItemId, Money, PropertyId, RoomId};
+use lib_core::{AreaId, ItemId, LocationId, Money};
 
-/// A Property's insurance cover: one of its details, not a record of its own.
+/// A Location's insurance cover: one of its details, not a record of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cover {
     pub insurer: String,
@@ -21,41 +21,41 @@ pub struct Cover {
     pub item_limit: Option<Money>,
 }
 
-/// A named area of one Property. `id` is stable across renames, so an Item never moves on one.
+/// A named area of one Location. `id` is stable across renames, so an Item never moves on one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Room {
-    pub id: RoomId,
+pub struct Area {
+    pub id: AreaId,
     pub name: String,
 }
 
-/// A place whose contents are kept as one register. A Room's position in `rooms` is its room-tab
+/// A place whose contents are kept as one register. An Area's position in `areas` is its area-tab
 /// (and `J`/`K`) order; persistence adds the column later.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Property {
-    pub id: PropertyId,
+pub struct Location {
+    pub id: LocationId,
     pub name: String,
     pub address: String,
-    /// The fiat Unit's code, fixed when the Property is added.
+    /// The fiat Unit's code, fixed when the Location is added.
     pub unit: String,
     pub cover: Option<Cover>,
-    pub rooms: Vec<Room>,
+    pub areas: Vec<Area>,
 }
 
-/// A physical possession, in one Room of one Property.
+/// A physical possession, in one Area of one Location.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub id: ItemId,
-    pub property: PropertyId,
-    pub room: RoomId,
+    pub location: LocationId,
+    pub area: AreaId,
     pub name: String,
-    /// In the Property's Unit.
+    /// In the Location's Unit.
     pub replacement: Money,
 }
 
-/// Every Property and Item. The Items sit in one list so Documents can resolve a Link by id.
+/// Every Location and Item. The Items sit in one list so Documents can resolve a Link by id.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Inventory {
-    pub properties: Vec<Property>,
+    pub locations: Vec<Location>,
     pub items: Vec<Item>,
 }
 
@@ -64,49 +64,49 @@ pub struct Inventory {
 // ---------------------------------------------------------------------------------------------
 
 impl Inventory {
-    pub fn property(&self, id: PropertyId) -> Option<&Property> {
-        self.properties.iter().find(|p| p.id == id)
+    pub fn location(&self, id: LocationId) -> Option<&Location> {
+        self.locations.iter().find(|l| l.id == id)
     }
 
     pub fn item(&self, id: ItemId) -> Option<&Item> {
         self.items.iter().find(|i| i.id == id)
     }
 
-    /// The Room and the Property holding it.
-    pub fn room(&self, id: RoomId) -> Option<(&Property, &Room)> {
-        self.properties
+    /// The Area and the Location holding it.
+    pub fn area(&self, id: AreaId) -> Option<(&Location, &Area)> {
+        self.locations
             .iter()
-            .find_map(|p| p.rooms.iter().find(|r| r.id == id).map(|r| (p, r)))
+            .find_map(|l| l.areas.iter().find(|a| a.id == id).map(|a| (l, a)))
     }
 
-    pub fn property_count(&self) -> usize {
-        self.properties.len()
+    pub fn location_count(&self) -> usize {
+        self.locations.len()
     }
 
-    pub fn room_count(&self) -> usize {
-        self.properties.iter().map(|p| p.rooms.len()).sum()
+    pub fn area_count(&self) -> usize {
+        self.locations.iter().map(|l| l.areas.len()).sum()
     }
 
     pub fn item_count(&self) -> usize {
         self.items.len()
     }
 
-    /// Items in a Room; an empty or unknown Room is 0.
-    pub fn room_items(&self, room: RoomId) -> usize {
-        self.items.iter().filter(|i| i.room == room).count()
+    /// Items in an Area; an empty or unknown Area is 0.
+    pub fn area_items(&self, area: AreaId) -> usize {
+        self.items.iter().filter(|i| i.area == area).count()
     }
 
-    /// The replacement value of a Room's Items; an empty or unknown Room is zero.
-    pub fn room_value(&self, room: RoomId) -> Money {
-        sum(self.items.iter().filter(|i| i.room == room))
+    /// The replacement value of an Area's Items; an empty or unknown Area is zero.
+    pub fn area_value(&self, area: AreaId) -> Money {
+        sum(self.items.iter().filter(|i| i.area == area))
     }
 
-    pub fn property_items(&self, property: PropertyId) -> usize {
-        self.items.iter().filter(|i| i.property == property).count()
+    pub fn location_items(&self, location: LocationId) -> usize {
+        self.items.iter().filter(|i| i.location == location).count()
     }
 
-    pub fn property_value(&self, property: PropertyId) -> Money {
-        sum(self.items.iter().filter(|i| i.property == property))
+    pub fn location_value(&self, location: LocationId) -> Money {
+        sum(self.items.iter().filter(|i| i.location == location))
     }
 }
 
@@ -122,15 +122,15 @@ fn zero() -> Money {
 // Validation
 // ---------------------------------------------------------------------------------------------
 
-/// Why a Property or Room name is refused.
+/// Why a Location or Area name is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameError {
     Empty,
-    /// Another Property (or another Room of the same Property) has it, ignoring case.
+    /// Another Location (or another Area of the same Location) has it, ignoring case.
     Taken,
 }
 
-/// Why a Property's cover is refused.
+/// Why a Location's cover is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoverError {
     /// An insurer is set but no sum insured.
@@ -180,16 +180,43 @@ impl CoverDraft {
     }
 }
 
-/// The editable details of a Property: everything but its Unit, which is fixed on Add.
+impl From<&Cover> for CoverDraft {
+    fn from(cover: &Cover) -> Self {
+        Self {
+            insurer: cover.insurer.clone(),
+            policy_no: cover.policy_no.clone().unwrap_or_default(),
+            renews_on: cover.renews_on,
+            sum_insured: Some(cover.sum_insured.clone()),
+            item_limit: cover.item_limit.clone(),
+        }
+    }
+}
+
+/// The editable details of a Location: everything but its Unit, which is fixed on Add.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct PropertyDraft {
+pub struct LocationDraft {
     pub name: String,
     pub address: String,
     pub cover: CoverDraft,
 }
 
+impl From<&Location> for LocationDraft {
+    /// The Location as it is, so an edit that changes only some fields keeps the rest.
+    fn from(location: &Location) -> Self {
+        Self {
+            name: location.name.clone(),
+            address: location.address.clone(),
+            cover: location
+                .cover
+                .as_ref()
+                .map(CoverDraft::from)
+                .unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PropertyError {
+pub enum LocationError {
     Unknown,
     Name(NameError),
     Cover(CoverError),
@@ -198,16 +225,16 @@ pub enum PropertyError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RoomError {
-    UnknownProperty,
-    UnknownRoom,
+pub enum AreaError {
+    UnknownLocation,
+    UnknownArea,
     Name(NameError),
-    /// The Room holds Items and another Room of the Property must take them.
+    /// The Area holds Items and another Area of the Location must take them.
     NeedsDestination,
-    /// The destination is the Room itself, or not a Room of the same Property.
+    /// The destination is the Area itself, or not an Area of the same Location.
     BadDestination,
-    /// The Room holds Items and is the Property's only Room, so there is nowhere to move them.
-    LastRoomHoldsItems,
+    /// The Area holds Items and is the Location's only Area, so there is nowhere to move them.
+    LastAreaHoldsItems,
 }
 
 fn taken<'a>(mut names: impl Iterator<Item = &'a str>, name: &str) -> bool {
@@ -215,224 +242,224 @@ fn taken<'a>(mut names: impl Iterator<Item = &'a str>, name: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Property mutations
+// Location mutations
 // ---------------------------------------------------------------------------------------------
 
-/// What removing a Property took with it: the Rooms and Items the Ledger records as gone, and the
+/// What removing a Location took with it: the Areas and Items the Ledger records as gone, and the
 /// Items whose Document Links must drop.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemovedProperty {
-    pub rooms: Vec<RoomId>,
+pub struct RemovedLocation {
+    pub areas: Vec<AreaId>,
     /// The ids of the Items that went with it.
     pub items: Vec<ItemId>,
 }
 
-/// What removing a Room changed beyond the Room itself: the Items it moved to the destination.
+/// What removing an Area changed beyond the Area itself: the Items it moved to the destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemovedRoom {
+pub struct RemovedArea {
     pub moved_items: Vec<ItemId>,
 }
 
 /// The Inventory's writes. Each refuses before it changes anything, and reports the rows it
 /// changed so the Ledger can record them (ADR-0039).
 impl Inventory {
-    /// Adds a Property with no Rooms and returns its id.
-    pub fn add_property(
+    /// Adds a Location with no Areas and returns its id.
+    pub fn add_location(
         &mut self,
-        draft: &PropertyDraft,
+        draft: &LocationDraft,
         unit: &str,
-    ) -> Result<PropertyId, PropertyError> {
+    ) -> Result<LocationId, LocationError> {
         if unit.trim().is_empty() {
-            return Err(PropertyError::UnitMissing);
+            return Err(LocationError::UnitMissing);
         }
         let (name, cover) = checked(self, None, draft)?;
-        let id = PropertyId::new();
-        self.properties.push(Property {
+        let id = LocationId::new();
+        self.locations.push(Location {
             id,
             name,
             address: draft.address.trim().to_string(),
             unit: unit.to_string(),
             cover,
-            rooms: Vec::new(),
+            areas: Vec::new(),
         });
         Ok(id)
     }
 
     /// Edits everything but the Unit.
-    pub fn edit_property(
+    pub fn edit_location(
         &mut self,
-        id: PropertyId,
-        draft: &PropertyDraft,
-    ) -> Result<(), PropertyError> {
+        id: LocationId,
+        draft: &LocationDraft,
+    ) -> Result<(), LocationError> {
         let (name, cover) = checked(self, Some(id), draft)?;
-        let property = self
-            .properties
+        let location = self
+            .locations
             .iter_mut()
-            .find(|p| p.id == id)
-            .ok_or(PropertyError::Unknown)?;
-        property.name = name;
-        property.address = draft.address.trim().to_string();
-        property.cover = cover;
+            .find(|l| l.id == id)
+            .ok_or(LocationError::Unknown)?;
+        location.name = name;
+        location.address = draft.address.trim().to_string();
+        location.cover = cover;
         Ok(())
     }
 
-    /// Removes a Property, its Rooms and its Items, and reports each. The last Property may go.
-    pub fn remove_property(&mut self, id: PropertyId) -> Result<RemovedProperty, PropertyError> {
+    /// Removes a Location, its Areas and its Items, and reports each. The last Location may go.
+    pub fn remove_location(&mut self, id: LocationId) -> Result<RemovedLocation, LocationError> {
         let at = self
-            .properties
+            .locations
             .iter()
-            .position(|p| p.id == id)
-            .ok_or(PropertyError::Unknown)?;
-        let removed = self.properties.remove(at);
+            .position(|l| l.id == id)
+            .ok_or(LocationError::Unknown)?;
+        let removed = self.locations.remove(at);
         let items = self
             .items
             .iter()
-            .filter(|i| i.property == id)
+            .filter(|i| i.location == id)
             .map(|i| i.id)
             .collect();
-        self.items.retain(|i| i.property != id);
-        Ok(RemovedProperty {
-            rooms: removed.rooms.iter().map(|r| r.id).collect(),
+        self.items.retain(|i| i.location != id);
+        Ok(RemovedLocation {
+            areas: removed.areas.iter().map(|a| a.id).collect(),
             items,
         })
     }
 
-    /// Adds a Room at the end of the Property's tabs and returns its id.
-    pub fn add_room(&mut self, property: PropertyId, name: &str) -> Result<RoomId, RoomError> {
-        let id = RoomId::new();
-        let property = self
-            .properties
+    /// Adds an Area at the end of the Location's tabs and returns its id.
+    pub fn add_area(&mut self, location: LocationId, name: &str) -> Result<AreaId, AreaError> {
+        let id = AreaId::new();
+        let location = self
+            .locations
             .iter_mut()
-            .find(|p| p.id == property)
-            .ok_or(RoomError::UnknownProperty)?;
-        let name = checked_room_name(property, None, name)?;
-        property.rooms.push(Room { id, name });
+            .find(|l| l.id == location)
+            .ok_or(AreaError::UnknownLocation)?;
+        let name = checked_area_name(location, None, name)?;
+        location.areas.push(Area { id, name });
         Ok(id)
     }
 
-    /// Renames a Room. Nothing else about a Room is editable: it never changes Property.
-    pub fn edit_room(&mut self, room: RoomId, name: &str) -> Result<(), RoomError> {
-        let property = self
-            .properties
+    /// Renames an Area. Nothing else about an Area is editable: it never changes Location.
+    pub fn edit_area(&mut self, area: AreaId, name: &str) -> Result<(), AreaError> {
+        let location = self
+            .locations
             .iter_mut()
-            .find(|p| p.rooms.iter().any(|r| r.id == room))
-            .ok_or(RoomError::UnknownRoom)?;
-        let name = checked_room_name(property, Some(room), name)?;
-        if let Some(r) = property.rooms.iter_mut().find(|r| r.id == room) {
-            r.name = name;
+            .find(|l| l.areas.iter().any(|a| a.id == area))
+            .ok_or(AreaError::UnknownArea)?;
+        let name = checked_area_name(location, Some(area), name)?;
+        if let Some(a) = location.areas.iter_mut().find(|a| a.id == area) {
+            a.name = name;
         }
         Ok(())
     }
 
-    /// Removes a Room. An empty one just goes; one with Items moves them to `destination`, which
-    /// must be another Room of the same Property. Reports the Items it moved.
-    pub fn remove_room(
+    /// Removes an Area. An empty one just goes; one with Items moves them to `destination`, which
+    /// must be another Area of the same Location. Reports the Items it moved.
+    pub fn remove_area(
         &mut self,
-        room: RoomId,
-        destination: Option<RoomId>,
-    ) -> Result<RemovedRoom, RoomError> {
-        let (property, _) = self.room(room).ok_or(RoomError::UnknownRoom)?;
-        let property_id = property.id;
+        area: AreaId,
+        destination: Option<AreaId>,
+    ) -> Result<RemovedArea, AreaError> {
+        let (location, _) = self.area(area).ok_or(AreaError::UnknownArea)?;
+        let location_id = location.id;
         let mut moved_items = Vec::new();
-        if self.room_items(room) > 0 {
-            if property.rooms.len() == 1 {
-                return Err(RoomError::LastRoomHoldsItems);
+        if self.area_items(area) > 0 {
+            if location.areas.len() == 1 {
+                return Err(AreaError::LastAreaHoldsItems);
             }
-            let to = destination.ok_or(RoomError::NeedsDestination)?;
-            if to == room || !property.rooms.iter().any(|r| r.id == to) {
-                return Err(RoomError::BadDestination);
+            let to = destination.ok_or(AreaError::NeedsDestination)?;
+            if to == area || !location.areas.iter().any(|a| a.id == to) {
+                return Err(AreaError::BadDestination);
             }
-            for item in self.items.iter_mut().filter(|i| i.room == room) {
-                item.room = to;
+            for item in self.items.iter_mut().filter(|i| i.area == area) {
+                item.area = to;
                 moved_items.push(item.id);
             }
         }
-        if let Some(p) = self.properties.iter_mut().find(|p| p.id == property_id) {
-            p.rooms.retain(|r| r.id != room);
+        if let Some(l) = self.locations.iter_mut().find(|l| l.id == location_id) {
+            l.areas.retain(|a| a.id != area);
         }
-        Ok(RemovedRoom { moved_items })
+        Ok(RemovedArea { moved_items })
     }
 
-    /// Moves a Room down (`delta` > 0) or up within its own Property, stopping at the ends.
-    /// Returns the Room and the neighbour it swapped with, or `None` when nothing moved.
-    pub fn move_room(&mut self, room: RoomId, delta: isize) -> Option<[RoomId; 2]> {
-        let property = self
-            .properties
+    /// Moves an Area down (`delta` > 0) or up within its own Location, stopping at the ends.
+    /// Returns the Area and the neighbour it swapped with, or `None` when nothing moved.
+    pub fn move_area(&mut self, area: AreaId, delta: isize) -> Option<[AreaId; 2]> {
+        let location = self
+            .locations
             .iter_mut()
-            .find(|p| p.rooms.iter().any(|r| r.id == room))?;
-        let from = property.rooms.iter().position(|r| r.id == room)?;
+            .find(|l| l.areas.iter().any(|a| a.id == area))?;
+        let from = location.areas.iter().position(|a| a.id == area)?;
         let to = from
             .checked_add_signed(delta)
-            .filter(|&to| to < property.rooms.len())?;
+            .filter(|&to| to < location.areas.len())?;
         if from == to {
             return None;
         }
-        property.rooms.swap(from, to);
-        Some([room, property.rooms[from].id])
+        location.areas.swap(from, to);
+        Some([area, location.areas[from].id])
     }
 }
 
 fn checked(
     inventory: &Inventory,
-    own_id: Option<PropertyId>,
-    draft: &PropertyDraft,
-) -> Result<(String, Option<Cover>), PropertyError> {
+    own_id: Option<LocationId>,
+    draft: &LocationDraft,
+) -> Result<(String, Option<Cover>), LocationError> {
     if let Some(id) = own_id
-        && inventory.property(id).is_none()
+        && inventory.location(id).is_none()
     {
-        return Err(PropertyError::Unknown);
+        return Err(LocationError::Unknown);
     }
     let name = draft.name.trim();
     if name.is_empty() {
-        return Err(PropertyError::Name(NameError::Empty));
+        return Err(LocationError::Name(NameError::Empty));
     }
     let others = inventory
-        .properties
+        .locations
         .iter()
-        .filter(|p| Some(p.id) != own_id)
-        .map(|p| p.name.as_str());
+        .filter(|l| Some(l.id) != own_id)
+        .map(|l| l.name.as_str());
     if taken(others, name) {
-        return Err(PropertyError::Name(NameError::Taken));
+        return Err(LocationError::Name(NameError::Taken));
     }
-    let cover = draft.cover.validate().map_err(PropertyError::Cover)?;
+    let cover = draft.cover.validate().map_err(LocationError::Cover)?;
     Ok((name.to_string(), cover))
 }
 
-fn checked_room_name(
-    property: &Property,
-    own_id: Option<RoomId>,
+fn checked_area_name(
+    location: &Location,
+    own_id: Option<AreaId>,
     name: &str,
-) -> Result<String, RoomError> {
+) -> Result<String, AreaError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(RoomError::Name(NameError::Empty));
+        return Err(AreaError::Name(NameError::Empty));
     }
-    let others = property
-        .rooms
+    let others = location
+        .areas
         .iter()
-        .filter(|r| Some(r.id) != own_id)
-        .map(|r| r.name.as_str());
+        .filter(|a| Some(a.id) != own_id)
+        .map(|a| a.name.as_str());
     if taken(others, name) {
-        return Err(RoomError::Name(NameError::Taken));
+        return Err(AreaError::Name(NameError::Taken));
     }
     Ok(name.to_string())
 }
 
-/// The Room the remove dialog pre-selects: the one above, or the one below when it is first.
-pub fn default_destination(inventory: &Inventory, room: RoomId) -> Option<RoomId> {
-    let (property, _) = inventory.room(room)?;
-    let at = property.rooms.iter().position(|r| r.id == room)?;
+/// The Area the remove dialog pre-selects: the one above, or the one below when it is first.
+pub fn default_destination(inventory: &Inventory, area: AreaId) -> Option<AreaId> {
+    let (location, _) = inventory.area(area)?;
+    let at = location.areas.iter().position(|a| a.id == area)?;
     let other = at.checked_sub(1).unwrap_or(1);
-    property.rooms.get(other).map(|r| r.id)
+    location.areas.get(other).map(|a| a.id)
 }
 
 // ---------------------------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------------------------
 
-/// One seeded Room: its 16q count and total in whole dollars, and the hand-written Items in it
+/// One seeded Area: its 16q count and total in whole dollars, and the hand-written Items in it
 /// (`(id, name, dollars)`). The filler makes up the rest of both, exactly.
-struct RoomSeed {
+struct AreaSeed {
     name: &'static str,
     count: u32,
     total: i64,
@@ -442,8 +469,8 @@ struct RoomSeed {
 /// Filler Items take ids from here, clear of the hand-written ones.
 const FILLER_ID_START: u32 = 100;
 
-const ELM_ST: &[RoomSeed] = &[
-    RoomSeed {
+const ELM_ST: &[AreaSeed] = &[
+    AreaSeed {
         name: "Living",
         count: 38,
         total: 24_150,
@@ -453,7 +480,7 @@ const ELM_ST: &[RoomSeed] = &[
             (8, "Three-seat sofa", 3_200),
         ],
     },
-    RoomSeed {
+    AreaSeed {
         name: "Kitchen",
         count: 46,
         total: 22_310,
@@ -463,8 +490,8 @@ const ELM_ST: &[RoomSeed] = &[
             (10, "Induction cooktop", 1_900),
         ],
     },
-    RoomSeed {
-        name: "Bedroom 1",
+    AreaSeed {
+        name: "Bedarea 1",
         count: 24,
         total: 18_420,
         named: &[
@@ -472,19 +499,19 @@ const ELM_ST: &[RoomSeed] = &[
             (11, "King bed and mattress", 3_600),
         ],
     },
-    RoomSeed {
-        name: "Bedroom 2",
+    AreaSeed {
+        name: "Bedarea 2",
         count: 16,
         total: 8_060,
         named: &[(12, "Queen bed and mattress", 2_400)],
     },
-    RoomSeed {
-        name: "Bedroom 3",
+    AreaSeed {
+        name: "Bedarea 3",
         count: 12,
         total: 5_540,
         named: &[(13, "Single bed and mattress", 1_200)],
     },
-    RoomSeed {
+    AreaSeed {
         name: "Office",
         count: 19,
         total: 15_240,
@@ -494,7 +521,7 @@ const ELM_ST: &[RoomSeed] = &[
             (15, "Standing desk", 1_100),
         ],
     },
-    RoomSeed {
+    AreaSeed {
         name: "Garage",
         count: 27,
         total: 15_060,
@@ -503,19 +530,19 @@ const ELM_ST: &[RoomSeed] = &[
             (16, "Cordless tool set", 1_250),
         ],
     },
-    RoomSeed {
+    AreaSeed {
         name: "Laundry",
         count: 11,
         total: 3_120,
         named: &[(17, "Washing machine", 1_150), (18, "Dryer", 900)],
     },
-    RoomSeed {
-        name: "Bathroom",
+    AreaSeed {
+        name: "Batharea",
         count: 9,
         total: 1_880,
         named: &[(19, "Heated towel rail", 420)],
     },
-    RoomSeed {
+    AreaSeed {
         name: "Outdoor & shed",
         count: 12,
         total: 49_700,
@@ -527,7 +554,7 @@ const ELM_ST: &[RoomSeed] = &[
     },
 ];
 
-const STORAGE_UNIT: &[RoomSeed] = &[RoomSeed {
+const STORAGE_UNIT: &[AreaSeed] = &[AreaSeed {
     name: "Storage",
     count: 18,
     total: 6_200,
@@ -536,6 +563,28 @@ const STORAGE_UNIT: &[RoomSeed] = &[RoomSeed {
         (24, "Spare mattress", 450),
     ],
 }];
+
+/// A vehicle: its Areas are the places in it where things sit.
+const HILUX: &[AreaSeed] = &[
+    AreaSeed {
+        name: "Cab",
+        count: 3,
+        total: 1_450,
+        named: &[(25, "Dash camera", 380)],
+    },
+    AreaSeed {
+        name: "Tray",
+        count: 2,
+        total: 2_300,
+        named: &[(26, "Tray canopy", 1_900)],
+    },
+    AreaSeed {
+        name: "Toolbox",
+        count: 4,
+        total: 3_100,
+        named: &[(27, "Recovery kit", 650)],
+    },
+];
 
 fn dollars(amount: i64) -> Money {
     Money(BigDecimal::new(amount.saturating_mul(100).into(), 2))
@@ -557,42 +606,42 @@ fn filler_amounts(count: usize, remaining: i64) -> Vec<i64> {
     amounts
 }
 
-fn seed_property(
+fn seed_location(
     inventory: &mut Inventory,
     next_filler_id: &mut u32,
     name: &str,
     address: &str,
-    cover: Cover,
-    rooms: &[RoomSeed],
+    cover: Option<Cover>,
+    areas: &[AreaSeed],
 ) {
-    let property_id =
-        PropertyId::seed(u32::try_from(inventory.properties.len() + 1).unwrap_or_default());
-    let mut property = Property {
-        id: property_id,
+    let location_id =
+        LocationId::seed(u32::try_from(inventory.locations.len() + 1).unwrap_or_default());
+    let mut location = Location {
+        id: location_id,
         name: name.to_string(),
         address: address.to_string(),
         unit: "aud".to_string(),
-        cover: Some(cover),
-        rooms: Vec::new(),
+        cover,
+        areas: Vec::new(),
     };
-    for seed in rooms {
-        let rooms_so_far = inventory
-            .properties
+    for seed in areas {
+        let areas_so_far = inventory
+            .locations
             .iter()
-            .map(|p| p.rooms.len())
+            .map(|l| l.areas.len())
             .sum::<usize>()
-            + property.rooms.len();
-        let room_id = RoomId::seed(u32::try_from(rooms_so_far + 1).unwrap_or_default());
-        property.rooms.push(Room {
-            id: room_id,
+            + location.areas.len();
+        let area_id = AreaId::seed(u32::try_from(areas_so_far + 1).unwrap_or_default());
+        location.areas.push(Area {
+            id: area_id,
             name: seed.name.to_string(),
         });
         let named_total: i64 = seed.named.iter().map(|(_, _, d)| d).sum();
         for (id, item, amount) in seed.named {
             inventory.items.push(Item {
                 id: ItemId::seed(*id),
-                property: property_id,
-                room: room_id,
+                location: location_id,
+                area: area_id,
                 name: (*item).to_string(),
                 replacement: dollars(*amount),
             });
@@ -606,52 +655,60 @@ fn seed_property(
         {
             inventory.items.push(Item {
                 id: ItemId::seed(*next_filler_id),
-                property: property_id,
-                room: room_id,
+                location: location_id,
+                area: area_id,
                 name: format!("{} item {}", seed.name, k + 1),
                 replacement: dollars(amount),
             });
             *next_filler_id += 1;
         }
     }
-    // The rooms were not in `inventory` yet when their ids were allocated, so push them now.
-    inventory.properties.push(property);
+    // The areas were not in `inventory` yet when their ids were allocated, so push them now.
+    inventory.locations.push(location);
 }
 
-/// The two stub Properties (`16q`'s 12 Elm St contents and Storage unit) with their 11 Rooms and
-/// 232 Items. 12 Elm St holds 214 Items worth 163,480; the Storage unit 18, worth 6,200, under
-/// its own copy of the NRMA policy number.
+/// The three stub Locations (`16q`'s 12 Elm St contents, Storage unit and Hilux) with their 14
+/// Areas and 241 Items. 12 Elm St holds 214 Items worth 163,480; the Storage unit 18, worth 6,200,
+/// under its own copy of the NRMA policy number; the Hilux, a vehicle with no cover, 9 worth 6,850.
 pub fn default_inventory(today: NaiveDate) -> Inventory {
     let mut inventory = Inventory::default();
     let mut next_filler_id = FILLER_ID_START;
     let renews = today + chrono::Duration::days(45);
-    seed_property(
+    seed_location(
         &mut inventory,
         &mut next_filler_id,
         "12 Elm St contents",
         "12 Elm St, Ainslie ACT",
-        Cover {
+        Some(Cover {
             insurer: "NRMA".to_string(),
             policy_no: Some("HC-4471902".to_string()),
             renews_on: Some(renews),
             sum_insured: dollars(150_000),
             item_limit: Some(dollars(2_000)),
-        },
+        }),
         ELM_ST,
     );
-    seed_property(
+    seed_location(
         &mut inventory,
         &mut next_filler_id,
         "Storage unit",
         "Kennards, Unit 114 \u{b7} Mitchell ACT",
-        Cover {
+        Some(Cover {
             insurer: "NRMA".to_string(),
             policy_no: Some("HC-4471902".to_string()),
             renews_on: Some(renews),
             sum_insured: dollars(20_000),
             item_limit: Some(dollars(1_000)),
-        },
+        }),
         STORAGE_UNIT,
+    );
+    seed_location(
+        &mut inventory,
+        &mut next_filler_id,
+        "Hilux",
+        "Rego YHL 482 \u{b7} ACT",
+        None,
+        HILUX,
     );
     inventory
 }
@@ -668,23 +725,23 @@ mod tests {
         default_inventory(today())
     }
 
-    fn room_id(inv: &Inventory, property: &str, room: &str) -> RoomId {
-        inv.properties
+    fn area_id(inv: &Inventory, location: &str, area: &str) -> AreaId {
+        inv.locations
             .iter()
-            .find(|p| p.name == property)
-            .and_then(|p| p.rooms.iter().find(|r| r.name == room))
+            .find(|l| l.name == location)
+            .and_then(|l| l.areas.iter().find(|a| a.name == area))
             .unwrap()
             .id
     }
 
-    fn property_id(inv: &Inventory, name: &str) -> PropertyId {
-        inv.properties.iter().find(|p| p.name == name).unwrap().id
+    fn location_id(inv: &Inventory, name: &str) -> LocationId {
+        inv.locations.iter().find(|l| l.name == name).unwrap().id
     }
 
-    fn draft(name: &str) -> PropertyDraft {
-        PropertyDraft {
+    fn draft(name: &str) -> LocationDraft {
+        LocationDraft {
             name: name.to_string(),
-            ..PropertyDraft::default()
+            ..LocationDraft::default()
         }
     }
 
@@ -702,15 +759,15 @@ mod tests {
     #[test]
     fn writes_land_in_the_inventory_it_reads() {
         let mut service = seed();
-        let before = service.properties.len();
+        let before = service.locations.len();
 
-        let property = service.add_property(&draft("Beach shack"), "nzd").unwrap();
-        let room = service.add_room(property, "Deck").unwrap();
-        service.edit_room(room, "Verandah").unwrap();
+        let location = service.add_location(&draft("Beach shack"), "nzd").unwrap();
+        let area = service.add_area(location, "Deck").unwrap();
+        service.edit_area(area, "Verandah").unwrap();
 
         let inv = service;
-        assert_eq!(inv.properties.len(), before + 1);
-        assert_eq!(inv.room(room).unwrap().1.name, "Verandah");
+        assert_eq!(inv.locations.len(), before + 1);
+        assert_eq!(inv.area(area).unwrap().1.name, "Verandah");
     }
 
     #[test]
@@ -719,86 +776,107 @@ mod tests {
         let before = service.clone();
 
         assert_eq!(
-            service.add_room(PropertyId::seed(9_999), "Nowhere"),
-            Err(RoomError::UnknownProperty)
+            service.add_area(LocationId::seed(9_999), "Nowhere"),
+            Err(AreaError::UnknownLocation)
         );
         assert_eq!(
             service
-                .remove_property(PropertyId::seed(9_999))
+                .remove_location(LocationId::seed(9_999))
                 .unwrap_err(),
-            PropertyError::Unknown
+            LocationError::Unknown
         );
-        assert!(service.move_room(RoomId::seed(9_999), 1).is_none());
+        assert!(service.move_area(AreaId::seed(9_999), 1).is_none());
 
         assert_eq!(&service, &before);
     }
 
     #[test]
-    fn remove_property_reports_the_items_it_took() {
+    fn remove_location_reports_the_items_it_took() {
         let mut service = seed();
-        let elm = property_id(&service, "12 Elm St contents");
+        let elm = location_id(&service, "12 Elm St contents");
         let expected: Vec<ItemId> = service
             .items
             .iter()
-            .filter(|item| item.property == elm)
+            .filter(|item| item.location == elm)
             .map(|item| item.id)
             .collect();
 
-        let removed = service.remove_property(elm).unwrap();
+        let removed = service.remove_location(elm).unwrap();
 
         assert_eq!(removed.items, expected);
-        assert!(service.property(elm).is_none());
+        assert!(service.location(elm).is_none());
     }
 
     // --- seed -------------------------------------------------------------------------------
 
     #[test]
-    fn seed_holds_232_items_across_two_properties_and_eleven_rooms() {
+    fn seed_holds_241_items_across_three_locations_and_fourteen_areas() {
         let inv = seed();
-        assert_eq!(inv.property_count(), 2);
-        assert_eq!(inv.room_count(), 11);
-        assert_eq!(inv.item_count(), 232);
+        assert_eq!(inv.location_count(), 3);
+        assert_eq!(inv.area_count(), 14);
+        assert_eq!(inv.item_count(), 241);
         assert_eq!(
-            inv.property_items(property_id(&inv, "12 Elm St contents")),
+            inv.location_items(location_id(&inv, "12 Elm St contents")),
             214
         );
-        assert_eq!(inv.property_items(property_id(&inv, "Storage unit")), 18);
+        assert_eq!(inv.location_items(location_id(&inv, "Storage unit")), 18);
         assert_eq!(
-            inv.property_value(property_id(&inv, "12 Elm St contents")),
+            inv.location_value(location_id(&inv, "12 Elm St contents")),
             dollars(163_480)
         );
         assert_eq!(
-            inv.property_value(property_id(&inv, "Storage unit")),
+            inv.location_value(location_id(&inv, "Storage unit")),
             dollars(6_200)
         );
+        assert_eq!(inv.location_items(location_id(&inv, "Hilux")), 9);
     }
 
     #[test]
-    fn seed_rooms_hit_16q_counts_and_totals_in_tab_order() {
+    fn seed_hilux_is_a_vehicle_with_three_areas_and_no_cover() {
+        let inv = seed();
+        let hilux = inv.location(location_id(&inv, "Hilux")).unwrap();
+        let areas: Vec<_> = hilux
+            .areas
+            .iter()
+            .map(|a| (a.name.as_str(), inv.area_items(a.id), inv.area_value(a.id)))
+            .collect();
+        assert_eq!(
+            areas,
+            [
+                ("Cab", 3, dollars(1_450)),
+                ("Tray", 2, dollars(2_300)),
+                ("Toolbox", 4, dollars(3_100)),
+            ]
+        );
+        assert_eq!(hilux.cover, None);
+    }
+
+    #[test]
+    fn seed_areas_hit_16q_counts_and_totals_in_tab_order() {
         let inv = seed();
         let elm = inv
-            .property(property_id(&inv, "12 Elm St contents"))
+            .location(location_id(&inv, "12 Elm St contents"))
             .unwrap();
-        let rooms: Vec<_> = elm
-            .rooms
+        let areas: Vec<_> = elm
+            .areas
             .iter()
-            .map(|r| (r.name.as_str(), inv.room_items(r.id), inv.room_value(r.id)))
+            .map(|a| (a.name.as_str(), inv.area_items(a.id), inv.area_value(a.id)))
             .collect();
         let expected = [
             ("Living", 38, 24_150),
             ("Kitchen", 46, 22_310),
-            ("Bedroom 1", 24, 18_420),
-            ("Bedroom 2", 16, 8_060),
-            ("Bedroom 3", 12, 5_540),
+            ("Bedarea 1", 24, 18_420),
+            ("Bedarea 2", 16, 8_060),
+            ("Bedarea 3", 12, 5_540),
             ("Office", 19, 15_240),
             ("Garage", 27, 15_060),
             ("Laundry", 11, 3_120),
-            ("Bathroom", 9, 1_880),
+            ("Batharea", 9, 1_880),
             ("Outdoor & shed", 12, 49_700),
         ];
-        assert_eq!(rooms.len(), expected.len());
+        assert_eq!(areas.len(), expected.len());
         for ((name, count, value), (want_name, want_count, want_value)) in
-            rooms.iter().zip(expected)
+            areas.iter().zip(expected)
         {
             assert_eq!(*name, want_name);
             assert_eq!(*count, want_count, "{name} count");
@@ -807,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn seed_items_have_unique_ids_and_positive_values_in_their_own_property() {
+    fn seed_items_have_unique_ids_and_positive_values_in_their_own_location() {
         let inv = seed();
         let mut ids: Vec<_> = inv.items.iter().map(|i| i.id).collect();
         ids.sort_unstable();
@@ -815,10 +893,10 @@ mod tests {
         assert_eq!(ids.len(), inv.items.len());
         for item in &inv.items {
             assert!(item.replacement.0 > 0, "{}", item.name);
-            let (property, _) = inv.room(item.room).unwrap();
+            let (location, _) = inv.area(item.area).unwrap();
             assert_eq!(
-                property.id, item.property,
-                "{} is in its Room's Property",
+                location.id, item.location,
+                "{} is in its Area's Location",
                 item.name
             );
         }
@@ -830,14 +908,14 @@ mod tests {
         let named = [
             (2, "Sony A7 IV", "Office"),
             (3, "Fridge", "Kitchen"),
-            (4, "Engagement ring", "Bedroom 1"),
+            (4, "Engagement ring", "Bedarea 1"),
             (5, "Sonos Era 100", "Living"),
             (6, "Toyota Corolla", "Garage"),
         ];
-        for (id, name, room) in named {
+        for (id, name, area) in named {
             let item = inv.item(ItemId::seed(id)).unwrap();
             assert_eq!(item.name, name);
-            assert_eq!(inv.room(item.room).unwrap().1.name, room);
+            assert_eq!(inv.area(item.area).unwrap().1.name, area);
         }
         assert!(inv.items.iter().all(|i| i.name != "12 Elm St contents"));
     }
@@ -845,7 +923,7 @@ mod tests {
     #[test]
     fn seed_storage_unit_cover_reads_the_nrma_policy() {
         let inv = seed();
-        let storage = inv.property(property_id(&inv, "Storage unit")).unwrap();
+        let storage = inv.location(location_id(&inv, "Storage unit")).unwrap();
         let cover = storage.cover.as_ref().unwrap();
         assert_eq!(cover.insurer, "NRMA");
         assert_eq!(cover.policy_no.as_deref(), Some("HC-4471902"));
@@ -866,101 +944,115 @@ mod tests {
     // --- derived queries --------------------------------------------------------------------
 
     #[test]
-    fn an_empty_or_unknown_room_is_zero_items_and_zero_value() {
+    fn an_empty_or_unknown_area_is_zero_items_and_zero_value() {
         let mut inv = seed();
-        let storage = property_id(&inv, "Storage unit");
-        let spare = inv.add_room(storage, "Spare").unwrap();
-        assert_eq!(inv.room_items(spare), 0);
-        assert_eq!(inv.room_value(spare), zero());
-        assert_eq!(inv.room_items(RoomId::seed(9_999)), 0);
-        assert_eq!(inv.room_value(RoomId::seed(9_999)), zero());
+        let storage = location_id(&inv, "Storage unit");
+        let spare = inv.add_area(storage, "Spare").unwrap();
+        assert_eq!(inv.area_items(spare), 0);
+        assert_eq!(inv.area_value(spare), zero());
+        assert_eq!(inv.area_items(AreaId::seed(9_999)), 0);
+        assert_eq!(inv.area_value(AreaId::seed(9_999)), zero());
     }
 
-    // --- property mutations -----------------------------------------------------------------
+    // --- location mutations -----------------------------------------------------------------
 
     #[test]
-    fn add_property_starts_with_no_rooms_and_fixes_the_unit() {
+    fn add_location_starts_with_no_areas_and_fixes_the_unit() {
         let mut inv = seed();
-        let id = inv.add_property(&draft("  Beach shack "), "nzd").unwrap();
-        let property = inv.property(id).unwrap();
-        assert_eq!(property.name, "Beach shack");
-        assert_eq!(property.unit, "nzd");
-        assert!(property.rooms.is_empty());
-        assert_eq!(property.cover, None);
-        assert_eq!(inv.property_count(), 3);
-    }
-
-    #[test]
-    fn add_property_refuses_empty_taken_and_unitless() {
-        let mut inv = seed();
-        assert_eq!(
-            inv.add_property(&draft("  "), "aud"),
-            Err(PropertyError::Name(NameError::Empty))
-        );
-        assert_eq!(
-            inv.add_property(&draft("storage UNIT"), "aud"),
-            Err(PropertyError::Name(NameError::Taken))
-        );
-        assert_eq!(
-            inv.add_property(&draft("Beach shack"), " "),
-            Err(PropertyError::UnitMissing)
-        );
-        assert_eq!(inv.property_count(), 2);
+        let id = inv.add_location(&draft("  Beach shack "), "nzd").unwrap();
+        let location = inv.location(id).unwrap();
+        assert_eq!(location.name, "Beach shack");
+        assert_eq!(location.unit, "nzd");
+        assert!(location.areas.is_empty());
+        assert_eq!(location.cover, None);
+        assert_eq!(inv.location_count(), 4);
     }
 
     #[test]
-    fn edit_property_changes_details_but_never_the_unit() {
+    fn add_location_refuses_empty_taken_and_unitless() {
         let mut inv = seed();
-        let id = property_id(&inv, "Storage unit");
+        assert_eq!(
+            inv.add_location(&draft("  "), "aud"),
+            Err(LocationError::Name(NameError::Empty))
+        );
+        assert_eq!(
+            inv.add_location(&draft("storage UNIT"), "aud"),
+            Err(LocationError::Name(NameError::Taken))
+        );
+        assert_eq!(
+            inv.add_location(&draft("Beach shack"), " "),
+            Err(LocationError::UnitMissing)
+        );
+        assert_eq!(inv.location_count(), 3);
+    }
+
+    #[test]
+    fn edit_location_changes_details_but_never_the_unit() {
+        let mut inv = seed();
+        let id = location_id(&inv, "Storage unit");
         let mut edit = draft("Storage");
         edit.address = " Fyshwick ".to_string();
-        inv.edit_property(id, &edit).unwrap();
-        let property = inv.property(id).unwrap();
-        assert_eq!(property.name, "Storage");
-        assert_eq!(property.address, "Fyshwick");
-        assert_eq!(property.unit, "aud");
-        assert_eq!(property.cover, None, "an empty insurer clears the cover");
+        inv.edit_location(id, &edit).unwrap();
+        let location = inv.location(id).unwrap();
+        assert_eq!(location.name, "Storage");
+        assert_eq!(location.address, "Fyshwick");
+        assert_eq!(location.unit, "aud");
+        assert_eq!(location.cover, None, "an empty insurer clears the cover");
     }
 
     #[test]
-    fn edit_property_may_keep_its_own_name_but_not_take_anothers() {
+    fn a_draft_from_the_location_renames_it_and_keeps_its_address_and_cover() {
         let mut inv = seed();
-        let id = property_id(&inv, "Storage unit");
-        assert_eq!(inv.edit_property(id, &draft("STORAGE unit")), Ok(()));
+        let id = location_id(&inv, "12 Elm St contents");
+        let before = inv.location(id).unwrap().clone();
+        let mut rename = LocationDraft::from(&before);
+        rename.name = "Elm St".to_string();
+        inv.edit_location(id, &rename).unwrap();
+        let after = inv.location(id).unwrap();
+        assert_eq!(after.name, "Elm St");
+        assert_eq!(after.address, before.address);
+        assert_eq!(after.cover, before.cover);
+    }
+
+    #[test]
+    fn edit_location_may_keep_its_own_name_but_not_take_anothers() {
+        let mut inv = seed();
+        let id = location_id(&inv, "Storage unit");
+        assert_eq!(inv.edit_location(id, &draft("STORAGE unit")), Ok(()));
         assert_eq!(
-            inv.edit_property(id, &draft("12 elm st contents")),
-            Err(PropertyError::Name(NameError::Taken))
+            inv.edit_location(id, &draft("12 elm st contents")),
+            Err(LocationError::Name(NameError::Taken))
         );
         assert_eq!(
-            inv.edit_property(PropertyId::seed(999), &draft("Anything")),
-            Err(PropertyError::Unknown)
+            inv.edit_location(LocationId::seed(999), &draft("Anything")),
+            Err(LocationError::Unknown)
         );
     }
 
     #[test]
-    fn remove_property_takes_its_rooms_and_items_and_reports_the_item_ids() {
+    fn remove_location_takes_its_areas_and_items_and_reports_the_item_ids() {
         let mut inv = seed();
-        let storage = property_id(&inv, "Storage unit");
+        let storage = location_id(&inv, "Storage unit");
         let expected: Vec<ItemId> = inv
             .items
             .iter()
-            .filter(|i| i.property == storage)
+            .filter(|i| i.location == storage)
             .map(|i| i.id)
             .collect();
-        let removed = inv.remove_property(storage).unwrap();
+        let removed = inv.remove_location(storage).unwrap();
         assert_eq!(removed.items, expected);
         assert_eq!(removed.items.len(), 18);
-        assert_eq!(inv.property_count(), 1);
-        assert_eq!(inv.room_count(), 10);
-        assert_eq!(inv.item_count(), 214);
-        assert_eq!(inv.remove_property(storage), Err(PropertyError::Unknown));
+        assert_eq!(inv.location_count(), 2);
+        assert_eq!(inv.area_count(), 13);
+        assert_eq!(inv.item_count(), 223);
+        assert_eq!(inv.remove_location(storage), Err(LocationError::Unknown));
     }
 
     #[test]
-    fn the_last_property_may_be_removed() {
+    fn the_last_location_may_be_removed() {
         let mut inv = seed();
-        for id in inv.properties.iter().map(|p| p.id).collect::<Vec<_>>() {
-            inv.remove_property(id).unwrap();
+        for id in inv.locations.iter().map(|l| l.id).collect::<Vec<_>>() {
+            inv.remove_location(id).unwrap();
         }
         assert_eq!(inv, Inventory::default());
     }
@@ -1018,52 +1110,52 @@ mod tests {
     }
 
     #[test]
-    fn a_bad_cover_refuses_the_whole_property_change() {
+    fn a_bad_cover_refuses_the_whole_location_change() {
         let mut inv = seed();
         let mut bad = draft("Beach shack");
         bad.cover = cover("NRMA", Some(100), Some(500));
         assert_eq!(
-            inv.add_property(&bad, "aud"),
-            Err(PropertyError::Cover(CoverError::LimitAboveSum))
+            inv.add_location(&bad, "aud"),
+            Err(LocationError::Cover(CoverError::LimitAboveSum))
         );
-        assert_eq!(inv.property_count(), 2);
+        assert_eq!(inv.location_count(), 3);
     }
 
-    // --- room mutations ---------------------------------------------------------------------
+    // --- area mutations ---------------------------------------------------------------------
 
     #[test]
-    fn add_room_appends_and_names_are_unique_per_property_ignoring_case() {
+    fn add_area_appends_and_names_are_unique_per_location_ignoring_case() {
         let mut inv = seed();
-        let elm = property_id(&inv, "12 Elm St contents");
-        let storage = property_id(&inv, "Storage unit");
-        let id = inv.add_room(elm, " Attic ").unwrap();
-        assert_eq!(inv.property(elm).unwrap().rooms.last().unwrap().id, id);
+        let elm = location_id(&inv, "12 Elm St contents");
+        let storage = location_id(&inv, "Storage unit");
+        let id = inv.add_area(elm, " Attic ").unwrap();
+        assert_eq!(inv.location(elm).unwrap().areas.last().unwrap().id, id);
         assert_eq!(
-            inv.add_room(elm, "attic"),
-            Err(RoomError::Name(NameError::Taken))
+            inv.add_area(elm, "attic"),
+            Err(AreaError::Name(NameError::Taken))
         );
         assert_eq!(
-            inv.add_room(elm, " "),
-            Err(RoomError::Name(NameError::Empty))
+            inv.add_area(elm, " "),
+            Err(AreaError::Name(NameError::Empty))
         );
-        // The same name is fine in another Property.
-        assert!(inv.add_room(storage, "Attic").is_ok());
+        // The same name is fine in another Location.
+        assert!(inv.add_area(storage, "Attic").is_ok());
         assert_eq!(
-            inv.add_room(PropertyId::seed(999), "X"),
-            Err(RoomError::UnknownProperty)
+            inv.add_area(LocationId::seed(999), "X"),
+            Err(AreaError::UnknownLocation)
         );
     }
 
     #[test]
-    fn room_ids_are_unique_across_properties() {
+    fn area_ids_are_unique_across_locations() {
         let mut inv = seed();
-        let beach = inv.add_property(&draft("Beach shack"), "aud").unwrap();
-        inv.add_room(beach, "Deck").unwrap();
+        let beach = inv.add_location(&draft("Beach shack"), "aud").unwrap();
+        inv.add_area(beach, "Deck").unwrap();
         let mut ids: Vec<_> = inv
-            .properties
+            .locations
             .iter()
-            .flat_map(|p| &p.rooms)
-            .map(|r| r.id)
+            .flat_map(|l| &l.areas)
+            .map(|a| a.id)
             .collect();
         let total = ids.len();
         ids.sort_unstable();
@@ -1072,141 +1164,141 @@ mod tests {
     }
 
     #[test]
-    fn edit_room_renames_without_moving_items() {
+    fn edit_area_renames_without_moving_items() {
         let mut inv = seed();
-        let living = room_id(&inv, "12 Elm St contents", "Living");
-        let before = inv.room_items(living);
-        inv.edit_room(living, "Lounge").unwrap();
-        assert_eq!(inv.room(living).unwrap().1.name, "Lounge");
-        assert_eq!(inv.room_items(living), before);
-        assert_eq!(inv.edit_room(living, "LOUNGE"), Ok(()));
+        let living = area_id(&inv, "12 Elm St contents", "Living");
+        let before = inv.area_items(living);
+        inv.edit_area(living, "Lounge").unwrap();
+        assert_eq!(inv.area(living).unwrap().1.name, "Lounge");
+        assert_eq!(inv.area_items(living), before);
+        assert_eq!(inv.edit_area(living, "LOUNGE"), Ok(()));
         assert_eq!(
-            inv.edit_room(living, "kitchen"),
-            Err(RoomError::Name(NameError::Taken))
+            inv.edit_area(living, "kitchen"),
+            Err(AreaError::Name(NameError::Taken))
         );
         assert_eq!(
-            inv.edit_room(RoomId::seed(999), "X"),
-            Err(RoomError::UnknownRoom)
+            inv.edit_area(AreaId::seed(999), "X"),
+            Err(AreaError::UnknownArea)
         );
     }
 
     #[test]
-    fn removing_an_empty_room_needs_no_destination() {
+    fn removing_an_empty_area_needs_no_destination() {
         let mut inv = seed();
-        let elm = property_id(&inv, "12 Elm St contents");
-        let attic = inv.add_room(elm, "Attic").unwrap();
-        assert_eq!(inv.remove_room(attic, None).map(|_| ()), Ok(()));
-        assert!(inv.room(attic).is_none());
+        let elm = location_id(&inv, "12 Elm St contents");
+        let attic = inv.add_area(elm, "Attic").unwrap();
+        assert_eq!(inv.remove_area(attic, None).map(|_| ()), Ok(()));
+        assert!(inv.area(attic).is_none());
     }
 
     #[test]
-    fn removing_a_room_with_items_moves_them_to_the_chosen_room() {
+    fn removing_an_area_with_items_moves_them_to_the_chosen_area() {
         let mut inv = seed();
-        let laundry = room_id(&inv, "12 Elm St contents", "Laundry");
-        let bathroom = room_id(&inv, "12 Elm St contents", "Bathroom");
-        let value = inv.property_value(property_id(&inv, "12 Elm St contents"));
+        let laundry = area_id(&inv, "12 Elm St contents", "Laundry");
+        let batharea = area_id(&inv, "12 Elm St contents", "Batharea");
+        let value = inv.location_value(location_id(&inv, "12 Elm St contents"));
         assert_eq!(
-            inv.remove_room(laundry, None),
-            Err(RoomError::NeedsDestination)
+            inv.remove_area(laundry, None),
+            Err(AreaError::NeedsDestination)
         );
-        inv.remove_room(laundry, Some(bathroom)).unwrap();
-        assert_eq!(inv.room_items(bathroom), 9 + 11);
-        assert_eq!(inv.room_value(bathroom), dollars(1_880 + 3_120));
+        inv.remove_area(laundry, Some(batharea)).unwrap();
+        assert_eq!(inv.area_items(batharea), 9 + 11);
+        assert_eq!(inv.area_value(batharea), dollars(1_880 + 3_120));
         assert_eq!(
-            inv.property_value(property_id(&inv, "12 Elm St contents")),
+            inv.location_value(location_id(&inv, "12 Elm St contents")),
             value
         );
-        assert_eq!(inv.item_count(), 232);
+        assert_eq!(inv.item_count(), 241);
     }
 
     #[test]
-    fn items_only_move_to_another_room_of_the_same_property() {
+    fn items_only_move_to_another_area_of_the_same_location() {
         let mut inv = seed();
-        let laundry = room_id(&inv, "12 Elm St contents", "Laundry");
-        let storage = room_id(&inv, "Storage unit", "Storage");
+        let laundry = area_id(&inv, "12 Elm St contents", "Laundry");
+        let storage = area_id(&inv, "Storage unit", "Storage");
         assert_eq!(
-            inv.remove_room(laundry, Some(storage)),
-            Err(RoomError::BadDestination)
+            inv.remove_area(laundry, Some(storage)),
+            Err(AreaError::BadDestination)
         );
         assert_eq!(
-            inv.remove_room(laundry, Some(laundry)),
-            Err(RoomError::BadDestination)
+            inv.remove_area(laundry, Some(laundry)),
+            Err(AreaError::BadDestination)
         );
         assert_eq!(
-            inv.remove_room(laundry, Some(RoomId::seed(999))),
-            Err(RoomError::BadDestination)
+            inv.remove_area(laundry, Some(AreaId::seed(999))),
+            Err(AreaError::BadDestination)
         );
-        assert!(inv.room(laundry).is_some());
+        assert!(inv.area(laundry).is_some());
     }
 
     #[test]
-    fn the_last_room_cannot_go_while_it_holds_items() {
+    fn the_last_area_cannot_go_while_it_holds_items() {
         let mut inv = seed();
-        let storage = room_id(&inv, "Storage unit", "Storage");
+        let storage = area_id(&inv, "Storage unit", "Storage");
         assert_eq!(
-            inv.remove_room(storage, None),
-            Err(RoomError::LastRoomHoldsItems)
+            inv.remove_area(storage, None),
+            Err(AreaError::LastAreaHoldsItems)
         );
-        // Emptied by removing the Property's Items, the last Room may go.
-        let property = property_id(&inv, "Storage unit");
-        inv.items.retain(|i| i.property != property);
-        assert_eq!(inv.remove_room(storage, None).map(|_| ()), Ok(()));
-        assert!(inv.property(property).unwrap().rooms.is_empty());
-        assert_eq!(inv.remove_room(storage, None), Err(RoomError::UnknownRoom));
+        // Emptied by removing the Location's Items, the last Area may go.
+        let location = location_id(&inv, "Storage unit");
+        inv.items.retain(|i| i.location != location);
+        assert_eq!(inv.remove_area(storage, None).map(|_| ()), Ok(()));
+        assert!(inv.location(location).unwrap().areas.is_empty());
+        assert_eq!(inv.remove_area(storage, None), Err(AreaError::UnknownArea));
     }
 
     #[test]
-    fn the_default_destination_is_the_room_above_or_below_when_first() {
+    fn the_default_destination_is_the_area_above_or_below_when_first() {
         let inv = seed();
-        let living = room_id(&inv, "12 Elm St contents", "Living");
-        let kitchen = room_id(&inv, "12 Elm St contents", "Kitchen");
-        let bedroom = room_id(&inv, "12 Elm St contents", "Bedroom 1");
-        let storage = room_id(&inv, "Storage unit", "Storage");
+        let living = area_id(&inv, "12 Elm St contents", "Living");
+        let kitchen = area_id(&inv, "12 Elm St contents", "Kitchen");
+        let bedarea = area_id(&inv, "12 Elm St contents", "Bedarea 1");
+        let storage = area_id(&inv, "Storage unit", "Storage");
         assert_eq!(default_destination(&inv, living), Some(kitchen));
-        assert_eq!(default_destination(&inv, bedroom), Some(kitchen));
+        assert_eq!(default_destination(&inv, bedarea), Some(kitchen));
         assert_eq!(
             default_destination(&inv, storage),
             None,
-            "an only Room has none"
+            "an only Area has none"
         );
-        assert_eq!(default_destination(&inv, RoomId::seed(999)), None);
+        assert_eq!(default_destination(&inv, AreaId::seed(999)), None);
     }
 
     #[test]
-    fn move_room_reorders_within_its_property_and_stops_at_the_ends() {
+    fn move_area_reorders_within_its_location_and_stops_at_the_ends() {
         let mut inv = seed();
-        let elm = property_id(&inv, "12 Elm St contents");
+        let elm = location_id(&inv, "12 Elm St contents");
         let names = |inv: &Inventory| -> Vec<String> {
-            inv.property(elm)
+            inv.location(elm)
                 .unwrap()
-                .rooms
+                .areas
                 .iter()
-                .map(|r| r.name.clone())
+                .map(|a| a.name.clone())
                 .collect()
         };
-        let living = room_id(&inv, "12 Elm St contents", "Living");
-        let shed = room_id(&inv, "12 Elm St contents", "Outdoor & shed");
+        let living = area_id(&inv, "12 Elm St contents", "Living");
+        let shed = area_id(&inv, "12 Elm St contents", "Outdoor & shed");
         assert!(
-            inv.move_room(living, -1).is_none(),
+            inv.move_area(living, -1).is_none(),
             "K at the top is a no-op"
         );
         assert!(
-            inv.move_room(shed, 1).is_none(),
+            inv.move_area(shed, 1).is_none(),
             "J at the bottom is a no-op"
         );
-        assert!(inv.move_room(living, 1).is_some());
+        assert!(inv.move_area(living, 1).is_some());
         assert_eq!(&names(&inv)[..2], ["Kitchen", "Living"]);
-        assert!(inv.move_room(living, -1).is_some());
+        assert!(inv.move_area(living, -1).is_some());
         assert_eq!(&names(&inv)[..2], ["Living", "Kitchen"]);
-        assert!(inv.move_room(RoomId::seed(999), 1).is_none());
+        assert!(inv.move_area(AreaId::seed(999), 1).is_none());
     }
 
     #[test]
-    fn a_lone_room_cannot_move_and_never_crosses_properties() {
+    fn a_lone_area_cannot_move_and_never_crosses_locations() {
         let mut inv = seed();
-        let storage = room_id(&inv, "Storage unit", "Storage");
-        assert!(inv.move_room(storage, -1).is_none());
-        assert!(inv.move_room(storage, 1).is_none());
-        assert_eq!(inv.room_count(), 11);
+        let storage = area_id(&inv, "Storage unit", "Storage");
+        assert!(inv.move_area(storage, -1).is_none());
+        assert!(inv.move_area(storage, 1).is_none());
+        assert_eq!(inv.area_count(), 14);
     }
 }

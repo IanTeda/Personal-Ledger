@@ -73,14 +73,16 @@ fn the_units_add_edit_and_delete_buttons_open_their_dialogs(app: &mut TestAppCon
     assert_eq!(ui.settings().dialog, None);
 
     let first = ui.settings_units().unit_codes[0].clone();
-    ui.click("unit-edit-0");
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-edit-unit");
     let page = ui.settings();
     assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
     assert_eq!(page.dialog_name.as_deref(), Some(first.as_str()));
     ui.click("edit-unit-cancel");
     assert_eq!(ui.settings().dialog, None);
 
-    ui.click("unit-delete-0");
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
     ui.click("delete-unit-confirm");
     assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
@@ -95,7 +97,8 @@ fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut Tes
     ui.click("settings-index-Units");
     let before = ui.settings_units().unit_codes.clone();
 
-    ui.click("unit-delete-0");
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
     for ch in before[0].chars() {
         ui.press(&ch.to_string());
     }

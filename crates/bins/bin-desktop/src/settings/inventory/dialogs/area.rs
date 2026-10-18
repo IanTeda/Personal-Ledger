@@ -1,4 +1,4 @@
-//! The Add, Edit and Remove **Room** dialogs (#495) and the notice the last Room holding Items
+//! The Add, Edit and Remove **Area** dialogs (#495) and the notice the last Area holding Items
 //! gets instead of a Remove, on the shared `crate::dialog` chrome.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
@@ -10,52 +10,52 @@ use crate::{
     form::select::SelectState,
     form::select_field::{self, OnOptionClick, SelectFieldProps},
     inventory::NameError,
-    settings::inventory::form::RoomForm,
+    settings::inventory::form::AreaForm,
 };
 
-pub struct RoomFormHandlers {
+pub struct AreaFormHandlers {
     pub on_name_click: dialog::OnClick,
     pub on_cancel: dialog::OnClick,
     pub on_confirm: dialog::OnClick,
 }
 
-pub struct RoomFormProps<'a> {
+pub struct AreaFormProps<'a> {
     pub adding: bool,
-    pub property: &'a str,
-    pub form: &'a RoomForm,
+    pub location: &'a str,
+    pub form: &'a AreaForm,
     pub problem: Option<NameError>,
-    pub handlers: RoomFormHandlers,
+    pub handlers: AreaFormHandlers,
 }
 
-/// Add or Edit room: the one Name field, whose error shows once it has been typed in.
-pub fn render_room_form(props: RoomFormProps<'_>, cx: &App) -> AnyElement {
-    let RoomFormProps {
+/// Add or Edit area: the one Name field, whose error shows once it has been typed in.
+pub fn render_area_form(props: AreaFormProps<'_>, cx: &App) -> AnyElement {
+    let AreaFormProps {
         adding,
-        property,
+        location,
         form,
         problem,
         handlers,
     } = props;
     let (prefix, title, submit) = if adding {
         (
-            "add-room",
-            crate::msg::desktop_inventory_room_add_title(),
-            crate::msg::desktop_inventory_room_add_submit(),
+            "add-area",
+            crate::msg::desktop_inventory_area_add_title(),
+            crate::msg::desktop_inventory_area_add_submit(),
         )
     } else {
         (
-            "edit-room",
-            crate::msg::desktop_inventory_room_edit_title(),
-            crate::msg::desktop_inventory_room_edit_submit(),
+            "edit-area",
+            crate::msg::desktop_inventory_area_edit_title(),
+            crate::msg::desktop_inventory_area_edit_submit(),
         )
     };
     let shown = problem.filter(|_| form.shows_problem());
     let body = div()
         .child(text_field(
-            "room-name",
-            crate::msg::desktop_inventory_room_field_name(),
+            "area-name",
+            crate::msg::desktop_inventory_area_field_name(),
             form.name.text(),
-            &crate::msg::desktop_inventory_room_field_name_placeholder(),
+            &crate::msg::desktop_inventory_area_field_name_placeholder(),
             true,
             handlers.on_name_click,
             cx,
@@ -63,15 +63,15 @@ pub fn render_room_form(props: RoomFormProps<'_>, cx: &App) -> AnyElement {
         .child(match shown {
             Some(error) => note(
                 match error {
-                    NameError::Empty => crate::msg::desktop_inventory_room_error_name_empty(),
-                    NameError::Taken => crate::msg::desktop_inventory_room_error_name_taken(),
+                    NameError::Empty => crate::msg::desktop_inventory_area_error_name_empty(),
+                    NameError::Taken => crate::msg::desktop_inventory_area_error_name_taken(),
                 },
                 true,
                 cx,
             )
             .into_any_element(),
             None => note(
-                crate::msg::desktop_inventory_room_in_property(property),
+                crate::msg::desktop_inventory_area_in_location(location),
                 false,
                 cx,
             )
@@ -106,26 +106,26 @@ pub fn render_room_form(props: RoomFormProps<'_>, cx: &App) -> AnyElement {
     dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
-pub struct RoomRemoveHandlers {
+pub struct AreaRemoveHandlers {
     pub on_field_click: dialog::OnClick,
     pub on_option_click: OnOptionClick,
     pub on_cancel: dialog::OnClick,
     pub on_confirm: dialog::OnClick,
 }
 
-pub struct RoomRemoveProps<'a> {
+pub struct AreaRemoveProps<'a> {
     pub name: &'a str,
     pub items: usize,
-    /// The Property's other Rooms, which can take the Items.
+    /// The Location's other Areas, which can take the Items.
     pub destinations: &'a [String],
     pub destination: &'a SelectState,
-    pub handlers: RoomRemoveHandlers,
+    pub handlers: AreaRemoveHandlers,
 }
 
-/// Remove room: a plain confirm while it is empty, else the red dialog with the "Move items to"
+/// Remove area: a plain confirm while it is empty, else the red dialog with the "Move items to"
 /// picker.
-pub fn render_room_remove(props: RoomRemoveProps<'_>, cx: &App) -> AnyElement {
-    let RoomRemoveProps {
+pub fn render_area_remove(props: AreaRemoveProps<'_>, cx: &App) -> AnyElement {
+    let AreaRemoveProps {
         name,
         items,
         destinations,
@@ -137,15 +137,15 @@ pub fn render_room_remove(props: RoomRemoveProps<'_>, cx: &App) -> AnyElement {
         vec![
             div()
                 .text_size(px(13.0))
-                .child(crate::msg::desktop_inventory_room_remove_with_items(
+                .child(crate::msg::desktop_inventory_area_remove_with_items(
                     name,
                     &crate::msg::desktop_inventory_count_items(count(items)),
                 ))
                 .into_any_element(),
             select_field::render(
                 SelectFieldProps {
-                    id: "room-destination",
-                    label: crate::msg::desktop_inventory_room_remove_destination().into(),
+                    id: "area-destination",
+                    label: crate::msg::desktop_inventory_area_remove_destination().into(),
                     options: destinations,
                     state: destination,
                     focused: true,
@@ -161,7 +161,7 @@ pub fn render_room_remove(props: RoomRemoveProps<'_>, cx: &App) -> AnyElement {
         vec![
             div()
                 .text_size(px(13.0))
-                .child(crate::msg::desktop_inventory_room_remove_plain(name))
+                .child(crate::msg::desktop_inventory_area_remove_plain(name))
                 .into_any_element(),
         ]
     };
@@ -169,18 +169,18 @@ pub fn render_room_remove(props: RoomRemoveProps<'_>, cx: &App) -> AnyElement {
         .flex()
         .flex_col()
         .child(dialog::header(
-            crate::msg::desktop_inventory_room_remove_title(),
+            crate::msg::desktop_inventory_area_remove_title(),
             has_items,
             cx,
         ))
         .child(dialog::body(body))
         .child(dialog::action_row(
             [
-                dialog::cancel_button("remove-room-cancel", handlers.on_cancel, cx)
+                dialog::cancel_button("remove-area-cancel", handlers.on_cancel, cx)
                     .into_any_element(),
                 dialog::confirm_button(
-                    "remove-room-confirm",
-                    crate::msg::desktop_inventory_room_remove_submit(),
+                    "remove-area-confirm",
+                    crate::msg::desktop_inventory_area_remove_submit(),
                     true,
                     has_items,
                     handlers.on_confirm,
@@ -193,10 +193,10 @@ pub fn render_room_remove(props: RoomRemoveProps<'_>, cx: &App) -> AnyElement {
     dialog::overlay(dialog::WIDTH, has_items, card, cx)
 }
 
-/// The notice for the last Room of a Property while it holds Items: nowhere to move them.
-pub fn render_room_blocked(
+/// The notice for the last Area of a Location while it holds Items: nowhere to move them.
+pub fn render_area_blocked(
     name: &str,
-    property: &str,
+    location: &str,
     items: usize,
     on_close: dialog::OnClick,
     cx: &App,
@@ -205,14 +205,14 @@ pub fn render_room_blocked(
         .flex()
         .flex_col()
         .child(dialog::header(
-            crate::msg::desktop_inventory_room_blocked_title(),
+            crate::msg::desktop_inventory_area_blocked_title(),
             false,
             cx,
         ))
         .child(dialog::body([dialog::info_panel(
-            crate::msg::desktop_inventory_room_blocked_body(
+            crate::msg::desktop_inventory_area_blocked_body(
                 name,
-                property,
+                location,
                 &crate::msg::desktop_inventory_count_items(count(items)),
             ),
             cx,
@@ -220,8 +220,8 @@ pub fn render_room_blocked(
         .into_any_element()]))
         .child(dialog::action_row(
             [dialog::confirm_button(
-                "room-blocked-close",
-                crate::msg::desktop_inventory_room_blocked_close(),
+                "area-blocked-close",
+                crate::msg::desktop_inventory_area_blocked_close(),
                 true,
                 false,
                 on_close,

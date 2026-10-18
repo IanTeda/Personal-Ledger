@@ -1,38 +1,51 @@
-//! The **Inventory** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16q, as settled on #491): a
-//! kicker with **+ Add property** over one bordered table of Properties in creation order. An
-//! expanded Property shows its Rooms in a sub-table that ends in a clickable **+ Add room** row.
+//! The **Inventory** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16q), drawn like
+//! Categories: a LOCATIONS · n kicker with a square **+** (Add location) over one bordered NAME
+//! table. A Location row has a disclosure, its name in 800 and a muted "n areas · n items" note;
+//! an open Location's Areas follow it, indented, name only, in area-tab order. Address and cover
+//! are kept on the register in Inventory, so no column shows them.
 //!
-//! Every action is a callback into [`InventoryPage`], so the keyboard and the mouse reach the
-//! same handlers.
+//! Rows carry no buttons (the Units table principles): a double-click edits, a right-click opens
+//! the row's context menu at the pointer. Every action is a callback into [`InventoryPage`], so the
+//! keyboard and the mouse reach the same handlers.
 
 use std::{collections::HashSet, rc::Rc};
 
-use gpui::{AnyElement, App, Context, Render, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_core::{Money, PropertyId, UnitKind};
-use lib_locale::format::{Unit, format_money, upper};
+use gpui::{
+    AnyElement, App, BoxShadow, Context, MouseButton, Pixels, Point, Render, SharedString, Window,
+    div, point, prelude::*, px,
+};
+use lib_core::LocationId;
+use lib_locale::format::upper;
 
-use super::{InventoryPage, InventoryRow};
+use super::{InventoryPage, InventoryRow, MenuAction, RowMenu};
 use crate::{
-    inventory::{Inventory, Property},
+    inventory::{Inventory, Location},
     theme::color,
 };
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnPropertyClick = Rc<dyn Fn(PropertyId, &mut Window, &mut App)>;
+type OnLocationClick = Rc<dyn Fn(LocationId, &mut Window, &mut App)>;
 type OnRowClick = Rc<dyn Fn(InventoryRow, &mut Window, &mut App)>;
+type OnRowMenu = Rc<dyn Fn(InventoryRow, Point<Pixels>, &mut Window, &mut App)>;
+type OnMenuAction = Rc<dyn Fn(MenuAction, &mut Window, &mut App)>;
+
+/// The context menu's width (`width:190px`).
+const MENU_WIDTH: f32 = 190.0;
 
 /// What the page draws from: its rows, and a click handler bound to the page for each action.
 struct InventoryPageProps<'a> {
     inventory: &'a Inventory,
-    /// The Properties shown open.
-    expanded: &'a HashSet<PropertyId>,
+    /// The Locations shown open.
+    expanded: &'a HashSet<LocationId>,
     selected: Option<InventoryRow>,
-    on_add_property_click: OnPlainClick,
-    on_add_room_click: OnPropertyClick,
-    on_toggle_click: OnPropertyClick,
+    menu: Option<RowMenu>,
+    on_add_location_click: OnPlainClick,
+    on_toggle_click: OnLocationClick,
     on_row_click: OnRowClick,
-    on_edit_click: OnRowClick,
-    on_remove_click: OnRowClick,
+    on_row_double_click: OnRowClick,
+    on_row_menu: OnRowMenu,
+    on_menu_action: OnMenuAction,
+    on_menu_dismiss: OnPlainClick,
 }
 
 /// A row count as the number a plural selector takes.
@@ -40,27 +53,21 @@ fn count(len: usize) -> i64 {
     i64::try_from(len).unwrap_or(i64::MAX)
 }
 
-/// The heading's meta as plain text, for the status line: `2 properties · 11 rooms · 232 items`.
+/// The heading's meta as plain text, for the status line: `3 locations · 14 areas · 241 items`.
 pub fn scope_text(inventory: &Inventory) -> String {
     crate::msg::desktop_inventory_scope(
-        &crate::msg::desktop_inventory_count_properties(count(inventory.property_count())),
-        &crate::msg::desktop_inventory_count_rooms(count(inventory.room_count())),
+        &crate::msg::desktop_inventory_count_locations(count(inventory.location_count())),
+        &crate::msg::desktop_inventory_count_areas(count(inventory.area_count())),
         &crate::msg::desktop_inventory_count_items(count(inventory.item_count())),
     )
 }
 
-/// An amount in the Property's own Unit.
-fn money(property: &Property, amount: &Money) -> String {
-    let code = property.unit.to_uppercase();
-    format_money(amount, &Unit::new(&code, &UnitKind::Fiat, 2))
-}
-
-/// The Policy cell: the insurer and, when it has one, the policy number.
-fn policy_text(property: &Property) -> Option<String> {
-    property.cover.as_ref().map(|cover| match &cover.policy_no {
-        Some(number) => format!("{} {number}", cover.insurer),
-        None => cover.insurer.clone(),
-    })
+/// A Location row's note: `10 areas · 214 items`.
+fn location_note(inventory: &Inventory, location: &Location) -> String {
+    crate::msg::desktop_inventory_location_note(
+        &crate::msg::desktop_inventory_count_areas(count(location.areas.len())),
+        &crate::msg::desktop_inventory_count_items(count(inventory.location_items(location.id))),
+    )
 }
 
 impl Render for InventoryPage {
@@ -71,14 +78,6 @@ impl Render for InventoryPage {
             let on_click: OnPlainClick = Rc::new(move |_window, cx| entity.update(cx, handler));
             on_click
         };
-        let by_property =
-            |handler: fn(&mut InventoryPage, PropertyId, &mut Context<'_, InventoryPage>)| {
-                let entity = entity.clone();
-                let on_click: OnPropertyClick = Rc::new(move |id, _window, cx| {
-                    entity.update(cx, |page, cx| handler(page, id, cx))
-                });
-                on_click
-            };
         let by_row =
             |handler: fn(&mut InventoryPage, InventoryRow, &mut Context<'_, InventoryPage>)| {
                 let entity = entity.clone();
@@ -87,16 +86,42 @@ impl Render for InventoryPage {
                 });
                 on_click
             };
+        let on_toggle_click: OnLocationClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| entity.update(cx, |page, cx| page.click_toggle(id, cx)))
+        };
+        let on_row_menu: OnRowMenu = {
+            let entity = entity.clone();
+            Rc::new(move |row, position, _window, cx| {
+                entity.update(cx, |page, cx| page.open_menu(row, position, cx))
+            })
+        };
+        let on_menu_action: OnMenuAction = {
+            let entity = entity.clone();
+            Rc::new(move |action, _window, cx| {
+                entity.update(cx, |page, cx| page.click_menu_action(action, cx))
+            })
+        };
+        let on_menu_dismiss: OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |page, cx| {
+                    page.close_menu(cx);
+                })
+            })
+        };
         let props = InventoryPageProps {
             inventory: self.inventory(cx),
             expanded: &self.expanded,
             selected: self.selected_row(cx),
-            on_add_property_click: plain(InventoryPage::click_add_property),
-            on_add_room_click: by_property(InventoryPage::click_add_room),
-            on_toggle_click: by_property(InventoryPage::click_toggle),
+            menu: self.menu,
+            on_add_location_click: plain(InventoryPage::click_add_location),
+            on_toggle_click,
             on_row_click: by_row(InventoryPage::click_row),
-            on_edit_click: by_row(InventoryPage::click_edit),
-            on_remove_click: by_row(InventoryPage::click_remove),
+            on_row_double_click: by_row(InventoryPage::double_click_row),
+            on_row_menu,
+            on_menu_action,
+            on_menu_dismiss,
         };
         render_page(&props, self.page_focused, cx)
     }
@@ -104,9 +129,9 @@ impl Render for InventoryPage {
 
 fn render_page(props: &InventoryPageProps<'_>, focused: bool, cx: &App) -> AnyElement {
     let table =
-        if props.inventory.properties.is_empty() {
+        if props.inventory.locations.is_empty() {
             div()
-                .mb(px(16.0))
+                .mb(px(12.0))
                 .px(px(14.0))
                 .py(px(14.0))
                 .border_1()
@@ -115,86 +140,80 @@ fn render_page(props: &InventoryPageProps<'_>, focused: bool, cx: &App) -> AnyEl
                 .text_color(color::muted(cx))
                 .child(crate::msg::desktop_inventory_empty())
         } else {
-            let last = props.inventory.properties.len() - 1;
+            let rows = super::visible_rows(props.inventory, props.expanded);
+            let last = rows.len().saturating_sub(1);
             div()
                 .flex()
                 .flex_col()
                 .border_1()
                 .border_color(color::border(cx))
-                .mb(px(16.0))
+                .mb(px(12.0))
                 .child(table_header(cx))
-                .children(props.inventory.properties.iter().enumerate().map(
-                    |(position, property)| {
-                        property_block(property, position == last, focused, props, cx)
-                    },
-                ))
+                .children(rows.into_iter().enumerate().filter_map(|(position, row)| {
+                    tree_row(row, position == last, focused, props, cx)
+                }))
         };
     div()
         .flex()
         .flex_col()
-        .child(kicker_row(props.on_add_property_click.clone(), cx))
+        .child(kicker_row(props, cx))
         .child(table)
         .child(
             div()
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .max_w(px(640.0))
-                .text_size(px(12.0))
+                .max_w(px(620.0))
+                .text_size(px(11.5))
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_inventory_note_registers())
-                .child(crate::msg::desktop_inventory_note_cover())
-                .child(crate::msg::desktop_inventory_note_removal()),
+                .child(crate::msg::desktop_inventory_note()),
         )
+        .children(props.menu.map(|menu| row_menu(menu, props, cx)))
         .into_any_element()
 }
 
-fn kicker_row(on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
-    let hover = color::muted(cx);
+/// LOCATIONS · n, with the square **+** (`26px`, `background:#eae9e9`) that adds a Location.
+fn kicker_row(props: &InventoryPageProps<'_>, cx: &App) -> impl IntoElement {
+    let on_add_click = props.on_add_location_click.clone();
+    let hover = color::hover(cx);
     div()
         .flex()
         .items_center()
         .justify_between()
-        .mb(px(10.0))
+        .gap(px(12.0))
+        .mb(px(8.0))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_inventory_kicker())),
+                .child(upper(&crate::msg::desktop_inventory_kicker(
+                    &props.inventory.location_count().to_string(),
+                ))),
         )
         .child(
             div()
-                .debug_selector(|| "settings-inventory-add-property".to_string())
-                .id("settings-inventory-add-property")
+                .debug_selector(|| "settings-inventory-add-location".to_string())
+                .id("settings-inventory-add-location")
                 .cursor_pointer()
                 .flex_none()
-                .py(px(8.0))
-                .px(px(14.0))
-                .bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
+                .size(px(26.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .border_1()
+                .border_color(color::border(cx))
+                .bg(color::chrome(cx))
+                .text_color(color::foreground(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .whitespace_nowrap()
+                .text_size(px(15.0))
                 .hover(move |style| style.bg(hover))
                 .on_click(move |_event, window, cx| on_add_click(window, cx))
-                .child(crate::msg::desktop_inventory_add_property("+")),
+                .child(crate::msg::desktop_inventory_add_location()),
         )
 }
 
-/// A header cell of a fixed width, right-aligned for the numeric columns.
-fn header_cell(label: String, width: f32, right: bool) -> gpui::Div {
-    let cell = div().w(px(width)).flex_none().child(upper(&label));
-    if right {
-        cell.flex().justify_end()
-    } else {
-        cell
-    }
-}
-
+/// The NAME header (`padding:6px 14px; background:#eae9e9`).
 fn table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
-        .gap(px(14.0))
         .px(px(14.0))
         .py(px(6.0))
         .bg(color::chrome(cx))
@@ -203,381 +222,213 @@ fn table_header(cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::muted(cx))
-        // The disclosure control's width.
-        .child(div().w(px(14.0)).flex_none())
-        .child(
-            div()
-                .flex_1()
-                .child(upper(&crate::msg::desktop_inventory_column_property())),
-        )
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_policy(),
-            170.0,
-            false,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_sum_insured(),
-            100.0,
-            true,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_item_limit(),
-            90.0,
-            true,
-        ))
-        .child(header_cell(
-            crate::msg::desktop_inventory_column_items(),
-            60.0,
-            true,
-        ))
-        .child(header_cell(lib_locale::msg::column_actions(), 150.0, true))
+        .child(div().flex_1().child(upper(&lib_locale::msg::column_name())))
 }
 
-/// One Property row and, while it is open, its Room sub-table.
-fn property_block(
-    property: &Property,
+/// One visible row: a Location (disclosure, name in 800, note) or one of its Areas (indented 20px,
+/// name only). `padding:6px 14px; font-size:12.5px`; the selected row is inverted while the page
+/// has focus (`background:#201e1d; color:#f3f2f2`) and only tinted while the index does.
+fn tree_row(
+    row: InventoryRow,
     last: bool,
     focused: bool,
     props: &InventoryPageProps<'_>,
     cx: &App,
-) -> impl IntoElement {
-    let open = props.expanded.contains(&property.id);
-    div()
-        .flex()
-        .flex_col()
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(property_row(property, open, focused, props, cx))
-        .when(open, |this| {
-            this.child(room_table(property, focused, props, cx))
-        })
-}
-
-fn property_row(
-    property: &Property,
-    open: bool,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = property.id;
-    let row = InventoryRow::Property(id);
+) -> Option<AnyElement> {
     let selected = props.selected == Some(row);
-    let on_toggle = props.on_toggle_click.clone();
-    // A dash, in the muted colour, where there is no cover or no item limit.
-    let placeholder = if selected && focused {
+    let inverted = selected && focused;
+    let note_colour = if inverted {
         color::selection_muted(cx)
     } else {
         color::faint_text(cx)
     };
-    let optional = |text: Option<String>, width: f32, right: bool| {
-        let cell = div().w(px(width)).flex_none().truncate();
-        let cell = if right {
-            cell.flex().justify_end()
-        } else {
-            cell
-        };
-        match text {
-            Some(text) => cell.child(text),
-            None => cell
-                .text_color(placeholder)
-                .child(crate::msg::desktop_inventory_none()),
-        }
-    };
-    let cover = property.cover.as_ref();
-    let disclosure = if open {
-        crate::msg::desktop_inventory_disclosure_open()
-    } else {
-        crate::msg::desktop_inventory_disclosure_closed()
-    };
-    selectable_row(
-        SharedString::from(format!("settings-inventory-property-{id}")),
-        row,
-        focused,
-        props,
-        cx,
-    )
-    .child(
-        div()
-            .debug_selector(move || format!("settings-inventory-toggle-{id}"))
-            .id(SharedString::from(format!(
-                "settings-inventory-toggle-{id}"
-            )))
-            .cursor_pointer()
-            .w(px(14.0))
-            .flex_none()
-            .on_click(move |_event, window, cx| {
-                cx.stop_propagation();
-                on_toggle(id, window, cx)
-            })
-            .child(disclosure),
-    )
-    .child(
-        div()
-            .flex_1()
-            .min_w(px(0.0))
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .truncate()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .child(property.name.clone()),
-            )
-            .child(
-                div()
-                    .truncate()
-                    .text_size(px(11.0))
-                    .text_color(placeholder)
-                    .child(property.address.clone()),
-            ),
-    )
-    .child(optional(policy_text(property), 170.0, false))
-    .child(optional(
-        cover.map(|c| money(property, &c.sum_insured)),
-        100.0,
-        true,
-    ))
-    .child(optional(
-        cover
-            .and_then(|c| c.item_limit.as_ref())
-            .map(|limit| money(property, limit)),
-        90.0,
-        true,
-    ))
-    .child(
-        div()
-            .w(px(60.0))
-            .flex_none()
-            .flex()
-            .justify_end()
-            .child(props.inventory.property_items(id).to_string()),
-    )
-    .child(actions(row, selected && focused, props, cx))
-}
-
-/// The Rooms of an open Property, indented under it, ending in the **+ Add room** row.
-fn room_table(
-    property: &Property,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> impl IntoElement {
-    let id = property.id;
-    let on_add_room = props.on_add_room_click.clone();
-    let hover = color::hover(cx);
-    div()
-        .flex()
-        .flex_col()
-        .ml(px(28.0))
-        .mb(px(8.0))
-        .mr(px(14.0))
-        .border_1()
-        .border_color(color::border(cx))
-        .child(
-            div()
+    let (id, depth, name) = match row {
+        InventoryRow::Location(id) => {
+            let location = props.inventory.location(id)?;
+            let open = props.expanded.contains(&id);
+            let name = div()
                 .flex()
-                .gap(px(14.0))
-                .px(px(14.0))
-                .py(px(6.0))
-                .bg(color::chrome(cx))
-                .border_b(px(1.0))
-                .border_color(color::border(cx))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .text_color(color::muted(cx))
+                .items_center()
+                .gap(px(6.0))
+                .min_w(px(0.0))
+                .child(disclosure(
+                    id,
+                    open,
+                    inverted,
+                    props.on_toggle_click.clone(),
+                    cx,
+                ))
                 .child(
                     div()
-                        .flex_1()
-                        .child(upper(&crate::msg::desktop_inventory_column_room())),
+                        .truncate()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .child(location.name.clone()),
                 )
-                .child(header_cell(
-                    crate::msg::desktop_inventory_column_items(),
-                    60.0,
-                    true,
-                ))
-                .child(header_cell(
-                    crate::msg::desktop_inventory_column_value(),
-                    100.0,
-                    true,
-                ))
-                .child(header_cell(lib_locale::msg::column_actions(), 118.0, true)),
-        )
-        .children(property.rooms.iter().map(|room| {
-            let row = InventoryRow::Room(room.id);
-            let selected = props.selected == Some(row);
-            selectable_row(
-                SharedString::from(format!("settings-inventory-room-{}", room.id)),
-                row,
-                focused,
-                props,
-                cx,
-            )
-            .border_b(px(1.0))
-            .border_color(color::hairline(cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .truncate()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .child(room.name.clone()),
-            )
-            .child(
-                div()
-                    .w(px(60.0))
-                    .flex_none()
-                    .flex()
-                    .justify_end()
-                    .child(props.inventory.room_items(room.id).to_string()),
-            )
-            .child(
-                div()
-                    .w(px(100.0))
-                    .flex_none()
-                    .flex()
-                    .justify_end()
-                    .child(money(property, &props.inventory.room_value(room.id))),
-            )
-            .child(actions(row, selected && focused, props, cx))
-        }))
-        .child(
-            div()
-                .debug_selector(move || format!("settings-inventory-add-room-{id}"))
-                .id(SharedString::from(format!(
-                    "settings-inventory-add-room-{id}"
-                )))
-                .cursor_pointer()
-                .px(px(14.0))
-                .py(px(6.0))
-                .text_size(px(12.0))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_room(id, window, cx))
-                .child(crate::msg::desktop_inventory_add_room("+")),
-        )
-}
-
-/// The shared shell of a selectable row. The selected one is inverted while the page has focus
-/// (`background:#201e1d; color:#f3f2f2`) and only tinted while the index does.
-fn selectable_row(
-    id: SharedString,
-    row: InventoryRow,
-    focused: bool,
-    props: &InventoryPageProps<'_>,
-    cx: &App,
-) -> gpui::Stateful<gpui::Div> {
-    let selected = props.selected == Some(row);
-    let inverted = selected && focused;
+                .child(
+                    div()
+                        .flex_none()
+                        .text_size(px(10.5))
+                        .text_color(note_colour)
+                        .child(location_note(props.inventory, location)),
+                );
+            (format!("settings-inventory-location-{id}"), 0.0, name)
+        }
+        InventoryRow::Area(id) => {
+            let (_, area) = props.inventory.area(id)?;
+            let name = div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .min_w(px(0.0))
+                // The disclosure's width, empty, so Area names line up under their Location's.
+                .child(div().w(px(10.0)).flex_none())
+                .child(div().truncate().child(area.name.clone()));
+            (format!("settings-inventory-area-{id}"), 20.0, name)
+        }
+    };
+    let id = SharedString::from(id);
     let hover = color::hover(cx);
     let on_row_click = props.on_row_click.clone();
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(14.0))
-        .px(px(14.0))
-        .py(px(6.0))
-        .text_size(px(12.5))
-        .when(selected && !focused, |this| this.bg(color::chrome(cx)))
-        .when(inverted, |this| {
-            this.bg(color::foreground(cx))
-                .text_color(color::selection_text(cx))
-        })
-        .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_row_click(row, window, cx))
+    let on_row_double_click = props.on_row_double_click.clone();
+    let on_row_menu = props.on_row_menu.clone();
+    Some(
+        div()
+            .debug_selector({
+                let id = id.clone();
+                move || id.to_string()
+            })
+            .id(id)
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .px(px(14.0))
+            .py(px(6.0))
+            .text_size(px(12.5))
+            .when(!last, |this| {
+                this.border_b(px(1.0)).border_color(color::hairline(cx))
+            })
+            .when(selected && !focused, |this| this.bg(color::chrome(cx)))
+            .when(inverted, |this| {
+                this.bg(color::foreground(cx))
+                    .text_color(color::selection_text(cx))
+            })
+            .when(!selected, |this| this.hover(move |style| style.bg(hover)))
+            .on_click(move |event, window, cx| {
+                if event.click_count() >= 2 {
+                    on_row_double_click(row, window, cx);
+                } else {
+                    on_row_click(row, window, cx);
+                }
+            })
+            .on_mouse_down(MouseButton::Right, move |event, window, cx| {
+                cx.stop_propagation();
+                on_row_menu(row, event.position, window, cx);
+            })
+            .child(div().flex_1().min_w(px(0.0)).pl(px(depth)).child(name))
+            .into_any_element(),
+    )
 }
 
-/// The buttons of a row: **+ room** (Properties only), edit and remove.
-fn actions(
-    row: InventoryRow,
+/// The 10px ▾/▸ cell of a Location row. Only it expands and collapses; a click on it never
+/// reaches the row.
+fn disclosure(
+    id: LocationId,
+    open: bool,
     inverted: bool,
-    props: &InventoryPageProps<'_>,
+    on_click: OnLocationClick,
     cx: &App,
 ) -> impl IntoElement {
-    let border: Rgba = if inverted {
-        color::selection_muted(cx)
-    } else {
-        color::border(cx)
-    };
-    let (kind, id) = match row {
-        InventoryRow::Property(id) => ("property", id.to_string()),
-        InventoryRow::Room(id) => ("room", id.to_string()),
-    };
-    let on_edit = props.on_edit_click.clone();
-    let on_remove = props.on_remove_click.clone();
-    // Only a Property row carries **+ room**, and its wider column makes room for it.
-    let (width, add_room) = match row {
-        InventoryRow::Property(property) => {
-            (150.0, Some((props.on_add_room_click.clone(), property)))
-        }
-        InventoryRow::Room(_) => (118.0, None),
-    };
     div()
-        .w(px(width))
-        .flex_none()
-        .flex()
-        .justify_end()
-        .gap(px(4.0))
-        .when_some(add_room, |this, (on_add_room, property)| {
-            this.child(row_action_button(
-                SharedString::from(format!("settings-inventory-property-add-room-{id}")),
-                crate::msg::desktop_inventory_row_add_room(),
-                border,
-                Rc::new(move |window: &mut Window, cx: &mut App| on_add_room(property, window, cx)),
-                cx,
-            ))
-        })
-        .child(row_action_button(
-            SharedString::from(format!("settings-inventory-edit-{kind}-{id}")),
-            crate::msg::desktop_inventory_row_edit(),
-            border,
-            Rc::new(move |window: &mut Window, cx: &mut App| on_edit(row, window, cx)),
-            cx,
-        ))
-        .child(row_action_button(
-            SharedString::from(format!("settings-inventory-remove-{kind}-{id}")),
-            crate::msg::desktop_inventory_row_remove(),
-            border,
-            Rc::new(move |window: &mut Window, cx: &mut App| on_remove(row, window, cx)),
-            cx,
-        ))
-}
-
-/// `padding:4px 8px; font-size:11.5px; border:1px solid`. Stops the click reaching the row.
-fn row_action_button(
-    id: SharedString,
-    label: String,
-    border: Rgba,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    let hover = color::hover(cx);
-    div()
-        .debug_selector({
-            let id = id.clone();
-            move || id.to_string()
-        })
-        .id(id)
+        .debug_selector(move || format!("settings-inventory-toggle-{id}"))
+        .id(SharedString::from(format!(
+            "settings-inventory-toggle-{id}"
+        )))
         .cursor_pointer()
-        .py(px(4.0))
-        .px(px(8.0))
-        .border_1()
-        .border_color(border)
-        .text_size(px(11.5))
-        .whitespace_nowrap()
-        .hover(move |style| style.bg(hover))
+        .w(px(10.0))
+        .flex_none()
+        .text_color(if inverted {
+            color::selection_muted(cx)
+        } else {
+            color::muted(cx)
+        })
         .on_click(move |_event, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(id, window, cx)
         })
-        .child(label)
+        .child(if open {
+            crate::msg::desktop_inventory_disclosure_open()
+        } else {
+            crate::msg::desktop_inventory_disclosure_closed()
+        })
+}
+
+/// The row's context menu at the pointer: `190px`, `border:2px solid #201e1d`, the dialog shadow,
+/// items `padding:7px 12px; 12.5px`, the hovered one tinted and in 800, the destructive one last
+/// in red below a 1px rule. A press anywhere outside it closes it.
+fn row_menu(menu: RowMenu, props: &InventoryPageProps<'_>, cx: &App) -> AnyElement {
+    let on_dismiss = props.on_menu_dismiss.clone();
+    let hover = color::hover(cx);
+    let items = MenuAction::for_row(menu.row).iter().map(|&action| {
+        let on_action = props.on_menu_action.clone();
+        let id = SharedString::from(format!("settings-inventory-menu-{}", action.slug()));
+        let item = div()
+            .debug_selector({
+                let id = id.clone();
+                move || id.to_string()
+            })
+            .id(id)
+            .cursor_pointer()
+            .py(px(7.0))
+            .px(px(12.0))
+            .text_size(px(12.5))
+            .text_color(if action.is_destructive() {
+                color::accent_text(cx)
+            } else {
+                color::foreground(cx)
+            })
+            .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
+            .on_click(move |_event, window, cx| on_action(action, window, cx))
+            .child(action.label());
+        if action.is_destructive() {
+            div()
+                .flex()
+                .flex_col()
+                .child(div().h(px(1.0)).my(px(4.0)).bg(color::hairline(cx)))
+                .child(item)
+                .into_any_element()
+        } else {
+            item.into_any_element()
+        }
+    });
+    gpui::deferred(
+        gpui::anchored()
+            .position(menu.position)
+            .snap_to_window()
+            .child(
+                div()
+                    .debug_selector(|| "settings-inventory-menu".to_string())
+                    .id("settings-inventory-menu")
+                    .occlude()
+                    .w(px(MENU_WIDTH))
+                    .flex()
+                    .flex_col()
+                    .py(px(4.0))
+                    .bg(color::background(cx))
+                    .border_2()
+                    .border_color(color::foreground(cx))
+                    .shadow(vec![BoxShadow {
+                        color: color::dialog_shadow(cx).into(),
+                        offset: point(px(0.0), px(16.0)),
+                        blur_radius: px(48.0),
+                        spread_radius: px(0.0),
+                    }])
+                    .font_weight(gpui::FontWeight::NORMAL)
+                    .on_mouse_down_out(move |_event, window, cx| on_dismiss(window, cx))
+                    .children(items),
+            ),
+    )
+    .with_priority(1)
+    .into_any_element()
 }
 
 #[cfg(test)]
@@ -594,7 +445,7 @@ mod tests {
         crate::locale::init_for_tests();
         assert_eq!(
             scope_text(&seed()),
-            "2 properties \u{b7} 11 rooms \u{b7} 232 items"
+            "3 locations \u{b7} 14 areas \u{b7} 241 items"
         );
     }
 
@@ -602,12 +453,31 @@ mod tests {
     fn zeros_are_shown_and_one_reads_singular() {
         crate::locale::init_for_tests();
         let mut inventory = seed();
-        inventory.properties.truncate(1);
+        inventory.locations.truncate(1);
         inventory.items.clear();
-        inventory.properties[0].rooms.clear();
+        inventory.locations[0].areas.clear();
         assert_eq!(
             scope_text(&inventory),
-            "1 property \u{b7} 0 rooms \u{b7} 0 items"
+            "1 location \u{b7} 0 areas \u{b7} 0 items"
+        );
+    }
+
+    #[test]
+    fn a_location_note_counts_its_areas_and_items() {
+        crate::locale::init_for_tests();
+        let inventory = seed();
+        let notes: Vec<String> = inventory
+            .locations
+            .iter()
+            .map(|location| location_note(&inventory, location))
+            .collect();
+        assert_eq!(
+            notes,
+            [
+                "10 areas \u{b7} 214 items",
+                "1 area \u{b7} 18 items",
+                "3 areas \u{b7} 9 items"
+            ]
         );
     }
 }

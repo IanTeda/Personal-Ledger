@@ -48,7 +48,7 @@ mod view_events;
 #[cfg(test)]
 use commands::record_history;
 pub use key_dispatch::PENDING_G_TIMEOUT;
-use lib_core::PropertyId;
+use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
@@ -216,7 +216,7 @@ impl Shell {
         let documents_page_subscription = Self::view_event_subscription(&documents_page, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let documents_page_observer = cx.observe(&documents_page, |_, _, cx| cx.notify());
-        let inventory_page = cx.new(|cx| InventoryPage::new(ledger.clone(), today, cx));
+        let inventory_page = cx.new(|cx| InventoryPage::new(ledger.clone(), cx));
         let inventory_page_subscription = Self::view_event_subscription(&inventory_page, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let inventory_page_observer = cx.observe(&inventory_page, |_, _, cx| cx.notify());
@@ -493,24 +493,24 @@ impl Shell {
         self.nav.open_ledger();
     }
 
-    /// Empties the Inventory, standing in for removing every Property until the Remove dialog
+    /// Empties the Inventory, standing in for removing every Location until the Remove dialog
     /// lands, so a test can reach the Inventory page's empty state.
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
-        let ids: Vec<PropertyId> = self
+        let ids: Vec<LocationId> = self
             .ledger
             .read(cx)
             .ledger()
             .inventory()
-            .properties
+            .locations
             .iter()
-            .map(|property| property.id)
+            .map(|location| location.id)
             .collect();
         self.ledger.update(cx, |store, cx| {
             for id in ids {
                 assert!(
-                    store.apply(cx, lib_ledger::RemoveProperty(id)).is_ok(),
-                    "a Property listed a moment ago must still be removable"
+                    store.apply(cx, lib_ledger::RemoveLocation(id)).is_ok(),
+                    "a Location listed a moment ago must still be removable"
                 );
             }
         });
@@ -574,12 +574,6 @@ impl Shell {
         self.views
             .documents
             .update(cx, |view, cx| view.set_display(date_style, cx));
-        self.views
-            .settings
-            .read(cx)
-            .inventory()
-            .clone()
-            .update(cx, |page, _| page.set_date_style(date_style));
     }
 }
 

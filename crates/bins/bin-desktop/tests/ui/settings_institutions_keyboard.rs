@@ -97,7 +97,8 @@ fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
     ui.resize_to(WindowSize::Large);
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
-    ui.click("unit-edit-0");
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-edit-unit");
     ui.press("tab");
     ui.press("x");
     ui.press("enter");
