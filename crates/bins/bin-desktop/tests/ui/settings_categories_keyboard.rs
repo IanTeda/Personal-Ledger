@@ -230,3 +230,25 @@ fn left_climbs_from_a_nested_row_to_its_parent_and_keeps_the_page_focused(
     );
     assert!(ui.settings().page_focused);
 }
+
+#[gpui::test]
+fn the_edit_type_change_is_held_until_enter_and_dropped_by_escape(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    let before = ui.settings_categories().category_types;
+
+    // The first row is Housing, a top-level Expense with children.
+    ui.press("j");
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditCategory"));
+    ui.click("edit-type-income");
+    assert_eq!(ui.settings_categories().category_types, before);
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_categories().category_types, before);
+
+    ui.press("e");
+    ui.click("edit-type-income");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_ne!(ui.settings_categories().category_types, before);
+}

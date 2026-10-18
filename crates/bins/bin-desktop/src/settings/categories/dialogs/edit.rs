@@ -176,6 +176,7 @@ fn type_field(
                     let cat_type = category_type.clone();
                     let on_change = on_change.clone();
                     div()
+                        .debug_selector(|| "edit-type-expense".to_string())
                         .id("edit-type-expense")
                         .cursor_pointer()
                         .px(px(12.0))
@@ -210,6 +211,7 @@ fn type_field(
                     let cat_type = category_type.clone();
                     let on_change = on_change.clone();
                     div()
+                        .debug_selector(|| "edit-type-income".to_string())
                         .id("edit-type-income")
                         .cursor_pointer()
                         .px(px(12.0))

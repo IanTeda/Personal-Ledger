@@ -13,7 +13,6 @@ use gpui::{AnyElement, App, Entity, div, prelude::*};
 use lib_budgets::Budgets;
 use lib_categories::{Category, depth, descendants_inclusive, is_leaf, path};
 use lib_core::{CategoryId, CategoryTypes};
-use lib_toast::ToastKind;
 use lib_transactions::Transaction;
 
 use super::{
@@ -22,7 +21,7 @@ use super::{
 };
 use crate::{
     chrome::dialog_host::{
-        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope, DialogToast,
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
     },
     dialog,
     form::field::TextField,
@@ -67,7 +66,8 @@ impl CategoriesDialogHandlers {
             let (actions, ledger) = (actions.clone(), ledger.clone());
             Rc::new(move |category_type, _window, cx| {
                 actions.edit(cx, |dialog: &mut CategoriesDialog, cx| {
-                    dialog.change_type(category_type, &ledger, cx)
+                    dialog.change_type(category_type, ledger.read(cx).ledger().categories());
+                    None
                 });
             })
         };
@@ -138,16 +138,9 @@ impl CategoriesDialog {
         }
     }
 
-    /// Picks a top-level Category's type; a child's is its parent's, so it stays. An Edit writes
-    /// the change to the Category and its descendants straight away, and a refused write is the
-    /// returned error Toast.
-    fn change_type(
-        &mut self,
-        category_type: CategoryTypes,
-        ledger: &Entity<LedgerStore>,
-        cx: &mut App,
-    ) -> Option<DialogToast> {
-        let categories = ledger.read(cx).ledger().categories();
+    /// Picks a top-level Category's type; a child's is its parent's, so it stays. The choice is
+    /// held on the form and cascaded to descendants on confirm, so Cancel reverts it.
+    fn change_type(&mut self, category_type: CategoryTypes, categories: &[Category]) {
         let can_change_type = match self {
             Self::Add { form, .. } => form.parent_id.is_none(),
             Self::Edit(id, _) => categories
@@ -156,28 +149,9 @@ impl CategoriesDialog {
                 .is_some_and(|c| c.parent.is_none()),
             Self::Delete(..) => false,
         };
-        if !can_change_type {
-            return None;
+        if can_change_type && let Some(form) = self.form_mut() {
+            form.category_type = Some(category_type);
         }
-        if let Some(form) = self.form_mut() {
-            form.category_type = Some(category_type.clone());
-        }
-        let Self::Edit(id, _) = self else {
-            return None;
-        };
-        let id = *id;
-        let changed = ledger.update(cx, |store, cx| {
-            store.apply(cx, lib_ledger::ChangeCategoryType { id, category_type })
-        });
-        changed.err().map(|error| {
-            (
-                ToastKind::Error,
-                lib_locale::msg::toast_save_failed(
-                    &lib_locale::msg::toast_entity_category(),
-                    &error.to_string(),
-                ),
-            )
-        })
     }
 }
 
@@ -229,7 +203,13 @@ impl Dialog for CategoriesDialog {
                 let name = ("name", form.name.text().to_string());
                 ("AddCategory", std::iter::once(name).chain(parent).collect())
             }
-            Self::Edit(_, form) => ("EditCategory", vec![("name", form.name.text().to_string())]),
+            Self::Edit(_, form) => (
+                "EditCategory",
+                vec![
+                    ("name", form.name.text().to_string()),
+                    ("type", format!("{:?}", form.category_type)),
+                ],
+            ),
             Self::Delete(_, form) => (
                 "DeleteCategory",
                 vec![("confirm", form.confirmation_name.text().to_string())],

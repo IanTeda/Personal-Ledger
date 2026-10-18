@@ -152,3 +152,40 @@ fn the_delete_confirm_is_inert_until_the_name_is_typed(app: &mut TestAppContext)
             .any(|name| name == "Household")
     );
 }
+
+#[gpui::test]
+fn changing_the_type_then_cancel_leaves_the_category_and_its_descendants(app: &mut TestAppContext) {
+    let mut ui = on_categories(app);
+    let before = ui.settings_categories().category_types;
+
+    // Food (id 6) is a top-level Expense with children.
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
+    ui.click("edit-type-income");
+    assert_eq!(ui.dialog_value("type").as_deref(), Some("Some(Income)"));
+    assert_eq!(ui.settings_categories().category_types, before);
+    ui.click("edit-category-cancel");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_categories().category_types, before);
+}
+
+#[gpui::test]
+fn changing_the_type_then_confirm_cascades_to_the_descendants(app: &mut TestAppContext) {
+    let mut ui = on_categories(app);
+    let before = ui.settings_categories().category_types;
+
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
+    ui.click("edit-type-income");
+    ui.click("edit-category-confirm");
+    assert_eq!(ui.dialog(), None);
+    let after = ui.settings_categories().category_types;
+    assert_ne!(after, before);
+    let changed = after.iter().zip(&before).filter(|(a, b)| a != b).count();
+    assert!(changed >= 2, "Food and at least one child changed type");
+    assert!(
+        after
+            .iter()
+            .zip(&before)
+            .filter(|(a, b)| a != b)
+            .all(|(a, _)| a.1 == lib_core::CategoryTypes::Income)
+    );
+}

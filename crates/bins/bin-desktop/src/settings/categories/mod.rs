@@ -406,6 +406,10 @@ impl CategoriesPage {
         let categories = self.categories(cx);
         SettingsCategoriesSnapshot {
             category_names: categories.iter().map(|c| c.name.clone()).collect(),
+            category_types: categories
+                .iter()
+                .map(|c| (c.name.clone(), c.category_type.clone()))
+                .collect(),
             selected_category: self.live_selected_id(cx).and_then(|id| {
                 categories
                     .iter()
@@ -416,11 +420,13 @@ impl CategoriesPage {
     }
 }
 
-/// The Categories page: names in storage order, and the selected row's name.
+/// The Categories page: names and types in storage order, and the selected row's name.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsCategoriesSnapshot {
     pub category_names: Vec<String>,
+    /// Each Category's name and type, in storage order.
+    pub category_types: Vec<(String, CategoryTypes)>,
     pub selected_category: Option<String>,
 }
 
