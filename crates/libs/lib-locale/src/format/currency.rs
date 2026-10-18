@@ -27,7 +27,7 @@ pub struct Unit<'a> {
     /// The Unit code (`AUD`, `BTC`, `AAPL`).
     pub code: &'a str,
 
-    /// The Unit's kind; only `Fiat` uses the currency formatter.
+    /// The Unit's kind; only `Currency` uses the currency formatter.
     pub kind: &'a UnitKind,
 
     /// Decimal places the Unit is shown with (2 for AUD, 8 for BTC, 0 for JPY).
@@ -85,7 +85,7 @@ fn format_quantity(amount: &Money, unit: Unit<'_>) -> String {
 /// `decimal_places` rounding, so those digits win when they differ. A non-fiat Unit's
 /// `decimal_places` is used as configured.
 pub fn format_money(amount: &Money, unit: &Unit<'_>) -> String {
-    if *unit.kind == UnitKind::Fiat {
+    if *unit.kind == UnitKind::Currency {
         match try_format_fiat(amount, *unit) {
             Ok(text) => return text,
             Err(error) => {

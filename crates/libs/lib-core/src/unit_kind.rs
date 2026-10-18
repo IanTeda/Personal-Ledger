@@ -1,30 +1,32 @@
 //! # Unit Kind Domain Module
 //!
-//! Descriptive grouping for a [`Unit`](crate) — fiat currency, crypto, a tradeable stock,
-//! a precious metal, or anything else FR.1's "etc." covers. Purely a display/grouping aid;
-//! Personal Ledger does not treat any kind specially (no cross-Unit conversion in V1 — see
-//! `GLOSSARY.md`'s Unit glossary entry).
+//! The fixed, descriptive grouping a [`Unit`](crate) carries (`GLOSSARY.md`'s Unit Kind). It groups
+//! Units for display and matches a Unit to the Price Sources able to price it; Personal Ledger
+//! never converts between Units by Kind (no cross-Unit conversion in V1).
 
 /// One of the descriptive groupings a Unit can carry.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, serde::Deserialize, serde::Serialize,
 )]
 pub enum UnitKind {
-    /// Government-issued currency (e.g. AUD, USD, JPY).
+    /// Fiat money (e.g. AUD, USD, JPY).
     #[default]
-    Fiat,
+    Currency,
 
-    /// A cryptocurrency (e.g. BTC, ETH).
+    /// Coins and tokens, stablecoins included (e.g. BTC, ETH, USDC).
     Crypto,
 
-    /// A tradeable equity/stock ticker (e.g. AAPL).
-    Stock,
+    /// Shares, ETFs, LICs, REITs, managed funds and employee shares or options (e.g. BHP, VAS).
+    Equity,
 
-    /// A precious metal (e.g. gold, silver), typically traded by weight.
-    PreciousMetal,
+    /// Bonds and other market-priced debt. A term deposit is money held in an Account, not a Unit.
+    FixedIncome,
 
-    /// Anything not covered by the above.
-    Other,
+    /// Precious metals and other raw goods (e.g. XAU).
+    Commodity,
+
+    /// The catch-all for anything else a person tracks (e.g. loyalty points, store credit).
+    Custom,
 }
 
 /// Error type for [`UnitKind`] parsing operations.
@@ -47,11 +49,12 @@ impl std::str::FromStr for UnitKind {
     /// Parses a string to a [`UnitKind`] variant (case-insensitive).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "fiat" => Ok(UnitKind::Fiat),
+            "currency" => Ok(UnitKind::Currency),
             "crypto" => Ok(UnitKind::Crypto),
-            "stock" => Ok(UnitKind::Stock),
-            "precious_metal" => Ok(UnitKind::PreciousMetal),
-            "other" => Ok(UnitKind::Other),
+            "equity" => Ok(UnitKind::Equity),
+            "fixed_income" => Ok(UnitKind::FixedIncome),
+            "commodity" => Ok(UnitKind::Commodity),
+            "custom" => Ok(UnitKind::Custom),
             _ => Err(UnitKindError::InvalidUnitKind(s.to_string())),
         }
     }
@@ -61,22 +64,24 @@ impl UnitKind {
     /// Returns the string representation stored in the database.
     pub fn as_str(&self) -> &'static str {
         match self {
-            UnitKind::Fiat => "fiat",
+            UnitKind::Currency => "currency",
             UnitKind::Crypto => "crypto",
-            UnitKind::Stock => "stock",
-            UnitKind::PreciousMetal => "precious_metal",
-            UnitKind::Other => "other",
+            UnitKind::Equity => "equity",
+            UnitKind::FixedIncome => "fixed_income",
+            UnitKind::Commodity => "commodity",
+            UnitKind::Custom => "custom",
         }
     }
 
     /// Returns every variant, useful for validation or a TUI picker.
     pub fn all() -> &'static [UnitKind] {
         &[
-            UnitKind::Fiat,
+            UnitKind::Currency,
             UnitKind::Crypto,
-            UnitKind::Stock,
-            UnitKind::PreciousMetal,
-            UnitKind::Other,
+            UnitKind::Equity,
+            UnitKind::FixedIncome,
+            UnitKind::Commodity,
+            UnitKind::Custom,
         ]
     }
 
@@ -130,7 +135,7 @@ mod tests {
 
     #[test]
     fn from_str_is_case_insensitive() {
-        assert_eq!(UnitKind::from_str("FIAT"), Ok(UnitKind::Fiat));
+        assert_eq!(UnitKind::from_str("CURRENCY"), Ok(UnitKind::Currency));
         assert_eq!(UnitKind::from_str("Crypto"), Ok(UnitKind::Crypto));
     }
 
@@ -140,8 +145,20 @@ mod tests {
     }
 
     #[test]
-    fn default_is_fiat() {
-        assert_eq!(UnitKind::default(), UnitKind::Fiat);
+    fn from_str_rejects_the_old_names() {
+        for old in ["fiat", "stock", "precious_metal", "other"] {
+            assert!(UnitKind::from_str(old).is_err(), "{old}");
+        }
+    }
+
+    #[test]
+    fn there_are_exactly_six_kinds() {
+        assert_eq!(UnitKind::all().len(), 6);
+    }
+
+    #[test]
+    fn default_is_currency() {
+        assert_eq!(UnitKind::default(), UnitKind::Currency);
     }
 
     #[test]

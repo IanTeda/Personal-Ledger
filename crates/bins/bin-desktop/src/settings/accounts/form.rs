@@ -442,7 +442,7 @@ mod tests {
                 .into_iter()
                 .map(|institution| institution.name)
                 .collect(),
-            lib_units::default_units()
+            lib_units::default_units(chrono::Utc::now())
                 .into_iter()
                 .map(|unit| (unit.id, unit.code))
                 .collect(),

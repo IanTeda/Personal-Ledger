@@ -36,7 +36,7 @@ impl crate::Preferences {
                 let usd = crate::units::UnitsBuilder::new()
                     .with_code("USD")
                     .with_name("US Dollar")
-                    .with_unit_kind(domain::UnitKind::Fiat)
+                    .with_unit_kind(domain::UnitKind::Currency)
                     .with_decimal_places(2)
                     .build()
                     .map_err(|e| {

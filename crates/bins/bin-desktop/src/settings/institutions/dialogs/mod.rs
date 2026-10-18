@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn add_institution_needs_a_name_an_account_type_and_a_unit() {
         let mut dialog = OpenDialog::Institutions(InstitutionsDialog::Add(
-            AddInstitutionForm::new(&default_units()),
+            AddInstitutionForm::new(&default_units(chrono::Utc::now())),
         ));
         assert!(!dialog.is_valid());
         type_text(&mut dialog, "ANZ");
@@ -151,7 +151,8 @@ mod tests {
 
     #[test]
     fn a_click_change_toggles_a_chip_or_picks_the_unit() {
-        let mut dialog = InstitutionsDialog::Add(AddInstitutionForm::new(&default_units()));
+        let mut dialog =
+            InstitutionsDialog::Add(AddInstitutionForm::new(&default_units(chrono::Utc::now())));
         dialog.apply_change(Change::AccountType(InstitutionProduct::Loan));
         dialog.apply_change(Change::Unit("btc".into()));
         let InstitutionsDialog::Add(form) = &dialog;

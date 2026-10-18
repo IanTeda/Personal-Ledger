@@ -3,10 +3,10 @@
 //! (ADR-0039).
 //!
 //! A command addresses a Unit by its [`UnitId`] (ADR-0040), so editing its code leaves the Accounts
-//! on it alone. Price Sources have no write yet.
+//! on it alone. The Price Source writes are in `price_source_commands`.
 
-use lib_core::UnitId;
-use lib_units::{UnitKind, UnitRow, add_unit, edit_unit, remove_unit};
+use lib_core::{PriceSourceId, UnitId};
+use lib_units::{MANUAL_ENTRY, PriceLink, UnitKind, UnitRow, add_unit, edit_unit, remove_unit};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -16,10 +16,36 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 #[error("unit not found")]
 pub struct UnitGone;
 
+/// Why an add or edit of a Unit was refused. Both only happen when something was removed while the
+/// Dialog was open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum SaveUnitRefusal {
+    /// The Unit being edited is gone. An add never refuses with this.
+    #[error("unit not found")]
+    UnitGone,
+    /// The link names a Price Source that doesn't exist.
+    #[error("price source not found")]
+    PriceSourceGone,
+}
+
+impl From<UnitGone> for SaveUnitRefusal {
+    fn from(UnitGone: UnitGone) -> Self {
+        Self::UnitGone
+    }
+}
+
 impl Ledger {
-    pub fn add_unit(&mut self, code: String, name: String, kind: UnitKind) {
-        let unit = add_unit(&mut self.units, code, name, kind);
+    pub fn add_unit(
+        &mut self,
+        code: String,
+        name: String,
+        kind: UnitKind,
+        link: PriceLink,
+    ) -> Result<(), SaveUnitRefusal> {
+        self.check_price_source(link.source_id)?;
+        let unit = add_unit(&mut self.units, code, name, kind, link);
         self.pending.push(LedgerChange::UpsertUnit(unit));
+        Ok(())
     }
 
     pub fn edit_unit(
@@ -28,9 +54,14 @@ impl Ledger {
         code: String,
         name: String,
         kind: UnitKind,
-    ) -> Result<(), UnitGone> {
-        let unit = edit_unit(&mut self.units, id, code, name, kind)
-            .ok_or(UnitGone)?
+        link: PriceLink,
+    ) -> Result<(), SaveUnitRefusal> {
+        if self.unit(id).is_none() {
+            return Err(SaveUnitRefusal::UnitGone);
+        }
+        self.check_price_source(link.source_id)?;
+        let unit = edit_unit(&mut self.units, id, code, name, kind, link)
+            .ok_or(SaveUnitRefusal::UnitGone)?
             .clone();
         self.pending.push(LedgerChange::UpsertUnit(unit));
         Ok(())
@@ -41,6 +72,19 @@ impl Ledger {
         self.pending.push(LedgerChange::DeleteUnit(id));
         Ok(unit)
     }
+
+    /// Refuses a link to a Price Source that is neither Manual entry, a built-in nor a stored Custom
+    /// source.
+    fn check_price_source(&self, id: PriceSourceId) -> Result<(), SaveUnitRefusal> {
+        let exists = id == MANUAL_ENTRY
+            || lib_units::built_in(id).is_some()
+            || self.price_sources.iter().any(|record| record.id() == id);
+        if exists {
+            Ok(())
+        } else {
+            Err(SaveUnitRefusal::PriceSourceGone)
+        }
+    }
 }
 
 /// [`Ledger::add_unit`] as a value.
@@ -49,15 +93,16 @@ pub struct AddUnit {
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
+    pub link: PriceLink,
 }
 
 impl LedgerCommand for AddUnit {
     type Outcome = ();
-    /// The form has already validated the Unit, so an add can't be refused.
-    type Refusal = std::convert::Infallible;
+    /// The form has already validated the Unit, so an add is refused only when its Price Source
+    /// is gone.
+    type Refusal = SaveUnitRefusal;
     fn run(self, ledger: &mut Ledger) -> Result<(), Self::Refusal> {
-        ledger.add_unit(self.code, self.name, self.kind);
-        Ok(())
+        ledger.add_unit(self.code, self.name, self.kind, self.link)
     }
 }
 
@@ -68,13 +113,14 @@ pub struct EditUnit {
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
+    pub link: PriceLink,
 }
 
 impl LedgerCommand for EditUnit {
     type Outcome = ();
-    type Refusal = UnitGone;
-    fn run(self, ledger: &mut Ledger) -> Result<(), UnitGone> {
-        ledger.edit_unit(self.id, self.code, self.name, self.kind)
+    type Refusal = SaveUnitRefusal;
+    fn run(self, ledger: &mut Ledger) -> Result<(), SaveUnitRefusal> {
+        ledger.edit_unit(self.id, self.code, self.name, self.kind, self.link)
     }
 }
 
@@ -102,22 +148,32 @@ mod tests {
         ledger.units()[index].id
     }
 
+    fn manual() -> PriceLink {
+        PriceLink::manual(UnitId::SEED_AUD)
+    }
+
     #[test]
-    fn adding_a_unit_appends_a_manual_unit_and_records_it() {
+    fn adding_a_unit_appends_it_with_its_link_and_records_it() {
         let mut ledger = Ledger::stub();
         let index = ledger.units().len();
+        let link = PriceLink {
+            source_id: lib_units::COINGECKO,
+            symbol: "ethereum".into(),
+            quote: UnitId::SEED_AUD,
+        };
 
         AddUnit {
             code: "eth".into(),
             name: "Ethereum".into(),
             kind: UnitKind::Crypto,
+            link: link.clone(),
         }
         .run(&mut ledger)
         .unwrap();
 
         let added = ledger.units()[index].clone();
         assert_eq!(added.code, "eth");
-        assert_eq!(added.source, "Manual entry");
+        assert_eq!(added.link, link);
         assert!(!added.is_base && !added.is_default);
         assert_eq!(
             ledger.drain_changes(),
@@ -126,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn editing_a_unit_keeps_its_source_and_flags_and_records_the_row() {
+    fn editing_a_unit_writes_its_link_keeps_its_flags_and_records_the_row() {
         let mut ledger = Ledger::stub();
         let before = ledger.units()[0].clone();
         assert!(before.is_base && before.is_default);
@@ -135,7 +191,8 @@ mod tests {
             id: UnitId::SEED_AUD,
             code: "aud2".into(),
             name: "Aussie".into(),
-            kind: UnitKind::Fiat,
+            kind: UnitKind::Currency,
+            link: manual(),
         }
         .run(&mut ledger)
         .unwrap();
@@ -145,7 +202,7 @@ mod tests {
             (edited.code.as_str(), edited.name.as_str()),
             ("aud2", "Aussie")
         );
-        assert_eq!(edited.source, before.source);
+        assert_eq!(edited.link, before.link);
         assert!(edited.is_base && edited.is_default);
         assert_eq!(
             ledger.drain_changes(),
@@ -163,10 +220,11 @@ mod tests {
                 id: UnitId::new(),
                 code: "x".into(),
                 name: "x".into(),
-                kind: UnitKind::Fiat
+                kind: UnitKind::Currency,
+                link: manual(),
             }
             .run(&mut ledger),
-            Err(UnitGone)
+            Err(SaveUnitRefusal::UnitGone)
         );
         assert_eq!(ledger.units(), before);
         assert!(ledger.drain_changes().is_empty());
@@ -202,11 +260,19 @@ mod tests {
     #[test]
     fn a_refused_unit_write_leaves_earlier_recorded_changes_alone() {
         let mut ledger = Ledger::stub();
-        ledger.add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto);
+        ledger
+            .add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto, manual())
+            .unwrap();
         assert!(ledger.delete_unit(UnitId::new()).is_err());
         assert!(
             ledger
-                .edit_unit(UnitId::new(), "x".into(), "x".into(), UnitKind::Fiat)
+                .edit_unit(
+                    UnitId::new(),
+                    "x".into(),
+                    "x".into(),
+                    UnitKind::Currency,
+                    manual()
+                )
                 .is_err()
         );
         assert_eq!(ledger.drain_changes().len(), 1);
@@ -228,6 +294,7 @@ mod tests {
             code: "xbt".into(),
             name: "Bitcoin".into(),
             kind: UnitKind::Crypto,
+            link: ledger.units()[1].link.clone(),
         }
         .run(&mut ledger)
         .unwrap();
@@ -243,12 +310,47 @@ mod tests {
     #[test]
     fn the_price_sources_are_not_touched_by_a_unit_write() {
         let mut ledger = Ledger::stub();
-        let before = ledger.price_sources().to_vec();
+        let before = ledger.price_source_records().to_vec();
         DeleteUnit {
             id: id_at(&ledger, 1),
         }
         .run(&mut ledger)
         .unwrap();
-        assert_eq!(ledger.price_sources(), before);
+        assert_eq!(ledger.price_source_records(), before);
+    }
+
+    #[test]
+    fn a_link_to_a_price_source_that_is_gone_is_refused_and_the_ledger_is_untouched() {
+        let mut ledger = Ledger::stub();
+        let before = ledger.units().to_vec();
+        let gone = PriceLink {
+            source_id: PriceSourceId::new(),
+            symbol: "x".into(),
+            quote: UnitId::SEED_AUD,
+        };
+
+        assert_eq!(
+            AddUnit {
+                code: "eth".into(),
+                name: "Ethereum".into(),
+                kind: UnitKind::Crypto,
+                link: gone.clone(),
+            }
+            .run(&mut ledger),
+            Err(SaveUnitRefusal::PriceSourceGone)
+        );
+        assert_eq!(
+            EditUnit {
+                id: UnitId::SEED_BTC,
+                code: "btc".into(),
+                name: "Bitcoin".into(),
+                kind: UnitKind::Crypto,
+                link: gone,
+            }
+            .run(&mut ledger),
+            Err(SaveUnitRefusal::PriceSourceGone)
+        );
+        assert_eq!(ledger.units(), before);
+        assert!(ledger.drain_changes().is_empty());
     }
 }

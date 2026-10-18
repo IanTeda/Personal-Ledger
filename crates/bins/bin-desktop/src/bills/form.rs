@@ -725,7 +725,7 @@ mod tests {
 
     fn stubs() -> Stubs {
         Stubs {
-            units: lib_units::default_units(),
+            units: lib_units::default_units(chrono::Utc::now()),
             accounts: default_accounts(),
             categories: default_categories(),
             payees: default_payees(),
@@ -947,7 +947,7 @@ mod tests {
         let source = BillPlanSource::new(
             &default_categories(),
             &default_accounts(),
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             &default_payees(),
             None,
             "none".to_string(),

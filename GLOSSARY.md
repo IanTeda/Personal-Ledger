@@ -24,7 +24,7 @@ The fixed, descriptive grouping a Unit carries, one of six: **Currency** (fiat m
 _Avoid_: Fiat, Stock, Share, ETF, Precious metal, Other, asset class.
 
 **Price Source**:
-Where a Unit's prices come from, listed under the Units on the Units Settings page. It has no stored data and no writes yet, and pricing never converts between Units.
+Where a Unit's prices come from, listed under the Units on the Units Settings page: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a Custom source a person adds, or Manual entry, the fallback that never fetches. A built-in can be renamed and retimed but never deleted; a Custom source can be added, edited and deleted. Each Unit links to one source with its own symbol and quote Unit, and keeps only its last price. Pricing never converts between Units.
 _Avoid_: feed, provider, exchange.
 
 **Ledger**:

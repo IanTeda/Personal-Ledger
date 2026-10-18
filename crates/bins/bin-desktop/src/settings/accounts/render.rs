@@ -339,7 +339,10 @@ mod tests {
     #[test]
     fn scope_note_reads_count_net_worth_and_held_units() {
         crate::locale::init_for_tests();
-        let note = scope_note(&accounts::default_accounts(), &lib_units::default_units());
+        let note = scope_note(
+            &accounts::default_accounts(),
+            &lib_units::default_units(chrono::Utc::now()),
+        );
         assert_eq!(
             note,
             "7 accounts \u{b7} net worth 83,995.87 aud \u{b7} vas, btc held separately"
@@ -350,7 +353,7 @@ mod tests {
     fn scope_note_with_no_accounts_says_so() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_note(&[], &lib_units::default_units()),
+            scope_note(&[], &lib_units::default_units(chrono::Utc::now())),
             "no accounts yet"
         );
     }

@@ -6,9 +6,9 @@
 //! on it stay on it), Delete "confirm -> remove + close".
 
 use gpui::{App, Entity};
-use lib_ledger::{AddUnit, DeleteUnit, EditUnit, UnitGone};
+use lib_ledger::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal};
 use lib_toast::ToastKind;
-use lib_units::{UnitId, UnitKind};
+use lib_units::{PriceLink, UnitId, UnitKind};
 
 use super::dialogs::UnitsDialog;
 use crate::{
@@ -32,6 +32,7 @@ pub enum UnitsCommand {
         code: String,
         name: String,
         kind: UnitKind,
+        link: Option<PriceLink>,
     },
     Delete {
         id: UnitId,
@@ -60,37 +61,38 @@ impl UnitsOutcome {
 
 impl DialogForm for UnitsDialog {
     type Command = UnitsCommand;
-    /// The forms validate first, so a refusal only happens when the Unit row was removed or
-    /// moved while its Dialog was open.
-    type Refusal = UnitGone;
+    /// The forms validate first, so a refusal only happens when the Unit row or its Price Source
+    /// was removed while its Dialog was open.
+    type Refusal = SaveUnitRefusal;
 
     fn command(&self) -> Result<UnitsCommand, FormError> {
         if !Dialog::is_valid(self) {
             return Err(FormError);
         }
         Ok(match self {
-            // Neither Add unit field carries a source or a base or default flag: the Ledger
-            // defaults a dialog-created unit to "Manual entry", not base and not default.
+            // No Add unit field carries a Price Source or a base or default flag, so a
+            // dialog-created unit lands on Manual entry, not base and not default.
             Self::Add(form) => UnitsCommand::Add {
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
                 kind: form.kind,
             },
-            // Source and the base and default flags aren't Edit unit fields either, so the Ledger
-            // keeps them from the row being edited.
+            // The link and the base and default flags aren't Edit unit fields either: the form
+            // carries the row's link back, and the Ledger keeps the flags.
             Self::Edit(id, form) => UnitsCommand::Edit {
                 id: *id,
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
                 kind: form.kind,
+                link: form.link.clone(),
             },
             Self::Delete(id, _) => UnitsCommand::Delete { id: *id },
         })
     }
 
-    /// A refusal means the Unit row vanished under an open, valid form, so there is nothing left
-    /// for the form to correct: the Dialog stays open and `Esc` closes it.
-    fn refuse(&mut self, _refusal: UnitGone) {}
+    /// A refusal means the Unit row or its Price Source vanished under an open, valid form, so
+    /// there is nothing left for the form to correct: the Dialog stays open and `Esc` closes it.
+    fn refuse(&mut self, _refusal: SaveUnitRefusal) {}
 }
 
 impl ConfirmDialog for UnitsDialog {
@@ -117,24 +119,40 @@ pub struct UnitsApply {
 
 impl Apply<UnitsCommand> for UnitsApply {
     type Outcome = UnitsOutcome;
-    type Refusal = UnitGone;
+    type Refusal = SaveUnitRefusal;
 
-    fn apply(&mut self, command: UnitsCommand, cx: &mut App) -> Result<UnitsOutcome, UnitGone> {
+    fn apply(
+        &mut self,
+        command: UnitsCommand,
+        cx: &mut App,
+    ) -> Result<UnitsOutcome, SaveUnitRefusal> {
         match command {
             UnitsCommand::Add { code, name, kind } => {
                 let saved = code.clone();
-                let Ok(()) = self.ledger.update(cx, |store, cx| {
-                    store.apply(cx, AddUnit { code, name, kind })
-                });
-                Ok(UnitsOutcome::Saved { code: saved })
+                let link = self.manual_link(cx);
+                self.ledger
+                    .update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            AddUnit {
+                                code,
+                                name,
+                                kind,
+                                link,
+                            },
+                        )
+                    })
+                    .map(|()| UnitsOutcome::Saved { code: saved })
             }
             UnitsCommand::Edit {
                 id,
                 code,
                 name,
                 kind,
+                link,
             } => {
                 let saved = code.clone();
+                let link = link.unwrap_or_else(|| self.manual_link(cx));
                 self.ledger
                     .update(cx, |store, cx| {
                         store.apply(
@@ -144,6 +162,7 @@ impl Apply<UnitsCommand> for UnitsApply {
                                 code,
                                 name,
                                 kind,
+                                link,
                             },
                         )
                     })
@@ -152,8 +171,21 @@ impl Apply<UnitsCommand> for UnitsApply {
             UnitsCommand::Delete { id } => self
                 .ledger
                 .update(cx, |store, cx| store.apply(cx, DeleteUnit { id }))
-                .map(|unit| UnitsOutcome::Deleted { code: unit.code }),
+                .map(|unit| UnitsOutcome::Deleted { code: unit.code })
+                .map_err(SaveUnitRefusal::from),
         }
+    }
+}
+
+impl UnitsApply {
+    /// A Manual entry link quoted in the base Unit. With no base Unit it falls back to the first
+    /// Unit, and with no Units at all to an id naming none, which Manual entry never reads.
+    fn manual_link(&self, cx: &App) -> PriceLink {
+        let units = self.ledger.read(cx).ledger().units();
+        let quote = lib_units::base_unit(units)
+            .or(units.first())
+            .map_or_else(UnitId::new, |unit| unit.id);
+        PriceLink::manual(quote)
     }
 }
 
@@ -172,8 +204,7 @@ mod tests {
         let ledger = test_ledger(
             cx,
             LedgerParts {
-                units: lib_units::default_units(),
-                price_sources: lib_units::default_price_sources(),
+                units: lib_units::default_units(chrono::Utc::now()),
                 ..LedgerParts::default()
             },
         );
@@ -199,7 +230,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn adding_and_editing_a_unit_land_in_the_ledger_and_keep_its_source(cx: &mut TestAppContext) {
+    fn adding_and_editing_a_unit_land_in_the_ledger_and_keep_its_link(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
         let landed = cx.update(|cx| {
             apply.apply(
@@ -218,7 +249,8 @@ mod tests {
                     id: UnitId::SEED_AUD,
                     code: "aud".into(),
                     name: "Aussie".into(),
-                    kind: UnitKind::Fiat,
+                    kind: UnitKind::Currency,
+                    link: Some(PriceLink::manual(UnitId::SEED_AUD)),
                 },
                 cx,
             )
@@ -227,9 +259,11 @@ mod tests {
 
         cx.read(|cx| {
             let units = apply.ledger.read(cx).ledger().units();
-            assert_eq!(units.last().expect("the added Unit").code, "eth");
+            let added = units.last().expect("the added Unit");
+            assert_eq!(added.code, "eth");
+            assert_eq!(added.link, PriceLink::manual(UnitId::SEED_AUD));
             assert_eq!(units[0].name, "Aussie");
-            assert_eq!(units[0].source, "USD");
+            assert_eq!(units[0].link, PriceLink::manual(UnitId::SEED_AUD));
         });
     }
 
@@ -242,19 +276,20 @@ mod tests {
                     id: UnitId::new(),
                     code: "x".into(),
                     name: "x".into(),
-                    kind: UnitKind::Fiat,
+                    kind: UnitKind::Currency,
+                    link: None,
                 },
                 cx,
             )
         });
-        assert_eq!(refused, Err(UnitGone));
+        assert_eq!(refused, Err(SaveUnitRefusal::UnitGone));
     }
 
     #[gpui::test]
     fn a_delete_of_a_unit_that_vanished_is_refused(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
         let refused = cx.update(|cx| apply.apply(UnitsCommand::Delete { id: UnitId::new() }, cx));
-        assert_eq!(refused, Err(UnitGone));
+        assert_eq!(refused, Err(SaveUnitRefusal::UnitGone));
     }
 
     #[test]

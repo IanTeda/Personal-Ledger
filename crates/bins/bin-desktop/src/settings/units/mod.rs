@@ -16,7 +16,7 @@ use chrono::Local;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
 use lib_ledger::Domain;
 use lib_list_cursor::{resolve, step_id};
-use lib_units::{PriceSourceRow, UnitId, UnitRow};
+use lib_units::{MANUAL_ENTRY, PriceSource, PriceSourceId, UnitId, UnitRow};
 
 use crate::{
     chrome::{dialog_host::open_dialog, statusline::PageStatus, window_size::WindowSize},
@@ -33,6 +33,42 @@ use dialogs::UnitsDialog;
 use form::{DeleteUnitForm, UnitForm};
 
 impl EventEmitter<ViewEvent> for UnitsPage {}
+
+/// A Price Source as the page draws it, its text resolved for the Locale. The table keeps its
+/// NAME · SOURCE · LAST UPDATED layout until the Price Sources UI is redrawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SourceRow {
+    name: String,
+    /// The address it fetches from; empty for Manual entry, which never fetches.
+    address: String,
+    /// How long ago it last fetched, "not fetched yet", or empty for Manual entry.
+    last_updated: String,
+}
+
+impl SourceRow {
+    fn new(source: &PriceSource<'_>, ledger: &lib_ledger::Ledger) -> Self {
+        let last_updated = match source.endpoint() {
+            None => String::new(),
+            Some(_) => ledger.last_fetched(source.id).map_or_else(
+                crate::msg::desktop_settings_units_not_fetched_yet,
+                |fetched| {
+                    crate::navigation::explorer::format_modified(
+                        fetched.into(),
+                        std::time::SystemTime::now(),
+                    )
+                },
+            ),
+        };
+        Self {
+            name: source.name.to_string(),
+            address: source
+                .endpoint()
+                .map(|endpoint| endpoint.address.to_string())
+                .unwrap_or_default(),
+            last_updated,
+        }
+    }
+}
 
 /// Emitted when a click lands on a row, so the Settings View, which owns the page's focus, moves
 /// it from the index into the page.
@@ -160,11 +196,26 @@ impl UnitsPage {
         self.units(cx).iter().find(|unit| unit.id == id)
     }
 
-    /// The Price Sources row that values `unit`: they are keyed by the unit's name.
-    fn price_source_of<'a>(&self, unit: &UnitRow, cx: &'a App) -> Option<&'a PriceSourceRow> {
-        self.price_sources(cx)
-            .iter()
-            .find(|source| source.unit_name == unit.name)
+    /// The Price Source that fetches `unit`'s price, or `None` while it sits on Manual entry.
+    fn price_source_of(&self, unit: &UnitRow, cx: &App) -> Option<SourceRow> {
+        if unit.link.source_id == MANUAL_ENTRY {
+            return None;
+        }
+        let ledger = self.ledger.read(cx).ledger();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let source = ledger.price_source(&manual, unit.link.source_id)?;
+        Some(SourceRow::new(&source, ledger))
+    }
+
+    /// The name of the Price Source `id`, empty when it is gone.
+    fn source_name(&self, id: PriceSourceId, cx: &App) -> String {
+        let manual = lib_locale::msg::price_source_manual_entry();
+        self.ledger
+            .read(cx)
+            .ledger()
+            .price_source(&manual, id)
+            .map(|source| source.name.to_string())
+            .unwrap_or_default()
     }
 
     /// The Accounts counted in `unit`, in ledger order.
@@ -202,8 +253,15 @@ impl UnitsPage {
         self.ledger.read(cx).ledger().units()
     }
 
-    fn price_sources<'a>(&self, cx: &'a App) -> &'a [PriceSourceRow] {
-        self.ledger.read(cx).ledger().price_sources()
+    /// Every Price Source in the Ledger's order, resolved for drawing.
+    fn price_sources(&self, cx: &App) -> Vec<SourceRow> {
+        let ledger = self.ledger.read(cx).ledger();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        ledger
+            .price_sources(&manual)
+            .iter()
+            .map(|source| SourceRow::new(source, ledger))
+            .collect()
     }
 
     // -----------------------------------------------------------------------------------------
@@ -447,7 +505,7 @@ impl UnitsPage {
                     MenuTarget::Source(index) => self
                         .price_sources(cx)
                         .get(index)
-                        .map(|source| format!("source:{}", source.unit_name)),
+                        .map(|source| format!("source:{}", source.name)),
                 };
                 (
                     row.unwrap_or_default(),

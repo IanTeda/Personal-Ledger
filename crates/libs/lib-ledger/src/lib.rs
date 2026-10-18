@@ -11,6 +11,7 @@ mod document_commands;
 mod institution_commands;
 mod inventory_commands;
 mod payee_commands;
+mod price_source_commands;
 pub mod query;
 pub mod seed;
 mod tag_commands;
@@ -47,17 +48,21 @@ pub use payee_commands::{
     AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,
     SetPayeeActiveRefusal,
 };
+pub use price_source_commands::{
+    AddPriceSource, DeletePriceSource, DeletePriceSourceRefusal, EditPriceSource,
+    EditPriceSourceRefusal, PriceSourceDeleted,
+};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
 pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
-pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, UnitGone};
+pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal, UnitGone};
 
-use chrono::{Local, NaiveDate};
+use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
 use lib_accounts::{Account, default_accounts};
 use lib_bills::{BillPlan, BillScheduleEntry, default_bills};
 use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
-use lib_core::UnitId;
+use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_documents::{
     Document, default_documents,
     types::{DocumentTypeRow, default_types},
@@ -67,7 +72,7 @@ use lib_inventory::{Inventory, default_inventory};
 use lib_payees::{Payee, default_payees};
 use lib_tags::{Tag, default_tags};
 use lib_transactions::Transaction;
-use lib_units::{PriceSourceRow, UnitRow, default_price_sources, default_units};
+use lib_units::{PriceSource, PriceSourceRecord, UnitRow, default_units};
 
 /// Every domain collection the Clients read, owned in one place. Every write is a
 /// [`LedgerCommand`] that records what it changed.
@@ -86,7 +91,8 @@ pub struct Ledger {
     inventory: Inventory,
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
-    price_sources: Vec<PriceSourceRow>,
+    /// Only the Price Sources a person changed: built-in overrides and Custom sources.
+    price_sources: Vec<PriceSourceRecord>,
     /// The changes recorded since the last [`Ledger::drain_changes`].
     pending: Vec<LedgerChange>,
 }
@@ -108,7 +114,7 @@ pub struct LedgerParts {
     pub inventory: Inventory,
     pub institutions: Vec<InstitutionRow>,
     pub units: Vec<UnitRow>,
-    pub price_sources: Vec<PriceSourceRow>,
+    pub price_sources: Vec<PriceSourceRecord>,
 }
 
 impl Ledger {
@@ -153,11 +159,19 @@ impl Ledger {
     /// their history into the Transactions, so Transactions are seeded before them and the rest
     /// follow their dependencies.
     pub fn stub() -> Self {
-        Self::stub_on(Local::now().date_naive())
+        Self::stub_at(Local::now().date_naive(), Utc::now())
     }
 
-    /// The stub Ledger anchored to `today`, so a test is not at the mercy of the wall clock.
+    /// The stub Ledger anchored to `today`, so a test is not at the mercy of the wall clock. Its
+    /// "now", for the Units' last prices, is noon that day.
     pub fn stub_on(today: NaiveDate) -> Self {
+        Self::stub_at(
+            today,
+            today.and_time(NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
+        )
+    }
+
+    fn stub_at(today: NaiveDate, now: DateTime<Utc>) -> Self {
         let accounts = default_accounts();
         let categories = default_categories();
         let payees = default_payees();
@@ -188,8 +202,8 @@ impl Ledger {
             document_types: default_types(),
             inventory,
             institutions: default_institutions(),
-            units: default_units(),
-            price_sources: default_price_sources(),
+            units: default_units(now),
+            price_sources: Vec::new(),
         })
     }
 
@@ -255,8 +269,43 @@ impl Ledger {
         self.unit(id).map_or("", |unit| unit.code.as_str())
     }
 
-    pub fn price_sources(&self) -> &[PriceSourceRow] {
+    /// The Units sorted by code, ignoring case.
+    pub fn units_by_code(&self) -> Vec<&UnitRow> {
+        lib_units::units_by_code(&self.units)
+    }
+
+    /// The stored Price Source rows, as the repository receives them.
+    pub fn price_source_records(&self) -> &[PriceSourceRecord] {
         &self.price_sources
+    }
+
+    /// Every Price Source, Manual entry and the built-ins included, sorted by current name
+    /// ignoring case. `manual_name` is Manual entry's name in the Client's Locale.
+    pub fn price_sources<'a>(&'a self, manual_name: &'a str) -> Vec<PriceSource<'a>> {
+        lib_units::price_sources(&self.price_sources, manual_name)
+    }
+
+    /// The Price Source `id`, if it exists.
+    pub fn price_source<'a>(
+        &'a self,
+        manual_name: &'a str,
+        id: PriceSourceId,
+    ) -> Option<PriceSource<'a>> {
+        lib_units::price_source(&self.price_sources, manual_name, id)
+    }
+
+    /// The Price Sources able to price a Unit of `kind`.
+    pub fn sources_for_kind<'a>(
+        &'a self,
+        manual_name: &'a str,
+        kind: UnitKind,
+    ) -> Vec<PriceSource<'a>> {
+        lib_units::sources_for_kind(&self.price_sources, manual_name, kind)
+    }
+
+    /// When Price Source `id` last fetched a price, or `None` when it has not fetched yet.
+    pub fn last_fetched(&self, id: PriceSourceId) -> Option<DateTime<Utc>> {
+        lib_units::last_fetched(&self.units, id)
     }
 
     /// The changes recorded since the last drain, oldest first, for the store to hand to the

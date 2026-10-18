@@ -13,8 +13,8 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{
-    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, TagId,
-    TransactionId, UnitId,
+    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, PriceSourceId,
+    TagId, TransactionId, UnitId,
 };
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
@@ -22,7 +22,7 @@ use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
-use lib_units::UnitRow;
+use lib_units::{PriceSourceRecord, UnitRow};
 
 use crate::Ledger;
 
@@ -77,6 +77,8 @@ pub enum LedgerChange {
     UpsertInstitution(InstitutionRow),
     UpsertUnit(UnitRow),
     DeleteUnit(UnitId),
+    UpsertPriceSource(PriceSourceRecord),
+    DeletePriceSource(PriceSourceId),
 }
 
 impl LedgerChange {
@@ -98,7 +100,11 @@ impl LedgerChange {
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
             Self::UpsertInstitution(_) => Domain::Institutions,
-            Self::UpsertUnit(_) | Self::DeleteUnit(_) => Domain::Units,
+            // Price Sources are listed and edited on the Units page, and deleting one moves Units.
+            Self::UpsertUnit(_)
+            | Self::DeleteUnit(_)
+            | Self::UpsertPriceSource(_)
+            | Self::DeletePriceSource(_) => Domain::Units,
         }
     }
 }
@@ -136,7 +142,7 @@ mod tests {
 
     #[test]
     fn institution_and_unit_changes_name_their_own_domains() {
-        let unit = lib_units::default_units().remove(0);
+        let unit = lib_units::default_units(chrono::Utc::now()).remove(0);
         assert_eq!(
             LedgerChange::UpsertInstitution(lib_institutions::default_institutions().remove(0))
                 .domain(),

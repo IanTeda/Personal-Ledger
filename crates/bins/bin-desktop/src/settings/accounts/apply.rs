@@ -109,7 +109,7 @@ impl Apply<AccountCommand> for AccountsApply {
                             .iter()
                             .find(|unit| unit.code == code)
                     })
-                    .is_none_or(|unit| unit.kind == lib_core::UnitKind::Fiat);
+                    .is_none_or(|unit| unit.kind == lib_core::UnitKind::Currency);
                 let new: NewAccount = (*form)
                     .into_new_account(Local::now().date_naive(), is_currency)
                     .ok_or(AccountError::Incomplete)?;
@@ -150,8 +150,7 @@ mod tests {
             cx,
             LedgerParts {
                 accounts: lib_accounts::default_accounts(),
-                units: lib_units::default_units(),
-                price_sources: lib_units::default_price_sources(),
+                units: lib_units::default_units(chrono::Utc::now()),
                 ..LedgerParts::default()
             },
         );

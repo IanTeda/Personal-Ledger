@@ -136,6 +136,7 @@ desktop-settings-units-name-placeholder = e.g. US Dollar
 desktop-settings-units-column-flags = Flags
 desktop-settings-units-column-source = Source
 desktop-settings-units-column-last-updated = Last updated
+desktop-settings-units-not-fetched-yet = not fetched yet
 desktop-settings-units-flag-base = base
 desktop-settings-units-flag-default = default
 desktop-settings-units-column-price-source = Price source

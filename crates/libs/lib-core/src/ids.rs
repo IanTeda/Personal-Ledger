@@ -167,6 +167,12 @@ ledger_id!(
     12
 );
 ledger_id!(
+    /// A Price Source's id. A built-in source's id is fixed in `lib_units`' table, so a Ledger
+    /// refers to the built-in in code rather than holding a copy of it (ADR-0043).
+    PriceSourceId,
+    13
+);
+ledger_id!(
     /// A Unit's id. Addresses the Unit across edits, so a Unit's code (which a person can change)
     /// is never the key an Account or a command holds.
     UnitId,

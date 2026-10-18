@@ -39,7 +39,11 @@ fn add_unit_types_into_code_then_tab_moves_to_name_and_enter_saves(app: &mut Tes
     assert_eq!(units_page.unit_rows.len(), before + 1);
     assert_eq!(
         units_page.unit_rows.last(),
-        Some(&("xyz".to_string(), "test".to_string(), "fiat".to_string()))
+        Some(&(
+            "xyz".to_string(),
+            "test".to_string(),
+            "currency".to_string()
+        ))
     );
 }
 

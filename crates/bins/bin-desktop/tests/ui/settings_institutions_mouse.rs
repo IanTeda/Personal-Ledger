@@ -130,7 +130,7 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
     ui.press("tab");
     ui.press("g o l d");
     ui.click("add-unit-type-4");
-    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Other"));
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Commodity"));
     ui.click("add-unit-confirm");
     let units_page = ui.settings_units();
     assert_eq!(ui.dialog(), None);
@@ -140,7 +140,7 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
             .unit_rows
             .last()
             .map(|row| (row.0.as_str(), row.2.as_str())),
-        Some(("gold", "other"))
+        Some(("gold", "commodity"))
     );
 }
 
@@ -164,9 +164,9 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
     ui.resize_to(WindowSize::Large);
 
-    // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
+    // vas is seeded as an Equity, which the old three-option selector could only show as Custom.
     row_action(&mut ui, "unit-row-2", "edit-unit");
-    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Stock"));
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Equity"));
 }
 
 #[gpui::test]

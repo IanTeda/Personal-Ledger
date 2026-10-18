@@ -17,11 +17,16 @@ transaction-flagged = Flagged
 category-type-expense = Expense
 category-type-income = Income
 
-unit-kind-fiat = Fiat
+unit-kind-currency = Currency
 unit-kind-crypto = Crypto
-unit-kind-stock = Stock
-unit-kind-precious-metal = Precious metal
-unit-kind-other = Other
+unit-kind-equity = Equity
+unit-kind-fixed-income = Fixed income
+unit-kind-commodity = Commodity
+unit-kind-custom = Custom
+
+## The Price Source every Unit can fall back to: it never fetches, so its price is typed in.
+
+price-source-manual-entry = Manual entry
 
 budget-period-weekly = Weekly
 budget-period-monthly = Monthly

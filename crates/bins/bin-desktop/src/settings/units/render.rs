@@ -16,9 +16,9 @@ use gpui::{
     div, point, prelude::*, px,
 };
 use lib_locale::Label;
-use lib_units::{PriceSourceRow, UnitId, UnitRow};
+use lib_units::{UnitId, UnitRow};
 
-use super::{MenuAction, MenuTarget, RowMenu, UnitsPage};
+use super::{MenuAction, MenuTarget, RowMenu, SourceRow, UnitsPage};
 use crate::{settings::SettingsPage, theme::color};
 
 type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -92,7 +92,18 @@ impl Render for UnitsPage {
                 on_plain(&entity, UnitsPage::click_add),
                 cx,
             ))
-            .child(table(self.units(cx), unit_handlers, selected, menu, cx))
+            .child(table(
+                self.units(cx),
+                &self
+                    .units(cx)
+                    .iter()
+                    .map(|unit| self.source_name(unit.link.source_id, cx))
+                    .collect::<Vec<_>>(),
+                unit_handlers,
+                selected,
+                menu,
+                cx,
+            ))
             .child(legend(cx))
             .child(
                 div()
@@ -111,7 +122,7 @@ impl Render for UnitsPage {
                         cx,
                     ))
                     .child(price_source_table(
-                        self.price_sources(cx),
+                        &self.price_sources(cx),
                         source_handlers,
                         menu,
                         cx,
@@ -235,8 +246,10 @@ struct RowState {
     inverted: bool,
 }
 
+/// `source_names` holds each Unit's Price Source name, in `units`' order.
 fn table(
     units: &[UnitRow],
+    source_names: &[String],
     handlers: RowHandlers,
     selected: Option<UnitId>,
     menu: Option<RowMenu>,
@@ -256,14 +269,20 @@ fn table(
         .border_1()
         .border_color(color::border(cx))
         .child(table_header(cx))
-        .children(units.iter().enumerate().map(|(index, unit)| {
-            let state = RowState {
-                index,
-                last: index == last_index,
-                inverted: selected == Some(unit.id) || menu_unit == Some(unit.id),
-            };
-            row(unit, state, handlers.clone(), cx)
-        }))
+        .children(
+            units
+                .iter()
+                .zip(source_names)
+                .enumerate()
+                .map(|(index, (unit, source_name))| {
+                    let state = RowState {
+                        index,
+                        last: index == last_index,
+                        inverted: selected == Some(unit.id) || menu_unit == Some(unit.id),
+                    };
+                    row(unit, source_name.clone(), state, handlers.clone(), cx)
+                }),
+        )
 }
 
 fn header_cell(width: Option<Pixels>, text: Option<String>) -> impl IntoElement {
@@ -342,7 +361,13 @@ fn row_frame(
         })
 }
 
-fn row(unit: &UnitRow, state: RowState, handlers: RowHandlers, cx: &App) -> impl IntoElement {
+fn row(
+    unit: &UnitRow,
+    source_name: String,
+    state: RowState,
+    handlers: RowHandlers,
+    cx: &App,
+) -> impl IntoElement {
     let RowState {
         index,
         last,
@@ -403,7 +428,7 @@ fn row(unit: &UnitRow, state: RowState, handlers: RowHandlers, cx: &App) -> impl
             .w(SOURCE_WIDTH)
             .flex_none()
             .text_color(muted)
-            .child(unit.source.clone()),
+            .child(source_name),
     )
 }
 
@@ -411,7 +436,7 @@ const PRICE_SOURCE_NAME_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_LAST_UPDATED_WIDTH: Pixels = px(130.0);
 
 fn price_source_table(
-    rows: &[PriceSourceRow],
+    rows: &[SourceRow],
     handlers: RowHandlers,
     menu: Option<RowMenu>,
     cx: &App,
@@ -456,11 +481,9 @@ fn price_source_table(
         }))
 }
 
-/// One Price Sources row -- keyed by the unit's own `name`, not `code` (the README's own "the
-/// one place the unit is referenced by name rather than code" callout, since this table is
-/// about the relationship to an external source, not the unit record itself).
+/// One Price Sources row: the source's name, the address it fetches from and when it last did.
 fn price_source_row(
-    source: &PriceSourceRow,
+    source: &SourceRow,
     index: usize,
     last: bool,
     inverted: bool,
@@ -487,9 +510,9 @@ fn price_source_row(
             .w(PRICE_SOURCE_NAME_WIDTH)
             .flex_none()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .child(source.unit_name.clone()),
+            .child(source.name.clone()),
     )
-    .child(div().flex_1().child(source.source.clone()))
+    .child(div().flex_1().child(source.address.clone()))
     .child(
         div()
             .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
@@ -605,7 +628,7 @@ pub(crate) fn detail_pane(page: &UnitsPage, entity: &Entity<UnitsPage>, cx: &App
     pane.when_some(unit, |this, unit| {
         let source = page.price_source_of(unit, cx);
         this.child(unit_group(page, unit, entity, cx))
-            .child(price_source_group(source, entity, cx))
+            .child(price_source_group(source.as_ref(), entity, cx))
             .child(accounts_group(page, unit, cx))
     })
     .child(activity_group(page, cx))
@@ -780,7 +803,7 @@ fn unit_group(
 }
 
 fn price_source_group(
-    source: Option<&PriceSourceRow>,
+    source: Option<&SourceRow>,
     entity: &Entity<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
@@ -790,7 +813,7 @@ fn price_source_group(
             .flex_col()
             .child(fact_row(
                 crate::msg::desktop_settings_units_column_source(),
-                source.source.clone(),
+                source.name.clone(),
                 cx,
             ))
             .child(fact_row(

@@ -430,7 +430,7 @@ mod tests {
         let net = net_worth(&default_accounts(), Some(lib_core::UnitId::SEED_AUD));
         assert_eq!(count_text(&net), "7 accounts");
         assert_eq!(
-            held_separately_text(&net, &lib_units::default_units()).as_deref(),
+            held_separately_text(&net, &lib_units::default_units(chrono::Utc::now())).as_deref(),
             Some("vas, btc held separately")
         );
     }
@@ -457,7 +457,7 @@ mod tests {
         );
         assert_eq!(count_text(&net), "1 account");
         assert_eq!(
-            held_separately_text(&net, &lib_units::default_units()),
+            held_separately_text(&net, &lib_units::default_units(chrono::Utc::now())),
             None
         );
     }
@@ -472,7 +472,7 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), accounts.len(), "ids must be unique");
 
-        let units = lib_units::default_units();
+        let units = lib_units::default_units(chrono::Utc::now());
         let institutions = lib_institutions::default_institutions();
         for account in &accounts {
             assert!(
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn seeded_base_unit_rows_sum_to_the_mockups_net_worth() {
-        let base = lib_units::default_units()
+        let base = lib_units::default_units(chrono::Utc::now())
             .into_iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.id);

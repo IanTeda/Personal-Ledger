@@ -14,5 +14,8 @@ doctest = false
 ## -- Internal Dependencies --
 lib_core = { path = "../lib-core" }
 
+## -- Workspace Dependencies --
+chrono = { workspace = true }
+
 [lints]
 workspace = true

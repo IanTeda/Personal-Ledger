@@ -36,8 +36,8 @@ fn every_label() -> Vec<(String, String)> {
 }
 
 #[test]
-fn there_are_twenty_labels() {
-    with_locale(Locale::EnUs, || assert_eq!(every_label().len(), 20));
+fn there_are_twenty_one_labels() {
+    with_locale(Locale::EnUs, || assert_eq!(every_label().len(), 21));
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn en_us_labels_use_sentence_case() {
     with_locale(Locale::EnUs, || {
         assert_eq!(AccountType::CreditCard.label(), "Credit card");
         assert_eq!(TransactionStatus::Reconciled.label(), "Reconciled");
-        assert_eq!(UnitKind::PreciousMetal.label(), "Precious metal");
+        assert_eq!(UnitKind::FixedIncome.label(), "Fixed income");
         assert_eq!(flagged_label(), "Flagged");
     });
 }

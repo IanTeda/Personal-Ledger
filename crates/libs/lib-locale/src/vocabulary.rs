@@ -51,11 +51,12 @@ impl Label for CategoryTypes {
 impl Label for UnitKind {
     fn label(&self) -> String {
         match self {
-            UnitKind::Fiat => msg::unit_kind_fiat(),
+            UnitKind::Currency => msg::unit_kind_currency(),
             UnitKind::Crypto => msg::unit_kind_crypto(),
-            UnitKind::Stock => msg::unit_kind_stock(),
-            UnitKind::PreciousMetal => msg::unit_kind_precious_metal(),
-            UnitKind::Other => msg::unit_kind_other(),
+            UnitKind::Equity => msg::unit_kind_equity(),
+            UnitKind::FixedIncome => msg::unit_kind_fixed_income(),
+            UnitKind::Commodity => msg::unit_kind_commodity(),
+            UnitKind::Custom => msg::unit_kind_custom(),
         }
     }
 }

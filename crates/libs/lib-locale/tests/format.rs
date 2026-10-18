@@ -30,7 +30,7 @@ fn fiat(amount: &str, code: &str, decimal_places: u32, locale: Locale) -> String
     with_locale(locale, || {
         format_money(
             &money(amount),
-            &Unit::new(code, &UnitKind::Fiat, decimal_places),
+            &Unit::new(code, &UnitKind::Currency, decimal_places),
         )
     })
 }
@@ -187,7 +187,7 @@ fn the_unit_decides_the_fraction_digits() {
     assert_eq!(fiat("1234.5", "AUD", 3, Locale::EnAu), "$1,234.50");
     // A non-fiat Unit's digits are used as configured.
     with_locale(Locale::EnAu, || {
-        let gold = Unit::new("XAU", &UnitKind::PreciousMetal, 3);
+        let gold = Unit::new("XAU", &UnitKind::Commodity, 3);
         assert_eq!(format_money(&money("2.5"), &gold), "2.500 XAU");
     });
 }
@@ -197,7 +197,7 @@ fn non_fiat_units_place_the_code_through_a_message() {
     with_locale(Locale::EnAu, || {
         let btc = Unit::new("BTC", &UnitKind::Crypto, 8);
         assert_eq!(format_money(&money("1234.5"), &btc), "1,234.50000000 BTC");
-        let aapl = Unit::new("AAPL", &UnitKind::Stock, 3);
+        let aapl = Unit::new("AAPL", &UnitKind::Equity, 3);
         assert_eq!(format_money(&money("-0.005"), &aapl), "-0.005 AAPL");
     });
 }
@@ -205,7 +205,7 @@ fn non_fiat_units_place_the_code_through_a_message() {
 #[test]
 fn a_fiat_code_with_no_currency_falls_back_to_a_quantity() {
     with_locale(Locale::EnUs, || {
-        let odd = Unit::new("NOT-A-CODE", &UnitKind::Fiat, 2);
+        let odd = Unit::new("NOT-A-CODE", &UnitKind::Currency, 2);
         assert_eq!(format_money(&money("5"), &odd), "5.00 NOT-A-CODE");
     });
 }

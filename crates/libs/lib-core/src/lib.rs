@@ -43,7 +43,7 @@ pub use row_id::{RowID, RowIDError};
 mod ids;
 pub use ids::{
     AccountId, AreaId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, ItemId,
-    LocationId, PayeeId, TagId, TransactionId, UnitId,
+    LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
 };
 
 /// Category types used for classifying financial transactions.
@@ -56,10 +56,10 @@ pub use ids::{
 mod category_types;
 pub use category_types::{CategoryTypes, CategoryTypesError};
 
-/// Descriptive grouping for a Unit (fiat, crypto, stock, precious metal, other).
+/// The fixed grouping a Unit carries (Currency, Crypto, Equity, Fixed Income, Commodity, Custom).
 ///
-/// [`UnitKind`] is display/grouping-only — Personal Ledger does not convert between
-/// Units in V1, so no kind is treated specially in any calculation.
+/// [`UnitKind`] groups Units and matches them to Price Sources; Personal Ledger does not convert
+/// between Units in V1, so no kind is treated specially in any calculation.
 mod unit_kind;
 pub use unit_kind::{UnitKind, UnitKindError};
 

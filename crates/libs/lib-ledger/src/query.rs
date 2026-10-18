@@ -468,7 +468,7 @@ mod tests {
                 payees,
                 tags,
                 transactions,
-                units: default_units(),
+                units: default_units(chrono::Utc::now()),
             }
         }
 

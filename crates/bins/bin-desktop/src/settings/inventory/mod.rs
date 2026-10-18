@@ -513,7 +513,7 @@ impl InventoryPage {
             .ledger()
             .units()
             .iter()
-            .filter(|unit| unit.kind == UnitKind::Fiat)
+            .filter(|unit| unit.kind == UnitKind::Currency)
             .map(|unit| {
                 (
                     crate::msg::desktop_inventory_unit_option(

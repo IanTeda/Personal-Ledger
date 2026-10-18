@@ -4,7 +4,7 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 
 ## What you can do
 
-- Create units for currencies, cryptocurrencies, stocks, ETFs, commodities and custom assets
+- Create units for currencies, crypto, equities, fixed income, commodities and custom assets
 - Assign a unit to each account at creation
 - View and manage your holdings in each unit
 - Set optional pricing information for valuations
@@ -14,7 +14,8 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 
 - **Unit:** The denomination or asset class an account is denominated in (e.g. AUD, BTC, AAPL).
 - **Unit Code:** A unique uppercase identifier (e.g. AUD, BTC, AAPL).
-- **Unit Type:** The category of unit (Currency, Crypto, Equity, ETF, Commodity, Custom).
+- **Unit Kind:** The fixed grouping a unit carries, one of six: Currency, Crypto, Equity, Fixed Income, Commodity or Custom. It also decides which Price Sources can price the unit.
+- **Price Source:** Where a unit's price comes from: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a custom source you add, or Manual entry, where you type the price yourself.
 - **Pricing Pair:** The unit you use to price another unit (e.g. BTC priced in AUD).
 - **Precision:** The number of decimal places supported (e.g. AUD uses 2, BTC uses 8).
 
@@ -38,7 +39,16 @@ You create your first account, an everyday bank account, and choose AUD as the u
 
 ## Types of units
 
-Personal Ledger supports currencies (AUD, USD, EUR), cryptocurrencies (BTC, ETH), equities (AAPL, BHP), ETFs (VAS, IVV), commodities (XAU for gold, XAG for silver), and custom units for assets that don't fit predefined categories (employee share schemes, loyalty points, store credit).
+Every unit is one of six Unit Kinds:
+
+- **Currency:** fiat money, such as AUD, USD or EUR.
+- **Crypto:** coins and tokens, stablecoins included, such as BTC, ETH or USDC.
+- **Equity:** shares, ETFs, LICs, REITs, managed funds and employee shares or options, such as BHP or VAS.
+- **Fixed Income:** bonds and other market-priced debt. A term deposit isn't a unit: it's AUD held in an account.
+- **Commodity:** precious metals and other raw goods, such as XAU for gold.
+- **Custom:** anything else you track, such as loyalty points, store credit or collectibles.
+
+The Unit Kind decides which built-in Price Sources are offered for a unit: CoinGecko for Crypto, Yahoo Finance for Equity, Fixed Income and Commodity, and Frankfurter for Currency. Manual entry and any custom source you add are offered for every kind.
 
 ## Screens
 
@@ -76,7 +86,7 @@ For the full set of keys, see [Getting around](getting-around.md).
 
 Intended features for Units. Ticked means built in at least one app; the tag says which.
 
-- [x] UNT-001 (TUI, desktop): Create a unit with a code, name, type (Currency, Crypto, Equity, ETF, Commodity, Custom), and precision
+- [x] UNT-001 (TUI, desktop): Create a unit with a code, name, Unit Kind (Currency, Crypto, Equity, Fixed Income, Commodity, Custom), and precision
 - [x] UNT-002 (TUI, desktop): List units with filtering by active status
 - [x] UNT-003 (TUI, desktop): Edit a unit's name and active status
 - [x] UNT-004 (TUI, desktop): Set a pricing pair for optional valuation (AUD, USD, etc.)

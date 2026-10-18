@@ -312,7 +312,7 @@ fn format_size(bytes: u64) -> String {
 /// `modified` relative to `now` as the mockup's own "10 minutes ago" / "3 weeks ago" style --
 /// `now` is threaded through rather than read live so this stays a pure, unit-testable
 /// function; [`row`] calls it with `SystemTime::now()`.
-fn format_modified(modified: SystemTime, now: SystemTime) -> String {
+pub(crate) fn format_modified(modified: SystemTime, now: SystemTime) -> String {
     let elapsed = now.duration_since(modified).unwrap_or_default().as_secs();
     if elapsed < 60 {
         return msg::desktop_explorer_modified_just_now();

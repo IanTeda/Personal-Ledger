@@ -1,7 +1,7 @@
 //! The Add, Edit and Delete unit dialogs' live form state -- pure, `gpui`-free; `Shell`'s Dialog
 //! host holds it inside [`UnitsDialog`](super::dialogs::UnitsDialog) and `dialogs/` draws it.
 
-use lib_units::{UnitKind, UnitRow};
+use lib_units::{PriceLink, UnitKind, UnitRow};
 
 use crate::form::field::TextField;
 
@@ -25,6 +25,9 @@ pub struct UnitForm {
     pub code: TextField,
     pub name: TextField,
     pub kind: UnitKind,
+    /// The edited Unit's Price Source link, kept as it was since the dialog has no field for it
+    /// yet. `None` for a new Unit, which lands on Manual entry.
+    pub link: Option<PriceLink>,
     pub focused_field: AddUnitField,
 }
 
@@ -35,6 +38,7 @@ impl UnitForm {
             code: TextField::new(row.code.as_str()),
             name: TextField::new(row.name.as_str()),
             kind: row.kind,
+            link: Some(row.link.clone()),
             focused_field: AddUnitField::default(),
         }
     }
@@ -103,7 +107,12 @@ mod tests {
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
             kind: UnitKind::Crypto,
-            source: "CoinGecko".to_string(),
+            link: PriceLink {
+                source_id: lib_units::COINGECKO,
+                symbol: "bitcoin".to_string(),
+                quote: lib_units::UnitId::SEED_AUD,
+            },
+            last_price: None,
             is_base: false,
             is_default: false,
         };
@@ -111,6 +120,7 @@ mod tests {
         assert_eq!(form.code.text(), "btc");
         assert_eq!(form.name.text(), "Bitcoin");
         assert_eq!(form.kind, UnitKind::Crypto);
+        assert_eq!(form.link, Some(row.link.clone()));
         assert_eq!(form.focused_field, AddUnitField::Code);
     }
 

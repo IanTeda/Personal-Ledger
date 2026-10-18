@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn add_institution_form_new_seeds_savings_and_the_first_unit() {
-        let units = default_units();
+        let units = default_units(chrono::Utc::now());
         let form = AddInstitutionForm::new(&units);
         assert_eq!(form.account_types, vec![InstitutionProduct::Savings]);
         assert_eq!(form.default_unit_code.as_deref(), Some("aud"));
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn add_institution_form_toggle_account_type_adds_and_removes() {
-        let mut form = AddInstitutionForm::new(&default_units());
+        let mut form = AddInstitutionForm::new(&default_units(chrono::Utc::now()));
         assert!(form.account_types.contains(&InstitutionProduct::Savings));
         form.toggle_account_type(InstitutionProduct::Savings);
         assert!(!form.account_types.contains(&InstitutionProduct::Savings));

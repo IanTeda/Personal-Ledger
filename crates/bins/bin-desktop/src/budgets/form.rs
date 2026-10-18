@@ -502,7 +502,7 @@ mod tests {
         let (accounts, budgets) = seeded();
         let form = BudgetForm::new(
             &accounts,
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             Some(personal(&budgets)),
         );
         let options = form.options();
@@ -527,7 +527,7 @@ mod tests {
         let (accounts, budgets) = seeded();
         let mut form = BudgetForm::new(
             &accounts,
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             Some(personal(&budgets)),
         );
         form.name = TextField::new("  Holiday ");
@@ -558,7 +558,7 @@ mod tests {
         let (accounts, budgets) = seeded();
         let mut form = BudgetForm::new(
             &accounts,
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             Some(personal(&budgets)),
         );
         let options = form.options();
@@ -591,10 +591,14 @@ mod tests {
         let (accounts, budgets) = seeded();
         let mut form = BudgetForm::new(
             &accounts,
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             Some(personal(&budgets)),
         );
-        let all = BudgetOptions::new(&accounts, &lib_units::default_units(), None);
+        let all = BudgetOptions::new(
+            &accounts,
+            &lib_units::default_units(chrono::Utc::now()),
+            None,
+        );
         let Some(other) = all
             .units
             .iter()
@@ -625,7 +629,11 @@ mod tests {
     fn edit_mode_locks_the_unit_and_drafts_a_rename() {
         let (accounts, budgets) = seeded();
         let budget = personal(&budgets);
-        let mut form = BudgetForm::from_budget(budget, &accounts, &lib_units::default_units());
+        let mut form = BudgetForm::from_budget(
+            budget,
+            &accounts,
+            &lib_units::default_units(chrono::Utc::now()),
+        );
         assert!(form.is_edit());
         assert_eq!(form.name.text(), budget.name);
         assert_eq!(form.account_ids, budget.account_ids);
@@ -687,7 +695,7 @@ mod tests {
         let source = budgets.get(budgets::PERSONAL_SPENDING_ID);
         budgets_dialog(BudgetsDialog::Budget(BudgetForm::new(
             &accounts,
-            &lib_units::default_units(),
+            &lib_units::default_units(chrono::Utc::now()),
             source,
         )))
     }
