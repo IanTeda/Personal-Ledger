@@ -4,7 +4,6 @@
 use crate::app::Shell;
 #[doc(hidden)]
 pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
-use crate::settings::categories::dialogs::CategoriesDialog;
 #[doc(hidden)]
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]
@@ -26,7 +25,6 @@ use crate::{
     settings::documents::dialogs::DocumentTypesDialog,
     settings::inventory::dialogs::InventoryDialog,
     settings::payees::dialogs::PayeesDialog,
-    settings::tags::dialogs::TagsDialog,
     settings::{
         institutions::dialogs::InstitutionsDialog, tracing::dialogs::TracingDialog,
         units::dialogs::UnitsDialog,
@@ -41,7 +39,6 @@ struct OpenDialog {
     label: Option<&'static str>,
     name: Option<String>,
     confirm: Option<String>,
-    merge_pair: Option<(String, String)>,
     /// The Add/Edit unit dialog's Name, Type and focused field.
     unit: Option<(String, String, String)>,
     /// The Add institution dialog's checked products and Default unit code.
@@ -86,7 +83,7 @@ impl Shell {
     }
 
     /// The open Settings dialog, whichever page owns it.
-    fn open_settings_dialog(&self, cx: &gpui::App) -> OpenDialog {
+    fn open_settings_dialog(&self) -> OpenDialog {
         let mut open_dialog = OpenDialog::default();
         if let Some(open) = self.dialog::<AccountsDialog>() {
             let (label, name, confirm) = match open {
@@ -105,23 +102,6 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<CategoriesDialog>() {
-            let (label, name, confirm) = match open {
-                CategoriesDialog::Add { form, .. } => {
-                    ("AddCategory", Some(form.name.text().to_string()), None)
-                }
-                CategoriesDialog::Edit(_, form) => {
-                    ("EditCategory", Some(form.name.text().to_string()), None)
-                }
-                CategoriesDialog::Delete(_, form) => (
-                    "DeleteCategory",
-                    None,
-                    Some(form.confirmation_name.text().to_string()),
-                ),
-            };
-            open_dialog.label = Some(label);
-            open_dialog.name = name;
-            open_dialog.confirm = confirm;
         } else if let Some(open) = self.dialog::<PayeesDialog>() {
             let (label, name, confirm) = match open {
                 PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
@@ -133,32 +113,6 @@ impl Shell {
                     None,
                     Some(form.confirmation_name.text().to_string()),
                 ),
-            };
-            open_dialog.label = Some(label);
-            open_dialog.name = name;
-            open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<TagsDialog>() {
-            let (label, name, confirm) = match open {
-                TagsDialog::Add(form) => ("AddTag", Some(form.name.text().to_string()), None),
-                TagsDialog::Edit(_, form) => ("EditTag", Some(form.name.text().to_string()), None),
-                TagsDialog::Remove(_, form) => (
-                    "RemoveTag",
-                    None,
-                    Some(form.confirmation_name.text().to_string()),
-                ),
-                TagsDialog::Merge(form) => {
-                    open_dialog.merge_pair = form.pair().and_then(|(source, target)| {
-                        Some((
-                            lib_tags::get(self.ledger.read(cx).ledger().tags(), source)?
-                                .name
-                                .clone(),
-                            lib_tags::get(self.ledger.read(cx).ledger().tags(), target)?
-                                .name
-                                .clone(),
-                        ))
-                    });
-                    ("MergeTags", None, None)
-                }
             };
             open_dialog.label = Some(label);
             open_dialog.name = name;
@@ -189,22 +143,11 @@ impl Shell {
     /// dialog.
     #[doc(hidden)]
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
-        let dialog = self.open_settings_dialog(cx);
-        let parent_id = match self.dialog::<CategoriesDialog>() {
-            Some(CategoriesDialog::Add { parent_id, .. }) => *parent_id,
-            _ => None,
-        };
-        let dialog_parent = parent_id.and_then(|id| {
-            self.categories(cx)
-                .iter()
-                .find(|category| category.id == id)
-                .map(|category| category.name.clone())
-        });
+        let dialog = self.open_settings_dialog();
         SettingsSnapshot {
             dialog: dialog.label.map(str::to_string),
             dialog_name: dialog.name,
             dialog_confirm: dialog.confirm,
-            dialog_parent,
             status_message: self.chrome.status_message.clone(),
             ..self.views.settings.read(cx).snapshot()
         }
@@ -273,17 +216,13 @@ impl Shell {
     /// The Settings Tags page for a test.
     #[doc(hidden)]
     pub fn settings_tags_snapshot(&self, cx: &gpui::App) -> SettingsTagsSnapshot {
-        let page = self.views.settings.read(cx).tags().read(cx).snapshot(cx);
-        SettingsTagsSnapshot {
-            merge_pair: self.open_settings_dialog(cx).merge_pair,
-            ..page
-        }
+        self.views.settings.read(cx).tags().read(cx).snapshot(cx)
     }
 
     /// The Settings Units page for a test, as the View builds it, plus the open Unit dialog.
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
-        let unit_form = self.open_settings_dialog(cx).unit;
+        let unit_form = self.open_settings_dialog().unit;
         SettingsUnitsSnapshot {
             unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
             unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),
@@ -296,7 +235,7 @@ impl Shell {
     /// institution dialog.
     #[doc(hidden)]
     pub fn settings_institutions_snapshot(&self, cx: &gpui::App) -> SettingsInstitutionsSnapshot {
-        let institution_form = self.open_settings_dialog(cx).institution;
+        let institution_form = self.open_settings_dialog().institution;
         SettingsInstitutionsSnapshot {
             institution_dialog_types: institution_form.as_ref().map(|(types, _)| types.clone()),
             institution_dialog_unit: institution_form.and_then(|(_, unit)| unit),

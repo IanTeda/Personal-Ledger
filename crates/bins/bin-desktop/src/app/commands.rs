@@ -112,8 +112,8 @@ impl Shell {
             CommandEffect::MergeTags => {
                 self.nav.exit_mode();
                 self.open_settings_page(SettingsPage::Tags, cx);
-                self.tags_page(cx)
-                    .update(cx, |page, cx| page.open_merge_dialog(None, cx));
+                let tags = self.views.settings.read(cx).tags().clone();
+                tags.update(cx, |page, cx| page.open_merge_dialog(None, cx));
             }
             CommandEffect::Import => {
                 self.nav.exit_mode();

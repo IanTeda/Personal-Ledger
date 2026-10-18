@@ -22,6 +22,11 @@ fn in_tags(app: &mut TestAppContext) -> Harness<'_> {
     ui
 }
 
+/// The open Merge dialog's chosen `(source, target)` names, once both are chosen.
+fn merge_pair(ui: &mut Harness<'_>) -> Option<(String, String)> {
+    Some((ui.dialog_value("source")?, ui.dialog_value("target")?))
+}
+
 #[gpui::test]
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
@@ -41,10 +46,10 @@ fn n_opens_add_tag_and_escape_cancels_it(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
 
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddTag"));
+    assert_eq!(ui.dialog(), Some("AddTag"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -55,11 +60,10 @@ fn typing_a_name_and_pressing_enter_adds_and_selects_the_tag(app: &mut TestAppCo
 
     ui.press("n");
     ui.press("z e b r a");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("zebra"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("zebra"));
     ui.press("enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before + 1);
     assert_eq!(tags_page.selected_tag.as_deref(), Some("zebra"));
 }
@@ -71,8 +75,7 @@ fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
 
     ui.press("n enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("AddTag"));
+    assert_eq!(ui.dialog(), Some("AddTag"));
     assert_eq!(tags_page.tag_names.len(), before);
 }
 
@@ -82,18 +85,16 @@ fn e_edits_the_selected_tag_and_enter_saves_the_new_name(app: &mut TestAppContex
     let selected = ui.settings_tags().selected_tag;
 
     ui.press("e");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditTag"));
-    assert_eq!(page.dialog_name, selected);
+    assert_eq!(ui.dialog(), Some("EditTag"));
+    assert_eq!(ui.dialog_value("name"), selected);
     ui.press("x");
     assert_eq!(
-        ui.settings().dialog_name,
+        ui.dialog_value("name"),
         selected.map(|name| format!("{name}x"))
     );
     ui.press("enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         tags_page.selected_tag,
         tags_page
@@ -113,13 +114,11 @@ fn x_removes_an_unused_tag_without_typing_its_name(app: &mut TestAppContext) {
     assert_eq!(ui.settings_tags().selected_tag.as_deref(), Some("zebra"));
 
     ui.press("x");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("RemoveTag"));
-    assert_eq!(page.dialog_confirm.as_deref(), Some(""));
+    assert_eq!(ui.dialog(), Some("RemoveTag"));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some(""));
     ui.press("enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before.len() - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
 }
@@ -136,13 +135,12 @@ fn a_used_tag_is_removed_only_once_its_name_is_typed(app: &mut TestAppContext) {
     assert_eq!(ui.settings_tags().selected_tag.as_deref(), Some(used));
     ui.press("x");
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("RemoveTag"));
+    assert_eq!(ui.dialog(), Some("RemoveTag"));
     ui.press("s h a r e d");
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(used));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some(used));
     ui.press("enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(!tags_page.tag_names.iter().any(|name| name == used));
 }
 
@@ -158,13 +156,11 @@ fn m_on_a_flagged_duplicate_opens_merge_with_both_tags_chosen(app: &mut TestAppC
     );
     ui.press("k");
     ui.press("m");
-    let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("MergeTags"));
+    assert_eq!(ui.dialog(), Some("MergeTags"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
-    assert!(tags_page.merge_pair.is_some());
+    assert!(merge_pair(&mut ui).is_some());
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -173,13 +169,12 @@ fn enter_in_the_merge_dialog_merges_the_duplicate_away(app: &mut TestAppContext)
     let before = ui.settings_tags().tag_names.len();
 
     ui.press("shift-g k m");
-    let Some((source, target)) = ui.settings_tags().merge_pair else {
+    let Some((source, target)) = merge_pair(&mut ui) else {
         panic!("a flagged duplicate opens Merge with both Tags chosen");
     };
     ui.press("enter");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before - 1);
     assert!(!tags_page.tag_names.contains(&source));
     assert_eq!(tags_page.selected_tag.as_ref(), Some(&target));

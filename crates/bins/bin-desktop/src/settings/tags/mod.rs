@@ -1,8 +1,9 @@
 //! The **Tags** Settings page (ADR-0037, and its amendment's one folder per page): the Tags table
 //! with its likely duplicates and their merge. [`TagsPage`] reads its rows from [`LedgerStore`],
 //! renders itself (`render.rs`), handles its keys and movement, builds its Dialogs (`dialogs/`)
-//! and reaches `Shell` only through [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms
-//! them through `apply.rs`. The Settings View forwards to it while the page is open.
+//! and reaches `Shell` only through [`ViewEvent`]. The Dialog host holds them, and they draw,
+//! read back and confirm themselves (`dialogs/`, `apply.rs`), handing each outcome back to
+//! [`TagsPage::land`]. The Settings View forwards to it while the page is open.
 //!
 //! The rules live in `lib_tags`: a Tag's name, usage, merge and remove, and the likely duplicates
 //! that broke the uniqueness rule (ADR-0015 and its amendments).
@@ -18,12 +19,13 @@ use lib_ledger::Domain;
 use lib_tags::{DuplicateGroup, Tag};
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_tags_hints,
     view::event::ViewEvent,
 };
+use apply::TagOutcome;
 use dialogs::TagsDialog;
 use form::{MergeTagsForm, RemoveTagForm, TagForm, merge_options};
 use render::scope_text;
@@ -212,7 +214,7 @@ impl TagsPage {
 
     fn open_add_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let form = TagForm::new(self.tags(cx).to_vec());
-        open_dialog(TagsDialog::Add(form), cx);
+        open_dialog(TagsDialog::Add(form), Self::land, cx);
     }
 
     /// Opens the Edit dialog pre-filled from Tag `id`. A no-op if the Tag is gone.
@@ -222,7 +224,7 @@ impl TagsPage {
             return;
         };
         let form = TagForm::for_edit(tag, rows.to_vec());
-        open_dialog(TagsDialog::Edit(id, form), cx);
+        open_dialog(TagsDialog::Edit(id, form), Self::land, cx);
     }
 
     /// Opens the Remove dialog on Tag `id`, counting its Transactions. A no-op if the Tag is gone.
@@ -234,7 +236,7 @@ impl TagsPage {
             &tag.name,
             lib_tags::transaction_count(self.transactions(cx), id),
         );
-        open_dialog(TagsDialog::Remove(id, form), cx);
+        open_dialog(TagsDialog::Remove(id, form), Self::land, cx);
     }
 
     /// Opens the merge dialog with `source` as the source Tag and, when it is flagged as a likely
@@ -244,7 +246,17 @@ impl TagsPage {
         let groups = self.duplicate_groups(cx);
         let target = source.and_then(|id| lib_tags::duplicate_of(&groups, id));
         let form = MergeTagsForm::new(self.merge_options(cx), source, target);
-        open_dialog(TagsDialog::Merge(form), cx);
+        open_dialog(TagsDialog::Merge(form), Self::land, cx);
+    }
+
+    /// Lands a confirmed Dialog: a save selects its Tag and a merge its target. A removal keeps
+    /// the selection in range, since a removed Tag's id no longer resolves and the page lands on
+    /// its first row.
+    fn land(&mut self, outcome: TagOutcome, cx: &mut Context<'_, Self>) {
+        match outcome {
+            TagOutcome::Saved(id) | TagOutcome::Merged { target: id, .. } => self.select_id(id, cx),
+            TagOutcome::Removed { .. } => {}
+        }
     }
 
     /// The 7e selects' options, labelled `Shared (9 txns)`.
@@ -260,13 +272,8 @@ pub fn likely_duplicate_count(groups: &[DuplicateGroup]) -> usize {
     groups.iter().map(|group| group.duplicates.len()).sum()
 }
 
-/// Asks `Shell`'s Dialog host to open a Tags dialog.
-fn open_dialog(dialog: TagsDialog, cx: &mut Context<'_, TagsPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Tags(dialog))));
-}
-
-/// The Tags page: names A–Z, the selected row's name, and the open Merge dialog's chosen
-/// `(source, target)` names. `Shell` fills in the pair, since the open Dialog is its own.
+/// The Tags page: names A–Z and the selected row's name. The open Dialog reads itself back
+/// (`Dialog::readback`).
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsTagsSnapshot {
@@ -274,7 +281,6 @@ pub struct SettingsTagsSnapshot {
     /// Each Tag's id, in the same order as the names.
     pub tag_ids: Vec<TagId>,
     pub selected_tag: Option<String>,
-    pub merge_pair: Option<(String, String)>,
 }
 
 impl TagsPage {
@@ -294,7 +300,6 @@ impl TagsPage {
                 .selected_id(cx)
                 .and_then(|id| lib_tags::get(rows, id))
                 .map(|tag| tag.name.clone()),
-            merge_pair: None,
         }
     }
 }
@@ -302,6 +307,113 @@ impl TagsPage {
 #[cfg(test)]
 mod tests {
     use lib_payees::default_payees;
+    mod hosted {
+        use std::{cell::RefCell, rc::Rc};
+
+        use gpui::{AppContext, Entity, Subscription, TestAppContext};
+        use lib_ledger::LedgerParts;
+        use lib_tags::default_tags;
+        use lib_toast::ToastKind;
+
+        use super::super::TagsPage;
+        use crate::{
+            chrome::dialog_host::{Dialog, DialogScope, HostedOpen, Landed, OpenDialog, type_text},
+            ledger_store::test_ledger,
+            view::event::ViewEvent,
+        };
+
+        /// A Tags page over the default Tags, and the scope a hosted Dialog runs in.
+        fn page(cx: &mut TestAppContext) -> (Entity<TagsPage>, DialogScope) {
+            let ledger = test_ledger(
+                cx,
+                LedgerParts {
+                    tags: default_tags(),
+                    ..LedgerParts::default()
+                },
+            );
+            let page = cx.new(|cx| TagsPage::new(ledger.clone(), cx));
+            let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+            (page, DialogScope { ledger, today })
+        }
+
+        /// Runs `open` on the page and returns the hosted Dialog it asked the host to open.
+        fn opened(
+            page: &Entity<TagsPage>,
+            cx: &mut TestAppContext,
+            open: impl FnOnce(&mut TagsPage, &mut gpui::Context<'_, TagsPage>),
+        ) -> HostedOpen {
+            let opened = Rc::new(RefCell::new(None));
+            let _subscription: Subscription = cx.update(|cx| {
+                let opened = opened.clone();
+                cx.subscribe(page, move |_, event: &ViewEvent, _| {
+                    if let ViewEvent::OpenHostedDialog(open) = event {
+                        *opened.borrow_mut() = Some((**open).clone());
+                    }
+                })
+            });
+            page.update(cx, open);
+            opened.take().expect("the page opened a hosted Dialog")
+        }
+
+        fn selected(page: &Entity<TagsPage>, cx: &mut TestAppContext) -> Option<String> {
+            cx.read(|cx| page.read(cx).snapshot(cx).selected_tag)
+        }
+
+        #[gpui::test]
+        fn a_confirmed_add_hands_the_new_tag_to_the_page_to_select(cx: &mut TestAppContext) {
+            let (page, scope) = page(cx);
+            let HostedOpen {
+                mut dialog,
+                confirm,
+            } = opened(&page, cx, |page, cx| page.click_add(cx));
+            assert!(matches!(dialog, OpenDialog::Tags(_)));
+
+            assert_eq!(
+                cx.update(|cx| confirm(&mut dialog, &scope, cx)),
+                None,
+                "a blank name stays open"
+            );
+            type_text(&mut dialog, "zebra");
+            let landed = cx.update(|cx| confirm(&mut dialog, &scope, cx));
+
+            assert_eq!(
+                landed,
+                Some(Landed {
+                    toast: None,
+                    outcome: ()
+                })
+            );
+            assert_eq!(selected(&page, cx).as_deref(), Some("zebra"));
+        }
+
+        #[gpui::test]
+        fn a_confirmed_merge_toasts_and_selects_its_target(cx: &mut TestAppContext) {
+            let (page, scope) = page(cx);
+            let duplicate = cx
+                .read(|cx| page.read(cx).duplicate_groups(cx))
+                .iter()
+                .find_map(|group| group.duplicates.first().copied())
+                .expect("the seeded Tags hold a likely duplicate");
+            let HostedOpen {
+                mut dialog,
+                confirm,
+            } = opened(&page, cx, |page, cx| page.click_merge(duplicate, cx));
+            let target = cx
+                .read(|cx| dialog.readback(&scope, cx))
+                .and_then(|readback| readback.value("target").map(str::to_string));
+            assert!(
+                target.is_some(),
+                "a flagged duplicate opens with its target"
+            );
+
+            let landed = cx.update(|cx| confirm(&mut dialog, &scope, cx));
+
+            let toast = landed.and_then(|landed| landed.toast);
+            assert!(matches!(toast, Some((ToastKind::Success, _))));
+            assert_eq!(selected(&page, cx), target);
+        }
+    }
+
     #[test]
     fn sorted_by_name_ignores_case() {
         let tags = default_tags();

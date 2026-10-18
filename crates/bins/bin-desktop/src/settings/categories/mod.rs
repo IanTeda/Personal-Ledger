@@ -19,7 +19,7 @@ use lib_list_cursor::step_id;
 
 use crate::{
     budgets::PERSONAL_SPENDING_ID,
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
@@ -389,10 +389,11 @@ impl CategoriesPage {
         self.open(CategoriesDialog::Delete(category_id, form), cx);
     }
 
+    /// Asks the Dialog host to open `dialog`. The page keeps its cursor through a confirm: a
+    /// save leaves it on its row and a Delete's Toast is the host's, so the outcome lands on
+    /// nothing here.
     fn open(&self, dialog: CategoriesDialog, cx: &mut Context<'_, Self>) {
-        cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Categories(
-            dialog,
-        ))));
+        open_dialog(dialog, |_page: &mut Self, _outcome, _cx| {}, cx);
     }
 
     // -----------------------------------------------------------------------------------------

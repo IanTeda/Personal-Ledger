@@ -10,7 +10,10 @@ use lib_tags::{TagDraft, TagError, get};
 
 use super::dialogs::TagsDialog;
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
 
@@ -44,9 +47,9 @@ pub enum TagOutcome {
 }
 
 impl TagOutcome {
-    /// The Toast `Shell` raises once the Dialog has closed: a removal or a merge has one, since a
-    /// save selects its Tag instead.
-    pub fn toast(&self) -> Option<(ToastKind, String)> {
+    /// The Toast the host raises once the Dialog has closed: a removal or a merge has one, since
+    /// a save selects its Tag instead.
+    fn toast(&self) -> Option<(ToastKind, String)> {
         match self {
             Self::Saved(_) => None,
             Self::Removed { name } => {
@@ -97,6 +100,21 @@ impl DialogForm for TagsDialog {
             Self::Remove(_, form) => form.error = Some(refusal),
             Self::Merge(form) => form.error = Some(refusal),
         }
+    }
+}
+
+impl ConfirmDialog for TagsDialog {
+    type Outcome = TagOutcome;
+
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<TagOutcome>> {
+        let mut apply = TagsApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: outcome.toast(),
+            outcome,
+        })
     }
 }
 

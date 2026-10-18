@@ -1,11 +1,13 @@
-//! The Tags dialogs: Add, Edit, Remove and Merge a tag. [`TagsDialog`] is the value `Shell`'s Dialog
-//! host holds while one is open (`OpenDialog::Tags`); [`TagsDialog::render`] draws whichever is
-//! open, and every click inside it reaches the form through the handlers the Tags page builds.
+//! The Tags dialogs: Add, Edit, Remove and Merge a tag. [`TagsDialog`] is the value the Dialog
+//! host holds while one is open (`OpenDialog::Tags`). It draws itself (`Dialog::render`), each
+//! click editing it through the host's one edit callback, and reads itself back for the UI tests.
 
 pub mod add;
 pub mod edit;
 pub mod merge;
 pub mod remove;
+
+use std::rc::Rc;
 
 use gpui::{AnyElement, App};
 use lib_core::TagId;
@@ -13,11 +15,14 @@ use lib_tags::{Tag, get, transaction_count};
 
 use super::form::{MergeTagsForm, RemoveTagForm, TagForm};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     dialog::OnClick,
     form::colour_field::OnPick,
     form::field::TextField,
     settings::hints::{confirm_dialog_hints, merge_tags_dialog_hints, tag_dialog_hints},
+    settings::tags::form::TagField,
     transactions::Transaction,
 };
 use add::OnFieldClick;
@@ -36,8 +41,8 @@ pub enum TagsDialog {
     Merge(MergeTagsForm),
 }
 
-/// Every click the open Tags dialog can make. The page builds it once and each dialog takes the
-/// part it draws.
+/// Every click the open Tags dialog can make, built from the host's [`DialogActions`]; each dialog
+/// takes the part it draws.
 pub struct TagsDialogHandlers {
     pub on_field_click: OnFieldClick,
     pub on_pick: OnPick,
@@ -49,6 +54,75 @@ pub struct TagsDialogHandlers {
 }
 
 impl TagsDialogHandlers {
+    /// Each click edits the open Tags Dialog through `actions`.
+    fn new(actions: &DialogActions) -> Self {
+        let on_field_click: OnFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window, cx| {
+                actions.edit(cx, |dialog: &mut TagsDialog, _| {
+                    if let Some(form) = dialog.name_form_mut() {
+                        form.focus(field);
+                    }
+                    None
+                });
+            })
+        };
+        let on_pick: OnPick = {
+            let actions = actions.clone();
+            Rc::new(move |index, _window, cx| {
+                actions.edit(cx, |dialog: &mut TagsDialog, _| {
+                    if let Some(form) = dialog.name_form_mut() {
+                        form.focus(TagField::Swatches);
+                        form.pick(index);
+                    }
+                    None
+                });
+            })
+        };
+        let on_toggle_active: OnClick = {
+            let actions = actions.clone();
+            Rc::new(move |_window, cx| {
+                actions.edit(cx, |dialog: &mut TagsDialog, _| {
+                    if let Some(form) = dialog.name_form_mut() {
+                        form.toggle_active();
+                    }
+                    None
+                });
+            })
+        };
+        let on_merge_field_click: OnMergeFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window, cx| {
+                actions.edit(cx, |dialog: &mut TagsDialog, _| {
+                    if let TagsDialog::Merge(form) = dialog {
+                        form.toggle(field);
+                    }
+                    None
+                });
+            })
+        };
+        let on_merge_option_click: OnOptionClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, index, _window, cx| {
+                actions.edit(cx, |dialog: &mut TagsDialog, _| {
+                    if let TagsDialog::Merge(form) = dialog {
+                        form.choose(field, index);
+                    }
+                    None
+                });
+            })
+        };
+        Self {
+            on_field_click,
+            on_pick,
+            on_toggle_active,
+            on_merge_field_click,
+            on_merge_option_click,
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
+        }
+    }
+
     /// The Add and Edit dialogs' share of the handlers.
     fn name_dialog(&self) -> add::TagDialogHandlers {
         add::TagDialogHandlers {
@@ -87,7 +161,7 @@ impl TagsDialog {
 
     /// Draws the open Dialog. Edit and Remove read their Tag from `tags` and count its Splits in
     /// `transactions`; a Tag that has gone draws nothing rather than panicking mid-render.
-    pub fn render(
+    fn draw(
         &self,
         tags: &[Tag],
         transactions: &[Transaction],
@@ -178,5 +252,38 @@ impl Dialog for TagsDialog {
             Self::Remove(..) => confirm_dialog_hints(),
             Self::Merge(_) => merge_tags_dialog_hints(),
         })
+    }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let ledger = scope.ledger.read(cx).ledger();
+        self.draw(
+            ledger.tags(),
+            ledger.transactions(),
+            TagsDialogHandlers::new(actions),
+            cx,
+        )
+    }
+
+    /// Add and Edit read back their Name, Remove its typed-back name, and Merge the names of the
+    /// Tags it has chosen.
+    fn readback(&self, scope: &DialogScope, cx: &App) -> Option<DialogReadback> {
+        let (kind, values) = match self {
+            Self::Add(form) => ("AddTag", vec![("name", form.name.text().to_string())]),
+            Self::Edit(_, form) => ("EditTag", vec![("name", form.name.text().to_string())]),
+            Self::Remove(_, form) => (
+                "RemoveTag",
+                vec![("confirm", form.confirmation_name.text().to_string())],
+            ),
+            Self::Merge(form) => {
+                let tags = scope.ledger.read(cx).ledger().tags();
+                let name = |id| get(tags, id).map(|tag: &Tag| tag.name.clone());
+                let values = [("source", form.source_id()), ("target", form.target_id())]
+                    .into_iter()
+                    .filter_map(|(label, id)| Some((label, name(id?)?)))
+                    .collect();
+                ("MergeTags", values)
+            }
+        };
+        Some(DialogReadback { kind, values })
     }
 }

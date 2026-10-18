@@ -22,8 +22,6 @@ pub struct SettingsSnapshot {
     /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
     pub dialog_name: Option<String>,
     pub dialog_confirm: Option<String>,
-    /// The name of the Category an Add Category dialog was opened under, if any.
-    pub dialog_parent: Option<String>,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
     /// The page the open Medium page picker has highlighted, the one `enter` opens.
@@ -53,7 +51,6 @@ impl SettingsView {
             dialog: None,
             dialog_name: None,
             dialog_confirm: None,
-            dialog_parent: None,
             status_message: None,
             picker_chosen: self.picker().map(|picker| format!("{:?}", picker.chosen())),
         }

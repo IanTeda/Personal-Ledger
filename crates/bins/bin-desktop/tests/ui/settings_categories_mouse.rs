@@ -27,10 +27,10 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
     let mut ui = on_categories(app);
 
     ui.click("settings-categories-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.click("add-category-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -41,12 +41,11 @@ fn the_add_dialog_confirm_is_inert_until_a_name_is_typed(app: &mut TestAppContex
 
     ui.click("settings-categories-add");
     ui.click("add-category-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
     ui.press("p e t s");
     ui.click("add-category-confirm");
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(categories_page.category_names.len(), before + 1);
     assert!(
         categories_page
@@ -62,11 +61,10 @@ fn the_sub_button_opens_add_under_its_row(app: &mut TestAppContext) {
 
     // Housing is a top-level row, so it can take a sub-category.
     ui.click(&format!("settings-categories-sub-{}", CategoryId::seed(1)));
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
-    assert_eq!(page.dialog_parent.as_deref(), Some("Housing"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
     ui.click("add-category-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -88,14 +86,13 @@ fn the_edit_action_opens_its_dialog_and_confirm_saves_the_rename(app: &mut TestA
 
     ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditCategory"));
-    assert_eq!(page.dialog_name.as_deref(), Some("Food"));
+    assert_eq!(ui.dialog(), Some("EditCategory"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Food"));
     assert_eq!(categories_page.selected_category.as_deref(), Some("Food"));
     ui.press("x");
     ui.click("edit-category-confirm");
     let categories_page = ui.settings_categories();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(categories_page.selected_category.as_deref(), Some("Foodx"));
     assert!(
         categories_page
@@ -113,7 +110,7 @@ fn the_edit_cancel_button_closes_without_renaming(app: &mut TestAppContext) {
     ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     ui.press("x");
     ui.click("edit-category-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_categories().category_names, before);
 }
 
@@ -127,9 +124,9 @@ fn the_delete_action_opens_its_dialog_and_cancel_keeps_the_row(app: &mut TestApp
         "settings-categories-delete-{}",
         CategoryId::seed(10)
     ));
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
+    assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.click("delete-category-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_categories().category_names, before);
 }
 
@@ -142,13 +139,12 @@ fn the_delete_confirm_is_inert_until_the_name_is_typed(app: &mut TestAppContext)
         CategoryId::seed(10)
     ));
     ui.click("delete-category-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
+    assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.press("shift-h o u s e h o l d");
     ui.click("delete-category-confirm");
     // Household is used by splits, so they move to Uncategorised: the count can stay level.
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(
         !categories_page
             .category_names

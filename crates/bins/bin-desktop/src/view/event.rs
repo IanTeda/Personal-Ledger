@@ -7,7 +7,7 @@ use lib_toast::ToastKind;
 
 use crate::{
     bills::EntryId,
-    chrome::dialog_host::OpenDialog,
+    chrome::dialog_host::{HostedOpen, OpenDialog},
     navigation::nav::{InputMode, Noun},
     period::Period,
     settings::{SettingsPage, display::DisplayPreferences},
@@ -19,6 +19,9 @@ pub enum ViewEvent {
     RaiseToast { kind: ToastKind, text: String },
     /// Open a Dialog in the Dialog host.
     OpenDialog(Box<OpenDialog>),
+    /// Open a hosted Dialog, whose confirm hands its outcome back to the page that opened it
+    /// (`dialog_host::open_dialog`).
+    OpenHostedDialog(Box<HostedOpen>),
     /// Make `Noun` the active destination, as the rail or a `g`-jump would.
     Navigate(Noun),
     /// Replace the status message shown in the Chrome; `None` clears it.

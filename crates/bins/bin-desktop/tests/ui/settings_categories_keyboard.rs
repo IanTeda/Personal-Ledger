@@ -51,11 +51,11 @@ fn n_opens_add_category_and_escape_cancels_it(app: &mut TestAppContext) {
     let before = ui.settings_categories().category_names;
 
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.press("p e t s");
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert_eq!(ui.settings_categories().category_names, before);
 }
@@ -67,11 +67,10 @@ fn typing_a_name_and_pressing_enter_adds_the_category(app: &mut TestAppContext) 
 
     ui.press("n");
     ui.press("p e t s");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("pets"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("pets"));
     ui.press("enter");
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(categories_page.category_names.len(), before + 1);
     assert!(
         categories_page
@@ -87,11 +86,10 @@ fn shift_n_opens_add_under_the_selected_row(app: &mut TestAppContext) {
 
     // Housing is the first row and a top-level Category, so it can take a sub-category.
     ui.press("j shift-n");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
-    assert_eq!(page.dialog_parent.as_deref(), Some("Housing"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -99,9 +97,8 @@ fn n_opens_a_top_level_add_with_no_parent(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
     ui.press("j n");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("AddCategory"));
-    assert_eq!(page.dialog_parent, None);
+    assert_eq!(ui.dialog(), Some("AddCategory"));
+    assert_eq!(ui.dialog_value("parent"), None);
     ui.press("escape");
 }
 
@@ -111,7 +108,7 @@ fn enter_on_a_blank_name_keeps_the_add_dialog_open(app: &mut TestAppContext) {
     let before = ui.settings_categories().category_names.len();
 
     ui.press("n enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddCategory"));
+    assert_eq!(ui.dialog(), Some("AddCategory"));
     assert_eq!(ui.settings_categories().category_names.len(), before);
 }
 
@@ -121,15 +118,13 @@ fn e_edits_the_selected_category_and_enter_saves_the_new_name(app: &mut TestAppC
 
     // The first row is Housing, a parent; renaming it leaves its children where they are.
     ui.press("j e");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditCategory"));
+    assert_eq!(ui.dialog(), Some("EditCategory"));
     let selected = ui.settings_categories().selected_category;
-    assert_eq!(page.dialog_name, selected);
+    assert_eq!(ui.dialog_value("name"), selected);
     ui.press("x");
     ui.press("enter");
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         categories_page.selected_category,
         selected.map(|name| format!("{name}x"))
@@ -148,9 +143,9 @@ fn escape_closes_the_edit_dialog_without_renaming(app: &mut TestAppContext) {
     let before = ui.settings_categories().category_names;
 
     ui.press("j e x");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditCategory"));
+    assert_eq!(ui.dialog(), Some("EditCategory"));
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_categories().category_names, before);
 }
 
@@ -160,7 +155,7 @@ fn d_on_a_parent_is_refused_and_a_leaf_opens_the_delete_dialog(app: &mut TestApp
 
     ui.press("j d");
     let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         page.status_message.as_deref(),
         Some("delete or move its children first")
@@ -172,7 +167,7 @@ fn d_on_a_parent_is_refused_and_a_leaf_opens_the_delete_dialog(app: &mut TestApp
         Some("Rent")
     );
     ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
+    assert_eq!(ui.dialog(), Some("DeleteCategory"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
 }
 
@@ -182,9 +177,9 @@ fn escape_closes_the_delete_dialog_without_removing(app: &mut TestAppContext) {
     let before = ui.settings_categories().category_names;
 
     ui.press("j right d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
+    assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_categories().category_names, before);
 }
 
@@ -197,13 +192,12 @@ fn typing_the_exact_name_and_pressing_enter_removes_the_leaf(app: &mut TestAppCo
     ui.press("j right d");
     // The delete confirm is gated on the exact, case-sensitive name, so enter does nothing yet.
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteCategory"));
+    assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.press("shift-r e n t");
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some("Rent"));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some("Rent"));
     ui.press("enter");
     let categories_page = ui.settings_categories();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(
         !categories_page
             .category_names

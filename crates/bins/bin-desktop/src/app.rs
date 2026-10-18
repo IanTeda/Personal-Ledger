@@ -354,6 +354,7 @@ impl Shell {
                 rail_override: None,
                 hover_generation: 0,
                 dialog: None,
+                dialog_confirm: None,
                 pending_colour_change: None,
                 undo_menu_open: false,
             },

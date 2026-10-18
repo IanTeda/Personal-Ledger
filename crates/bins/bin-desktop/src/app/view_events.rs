@@ -38,6 +38,7 @@ impl Shell {
         match event {
             ViewEvent::RaiseToast { kind, text } => self.raise_toast(kind, text),
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
+            ViewEvent::OpenHostedDialog(open) => self.open_hosted_dialog(*open),
             ViewEvent::Navigate(noun) => {
                 let noun_before = self.nav.noun();
                 self.nav.set_noun(noun);

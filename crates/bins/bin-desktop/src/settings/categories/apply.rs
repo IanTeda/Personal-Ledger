@@ -14,7 +14,10 @@ use lib_ledger::{
 use super::{dialogs::CategoriesDialog, form::CategoryForm};
 use crate::{
     budgets,
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
 
@@ -73,6 +76,27 @@ impl DialogForm for CategoriesDialog {
             Self::Add { form, .. } | Self::Edit(_, form) => form.error = Some(refusal),
             Self::Delete(_, form) => form.error = Some(refusal),
         }
+    }
+}
+
+impl ConfirmDialog for CategoriesDialog {
+    type Outcome = CategoryOutcome;
+
+    /// A Delete toasts the Splits it moved.
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<CategoryOutcome>> {
+        let mut apply = CategoriesApply {
+            ledger: scope.ledger.clone(),
+            today: scope.today,
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        let toast = match &outcome {
+            CategoryOutcome::Saved => None,
+            CategoryOutcome::Deleted { name, moved } => Some((
+                lib_toast::ToastKind::Success,
+                lib_locale::msg::toast_category_deleted(name, *moved),
+            )),
+        };
+        Some(Landed { toast, outcome })
     }
 }
 

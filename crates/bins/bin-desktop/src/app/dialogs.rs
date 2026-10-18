@@ -3,11 +3,6 @@
 
 use super::Shell;
 use crate::navigation::nav::Noun;
-use crate::settings::categories::{
-    apply::{CategoriesApply, CategoryOutcome},
-    dialogs::CategoriesDialog,
-    form::CategoryField,
-};
 use crate::settings::documents::{
     DocumentsPage,
     apply::{DocumentTypeOutcome, DocumentTypesApply},
@@ -15,11 +10,6 @@ use crate::settings::documents::{
 };
 use crate::settings::inventory::{InventoryPage, apply::InventoryApply, dialogs::InventoryDialog};
 use crate::settings::payees::PayeesPage;
-use crate::settings::tags::{
-    TagsPage,
-    apply::{TagOutcome, TagsApply},
-    dialogs::TagsDialog,
-};
 use crate::settings::tracing::{
     apply::{TracingApply, TracingOutcome},
     dialogs::TracingDialog,
@@ -28,7 +18,7 @@ use crate::view::help::HelpDialog;
 use crate::{
     chrome::{
         dialog_apply::{self, Apply, DialogForm},
-        dialog_host::{Dialog, DialogVariant, OpenDialog},
+        dialog_host::{Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog},
     },
     navigation::nav::InputMode,
     settings::{
@@ -46,14 +36,38 @@ use crate::{
     },
 };
 use gpui::Context;
-use lib_core::{CategoryId, CategoryTypes};
 use lib_toast::ToastKind;
 
 impl Shell {
     /// Opens `dialog` in the Dialog host, entering `InputMode::Dialog` with it.
     pub(super) fn open_dialog(&mut self, dialog: OpenDialog) {
         self.chrome.dialog = Some(dialog);
+        self.chrome.dialog_confirm = None;
         self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Opens a hosted Dialog, keeping the confirm that hands its outcome back to its page.
+    pub(super) fn open_hosted_dialog(&mut self, open: HostedOpen) {
+        self.open_dialog(open.dialog);
+        self.chrome.dialog_confirm = Some(open.confirm);
+    }
+
+    /// What a hosted Dialog reads and writes through.
+    pub(super) fn dialog_scope(&self) -> DialogScope {
+        DialogScope {
+            ledger: self.ledger.clone(),
+            today: self.today,
+        }
+    }
+
+    /// The open hosted Dialog's state as labelled values, for a test; `None` when no Dialog or
+    /// one not yet hosted is open.
+    #[doc(hidden)]
+    pub fn dialog_readback(&self, cx: &gpui::App) -> Option<DialogReadback> {
+        self.chrome
+            .dialog
+            .as_ref()?
+            .readback(&self.dialog_scope(), cx)
     }
 
     /// Opens the Help Dialog over the active page, carrying the shortcuts that page adds to the
@@ -76,6 +90,7 @@ impl Shell {
 
     /// Closes the Dialog host's Dialog, if one is open, without applying it.
     pub(super) fn close_dialog(&mut self) {
+        self.chrome.dialog_confirm = None;
         if self.chrome.dialog.take().is_some() {
             self.nav.exit_mode();
         }
@@ -85,6 +100,20 @@ impl Shell {
     /// valid, then closes it. A no-op while the form is invalid, leaving the Dialog open.
     pub(super) fn confirm_open_dialog(&mut self, cx: &mut Context<'_, Self>) {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
+            return;
+        }
+        // A hosted Dialog confirms itself and has already handed its outcome to its page.
+        if let Some(confirm) = self.chrome.dialog_confirm.clone() {
+            let scope = self.dialog_scope();
+            let Some(dialog) = self.chrome.dialog.as_mut() else {
+                return;
+            };
+            if let Some(landed) = confirm(dialog, &scope, cx) {
+                self.close_dialog();
+                if let Some((kind, message)) = landed.toast {
+                    self.raise_toast(kind, message);
+                }
+            }
             return;
         }
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
@@ -112,7 +141,6 @@ impl Shell {
                 self.confirm_dialog::<InstitutionsDialog, _>(&mut apply, cx);
             }
             Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
-            Some(OpenDialog::Categories(_)) => self.confirm_categories_dialog(cx),
             Some(OpenDialog::Payees(_)) => {
                 let mut apply = PayeesApply {
                     ledger: self.ledger.clone(),
@@ -161,32 +189,13 @@ impl Shell {
                     }
                 }
             }
-            Some(OpenDialog::Tags(_)) => {
-                let mut apply = TagsApply {
-                    ledger: self.ledger.clone(),
-                };
-                let outcome = self.confirm_dialog::<TagsDialog, _>(&mut apply, cx);
-                match outcome {
-                    Some(TagOutcome::Saved(id)) => self
-                        .tags_page(cx)
-                        .update(cx, |page, cx| page.select_id(id, cx)),
-                    Some(TagOutcome::Merged { target, .. }) => self
-                        .tags_page(cx)
-                        .update(cx, |page, cx| page.select_id(target, cx)),
-                    // A removal keeps the selection in range: a removed Tag's id no longer
-                    // resolves, so the page lands on its first row.
-                    Some(TagOutcome::Removed { .. }) | None => {}
-                }
-                if let Some((kind, message)) = outcome.as_ref().and_then(TagOutcome::toast) {
-                    self.raise_toast(kind, message);
-                }
-            }
             Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
-            None => {}
+            // Hosted: confirmed above through the opener's confirm.
+            Some(OpenDialog::Tags(_) | OpenDialog::Categories(_)) | None => {}
         }
     }
 
@@ -208,11 +217,6 @@ impl Shell {
     /// The Accounts page's Entity, which the Settings View owns.
     pub(super) fn accounts_page(&self, cx: &gpui::App) -> gpui::Entity<AccountsPage> {
         self.views.settings.read(cx).accounts().clone()
-    }
-
-    /// The Tags page's Entity, which the Settings View owns.
-    pub(super) fn tags_page(&self, cx: &gpui::App) -> gpui::Entity<TagsPage> {
-        self.views.settings.read(cx).tags().clone()
     }
 
     /// Confirms the open Tracing dialog through the host's cycle; Clear logs empties the capture
@@ -304,127 +308,6 @@ impl Shell {
                     ),
                 );
                 page.update(cx, |page, cx| page.clamp_selection(cx));
-            }
-        }
-    }
-}
-
-impl Shell {
-    // -----------------------------------------------------------------------------------------
-    // The Categories Dialogs' clicks and confirm. The page opens them, and `Shell` runs the
-    // Dialog host's cycle on them, as for every Dialog.
-    // -----------------------------------------------------------------------------------------
-
-    /// Raises the error Toast for a Categories write the store or Budgets refused, so the dialog
-    /// closes with the reason on screen rather than dropping the write silently.
-    fn raise_category_save_failed(&mut self, reason: &str) {
-        self.raise_toast(
-            ToastKind::Error,
-            lib_locale::msg::toast_save_failed(&lib_locale::msg::toast_entity_category(), reason),
-        );
-    }
-
-    /// Raises the Toast for a refused Categories store write, if it was refused.
-    fn report_category_write(&mut self, result: Result<(), lib_categories::CategoryError>) {
-        if let Err(error) = result {
-            self.raise_category_save_failed(&error.to_string());
-        }
-    }
-
-    pub(super) fn handle_categories_dialog_field_click(
-        &mut self,
-        field: CategoryField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.focus_field(field);
-            cx.notify();
-        }
-    }
-
-    pub(super) fn handle_categories_dialog_parent_change(
-        &mut self,
-        parent_id: Option<CategoryId>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        // A child takes its parent's type.
-        let parent_type = parent_id.and_then(|parent_id| {
-            self.categories(cx)
-                .iter()
-                .find(|c| c.id == parent_id)
-                .map(|parent| parent.category_type.clone())
-        });
-        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.parent_id = parent_id;
-            if parent_type.is_some() {
-                form.category_type = parent_type;
-            }
-            cx.notify();
-        }
-    }
-
-    pub(super) fn handle_categories_dialog_type_change(
-        &mut self,
-        category_type: CategoryTypes,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let can_change_type = match self.dialog::<CategoriesDialog>() {
-            Some(CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
-            Some(CategoriesDialog::Edit(id, _)) => self
-                .categories(cx)
-                .iter()
-                .find(|c| c.id == *id)
-                .is_some_and(|c| c.parent.is_none()),
-            _ => false,
-        };
-        if !can_change_type {
-            return;
-        }
-        let edited_id = match self.dialog::<CategoriesDialog>() {
-            Some(CategoriesDialog::Edit(id, _)) => Some(*id),
-            _ => None,
-        };
-        if let Some(dialog) = self.dialog_mut::<CategoriesDialog>()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.category_type = Some(category_type.clone());
-        }
-        // For Edit dialogs, cascade the type change to descendants
-        if let Some(id) = edited_id {
-            let changed = self.ledger.update(cx, |store, cx| {
-                store.apply(cx, lib_ledger::ChangeCategoryType { id, category_type })
-            });
-            self.report_category_write(changed);
-        }
-        cx.notify();
-    }
-
-    /// Confirms the open Categories dialog through the host's cycle: the form's command runs
-    /// against the Ledger, a refusal stays on the form, and a landed one closes the dialog. Delete
-    /// toasts the Splits it moved.
-    pub(super) fn confirm_categories_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        let mut apply = CategoriesApply {
-            ledger: self.ledger.clone(),
-            today: self.today,
-        };
-        let Some(dialog) = self.dialog_mut::<CategoriesDialog>() else {
-            return;
-        };
-        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
-            return;
-        };
-        self.close_dialog();
-        match outcome {
-            CategoryOutcome::Saved => {}
-            CategoryOutcome::Deleted { name, moved } => {
-                self.raise_toast(
-                    ToastKind::Success,
-                    lib_locale::msg::toast_category_deleted(&name, moved),
-                );
             }
         }
     }

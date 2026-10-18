@@ -16,15 +16,20 @@ fn on_tags(app: &mut TestAppContext) -> Harness<'_> {
     ui
 }
 
+/// The open Merge dialog's chosen `(source, target)` names, once both are chosen.
+fn merge_pair(ui: &mut Harness<'_>) -> Option<(String, String)> {
+    Some((ui.dialog_value("source")?, ui.dialog_value("target")?))
+}
+
 #[gpui::test]
 fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
 
     ui.click("settings-tags-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddTag"));
+    assert_eq!(ui.dialog(), Some("AddTag"));
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Dialog);
     ui.click("add-tag-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
 }
 
@@ -35,12 +40,11 @@ fn the_add_dialog_confirm_is_inert_until_a_name_is_typed(app: &mut TestAppContex
 
     ui.click("settings-tags-add");
     ui.click("add-tag-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddTag"));
+    assert_eq!(ui.dialog(), Some("AddTag"));
     ui.press("z e b r a");
     ui.click("add-tag-confirm");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before + 1);
     assert_eq!(tags_page.selected_tag.as_deref(), Some("zebra"));
 }
@@ -61,11 +65,10 @@ fn the_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
 
     ui.click(&format!("settings-tags-edit-{}", TagId::seed(2)));
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditTag"));
-    assert_eq!(page.dialog_name.as_deref(), Some("shared"));
+    assert_eq!(ui.dialog(), Some("EditTag"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("shared"));
     ui.click("edit-tag-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -83,14 +86,13 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
         .expect("the added Tag");
 
     ui.click(&format!("settings-tags-remove-{zebra}"));
-    assert_eq!(ui.settings().dialog.as_deref(), Some("RemoveTag"));
+    assert_eq!(ui.dialog(), Some("RemoveTag"));
     ui.click("remove-tag-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-remove-{zebra}"));
     ui.click("remove-tag-confirm");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
 }
@@ -101,16 +103,13 @@ fn the_merge_action_on_a_flagged_duplicate_merges_it_away(app: &mut TestAppConte
     let before = ui.settings_tags().tag_names.len();
 
     ui.click(&format!("settings-tags-merge-{}", TagId::seed(9)));
-    let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("MergeTags"));
-    assert!(tags_page.merge_pair.is_some());
+    assert_eq!(ui.dialog(), Some("MergeTags"));
+    assert!(merge_pair(&mut ui).is_some());
     ui.click("merge-tags-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-merge-{}", TagId::seed(9)));
     ui.click("merge-tags-confirm");
     let tags_page = ui.settings_tags();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before - 1);
 }

@@ -2,8 +2,6 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Shell;
-use crate::form::colour_field::OnPick;
-use crate::settings::categories::dialogs::{CategoriesDialog, CategoriesDialogHandlers};
 use crate::settings::documents::dialogs::{
     DocumentTypesDialog, DocumentTypesDialogHandlers,
     add_edit::OnFieldClick as DocumentTypeFieldClick,
@@ -11,14 +9,6 @@ use crate::settings::documents::dialogs::{
 use crate::settings::payees::{
     dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
     form,
-};
-use crate::settings::tags::{
-    dialogs::{
-        TagsDialog, TagsDialogHandlers,
-        add::OnFieldClick as TagFieldClick,
-        merge::{OnFieldClick as MergeFieldClick, OnOptionClick as MergeOptionClick},
-    },
-    form::TagField,
 };
 use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
@@ -37,6 +27,7 @@ use crate::settings::accounts::dialogs as accounts_dialogs;
 use crate::{
     bills::{self},
     budgets,
+    chrome::dialog_host::{Dialog, DialogActions},
     chrome::rail::{self as chrome_rail, context::ContextRail, primary::PrimaryRail},
     chrome::statusline::{self, StatusLine},
     chrome::toast::history as toast_history_view,
@@ -241,6 +232,28 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
+        // The hosted Dialogs' clicks: an edit runs on the open Dialog and raises the Toast it
+        // returns; cancel and confirm run the host's cycle.
+        let dialog_actions = DialogActions {
+            edit: {
+                let entity = entity.clone();
+                Rc::new(move |cx, change| {
+                    entity.update(cx, |shell, cx| {
+                        let toast = shell
+                            .chrome
+                            .dialog
+                            .as_mut()
+                            .and_then(|dialog| change(dialog, cx));
+                        if let Some((kind, message)) = toast {
+                            shell.raise_toast(kind, message);
+                        }
+                        cx.notify();
+                    });
+                })
+            },
+            cancel: on_settings_dialog_cancel.clone(),
+            confirm: on_settings_dialog_confirm.clone(),
+        };
         let account_options = crate::settings::accounts::dialog_options(&self.ledger, cx);
         let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
@@ -358,85 +371,6 @@ impl Render for Shell {
                 on_confirm: on_settings_dialog_confirm.clone(),
             }
         };
-        let plain_tags = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        let tags_dialog_handlers = {
-            let on_field_click: TagFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
-                            if let Some(form) = dialog.name_form_mut() {
-                                form.focus(field);
-                            }
-                        });
-                    });
-                })
-            };
-            let on_pick: OnPick = {
-                let entity = entity.clone();
-                Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
-                            if let Some(form) = dialog.name_form_mut() {
-                                form.focus(TagField::Swatches);
-                                form.pick(index);
-                            }
-                        });
-                    });
-                })
-            };
-            let on_toggle_active: crate::dialog::OnClick = {
-                let entity = entity.clone();
-                Rc::new(move |_window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
-                            if let Some(form) = dialog.name_form_mut() {
-                                form.toggle_active();
-                            }
-                        });
-                    });
-                })
-            };
-            let on_merge_field_click: MergeFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
-                            if let TagsDialog::Merge(form) = dialog {
-                                form.toggle(field);
-                            }
-                        });
-                    });
-                })
-            };
-            let on_merge_option_click: MergeOptionClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut TagsDialog| {
-                            if let TagsDialog::Merge(form) = dialog {
-                                form.choose(field, index);
-                            }
-                        });
-                    });
-                })
-            };
-            TagsDialogHandlers {
-                on_field_click,
-                on_pick,
-                on_toggle_active,
-                on_merge_field_click,
-                on_merge_option_click,
-                on_cancel: plain_tags(Shell::handle_dialog_cancel),
-                on_confirm: plain_tags(Shell::handle_dialog_confirm),
-            }
-        };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
         let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
             budgets::period_figures(
@@ -446,55 +380,6 @@ impl Render for Shell {
                 self.today,
             )
         });
-        // The Categories Dialogs' handlers: each change to the open form runs on `Shell`, which
-        // holds the open Dialog, and confirm and cancel run the Dialog host's cycle.
-        let on_categories_dialog_field_click: crate::settings::categories::dialogs::add::OnFieldClick = {
-            let entity = entity.clone();
-            Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_field_click(field, cx);
-                });
-            })
-        };
-        let on_categories_dialog_parent_change: crate::settings::categories::dialogs::add::OnParentChange = {
-            let entity = entity.clone();
-            Rc::new(move |parent_id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_parent_change(parent_id, cx);
-                });
-            })
-        };
-        let on_categories_dialog_type_change: crate::settings::categories::dialogs::add::OnTypeChange = {
-            let entity = entity.clone();
-            Rc::new(move |category_type, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_type_change(category_type, cx);
-                });
-            })
-        };
-        let on_categories_dialog_cancel: crate::settings::categories::dialogs::add::OnCancel = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_dialog_cancel(cx);
-                });
-            })
-        };
-        let on_categories_dialog_confirm: crate::settings::categories::dialogs::add::OnConfirm = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_dialog_confirm(cx);
-                });
-            })
-        };
-        let categories_dialog_handlers = CategoriesDialogHandlers {
-            on_field_click: on_categories_dialog_field_click,
-            on_parent_change: on_categories_dialog_parent_change,
-            on_type_change: on_categories_dialog_type_change,
-            on_cancel: on_categories_dialog_cancel,
-            on_confirm: on_categories_dialog_confirm,
-        };
         let inventory_dialog_handlers = {
             // A click that runs `change` on the open Inventory dialog.
             let edit = |change: fn(&mut InventoryDialog)| {
@@ -774,23 +659,12 @@ impl Render for Shell {
                     cx,
                 )
             }))
-            .children(self.dialog::<TagsDialog>().and_then(|dialog| {
-                dialog.render(
-                    self.ledger.read(cx).ledger().tags(),
-                    self.transactions(cx),
-                    tags_dialog_handlers,
-                    cx,
-                )
-            }))
-            .children(self.dialog::<CategoriesDialog>().map(|dialog| {
-                dialog.render(
-                    self.categories(cx),
-                    self.transactions(cx),
-                    self.budgets(cx),
-                    categories_dialog_handlers,
-                    cx,
-                )
-            }))
+            .children(
+                self.chrome
+                    .dialog
+                    .as_ref()
+                    .and_then(|dialog| dialog.render(&self.dialog_scope(), &dialog_actions, cx)),
+            )
             .children(self.dialog::<TracingDialog>().map(|dialog| {
                 dialog.render(
                     on_settings_dialog_cancel.clone(),

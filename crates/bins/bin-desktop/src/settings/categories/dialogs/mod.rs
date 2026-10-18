@@ -1,16 +1,19 @@
 //! The Categories page's Dialogs (ADR-0037's amendment): Add, Edit and Delete category. [`CategoriesDialog`]
-//! is the value `Shell`'s Dialog host holds while one is open (`OpenDialog::Categories`).
-//! [`CategoriesDialog::render`] draws whichever is open from the Ledger's tree, and every click
-//! inside it reaches `Shell` through [`CategoriesDialogHandlers`].
+//! is the value the Dialog host holds while one is open (`OpenDialog::Categories`). It draws
+//! itself from the Ledger's tree (`Dialog::render`), each click editing it through the host's one
+//! edit callback ([`CategoriesDialogHandlers`]), and reads itself back for the UI tests.
 
 pub mod add;
 pub mod delete;
 pub mod edit;
 
-use gpui::{AnyElement, App, div, prelude::*};
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Entity, div, prelude::*};
 use lib_budgets::Budgets;
 use lib_categories::{Category, depth, descendants_inclusive, is_leaf, path};
-use lib_core::CategoryId;
+use lib_core::{CategoryId, CategoryTypes};
+use lib_toast::ToastKind;
 use lib_transactions::Transaction;
 
 use super::{
@@ -18,9 +21,12 @@ use super::{
     form::{CategoryForm, DeleteCategoryForm},
 };
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope, DialogToast,
+    },
     dialog,
     form::field::TextField,
+    ledger_store::LedgerStore,
 };
 
 /// The handlers a Categories Dialog binds: the Add and Edit forms' field, parent and type changes,
@@ -31,6 +37,48 @@ pub struct CategoriesDialogHandlers {
     pub on_type_change: add::OnTypeChange,
     pub on_cancel: dialog::OnClick,
     pub on_confirm: dialog::OnClick,
+}
+
+impl CategoriesDialogHandlers {
+    /// Each click edits the open Categories Dialog through `actions`; a parent or type change
+    /// reads the tree from `ledger`.
+    fn new(ledger: &Entity<LedgerStore>, actions: &DialogActions) -> Self {
+        let on_field_click: add::OnFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window, cx| {
+                actions.edit(cx, |dialog: &mut CategoriesDialog, _| {
+                    if let Some(form) = dialog.form_mut() {
+                        form.focus_field(field);
+                    }
+                    None
+                });
+            })
+        };
+        let on_parent_change: add::OnParentChange = {
+            let (actions, ledger) = (actions.clone(), ledger.clone());
+            Rc::new(move |parent_id, _window, cx| {
+                actions.edit(cx, |dialog: &mut CategoriesDialog, cx| {
+                    dialog.change_parent(parent_id, ledger.read(cx).ledger().categories());
+                    None
+                });
+            })
+        };
+        let on_type_change: add::OnTypeChange = {
+            let (actions, ledger) = (actions.clone(), ledger.clone());
+            Rc::new(move |category_type, _window, cx| {
+                actions.edit(cx, |dialog: &mut CategoriesDialog, cx| {
+                    dialog.change_type(category_type, &ledger, cx)
+                });
+            })
+        };
+        Self {
+            on_field_click,
+            on_parent_change,
+            on_type_change,
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
+        }
+    }
 }
 
 /// A refusal the domain made on confirm, as the dialogs' last line.
@@ -73,6 +121,64 @@ impl CategoriesDialog {
             CategoriesDialog::Delete(_, _) => None,
         }
     }
+
+    /// Picks the Add or Edit form's parent; a child takes its parent's type.
+    fn change_parent(&mut self, parent_id: Option<CategoryId>, categories: &[Category]) {
+        let parent_type = parent_id.and_then(|parent_id| {
+            categories
+                .iter()
+                .find(|c| c.id == parent_id)
+                .map(|parent| parent.category_type.clone())
+        });
+        if let Some(form) = self.form_mut() {
+            form.parent_id = parent_id;
+            if parent_type.is_some() {
+                form.category_type = parent_type;
+            }
+        }
+    }
+
+    /// Picks a top-level Category's type; a child's is its parent's, so it stays. An Edit writes
+    /// the change to the Category and its descendants straight away, and a refused write is the
+    /// returned error Toast.
+    fn change_type(
+        &mut self,
+        category_type: CategoryTypes,
+        ledger: &Entity<LedgerStore>,
+        cx: &mut App,
+    ) -> Option<DialogToast> {
+        let categories = ledger.read(cx).ledger().categories();
+        let can_change_type = match self {
+            Self::Add { form, .. } => form.parent_id.is_none(),
+            Self::Edit(id, _) => categories
+                .iter()
+                .find(|c| c.id == *id)
+                .is_some_and(|c| c.parent.is_none()),
+            Self::Delete(..) => false,
+        };
+        if !can_change_type {
+            return None;
+        }
+        if let Some(form) = self.form_mut() {
+            form.category_type = Some(category_type.clone());
+        }
+        let Self::Edit(id, _) = self else {
+            return None;
+        };
+        let id = *id;
+        let changed = ledger.update(cx, |store, cx| {
+            store.apply(cx, lib_ledger::ChangeCategoryType { id, category_type })
+        });
+        changed.err().map(|error| {
+            (
+                ToastKind::Error,
+                lib_locale::msg::toast_save_failed(
+                    &lib_locale::msg::toast_entity_category(),
+                    &error.to_string(),
+                ),
+            )
+        })
+    }
 }
 
 impl Dialog for CategoriesDialog {
@@ -99,12 +205,44 @@ impl Dialog for CategoriesDialog {
             Self::Delete(_, form) => form.is_valid(),
         }
     }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let ledger = scope.ledger.read(cx).ledger();
+        Some(self.draw(
+            ledger.categories(),
+            ledger.transactions(),
+            ledger.budgets(),
+            CategoriesDialogHandlers::new(&scope.ledger, actions),
+            cx,
+        ))
+    }
+
+    /// Add and Edit read back their Name, and an Add under a parent that parent's name; Delete
+    /// reads back its typed-back name.
+    fn readback(&self, scope: &DialogScope, cx: &App) -> Option<DialogReadback> {
+        let (kind, values) = match self {
+            Self::Add { parent_id, form } => {
+                let categories = scope.ledger.read(cx).ledger().categories();
+                let parent = parent_id
+                    .and_then(|id| categories.iter().find(|c| c.id == id))
+                    .map(|parent| ("parent", parent.name.clone()));
+                let name = ("name", form.name.text().to_string());
+                ("AddCategory", std::iter::once(name).chain(parent).collect())
+            }
+            Self::Edit(_, form) => ("EditCategory", vec![("name", form.name.text().to_string())]),
+            Self::Delete(_, form) => (
+                "DeleteCategory",
+                vec![("confirm", form.confirmation_name.text().to_string())],
+            ),
+        };
+        Some(DialogReadback { kind, values })
+    }
 }
 
 impl CategoriesDialog {
     /// Draws the open Dialog. Its counts and parent choices come from the Ledger's `categories`,
     /// `transactions` and `budgets`; Delete draws nothing if its Category has gone.
-    pub fn render(
+    fn draw(
         &self,
         categories: &[Category],
         transactions: &[Transaction],

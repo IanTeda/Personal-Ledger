@@ -239,6 +239,20 @@ impl<'a> Harness<'a> {
         self.read_app(Shell::settings_snapshot)
     }
 
+    /// The open hosted Dialog's kind (`AddTag`, `DeleteCategory`), read back through the Dialog
+    /// itself; `None` when none is open.
+    pub fn dialog(&mut self) -> Option<&'static str> {
+        self.read_app(Shell::dialog_readback)
+            .map(|readback| readback.kind)
+    }
+
+    /// The open hosted Dialog's value labelled `label` (`name`, `confirm`), if it shows one.
+    pub fn dialog_value(&mut self, label: &str) -> Option<String> {
+        self.read_app(Shell::dialog_readback)?
+            .value(label)
+            .map(str::to_string)
+    }
+
     /// The Settings Accounts page's state, read back for assertions.
     pub fn settings_accounts(&mut self) -> SettingsAccountsSnapshot {
         self.read_app(Shell::settings_accounts_snapshot)
