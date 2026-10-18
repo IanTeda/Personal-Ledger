@@ -256,7 +256,7 @@ mod tests {
             name: "Gecko".into(),
             updates: Updates::Daily,
         });
-        assert_eq!(ledger.price_source_records(), [stored.clone()]);
+        assert_eq!(ledger.price_source_records(), std::slice::from_ref(&stored));
         let source = ledger.price_source(MANUAL, COINGECKO).unwrap();
         assert_eq!(source.name, "Gecko");
         assert_eq!(

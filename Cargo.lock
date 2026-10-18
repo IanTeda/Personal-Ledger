@@ -4936,6 +4936,7 @@ dependencies = [
 name = "lib_units"
 version = "0.1.0"
 dependencies = [
+ "bigdecimal",
  "chrono",
  "lib_core",
 ]

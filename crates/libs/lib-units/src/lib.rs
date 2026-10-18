@@ -5,6 +5,7 @@
 
 mod price_source;
 
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use price_source::{
@@ -91,7 +92,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
                 quote: UnitId::SEED_AUD,
             },
             last_price: Some(LastPrice {
-                price: "148212.40".parse().expect("a literal decimal parses"),
+                price: Money(BigDecimal::new(14_821_240.into(), 2)),
                 fetched_at: now - chrono::Duration::minutes(5),
             }),
             is_base: false,
