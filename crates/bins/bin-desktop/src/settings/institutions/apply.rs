@@ -7,8 +7,8 @@ use lib_ledger::AddInstitution;
 use super::dialogs::InstitutionsDialog;
 use crate::{
     chrome::{
-        dialog_apply::{Apply, DialogForm, FormError},
-        dialog_host::Dialog,
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
     },
     ledger_store::LedgerStore,
 };
@@ -51,6 +51,25 @@ impl DialogForm for InstitutionsDialog {
 
     fn refuse(&mut self, refusal: InstitutionsRefusal) {
         match refusal {}
+    }
+}
+
+impl ConfirmDialog for InstitutionsDialog {
+    type Outcome = InstitutionsOutcome;
+
+    fn confirm(
+        &mut self,
+        scope: &DialogScope,
+        cx: &mut App,
+    ) -> Option<Landed<InstitutionsOutcome>> {
+        let mut apply = InstitutionsApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: None,
+            outcome,
+        })
     }
 }
 

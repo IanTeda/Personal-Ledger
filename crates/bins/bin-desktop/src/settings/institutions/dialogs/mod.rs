@@ -1,6 +1,7 @@
-//! The Institutions page's Dialogs: Add institution. [`InstitutionsDialog`] is the value `Shell`'s
-//! Dialog host holds while one is open (`OpenDialog::Institutions`); [`InstitutionsDialog::render`]
-//! draws it, and every click inside it reaches the form as a [`Change`].
+//! The Institutions page's Dialogs: Add institution. [`InstitutionsDialog`] is the value the Dialog
+//! host holds while one is open (`OpenDialog::Institutions`). It draws itself (`Dialog::render`),
+//! every click inside it reaching the form as a [`Change`] through the host's one edit callback,
+//! and reads itself back for the UI tests.
 
 pub mod add;
 
@@ -10,7 +11,11 @@ use gpui::{AnyElement, App, Window};
 use lib_units::UnitRow;
 
 use super::form::{AddInstitutionForm, InstitutionProduct};
-use crate::{chrome::dialog_host::Dialog, dialog, form::field::TextField};
+use crate::{
+    chrome::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
+    dialog,
+    form::field::TextField,
+};
 
 /// The open Institutions Dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,8 +23,8 @@ pub enum InstitutionsDialog {
     Add(AddInstitutionForm),
 }
 
-/// Applies a [`Change`] to the open Institutions Dialog where the Dialog host holds it
-/// ([`InstitutionsDialog::apply_change`]), then repaints.
+/// Applies a [`Change`] to the open Institutions Dialog ([`InstitutionsDialog::apply_change`])
+/// through the host's edit callback, then repaints.
 pub type OnChange = Rc<dyn Fn(Change, &mut Window, &mut App)>;
 
 /// What a click inside an Institutions Dialog changes on its form.
@@ -40,9 +45,29 @@ pub struct InstitutionsDialogHandlers {
     pub on_confirm: dialog::OnClick,
 }
 
+impl InstitutionsDialogHandlers {
+    /// A change edits the open Institutions Dialog through `actions`.
+    fn new(actions: &DialogActions) -> Self {
+        let on_change: OnChange = {
+            let actions = actions.clone();
+            Rc::new(move |change, _window, cx| {
+                actions.edit(cx, |dialog: &mut InstitutionsDialog, _| {
+                    dialog.apply_change(change);
+                    None
+                });
+            })
+        };
+        Self {
+            on_change,
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
+        }
+    }
+}
+
 impl InstitutionsDialog {
     /// Draws the open Dialog; `units` are the Default units it offers.
-    pub fn render(
+    fn draw(
         &self,
         units: &[UnitRow],
         handlers: InstitutionsDialogHandlers,
@@ -72,6 +97,35 @@ impl Dialog for InstitutionsDialog {
     fn is_valid(&self) -> bool {
         let Self::Add(form) = self;
         form.is_valid()
+    }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        Some(self.draw(
+            scope.ledger.read(cx).ledger().units(),
+            InstitutionsDialogHandlers::new(actions),
+            cx,
+        ))
+    }
+
+    /// Reads back the Name draft, the checked products (comma-joined `InstitutionProduct` variant
+    /// names) and the chosen Default unit code.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let Self::Add(form) = self;
+        Some(DialogReadback {
+            kind: "AddInstitution",
+            values: vec![
+                ("name", form.name.text().to_string()),
+                (
+                    "types",
+                    form.account_types
+                        .iter()
+                        .map(|product| format!("{product:?}"))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                ),
+                ("unit", form.default_unit_code.clone().unwrap_or_default()),
+            ],
+        })
     }
 }
 

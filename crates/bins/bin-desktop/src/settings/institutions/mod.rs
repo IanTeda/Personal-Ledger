@@ -1,8 +1,8 @@
 //! The **Institutions** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! Institutions table. [`InstitutionsPage`] reads it straight from [`LedgerStore`], renders itself
 //! (`render.rs`), builds the Add institution Dialog (`dialogs/`) and reaches `Shell` only through
-//! [`ViewEvent`]; `Shell`'s Dialog host draws it and confirms it through `apply.rs`. The Settings
-//! View forwards the page's keys and status to it while the page has focus.
+//! [`ViewEvent`]. The Dialog host holds it, and it draws, reads back and confirms itself
+//! (`dialogs/`, `apply.rs`). The Settings View forwards the page's keys and status to it while the page has focus.
 
 pub mod apply;
 pub mod dialogs;
@@ -14,12 +14,13 @@ use lib_institutions::InstitutionRow;
 use lib_ledger::Domain;
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::{SettingsPage, hints::settings_plain_page_hints},
     view::event::ViewEvent,
 };
+use apply::InstitutionsOutcome;
 use dialogs::InstitutionsDialog;
 use form::AddInstitutionForm;
 
@@ -100,8 +101,12 @@ impl InstitutionsPage {
     /// Units table's first row.
     fn click_add(&mut self, cx: &mut Context<'_, Self>) {
         let form = AddInstitutionForm::new(self.ledger.read(cx).ledger().units());
-        open_dialog(InstitutionsDialog::Add(form), cx);
+        open_dialog(InstitutionsDialog::Add(form), Self::land, cx);
     }
+
+    /// A confirmed Add institution needs no Toast and the table repaints from the Ledger, so there
+    /// is nothing to land.
+    fn land(&mut self, _outcome: InstitutionsOutcome, _cx: &mut Context<'_, Self>) {}
 
     /// Institutions' edit and delete have no Dialog yet, so they say so on the status line.
     fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
@@ -112,7 +117,7 @@ impl InstitutionsPage {
     // Tests
     // -----------------------------------------------------------------------------------------
 
-    /// The Institutions rows. The open Dialog's fields are `Shell`'s, which fills them in.
+    /// The Institutions rows. The open Dialog reads itself back (`Dialog::readback`).
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsInstitutionsSnapshot {
         SettingsInstitutionsSnapshot {
@@ -121,54 +126,13 @@ impl InstitutionsPage {
                 .iter()
                 .map(|row| (row.name.clone(), row.account_type.clone()))
                 .collect(),
-            institution_dialog_types: None,
-            institution_dialog_unit: None,
         }
     }
 }
 
-/// The Institutions page: `(name, account type)` rows in table order, and the Add institution
-/// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
+/// The Institutions page: `(name, account type)` rows in table order.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsInstitutionsSnapshot {
     pub institutions: Vec<(String, String)>,
-    pub institution_dialog_types: Option<Vec<String>>,
-    pub institution_dialog_unit: Option<String>,
-}
-
-/// What the open Institutions Dialog shows, for the Settings snapshots.
-#[doc(hidden)]
-pub struct InstitutionsDialogSnapshot {
-    /// `AddInstitution`.
-    pub label: &'static str,
-    /// The Name draft.
-    pub name: String,
-    /// The checked products (`InstitutionProduct` variant names) and the chosen Default unit code.
-    pub form: (Vec<String>, Option<String>),
-}
-
-impl InstitutionsDialog {
-    #[doc(hidden)]
-    pub fn snapshot(&self) -> InstitutionsDialogSnapshot {
-        let Self::Add(form) = self;
-        InstitutionsDialogSnapshot {
-            label: "AddInstitution",
-            name: form.name.text().to_string(),
-            form: (
-                form.account_types
-                    .iter()
-                    .map(|product| format!("{product:?}"))
-                    .collect(),
-                form.default_unit_code.clone(),
-            ),
-        }
-    }
-}
-
-/// Asks `Shell`'s Dialog host to open an Institutions Dialog.
-fn open_dialog(dialog: InstitutionsDialog, cx: &mut Context<'_, InstitutionsPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Institutions(
-        dialog,
-    ))));
 }

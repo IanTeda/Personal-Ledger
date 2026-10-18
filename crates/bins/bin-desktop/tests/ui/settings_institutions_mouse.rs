@@ -46,10 +46,8 @@ fn institution_edit_and_delete_buttons_flash_a_not_yet_built_message(app: &mut T
         status(&mut ui).as_deref(),
         Some("delete institution \u{2014} not yet built")
     );
-    let institutions_page = ui.settings_institutions();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
-    assert_eq!(institutions_page.institutions, before);
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_institutions().institutions, before);
 }
 
 #[gpui::test]
@@ -57,21 +55,16 @@ fn the_add_institution_dialog_seeds_savings_and_the_first_unit(app: &mut TestApp
     let mut ui = on_page(app, "Institutions");
 
     ui.click("settings-add-institution");
-    let institutions_page = ui.settings_institutions();
     let units_page = ui.settings_units();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("AddInstitution"));
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings"));
     assert_eq!(
-        institutions_page.institution_dialog_types,
-        Some(vec!["Savings".to_string()])
-    );
-    assert_eq!(
-        institutions_page.institution_dialog_unit.as_deref(),
+        ui.dialog_value("unit").as_deref(),
         units_page.unit_rows.first().map(|row| row.0.as_str())
     );
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Dialog);
     ui.click("add-institution-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
 }
 
@@ -81,20 +74,13 @@ fn account_type_chips_toggle_and_the_unit_choice_changes(app: &mut TestAppContex
 
     ui.click("settings-add-institution");
     ui.click("add-institution-chip-offset");
-    assert_eq!(
-        ui.settings_institutions().institution_dialog_types,
-        Some(vec!["Savings".to_string(), "Offset".to_string()])
-    );
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings,Offset"));
     ui.click("add-institution-chip-savings");
-    assert_eq!(
-        ui.settings_institutions().institution_dialog_types,
-        Some(vec!["Offset".to_string()])
-    );
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("Offset"));
     ui.click("add-institution-unit-1");
-    let institutions_page = ui.settings_institutions();
     let units_page = ui.settings_units();
     assert_eq!(
-        institutions_page.institution_dialog_unit.as_deref(),
+        ui.dialog_value("unit").as_deref(),
         Some(units_page.unit_rows[1].0.as_str())
     );
 }
@@ -106,13 +92,12 @@ fn the_add_institution_button_needs_a_name_and_a_type_then_adds_the_row(app: &mu
 
     ui.click("settings-add-institution");
     ui.click("add-institution-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddInstitution"));
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
     ui.press("n e w");
     ui.click("add-institution-chip-offset");
     ui.click("add-institution-confirm");
     let institutions_page = ui.settings_institutions();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(institutions_page.institutions.len(), before + 1);
     assert_eq!(
         institutions_page.institutions.last(),
@@ -129,7 +114,7 @@ fn an_institution_with_no_account_type_cannot_be_added(app: &mut TestAppContext)
     ui.press("n e w");
     ui.click("add-institution-chip-savings");
     ui.click("add-institution-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddInstitution"));
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
     assert_eq!(ui.settings_institutions().institutions.len(), before);
 }
 

@@ -27,7 +27,6 @@ use crate::{
             apply::{AccountOutcome, AccountsApply},
             dialogs::AccountsDialog,
         },
-        institutions::{apply::InstitutionsApply, dialogs::InstitutionsDialog},
         payees::{
             apply::{PayeeOutcome, PayeesApply},
             dialogs::PayeesDialog,
@@ -118,12 +117,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::Institutions(_)) => {
-                let mut apply = InstitutionsApply {
-                    ledger: self.ledger.clone(),
-                };
-                self.confirm_dialog::<InstitutionsDialog, _>(&mut apply, cx);
-            }
             Some(OpenDialog::Accounts(_)) => self.confirm_accounts_dialog(cx),
             Some(OpenDialog::Payees(_)) => {
                 let mut apply = PayeesApply {
@@ -179,8 +172,13 @@ impl Shell {
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
-            Some(OpenDialog::Tags(_) | OpenDialog::Categories(_) | OpenDialog::Units(_)) | None => {
-            }
+            Some(
+                OpenDialog::Tags(_)
+                | OpenDialog::Categories(_)
+                | OpenDialog::Units(_)
+                | OpenDialog::Institutions(_),
+            )
+            | None => {}
         }
     }
 

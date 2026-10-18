@@ -102,14 +102,13 @@ fn add_institution_types_a_name_and_enter_adds_the_row(app: &mut TestAppContext)
 
     ui.click("settings-add-institution");
     ui.press("b a n k");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("bank"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
     ui.press("backspace");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("ban"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("ban"));
     ui.press("tab");
     ui.press("enter");
     let institutions_page = ui.settings_institutions();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(institutions_page.institutions.len(), before + 1);
     assert_eq!(
         institutions_page
@@ -127,8 +126,8 @@ fn add_institution_enter_does_nothing_without_a_name(app: &mut TestAppContext) {
 
     ui.click("settings-add-institution");
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddInstitution"));
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
     assert_eq!(ui.settings_institutions().institutions.len(), before);
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }

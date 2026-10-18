@@ -21,11 +21,9 @@ pub use crate::settings::tracing::SettingsTracingSnapshot;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
-    settings::accounts::dialogs::AccountsDialog,
-    settings::documents::dialogs::DocumentTypesDialog,
-    settings::inventory::dialogs::InventoryDialog,
-    settings::payees::dialogs::PayeesDialog,
-    settings::{institutions::dialogs::InstitutionsDialog, tracing::dialogs::TracingDialog},
+    settings::accounts::dialogs::AccountsDialog, settings::documents::dialogs::DocumentTypesDialog,
+    settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
+    settings::tracing::dialogs::TracingDialog,
 };
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
@@ -36,8 +34,6 @@ struct OpenDialog {
     label: Option<&'static str>,
     name: Option<String>,
     confirm: Option<String>,
-    /// The Add institution dialog's checked products and Default unit code.
-    institution: Option<(Vec<String>, Option<String>)>,
 }
 
 /// The open Add or Edit account dialog's form: plain values, so the private form type stays
@@ -119,11 +115,6 @@ impl Shell {
             open_dialog.label = Some(label);
             open_dialog.name = name;
             open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<InstitutionsDialog>() {
-            let open = open.snapshot();
-            open_dialog.label = Some(open.label);
-            open_dialog.name = Some(open.name);
-            open_dialog.institution = Some(open.form);
         }
         open_dialog
     }
@@ -214,22 +205,15 @@ impl Shell {
         self.views.settings.read(cx).units().read(cx).snapshot(cx)
     }
 
-    /// The Settings Institutions page for a test, as the View builds it, plus the open Add
-    /// institution dialog.
+    /// The Settings Institutions page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_institutions_snapshot(&self, cx: &gpui::App) -> SettingsInstitutionsSnapshot {
-        let institution_form = self.open_settings_dialog().institution;
-        SettingsInstitutionsSnapshot {
-            institution_dialog_types: institution_form.as_ref().map(|(types, _)| types.clone()),
-            institution_dialog_unit: institution_form.and_then(|(_, unit)| unit),
-            ..self
-                .views
-                .settings
-                .read(cx)
-                .institutions()
-                .read(cx)
-                .snapshot(cx)
-        }
+        self.views
+            .settings
+            .read(cx)
+            .institutions()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Display page for a test, as the View builds it.
