@@ -13,8 +13,8 @@ use lib_units::{UnitId, UnitKind};
 use super::dialogs::UnitsDialog;
 use crate::{
     chrome::{
-        dialog_apply::{Apply, DialogForm, FormError},
-        dialog_host::Dialog,
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
     },
     ledger_store::LedgerStore,
 };
@@ -46,7 +46,7 @@ pub enum UnitsOutcome {
 }
 
 impl UnitsOutcome {
-    /// The Toast `Shell` raises once the Dialog has closed: only a delete has one.
+    /// The Toast raised once the Dialog has closed: only a delete has one.
     pub fn toast(&self) -> Option<(ToastKind, String)> {
         match self {
             Self::Saved { .. } => None,
@@ -91,6 +91,23 @@ impl DialogForm for UnitsDialog {
     /// A refusal means the Unit row vanished under an open, valid form, so there is nothing left
     /// for the form to correct: the Dialog stays open and `Esc` closes it.
     fn refuse(&mut self, _refusal: UnitGone) {}
+}
+
+impl ConfirmDialog for UnitsDialog {
+    type Outcome = UnitsOutcome;
+
+    /// The Landed carries no Toast: the page decides between ACTIVITY and a Toast, since only it
+    /// knows whether its detail pane is docked (`UnitsPage::land`).
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<UnitsOutcome>> {
+        let mut apply = UnitsApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: None,
+            outcome,
+        })
+    }
 }
 
 /// Runs [`UnitsCommand`]s as `lib_ledger` commands.

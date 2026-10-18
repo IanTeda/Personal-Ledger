@@ -1,8 +1,8 @@
 //! The **Units** Settings page (ADR-0037, and its amendment's one folder per page): the Units
 //! table and its Price Sources. [`UnitsPage`] reads both straight from [`LedgerStore`], renders
 //! itself (`render.rs`), builds the Add, Edit and Delete unit Dialogs (`dialogs/`) and reaches
-//! `Shell` only through [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms them through
-//! `apply.rs`. The Settings View forwards the page's keys and status to it while the page has
+//! `Shell` only through [`ViewEvent`]. The Dialog host holds them, and they draw, read back and
+//! confirm themselves (`dialogs/`, `apply.rs`), handing each outcome back to [`UnitsPage::land`]. The Settings View forwards the page's keys and status to it while the page has
 //! focus. At X-Large the page also docks a detail pane (`render::detail_pane`) and keeps a selected row.
 
 pub mod apply;
@@ -19,7 +19,7 @@ use lib_list_cursor::{resolve, step_id};
 use lib_units::{PriceSourceRow, UnitId, UnitRow};
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus, window_size::WindowSize},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::{
@@ -178,9 +178,16 @@ impl UnitsPage {
             .collect()
     }
 
-    /// Records a landed Dialog's outcome in ACTIVITY, newest first.
-    pub fn land(&mut self, outcome: &UnitsOutcome, cx: &mut Context<'_, Self>) {
-        let text = match outcome {
+    /// Lands a confirmed Dialog. The docked detail pane is already in view beside the row, so it
+    /// logs the outcome in ACTIVITY, newest first, instead of raising a Toast (DESKTOP-125).
+    fn land(&mut self, outcome: UnitsOutcome, cx: &mut Context<'_, Self>) {
+        if !self.docked {
+            if let Some((kind, text)) = outcome.toast() {
+                cx.emit(ViewEvent::RaiseToast { kind, text });
+            }
+            return;
+        }
+        let text = match &outcome {
             UnitsOutcome::Saved { code } => crate::msg::desktop_settings_units_activity_saved(code),
             UnitsOutcome::Deleted { code } => {
                 crate::msg::desktop_settings_units_activity_deleted(code)
@@ -383,7 +390,7 @@ impl UnitsPage {
 
     /// The square **+** beside UNITS opens the Add unit dialog.
     fn click_add(&mut self, cx: &mut Context<'_, Self>) {
-        open_dialog(UnitsDialog::Add(UnitForm::default()), cx);
+        open_dialog(UnitsDialog::Add(UnitForm::default()), Self::land, cx);
     }
 
     /// Edit unit (double-click, menu or pane) opens the Edit unit dialog filled from the row.
@@ -392,7 +399,7 @@ impl UnitsPage {
             return;
         };
         let form = UnitForm::from_row(row);
-        open_dialog(UnitsDialog::Edit(row.id, form), cx);
+        open_dialog(UnitsDialog::Edit(row.id, form), Self::land, cx);
     }
 
     /// A Units row's **delete** opens the destructive Delete unit confirm dialog.
@@ -401,7 +408,7 @@ impl UnitsPage {
             return;
         };
         let form = DeleteUnitForm::new(row.code.as_str());
-        open_dialog(UnitsDialog::Delete(row.id, form), cx);
+        open_dialog(UnitsDialog::Delete(row.id, form), Self::land, cx);
     }
 
     /// Price Sources' test, edit, delete and add have no Dialog yet, so they say so on the status
@@ -414,7 +421,7 @@ impl UnitsPage {
     // Tests
     // -----------------------------------------------------------------------------------------
 
-    /// The Units rows. The open Dialog's fields are `Shell`'s, which fills them in.
+    /// The Units rows. The open Dialog reads itself back (`Dialog::readback`).
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsUnitsSnapshot {
         let units = self.units(cx);
@@ -430,9 +437,6 @@ impl UnitsPage {
                     )
                 })
                 .collect(),
-            unit_dialog_name: None,
-            unit_dialog_kind: None,
-            unit_dialog_field: None,
             selected_code: self.selected_unit(cx).map(|unit| unit.code.clone()),
             menu: self.menu.map(|menu| {
                 let row = match menu.target {
@@ -462,16 +466,12 @@ impl UnitsPage {
     }
 }
 
-/// The Units page: codes in table order, `(code, name, kind)` rows, and the Add/Edit unit dialog's
-/// Name draft, Type (`UnitKind` variant name) and focused field (`Code` or `Name`).
+/// The Units page: codes in table order and `(code, name, kind)` rows.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
     pub unit_rows: Vec<(String, String, String)>,
-    pub unit_dialog_name: Option<String>,
-    pub unit_dialog_kind: Option<String>,
-    pub unit_dialog_field: Option<String>,
     /// The selected row's code, which is the first row's until another is chosen.
     pub selected_code: Option<String>,
     /// The open row menu: the row it is on (`unit:btc`, `source:Bitcoin`) and its entries' slugs
@@ -479,50 +479,4 @@ pub struct SettingsUnitsSnapshot {
     pub menu: Option<(String, Vec<String>)>,
     /// ACTIVITY's lines, newest first.
     pub activity: Vec<String>,
-}
-
-/// What the open Units Dialog shows, for the Settings snapshots.
-#[doc(hidden)]
-pub struct UnitsDialogSnapshot {
-    /// `AddUnit`, `EditUnit` or `DeleteUnit`.
-    pub label: &'static str,
-    /// The Code draft, on Add and Edit.
-    pub code: Option<String>,
-    /// The typed-back confirmation, on Delete.
-    pub confirm: Option<String>,
-    /// The Add/Edit form's Name draft, Type and focused field.
-    pub form: Option<(String, String, String)>,
-}
-
-impl UnitsDialog {
-    #[doc(hidden)]
-    pub fn snapshot(&self) -> UnitsDialogSnapshot {
-        let (label, form) = match self {
-            Self::Add(form) => ("AddUnit", form),
-            Self::Edit(_, form) => ("EditUnit", form),
-            Self::Delete(_, form) => {
-                return UnitsDialogSnapshot {
-                    label: "DeleteUnit",
-                    code: None,
-                    confirm: Some(form.confirm_input.text().to_string()),
-                    form: None,
-                };
-            }
-        };
-        UnitsDialogSnapshot {
-            label,
-            code: Some(form.code.text().to_string()),
-            confirm: None,
-            form: Some((
-                form.name.text().to_string(),
-                format!("{:?}", form.kind),
-                format!("{:?}", form.focused_field),
-            )),
-        }
-    }
-}
-
-/// Asks `Shell`'s Dialog host to open a Units Dialog.
-fn open_dialog(dialog: UnitsDialog, cx: &mut Context<'_, UnitsPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Units(dialog))));
 }

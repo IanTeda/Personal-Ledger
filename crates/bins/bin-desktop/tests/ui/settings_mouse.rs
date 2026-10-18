@@ -67,26 +67,25 @@ fn the_units_add_edit_and_delete_buttons_open_their_dialogs(app: &mut TestAppCon
     ui.click("settings-index-Units");
 
     ui.click("settings-add-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     ui.click("add-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 
     let first = ui.settings_units().unit_codes[0].clone();
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-edit-unit");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
-    assert_eq!(page.dialog_name.as_deref(), Some(first.as_str()));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some(first.as_str()));
     ui.click("edit-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.click("delete-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.click("delete-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]

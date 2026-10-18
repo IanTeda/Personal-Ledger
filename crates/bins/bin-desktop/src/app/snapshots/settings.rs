@@ -25,10 +25,7 @@ use crate::{
     settings::documents::dialogs::DocumentTypesDialog,
     settings::inventory::dialogs::InventoryDialog,
     settings::payees::dialogs::PayeesDialog,
-    settings::{
-        institutions::dialogs::InstitutionsDialog, tracing::dialogs::TracingDialog,
-        units::dialogs::UnitsDialog,
-    },
+    settings::{institutions::dialogs::InstitutionsDialog, tracing::dialogs::TracingDialog},
 };
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
@@ -39,8 +36,6 @@ struct OpenDialog {
     label: Option<&'static str>,
     name: Option<String>,
     confirm: Option<String>,
-    /// The Add/Edit unit dialog's Name, Type and focused field.
-    unit: Option<(String, String, String)>,
     /// The Add institution dialog's checked products and Default unit code.
     institution: Option<(Vec<String>, Option<String>)>,
 }
@@ -129,12 +124,6 @@ impl Shell {
             open_dialog.label = Some(open.label);
             open_dialog.name = Some(open.name);
             open_dialog.institution = Some(open.form);
-        } else if let Some(open) = self.dialog::<UnitsDialog>() {
-            let open = open.snapshot();
-            open_dialog.label = Some(open.label);
-            open_dialog.name = open.code;
-            open_dialog.confirm = open.confirm;
-            open_dialog.unit = open.form;
         }
         open_dialog
     }
@@ -219,16 +208,10 @@ impl Shell {
         self.views.settings.read(cx).tags().read(cx).snapshot(cx)
     }
 
-    /// The Settings Units page for a test, as the View builds it, plus the open Unit dialog.
+    /// The Settings Units page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
-        let unit_form = self.open_settings_dialog().unit;
-        SettingsUnitsSnapshot {
-            unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
-            unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),
-            unit_dialog_field: unit_form.map(|(.., field)| field),
-            ..self.views.settings.read(cx).units().read(cx).snapshot(cx)
-        }
+        self.views.settings.read(cx).units().read(cx).snapshot(cx)
     }
 
     /// The Settings Institutions page for a test, as the View builds it, plus the open Add

@@ -17,7 +17,6 @@ use gpui_component::scroll::{Scrollbar, ScrollbarShow};
 
 use crate::settings::institutions::dialogs::{InstitutionsDialog, InstitutionsDialogHandlers};
 use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandlers};
-use crate::settings::units::dialogs::{UnitsDialog, UnitsDialogHandlers};
 
 use gpui::{
     Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, Window, div, prelude::*, px,
@@ -688,26 +687,6 @@ impl Render for Shell {
                         },
                         on_cancel: on_settings_dialog_cancel.clone(),
                         on_confirm: on_settings_dialog_confirm.clone(),
-                    },
-                    cx,
-                )
-            }))
-            .children(self.dialog::<UnitsDialog>().map(|dialog| {
-                dialog.render(
-                    self.ledger.read(cx).ledger().units(),
-                    UnitsDialogHandlers {
-                        on_change: {
-                            let entity = entity.clone();
-                            Rc::new(move |change, _window, cx| {
-                                entity.update(cx, |shell, cx| {
-                                    shell.edit_dialog(cx, |dialog: &mut UnitsDialog| {
-                                        dialog.apply_change(change)
-                                    })
-                                });
-                            })
-                        },
-                        on_cancel: on_settings_dialog_cancel,
-                        on_confirm: on_settings_dialog_confirm,
                     },
                     cx,
                 )

@@ -51,7 +51,7 @@ fn clicking_the_units_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
 
     ui.click("settings-index-Units");
     assert_eq!(ui.settings().page, "Units");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -60,10 +60,10 @@ fn the_add_unit_button_opens_and_cancel_closes_without_a_write(app: &mut TestApp
     let before = ui.settings_units().unit_rows.len();
 
     ui.click("settings-add-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.click("add-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_rows.len(), before);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -77,11 +77,11 @@ fn the_add_unit_confirm_button_does_nothing_until_code_and_name_are_filled(
 
     ui.click("settings-add-unit");
     ui.click("add-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     assert_eq!(ui.settings_units().unit_rows.len(), before);
     ui.press("g o l d");
     ui.click("add-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     assert_eq!(ui.settings_units().unit_rows.len(), before);
 }
 
@@ -95,13 +95,10 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
     ui.press("tab");
     ui.press("g o l d");
     ui.click("add-unit-type-4");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Other")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Other"));
     ui.click("add-unit-confirm");
     let units_page = ui.settings_units();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(units_page.unit_rows.len(), before + 1);
     assert_eq!(
         units_page
@@ -118,13 +115,11 @@ fn the_edit_unit_button_opens_a_dialog_prefilled_from_the_row(app: &mut TestAppC
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
-    let units_page = ui.settings_units();
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
-    assert_eq!(page.dialog_name.as_deref(), Some(code.as_str()));
-    assert_eq!(units_page.unit_dialog_name.as_deref(), Some(name.as_str()));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some(code.as_str()));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some(name.as_str()));
     ui.click("edit-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_rows[0], (code, name, kind));
 }
 
@@ -134,10 +129,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
 
     // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
     row_action(&mut ui, "unit-row-2", "edit-unit");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Stock")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Stock"));
 }
 
 #[gpui::test]
@@ -147,13 +139,10 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
     ui.click("edit-unit-type-1");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Crypto")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
     ui.click("edit-unit-confirm");
     let units_page = ui.settings_units();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(units_page.unit_rows[0], (code, name, "crypto".to_string()));
 }
 
@@ -165,9 +154,9 @@ fn the_delete_unit_button_opens_a_dialog_and_cancel_closes_without_a_write(
     let before = ui.settings_units().unit_codes.clone();
 
     row_action(&mut ui, "unit-row-0", "delete-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.click("delete-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_codes, before);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -180,7 +169,7 @@ fn the_delete_unit_confirm_button_refuses_until_the_code_is_typed_back(app: &mut
 
     row_action(&mut ui, "unit-row-0", "delete-unit");
     ui.click("delete-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.settings_units().unit_codes, before);
 
     ui.press(
@@ -191,7 +180,7 @@ fn the_delete_unit_confirm_button_refuses_until_the_code_is_typed_back(app: &mut
             .to_string(),
     );
     ui.click("delete-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.settings_units().unit_codes, before);
 }
 
@@ -207,7 +196,7 @@ fn the_delete_unit_confirm_button_removes_the_row_once_the_code_matches(app: &mu
     }
     ui.click("delete-unit-confirm");
     let after = ui.settings_units().unit_codes;
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(after.len(), before.len() - 1);
     assert!(!after.contains(&code));
 }
@@ -236,7 +225,7 @@ fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContex
         status(&mut ui).as_deref(),
         Some("add price source \u{2014} not yet built")
     );
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 fn on_units_xlarge(app: &mut TestAppContext) -> Harness<'_> {
@@ -274,13 +263,13 @@ fn at_x_large_the_pane_buttons_open_the_dialogs_for_the_selected_unit(app: &mut 
     ui.click("unit-row-1");
 
     ui.click("units-pane-edit-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
     ui.press("escape");
 
     ui.click("units-pane-delete-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.click("delete-unit-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -347,9 +336,8 @@ fn double_clicking_a_unit_row_opens_its_edit_dialog(app: &mut TestAppContext) {
     let (code, _, _) = ui.settings_units().unit_rows[2].clone();
 
     ui.double_click("unit-row-2");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditUnit"));
-    assert_eq!(page.dialog_name.as_deref(), Some(code.as_str()));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some(code.as_str()));
 }
 
 #[gpui::test]
@@ -361,7 +349,7 @@ fn double_clicking_a_price_source_row_says_edit_is_not_yet_built(app: &mut TestA
         status(&mut ui).as_deref(),
         Some("edit price source \u{2014} not yet built")
     );
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -377,7 +365,7 @@ fn right_clicking_a_unit_row_opens_a_menu_with_edit_then_delete(app: &mut TestAp
             vec!["edit-unit".to_string(), "delete-unit".to_string()]
         ))
     );
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -405,8 +393,8 @@ fn a_menu_entry_closes_the_menu_and_runs_its_action(app: &mut TestAppContext) {
 
     row_action(&mut ui, "unit-row-1", "edit-unit");
     assert_eq!(menu(&mut ui), None);
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some(code.as_str()));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some(code.as_str()));
 }
 
 #[gpui::test]
@@ -417,7 +405,7 @@ fn a_press_outside_the_menu_closes_it(app: &mut TestAppContext) {
     assert!(menu(&mut ui).is_some());
     ui.click("unit-row-0");
     assert_eq!(menu(&mut ui), None);
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]

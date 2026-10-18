@@ -1,6 +1,7 @@
-//! The Units page's Dialogs: Add, Edit and Delete unit. [`UnitsDialog`] is the value `Shell`'s
-//! Dialog host holds while one is open (`OpenDialog::Units`); [`UnitsDialog::render`] draws
-//! whichever is open, and every click inside it reaches the form as a [`Change`].
+//! The Units page's Dialogs: Add, Edit and Delete unit. [`UnitsDialog`] is the value the Dialog
+//! host holds while one is open (`OpenDialog::Units`). It draws itself (`Dialog::render`), every
+//! click inside it reaching the form as a [`Change`] through the host's one edit callback, and
+//! reads itself back for the UI tests.
 
 pub mod add;
 pub mod delete;
@@ -12,7 +13,11 @@ use gpui::{AnyElement, App, Window, div, prelude::*};
 use lib_units::{UnitId, UnitKind, UnitRow};
 
 use super::form::{AddUnitField, DeleteUnitForm, UnitForm};
-use crate::{chrome::dialog_host::Dialog, dialog, form::field::TextField};
+use crate::{
+    chrome::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
+    dialog,
+    form::field::TextField,
+};
 
 /// The open Units Dialog. Edit and Delete carry the row's [`UnitId`], so the confirm knows which
 /// row to overwrite or remove even if the table shifts under the open Dialog.
@@ -23,8 +28,8 @@ pub enum UnitsDialog {
     Delete(UnitId, DeleteUnitForm),
 }
 
-/// Applies a [`Change`] to the open Units Dialog where the Dialog host holds it
-/// ([`UnitsDialog::apply_change`]), then repaints.
+/// Applies a [`Change`] to the open Units Dialog ([`UnitsDialog::apply_change`]) through the
+/// host's edit callback, then repaints.
 pub type OnChange = Rc<dyn Fn(Change, &mut Window, &mut App)>;
 
 /// What a click inside a Units Dialog changes on its form.
@@ -42,10 +47,30 @@ pub struct UnitsDialogHandlers {
     pub on_confirm: dialog::OnClick,
 }
 
+impl UnitsDialogHandlers {
+    /// A change edits the open Units Dialog through `actions`.
+    fn new(actions: &DialogActions) -> Self {
+        let on_change: OnChange = {
+            let actions = actions.clone();
+            Rc::new(move |change, _window, cx| {
+                actions.edit(cx, |dialog: &mut UnitsDialog, _| {
+                    dialog.apply_change(change);
+                    None
+                });
+            })
+        };
+        Self {
+            on_change,
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
+        }
+    }
+}
+
 impl UnitsDialog {
     /// Draws the open Dialog. Delete reads its row from `units`; a row that has gone draws
     /// nothing rather than panicking mid-render.
-    pub fn render(&self, units: &[UnitRow], handlers: UnitsDialogHandlers, cx: &App) -> AnyElement {
+    fn draw(&self, units: &[UnitRow], handlers: UnitsDialogHandlers, cx: &App) -> AnyElement {
         match self {
             Self::Add(form) => add::render(form, handlers, cx),
             Self::Edit(_, form) => edit::render(form, handlers, cx),
@@ -87,6 +112,42 @@ impl Dialog for UnitsDialog {
             Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
             Self::Delete(_, form) => form.is_valid(),
         }
+    }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        Some(self.draw(
+            scope.ledger.read(cx).ledger().units(),
+            UnitsDialogHandlers::new(actions),
+            cx,
+        ))
+    }
+
+    /// Add and Edit read back their Code, Name, Type and focused field; Delete its typed-back
+    /// code.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let (kind, values) = match self {
+            Self::Add(form) | Self::Edit(_, form) => {
+                let kind = if matches!(self, Self::Add(_)) {
+                    "AddUnit"
+                } else {
+                    "EditUnit"
+                };
+                (
+                    kind,
+                    vec![
+                        ("code", form.code.text().to_string()),
+                        ("name", form.name.text().to_string()),
+                        ("kind", format!("{:?}", form.kind)),
+                        ("field", format!("{:?}", form.focused_field)),
+                    ],
+                )
+            }
+            Self::Delete(_, form) => (
+                "DeleteUnit",
+                vec![("confirm", form.confirm_input.text().to_string())],
+            ),
+        };
+        Some(DialogReadback { kind, values })
     }
 }
 

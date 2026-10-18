@@ -32,7 +32,6 @@ use crate::{
             apply::{PayeeOutcome, PayeesApply},
             dialogs::PayeesDialog,
         },
-        units::{apply::UnitsApply, dialogs::UnitsDialog},
     },
 };
 use gpui::Context;
@@ -119,21 +118,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::Units(_)) => {
-                let mut apply = UnitsApply {
-                    ledger: self.ledger.clone(),
-                };
-                let page = self.views.settings.read(cx).units().clone();
-                if let Some(outcome) = self.confirm_dialog::<UnitsDialog, _>(&mut apply, cx) {
-                    // The docked detail pane is already in view beside the row, so it logs the
-                    // outcome in ACTIVITY instead of raising a Toast (DESKTOP-125).
-                    if page.read(cx).docked() {
-                        page.update(cx, |page, cx| page.land(&outcome, cx));
-                    } else if let Some((kind, message)) = outcome.toast() {
-                        self.raise_toast(kind, message);
-                    }
-                }
-            }
             Some(OpenDialog::Institutions(_)) => {
                 let mut apply = InstitutionsApply {
                     ledger: self.ledger.clone(),
@@ -195,7 +179,8 @@ impl Shell {
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
-            Some(OpenDialog::Tags(_) | OpenDialog::Categories(_)) | None => {}
+            Some(OpenDialog::Tags(_) | OpenDialog::Categories(_) | OpenDialog::Units(_)) | None => {
+            }
         }
     }
 

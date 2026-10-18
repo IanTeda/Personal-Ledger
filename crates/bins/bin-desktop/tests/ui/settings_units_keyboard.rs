@@ -41,7 +41,7 @@ fn j_j_from_the_index_swaps_to_units_and_l_steps_into_it(app: &mut TestAppContex
 
     ui.press("l");
     assert!(ui.settings().page_focused);
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -51,25 +51,16 @@ fn add_unit_types_into_code_then_tab_moves_to_name_and_enter_saves(app: &mut Tes
     let before = ui.settings_units().unit_rows.len();
 
     ui.click("settings-add-unit");
-    assert_eq!(
-        ui.settings_units().unit_dialog_field.as_deref(),
-        Some("Code")
-    );
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
     ui.press("x y z");
     ui.press("tab");
-    assert_eq!(
-        ui.settings_units().unit_dialog_field.as_deref(),
-        Some("Name")
-    );
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
     ui.press("t e s t");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("xyz"));
-    assert_eq!(
-        ui.settings_units().unit_dialog_name.as_deref(),
-        Some("test")
-    );
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("xyz"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("test"));
     ui.press("enter");
     let units_page = ui.settings_units();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(units_page.unit_rows.len(), before + 1);
     assert_eq!(
         units_page.unit_rows.last(),
@@ -84,12 +75,9 @@ fn tab_cycles_back_to_code_and_backspace_trims_the_focused_field(app: &mut TestA
     ui.click("settings-add-unit");
     ui.press("a b");
     ui.press("tab tab");
-    assert_eq!(
-        ui.settings_units().unit_dialog_field.as_deref(),
-        Some("Code")
-    );
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
     ui.press("backspace");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("a"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("a"));
 }
 
 #[gpui::test]
@@ -99,7 +87,7 @@ fn add_unit_enter_does_nothing_until_code_and_name_are_filled(app: &mut TestAppC
 
     ui.click("settings-add-unit");
     ui.press("a enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     assert_eq!(ui.settings_units().unit_rows.len(), before);
 }
 
@@ -111,7 +99,7 @@ fn escape_discards_an_add_unit_draft(app: &mut TestAppContext) {
     ui.click("settings-add-unit");
     ui.press("a tab b");
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_rows.len(), before);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -122,11 +110,11 @@ fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
     let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
     ui.press("tab");
     ui.press("x");
     ui.press("enter");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.settings_units().unit_rows[0],
         (code, format!("{name}x"), kind)
@@ -142,7 +130,7 @@ fn escape_discards_an_edit_unit_change(app: &mut TestAppContext) {
     ui.press("tab");
     ui.press("x");
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_rows, before);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -154,9 +142,9 @@ fn delete_unit_enter_refuses_until_the_code_is_typed_back(app: &mut TestAppConte
     let code = before[0].clone();
 
     row_action(&mut ui, "unit-row-0", "delete-unit");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.settings_units().unit_codes, before);
 
     // A partial code is still refused, so the row stays until the whole code matches.
@@ -168,16 +156,16 @@ fn delete_unit_enter_refuses_until_the_code_is_typed_back(app: &mut TestAppConte
             .to_string(),
     );
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.settings_units().unit_codes, before);
 
     for ch in code.chars().skip(1) {
         ui.press(&ch.to_string());
     }
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some(code.as_str()));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some(code.as_str()));
     ui.press("enter");
     let after = ui.settings_units().unit_codes;
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(after.len(), before.len() - 1);
     assert!(!after.contains(&code));
 }
@@ -193,7 +181,7 @@ fn escape_closes_the_delete_unit_dialog_without_a_write(app: &mut TestAppContext
         ui.press(&ch.to_string());
     }
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_codes, before);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
@@ -228,17 +216,17 @@ fn at_x_large_e_opens_the_edit_dialog_for_the_selected_unit(app: &mut TestAppCon
     let mut ui = on_units_xlarge(app);
     ui.press("j");
     ui.press("e");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("EditUnit"));
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("btc"));
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
 fn at_x_large_n_opens_the_add_dialog(app: &mut TestAppContext) {
     let mut ui = on_units_xlarge(app);
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
 }
 
 #[gpui::test]
@@ -246,12 +234,12 @@ fn at_x_large_d_deletes_the_selected_unit_into_activity_without_a_toast(app: &mu
     let mut ui = on_units_xlarge(app);
     ui.press("j");
     ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
     ui.press("b t c");
     ui.press("enter");
 
     let page = ui.settings_units();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(!page.unit_codes.contains(&"btc".to_string()));
     assert_eq!(page.activity, vec!["Deleted unit btc".to_string()]);
     assert!(ui.toasts().visible.is_empty());
@@ -285,7 +273,7 @@ fn below_x_large_the_page_keeps_no_keys_of_its_own(app: &mut TestAppContext) {
     ui.press("l");
     assert!(!ui.is_drawn("units-detail-pane"));
     ui.press("n");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]

@@ -140,19 +140,15 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
 
     ui.click("settings-add-unit");
     ui.click("add-unit-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddUnit"));
+    assert_eq!(ui.dialog(), Some("AddUnit"));
     ui.press("g o l d");
     ui.press("tab");
     ui.press("g o l d");
     ui.click("add-unit-type-4");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Other")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Other"));
     ui.click("add-unit-confirm");
     let units_page = ui.settings_units();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(units_page.unit_rows.len(), before + 1);
     assert_eq!(
         units_page
@@ -171,14 +167,10 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
     ui.click("edit-unit-type-1");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Crypto")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
     ui.click("edit-unit-confirm");
     let units_page = ui.settings_units();
-    let page = ui.settings();
-    assert_eq!(page.dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(units_page.unit_rows[0], (code, name, "crypto".to_string()));
 }
 
@@ -189,10 +181,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
 
     // vas is seeded as a Stock, which the old three-option selector could only show as Custom.
     row_action(&mut ui, "unit-row-2", "edit-unit");
-    assert_eq!(
-        ui.settings_units().unit_dialog_kind.as_deref(),
-        Some("Stock")
-    );
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Stock"));
 }
 
 #[gpui::test]
@@ -220,5 +209,5 @@ fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContex
         status(&mut ui).as_deref(),
         Some("add price source \u{2014} not yet built")
     );
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
