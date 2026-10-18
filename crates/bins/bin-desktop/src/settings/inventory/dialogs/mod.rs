@@ -1,18 +1,23 @@
 //! The Inventory page's Dialogs: Add, Edit and Remove a **Location** (`location.rs`) and a
 //! **Area** (`area.rs`), and the notice the last Area holding Items gets instead of a Remove.
 //! [`InventoryDialog`] is the value `Shell`'s Dialog host holds while one is open
-//! (`OpenDialog::Inventory`); [`InventoryDialog::render`] draws whichever is open, and every click
-//! inside it reaches the form through the handlers `Shell` builds.
+//! (`OpenDialog::Inventory`). It draws itself (`Dialog::render`), every click reaching the form
+//! through the host's one edit callback, reads itself back for the UI tests and confirms itself
+//! through `apply.rs`.
 
 pub mod area;
 pub mod location;
 
-use gpui::{AnyElement, App, div, prelude::*, px};
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_core::{AreaId, ItemId, LocationId};
 
 use super::form::{AreaForm, LocationField, LocationForm, RemoveAreaForm, RemoveLocationForm};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     dialog::OnClick,
     documents::{Document, DocumentLink},
     form::{field::TextField, select_field::OnOptionClick},
@@ -93,19 +98,31 @@ impl Dialog for InventoryDialog {
         }
         Some(hints)
     }
-}
 
-/// Every click the open Inventory dialog can make. `Shell` builds it once and each dialog takes
-/// the part it draws.
-pub struct InventoryDialogHandlers {
-    pub on_field_click: OnFieldClick,
-    pub on_unit_field_click: OnClick,
-    pub on_unit_option_click: OnOptionClick,
-    pub on_area_name_click: OnClick,
-    pub on_destination_field_click: OnClick,
-    pub on_destination_option_click: OnOptionClick,
-    pub on_cancel: OnClick,
-    pub on_confirm: OnClick,
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        self.draw(scope, actions, cx)
+    }
+
+    /// Reads back the name a Location or Area form shows; the Remove dialogs and the notice have
+    /// no typed name.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let (kind, name) = match self {
+            Self::Add(form) => ("AddLocation", Some(form.name.text())),
+            Self::Edit(_, form) => ("EditLocation", Some(form.name.text())),
+            Self::Remove(..) => ("RemoveLocation", None),
+            Self::AddArea(_, form) => ("AddArea", Some(form.name.text())),
+            Self::EditArea(_, form) => ("EditArea", Some(form.name.text())),
+            Self::RemoveArea(..) => ("RemoveArea", None),
+            Self::AreaBlocked(_) => ("AreaBlocked", None),
+        };
+        Some(DialogReadback {
+            kind,
+            values: name
+                .map(|name| ("name", name.to_string()))
+                .into_iter()
+                .collect(),
+        })
+    }
 }
 
 /// What Remove would take with it.
@@ -201,29 +218,65 @@ impl InventoryDialog {
         }
     }
 
-    /// The kind of dialog, for the Settings snapshot.
-    #[doc(hidden)]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Add(_) => "add",
-            Self::Edit(..) => "edit",
-            Self::Remove(..) => "remove",
-            Self::AddArea(..) => "add-area",
-            Self::EditArea(..) => "edit-area",
-            Self::RemoveArea(..) => "remove-area",
-            Self::AreaBlocked(_) => "area-blocked",
-        }
-    }
-
-    /// Draws the open dialog. Its Location or Area is read from `inventory`; one that has gone
-    /// draws nothing rather than panicking mid-render.
-    pub fn render(
-        &self,
-        inventory: &Inventory,
-        documents: &[Document],
-        handlers: InventoryDialogHandlers,
-        cx: &App,
-    ) -> Option<AnyElement> {
+    /// Draws the open dialog. Its Location or Area is read from the Ledger; one that has gone
+    /// draws nothing rather than panicking mid-render. Each click edits the open Dialog through
+    /// `actions`, and the form's cancel and confirm go to the host.
+    fn draw(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let ledger = scope.ledger.read(cx).ledger();
+        let inventory = ledger.inventory();
+        let documents = ledger.documents();
+        let on_field_click: OnFieldClick = {
+            let actions = actions.clone();
+            Rc::new(move |field, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_field(field);
+                    None
+                });
+            })
+        };
+        let on_unit_field_click: OnClick = {
+            let actions = actions.clone();
+            Rc::new(move |_window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_unit_field();
+                    None
+                });
+            })
+        };
+        let on_unit_option_click: OnOptionClick = {
+            let actions = actions.clone();
+            Rc::new(move |index, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_unit_option(index);
+                    None
+                });
+            })
+        };
+        // The Area form has one field, already focused: a click only repaints.
+        let on_area_name_click: OnClick = {
+            let actions = actions.clone();
+            Rc::new(move |_window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |_: &mut Self, _| None);
+            })
+        };
+        let on_destination_field_click: OnClick = {
+            let actions = actions.clone();
+            Rc::new(move |_window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_destination_field();
+                    None
+                });
+            })
+        };
+        let on_destination_option_click: OnOptionClick = {
+            let actions = actions.clone();
+            Rc::new(move |index, _window: &mut Window, cx: &mut App| {
+                actions.edit(cx, |dialog: &mut Self, _| {
+                    dialog.click_destination_option(index);
+                    None
+                });
+            })
+        };
         let area_form = |adding: bool, location: &str, form: &AreaForm| {
             area::render_area_form(
                 area::AreaFormProps {
@@ -232,9 +285,9 @@ impl InventoryDialog {
                     form,
                     problem: form.problem(),
                     handlers: area::AreaFormHandlers {
-                        on_name_click: handlers.on_area_name_click.clone(),
-                        on_cancel: handlers.on_cancel.clone(),
-                        on_confirm: handlers.on_confirm.clone(),
+                        on_name_click: on_area_name_click.clone(),
+                        on_cancel: actions.cancel.clone(),
+                        on_confirm: actions.confirm.clone(),
                     },
                 },
                 cx,
@@ -248,11 +301,11 @@ impl InventoryDialog {
                     unit_options: &form.unit_labels(),
                     problem: form.problem(),
                     handlers: location::FormHandlers {
-                        on_field_click: handlers.on_field_click.clone(),
-                        on_unit_click: handlers.on_unit_field_click.clone(),
-                        on_unit_option_click: handlers.on_unit_option_click.clone(),
-                        on_cancel: handlers.on_cancel.clone(),
-                        on_confirm: handlers.on_confirm.clone(),
+                        on_field_click: on_field_click.clone(),
+                        on_unit_click: on_unit_field_click.clone(),
+                        on_unit_option_click: on_unit_option_click.clone(),
+                        on_cancel: actions.cancel.clone(),
+                        on_confirm: actions.confirm.clone(),
                     },
                 },
                 cx,
@@ -276,10 +329,10 @@ impl InventoryDialog {
                         destinations: &form.destinations,
                         destination: &form.select,
                         handlers: area::AreaRemoveHandlers {
-                            on_field_click: handlers.on_destination_field_click.clone(),
-                            on_option_click: handlers.on_destination_option_click.clone(),
-                            on_cancel: handlers.on_cancel.clone(),
-                            on_confirm: handlers.on_confirm.clone(),
+                            on_field_click: on_destination_field_click.clone(),
+                            on_option_click: on_destination_option_click.clone(),
+                            on_cancel: actions.cancel.clone(),
+                            on_confirm: actions.confirm.clone(),
                         },
                     },
                     cx,
@@ -291,7 +344,7 @@ impl InventoryDialog {
                     &area.name,
                     &location.name,
                     inventory.area_items(*id),
-                    handlers.on_cancel.clone(),
+                    actions.cancel.clone(),
                     cx,
                 ))
             }
@@ -313,8 +366,8 @@ impl InventoryDialog {
                         documents: holdings.documents,
                         typed: form.typed.text(),
                         handlers: location::RemoveHandlers {
-                            on_cancel: handlers.on_cancel.clone(),
-                            on_confirm: handlers.on_confirm.clone(),
+                            on_cancel: actions.cancel.clone(),
+                            on_confirm: actions.confirm.clone(),
                         },
                     },
                     cx,

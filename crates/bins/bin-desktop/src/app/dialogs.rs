@@ -3,7 +3,7 @@
 
 use super::Shell;
 use crate::navigation::nav::Noun;
-use crate::settings::inventory::{InventoryPage, apply::InventoryApply, dialogs::InventoryDialog};
+use crate::settings::inventory::InventoryPage;
 use crate::settings::tracing::{
     apply::{TracingApply, TracingOutcome},
     dialogs::TracingDialog,
@@ -101,19 +101,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::Inventory(_)) => {
-                let mut apply = InventoryApply {
-                    ledger: self.ledger.clone(),
-                };
-                // The page selects and opens what the Dialog left the cursor on.
-                if let Some(outcome) = self.confirm_dialog::<InventoryDialog, _>(&mut apply, cx) {
-                    self.inventory_page(cx)
-                        .update(cx, |page, cx| page.land(&outcome, cx));
-                    if let Some((kind, message)) = outcome.toast() {
-                        self.raise_toast(kind, message);
-                    }
-                }
-            }
             Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
@@ -127,7 +114,8 @@ impl Shell {
                 | OpenDialog::Institutions(_)
                 | OpenDialog::Accounts(_)
                 | OpenDialog::Payees(_)
-                | OpenDialog::DocumentTypes(_),
+                | OpenDialog::DocumentTypes(_)
+                | OpenDialog::Inventory(_),
             )
             | None => {}
         }

@@ -172,30 +172,18 @@ fn n_e_and_x_open_the_location_dialogs_and_escape_cancels(app: &mut TestAppConte
     let mut ui = in_inventory(app);
 
     ui.press("n");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddLocation"));
     ui.press("escape");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(ui.settings().page_focused, "focus returns to the page");
     ui.press("e");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("edit")
-    );
+    assert_eq!(ui.dialog(), Some("EditLocation"));
     ui.press("escape x");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove")
-    );
+    assert_eq!(ui.dialog(), Some("RemoveLocation"));
     ui.press("escape");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.press("right right e");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("edit-area")
-    );
+    assert_eq!(ui.dialog(), Some("EditArea"));
 }
 
 fn names(ui: &mut Harness<'_>) -> Vec<String> {
@@ -212,13 +200,13 @@ fn add_needs_a_name_then_adds_expands_selects_and_toasts(app: &mut TestAppContex
 
     ui.press("n enter");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add"),
+        ui.dialog(),
+        Some("AddLocation"),
         "enter is inert with no name"
     );
     ui.press("c a b i n enter");
     let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     let added = inventory_page.inventory_locations.last().cloned().unwrap();
     assert_eq!(added, ("cabin".to_string(), "aud".to_string(), None));
     assert_eq!(
@@ -241,10 +229,7 @@ fn add_refuses_a_name_another_location_has_ignoring_case(app: &mut TestAppContex
     let mut ui = in_inventory(app);
 
     ui.press("n s t o r a g e space u n i t enter");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddLocation"));
     assert_eq!(names(&mut ui).len(), 3);
 }
 
@@ -258,7 +243,7 @@ fn edit_saves_the_name_and_keeps_the_unit_and_cover(app: &mut TestAppContext) {
     assert_eq!(after.0, format!("{}x", before.0));
     assert_eq!(after.1, before.1);
     assert_eq!(after.2, before.2, "the cover Settings doesn't show is kept");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.toasts().visible.first().map(|t| t.text.clone()),
         Some(format!("Saved location \"{}x\"", before.0))
@@ -270,7 +255,7 @@ fn removing_an_empty_location_is_a_plain_confirm(app: &mut TestAppContext) {
     let mut ui = in_inventory(app);
 
     ui.press("n c a b i n enter x enter");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(names(&mut ui).len(), 3);
     assert!(
         ui.toasts()
@@ -287,13 +272,13 @@ fn removing_a_location_with_contents_asks_for_its_name_typed(app: &mut TestAppCo
 
     ui.press("x enter");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove"),
+        ui.dialog(),
+        Some("RemoveLocation"),
         "enter is inert until the name is typed"
     );
     ui.press("1 2 space shift-e l m space shift-s t space c o n t e n t s enter");
     let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         inventory_page
             .inventory_locations
@@ -330,7 +315,7 @@ fn a_expands_a_collapsed_location_and_works_from_an_area(app: &mut TestAppContex
         inventory_page.inventory_rows.len() > 2,
         "a opens the Location"
     );
-    assert_eq!(inventory_page.inventory_dialog.as_deref(), Some("add-area"));
+    assert_eq!(ui.dialog(), Some("AddArea"));
     ui.press("escape right right");
     ui.press("a");
     assert_eq!(
@@ -340,10 +325,7 @@ fn a_expands_a_collapsed_location_and_works_from_an_area(app: &mut TestAppContex
             .map(|r| r.starts_with("area:")),
         Some(true)
     );
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add-area")
-    );
+    assert_eq!(ui.dialog(), Some("AddArea"));
 }
 
 #[gpui::test]
@@ -359,7 +341,7 @@ fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppConte
     assert_eq!(inventory_page.selected_inventory, None);
 
     ui.press("e x");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.press("j k shift-j right");
     assert!(ui.settings_inventory().inventory_rows.is_empty());
     ui.press("a");
@@ -369,10 +351,7 @@ fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppConte
         Some("Add a location first")
     );
     ui.press("n");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add")
-    );
+    assert_eq!(ui.dialog(), Some("AddLocation"));
 }
 
 #[gpui::test]
@@ -382,7 +361,7 @@ fn the_page_has_no_effect_on_keys_while_the_index_has_focus(app: &mut TestAppCon
     ui.press("escape");
     assert!(!ui.settings().page_focused);
     ui.press("n a e x");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings().page, "Inventory");
 }
 
@@ -416,20 +395,16 @@ fn add_area_appends_it_last_selects_it_and_updates_the_count(app: &mut TestAppCo
     let before = area_names(&mut ui, 0).len();
 
     ui.press("a");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add-area")
-    );
+    assert_eq!(ui.dialog(), Some("AddArea"));
     ui.press("enter");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add-area"),
+        ui.dialog(),
+        Some("AddArea"),
         "an empty name keeps the dialog open"
     );
     ui.press("a t t i c enter");
-    let inventory_page = ui.settings_inventory();
     let page = ui.settings();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(page.page_focused, "focus returns to the page");
     assert_eq!(area_names(&mut ui, 0).len(), before + 1);
     assert_eq!(
@@ -459,8 +434,8 @@ fn an_area_name_may_repeat_in_another_location_but_not_in_its_own(app: &mut Test
     }
     ui.press("enter");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("add-area"),
+        ui.dialog(),
+        Some("AddArea"),
         "the same name, ignoring case, is refused in its own Location"
     );
     ui.press("escape");
@@ -471,7 +446,7 @@ fn an_area_name_may_repeat_in_another_location_but_not_in_its_own(app: &mut Test
         ui.press(&ch.to_string());
     }
     ui.press("enter");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(area_names(&mut ui, 1).contains(&living));
 }
 
@@ -482,12 +457,9 @@ fn edit_area_renames_it_and_keeps_its_items_and_position(app: &mut TestAppContex
     let items = area_items(&mut ui, &before[0]);
 
     ui.press("e");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("edit-area")
-    );
+    assert_eq!(ui.dialog(), Some("EditArea"));
     ui.press("escape");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.press("e backspace x enter");
     let after = area_names(&mut ui, 0);
     assert_eq!(after.len(), before.len());
@@ -503,15 +475,11 @@ fn removing_an_empty_area_is_a_plain_confirm(app: &mut TestAppContext) {
     let with_attic = area_names(&mut ui, 0);
 
     ui.press("x");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove-area")
-    );
+    assert_eq!(ui.dialog(), Some("RemoveArea"));
     ui.press("escape");
     assert_eq!(area_names(&mut ui, 0), with_attic);
     ui.press("x enter");
-    let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(area_names(&mut ui, 0).len(), with_attic.len() - 1);
     let toasts = ui.toasts();
     assert!(
@@ -543,12 +511,9 @@ fn removing_an_area_with_items_moves_them_to_the_area_above_by_default(app: &mut
         .sum::<usize>();
 
     ui.press("x");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove-area")
-    );
+    assert_eq!(ui.dialog(), Some("RemoveArea"));
     ui.press("enter");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(!area_names(&mut ui, 0).contains(&second));
     assert_eq!(area_items(&mut ui, &first), first_before + moving);
     assert_eq!(
@@ -574,8 +539,8 @@ fn the_first_area_pre_selects_the_area_below_and_the_picker_can_change_it(
 
     ui.press("x space down enter");
     assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("remove-area"),
+        ui.dialog(),
+        Some("RemoveArea"),
         "enter on the open list picks, it does not confirm"
     );
     ui.press("enter");
@@ -588,15 +553,12 @@ fn the_last_area_with_items_is_blocked_and_nothing_changes(app: &mut TestAppCont
     let mut ui = in_inventory(app);
     // The Storage unit has one Area, holding Items.
     ui.press("j right right x");
-    assert_eq!(
-        ui.settings_inventory().inventory_dialog.as_deref(),
-        Some("area-blocked")
-    );
+    assert_eq!(ui.dialog(), Some("AreaBlocked"));
     ui.press("enter");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(area_names(&mut ui, 1).len(), 1);
     ui.press("x escape");
-    assert_eq!(ui.settings_inventory().inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert!(ui.settings().page_focused);
 }
 

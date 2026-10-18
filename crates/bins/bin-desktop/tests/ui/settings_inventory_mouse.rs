@@ -35,7 +35,7 @@ fn menu(ui: &mut Harness<'_>) -> Option<(String, Vec<String>)> {
 }
 
 fn dialog(ui: &mut Harness<'_>) -> Option<String> {
-    ui.settings_inventory().inventory_dialog
+    ui.dialog().map(str::to_string)
 }
 
 #[gpui::test]
@@ -94,7 +94,7 @@ fn double_clicking_a_row_opens_its_edit_dialog(app: &mut TestAppContext) {
         ui.settings_inventory().selected_inventory.as_deref(),
         Some("location:Storage unit")
     );
-    assert_eq!(dialog(&mut ui).as_deref(), Some("edit"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("EditLocation"));
     ui.click("edit-location-cancel");
     assert_eq!(
         ui.settings_inventory().inventory_rows.len(),
@@ -104,7 +104,7 @@ fn double_clicking_a_row_opens_its_edit_dialog(app: &mut TestAppContext) {
 
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
     ui.double_click(&area_row(AreaId::seed(1)));
-    assert_eq!(dialog(&mut ui).as_deref(), Some("edit-area"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("EditArea"));
     ui.click("edit-area-cancel");
     assert_eq!(dialog(&mut ui), None);
 }
@@ -159,12 +159,12 @@ fn the_location_menu_asks_for_its_dialogs(app: &mut TestAppContext) {
     ui.right_click(&location_row(STORAGE));
     ui.click("settings-inventory-menu-edit-location");
     assert_eq!(menu(&mut ui), None);
-    assert_eq!(dialog(&mut ui).as_deref(), Some("edit"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("EditLocation"));
     ui.click("edit-location-cancel");
 
     ui.right_click(&location_row(ELM));
     ui.click("settings-inventory-menu-remove-location");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("remove"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("RemoveLocation"));
     ui.click("remove-location-cancel");
     assert_eq!(dialog(&mut ui), None);
 }
@@ -176,7 +176,7 @@ fn add_area_from_a_collapsed_location_expands_it_and_adds_by_the_button(app: &mu
 
     ui.right_click(&location_row(STORAGE));
     ui.click("settings-inventory-menu-add-area");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("add-area"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("AddArea"));
     assert!(
         ui.settings_inventory()
             .inventory_rows
@@ -187,7 +187,7 @@ fn add_area_from_a_collapsed_location_expands_it_and_adds_by_the_button(app: &mu
     ui.press("l o f t");
     ui.click("add-area-confirm");
     let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(inventory_page.inventory_areas[1].1.len(), before + 1);
     assert_eq!(
         inventory_page.selected_inventory.as_deref(),
@@ -230,7 +230,7 @@ fn the_area_menu_moves_edits_and_removes(app: &mut TestAppContext) {
 
     ui.right_click(&area_row(tray));
     ui.click("settings-inventory-menu-remove-area");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("remove-area"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("RemoveArea"));
 }
 
 #[gpui::test]
@@ -238,7 +238,7 @@ fn the_add_location_button_asks_for_its_dialog(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
 
     ui.click("settings-inventory-add-location");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("add"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("AddLocation"));
     assert!(ui.settings().page_focused);
     ui.click("add-location-cancel");
     assert_eq!(dialog(&mut ui), None);
@@ -254,7 +254,7 @@ fn the_empty_state_keeps_the_add_location_button(app: &mut TestAppContext) {
     assert!(ui.settings_inventory().inventory_rows.is_empty());
     assert!(ui.is_drawn("settings-inventory-add-location"));
     ui.click("settings-inventory-add-location");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("add"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("AddLocation"));
 }
 
 #[gpui::test]
@@ -270,7 +270,7 @@ fn the_add_dialog_asks_only_for_the_name_and_unit(app: &mut TestAppContext) {
     ui.press("c a b i n");
     ui.click("add-location-confirm");
     let inventory_page = ui.settings_inventory();
-    assert_eq!(inventory_page.inventory_dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(
         inventory_page.inventory_locations.last().cloned(),
         Some(("cabin".to_string(), "aud".to_string(), None))
@@ -315,7 +315,7 @@ fn remove_area_moves_items_by_the_picker_and_the_confirm_button(app: &mut TestAp
 
     ui.right_click(&area_row(AreaId::seed(1)));
     ui.click("settings-inventory-menu-remove-area");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("remove-area"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("RemoveArea"));
     ui.click("area-destination");
     ui.click("area-destination-option-1");
     ui.click("remove-area-confirm");
@@ -334,7 +334,7 @@ fn the_last_area_with_items_shows_the_notice_which_closes_by_its_button(app: &mu
 
     ui.right_click(&area_row(AreaId::seed(11)));
     ui.click("settings-inventory-menu-remove-area");
-    assert_eq!(dialog(&mut ui).as_deref(), Some("area-blocked"));
+    assert_eq!(dialog(&mut ui).as_deref(), Some("AreaBlocked"));
     ui.click("area-blocked-close");
     assert_eq!(dialog(&mut ui), None);
     assert_eq!(ui.settings_inventory().inventory_areas[1].1.len(), 1);

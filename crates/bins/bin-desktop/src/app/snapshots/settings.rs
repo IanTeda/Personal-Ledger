@@ -18,11 +18,9 @@ pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 pub use crate::settings::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::tracing::SettingsTracingSnapshot;
+use crate::settings::tracing::dialogs::TracingDialog;
 #[doc(hidden)]
 pub use crate::settings::units::SettingsUnitsSnapshot;
-use crate::{
-    settings::inventory::dialogs::InventoryDialog, settings::tracing::dialogs::TracingDialog,
-};
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
 
@@ -108,12 +106,7 @@ impl Shell {
     /// The Settings Inventory page for a test.
     #[doc(hidden)]
     pub fn settings_inventory_snapshot(&self, cx: &gpui::App) -> SettingsInventorySnapshot {
-        SettingsInventorySnapshot {
-            inventory_dialog: self
-                .dialog::<InventoryDialog>()
-                .map(|dialog| dialog.kind().to_string()),
-            ..self.inventory_page(cx).read(cx).snapshot(cx)
-        }
+        self.inventory_page(cx).read(cx).snapshot(cx)
     }
 
     /// The Settings Tags page for a test.

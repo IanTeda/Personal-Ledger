@@ -2,8 +2,9 @@
 //! `SettingsPage::Inventory`, the Ledger's Locations and, under each open one, its Areas.
 //! [`InventoryPage`] reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its
 //! keys and movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through
-//! [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms them through `apply.rs`. The
-//! Settings View forwards to it while the page is open.
+//! [`ViewEvent`]. Its Dialogs draw and confirm themselves through the Dialog host, and confirm
+//! through `apply.rs`; the page takes the outcome back in [`InventoryPage::land`]. The Settings
+//! View forwards to it while the page is open.
 //!
 //! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
 //! page: both read the `gpui`-free model through `crate::inventory`, a re-export of
@@ -26,7 +27,7 @@ use lib_ledger::{Domain, MoveArea};
 use lib_toast::ToastKind;
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     inventory::{self, Inventory},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
@@ -383,8 +384,8 @@ impl InventoryPage {
     }
 
     /// Selects and opens what a landed Dialog left the cursor on.
-    pub fn land(&mut self, outcome: &InventoryOutcome, cx: &mut Context<'_, Self>) {
-        match outcome {
+    pub fn land(&mut self, outcome: InventoryOutcome, cx: &mut Context<'_, Self>) {
+        match &outcome {
             InventoryOutcome::LocationAdded { id, .. } => {
                 self.expand(*id, cx);
                 self.select(Some(InventoryRow::Location(*id)), cx);
@@ -559,7 +560,7 @@ impl InventoryPage {
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
         let form = LocationForm::for_add(preferred, self.location_context(cx));
-        open_dialog(InventoryDialog::Add(form), cx);
+        open_dialog(InventoryDialog::Add(form), Self::land, cx);
     }
 
     fn open_edit_location_dialog(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
@@ -567,7 +568,7 @@ impl InventoryPage {
             return;
         };
         let form = LocationForm::from_location(location, self.location_context(cx));
-        open_dialog(InventoryDialog::Edit(id, form), cx);
+        open_dialog(InventoryDialog::Edit(id, form), Self::land, cx);
     }
 
     fn open_remove_location_dialog(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
@@ -579,7 +580,7 @@ impl InventoryPage {
             location.name.clone(),
             dialogs::needs_typed_name(inventory, id),
         );
-        open_dialog(InventoryDialog::Remove(id, form), cx);
+        open_dialog(InventoryDialog::Remove(id, form), Self::land, cx);
     }
 
     fn open_add_area_dialog(&mut self, location: LocationId, cx: &mut Context<'_, Self>) {
@@ -588,7 +589,7 @@ impl InventoryPage {
             return;
         }
         let form = AreaForm::for_add(inventory.clone(), location);
-        open_dialog(InventoryDialog::AddArea(location, form), cx);
+        open_dialog(InventoryDialog::AddArea(location, form), Self::land, cx);
     }
 
     fn open_edit_area_dialog(&mut self, id: AreaId, cx: &mut Context<'_, Self>) {
@@ -597,7 +598,7 @@ impl InventoryPage {
             return;
         };
         let form = AreaForm::for_edit(inventory.clone(), location.id, area);
-        open_dialog(InventoryDialog::EditArea(id, form), cx);
+        open_dialog(InventoryDialog::EditArea(id, form), Self::land, cx);
     }
 
     /// An empty Area gets a plain confirm; one with Items a destination picker pre-selecting the
@@ -622,7 +623,7 @@ impl InventoryPage {
                 RemoveAreaForm::new(destinations, preselected, items > 0),
             )
         };
-        open_dialog(dialog, cx);
+        open_dialog(dialog, Self::land, cx);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -645,7 +646,7 @@ impl InventoryPage {
     }
 
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
-    /// Area's Item count. The open Dialog is `Shell`'s, which fills it in.
+    /// Area's Item count.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsInventorySnapshot {
         let inventory = self.inventory(cx);
@@ -670,7 +671,6 @@ impl InventoryPage {
                     )
                 })
                 .collect(),
-            inventory_dialog: None,
             inventory_menu: self.menu.map(|menu| {
                 (
                     self.row_label(menu.row, cx),
@@ -703,16 +703,13 @@ impl InventoryPage {
 }
 
 /// The Inventory page's visible rows and the selected one, as `location:<name>` or `area:<name>`,
-/// each Location's Areas in order, and the dialog last asked for.
+/// each Location's Areas in order.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsInventorySnapshot {
     pub inventory_rows: Vec<String>,
     pub selected_inventory: Option<String>,
     pub inventory_areas: Vec<(String, Vec<String>)>,
-    /// The open dialog's kind (`add`, `edit`, `remove`, `add-area`, ...), which `Shell` fills in,
-    /// and each Location as `(name, unit code, insurer)`.
-    pub inventory_dialog: Option<String>,
     /// The open row menu: the row it is on, as above, and its entries' slugs in order.
     pub inventory_menu: Option<(String, Vec<String>)>,
     pub inventory_locations: Vec<(String, String, Option<String>)>,
@@ -732,13 +729,6 @@ fn area_destinations(inventory: &Inventory, area: AreaId) -> Vec<String> {
             .map(|r| r.name.clone())
             .collect()
     })
-}
-
-/// Asks `Shell`'s Dialog host to open an Inventory dialog.
-fn open_dialog(dialog: InventoryDialog, cx: &mut Context<'_, InventoryPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Inventory(
-        dialog,
-    ))));
 }
 
 #[cfg(test)]

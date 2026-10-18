@@ -6,8 +6,6 @@ use std::rc::Rc;
 
 use gpui_component::scroll::{Scrollbar, ScrollbarShow};
 
-use crate::settings::inventory::dialogs::{InventoryDialog, InventoryDialogHandlers};
-
 use gpui::{
     Context, ExternalPaths, KeyDownEvent, MouseDownEvent, ScrollHandle, Window, div, prelude::*, px,
 };
@@ -220,50 +218,6 @@ impl Render for Shell {
                 self.today,
             )
         });
-        let inventory_dialog_handlers = {
-            // A click that runs `change` on the open Inventory dialog.
-            let edit = |change: fn(&mut InventoryDialog)| {
-                let entity = entity.clone();
-                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, |shell, cx| shell.edit_dialog(cx, change));
-                });
-                on_click
-            };
-            // As `edit`, for a click on an option of one of its selects.
-            let choose = |change: fn(&mut InventoryDialog, usize)| {
-                let entity = entity.clone();
-                let on_click: crate::form::select_field::OnOptionClick =
-                    Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
-                                change(dialog, index)
-                            });
-                        });
-                    });
-                on_click
-            };
-            let on_field_click: crate::settings::inventory::dialogs::location::OnFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut InventoryDialog| {
-                            dialog.click_field(field)
-                        });
-                    });
-                })
-            };
-            InventoryDialogHandlers {
-                on_field_click,
-                on_unit_field_click: edit(InventoryDialog::click_unit_field),
-                on_unit_option_click: choose(InventoryDialog::click_unit_option),
-                // The Area form has one field, already focused: a click only repaints.
-                on_area_name_click: edit(|_| {}),
-                on_destination_field_click: edit(InventoryDialog::click_destination_field),
-                on_destination_option_click: choose(InventoryDialog::click_destination_option),
-                on_cancel: on_settings_dialog_cancel.clone(),
-                on_confirm: on_settings_dialog_confirm.clone(),
-            }
-        };
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
@@ -420,14 +374,6 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, rail_mode, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(self.dialog::<InventoryDialog>().and_then(|dialog| {
-                dialog.render(
-                    self.ledger.read(cx).ledger().inventory(),
-                    self.documents(cx),
-                    inventory_dialog_handlers,
-                    cx,
-                )
-            }))
             .children(
                 self.chrome
                     .dialog

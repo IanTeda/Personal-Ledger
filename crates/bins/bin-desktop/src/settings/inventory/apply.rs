@@ -10,8 +10,10 @@ use lib_toast::ToastKind;
 
 use super::{InventoryRow, dialogs::InventoryDialog};
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
-    chrome::dialog_host::Dialog,
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
 
@@ -159,6 +161,23 @@ impl DialogForm for InventoryDialog {
     /// The forms check names and Unit live, so a refusal means the row vanished under an
     /// open, valid form: there is nothing left for the form to correct, and `Esc` closes it.
     fn refuse(&mut self, _refusal: InventoryRefusal) {}
+}
+
+impl ConfirmDialog for InventoryDialog {
+    type Outcome = InventoryOutcome;
+
+    /// A landed confirm raises the Toast its outcome names and hands the outcome to the page; the
+    /// Area-blocked notice raises none.
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<InventoryOutcome>> {
+        let mut apply = InventoryApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: outcome.toast(),
+            outcome,
+        })
+    }
 }
 
 /// Runs [`InventoryCommand`]s against the Ledger as Ledger commands. Removing a Location drops the
