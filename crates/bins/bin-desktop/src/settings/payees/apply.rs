@@ -12,7 +12,10 @@ use lib_payees::{Payee, PayeeDraft, PayeeError};
 
 use super::{dialogs::PayeesDialog, form::DeleteAction};
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
+    chrome::{
+        dialog_apply::{self, Apply, DialogForm, FormError},
+        dialog_host::{ConfirmDialog, DialogScope, Landed},
+    },
     ledger_store::LedgerStore,
 };
 
@@ -56,10 +59,26 @@ impl DialogForm for PayeesDialog {
     }
 }
 
+impl ConfirmDialog for PayeesDialog {
+    type Outcome = PayeeOutcome;
+
+    /// A removal raises its Toast; a save selects its Payee instead.
+    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<PayeeOutcome>> {
+        let mut apply = PayeesApply {
+            ledger: scope.ledger.clone(),
+        };
+        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
+        Some(Landed {
+            toast: outcome.toast(),
+            outcome,
+        })
+    }
+}
+
 impl PayeeOutcome {
-    /// The Toast `Shell` raises once the Dialog has closed: only a removal has one, since a save
+    /// The Toast raised once the Dialog has closed: only a removal has one, since a save
     /// selects its Payee instead.
-    pub fn toast(&self) -> Option<(ToastKind, String)> {
+    fn toast(&self) -> Option<(ToastKind, String)> {
         match self {
             Self::Saved(_) => None,
             Self::Removed { name, action } => Some((

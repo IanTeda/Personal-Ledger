@@ -1,22 +1,25 @@
 //! The Payees Dialogs: Add, Edit and Delete a payee. [`PayeesDialog`] is the value `Shell`'s Dialog
-//! host holds while one is open (`OpenDialog::Payees`); [`PayeesDialog::render`] draws whichever
-//! is open, and every click inside it reaches the form through the handlers `Shell` builds.
+//! host holds while one is open (`OpenDialog::Payees`). It draws itself (`Dialog::render`), every
+//! click reaching the form through the host's one edit callback, reads itself back for the UI
+//! tests and confirms itself through `apply.rs`.
 
 pub mod add;
 pub mod delete;
 pub mod edit;
 pub mod rules_field;
 
-use gpui::{AnyElement, App};
-use lib_accounts::Account;
-use lib_core::PayeeId;
-use lib_payees::{Payee, usage};
-use lib_transactions::Transaction;
+use std::rc::Rc;
 
-use super::form::{DeletePayeeForm, PayeeForm};
-use crate::chrome::dialog_host::{Dialog, DialogKey, DialogOutcome};
+use gpui::{AnyElement, App, Window};
+use lib_core::PayeeId;
+use lib_payees::usage;
+
+use super::form::{DeletePayeeForm, PayeeField, PayeeForm};
+use crate::chrome::dialog_host::{
+    Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+};
 use crate::form::field::TextField;
-pub use add::{OnFieldClick, OnOptionClick, PayeeDialogHandlers};
+pub use add::PayeeDialogHandlers;
 
 /// Which Payees dialog is open, following `AccountsDialog`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,19 +76,95 @@ impl Dialog for PayeesDialog {
             Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
         })
     }
+
+    fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        self.draw(scope, actions, cx)
+    }
+
+    /// Reads back an Add or Edit form's name; a Delete's typed-back `confirm`.
+    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+        let (kind, name) = match self {
+            Self::Add(form) => ("AddPayee", form.name.text()),
+            Self::Edit(_, form) => ("EditPayee", form.name.text()),
+            Self::Delete(_, form) => {
+                return Some(DialogReadback {
+                    kind: "DeletePayee",
+                    values: vec![("confirm", form.confirmation_name.text().to_string())],
+                });
+            }
+        };
+        Some(DialogReadback {
+            kind,
+            values: vec![("name", name.to_string())],
+        })
+    }
 }
 
 impl PayeesDialog {
-    /// Draws the open Dialog. Edit and Delete read their Payee from `payees` and count its Splits
-    /// in `transactions`; a Payee that has gone draws nothing rather than panicking mid-render.
-    pub fn render(
-        &self,
-        payees: &[Payee],
-        transactions: &[Transaction],
-        accounts: &[Account],
-        handlers: PayeeDialogHandlers,
-        cx: &App,
-    ) -> Option<AnyElement> {
+    /// A click on a field of the Add or Edit form: focuses a text field, or focuses the Default
+    /// category select and toggles its list.
+    pub fn click_field(&mut self, field: PayeeField) {
+        if let Some(form) = self.form_mut() {
+            if field == PayeeField::DefaultCategory {
+                form.click_select();
+            } else {
+                form.focus(field);
+            }
+        }
+    }
+
+    /// Draws the open Dialog. Edit and Delete read their Payee from the Ledger and count its
+    /// Splits there; a Payee that has gone draws nothing rather than panicking mid-render.
+    fn draw(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
+        let ledger = scope.ledger.read(cx).ledger();
+        let splits = |id: PayeeId| usage(ledger.transactions(), ledger.accounts(), None, id).splits;
+        let handlers = PayeeDialogHandlers {
+            on_field_click: {
+                let actions = actions.clone();
+                Rc::new(move |field, _window: &mut Window, cx| {
+                    actions.edit(cx, |dialog: &mut Self, _| {
+                        dialog.click_field(field);
+                        None
+                    });
+                })
+            },
+            on_option_click: {
+                let actions = actions.clone();
+                Rc::new(move |index, _window: &mut Window, cx| {
+                    actions.edit(cx, |dialog: &mut Self, _| {
+                        if let Some(form) = dialog.form_mut() {
+                            form.choose_category(index);
+                        }
+                        None
+                    });
+                })
+            },
+            on_add_rule: {
+                let actions = actions.clone();
+                Rc::new(move |_window: &mut Window, cx: &mut App| {
+                    actions.edit(cx, |dialog: &mut Self, _| {
+                        if let Some(form) = dialog.form_mut() {
+                            form.focus(PayeeField::Rule);
+                            form.add_rule();
+                        }
+                        None
+                    });
+                })
+            },
+            on_remove_rule: {
+                let actions = actions.clone();
+                Rc::new(move |index, _window: &mut Window, cx| {
+                    actions.edit(cx, |dialog: &mut Self, _| {
+                        if let Some(form) = dialog.form_mut() {
+                            form.remove_rule(index);
+                        }
+                        None
+                    });
+                })
+            },
+            on_cancel: actions.cancel.clone(),
+            on_confirm: actions.confirm.clone(),
+        };
         match self {
             Self::Add(form) => Some(add::render(
                 add::PayeeDialogMode::Add,
@@ -97,18 +176,17 @@ impl PayeesDialog {
                 cx,
             )),
             Self::Edit(id, form) => {
-                let payee = lib_payees::get(payees, *id)?;
-                let splits = usage(transactions, accounts, None, *id).splits;
-                Some(edit::render(&payee.name, splits, form, handlers, cx))
+                let payee = lib_payees::get(ledger.payees(), *id)?;
+                Some(edit::render(&payee.name, splits(*id), form, handlers, cx))
             }
             Self::Delete(id, form) => {
-                let payee = lib_payees::get(payees, *id)?;
+                let payee = lib_payees::get(ledger.payees(), *id)?;
                 Some(delete::render(
                     delete::DeletePayeeProps {
                         payee,
                         action: form.action(),
                         form,
-                        splits: usage(transactions, accounts, None, *id).splits,
+                        splits: splits(*id),
                         on_cancel: handlers.on_cancel,
                         on_confirm: handlers.on_confirm,
                     },

@@ -48,10 +48,10 @@ fn n_opens_add_payee_and_escape_cancels_it(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 
     ui.press("n");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    assert_eq!(ui.dialog(), Some("AddPayee"));
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     ui.press("escape");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
@@ -62,10 +62,10 @@ fn typing_a_name_and_pressing_enter_adds_and_selects_the_payee(app: &mut TestApp
 
     ui.press("n");
     ui.press("z o o");
-    assert_eq!(ui.settings().dialog_name.as_deref(), Some("zoo"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("zoo"));
     ui.press("enter");
     let payees_page = ui.settings_payees();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(payees_page.payee_names.len(), before + 1);
     assert_eq!(payees_page.selected_payee.as_deref(), Some("zoo"));
 }
@@ -76,7 +76,7 @@ fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
     let before = ui.settings_payees().payee_names.len();
 
     ui.press("n enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    assert_eq!(ui.dialog(), Some("AddPayee"));
     assert_eq!(ui.settings_payees().payee_names.len(), before);
 }
 
@@ -86,14 +86,13 @@ fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppCont
     let selected = ui.settings_payees().selected_payee;
 
     ui.press("e");
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditPayee"));
-    assert_eq!(page.dialog_name, selected);
+    assert_eq!(ui.dialog(), Some("EditPayee"));
+    assert_eq!(ui.dialog_value("name"), selected);
     ui.press("x");
     let renamed = selected.map(|name| format!("{name}x"));
-    assert_eq!(ui.settings().dialog_name, renamed);
+    assert_eq!(ui.dialog_value("name"), renamed);
     ui.press("enter");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_payees().selected_payee, renamed);
 }
 
@@ -105,14 +104,14 @@ fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
     let before = ui.settings_payees().payee_names.len();
 
     ui.press("d");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
     ui.press("enter");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
     ui.press("z o o");
-    assert_eq!(ui.settings().dialog_confirm.as_deref(), Some("zoo"));
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some("zoo"));
     ui.press("enter");
     let payees_page = ui.settings_payees();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(payees_page.payee_names.len(), before - 1);
     assert!(!payees_page.payee_names.iter().any(|name| name == "zoo"));
     assert!(payees_page.selected_payee.is_some());
@@ -132,7 +131,7 @@ fn d_on_a_used_payee_deactivates_it_and_keeps_it_listed(app: &mut TestAppContext
     ui.press("d");
     ui.press("W o o l w o r t h s");
     ui.press("enter");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_payees().payee_names, before);
     assert_eq!(
         last_toast(&mut ui).as_deref(),
@@ -159,7 +158,7 @@ fn h_steps_back_to_the_index_and_the_page_keys_stop(app: &mut TestAppContext) {
     ui.press("h");
     assert!(!ui.settings().page_focused);
     ui.press("n");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.press("j");
     assert_eq!(ui.settings().page, "Documents", "j walks the index again");
 }

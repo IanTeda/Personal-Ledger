@@ -21,10 +21,10 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
     let mut ui = on_payees(app);
 
     ui.click("settings-payees-add");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    assert_eq!(ui.dialog(), Some("AddPayee"));
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Dialog);
     ui.click("add-payee-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
 }
 
@@ -35,11 +35,11 @@ fn the_add_dialog_confirm_adds_and_selects_the_payee(app: &mut TestAppContext) {
 
     ui.click("settings-payees-add");
     ui.click("add-payee-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("AddPayee"));
+    assert_eq!(ui.dialog(), Some("AddPayee"));
     ui.press("z o o");
     ui.click("add-payee-confirm");
     let payees_page = ui.settings_payees();
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(payees_page.payee_names.len(), before + 1);
     assert_eq!(payees_page.selected_payee.as_deref(), Some("zoo"));
 }
@@ -62,15 +62,14 @@ fn the_edit_action_selects_the_row_and_opens_its_dialog_with_the_name(app: &mut 
     let mut ui = on_payees(app);
 
     ui.click(&format!("settings-payees-edit-{}", PayeeId::seed(8)));
-    let page = ui.settings();
-    assert_eq!(page.dialog.as_deref(), Some("EditPayee"));
-    assert_eq!(page.dialog_name.as_deref(), Some("J Smith"));
+    assert_eq!(ui.dialog(), Some("EditPayee"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("J Smith"));
     assert_eq!(
         ui.settings_payees().selected_payee.as_deref(),
         Some("J Smith")
     );
     ui.click("edit-payee-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
@@ -79,15 +78,15 @@ fn the_delete_action_deactivates_a_used_payee_once_its_name_is_typed(app: &mut T
     let before = ui.settings_payees().payee_names;
 
     ui.click(&format!("settings-payees-delete-{}", PayeeId::seed(1)));
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
     ui.click("delete-payee-cancel");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-payees-delete-{}", PayeeId::seed(1)));
     ui.click("delete-payee-confirm");
-    assert_eq!(ui.settings().dialog.as_deref(), Some("DeletePayee"));
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
     ui.press("W o o l w o r t h s");
     ui.click("delete-payee-confirm");
-    assert_eq!(ui.settings().dialog, None);
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_payees().payee_names, before);
     assert_eq!(
         ui.toasts().history.first().map(|toast| toast.text.clone()),

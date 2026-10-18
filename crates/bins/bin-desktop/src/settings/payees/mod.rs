@@ -15,12 +15,13 @@ use lib_ledger::Domain;
 use lib_payees::Payee;
 
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{dialog_host::open_dialog, statusline::PageStatus},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_payees_hints,
     view::event::{Reveal, ViewEvent},
 };
+use apply::PayeeOutcome;
 use dialogs::PayeesDialog;
 use form::{DeleteAction, DeletePayeeForm, PayeeForm, PayeeOptions};
 use lib_categories::Category;
@@ -206,6 +207,13 @@ impl PayeesPage {
     // Dialogs
     // -----------------------------------------------------------------------------------------
 
+    /// Lands a confirmed Dialog: a save selects its Payee. The Toast is the host's.
+    fn land(&mut self, outcome: PayeeOutcome, cx: &mut Context<'_, Self>) {
+        if let PayeeOutcome::Saved(id) = outcome {
+            self.select_id(id, cx);
+        }
+    }
+
     fn dialog_options(&self, cx: &App) -> PayeeOptions {
         PayeeOptions::new(
             self.categories(cx),
@@ -215,7 +223,7 @@ impl PayeesPage {
 
     fn open_add_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let form = PayeeForm::new(&self.dialog_options(cx), self.payees(cx));
-        open_dialog(PayeesDialog::Add(form), cx);
+        open_dialog(PayeesDialog::Add(form), Self::land, cx);
     }
 
     /// Opens the Edit dialog pre-filled from Payee `id`. A no-op if the Payee is gone.
@@ -225,7 +233,7 @@ impl PayeesPage {
             return;
         };
         let form = PayeeForm::from_payee(payee, &self.dialog_options(cx), rows);
-        open_dialog(PayeesDialog::Edit(id, form), cx);
+        open_dialog(PayeesDialog::Edit(id, form), Self::land, cx);
     }
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
@@ -237,13 +245,8 @@ impl PayeesPage {
         let payee_use = self.sources.ledger.read(cx).ledger().payee_use(id);
         let action = DeleteAction::for_payee(payee, payee_use);
         let form = DeletePayeeForm::new(payee, action);
-        open_dialog(PayeesDialog::Delete(id, form), cx);
+        open_dialog(PayeesDialog::Delete(id, form), Self::land, cx);
     }
-}
-
-/// Asks `Shell`'s Dialog host to open a Payees dialog.
-fn open_dialog(dialog: PayeesDialog, cx: &mut Context<'_, PayeesPage>) {
-    cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Payees(dialog))));
 }
 
 /// The Payees page: names A–Z, and the selected row's name, for the integration tests (ADR-0030).

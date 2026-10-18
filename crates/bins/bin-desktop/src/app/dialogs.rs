@@ -9,7 +9,6 @@ use crate::settings::documents::{
     dialogs::DocumentTypesDialog,
 };
 use crate::settings::inventory::{InventoryPage, apply::InventoryApply, dialogs::InventoryDialog};
-use crate::settings::payees::PayeesPage;
 use crate::settings::tracing::{
     apply::{TracingApply, TracingOutcome},
     dialogs::TracingDialog,
@@ -21,13 +20,7 @@ use crate::{
         dialog_host::{Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog},
     },
     navigation::nav::InputMode,
-    settings::{
-        accounts::AccountsPage,
-        payees::{
-            apply::{PayeeOutcome, PayeesApply},
-            dialogs::PayeesDialog,
-        },
-    },
+    settings::accounts::AccountsPage,
 };
 use gpui::Context;
 use lib_toast::ToastKind;
@@ -113,19 +106,6 @@ impl Shell {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Tracing(_)) => self.confirm_tracing_dialog(cx),
-            Some(OpenDialog::Payees(_)) => {
-                let mut apply = PayeesApply {
-                    ledger: self.ledger.clone(),
-                };
-                let outcome = self.confirm_dialog::<PayeesDialog, _>(&mut apply, cx);
-                if let Some(PayeeOutcome::Saved(id)) = outcome {
-                    self.payees_page(cx)
-                        .update(cx, |page, cx| page.select_id(id, cx));
-                }
-                if let Some((kind, message)) = outcome.as_ref().and_then(PayeeOutcome::toast) {
-                    self.raise_toast(kind, message);
-                }
-            }
             Some(OpenDialog::DocumentTypes(_)) => {
                 let mut apply = DocumentTypesApply {
                     ledger: self.ledger.clone(),
@@ -172,15 +152,11 @@ impl Shell {
                 | OpenDialog::Categories(_)
                 | OpenDialog::Units(_)
                 | OpenDialog::Institutions(_)
-                | OpenDialog::Accounts(_),
+                | OpenDialog::Accounts(_)
+                | OpenDialog::Payees(_),
             )
             | None => {}
         }
-    }
-
-    /// The Payees page's Entity, which the Settings View owns.
-    pub(super) fn payees_page(&self, cx: &gpui::App) -> gpui::Entity<PayeesPage> {
-        self.views.settings.read(cx).payees().clone()
     }
 
     /// The Document Types page's Entity, which the Settings View owns.

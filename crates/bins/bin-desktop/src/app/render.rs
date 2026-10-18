@@ -6,10 +6,6 @@ use crate::settings::documents::dialogs::{
     DocumentTypesDialog, DocumentTypesDialogHandlers,
     add_edit::OnFieldClick as DocumentTypeFieldClick,
 };
-use crate::settings::payees::{
-    dialogs::{OnFieldClick, OnOptionClick, PayeeDialogHandlers, PayeesDialog},
-    form,
-};
 use lib_documents::types::{RemindLead, TracksDate};
 use std::rc::Rc;
 
@@ -219,61 +215,6 @@ impl Render for Shell {
             },
             cancel: on_settings_dialog_cancel.clone(),
             confirm: on_settings_dialog_confirm.clone(),
-        };
-        let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        let payees_dialog_handlers = {
-            let plain = plain_payees;
-            let form_edit = |change: fn(&mut form::PayeeForm, usize)| {
-                let entity = entity.clone();
-                let on_click: OnOptionClick = Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
-                            if let Some(form) = dialog.form_mut() {
-                                change(form, index);
-                            }
-                        });
-                    });
-                });
-                on_click
-            };
-            let on_field_click: OnFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
-                            if let Some(form) = dialog.form_mut() {
-                                if field == form::PayeeField::DefaultCategory {
-                                    form.click_select();
-                                } else {
-                                    form.focus(field);
-                                }
-                            }
-                        });
-                    });
-                })
-            };
-            let add_rule = |shell: &mut Shell, cx: &mut Context<'_, Shell>| {
-                shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
-                    if let Some(form) = dialog.form_mut() {
-                        form.focus(form::PayeeField::Rule);
-                        form.add_rule();
-                    }
-                });
-            };
-            PayeeDialogHandlers {
-                on_field_click,
-                on_option_click: form_edit(form::PayeeForm::choose_category),
-                on_add_rule: plain(add_rule),
-                on_remove_rule: form_edit(form::PayeeForm::remove_rule),
-                on_cancel: plain(Shell::handle_dialog_cancel),
-                on_confirm: plain(Shell::handle_dialog_confirm),
-            }
         };
         let documents_dialog_handlers = {
             let on_field_click: DocumentTypeFieldClick = {
@@ -545,15 +486,6 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, rail_mode, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(self.dialog::<PayeesDialog>().and_then(|dialog| {
-                dialog.render(
-                    self.ledger.read(cx).ledger().payees(),
-                    self.transactions(cx),
-                    self.ledger.read(cx).ledger().accounts(),
-                    payees_dialog_handlers,
-                    cx,
-                )
-            }))
             .children(self.dialog::<DocumentTypesDialog>().and_then(|dialog| {
                 dialog.render(
                     self.ledger.read(cx).ledger().document_types(),

@@ -22,8 +22,7 @@ pub use crate::settings::tracing::SettingsTracingSnapshot;
 pub use crate::settings::units::SettingsUnitsSnapshot;
 use crate::{
     settings::documents::dialogs::DocumentTypesDialog,
-    settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
-    settings::tracing::dialogs::TracingDialog,
+    settings::inventory::dialogs::InventoryDialog, settings::tracing::dialogs::TracingDialog,
 };
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
@@ -40,22 +39,7 @@ impl Shell {
     /// The open Settings dialog, whichever page owns it.
     fn open_settings_dialog(&self) -> OpenDialog {
         let mut open_dialog = OpenDialog::default();
-        if let Some(open) = self.dialog::<PayeesDialog>() {
-            let (label, name, confirm) = match open {
-                PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
-                PayeesDialog::Edit(_, form) => {
-                    ("EditPayee", Some(form.name.text().to_string()), None)
-                }
-                PayeesDialog::Delete(_, form) => (
-                    "DeletePayee",
-                    None,
-                    Some(form.confirmation_name.text().to_string()),
-                ),
-            };
-            open_dialog.label = Some(label);
-            open_dialog.name = name;
-            open_dialog.confirm = confirm;
-        } else if let Some(open) = self.dialog::<TracingDialog>() {
+        if let Some(open) = self.dialog::<TracingDialog>() {
             let (label, name, confirm) = match open {
                 TracingDialog::ClearLogs => ("ClearLogs", None, None),
             };
