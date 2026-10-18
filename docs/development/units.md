@@ -74,7 +74,7 @@ Omitted: [units.md](../units.md) is a design document and carries no requirement
 
 ## Open questions and known gaps
 
-- **Price Sources are in memory only and never fetch.** Persistence is #685; where fetching runs and where a Client keeps API keys are open (ADR-0043). The Desktop's Test price source and Test with symbol still say "not yet built", and a Price Sources row takes no keyboard selection until #714.
+- **Price Sources are in memory only and never fetch.** Persistence is #685; where fetching runs and where a Client keeps API keys are open (ADR-0043). The Desktop's Test price source and Test with symbol still say "not yet built".
 - **The TUI Units screen is a wireframe**, so the candlestick and price panes render placeholder content.
 - **Neither Client's Unit list reads `lib-database`** — the desktop reads `lib_units::default_units(now)`, and the TUI's only database-backed Unit code is the disconnected `screen/unit_detail.rs`.
 - **`unit_kind` is unconstrained at the storage layer**, unlike the comparable `categories.category_type`.

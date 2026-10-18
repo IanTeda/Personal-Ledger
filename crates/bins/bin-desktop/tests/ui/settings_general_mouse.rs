@@ -27,10 +27,10 @@ fn clicking_an_index_entry_from_a_page_focuses_the_index(app: &mut TestAppContex
 }
 
 #[gpui::test]
-fn clicking_add_price_source_says_it_is_not_built(app: &mut TestAppContext) {
+fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
     ui.click("settings-index-Units");
     ui.click("settings-add-price-source");
-    assert!(ui.settings().status_message.is_some());
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
 }

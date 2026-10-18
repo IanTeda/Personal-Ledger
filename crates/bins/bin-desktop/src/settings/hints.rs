@@ -51,16 +51,28 @@ pub(crate) fn settings_inventory_hints(
     }
 }
 
-/// The Settings Units page's legend at X-Large, where the page keeps a selected row beside its
-/// detail pane (DESKTOP-125).
-pub(crate) fn settings_units_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_unit()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("d", crate::msg::desktop_hint_delete()),
-        ("n", crate::msg::desktop_hint_new()),
-        ("t", crate::msg::desktop_hint_test_source()),
-    ]
+/// The Settings Units page's legend, by the table the selected row is in: `tab` names the table
+/// it jumps to.
+pub(crate) fn settings_units_hints(on_source: bool) -> Vec<(&'static str, String)> {
+    if on_source {
+        vec![
+            ("j/k", crate::msg::desktop_hint_price_source()),
+            ("e", crate::msg::desktop_hint_edit()),
+            ("d", crate::msg::desktop_hint_delete()),
+            ("n", crate::msg::desktop_hint_new()),
+            ("t", crate::msg::desktop_hint_test()),
+            ("tab", crate::msg::desktop_hint_units()),
+        ]
+    } else {
+        vec![
+            ("j/k", crate::msg::desktop_hint_unit()),
+            ("e", crate::msg::desktop_hint_edit()),
+            ("d", crate::msg::desktop_hint_delete()),
+            ("n", crate::msg::desktop_hint_new()),
+            ("t", crate::msg::desktop_hint_test_source()),
+            ("tab", crate::msg::desktop_hint_price_sources()),
+        ]
+    }
 }
 
 /// The Settings Tags page's status-line legend (2j's keys), as `(key, action)`.
@@ -122,7 +134,7 @@ pub(crate) fn settings_colour_grid_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The keys of a Settings page with no row or field cursor of its own (the info pages, General,
-/// and the Institutions table, which is mouse-driven for now; Units has its own legend at X-Large).
+/// and the Institutions table, which is mouse-driven for now).
 pub(crate) fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_scroll()),

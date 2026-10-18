@@ -4,8 +4,9 @@
 //! (`dialogs/`) and reaches `Shell` only through [`ViewEvent`]. The Dialog host holds them, and
 //! they draw, read back and confirm themselves (`dialogs/`, `apply.rs`, `source_apply.rs`), handing
 //! each outcome back to [`UnitsPage::land`] or [`UnitsPage::land_source`]. The Settings View
-//! forwards the page's keys and status to it while the page has focus. At X-Large the page also
-//! docks a detail pane (`render::detail_pane`) and keeps a selected row.
+//! forwards the page's keys and status to it while the page has focus. One row is selected at a
+//! time across both tables ([`UnitsSelection`]); at X-Large the page also docks a detail pane
+//! (`render::detail_pane`) that follows it.
 
 pub mod apply;
 pub mod dialogs;
@@ -26,10 +27,7 @@ use crate::{
     chrome::{dialog_host::open_dialog, statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
-    settings::{
-        SettingsPage,
-        hints::{settings_plain_page_hints, settings_units_hints},
-    },
+    settings::{SettingsPage, hints::settings_units_hints},
     view::event::ViewEvent,
 };
 use apply::UnitsOutcome;
@@ -127,6 +125,13 @@ pub struct UnitsRowClicked;
 
 impl EventEmitter<UnitsRowClicked> for UnitsPage {}
 
+/// The selected row: one at a time across both tables, UNITS drawn above PRICE SOURCES.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitsSelection {
+    Unit(UnitId),
+    Source(PriceSourceId),
+}
+
 /// The row a context menu is open on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuTarget {
@@ -197,13 +202,17 @@ pub struct ActivityEntry {
     pub text: String,
 }
 
-/// The Units page. Below X-Large a row is reached by double-click and right-click; at X-Large the page keeps a
-/// selected row, the detail pane beside it carries the actions, and the page's Success outcomes
-/// land in the pane's ACTIVITY instead of raising Toasts (DESKTOP-125).
+/// The Units page. At every Window Size it keeps one selected row across both tables, which `j`/`k`
+/// walk as one list and `Tab` jumps between; at X-Large the detail pane beside it also carries the
+/// actions, and the page's Success outcomes land in the pane's ACTIVITY instead of raising Toasts
+/// (DESKTOP-125).
 pub struct UnitsPage {
     ledger: Entity<LedgerStore>,
-    /// It may name a row that is gone, so read it through [`Self::selected_id`].
-    selected: Option<UnitId>,
+    /// It may name a row that is gone, so read it through [`Self::selection`].
+    selected: Option<UnitsSelection>,
+    /// Each table's last-selected row, which `Tab` returns to. Either may be gone.
+    last_unit: Option<UnitId>,
+    last_source: Option<PriceSourceId>,
     /// Whether the window is X-Large, told by the Settings View as it draws the page.
     docked: bool,
     /// This session's outcomes, newest first.
@@ -219,6 +228,8 @@ impl UnitsPage {
         Self {
             ledger,
             selected: None,
+            last_unit: None,
+            last_source: None,
             docked: false,
             activity: Vec::new(),
             menu: None,
@@ -240,14 +251,47 @@ impl UnitsPage {
         self.docked
     }
 
-    /// The selected row's id, or the first row's while nothing (or a removed row) is selected.
-    fn selected_id(&self, cx: &App) -> Option<UnitId> {
-        resolve(self.units(cx).iter().map(|unit| unit.id), self.selected)
+    /// Every row of both tables in drawn order: the Units, then the Price Sources.
+    fn rows(&self, cx: &App) -> Vec<UnitsSelection> {
+        let units = self
+            .units(cx)
+            .iter()
+            .map(|unit| UnitsSelection::Unit(unit.id));
+        let sources = self
+            .price_sources(cx)
+            .into_iter()
+            .map(|source| UnitsSelection::Source(source.id));
+        units.chain(sources).collect()
+    }
+
+    /// The selected row, or the first row while nothing (or a removed row) is selected.
+    fn selection(&self, cx: &App) -> Option<UnitsSelection> {
+        resolve(self.rows(cx), self.selected)
+    }
+
+    /// Selects `selection`, remembering it as its table's last row for `Tab`.
+    fn select(&mut self, selection: UnitsSelection) {
+        match selection {
+            UnitsSelection::Unit(id) => self.last_unit = Some(id),
+            UnitsSelection::Source(id) => self.last_source = Some(id),
+        }
+        self.selected = Some(selection);
     }
 
     fn selected_unit<'a>(&self, cx: &'a App) -> Option<&'a UnitRow> {
-        let id = self.selected_id(cx)?;
+        let UnitsSelection::Unit(id) = self.selection(cx)? else {
+            return None;
+        };
         self.units(cx).iter().find(|unit| unit.id == id)
+    }
+
+    fn selected_source(&self, cx: &App) -> Option<SourceRow> {
+        let UnitsSelection::Source(id) = self.selection(cx)? else {
+            return None;
+        };
+        self.price_sources(cx)
+            .into_iter()
+            .find(|source| source.id == id)
     }
 
     /// The Price Source that fetches `unit`'s price, or `None` while it sits on Manual entry.
@@ -337,43 +381,77 @@ impl UnitsPage {
     // The interface the Settings View forwards to while the page has focus (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// At X-Large the page's bare `n`, `e`, `d` and `t`, each through the handler its button
-    /// uses; below it each Dialog opens from its button. Returns whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        self.close_menu(cx);
+    /// `Tab` jumps to the other table, claimed ahead of the router as Bills claims it for its
+    /// tabs; `Shift-Tab` is left to cycle the focus zones.
+    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
-        if !self.docked
+        if keystroke.key != "tab"
+            || modifiers.shift
             || modifiers.control
             || modifiers.alt
             || modifiers.platform
-            || modifiers.shift
         {
             return false;
         }
-        match keystroke.key.as_str() {
-            "n" => self.click_add(cx),
-            "e" => self.edit_selected(cx),
-            "d" => self.delete_selected(cx),
-            "t" => self.test_selected_source(cx),
+        self.close_menu(cx);
+        self.jump_table(cx);
+        true
+    }
+
+    /// Selects the other table's last-selected row, or its first while it has none (or that row
+    /// is gone). An empty Units table leaves the selection where it is.
+    fn jump_table(&mut self, cx: &mut Context<'_, Self>) {
+        let target = match self.selection(cx) {
+            Some(UnitsSelection::Unit(id)) => {
+                self.last_unit = Some(id);
+                let ids = self.price_sources(cx).into_iter().map(|source| source.id);
+                resolve(ids, self.last_source).map(UnitsSelection::Source)
+            }
+            Some(UnitsSelection::Source(id)) => {
+                self.last_source = Some(id);
+                let ids = self.units(cx).iter().map(|unit| unit.id);
+                resolve(ids, self.last_unit).map(UnitsSelection::Unit)
+            }
+            None => None,
+        };
+        if let Some(target) = target {
+            self.select(target);
+            cx.notify();
+        }
+    }
+
+    /// The page's bare `n`, `e`, `d` and `t` at every Window Size, each acting on the selected
+    /// row's table through the handler its button or menu entry uses. Manual entry takes no `e`,
+    /// `d` or `t`, and a built-in no `d`. Returns whether the key was one of them.
+    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        self.close_menu(cx);
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        let on_source = matches!(self.selection(cx), Some(UnitsSelection::Source(_)));
+        match (keystroke.key.as_str(), on_source) {
+            ("n", false) => self.click_add(cx),
+            ("e", false) => self.edit_selected(cx),
+            ("d", false) => self.delete_selected(cx),
+            ("t", false) => self.test_selected_source(cx),
+            ("n", true) => self.click_add_source(cx),
+            ("e", true) => self.edit_selected_source(cx),
+            ("d", true) => self.delete_selected_source(cx),
+            ("t", true) => self.test_selected_row_source(cx),
             _ => return false,
         }
         true
     }
 
-    /// At X-Large `j`/`k` walk the Units; below it there is no selection to move, so the page
-    /// takes no movement and the Settings View scrolls its body instead.
+    /// `j`/`k`, `g g`, `G` and `Ctrl-d`/`Ctrl-u` walk both tables as one list, at every Window
+    /// Size: `j` on the last Unit selects the first Price Source.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         self.close_menu(cx);
-        if !self.docked {
-            return false;
-        }
-        if let Some(step) = movement.step() {
-            let ids: Vec<UnitId> = self.units(cx).iter().map(|unit| unit.id).collect();
-            self.selected = step_id(&ids, self.selected_id(cx), step);
+        if let Some(step) = movement.step()
+            && let Some(selection) = step_id(&self.rows(cx), self.selection(cx), step)
+        {
+            self.select(selection);
             cx.notify();
         }
         true
@@ -394,14 +472,11 @@ impl UnitsPage {
         false
     }
 
-    /// The page legend (the unit keys while docked) and the page's fixed note.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+    /// The page legend, by the selected row's table, and the page's fixed note.
+    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        let on_source = matches!(self.selection(cx), Some(UnitsSelection::Source(_)));
         Some(PageStatus {
-            hints: if self.docked {
-                settings_units_hints()
-            } else {
-                settings_plain_page_hints()
-            },
+            hints: settings_units_hints(on_source),
             right: SettingsPage::Units.scope_note(),
         })
     }
@@ -420,7 +495,17 @@ impl UnitsPage {
     fn click_select(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.menu = None;
         if let Some(unit) = self.units(cx).get(index) {
-            self.selected = Some(unit.id);
+            self.select(UnitsSelection::Unit(unit.id));
+        }
+        cx.emit(UnitsRowClicked);
+        cx.notify();
+    }
+
+    /// A click on Price Sources row `index` selects it and hands the page focus.
+    fn click_select_source(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.menu = None;
+        if let Some(source) = self.price_sources(cx).get(index) {
+            self.select(UnitsSelection::Source(source.id));
         }
         cx.emit(UnitsRowClicked);
         cx.notify();
@@ -432,16 +517,17 @@ impl UnitsPage {
         self.click_edit(index, cx);
     }
 
-    /// A double-click on a Price Sources row opens its Edit dialog; Manual entry has none.
+    /// A double-click on a Price Sources row selects it and opens its Edit dialog; Manual entry
+    /// has none.
     fn double_click_source(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.close_menu(cx);
+        self.click_select_source(index, cx);
         if let Some(source) = self.price_sources(cx).get(index) {
             self.edit_source(source.id, cx);
         }
     }
 
-    /// A right-click on a row opens its menu at the pointer. A Units row is selected as well. A
-    /// row with no actions (Manual entry) opens none.
+    /// A right-click on a row opens its menu at the pointer and selects the row. A row with no
+    /// actions (Manual entry) opens none.
     fn open_menu(
         &mut self,
         target: MenuTarget,
@@ -452,9 +538,10 @@ impl UnitsPage {
             self.close_menu(cx);
             return;
         }
-        if let MenuTarget::Unit(id) = target {
-            self.selected = Some(id);
-        }
+        self.select(match target {
+            MenuTarget::Unit(id) => UnitsSelection::Unit(id),
+            MenuTarget::Source(id, _) => UnitsSelection::Source(id),
+        });
         self.menu = Some(RowMenu { target, position });
         cx.emit(UnitsRowClicked);
         cx.notify();
@@ -505,7 +592,33 @@ impl UnitsPage {
         }
     }
 
-    /// Testing a price source has no backing yet, so it says so on the status line.
+    fn edit_selected_source(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(source) = self.selected_source(cx) {
+            self.edit_source(source.id, cx);
+        }
+    }
+
+    fn delete_selected_source(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(source) = self.selected_source(cx) {
+            self.delete_source(source.id, cx);
+        }
+    }
+
+    /// `t` on a Price Sources row: testing has no backing yet, and Manual entry never fetches.
+    fn test_selected_row_source(&mut self, cx: &mut Context<'_, Self>) {
+        if self
+            .selected_source(cx)
+            .is_some_and(|source| source.kind != SourceKind::ManualEntry)
+        {
+            self.not_built(
+                crate::msg::desktop_status_test_price_source_not_yet_built(),
+                cx,
+            );
+        }
+    }
+
+    /// `t` on a Units row tests its linked source: testing has no backing yet, so it says so on
+    /// the status line.
     fn test_selected_source(&mut self, cx: &mut Context<'_, Self>) {
         if self
             .selected_unit(cx)
@@ -518,8 +631,9 @@ impl UnitsPage {
         }
     }
 
+    /// The selected Unit's row index; `None` while a Price Source is selected.
     fn selected_index(&self, cx: &App) -> Option<usize> {
-        let id = self.selected_id(cx)?;
+        let id = self.selected_unit(cx)?.id;
         self.units(cx).iter().position(|unit| unit.id == id)
     }
 
@@ -636,6 +750,7 @@ impl UnitsPage {
                 })
                 .collect(),
             selected_code: self.selected_unit(cx).map(|unit| unit.code.clone()),
+            selected_source: self.selected_source(cx).map(|source| source.name),
             menu: self.menu.map(|menu| {
                 let row = match menu.target {
                     MenuTarget::Unit(id) => units
@@ -673,8 +788,11 @@ pub struct SettingsUnitsSnapshot {
     pub unit_rows: Vec<(String, String, String)>,
     /// The Price Sources rows in table order: `(name, source, last updated)`, as drawn.
     pub source_rows: Vec<(String, String, String)>,
-    /// The selected row's code, which is the first row's until another is chosen.
+    /// The selected Unit's code, which is the first row's until another is chosen; `None` while
+    /// a Price Source is selected.
     pub selected_code: Option<String>,
+    /// The selected Price Source's name; `None` while a Unit is selected.
+    pub selected_source: Option<String>,
     /// The open row menu: the row it is on (`unit:btc`, `source:Bitcoin`) and its entries' slugs
     /// in order.
     pub menu: Option<(String, Vec<String>)>,

@@ -62,6 +62,15 @@ Quit is deliberately **not** a single keybinding in either client's grammar. `bi
 
 See [#158](https://github.com/IanTeda/Personal-Ledger/issues/158)'s own resolution for the full reasoning: `quit` was deliberately kept out of `KeyBindingConfig`'s remappable set rather than forced into a `super_key`-composition rule that only one command would ever use.
 
+## A page with several tables
+
+When one page draws several tables, they share one selection, and the keys treat them as one list (`bin-desktop`'s Settings › Units, #714, following the Categories and Inventory pages, whose rows of two kinds already walk as one list):
+
+- **`j`/`k` walk the tables as one list, in drawn order.** `g g`, `G` and `Ctrl-d`/`Ctrl-u` move over the same list, so `j` on the first table's last row selects the second table's first row. One row is selected at a time, in whichever table it is in.
+- **`Tab` jumps between the tables.** It moves to the other table's last-selected row, or its first row if none has been selected yet. The page claims `Tab` ahead of the router while it has focus, as Bills claims it for its tabs; `Shift-Tab` is untouched and still cycles the focus zones.
+- **The row keys follow the selected row's table.** `n`, `e`, `d` and the like act on the table the selection is in, and a row that offers no such action ignores the key. The status line switches with the table, and its `tab` hint names the table it jumps to.
+- **A click on any table's row selects it**, at every Window Size, and the keys carry on from there.
+
 ## What's actually configurable
 
 `lib-config`'s `KeyBindingConfig` (`crates/libs/lib-config/src/keybindings.rs`, `[keybindings]` in `personal-ledger.conf`, `PERSONAL_LEDGER_KEYBINDINGS__*` env vars) is `bin-tui`-only today — `bin-desktop` doesn't consume it, and bringing it in is explicitly out of scope for this map (see "Out of scope" on the map). Within `bin-tui`, only the truly-global set is in scope for real remapping, per the map's own boundary — no per-view key (`n`/`e`/`d`/`a`/... inside any one domain's own `handle_key`) is configurable:

@@ -5,7 +5,7 @@
 //!
 //! Rows carry no buttons (the Units table principles): a double-click edits a unit or a price
 //! source, a right-click opens the row's context menu at the pointer, and the row takes the
-//! selection treatment while its menu is open. Every action is a callback into [`UnitsPage`], so
+//! selection treatment while it is selected or its menu is open. Every action is a callback into [`UnitsPage`], so
 //! the keyboard and the mouse reach the same handlers. Manual entry has no actions, so it opens
 //! no menu and no Dialog; testing a source has no backing yet and says so on the status line.
 
@@ -16,11 +16,11 @@ use gpui::{
     div, point, prelude::*, px,
 };
 use lib_locale::Label;
-use lib_units::{UnitId, UnitRow};
+use lib_units::{PriceSourceId, UnitId, UnitRow};
 
 use super::{
     LastUpdated, MenuAction, MenuTarget, NOT_FETCHED_GLYPH, RowMenu, SourceKind, SourceRow,
-    UnitsPage,
+    UnitsPage, UnitsSelection,
 };
 use crate::{settings::SettingsPage, theme::color};
 
@@ -49,8 +49,7 @@ struct RowHandlers {
 impl Render for UnitsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let docked = self.docked;
-        let selected = if docked { self.selected_id(cx) } else { None };
+        let selected = self.selection(cx);
         let menu = self.menu;
         let on_menu: OnRowMenu = {
             let entity = entity.clone();
@@ -64,7 +63,7 @@ impl Render for UnitsPage {
             menu: on_menu.clone(),
         };
         let source_handlers = RowHandlers {
-            select: row_stub(&entity),
+            select: on_row(&entity, UnitsPage::click_select_source),
             edit: on_row(&entity, UnitsPage::double_click_source),
             menu: on_menu,
         };
@@ -100,7 +99,10 @@ impl Render for UnitsPage {
                     .map(|unit| self.source_name(unit.link.source_id, cx))
                     .collect::<Vec<_>>(),
                 unit_handlers,
-                selected,
+                selected.and_then(|selected| match selected {
+                    UnitsSelection::Unit(id) => Some(id),
+                    UnitsSelection::Source(_) => None,
+                }),
                 menu,
                 cx,
             ))
@@ -121,6 +123,10 @@ impl Render for UnitsPage {
                     .child(price_source_table(
                         &self.price_sources(cx),
                         source_handlers,
+                        selected.and_then(|selected| match selected {
+                            UnitsSelection::Source(id) => Some(id),
+                            UnitsSelection::Unit(_) => None,
+                        }),
                         menu,
                         cx,
                     )),
@@ -151,16 +157,6 @@ fn on_plain(
 fn stub(entity: &Entity<UnitsPage>, message: fn() -> String) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |page, cx| page.not_built(message(), cx)))
-}
-
-/// A Price Sources row's plain click: it selects nothing and only closes an open menu.
-fn row_stub(entity: &Entity<UnitsPage>) -> OnRowIndexClick {
-    let entity = entity.clone();
-    Rc::new(move |_index, _window, cx| {
-        entity.update(cx, |page, cx| {
-            page.close_menu(cx);
-        });
-    })
 }
 
 /// A table's caps title (`font:800 10px/1; letter-spacing:.11em; color:#9b9797`) sharing its row
@@ -232,8 +228,8 @@ const SOURCE_WIDTH: Pixels = px(130.0);
 struct RowState {
     index: usize,
     last: bool,
-    /// Whether the row takes the selection treatment: the selected row at X-Large, or the row a
-    /// menu is open on.
+    /// Whether the row takes the selection treatment: the selected row, or the row a menu is open
+    /// on.
     inverted: bool,
 }
 
@@ -429,6 +425,7 @@ const PRICE_SOURCE_LAST_UPDATED_WIDTH: Pixels = px(130.0);
 fn price_source_table(
     rows: &[SourceRow],
     handlers: RowHandlers,
+    selected: Option<PriceSourceId>,
     menu: Option<RowMenu>,
     cx: &App,
 ) -> impl IntoElement {
@@ -465,7 +462,7 @@ fn price_source_table(
                 source,
                 index,
                 index == last_index,
-                menu_source == Some(source.id),
+                selected == Some(source.id) || menu_source == Some(source.id),
                 handlers.clone(),
                 cx,
             )
@@ -617,8 +614,8 @@ const PANE_WIDTH: Pixels = px(400.0);
 const PANE_BUTTON_WIDTH: Pixels = px(112.0);
 const PANE_BUTTON_HEIGHT: Pixels = px(34.0);
 
-/// The pane docked beside the page at X-Large: the selected unit, its price source and this
-/// session's outcomes. It shows and offers the actions; the Dialogs edit.
+/// The pane docked beside the page at X-Large: the selected unit and its price source, or the
+/// selected price source, and this session's outcomes. It shows and offers the actions; the Dialogs edit.
 pub(crate) fn detail_pane(page: &UnitsPage, entity: &Entity<UnitsPage>, cx: &App) -> AnyElement {
     let pane = div()
         .debug_selector(|| "units-detail-pane".to_string())
@@ -633,11 +630,17 @@ pub(crate) fn detail_pane(page: &UnitsPage, entity: &Entity<UnitsPage>, cx: &App
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
     let unit = page.selected_unit(cx);
+    // A selected Price Source shows its own group alone: UNIT and ACCOUNTS belong to a Unit
+    // (DESKTOP-140).
+    let source = page.selected_source(cx);
     pane.when_some(unit, |this, unit| {
         let source = page.price_source_of(unit, cx);
         this.child(unit_group(page, unit, entity, cx))
             .child(price_source_group(source.as_ref(), entity, cx))
             .child(accounts_group(page, unit, cx))
+    })
+    .when_some(source, |this, source| {
+        this.child(price_source_group(Some(&source), entity, cx))
     })
     .child(activity_group(page, cx))
     .into_any_element()
@@ -1003,8 +1006,8 @@ fn row_click(
 /// A plain click that runs `act` for the Price Source `id`.
 fn source_click(
     entity: &Entity<UnitsPage>,
-    id: lib_units::PriceSourceId,
-    act: fn(&mut UnitsPage, lib_units::PriceSourceId, &mut Context<'_, UnitsPage>),
+    id: PriceSourceId,
+    act: fn(&mut UnitsPage, PriceSourceId, &mut Context<'_, UnitsPage>),
 ) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |page, cx| act(page, id, cx)))

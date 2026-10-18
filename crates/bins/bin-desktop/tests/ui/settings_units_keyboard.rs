@@ -1,8 +1,8 @@
-//! The Settings Units page driven by keys: reaching the page down the index, and the Add, Edit
-//! and Delete unit and price source dialogs' keys once open: typing, `tab` between fields,
-//! `left`/`right` on a segmented control, `enter` to save or confirm, and `escape` to cancel. Below
-//! X-Large the page has no keys of its own, and a Price Sources row takes no selection yet, so each
-//! dialog is opened with the square + button or a row's context menu. State is read back from `Shell`.
+//! The Settings Units page driven by keys: reaching the page down the index, one selection walked
+//! across both tables by `j`/`k` and jumped between them by `tab`, the page keys acting on the
+//! selected row's table, and the Add, Edit and Delete unit and price source dialogs' keys once
+//! open: typing, `tab` between fields, `left`/`right` on a segmented control, `enter` to save or
+//! confirm, and `escape` to cancel. State is read back from `Shell`.
 
 use super::common;
 
@@ -13,8 +13,7 @@ use bin_desktop::{
 use common::Harness;
 use gpui::TestAppContext;
 
-/// Below X-Large the page keeps no selected row, so the older cases run at Large; the X-Large
-/// cases below drive the detail pane.
+/// Most cases run at Large; the X-Large cases below drive the detail pane.
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Large);
@@ -270,15 +269,19 @@ fn at_x_large_t_says_the_source_test_is_not_built_for_a_unit_with_a_source(
 }
 
 #[gpui::test]
-fn below_x_large_the_page_keeps_no_keys_of_its_own(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.resize_to(WindowSize::Large);
-    ui.press("g s");
-    ui.press("j j");
+fn at_large_the_page_keys_act_on_the_selected_unit_without_the_pane(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
     ui.press("l");
     assert!(!ui.is_drawn("units-detail-pane"));
     ui.press("n");
-    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.dialog(), Some("AddUnit"));
+    ui.press("escape");
+    ui.press("j e");
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    ui.press("escape");
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
 }
 
 #[gpui::test]
@@ -521,4 +524,198 @@ fn escape_closes_delete_price_source_without_a_write(app: &mut TestAppContext) {
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
     assert_eq!(source_names(&mut ui)[0], "broker");
+}
+
+// ---------------------------------------------------------------------------------------------
+// One selection across both tables (#714)
+// ---------------------------------------------------------------------------------------------
+
+/// The page's selection as `(unit code, price source name)`: one of the two at a time.
+fn selection(ui: &mut Harness<'_>) -> (Option<String>, Option<String>) {
+    let page = ui.settings_units();
+    (page.selected_code, page.selected_source)
+}
+
+fn unit(code: &str) -> (Option<String>, Option<String>) {
+    (Some(code.to_string()), None)
+}
+
+fn source(name: &str) -> (Option<String>, Option<String>) {
+    (None, Some(name.to_string()))
+}
+
+#[gpui::test]
+fn at_large_j_and_k_walk_the_units_then_the_price_sources_as_one_list(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l");
+    assert_eq!(selection(&mut ui), unit("aud"));
+
+    ui.press("j j");
+    assert_eq!(selection(&mut ui), unit("vas"));
+    ui.press("j");
+    assert_eq!(
+        selection(&mut ui),
+        source("CoinGecko"),
+        "j leaves the last unit for the first source"
+    );
+    ui.press("k");
+    assert_eq!(selection(&mut ui), unit("vas"));
+    ui.press("G");
+    assert_eq!(selection(&mut ui), source("Yahoo Finance"));
+    ui.press("g g");
+    assert_eq!(selection(&mut ui), unit("aud"));
+    ui.press("ctrl-d");
+    assert_eq!(
+        selection(&mut ui),
+        source("Manual entry"),
+        "a half page is five rows down the one list"
+    );
+    ui.press("ctrl-u");
+    assert_eq!(selection(&mut ui), unit("aud"));
+}
+
+#[gpui::test]
+fn tab_jumps_between_the_tables_and_returns_to_each_tables_last_row(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l j");
+    assert_eq!(selection(&mut ui), unit("btc"));
+
+    ui.press("tab");
+    assert_eq!(
+        selection(&mut ui),
+        source("CoinGecko"),
+        "a table not yet visited opens on its first row"
+    );
+    ui.press("j");
+    assert_eq!(selection(&mut ui), source("Frankfurter"));
+    ui.press("tab");
+    assert_eq!(selection(&mut ui), unit("btc"));
+    ui.press("tab");
+    assert_eq!(selection(&mut ui), source("Frankfurter"));
+}
+
+#[gpui::test]
+fn shift_tab_still_cycles_the_focus_zones(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l");
+    ui.press("shift-tab");
+    assert_ne!(
+        ui.read(|shell| shell.nav().focus()),
+        bin_desktop::navigation::nav::FocusZone::View
+    );
+    assert_eq!(selection(&mut ui), unit("aud"));
+}
+
+fn status_message(ui: &mut Harness<'_>) -> Option<String> {
+    ui.read(|shell| shell.status_message().map(str::to_string))
+}
+
+#[gpui::test]
+fn on_a_built_in_source_n_adds_e_edits_t_is_not_built_and_d_does_nothing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l tab");
+    assert_eq!(selection(&mut ui), source("CoinGecko"));
+
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
+    ui.press("escape");
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("CoinGecko"));
+    ui.press("escape");
+    ui.press("d");
+    assert_eq!(ui.dialog(), None, "a built-in is never deleted");
+    assert_eq!(status_message(&mut ui), None);
+    ui.press("t");
+    assert!(
+        status_message(&mut ui).is_some(),
+        "testing is not built yet"
+    );
+}
+
+#[gpui::test]
+fn on_a_custom_source_d_opens_delete_price_source(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    fill_custom_source(&mut ui, "broker");
+    ui.press("enter");
+    ui.press("l tab");
+    assert_eq!(selection(&mut ui), source("broker"));
+
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeletePriceSource"));
+    ui.press("escape");
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditPriceSource"));
+}
+
+#[gpui::test]
+fn manual_entry_ignores_e_d_and_t(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l tab j j");
+    assert_eq!(selection(&mut ui), source("Manual entry"));
+
+    ui.press("e d t");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(status_message(&mut ui), None);
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
+}
+
+#[gpui::test]
+fn at_x_large_the_pane_follows_the_selection_into_either_table(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(
+        !ui.is_drawn("units-pane-edit-source"),
+        "aud has no price source"
+    );
+    ui.press("j");
+    assert!(ui.is_drawn("units-pane-edit-source"), "btc's CoinGecko");
+    ui.press("tab j j");
+    assert_eq!(selection(&mut ui), source("Manual entry"));
+    ui.press("G");
+    assert_eq!(selection(&mut ui), source("Yahoo Finance"));
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+}
+
+fn hints(ui: &mut Harness<'_>) -> Vec<(String, String)> {
+    let hints = ui.status().map(|status| status.hints).unwrap_or_default();
+    hints.into_iter().take(6).collect()
+}
+
+fn pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
+    expected
+        .iter()
+        .map(|(key, action)| (key.to_string(), action.to_string()))
+        .collect()
+}
+
+#[gpui::test]
+fn the_status_line_follows_the_selections_table(app: &mut TestAppContext) {
+    let unit_hints = pairs(&[
+        ("j/k", "unit"),
+        ("e", "edit"),
+        ("d", "delete"),
+        ("n", "new"),
+        ("t", "test source"),
+        ("tab", "price sources"),
+    ]);
+    let source_hints = pairs(&[
+        ("j/k", "price source"),
+        ("e", "edit"),
+        ("d", "delete"),
+        ("n", "new"),
+        ("t", "test"),
+        ("tab", "units"),
+    ]);
+    let mut ui = on_units(app);
+    ui.press("l");
+    assert_eq!(hints(&mut ui), unit_hints);
+    ui.press("tab");
+    assert_eq!(hints(&mut ui), source_hints);
+
+    ui.resize_to(WindowSize::XLarge);
+    assert_eq!(hints(&mut ui), source_hints);
+    ui.press("tab");
+    assert_eq!(hints(&mut ui), unit_hints);
 }

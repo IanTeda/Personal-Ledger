@@ -12,8 +12,7 @@ use bin_desktop::{
 use common::Harness;
 use gpui::TestAppContext;
 
-/// Below X-Large the rows carry their own Edit and Delete buttons, so the older cases run at
-/// Large; the X-Large cases below drive the detail pane.
+/// Most cases run at Large; the X-Large cases below drive the detail pane.
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Large);
@@ -649,4 +648,51 @@ fn at_x_large_the_pane_opens_the_selected_units_source_dialogs(app: &mut TestApp
     ui.click("units-pane-edit-source");
     assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("CoinGecko"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// One selection across both tables (#714)
+// ---------------------------------------------------------------------------------------------
+
+/// The page's selection as `(unit code, price source name)`: one of the two at a time.
+fn selection(ui: &mut Harness<'_>) -> (Option<String>, Option<String>) {
+    let page = ui.settings_units();
+    (page.selected_code, page.selected_source)
+}
+
+#[gpui::test]
+fn at_large_clicking_a_price_sources_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    assert!(!ui.settings().page_focused);
+
+    ui.click("price-source-row-1");
+    assert_eq!(selection(&mut ui), (None, Some("Frankfurter".to_string())));
+    assert!(ui.settings().page_focused);
+    ui.click("unit-row-2");
+    assert_eq!(selection(&mut ui), (Some("vas".to_string()), None));
+}
+
+#[gpui::test]
+fn right_clicking_a_price_sources_row_selects_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.right_click("price-source-row-0");
+    assert_eq!(selection(&mut ui), (None, Some("CoinGecko".to_string())));
+    assert!(menu(&mut ui).is_some());
+}
+
+#[gpui::test]
+fn at_x_large_a_clicked_source_is_where_the_keys_carry_on_from(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("unit-row-1");
+    ui.click("price-source-row-1");
+    assert_eq!(selection(&mut ui), (None, Some("Frankfurter".to_string())));
+
+    ui.press("j");
+    assert_eq!(selection(&mut ui), (None, Some("Manual entry".to_string())));
+    ui.press("tab");
+    assert_eq!(
+        selection(&mut ui),
+        (Some("btc".to_string()), None),
+        "tab returns to the unit clicked last"
+    );
 }
