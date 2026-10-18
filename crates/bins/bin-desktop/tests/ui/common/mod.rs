@@ -31,6 +31,7 @@ use gpui::{
     TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
+use std::time::Duration;
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
 pub fn today() -> NaiveDate {
@@ -135,6 +136,12 @@ impl<'a> Harness<'a> {
         let shell = self.shell.clone();
         self.cx
             .update(|window, cx| shell.read(cx).primary_rail(WindowSize::of(window), cx))
+    }
+
+    /// Moves the executor's clock on, firing any timer it passes (a pending `g`'s timeout).
+    pub fn advance_clock(&mut self, by: Duration) {
+        self.cx.executor().advance_clock(by);
+        self.cx.run_until_parked();
     }
 
     /// Presses a space-separated keystroke sequence, e.g. `press("g f")`.

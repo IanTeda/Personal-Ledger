@@ -1,7 +1,7 @@
 //! Keystroke dispatch of `Shell`. An `impl Shell` block for the concern, not the keystroke
 //! routing decision itself (`navigation::key_router`).
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui::{Context, KeyDownEvent, Keystroke};
 use lib_toast::ToastKind;
@@ -23,7 +23,7 @@ use crate::{
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
 /// abandoned rather than left waiting indefinitely.
-pub(super) const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
+pub const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
 
 impl Shell {
     /// The status line's own COMMAND-mode echo (`crate::chrome::statusline::StatusLine`'s
@@ -75,10 +75,8 @@ impl Shell {
             return true;
         }
 
-        let pending_g_active = self
-            .pending_g
-            .take()
-            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        // Dropping the taken timer cancels it, so it can't clear a `g` armed after this key.
+        let pending_g_active = self.pending_g.take().is_some();
 
         let modifiers = key_router::Modifiers {
             ctrl,
@@ -229,7 +227,12 @@ impl Shell {
                 true
             }
             KeyOutcome::ArmPendingG => {
-                self.pending_g = Some(Instant::now());
+                // The executor's timer, not `Timer::after`, so headless tests can advance it.
+                self.pending_g = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(PENDING_G_TIMEOUT).await;
+                    // `Err` only once the window, and with it the Shell, has gone.
+                    this.update(cx, |shell, _| shell.pending_g = None).ok();
+                }));
                 had_status_message
             }
             KeyOutcome::Movement(movement) => {

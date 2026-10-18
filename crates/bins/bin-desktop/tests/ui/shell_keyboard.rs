@@ -2,6 +2,8 @@
 //! zone cycling, the rail toggle and the modes the key router enters and leaves. Assertions read
 //! `NavState` back from `Shell`, never pixels.
 
+use std::time::Duration;
+
 use super::common;
 
 use bin_desktop::{
@@ -79,6 +81,33 @@ fn escape_clears_a_pending_g(app: &mut TestAppContext) {
     ui.press("g escape l");
 
     assert_eq!(ui.noun(), Noun::Dashboard, "`l` after Esc is not a jump");
+}
+
+#[gpui::test]
+fn a_g_jump_survives_a_slow_second_key_on_the_wall_clock(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press("g");
+    // Real time only: the executor's clock stands still, so the pending `g` is still live.
+    std::thread::sleep(bin_desktop::app::PENDING_G_TIMEOUT + Duration::from_millis(100));
+    ui.press("l");
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+}
+
+#[gpui::test]
+fn a_pending_g_lapses_once_the_executor_clock_passes_its_timeout(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press("g");
+    ui.advance_clock(bin_desktop::app::PENDING_G_TIMEOUT + Duration::from_millis(1));
+    ui.press("l");
+
+    assert_eq!(
+        ui.noun(),
+        Noun::Dashboard,
+        "`l` after a lapsed `g` is not a jump"
+    );
 }
 
 #[gpui::test]

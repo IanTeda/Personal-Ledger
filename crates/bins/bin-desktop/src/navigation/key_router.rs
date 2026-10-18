@@ -138,9 +138,9 @@ fn is_help_key(key: &str, shift: bool) -> bool {
 /// else can claim the key, so `g a` reaches Notifications rather than bare `a`'s mode entry), then
 /// the global mode-entry keys, `Tab` cycling, arming a fresh `g`, and finally a [`Movement`].
 ///
-/// Deliberately deterministic: `pending_g_active` is a plain `bool`, not the `Instant` `Shell`
-/// actually times it against -- reading the clock stays on `Shell`'s own impure side, so this
-/// function (and its tests) never touch real time at all.
+/// Deliberately deterministic: `pending_g_active` is a plain `bool`, not the timer `Shell`
+/// lapses it with -- the clock stays on `Shell`'s own impure side, so this function (and its
+/// tests) never touch time at all.
 pub fn route_key(
     mode: InputMode,
     pending_g_active: bool,

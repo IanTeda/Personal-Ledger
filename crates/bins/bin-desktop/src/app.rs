@@ -47,6 +47,7 @@ mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
+pub use key_dispatch::PENDING_G_TIMEOUT;
 use lib_core::PropertyId;
 pub use log_feed::LOG_COALESCE;
 use log_feed::LOG_LIST_OVERDRAW;
@@ -60,7 +61,7 @@ pub use snapshots::{
     SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::ledger_store::{LedgerStore, notify_on};
 use crate::settings::institutions::InstitutionsPage;
@@ -72,7 +73,7 @@ use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    ScrollHandle, Subscription,
+    ScrollHandle, Subscription, Task,
 };
 
 use lib_ledger::Ledger;
@@ -126,12 +127,12 @@ pub struct Shell {
     /// The View area's sideways scroll, for a View wider than the space the Chrome leaves it
     /// (ADR-0042). The Chrome itself never scrolls sideways.
     view_x_scroll_handle: ScrollHandle,
-    /// When this `g` was pressed -- `Some` while a completing chord (`gg`, or `g` + a jump
+    /// The timer of a pressed `g` -- `Some` while a completing chord (`gg`, or `g` + a jump
     /// key) is still possible. Cleared by the next keypress regardless of outcome, so an
-    /// abandoned `g` never leaks into the one after it. Checked against
-    /// [`PENDING_G_TIMEOUT`](key_dispatch::PENDING_G_TIMEOUT) rather than driven by a timer: nothing needs to happen on its
-    /// own with no further keypress, so a lazily-checked timestamp is enough.
-    pending_g: Option<Instant>,
+    /// abandoned `g` never leaks into the one after it, or by the timer itself once
+    /// [`PENDING_G_TIMEOUT`] passes. The executor's clock, not the wall clock, so a loaded test
+    /// run can't lapse a `g` between two simulated keys.
+    pending_g: Option<Task<()>>,
     /// The mode the active View entered itself (`ViewEvent::EnterMode`), so that mode's keys are
     /// its to read. The router's own `a` enters an `Insert` no View asked for, which swallows every
     /// key as before.
