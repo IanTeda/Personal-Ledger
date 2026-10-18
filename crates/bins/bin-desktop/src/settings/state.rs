@@ -270,32 +270,32 @@ impl SettingsView {
         &self.sources
     }
 
-    /// The Accounts page's Entity, for `Shell`'s Dialog host and the `accounts` command.
+    /// The Accounts page's Entity, for the `accounts` command.
     pub fn accounts(&self) -> &Entity<AccountsPage> {
         &self.sources.accounts
     }
 
-    /// The Categories page's Entity, for `Shell`'s Dialog host and the Settings snapshots.
+    /// The Categories page's Entity, for the Settings snapshots.
     pub fn categories(&self) -> &Entity<CategoriesPage> {
         &self.sources.categories
     }
 
-    /// The Payees page's Entity, for `Shell`'s Dialog host.
+    /// The Payees page's Entity, for the Settings snapshots.
     pub fn payees(&self) -> &Entity<PayeesPage> {
         &self.sources.payees
     }
 
-    /// The Tags page's Entity, for `Shell`'s Dialog host and the `tags merge` command.
+    /// The Tags page's Entity, for the `tags merge` command and the Settings snapshots.
     pub fn tags(&self) -> &Entity<TagsPage> {
         &self.sources.tags
     }
 
-    /// The Document Types page's Entity, for `Shell`'s Dialog host and the Settings snapshots.
+    /// The Document Types page's Entity, for the Settings snapshots.
     pub fn documents(&self) -> &Entity<DocumentsPage> {
         &self.sources.documents
     }
 
-    /// The Inventory page's Entity, for `Shell`'s Dialog host and the Settings snapshots.
+    /// The Inventory page's Entity, for the Settings snapshots.
     pub fn inventory(&self) -> &Entity<InventoryPage> {
         &self.sources.inventory
     }
@@ -310,8 +310,7 @@ impl SettingsView {
         &self.sources.units
     }
 
-    /// The Tracing page's Entity, for `Shell`'s capture feed and Dialog host and the Settings
-    /// snapshots.
+    /// The Tracing page's Entity, for `Shell`'s capture feed and the Settings snapshots.
     pub fn tracing(&self) -> &Entity<TracingPage> {
         &self.sources.tracing
     }
