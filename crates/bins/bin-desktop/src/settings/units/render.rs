@@ -3,11 +3,11 @@
 //! SOURCE, the `◆ base unit` legend, then PRICE SOURCES with its own **+** over NAME · SOURCE ·
 //! LAST UPDATED.
 //!
-//! Rows carry no buttons (the Units table principles): a double-click edits a unit, a right-click
-//! opens the row's context menu at the pointer, and the row takes the selection treatment while
-//! its menu is open. Every action is a callback into [`UnitsPage`], so the keyboard and the mouse
-//! reach the same handlers. Price Sources' test, edit, delete and add have **no dialog ticket** on
-//! this map, so they flash a plain "not yet built" status message.
+//! Rows carry no buttons (the Units table principles): a double-click edits a unit or a price
+//! source, a right-click opens the row's context menu at the pointer, and the row takes the
+//! selection treatment while its menu is open. Every action is a callback into [`UnitsPage`], so
+//! the keyboard and the mouse reach the same handlers. Manual entry has no actions, so it opens
+//! no menu and no Dialog; testing a source has no backing yet and says so on the status line.
 
 use std::rc::Rc;
 
@@ -18,7 +18,10 @@ use gpui::{
 use lib_locale::Label;
 use lib_units::{UnitId, UnitRow};
 
-use super::{MenuAction, MenuTarget, RowMenu, SourceRow, UnitsPage};
+use super::{
+    LastUpdated, MenuAction, MenuTarget, NOT_FETCHED_GLYPH, RowMenu, SourceKind, SourceRow,
+    UnitsPage,
+};
 use crate::{settings::SettingsPage, theme::color};
 
 type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -62,10 +65,7 @@ impl Render for UnitsPage {
         };
         let source_handlers = RowHandlers {
             select: row_stub(&entity),
-            edit: row_stub_message(
-                &entity,
-                crate::msg::desktop_status_edit_price_source_not_yet_built,
-            ),
+            edit: on_row(&entity, UnitsPage::double_click_source),
             menu: on_menu,
         };
         let on_action: OnMenuAction = {
@@ -115,10 +115,7 @@ impl Render for UnitsPage {
                             &crate::msg::desktop_settings_price_sources_heading(),
                         ),
                         "settings-add-price-source",
-                        stub(
-                            &entity,
-                            crate::msg::desktop_status_add_price_source_not_yet_built,
-                        ),
+                        on_plain(&entity, UnitsPage::click_add_source),
                         cx,
                     ))
                     .child(price_source_table(
@@ -154,12 +151,6 @@ fn on_plain(
 fn stub(entity: &Entity<UnitsPage>, message: fn() -> String) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |page, cx| page.not_built(message(), cx)))
-}
-
-/// As [`stub`], for a row's double-click, whose row it ignores.
-fn row_stub_message(entity: &Entity<UnitsPage>, message: fn() -> String) -> OnRowIndexClick {
-    let entity = entity.clone();
-    Rc::new(move |_index, _window, cx| entity.update(cx, |page, cx| page.not_built(message(), cx)))
 }
 
 /// A Price Sources row's plain click: it selects nothing and only closes an open menu.
@@ -258,7 +249,7 @@ fn table(
     let last_index = units.len().saturating_sub(1);
     let menu_unit = menu.and_then(|menu| match menu.target {
         MenuTarget::Unit(id) => Some(id),
-        MenuTarget::Source(_) => None,
+        MenuTarget::Source(..) => None,
     });
     div()
         .debug_selector(|| "settings-units-table".to_string())
@@ -442,8 +433,8 @@ fn price_source_table(
     cx: &App,
 ) -> impl IntoElement {
     let last_index = rows.len().saturating_sub(1);
-    let menu_index = menu.and_then(|menu| match menu.target {
-        MenuTarget::Source(index) => Some(index),
+    let menu_source = menu.and_then(|menu| match menu.target {
+        MenuTarget::Source(id, _) => Some(id),
         MenuTarget::Unit(_) => None,
     });
     div()
@@ -474,14 +465,15 @@ fn price_source_table(
                 source,
                 index,
                 index == last_index,
-                menu_index == Some(index),
+                menu_source == Some(source.id),
                 handlers.clone(),
                 cx,
             )
         }))
 }
 
-/// One Price Sources row: the source's name, the address it fetches from and when it last did.
+/// One Price Sources row: the source's name, the address it fetches from (a muted — when it has
+/// none) and when it last did (a muted ✗ and its label before the first fetch, — for Manual entry).
 fn price_source_row(
     source: &SourceRow,
     index: usize,
@@ -491,6 +483,29 @@ fn price_source_row(
     cx: &App,
 ) -> impl IntoElement {
     let RowHandlers { select, edit, menu } = handlers;
+    let target = MenuTarget::Source(source.id, source.kind);
+    let muted = if inverted {
+        color::selection_muted(cx)
+    } else {
+        color::muted(cx)
+    };
+    let none = crate::msg::desktop_settings_units_pane_none;
+    let last_updated = match &source.last_updated {
+        LastUpdated::Never => div().text_color(muted).child(none()),
+        LastUpdated::NotFetched => div()
+            .flex()
+            .gap(px(4.0))
+            .text_color(muted)
+            .child(NOT_FETCHED_GLYPH)
+            .child(source.last_updated_text()),
+        LastUpdated::Ago(ago) => div()
+            .text_color(if inverted {
+                color::selection_muted(cx)
+            } else {
+                color::faint_text(cx)
+            })
+            .child(ago.clone()),
+    };
     row_frame(
         SharedString::from(format!("price-source-row-{index}")),
         last,
@@ -502,7 +517,7 @@ fn price_source_row(
                 select(index, window, cx);
             }
         },
-        move |position, window, cx| menu(MenuTarget::Source(index), position, window, cx),
+        move |position, window, cx| menu(target, position, window, cx),
         cx,
     )
     .child(
@@ -512,18 +527,11 @@ fn price_source_row(
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .child(source.name.clone()),
     )
-    .child(div().flex_1().child(source.address.clone()))
-    .child(
-        div()
-            .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
-            .flex_none()
-            .text_color(if inverted {
-                color::selection_muted(cx)
-            } else {
-                color::faint_text(cx)
-            })
-            .child(source.last_updated.clone()),
-    )
+    .child(match &source.address {
+        Some(address) => div().flex_1().min_w(px(0.0)).child(address.clone()),
+        None => div().flex_1().text_color(muted).child(none()),
+    })
+    .child(last_updated.w(PRICE_SOURCE_LAST_UPDATED_WIDTH).flex_none())
 }
 
 /// The row's context menu at the pointer: `190px`, `border:2px solid #201e1d`, the dialog shadow,
@@ -818,49 +826,51 @@ fn price_source_group(
             ))
             .child(fact_row(
                 crate::msg::desktop_settings_units_column_last_updated(),
-                source.last_updated.clone(),
+                source.last_updated_text(),
                 cx,
             ))
-            .child(button_row([
-                pane_button(
-                    "units-pane-test-source",
-                    crate::msg::desktop_settings_units_pane_test(),
-                    stub(
-                        entity,
-                        crate::msg::desktop_status_test_price_source_not_yet_built,
+            .child(button_row(
+                [
+                    Some(
+                        pane_button(
+                            "units-pane-test-source",
+                            crate::msg::desktop_settings_units_pane_test(),
+                            stub(
+                                entity,
+                                crate::msg::desktop_status_test_price_source_not_yet_built,
+                            ),
+                            cx,
+                        )
+                        .into_any_element(),
                     ),
-                    cx,
-                )
-                .into_any_element(),
-                pane_button(
-                    "units-pane-edit-source",
-                    crate::msg::desktop_settings_units_pane_edit_source(),
-                    stub(
-                        entity,
-                        crate::msg::desktop_status_edit_price_source_not_yet_built,
+                    Some(
+                        pane_button(
+                            "units-pane-edit-source",
+                            crate::msg::desktop_settings_units_pane_edit_source(),
+                            source_click(entity, source.id, UnitsPage::edit_source),
+                            cx,
+                        )
+                        .into_any_element(),
                     ),
-                    cx,
-                )
-                .into_any_element(),
-                pane_button(
-                    "units-pane-delete-source",
-                    crate::msg::desktop_settings_units_pane_delete_source(),
-                    stub(
-                        entity,
-                        crate::msg::desktop_status_delete_price_source_not_yet_built,
-                    ),
-                    cx,
-                )
-                .into_any_element(),
-            ])),
+                    // Only a Custom source is deleted.
+                    (source.kind == SourceKind::Custom).then(|| {
+                        pane_button(
+                            "units-pane-delete-source",
+                            crate::msg::desktop_settings_units_pane_delete_source(),
+                            source_click(entity, source.id, UnitsPage::delete_source),
+                            cx,
+                        )
+                        .into_any_element()
+                    }),
+                ]
+                .into_iter()
+                .flatten(),
+            )),
         // A unit without a source offers to add one.
         None => div().flex().flex_col().child(button_row([pane_button(
             "units-pane-add-source",
             crate::msg::desktop_settings_units_pane_add_source(),
-            stub(
-                entity,
-                crate::msg::desktop_status_add_price_source_not_yet_built,
-            ),
+            on_plain(entity, UnitsPage::click_add_source),
             cx,
         )
         .into_any_element()])),
@@ -988,4 +998,14 @@ fn row_click(
 ) -> OnPlainClick {
     let entity = entity.clone();
     Rc::new(move |_window, cx| entity.update(cx, |page, cx| act(page, index, cx)))
+}
+
+/// A plain click that runs `act` for the Price Source `id`.
+fn source_click(
+    entity: &Entity<UnitsPage>,
+    id: lib_units::PriceSourceId,
+    act: fn(&mut UnitsPage, lib_units::PriceSourceId, &mut Context<'_, UnitsPage>),
+) -> OnPlainClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| entity.update(cx, |page, cx| act(page, id, cx)))
 }

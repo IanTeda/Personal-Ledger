@@ -170,7 +170,7 @@ fn the_edit_unit_dialog_prefills_the_stored_type(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContext) {
+fn test_price_source_flashes_not_yet_built(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Units");
     ui.resize_to(WindowSize::Large);
 
@@ -178,21 +178,6 @@ fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContex
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("test price source \u{2014} not yet built")
-    );
-    row_action(&mut ui, "price-source-row-0", "edit-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("edit price source \u{2014} not yet built")
-    );
-    row_action(&mut ui, "price-source-row-1", "delete-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("delete price source \u{2014} not yet built")
-    );
-    ui.click("settings-add-price-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("add price source \u{2014} not yet built")
     );
     assert_eq!(ui.dialog(), None);
 }

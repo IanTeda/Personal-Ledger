@@ -1,14 +1,18 @@
 //! The **Units** Settings page (ADR-0037, and its amendment's one folder per page): the Units
 //! table and its Price Sources. [`UnitsPage`] reads both straight from [`LedgerStore`], renders
-//! itself (`render.rs`), builds the Add, Edit and Delete unit Dialogs (`dialogs/`) and reaches
-//! `Shell` only through [`ViewEvent`]. The Dialog host holds them, and they draw, read back and
-//! confirm themselves (`dialogs/`, `apply.rs`), handing each outcome back to [`UnitsPage::land`]. The Settings View forwards the page's keys and status to it while the page has
-//! focus. At X-Large the page also docks a detail pane (`render::detail_pane`) and keeps a selected row.
+//! itself (`render.rs`), builds the Add, Edit and Delete unit and price source Dialogs
+//! (`dialogs/`) and reaches `Shell` only through [`ViewEvent`]. The Dialog host holds them, and
+//! they draw, read back and confirm themselves (`dialogs/`, `apply.rs`, `source_apply.rs`), handing
+//! each outcome back to [`UnitsPage::land`] or [`UnitsPage::land_source`]. The Settings View
+//! forwards the page's keys and status to it while the page has focus. At X-Large the page also
+//! docks a detail pane (`render::detail_pane`) and keeps a selected row.
 
 pub mod apply;
 pub mod dialogs;
 pub mod form;
 mod render;
+pub mod source_apply;
+pub mod source_form;
 
 pub(super) use render::detail_pane;
 
@@ -16,7 +20,7 @@ use chrono::Local;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
 use lib_ledger::Domain;
 use lib_list_cursor::{resolve, step_id};
-use lib_units::{MANUAL_ENTRY, PriceSource, PriceSourceId, UnitId, UnitRow};
+use lib_units::{MANUAL_ENTRY, PriceSource, PriceSourceId, SourceOrigin, UnitId, UnitRow};
 
 use crate::{
     chrome::{dialog_host::open_dialog, statusline::PageStatus, window_size::WindowSize},
@@ -29,43 +33,89 @@ use crate::{
     view::event::ViewEvent,
 };
 use apply::UnitsOutcome;
-use dialogs::UnitsDialog;
+use dialogs::{UnitsDialog, sources::PriceSourceDialog};
 use form::{DeleteUnitForm, UnitForm};
+use source_apply::SourceOutcome;
+use source_form::{BuiltInSourceForm, CustomSourceForm, DeleteSourceForm};
 
 impl EventEmitter<ViewEvent> for UnitsPage {}
 
-/// A Price Source as the page draws it, its text resolved for the Locale. The table keeps its
-/// NAME · SOURCE · LAST UPDATED layout until the Price Sources UI is redrawn.
+/// What a listed Price Source is, which decides the actions its row offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceKind {
+    /// Neither edited nor deleted: it is the fallback every Unit can sit on.
+    ManualEntry,
+    /// Renamed and retimed, never deleted.
+    BuiltIn,
+    Custom,
+}
+
+impl SourceKind {
+    fn of(source: &PriceSource<'_>) -> Self {
+        match source.origin {
+            SourceOrigin::ManualEntry => Self::ManualEntry,
+            SourceOrigin::BuiltIn(_) => Self::BuiltIn,
+            SourceOrigin::Custom(_) => Self::Custom,
+        }
+    }
+}
+
+/// A source's LAST UPDATED cell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LastUpdated {
+    /// Manual entry, which never fetches: drawn —.
+    Never,
+    /// A source that hasn't fetched a price yet: drawn as a muted ✗ labelled "Not fetched yet".
+    NotFetched,
+    /// How long ago it last fetched.
+    Ago(String),
+}
+
+/// A Price Source as the page draws it, its text resolved for the Locale.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SourceRow {
+    id: PriceSourceId,
+    kind: SourceKind,
     name: String,
-    /// The address it fetches from; empty for Manual entry, which never fetches.
-    address: String,
-    /// How long ago it last fetched, "not fetched yet", or empty for Manual entry.
-    last_updated: String,
+    /// The address it fetches from; `None` for Manual entry, which never fetches.
+    address: Option<String>,
+    last_updated: LastUpdated,
 }
+
+/// The ✗ a source that hasn't fetched yet shows in LAST UPDATED. A glyph, not a Message: its
+/// label is.
+const NOT_FETCHED_GLYPH: &str = "\u{2717}";
 
 impl SourceRow {
     fn new(source: &PriceSource<'_>, ledger: &lib_ledger::Ledger) -> Self {
         let last_updated = match source.endpoint() {
-            None => String::new(),
-            Some(_) => ledger.last_fetched(source.id).map_or_else(
-                crate::msg::desktop_settings_units_not_fetched_yet,
-                |fetched| {
-                    crate::navigation::explorer::format_modified(
+            None => LastUpdated::Never,
+            Some(_) => ledger
+                .last_fetched(source.id)
+                .map_or(LastUpdated::NotFetched, |fetched| {
+                    LastUpdated::Ago(crate::navigation::explorer::format_modified(
                         fetched.into(),
                         std::time::SystemTime::now(),
-                    )
-                },
-            ),
+                    ))
+                }),
         };
         Self {
+            id: source.id,
+            kind: SourceKind::of(source),
             name: source.name.to_string(),
             address: source
                 .endpoint()
-                .map(|endpoint| endpoint.address.to_string())
-                .unwrap_or_default(),
+                .map(|endpoint| endpoint.address.to_string()),
             last_updated,
+        }
+    }
+
+    /// LAST UPDATED as text: the age, the not-fetched label, or — for Manual entry.
+    fn last_updated_text(&self) -> String {
+        match &self.last_updated {
+            LastUpdated::Never => crate::msg::desktop_settings_units_pane_none(),
+            LastUpdated::NotFetched => crate::msg::desktop_settings_units_not_fetched_yet(),
+            LastUpdated::Ago(ago) => ago.clone(),
         }
     }
 }
@@ -81,8 +131,7 @@ impl EventEmitter<UnitsRowClicked> for UnitsPage {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuTarget {
     Unit(UnitId),
-    /// An index into the Price Sources table.
-    Source(usize),
+    Source(PriceSourceId, SourceKind),
 }
 
 /// An entry of a row's context menu.
@@ -100,7 +149,12 @@ impl MenuAction {
     pub fn for_target(target: MenuTarget) -> &'static [Self] {
         match target {
             MenuTarget::Unit(_) => &[Self::EditUnit, Self::DeleteUnit],
-            MenuTarget::Source(_) => &[Self::TestSource, Self::EditSource, Self::DeleteSource],
+            MenuTarget::Source(_, SourceKind::Custom) => {
+                &[Self::TestSource, Self::EditSource, Self::DeleteSource]
+            }
+            MenuTarget::Source(_, SourceKind::BuiltIn) => &[Self::TestSource, Self::EditSource],
+            // Manual entry has no actions, so it opens no menu.
+            MenuTarget::Source(_, SourceKind::ManualEntry) => &[],
         }
     }
 
@@ -244,6 +298,21 @@ impl UnitsPage {
                 crate::msg::desktop_settings_units_activity_deleted(code)
             }
         };
+        self.log_activity(text, cx);
+    }
+
+    /// Lands a confirmed price source Dialog: a saved or deleted source toasts below X-Large and
+    /// goes to ACTIVITY at it, as a Unit's outcomes do.
+    fn land_source(&mut self, outcome: SourceOutcome, cx: &mut Context<'_, Self>) {
+        if self.docked {
+            self.log_activity(outcome.activity(), cx);
+        } else {
+            let (kind, text) = outcome.toast();
+            cx.emit(ViewEvent::RaiseToast { kind, text });
+        }
+    }
+
+    fn log_activity(&mut self, text: String, cx: &mut Context<'_, Self>) {
         let time = Local::now().format("%H:%M").to_string();
         self.activity.insert(0, ActivityEntry { time, text });
         cx.notify();
@@ -363,13 +432,26 @@ impl UnitsPage {
         self.click_edit(index, cx);
     }
 
-    /// A right-click on a row opens its menu at the pointer. A Units row is selected as well.
+    /// A double-click on a Price Sources row opens its Edit dialog; Manual entry has none.
+    fn double_click_source(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.close_menu(cx);
+        if let Some(source) = self.price_sources(cx).get(index) {
+            self.edit_source(source.id, cx);
+        }
+    }
+
+    /// A right-click on a row opens its menu at the pointer. A Units row is selected as well. A
+    /// row with no actions (Manual entry) opens none.
     fn open_menu(
         &mut self,
         target: MenuTarget,
         position: Point<Pixels>,
         cx: &mut Context<'_, Self>,
     ) {
+        if MenuAction::for_target(target).is_empty() {
+            self.close_menu(cx);
+            return;
+        }
         if let MenuTarget::Unit(id) = target {
             self.selected = Some(id);
         }
@@ -395,24 +477,19 @@ impl UnitsPage {
         cx.notify();
         let unit_index = match target {
             MenuTarget::Unit(id) => self.units(cx).iter().position(|unit| unit.id == id),
-            MenuTarget::Source(_) => None,
+            MenuTarget::Source(..) => None,
         };
-        match (action, unit_index) {
-            (MenuAction::EditUnit, Some(index)) => self.click_edit(index, cx),
-            (MenuAction::DeleteUnit, Some(index)) => self.click_delete(index, cx),
-            (MenuAction::TestSource, _) => self.not_built(
+        match (action, unit_index, target) {
+            (MenuAction::EditUnit, Some(index), _) => self.click_edit(index, cx),
+            (MenuAction::DeleteUnit, Some(index), _) => self.click_delete(index, cx),
+            (MenuAction::TestSource, ..) => self.not_built(
                 crate::msg::desktop_status_test_price_source_not_yet_built(),
                 cx,
             ),
-            (MenuAction::EditSource, _) => self.not_built(
-                crate::msg::desktop_status_edit_price_source_not_yet_built(),
-                cx,
-            ),
-            (MenuAction::DeleteSource, _) => self.not_built(
-                crate::msg::desktop_status_delete_price_source_not_yet_built(),
-                cx,
-            ),
-            (MenuAction::EditUnit | MenuAction::DeleteUnit, None) => {}
+            (MenuAction::EditSource, _, MenuTarget::Source(id, _)) => self.edit_source(id, cx),
+            (MenuAction::DeleteSource, _, MenuTarget::Source(id, _)) => self.delete_source(id, cx),
+            (MenuAction::EditUnit | MenuAction::DeleteUnit, None, _)
+            | (MenuAction::EditSource | MenuAction::DeleteSource, _, MenuTarget::Unit(_)) => {}
         }
     }
 
@@ -469,8 +546,51 @@ impl UnitsPage {
         open_dialog(UnitsDialog::Delete(row.id, form), Self::land, cx);
     }
 
-    /// Price Sources' test, edit, delete and add have no Dialog yet, so they say so on the status
-    /// line.
+    /// The square **+** beside PRICE SOURCES opens Add price source for a Custom source: the
+    /// built-ins are always listed, so there is none to add.
+    fn click_add_source(&mut self, cx: &mut Context<'_, Self>) {
+        open_dialog(
+            PriceSourceDialog::Add(CustomSourceForm::default()),
+            Self::land_source,
+            cx,
+        );
+    }
+
+    /// Edit price source: a built-in's name and Updates (16z·edit), or a Custom source's every
+    /// field (16z·custom). Manual entry has nothing to edit.
+    fn edit_source(&mut self, id: PriceSourceId, cx: &mut Context<'_, Self>) {
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let Some(source) = self.ledger.read(cx).ledger().price_source(&manual, id) else {
+            return;
+        };
+        let dialog = match source.origin {
+            SourceOrigin::ManualEntry => return,
+            SourceOrigin::BuiltIn(_) => PriceSourceDialog::EditBuiltIn(
+                id,
+                BuiltInSourceForm::new(source.name, source.updates),
+            ),
+            SourceOrigin::Custom(custom) => {
+                PriceSourceDialog::EditCustom(id, CustomSourceForm::from_source(custom))
+            }
+        };
+        open_dialog(dialog, Self::land_source, cx);
+    }
+
+    /// Delete price source (16z·del), for a Custom source only.
+    fn delete_source(&mut self, id: PriceSourceId, cx: &mut Context<'_, Self>) {
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let Some(source) = self.ledger.read(cx).ledger().price_source(&manual, id) else {
+            return;
+        };
+        if !matches!(source.origin, SourceOrigin::Custom(_)) {
+            return;
+        }
+        let form = DeleteSourceForm::new(source.name);
+        open_dialog(PriceSourceDialog::Delete(id, form), Self::land_source, cx);
+    }
+
+    /// Testing a price source has no backing yet (fetching is undecided), so it says so on the
+    /// status line.
     fn not_built(&mut self, message: String, cx: &mut Context<'_, Self>) {
         cx.emit(ViewEvent::SetStatus(Some(message)));
     }
@@ -495,6 +615,26 @@ impl UnitsPage {
                     )
                 })
                 .collect(),
+            source_rows: self
+                .price_sources(cx)
+                .iter()
+                .map(|source| {
+                    let last_updated = match source.last_updated {
+                        LastUpdated::NotFetched => {
+                            format!("{NOT_FETCHED_GLYPH} {}", source.last_updated_text())
+                        }
+                        _ => source.last_updated_text(),
+                    };
+                    (
+                        source.name.clone(),
+                        source
+                            .address
+                            .clone()
+                            .unwrap_or_else(crate::msg::desktop_settings_units_pane_none),
+                        last_updated,
+                    )
+                })
+                .collect(),
             selected_code: self.selected_unit(cx).map(|unit| unit.code.clone()),
             menu: self.menu.map(|menu| {
                 let row = match menu.target {
@@ -502,9 +642,10 @@ impl UnitsPage {
                         .iter()
                         .find(|unit| unit.id == id)
                         .map(|unit| format!("unit:{}", unit.code)),
-                    MenuTarget::Source(index) => self
+                    MenuTarget::Source(id, _) => self
                         .price_sources(cx)
-                        .get(index)
+                        .iter()
+                        .find(|source| source.id == id)
                         .map(|source| format!("source:{}", source.name)),
                 };
                 (
@@ -530,6 +671,8 @@ impl UnitsPage {
 pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
     pub unit_rows: Vec<(String, String, String)>,
+    /// The Price Sources rows in table order: `(name, source, last updated)`, as drawn.
+    pub source_rows: Vec<(String, String, String)>,
     /// The selected row's code, which is the first row's until another is chosen.
     pub selected_code: Option<String>,
     /// The open row menu: the row it is on (`unit:btc`, `source:Bitcoin`) and its entries' slugs

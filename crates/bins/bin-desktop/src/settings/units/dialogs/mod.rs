@@ -6,6 +6,7 @@
 pub mod add;
 pub mod delete;
 pub mod edit;
+pub mod sources;
 
 use std::rc::Rc;
 

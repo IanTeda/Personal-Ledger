@@ -1,6 +1,7 @@
 //! The Settings Units page driven by clicks: the index entry, the Add unit button, the row edit
 //! and delete buttons, the Add, Edit and Delete unit dialogs' Type control, confirm and cancel
-//! buttons, and the Price Sources buttons. State is read back from `Shell`.
+//! buttons, and the Price Sources table with its Add, Edit and Delete price source Dialogs. State is
+//! read back from `Shell`.
 
 use super::common;
 
@@ -201,33 +202,6 @@ fn the_delete_unit_confirm_button_removes_the_row_once_the_code_matches(app: &mu
     assert!(!after.contains(&code));
 }
 
-#[gpui::test]
-fn the_price_source_buttons_flash_not_yet_built_messages(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-
-    row_action(&mut ui, "price-source-row-0", "test-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("test price source \u{2014} not yet built")
-    );
-    row_action(&mut ui, "price-source-row-0", "edit-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("edit price source \u{2014} not yet built")
-    );
-    row_action(&mut ui, "price-source-row-1", "delete-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("delete price source \u{2014} not yet built")
-    );
-    ui.click("settings-add-price-source");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("add price source \u{2014} not yet built")
-    );
-    assert_eq!(ui.dialog(), None);
-}
-
 fn on_units_xlarge(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::XLarge);
@@ -341,18 +315,6 @@ fn double_clicking_a_unit_row_opens_its_edit_dialog(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn double_clicking_a_price_source_row_says_edit_is_not_yet_built(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-
-    ui.double_click("price-source-row-0");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("edit price source \u{2014} not yet built")
-    );
-    assert_eq!(ui.dialog(), None);
-}
-
-#[gpui::test]
 fn right_clicking_a_unit_row_opens_a_menu_with_edit_then_delete(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     assert_eq!(menu(&mut ui), None);
@@ -366,24 +328,6 @@ fn right_clicking_a_unit_row_opens_a_menu_with_edit_then_delete(app: &mut TestAp
         ))
     );
     assert_eq!(ui.dialog(), None);
-}
-
-#[gpui::test]
-fn right_clicking_a_price_source_row_opens_test_edit_delete(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-
-    ui.right_click("price-source-row-0");
-    assert_eq!(
-        menu(&mut ui),
-        Some((
-            "source:CoinGecko".to_string(),
-            vec![
-                "test-source".to_string(),
-                "edit-source".to_string(),
-                "delete-source".to_string()
-            ]
-        ))
-    );
 }
 
 #[gpui::test]
@@ -413,4 +357,296 @@ fn at_x_large_the_accounts_group_lists_the_selected_units_accounts(app: &mut Tes
     let mut ui = on_units_xlarge(app);
 
     assert!(ui.is_drawn("units-pane-accounts"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Price Sources (16g, 16z·custom, 16z·edit, 16z·del)
+// ---------------------------------------------------------------------------------------------
+
+/// The seeded rows, alphabetical: CoinGecko, Frankfurter, Manual entry, Yahoo Finance.
+fn source_names(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.settings_units()
+        .source_rows
+        .into_iter()
+        .map(|(name, _, _)| name)
+        .collect()
+}
+
+fn type_word(ui: &mut Harness<'_>, word: &str) {
+    let keys: Vec<String> = word.chars().map(|ch| ch.to_string()).collect();
+    ui.press(&keys.join(" "));
+}
+
+/// Adds a Custom source named `name` by clicking into each required field.
+fn add_custom_source(ui: &mut Harness<'_>, name: &str) {
+    ui.click("settings-add-price-source");
+    type_word(ui, name);
+    for field in [
+        "price-source-address",
+        "price-source-request",
+        "price-source-price-path",
+    ] {
+        ui.click(field);
+        type_word(ui, "x");
+    }
+    ui.click("add-price-source-confirm");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn the_price_sources_table_lists_the_seeded_sources_alphabetically(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let rows = ui.settings_units().source_rows;
+    let names: Vec<&str> = rows.iter().map(|row| row.0.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["CoinGecko", "Frankfurter", "Manual entry", "Yahoo Finance"]
+    );
+    assert_eq!(rows[0].1, "https://api.coingecko.com/api/v3");
+    assert!(
+        !rows[0].2.starts_with('\u{2717}') && rows[0].2 != "\u{2014}",
+        "CoinGecko has fetched: {}",
+        rows[0].2
+    );
+    assert_eq!(rows[1].2, "\u{2717} Not fetched yet");
+    assert_eq!(
+        rows[2],
+        (
+            "Manual entry".to_string(),
+            "\u{2014}".to_string(),
+            "\u{2014}".to_string()
+        )
+    );
+}
+
+#[gpui::test]
+fn a_built_ins_menu_offers_test_and_edit_but_no_delete(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.right_click("price-source-row-0");
+    assert_eq!(
+        menu(&mut ui),
+        Some((
+            "source:CoinGecko".to_string(),
+            vec!["test-source".to_string(), "edit-source".to_string()]
+        ))
+    );
+}
+
+#[gpui::test]
+fn manual_entry_opens_no_menu_and_no_dialog(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.right_click("price-source-row-2");
+    assert_eq!(menu(&mut ui), None);
+    ui.double_click("price-source-row-2");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn test_price_source_is_not_yet_built(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "price-source-row-0", "test-source");
+    assert_eq!(
+        status(&mut ui).as_deref(),
+        Some("test price source \u{2014} not yet built")
+    );
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn the_add_price_source_button_opens_the_custom_form_and_cancel_writes_nothing(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-price-source");
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
+    assert!(ui.is_drawn("price-source-key-note"));
+    assert!(!ui.is_drawn("price-source-api-key"));
+    ui.click("add-price-source-confirm");
+    assert_eq!(
+        ui.dialog(),
+        Some("AddPriceSource"),
+        "an empty form can't add"
+    );
+    ui.click("add-price-source-cancel");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(source_names(&mut ui).len(), 4);
+}
+
+#[gpui::test]
+fn adding_a_custom_source_by_mouse_lists_it_in_order_and_toasts(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-price-source");
+    type_word(&mut ui, "broker");
+    ui.click("price-source-updates-1");
+    assert_eq!(ui.dialog_value("updates").as_deref(), Some("Hourly"));
+    ui.click("price-source-auth-1");
+    assert!(ui.is_drawn("price-source-api-key"));
+    for field in [
+        "price-source-address",
+        "price-source-request",
+        "price-source-price-path",
+        "price-source-key-param",
+    ] {
+        ui.click(field);
+        type_word(&mut ui, "x");
+    }
+    ui.click("add-price-source-confirm");
+    assert_eq!(
+        ui.dialog(),
+        Some("AddPriceSource"),
+        "API key authentication needs the key typed"
+    );
+    ui.click("price-source-api-key");
+    type_word(&mut ui, "secret");
+    assert_eq!(
+        ui.dialog_value("api_key").as_deref(),
+        Some("\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"),
+        "the key is masked"
+    );
+    ui.click("add-price-source-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        source_names(&mut ui),
+        vec![
+            "broker",
+            "CoinGecko",
+            "Frankfurter",
+            "Manual entry",
+            "Yahoo Finance"
+        ]
+    );
+    assert_eq!(
+        ui.settings_units().source_rows[0].2,
+        "\u{2717} Not fetched yet"
+    );
+    assert_eq!(ui.toasts().visible.len(), 1);
+}
+
+#[gpui::test]
+fn double_clicking_a_built_in_opens_its_edit_and_a_rename_re_sorts(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.double_click("price-source-row-0");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("CoinGecko"));
+    assert!(ui.is_drawn("edit-built-in-source-facts"));
+    assert!(ui.is_drawn("edit-built-in-source-usage"));
+    ui.click("edit-built-in-source-updates-2");
+    assert_eq!(ui.dialog_value("updates").as_deref(), Some("Daily"));
+    ui.click("edit-built-in-source-name");
+    for _ in "CoinGecko".chars() {
+        ui.press("backspace");
+    }
+    type_word(&mut ui, "zeta");
+    ui.click("edit-built-in-source-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        source_names(&mut ui),
+        vec!["Frankfurter", "Manual entry", "Yahoo Finance", "zeta"]
+    );
+}
+
+#[gpui::test]
+fn edit_price_source_from_the_menu_cancels_without_a_write(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "price-source-row-1", "edit-source");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    ui.press("backspace");
+    ui.click("edit-built-in-source-cancel");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(source_names(&mut ui)[1], "Frankfurter");
+}
+
+#[gpui::test]
+fn a_custom_sources_edit_opens_its_fields_prefilled_and_saves(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    add_custom_source(&mut ui, "broker");
+
+    ui.right_click("price-source-row-0");
+    assert_eq!(
+        menu(&mut ui).map(|(_, actions)| actions),
+        Some(vec![
+            "test-source".to_string(),
+            "edit-source".to_string(),
+            "delete-source".to_string()
+        ])
+    );
+    ui.click("settings-units-menu-edit-source");
+    assert_eq!(ui.dialog(), Some("EditPriceSource"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("broker"));
+    assert_eq!(ui.dialog_value("address").as_deref(), Some("x"));
+    type_word(&mut ui, "s");
+    ui.click("edit-price-source-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(source_names(&mut ui)[0], "brokers");
+}
+
+#[gpui::test]
+fn deleting_a_custom_source_needs_its_exact_name_typed_back(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    add_custom_source(&mut ui, "broker");
+
+    row_action(&mut ui, "price-source-row-0", "delete-source");
+    assert_eq!(ui.dialog(), Some("DeletePriceSource"));
+    type_word(&mut ui, "broke");
+    ui.click("delete-price-source-confirm");
+    assert_eq!(ui.dialog(), Some("DeletePriceSource"));
+    type_word(&mut ui, "r");
+    ui.click("delete-price-source-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        source_names(&mut ui),
+        vec!["CoinGecko", "Frankfurter", "Manual entry", "Yahoo Finance"]
+    );
+}
+
+#[gpui::test]
+fn delete_price_source_cancel_keeps_the_source(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    add_custom_source(&mut ui, "broker");
+
+    row_action(&mut ui, "price-source-row-0", "delete-source");
+    ui.click("delete-price-source-cancel");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(source_names(&mut ui)[0], "broker");
+}
+
+#[gpui::test]
+fn at_x_large_a_saved_price_source_lands_in_activity_without_a_toast(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    add_custom_source(&mut ui, "broker");
+
+    assert_eq!(
+        ui.settings_units().activity,
+        vec!["Saved price source broker".to_string()]
+    );
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn at_x_large_the_pane_opens_the_selected_units_source_dialogs(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+
+    ui.click("units-pane-add-source");
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
+    ui.click("add-price-source-cancel");
+
+    ui.click("unit-row-1");
+    assert!(
+        !ui.is_drawn("units-pane-delete-source"),
+        "btc's source is a built-in"
+    );
+    ui.click("units-pane-edit-source");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("CoinGecko"));
 }

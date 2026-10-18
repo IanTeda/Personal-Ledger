@@ -136,7 +136,7 @@ desktop-settings-units-name-placeholder = e.g. US Dollar
 desktop-settings-units-column-flags = Flags
 desktop-settings-units-column-source = Source
 desktop-settings-units-column-last-updated = Last updated
-desktop-settings-units-not-fetched-yet = not fetched yet
+desktop-settings-units-not-fetched-yet = Not fetched yet
 desktop-settings-units-flag-base = base
 desktop-settings-units-flag-default = default
 desktop-settings-units-column-price-source = Price source
@@ -193,6 +193,64 @@ desktop-settings-units-pane-activity = Activity
 desktop-settings-units-pane-activity-note = This session's Units outcomes, newest first. Errors still toast.
 desktop-settings-units-activity-saved = Saved unit { $code }
 desktop-settings-units-activity-deleted = Deleted unit { $code }
+desktop-settings-units-activity-source-saved = Saved price source { $name }
+desktop-settings-units-activity-source-deleted = Deleted price source { $name }
+
+## The Add, Edit and Delete price source Dialogs (16z·custom, 16z·edit, 16z·del).
+
+desktop-settings-price-source-add =
+    .title = Add price source
+    .submit = Add price source
+
+desktop-settings-price-source-edit =
+    .title = Edit price source — { $name }
+    .submit = Save
+
+desktop-settings-price-source-delete =
+    .title = Delete price source — { $name }
+    .submit = Delete price source
+
+desktop-settings-price-source-field-updates = Updates
+desktop-settings-price-source-field-address = Address
+desktop-settings-price-source-field-request = Request
+desktop-settings-price-source-field-price-path = Price path
+desktop-settings-price-source-field-auth = Authentication
+desktop-settings-price-source-field-key-param = Key parameter
+desktop-settings-price-source-field-api-key = API key
+desktop-settings-price-source-name-placeholder = e.g. Alpha Vantage
+desktop-settings-price-source-address-placeholder = https://
+desktop-settings-price-source-request-placeholder = /query?symbol={ "{" }symbol{ "}" }
+desktop-settings-price-source-price-path-placeholder = /price
+desktop-settings-price-source-key-param-placeholder = apikey
+desktop-settings-price-source-name-help = Shown in the Price Sources table and the unit picker.
+desktop-settings-price-source-request-help = { "{" }symbol{ "}" } is the unit's symbol and { "{" }quote{ "}" } the unit it's quoted in.
+desktop-settings-price-source-price-path-help = A JSON pointer to the price in the response.
+desktop-settings-price-source-key-note = API keys aren't saved yet: storing them encrypted is still to be explored.
+desktop-settings-price-source-updates-every-15-minutes = Every 15 min
+desktop-settings-price-source-updates-hourly = Hourly
+desktop-settings-price-source-updates-daily = Daily
+desktop-settings-price-source-updates-manual-only = Manual only
+desktop-settings-price-source-auth-none = None
+desktop-settings-price-source-auth-api-key = API key
+desktop-settings-price-source-test-with-symbol = Test with symbol
+desktop-settings-price-source-test = Test price source
+desktop-settings-price-source-test-not-built = Testing isn't built yet.
+desktop-settings-price-source-built-in = { $name } · built-in
+desktop-settings-price-source-built-in-help = Built-in sources update with the app, so their address isn't edited here.
+desktop-settings-price-source-usage = { $count ->
+    [0] No units use this source.
+    [one] Values 1 unit: { $codes }.
+   *[other] Values { $count } units: { $codes }.
+}
+desktop-settings-price-source-delete-warning = This price source values { $count ->
+    [one] 1 unit
+   *[other] { $count } units
+}. Deleting it cannot be undone.
+desktop-settings-price-source-delete-fallback = { $count ->
+    [one] { $codes } falls back to Manual entry and keeps its last price.
+   *[other] { $codes } fall back to Manual entry and keep their last prices.
+}
+desktop-settings-price-source-delete-confirm-label = Type { $name } to confirm
 
 ## Institutions. `$glyph` is the plus sign on the add button.
 

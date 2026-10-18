@@ -36,7 +36,8 @@ use crate::{
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
-    settings::units::dialogs::UnitsDialog, view::event::ViewEvent, view::help::HelpDialog,
+    settings::units::dialogs::UnitsDialog, settings::units::dialogs::sources::PriceSourceDialog,
+    view::event::ViewEvent, view::help::HelpDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -278,6 +279,8 @@ impl Dialog for ToastHistoryDialog {
 pub enum OpenDialog {
     Tracing(TracingDialog),
     Units(UnitsDialog),
+    /// Boxed: a Custom source's form carries every part of its endpoint.
+    PriceSources(Box<PriceSourceDialog>),
     Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
@@ -299,6 +302,7 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
+            Self::PriceSources(dialog) => &**dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -318,6 +322,7 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
+            Self::PriceSources(dialog) => &mut **dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -370,6 +375,7 @@ macro_rules! dialog_variant {
 
 dialog_variant!(Tracing, TracingDialog);
 dialog_variant!(Units, UnitsDialog);
+dialog_variant!(PriceSources, PriceSourceDialog);
 dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
