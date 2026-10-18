@@ -207,6 +207,7 @@ impl Shell {
     /// Leaves the page's scroll alone when Settings is already showing.
     pub(super) fn open_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
         let noun_before = self.nav.noun();
+        self.nav.record_settings_page(section);
         self.nav.set_noun(Noun::Settings);
         if noun_before != Noun::Settings {
             self.reset_view_scroll(cx);

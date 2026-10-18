@@ -612,7 +612,11 @@ impl SettingsView {
         if self.selected_section != section {
             self.scroll_handle.set_offset(gpui::Point::default());
         }
+        let changed = self.selected_section != section;
         self.selected_section = section;
+        if changed {
+            cx.emit(ViewEvent::SettingsPageChanged(section));
+        }
         self.sources
             .display
             .update(cx, |page, cx| page.clear_focus(cx));

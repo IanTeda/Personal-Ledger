@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::settings::SettingsPage;
+
 /// The thirteen places the primary rail can select. `Noun::default()` is `Dashboard`, the app's
 /// one home noun. Serializable -- `noun` is one of the three fields that survive restart
 /// (see `crate::persistence`).
@@ -218,9 +220,18 @@ pub struct NavState {
     ledger_open: bool,
     /// The top bar's Back history: the nouns left by `set_noun`, most recent last, capped at
     /// `HISTORY_LIMIT`. A noun change clears `forward`, the way a browser's does.
-    back: Vec<Noun>,
+    back: Vec<Place>,
     /// The nouns `go_back` stepped away from, most recent last, for `go_forward` to return to.
-    forward: Vec<Noun>,
+    forward: Vec<Place>,
+    /// The Settings page showing (or last shown), so Back and Forward can step between pages.
+    settings_page: SettingsPage,
+}
+
+/// One stop in the Back/Forward history: a noun, and for Settings which page was open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Place {
+    noun: Noun,
+    settings_page: SettingsPage,
 }
 
 /// How far Back reaches: enough for any session's wandering without growing for ever.
@@ -242,6 +253,7 @@ impl Default for NavState {
             ledger_open: false,
             back: Vec::new(),
             forward: Vec::new(),
+            settings_page: SettingsPage::default(),
         }
     }
 }
@@ -288,13 +300,47 @@ impl NavState {
     /// -- see the struct doc's "Primary rail highlight vs. selection" note.
     pub fn set_noun(&mut self, noun: Noun) {
         if noun != self.noun {
-            if self.back.len() == HISTORY_LIMIT {
-                self.back.remove(0);
-            }
-            self.back.push(self.noun);
-            self.forward.clear();
+            self.push_back();
         }
         self.show_noun(noun);
+    }
+
+    fn here(&self) -> Place {
+        Place {
+            noun: self.noun,
+            settings_page: self.settings_page,
+        }
+    }
+
+    /// Records the current place for Back and drops Forward, as a browser's navigation does.
+    fn push_back(&mut self) {
+        if self.back.len() == HISTORY_LIMIT {
+            self.back.remove(0);
+        }
+        self.back.push(self.here());
+        self.forward.clear();
+    }
+
+    /// The Settings page showing. A page change while Settings is the noun is a step in the
+    /// history; otherwise (a `:settings <page>` about to switch noun) it is just noted.
+    pub fn record_settings_page(&mut self, page: SettingsPage) {
+        if page == self.settings_page {
+            return;
+        }
+        if self.noun == Noun::Settings {
+            self.push_back();
+        }
+        self.settings_page = page;
+    }
+
+    /// Sets the page without a history step: the launch restoring the last-visited page.
+    pub fn restore_settings_page(&mut self, page: SettingsPage) {
+        self.settings_page = page;
+    }
+
+    /// The Settings page the history says should be showing.
+    pub fn settings_page(&self) -> SettingsPage {
+        self.settings_page
     }
 
     pub fn can_go_back(&self) -> bool {
@@ -308,21 +354,23 @@ impl NavState {
     /// The top bar's Back: returns to the noun before the last `set_noun`, with rule 1's
     /// resets. `false` when there's nowhere to go back to.
     pub fn go_back(&mut self) -> bool {
-        let Some(noun) = self.back.pop() else {
+        let Some(place) = self.back.pop() else {
             return false;
         };
-        self.forward.push(self.noun);
-        self.show_noun(noun);
+        self.forward.push(self.here());
+        self.settings_page = place.settings_page;
+        self.show_noun(place.noun);
         true
     }
 
     /// The top bar's Forward: undoes the last `go_back`. `false` once nothing is ahead.
     pub fn go_forward(&mut self) -> bool {
-        let Some(noun) = self.forward.pop() else {
+        let Some(place) = self.forward.pop() else {
             return false;
         };
-        self.back.push(self.noun);
-        self.show_noun(noun);
+        self.back.push(self.here());
+        self.settings_page = place.settings_page;
+        self.show_noun(place.noun);
         true
     }
 
@@ -739,6 +787,20 @@ mod tests {
         assert!(nav.go_back());
         assert_eq!(nav.noun(), Noun::Dashboard);
         assert!(!nav.go_back(), "a repeated noun is not a step");
+    }
+
+    #[test]
+    fn settings_page_changes_are_history_steps() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Settings);
+        nav.record_settings_page(SettingsPage::Units);
+        nav.record_settings_page(SettingsPage::Tags);
+        assert!(nav.go_back());
+        assert_eq!(nav.settings_page(), SettingsPage::Units);
+        assert!(nav.go_back());
+        assert_eq!(nav.settings_page(), SettingsPage::General);
+        assert!(nav.go_forward());
+        assert_eq!(nav.settings_page(), SettingsPage::Units);
     }
 
     #[test]

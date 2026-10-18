@@ -435,6 +435,7 @@ impl Shell {
     }
 
     pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
+        self.nav.restore_settings_page(section);
         self.views
             .settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));

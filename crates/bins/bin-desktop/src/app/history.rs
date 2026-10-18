@@ -34,6 +34,12 @@ impl Shell {
                 self.chrome.undo_menu_open = false;
             }
         }
+        if matches!(action, TopBarAction::Back | TopBarAction::Forward) {
+            let page = self.nav.settings_page();
+            self.views
+                .settings
+                .update(cx, |view, cx| view.set_selected_section(cx, page));
+        }
         if self.nav.noun() != noun_before {
             self.chrome.undo_menu_open = false;
             self.reset_view_scroll(cx);

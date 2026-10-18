@@ -10,7 +10,7 @@ use crate::{
     chrome::dialog_host::OpenDialog,
     navigation::nav::{InputMode, Noun},
     period::Period,
-    settings::display::DisplayPreferences,
+    settings::{SettingsPage, display::DisplayPreferences},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +38,8 @@ pub enum ViewEvent {
     /// The Display Preferences changed on Settings. They are cross-cutting: `Shell` hands them to
     /// the Views that draw with them, and the Toasts Preference to its Toasts.
     DisplayChanged(DisplayPreferences),
+    /// Settings swapped its open page; `Shell` records it as a step for Back and Forward.
+    SettingsPageChanged(SettingsPage),
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Shell` hands
