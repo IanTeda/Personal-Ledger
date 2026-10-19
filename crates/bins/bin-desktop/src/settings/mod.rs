@@ -9,11 +9,12 @@ pub mod categories;
 pub mod data_backup;
 pub mod display;
 pub mod documents;
-mod general;
+pub(crate) mod general;
 pub(crate) mod hints;
 pub mod institutions;
 pub mod inventory;
 pub mod page;
+pub mod pages;
 pub mod payees;
 pub mod picker;
 pub mod snapshot;
@@ -110,76 +111,12 @@ impl Render for SettingsView {
                 )
                 .into_any_element();
         }
-        let accounts = self.sources().accounts.clone();
-        accounts.update(cx, |page, _| page.set_page_focused(page_focused));
-        let categories = self.sources().categories.clone();
-        categories.update(cx, |page, _| page.set_page_focused(page_focused));
-        let payees = self.sources().payees.clone();
-        payees.update(cx, |page, _| page.set_page_focused(page_focused));
-        let tags = self.sources().tags.clone();
-        tags.update(cx, |page, _| page.set_page_focused(page_focused));
-        let documents = self.sources().documents.clone();
-        documents.update(cx, |page, _| page.set_page_focused(page_focused));
-        let inventory = self.sources().inventory.clone();
-        inventory.update(cx, |page, _| page.set_page_focused(page_focused));
-        let tracing = self.sources().tracing.clone();
-        let display = self.sources().display.clone();
-        let units = self.sources().units.clone();
-        let units_page = units.clone();
-        let units_docked = units.read(cx).docked();
-        let institutions = self.sources().institutions.clone();
-        let sync_server = self.sources().sync_server.clone();
-        let data_backup = self.sources().data_backup.clone();
-        let about = self.sources().about.clone();
-        let (meta, content) = match selected {
-            SettingsPage::Accounts => (
-                accounts.read(cx).scope_note(cx).into_any_element(),
-                accounts.into_any_element(),
-            ),
-            SettingsPage::Categories => (
-                categories.read(cx).scope_note(cx).into_any_element(),
-                categories.into_any_element(),
-            ),
-            SettingsPage::Payees => (payees.read(cx).scope_note(cx), payees.into_any_element()),
-            SettingsPage::Tags => (tags.read(cx).scope_note(cx), tags.into_any_element()),
-            SettingsPage::Documents => (
-                documents.read(cx).scope_note(cx).into_any_element(),
-                documents.into_any_element(),
-            ),
-            SettingsPage::Inventory => (
-                inventory.read(cx).scope_note(cx).into_any_element(),
-                inventory.into_any_element(),
-            ),
-            SettingsPage::Display => (
-                self.scope_note().into_any_element(),
-                display.into_any_element(),
-            ),
-            SettingsPage::Units => (
-                units.read(cx).scope_note(cx).into_any_element(),
-                units.into_any_element(),
-            ),
-            SettingsPage::Institutions => (
-                institutions.read(cx).scope_note(cx).into_any_element(),
-                institutions.into_any_element(),
-            ),
-            SettingsPage::SyncServer => (
-                self.scope_note().into_any_element(),
-                sync_server.into_any_element(),
-            ),
-            SettingsPage::DataBackup => (
-                self.scope_note().into_any_element(),
-                data_backup.into_any_element(),
-            ),
-            SettingsPage::About => (
-                self.scope_note().into_any_element(),
-                about.into_any_element(),
-            ),
-            SettingsPage::Tracing => (
-                self.scope_note().into_any_element(),
-                tracing.into_any_element(),
-            ),
-            SettingsPage::General => (self.scope_note().into_any_element(), general::render(cx)),
-        };
+        self.sync_frame(cx);
+        let page = self.pages().get(selected);
+        page.set_page_focused(page_focused, cx);
+        let meta = page.heading_meta(cx);
+        let content = page.view().into_any_element();
+        let pane = page.side_pane(cx);
         // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
         let fills = selected.fills_page();
         let body = div()
@@ -224,9 +161,7 @@ impl Render for SettingsView {
             plain_heading(selected, cx).into_any_element()
         };
         let body = body.child(section_block(selected, heading, meta, content, cx));
-        // Units docks its detail pane at X-Large, at the View's right edge.
-        let pane = (selected == SettingsPage::Units && units_docked)
-            .then(|| units::detail_pane(units_page.read(cx), &units_page, cx));
+        // A page can dock a pane at the View's right edge (Units' detail pane at X-Large).
         div()
             .id("settings")
             .flex_1()
@@ -243,13 +178,6 @@ impl Render for SettingsView {
             .child(body)
             .children(pane)
             .into_any_element()
-    }
-}
-
-impl SettingsView {
-    /// The heading's scope note for a page this View draws: a fixed note.
-    fn scope_note(&self) -> String {
-        self.selected_section().scope_note()
     }
 }
 

@@ -10,7 +10,14 @@ pub mod dialogs;
 pub mod form;
 mod render;
 
+use crate::settings::SettingsPage;
+use crate::settings::{
+    page::PageRowClicked,
+    pages::{Page, focus_on_row_click},
+    state::SettingsView,
+};
 use chrono::NaiveDate;
+use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_categories::{Category, is_leaf, settings_rows, toggle_expanded};
 use lib_core::{CategoryId, CategoryTypes};
@@ -31,12 +38,7 @@ use form::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
 
 impl EventEmitter<ViewEvent> for CategoriesPage {}
 
-/// Emitted when a click lands on a row of the tree, so the Settings View, which owns the page's
-/// focus, moves it from the index into the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CategoryRowClicked;
-
-impl EventEmitter<CategoryRowClicked> for CategoriesPage {}
+impl EventEmitter<PageRowClicked> for CategoriesPage {}
 
 /// The Categories page's own state: the cursor, the selected Category and the parents shown open.
 pub struct CategoriesPage {
@@ -76,24 +78,25 @@ impl CategoriesPage {
         self.ledger.read(cx).ledger().categories()
     }
 
-    pub fn set_page_focused(&mut self, focused: bool) {
-        self.page_focused = focused;
-    }
-
     /// The selected Category, if it still exists.
     fn live_selected_id(&self, cx: &App) -> Option<CategoryId> {
         self.selected_id
             .filter(|id| self.categories(cx).iter().any(|c| c.id == *id))
     }
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page has focus (ADR-0037)
-    // -----------------------------------------------------------------------------------------
+    /// The heading's meta: `12 categories · 3 levels deep`.
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
+        render::scope_text(self.categories(cx))
+    }
+}
+
+impl Page for CategoriesPage {
+    const PAGE: SettingsPage = SettingsPage::Categories;
 
     /// `left` folds an open parent, or climbs from a nested row to its parent. The router would
     /// otherwise read it as a move back to the index, so the page takes it ahead of the router
     /// only when it has something to do.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "left" && !keystroke.modifiers.shift && self.left_is_local(cx) {
             self.step_fold(false, cx);
             return true;
@@ -103,7 +106,7 @@ impl CategoriesPage {
 
     /// `n` adds a top-level Category, `N` a sub-Category under the selected one, `e` edits and `d`
     /// deletes the selected one, and `right` opens a folded parent. `left` is taken by [`Self::key_ahead`].
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         let shift = modifiers.shift;
         if modifiers.control || modifiers.alt || modifiers.platform {
@@ -150,49 +153,51 @@ impl CategoriesPage {
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the tree's visible rows, Expense then Income. With no
     /// row selected (or the selected one folded away) the first press lands on the first row.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         let Some(step) = movement.step() else {
-            return;
+            return true;
         };
         let ids: Vec<CategoryId> = settings_rows(self.categories(cx), &self.expanded)
             .iter()
             .map(|row| row.id)
             .collect();
         if ids.is_empty() {
-            return;
+            return true;
         }
         let next = step_id(&ids, self.selected_id, step);
         self.select(next, cx);
-    }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+        true
     }
 
     /// The fixed legend, and the heading's meta.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: settings_categories_hints(),
             right: self.scope_note(cx),
         })
     }
 
-    /// The heading's meta: `12 categories · 3 levels deep`.
-    pub fn scope_note(&self, cx: &App) -> String {
-        render::scope_text(self.categories(cx))
+    fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
     }
 
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        settings_categories_hints()
+    }
+
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+impl CategoriesPage {
     // -----------------------------------------------------------------------------------------
     // Clicks
     // -----------------------------------------------------------------------------------------
@@ -232,7 +237,7 @@ impl CategoriesPage {
     /// A click on a row selects it and hands focus to the page.
     pub(crate) fn click_row(&mut self, id: CategoryId, cx: &mut Context<'_, Self>) {
         self.select(Some(id), cx);
-        cx.emit(CategoryRowClicked);
+        cx.emit(PageRowClicked);
     }
 
     // -----------------------------------------------------------------------------------------

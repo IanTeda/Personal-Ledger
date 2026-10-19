@@ -10,11 +10,22 @@ mod render;
 
 pub use preferences::*;
 
-use gpui::{Context, EventEmitter, Keystroke};
+use gpui::{App, Context, EventEmitter, Keystroke};
 use lib_colour_theme::ColourTheme;
 use lib_core::DateStyle;
 
-use crate::{settings::step_choice, theme::colours::ColourChange, view::event::ViewEvent};
+use crate::{
+    chrome::statusline::PageStatus,
+    navigation::key_router::Movement,
+    settings::{
+        SettingsPage,
+        hints::{settings_colour_grid_hints, settings_display_hints},
+        pages::{Page, PageFrame},
+        step_choice,
+    },
+    theme::colours::ColourChange,
+    view::event::ViewEvent,
+};
 
 /// The Display page's keyboard-reachable controls above the Colour Theme grid, top to bottom:
 /// Date format, Row density, Status glyphs, Start sidebar minimised, Toasts. The grid is the stop
@@ -24,16 +35,63 @@ pub const DISPLAY_FIELD_COUNT: usize = 5;
 /// The Display field that is a checkbox rather than a segmented or radio control.
 pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
 
-/// What a key did on the page. [`DisplayKey::FocusIndex`] is the grid's `h` at its first column,
-/// which steps focus out to the index rail: a focus change only Settings can make.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DisplayKey {
-    Unhandled,
-    Handled,
-    FocusIndex,
-}
-
 impl EventEmitter<ViewEvent> for DisplayPage {}
+
+impl Page for DisplayPage {
+    const PAGE: SettingsPage = SettingsPage::Display;
+
+    /// The page's keys while it has focus, ahead of Settings' focus keys so its `h`/`l` win: the
+    /// Colour Theme grid's when it holds focus, else the controls'.
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let taken = if self.colour_theme_focus.is_some() {
+            self.colour_theme_key(keystroke, cx)
+        } else {
+            self.field_key(keystroke, cx)
+        };
+        cx.notify();
+        taken
+    }
+
+    /// A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does; the
+    /// page has no selection, so Settings scrolls.
+    fn apply_movement(&mut self, _movement: Movement, cx: &mut Context<'_, Self>) -> bool {
+        self.leave_grid(cx);
+        false
+    }
+
+    /// `Esc` leaves the Colour Theme grid for the control above it. `false` when the grid has no
+    /// focus, so the page is left to Settings.
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.colour_theme_focus.is_none() {
+            return false;
+        }
+        cx.emit(ViewEvent::SetStatus(None));
+        self.leave_colour_theme_grid();
+        cx.notify();
+        true
+    }
+
+    fn set_frame(&mut self, frame: PageFrame, _cx: &mut Context<'_, Self>) {
+        self.body_width = frame.body_width;
+    }
+
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        let mut keys = settings_display_hints();
+        keys.extend(settings_colour_grid_hints().into_iter().take(2));
+        keys
+    }
+
+    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: if self.colour_theme_focus.is_some() {
+                settings_colour_grid_hints()
+            } else {
+                settings_display_hints()
+            },
+            right: Self::PAGE.scope_note(),
+        })
+    }
+}
 
 /// The Display page: the Display Preferences its controls set and the other Views and the Chrome
 /// read, and the keyboard focus on its controls and Colour Theme grid. Only one of the two is
@@ -45,6 +103,8 @@ pub struct DisplayPage {
     field_focus: Option<usize>,
     /// The Colour Theme card the keyboard is on, while the grid has focus.
     colour_theme_focus: Option<usize>,
+    /// The page body's width, which sets the Colour Theme grid's columns, told by `set_frame`.
+    body_width: f32,
 }
 
 impl DisplayPage {
@@ -81,49 +141,20 @@ impl DisplayPage {
     }
 
     /// A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
-    pub fn leave_grid(&mut self, cx: &mut Context<'_, Self>) {
+    fn leave_grid(&mut self, cx: &mut Context<'_, Self>) {
         self.colour_theme_focus = None;
         cx.notify();
-    }
-
-    /// `Esc` leaves the Colour Theme grid for the control above it. `false` when the grid has no
-    /// focus, so the page is left to Settings.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if self.colour_theme_focus.is_none() {
-            return false;
-        }
-        cx.emit(ViewEvent::SetStatus(None));
-        self.leave_colour_theme_grid();
-        cx.notify();
-        true
-    }
-
-    /// The page's keys while it has focus: the Colour Theme grid's when it holds focus, else the
-    /// controls'. `body_width` is the page body's width, which sets the grid's columns.
-    pub fn key(
-        &mut self,
-        keystroke: &Keystroke,
-        body_width: f32,
-        cx: &mut Context<'_, Self>,
-    ) -> DisplayKey {
-        let outcome = if self.colour_theme_focus.is_some() {
-            self.colour_theme_key(keystroke, body_width, cx)
-        } else {
-            self.field_key(keystroke, cx)
-        };
-        cx.notify();
-        outcome
     }
 
     /// The Display page's form keys: `j`/`k` walk the controls and on past the last into the
     /// Colour Theme grid, `h`/`l` change a segmented or radio control (or clear/tick the
     /// checkbox) in place, `enter`/`space` toggles the checkbox.
-    fn field_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> DisplayKey {
+    fn field_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let Some(field) = self.field_focus else {
-            return DisplayKey::Unhandled;
+            return false;
         };
         if keystroke.modifiers.shift {
-            return DisplayKey::Unhandled;
+            return false;
         }
         let delta = match keystroke.key.as_str() {
             "h" | "left" => -1,
@@ -138,11 +169,11 @@ impl DisplayPage {
                 } else {
                     self.field_focus = Some(field + 1);
                 }
-                DisplayKey::Handled
+                true
             }
             "k" | "up" => {
                 self.field_focus = Some(field.saturating_sub(1));
-                DisplayKey::Handled
+                true
             }
             "h" | "left" | "l" | "right" => {
                 self.change_display(
@@ -164,60 +195,53 @@ impl DisplayPage {
                     },
                     cx,
                 );
-                DisplayKey::Handled
+                true
             }
             "enter" | "space" => {
                 if field == DISPLAY_FIELD_SIDEBAR {
                     self.click_start_sidebar_minimised(cx);
                 }
-                DisplayKey::Handled
+                true
             }
-            _ => DisplayKey::Unhandled,
+            _ => false,
         }
     }
 
     /// The Colour Theme grid (`docs/colour-themes-design.md` "Settings"): arrows or `h`/`j`/`k`/`l`
     /// move focus, `Enter` selects, and `Tab` leaves it, going on to the next zone. Moving focus
     /// never previews. Any key the grid does not take leaves it.
-    fn colour_theme_key(
-        &mut self,
-        keystroke: &Keystroke,
-        body_width: f32,
-        cx: &mut Context<'_, Self>,
-    ) -> DisplayKey {
+    fn colour_theme_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let Some(index) = self.colour_theme_focus else {
-            return DisplayKey::Unhandled;
+            return false;
         };
         let key = keystroke.key.as_str();
         match key {
             "tab" => {
                 self.colour_theme_focus = None;
-                DisplayKey::Unhandled
+                false
             }
             "enter" => {
                 if let Some(theme) = ColourTheme::built_in().get(index) {
                     apply_colour(ColourChange::Theme(theme.id), cx);
                 }
-                DisplayKey::Handled
+                true
             }
             _ => {
-                let columns = colour_theme::grid_columns(body_width);
+                let columns = colour_theme::grid_columns(self.body_width);
                 let len = ColourTheme::built_in().len();
                 // `k` on the top row climbs back to the last control above the grid.
                 if matches!(key, "k" | "up") && index < columns {
                     self.leave_colour_theme_grid();
-                    return DisplayKey::Handled;
+                    return true;
                 }
-                // `h` at the first column steps back out to the index.
+                // `h` at the first column leaves the grid, so Settings' own `h` steps on out to the
+                // index.
                 if matches!(key, "h" | "left") && index % columns.max(1) == 0 {
-                    return DisplayKey::FocusIndex;
+                    self.colour_theme_focus = None;
+                    return false;
                 }
                 self.colour_theme_focus = colour_theme::grid_move(index, len, columns, key);
-                if self.colour_theme_focus.is_some() {
-                    DisplayKey::Handled
-                } else {
-                    DisplayKey::Unhandled
-                }
+                self.colour_theme_focus.is_some()
             }
         }
     }

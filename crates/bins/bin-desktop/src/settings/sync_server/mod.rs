@@ -7,7 +7,10 @@ mod render;
 
 use gpui::{Context, EventEmitter};
 
-use crate::view::event::ViewEvent;
+use crate::{
+    settings::{SettingsPage, pages::Page},
+    view::event::ViewEvent,
+};
 
 impl EventEmitter<ViewEvent> for SyncServerPage {}
 
@@ -22,4 +25,8 @@ impl SyncServerPage {
             crate::msg::desktop_status_sync_now_not_implemented(),
         )));
     }
+}
+
+impl Page for SyncServerPage {
+    const PAGE: SettingsPage = SettingsPage::SyncServer;
 }

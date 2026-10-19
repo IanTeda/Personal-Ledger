@@ -1,5 +1,6 @@
-use gpui::{AnyElement, App, div, prelude::*, px};
+use gpui::{App, Context, Window, div, prelude::*, px};
 
+use super::GeneralPage;
 use crate::theme::color;
 
 use crate::form::fields::{field_label, field_value};
@@ -22,13 +23,15 @@ fn ledger_summary() -> [(String, &'static str); 4] {
     ]
 }
 
-pub(crate) fn render(cx: &App) -> AnyElement {
-    div()
-        .flex()
-        .gap(px(40.0))
-        .child(field_column(cx))
-        .child(summary_panel(cx))
-        .into_any_element()
+impl Render for GeneralPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let cx: &App = cx;
+        div()
+            .flex()
+            .gap(px(40.0))
+            .child(field_column(cx))
+            .child(summary_panel(cx))
+    }
 }
 
 /// The 320px field column: Ledger name, Owner, Financial year starts, Base unit -- in the

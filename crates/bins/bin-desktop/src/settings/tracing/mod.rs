@@ -12,11 +12,11 @@ pub mod dialogs;
 pub mod log;
 mod render;
 
+use crate::settings::pages::Page;
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
-    navigation::key_router::Movement,
+    chrome::dialog_host::open_dialog,
     settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
     view::event::ViewEvent,
 };
@@ -105,15 +105,15 @@ impl TracingPage {
             TracingOutcome::LogsConfirmed => self.clear_log(cx),
         }
     }
+}
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page has focus (ADR-0037)
-    // -----------------------------------------------------------------------------------------
+impl Page for TracingPage {
+    const PAGE: SettingsPage = SettingsPage::Tracing;
 
     /// The page's keys, ahead of the focus keys so `h` steps the level rather than leaving
     /// (Display's radio grammar; `esc` leaves): `h`/`l` the level, `j`/`k` a line, `J`/`K` a
     /// page, `G` the oldest entry, `c` Clear logs. Focus never enters the box itself.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let list = self.log_list.clone();
         let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
         match (keystroke.modifiers.shift, keystroke.key.as_str()) {
@@ -134,39 +134,12 @@ impl TracingPage {
         true
     }
 
-    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        settings_tracing_hints()
     }
+}
 
-    /// The log box scrolls by its own keys, so the page takes no movement and Settings leaves its
-    /// body alone.
-    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The Tracing legend and the page's fixed note.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        Some(PageStatus {
-            hints: settings_tracing_hints(),
-            right: SettingsPage::Tracing.scope_note(),
-        })
-    }
-
+impl TracingPage {
     // -----------------------------------------------------------------------------------------
     // Clicks
     // -----------------------------------------------------------------------------------------

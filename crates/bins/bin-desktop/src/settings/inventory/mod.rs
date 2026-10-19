@@ -19,6 +19,13 @@ pub mod dialogs;
 pub mod form;
 pub(crate) mod render;
 
+use crate::settings::SettingsPage;
+use crate::settings::{
+    page::PageRowClicked,
+    pages::{Page, focus_on_row_click},
+    state::SettingsView,
+};
+use gpui::{AnyElement, IntoElement as _};
 use std::collections::HashSet;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
@@ -124,12 +131,7 @@ pub fn visible_rows(inventory: &Inventory, expanded: &HashSet<LocationId>) -> Ve
 
 impl EventEmitter<ViewEvent> for InventoryPage {}
 
-/// Emitted when a click lands on the page, so the Settings View, which owns the page's focus,
-/// moves it from the index into the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RowClicked;
-
-impl EventEmitter<RowClicked> for InventoryPage {}
+impl EventEmitter<PageRowClicked> for InventoryPage {}
 
 /// The Inventory page's own state: the row under the cursor, the Locations shown open and the
 /// row menu, if one is open.
@@ -167,19 +169,20 @@ impl InventoryPage {
         self.ledger.read(cx).ledger().inventory()
     }
 
-    pub fn set_page_focused(&mut self, focused: bool) {
-        self.page_focused = focused;
+    /// The heading's meta: how many Locations, Areas and Items.
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
+        scope_text(self.inventory(cx))
     }
+}
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page is open (ADR-0037)
-    // -----------------------------------------------------------------------------------------
+impl Page for InventoryPage {
+    const PAGE: SettingsPage = SettingsPage::Inventory;
 
     /// `J`/`K` move the selected Area a place within its Location (inert on a Location row), `a`
     /// adds an Area, and `left` closes an open Location or climbs from an Area to it. The router and Settings' focus
     /// keys would otherwise take them, so the page claims them ahead of both; a `left` with
     /// nothing to close or climb is left to Settings, which steps back to the index.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform {
             return false;
@@ -212,7 +215,7 @@ impl InventoryPage {
     /// The page's bare `n`, `e` and `x`, each through the same handler its menu entry or button
     /// uses, and `right`, which opens a closed Location or steps into an open one's first
     /// Area. Returns whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
@@ -239,52 +242,56 @@ impl InventoryPage {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Location and Area rows as one list.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         let Some(step) = movement.step() else {
-            return;
+            return true;
         };
         let rows = self.rows(cx);
         if rows.is_empty() {
-            return;
+            return true;
         }
         self.close_menu(cx);
         self.selected = lib_list_cursor::step_id(&rows, self.selected_row(cx), step);
         cx.notify();
+        true
     }
 
     /// `Esc` closes an open row menu; otherwise it is left to Settings, which steps back to the
     /// index.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         self.close_menu(cx)
     }
 
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
     /// The page's legend for the selected row, and its Location, Area and Item counts.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: settings_inventory_hints(self.selected_row(cx)),
             right: scope_text(self.inventory(cx)),
         })
     }
 
-    /// The heading's meta: how many Locations, Areas and Items.
-    pub fn scope_note(&self, cx: &App) -> String {
-        scope_text(self.inventory(cx))
-    }
-
     /// The `?` cheat-sheet's keys for the page, by the selected row.
-    pub fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
+    fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
         settings_inventory_hints(self.selected_row(cx))
     }
 
+    fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+impl InventoryPage {
     // -----------------------------------------------------------------------------------------
     // Selection and disclosure
     // -----------------------------------------------------------------------------------------
@@ -418,13 +425,13 @@ impl InventoryPage {
     /// A click on a row: selects it and moves focus into the page.
     pub(crate) fn click_row(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
         self.select(Some(row), cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
     }
 
     /// The disclosure control of a Location row: opens or closes it. Closing keeps the selection
     /// on screen by moving a hidden Area's selection up to its Location.
     pub(crate) fn click_toggle(&mut self, id: LocationId, cx: &mut Context<'_, Self>) {
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         if self.collapse(id, cx) {
             if let Some(InventoryRow::Area(area)) = self.selected
                 && self
@@ -442,7 +449,7 @@ impl InventoryPage {
     /// A double-click on a row: selects it and asks for its Edit dialog, as `e` does.
     pub(crate) fn double_click_row(&mut self, row: InventoryRow, cx: &mut Context<'_, Self>) {
         self.select(Some(row), cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.open_edit_dialog(row, cx);
     }
 
@@ -454,7 +461,7 @@ impl InventoryPage {
         cx: &mut Context<'_, Self>,
     ) {
         self.select(Some(row), cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.menu = Some(RowMenu { row, position });
     }
 
@@ -491,7 +498,7 @@ impl InventoryPage {
 
     /// The square **+** beside LOCATIONS: the same handler `n` reaches.
     pub(crate) fn click_add_location(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.open_add_location_dialog(cx);
     }
 

@@ -7,7 +7,10 @@ mod render;
 
 use gpui::{Context, EventEmitter};
 
-use crate::view::event::ViewEvent;
+use crate::{
+    settings::{SettingsPage, pages::Page},
+    view::event::ViewEvent,
+};
 
 impl EventEmitter<ViewEvent> for DataBackupPage {}
 
@@ -29,4 +32,8 @@ impl DataBackupPage {
             crate::msg::desktop_status_export_ledger_not_implemented(),
         )))
     }
+}
+
+impl Page for DataBackupPage {
+    const PAGE: SettingsPage = SettingsPage::DataBackup;
 }

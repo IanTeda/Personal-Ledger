@@ -13,6 +13,13 @@ pub mod dialogs;
 pub mod form;
 pub(crate) mod render;
 
+use crate::settings::SettingsPage;
+use crate::settings::{
+    page::PageRowClicked,
+    pages::{Page, focus_on_row_click},
+    state::SettingsView,
+};
+use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_core::DocumentTypeId;
 use lib_documents::types::{self as types, DocumentTypeRow};
@@ -32,12 +39,7 @@ pub use render::scope_text;
 
 impl EventEmitter<ViewEvent> for DocumentsPage {}
 
-/// Emitted when a click lands on the page, so the Settings View, which owns the page's focus,
-/// moves it from the index into the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RowClicked;
-
-impl EventEmitter<RowClicked> for DocumentsPage {}
+impl EventEmitter<PageRowClicked> for DocumentsPage {}
 
 /// The Document Types page's own state: the type id under the cursor.
 pub struct DocumentsPage {
@@ -66,17 +68,18 @@ impl DocumentsPage {
         self.ledger.read(cx).ledger().document_types()
     }
 
-    pub fn set_page_focused(&mut self, focused: bool) {
-        self.page_focused = focused;
+    /// The heading's meta: how many types and how many Filed files are typed.
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
+        scope_text(self.types(cx))
     }
+}
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page is open (ADR-0037)
-    // -----------------------------------------------------------------------------------------
+impl Page for DocumentsPage {
+    const PAGE: SettingsPage = SettingsPage::Documents;
 
     /// `J`/`K` move the selected type a place, which is also its place in the Documents Type
     /// filter. The router would otherwise take them, so the page claims them ahead of it.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || !modifiers.shift {
             return false;
@@ -91,7 +94,7 @@ impl DocumentsPage {
 
     /// The page's bare `n`, `e` and `x`, each through the same handler its button uses.
     /// Returns whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
@@ -114,43 +117,45 @@ impl DocumentsPage {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         let Some(step) = movement.step() else {
-            return;
+            return true;
         };
         let ids: Vec<DocumentTypeId> = self.types(cx).iter().map(|row| row.id).collect();
         self.selected = lib_list_cursor::step_id(&ids, self.selected_id(cx), step);
         cx.notify();
-    }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+        true
     }
 
     /// The page's legend and its type and file counts.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: settings_documents_hints(),
             right: scope_text(self.types(cx)),
         })
     }
 
-    /// The heading's meta: how many types and how many Filed files are typed.
-    pub fn scope_note(&self, cx: &App) -> String {
-        scope_text(self.types(cx))
+    fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
     }
 
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        settings_documents_hints()
+    }
+
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+impl DocumentsPage {
     // -----------------------------------------------------------------------------------------
     // Selection
     // -----------------------------------------------------------------------------------------
@@ -186,24 +191,24 @@ impl DocumentsPage {
     /// A click on a row: selects it and moves focus into the page.
     pub(crate) fn click_row(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
     }
 
     /// **+ Add document type**: the same handler `n` reaches.
     pub(crate) fn click_add(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.open_add_dialog(cx);
     }
 
     pub(crate) fn click_edit(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.open_edit_dialog(id, cx);
     }
 
     pub(crate) fn click_remove(&mut self, id: DocumentTypeId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
         self.open_remove_dialog(id, cx);
     }
 

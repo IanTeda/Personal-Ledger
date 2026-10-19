@@ -13,6 +13,13 @@ pub mod dialogs;
 pub mod form;
 mod render;
 
+use crate::settings::SettingsPage;
+use crate::settings::{
+    page::PageRowClicked,
+    pages::{Page, focus_on_row_click},
+    state::SettingsView,
+};
+use gpui::AnyElement;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_core::TagId;
 use lib_ledger::Domain;
@@ -32,12 +39,7 @@ use render::scope_text;
 
 impl EventEmitter<ViewEvent> for TagsPage {}
 
-/// Emitted when a click lands on the page's rows, so the Settings View, which owns the page's
-/// focus, moves it from the index into the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RowClicked;
-
-impl EventEmitter<RowClicked> for TagsPage {}
+impl EventEmitter<PageRowClicked> for TagsPage {}
 
 /// The Tags page's own state: the Tag id under the cursor.
 pub struct TagsPage {
@@ -79,23 +81,14 @@ impl TagsPage {
     pub(crate) fn duplicate_groups(&self, cx: &App) -> Vec<DuplicateGroup> {
         lib_tags::duplicate_groups(self.tags(cx), self.transactions(cx))
     }
+}
 
-    pub fn set_page_focused(&mut self, focused: bool) {
-        self.page_focused = focused;
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page is open (ADR-0037)
-    // -----------------------------------------------------------------------------------------
-
-    /// The page claims no key ahead of the router: its `n`/`e`/`x`/`m` are router leftovers.
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
+impl Page for TagsPage {
+    const PAGE: SettingsPage = SettingsPage::Tags;
 
     /// The page's bare `n`, `e`, `x` and `m`, each through the same handler its button uses.
     /// Returns whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
@@ -123,9 +116,9 @@ impl TagsPage {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Tags list A–Z. `enter` has no hand-off here.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         let Some(step) = movement.step() else {
-            return;
+            return true;
         };
         let ids: Vec<TagId> = lib_tags::sorted_by_name(self.tags(cx))
             .iter()
@@ -133,31 +126,38 @@ impl TagsPage {
             .collect();
         self.selected = lib_list_cursor::step_id(&ids, self.selected_id(cx), step);
         cx.notify();
-    }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+        true
     }
 
     /// The page's legend and its Tag counts.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: settings_tags_hints(),
             right: scope_text(self.tags(cx), &self.duplicate_groups(cx)),
         })
     }
 
+    fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        settings_tags_hints()
+    }
+
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx)
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+impl TagsPage {
     // -----------------------------------------------------------------------------------------
     // Selection
     // -----------------------------------------------------------------------------------------
@@ -184,7 +184,7 @@ impl TagsPage {
     /// A click on a row: selects it and moves focus into the page.
     pub(crate) fn click_row(&mut self, id: TagId, cx: &mut Context<'_, Self>) {
         self.select_id(id, cx);
-        cx.emit(RowClicked);
+        cx.emit(PageRowClicked);
     }
 
     /// **+ Add tag**: the same handler `n` reaches.

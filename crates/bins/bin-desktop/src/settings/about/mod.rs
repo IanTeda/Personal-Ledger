@@ -3,6 +3,19 @@
 
 mod render;
 
+use gpui::EventEmitter;
+
+use crate::{
+    settings::{SettingsPage, pages::Page},
+    view::event::ViewEvent,
+};
+
+impl EventEmitter<ViewEvent> for AboutPage {}
+
 /// The About page.
 #[derive(Debug, Default)]
 pub struct AboutPage;
+
+impl Page for AboutPage {
+    const PAGE: SettingsPage = SettingsPage::About;
+}

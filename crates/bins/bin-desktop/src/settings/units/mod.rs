@@ -18,7 +18,13 @@ pub mod source_form;
 
 pub(super) use render::detail_pane;
 
+use crate::settings::{
+    page::PageRowClicked,
+    pages::{Page, PageFrame, focus_on_row_click},
+    state::SettingsView,
+};
 use chrono::Local;
+use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
 use lib_ledger::Domain;
 use lib_list_cursor::{resolve, step_id};
@@ -119,12 +125,7 @@ impl SourceRow {
     }
 }
 
-/// Emitted when a click lands on a row, so the Settings View, which owns the page's focus, moves
-/// it from the index into the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UnitsRowClicked;
-
-impl EventEmitter<UnitsRowClicked> for UnitsPage {}
+impl EventEmitter<PageRowClicked> for UnitsPage {}
 
 /// The selected row: one at a time across both tables, UNITS drawn above PRICE SOURCES.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,15 +258,6 @@ impl UnitsPage {
             activity: Vec::new(),
             menu: None,
             _units_changed,
-        }
-    }
-
-    /// Tells the page the Window Size it is drawn at: X-Large docks the detail pane.
-    pub fn set_window_size(&mut self, window_size: WindowSize, cx: &mut Context<'_, Self>) {
-        let docked = window_size == WindowSize::XLarge;
-        if docked != self.docked {
-            self.docked = docked;
-            cx.notify();
         }
     }
 
@@ -469,27 +461,6 @@ impl UnitsPage {
             .collect()
     }
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page has focus (ADR-0037)
-    // -----------------------------------------------------------------------------------------
-
-    /// `Tab` jumps to the other table, claimed ahead of the router as Bills claims it for its
-    /// tabs; `Shift-Tab` is left to cycle the focus zones.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        let modifiers = &keystroke.modifiers;
-        if keystroke.key != "tab"
-            || modifiers.shift
-            || modifiers.control
-            || modifiers.alt
-            || modifiers.platform
-        {
-            return false;
-        }
-        self.close_menu(cx);
-        self.jump_table(cx);
-        true
-    }
-
     /// Selects the other table's last-selected row, or its first while it has none (or that row
     /// is gone). An empty Units table leaves the selection where it is.
     fn jump_table(&mut self, cx: &mut Context<'_, Self>) {
@@ -512,10 +483,37 @@ impl UnitsPage {
         }
     }
 
+    /// The heading's meta: how many Units the table holds.
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
+        let count = i64::try_from(self.units(cx).len()).unwrap_or(i64::MAX);
+        crate::msg::desktop_settings_scope_units(count)
+    }
+}
+
+impl Page for UnitsPage {
+    const PAGE: SettingsPage = SettingsPage::Units;
+
+    /// `Tab` jumps to the other table, claimed ahead of the router as Bills claims it for its
+    /// tabs; `Shift-Tab` is left to cycle the focus zones.
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if keystroke.key != "tab"
+            || modifiers.shift
+            || modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+        {
+            return false;
+        }
+        self.close_menu(cx);
+        self.jump_table(cx);
+        true
+    }
+
     /// The page's bare `n`, `e`, `d` and `t` at every Window Size, each acting on the selected
     /// row's table through the handler its button or menu entry uses. Manual entry takes no `e`,
     /// `d` or `t`, and a built-in no `d`. Returns whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         self.close_menu(cx);
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
@@ -538,7 +536,7 @@ impl UnitsPage {
 
     /// `j`/`k`, `g g`, `G` and `Ctrl-d`/`Ctrl-u` walk both tables as one list, at every Window
     /// Size: `j` on the last Unit selects the first Price Source.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         self.close_menu(cx);
         if let Some(step) = movement.step()
             && let Some(selection) = step_id(&self.rows(cx), self.selection(cx), step)
@@ -551,21 +549,12 @@ impl UnitsPage {
 
     /// `Esc` closes an open row menu; otherwise it is left to Settings, which steps back to the
     /// index.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         self.close_menu(cx)
     }
 
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
     /// The page legend, by the selected row's table, and the page's fixed note.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         let on_source = matches!(self.selection(cx), Some(UnitsSelection::Source(_)));
         Some(PageStatus {
             hints: settings_units_hints(on_source),
@@ -573,12 +562,32 @@ impl UnitsPage {
         })
     }
 
-    /// The heading's meta: how many Units the table holds.
-    pub fn scope_note(&self, cx: &App) -> String {
-        let count = i64::try_from(self.units(cx).len()).unwrap_or(i64::MAX);
-        crate::msg::desktop_settings_scope_units(count)
+    /// X-Large docks the detail pane.
+    fn set_frame(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
+        let docked = frame.window_size == WindowSize::XLarge;
+        if docked != self.docked {
+            self.docked = docked;
+            cx.notify();
+        }
     }
 
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
+    }
+
+    fn side_pane(&self, entity: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        self.docked.then(|| detail_pane(self, entity, cx))
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+impl UnitsPage {
     // -----------------------------------------------------------------------------------------
     // Clicks
     // -----------------------------------------------------------------------------------------
@@ -589,7 +598,7 @@ impl UnitsPage {
         if let Some(unit) = self.units(cx).get(index) {
             self.select(UnitsSelection::Unit(unit.id));
         }
-        cx.emit(UnitsRowClicked);
+        cx.emit(PageRowClicked);
         cx.notify();
     }
 
@@ -599,7 +608,7 @@ impl UnitsPage {
         if let Some(source) = self.price_sources(cx).get(index) {
             self.select(UnitsSelection::Source(source.id));
         }
-        cx.emit(UnitsRowClicked);
+        cx.emit(PageRowClicked);
         cx.notify();
     }
 
@@ -635,7 +644,7 @@ impl UnitsPage {
             MenuTarget::Source(id, _) => UnitsSelection::Source(id),
         });
         self.menu = Some(RowMenu { target, position });
-        cx.emit(UnitsRowClicked);
+        cx.emit(PageRowClicked);
         cx.notify();
     }
 

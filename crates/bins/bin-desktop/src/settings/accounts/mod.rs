@@ -12,6 +12,9 @@ pub(crate) mod hints;
 mod render;
 pub mod snapshot;
 
+use crate::settings::SettingsPage;
+use crate::settings::pages::Page;
+use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_accounts::{Account, NO_INSTITUTION, NameLookup, NetWorth, display_order, find_by_name};
 use lib_core::AccountId;
@@ -121,23 +124,26 @@ impl AccountsPage {
     pub(crate) fn accounts<'a>(&self, cx: &'a App) -> &'a [Account] {
         self.ledger.read(cx).ledger().accounts()
     }
+}
 
-    pub fn set_page_focused(&mut self, focused: bool) {
+impl Page for AccountsPage {
+    const PAGE: SettingsPage = SettingsPage::Accounts;
+
+    fn set_page_focused(&mut self, focused: bool) {
         self.page_focused = focused;
     }
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page is open (ADR-0037)
-    // -----------------------------------------------------------------------------------------
+    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+        accounts_hints()
+    }
 
-    /// The page claims no key ahead of the router: its `n`/`e`/`d` are router leftovers.
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
     }
 
     /// The page's bare `n`, `e` and `d`, each through the same handler its button uses. Returns
     /// whether the key was one of them.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
@@ -161,7 +167,7 @@ impl AccountsPage {
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the row selection. `enter` opens the selected
     /// account's ledger: Transactions filtered to it.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
         let len = self.accounts(cx).len();
         match movement.step() {
             Some(step) => self.selected = lib_list_cursor::step(self.selected, len, step),
@@ -172,35 +178,18 @@ impl AccountsPage {
             }
         }
         cx.notify();
+        true
     }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// Opening the page keeps its selection, so returning finds the same row selected.
-    pub fn on_enter(&mut self, _cx: &mut Context<'_, Self>) {}
 
     /// Selects an Account another View handed off.
-    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+    fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         if let Reveal::Account(id) = reveal {
             self.select_id(id, cx);
         }
     }
 
     /// The page's legend and its account count.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: accounts_hints(),
             right: crate::msg::desktop_accounts_count(
@@ -208,7 +197,9 @@ impl AccountsPage {
             ),
         })
     }
+}
 
+impl AccountsPage {
     // -----------------------------------------------------------------------------------------
     // Selection
     // -----------------------------------------------------------------------------------------

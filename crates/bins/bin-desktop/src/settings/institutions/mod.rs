@@ -9,15 +9,16 @@ pub mod dialogs;
 pub mod form;
 mod render;
 
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
+use crate::settings::pages::Page;
+use gpui::{AnyElement, IntoElement as _};
+use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_institutions::InstitutionRow;
 use lib_ledger::Domain;
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::dialog_host::open_dialog,
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
-    settings::{SettingsPage, hints::settings_plain_page_hints},
+    settings::SettingsPage,
     view::event::ViewEvent,
 };
 use apply::InstitutionsOutcome;
@@ -45,54 +46,22 @@ impl InstitutionsPage {
         self.ledger.read(cx).ledger().institutions()
     }
 
-    // -----------------------------------------------------------------------------------------
-    // The interface the Settings View forwards to while the page has focus (ADR-0037)
-    // -----------------------------------------------------------------------------------------
-
-    /// The page has no keys of its own: its Dialog opens from its button.
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// With no selection to move, the page takes no movement and the Settings View scrolls its
-    /// body instead.
-    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has nothing of its own to close: `Esc` is left to Settings, which steps back to
-    /// the index.
-    pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page has no Search: `/` is inert there.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The plain page legend and the page's fixed note.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        Some(PageStatus {
-            hints: settings_plain_page_hints(),
-            right: SettingsPage::Institutions.scope_note(),
-        })
-    }
-
     /// The heading's meta: how many Institutions the table holds.
-    pub fn scope_note(&self, cx: &App) -> String {
+    pub(crate) fn scope_note(&self, cx: &App) -> String {
         let count = i64::try_from(self.institutions(cx).len()).unwrap_or(i64::MAX);
         crate::msg::desktop_settings_scope_institutions(count)
     }
+}
 
+impl Page for InstitutionsPage {
+    const PAGE: SettingsPage = SettingsPage::Institutions;
+
+    fn heading_meta(&self, cx: &App) -> AnyElement {
+        self.scope_note(cx).into_any_element()
+    }
+}
+
+impl InstitutionsPage {
     // -----------------------------------------------------------------------------------------
     // Clicks
     // -----------------------------------------------------------------------------------------

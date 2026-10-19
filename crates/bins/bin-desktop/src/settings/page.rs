@@ -2,6 +2,11 @@
 
 use crate::assets::icon::DesktopIcon;
 
+/// A click on a row of a Settings page, which hands the page keyboard focus. Every page with rows
+/// emits it, and the Settings View, which owns the focus, follows it.
+#[derive(Debug, Clone, Copy)]
+pub struct PageRowClicked;
+
 /// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
 /// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
 /// Tags and Payees joined the original eight when they left the primary rail.

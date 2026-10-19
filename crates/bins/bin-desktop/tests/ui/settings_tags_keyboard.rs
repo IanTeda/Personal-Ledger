@@ -28,6 +28,15 @@ fn merge_pair(ui: &mut Harness<'_>) -> Option<(String, String)> {
 }
 
 #[gpui::test]
+fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
+    let mut ui = in_tags(app);
+
+    ui.press("/");
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
 

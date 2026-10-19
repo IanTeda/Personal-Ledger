@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::{Context, px};
+use gpui::Context;
 
 use super::Shell;
 use crate::settings::tracing::log::{LogView, TracingLevel};
@@ -13,9 +13,6 @@ use crate::settings::tracing::log::{LogView, TracingLevel};
 /// updates at about ten a second. Public so the headless tests advance past exactly this.
 #[doc(hidden)]
 pub const LOG_COALESCE: Duration = Duration::from_millis(100);
-
-/// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
-pub(super) const LOG_LIST_OVERDRAW: gpui::Pixels = px(200.0);
 
 impl Shell {
     /// Hands the Tracing page the app's live log capture, opening on `level`, and starts the

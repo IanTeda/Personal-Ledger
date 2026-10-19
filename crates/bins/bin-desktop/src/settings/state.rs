@@ -1,40 +1,31 @@
 //! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] owns the View state
-//! that belongs to Settings: the page on show, where keyboard focus sits, the Display page's
-//! focused control and Preferences. It renders itself (`impl Render` in `super`), handles the index, its focus
-//! keys and the static pages' keys, movement and `Esc`, and reaches `Shell` only through
-//! [`ViewEvent`].
+//! that belongs to Settings: the page on show, where keyboard focus sits and the Medium page
+//! picker. It builds its pages ([`SettingsPages`]), renders itself (`impl Render` in `super`),
+//! handles the index and its focus keys, and reaches `Shell` only through [`ViewEvent`], which it
+//! re-emits from its pages.
 //!
-//! A page with Ledger data that has moved into its own Entity (Accounts, [`AccountsPage`];
-//! Categories, [`CategoriesPage`]; Payees, [`PayeesPage`]; Tags, [`TagsPage`]; Units, [`UnitsPage`];
-//! Institutions, [`InstitutionsPage`]; Document Types, [`DocumentsPage`]; Inventory,
-//! [`InventoryPage`]; Tracing, [`TracingPage`]) is drawn by that Entity, and this View forwards the page's keys, movement
-//! and status to it while the page has focus.
+//! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has
+//! focus this View forwards its keys, movement, `Esc`, Search and status to it without knowing
+//! which page it is.
 
-use super::hints::{
-    settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
-    settings_documents_hints, settings_index_hints, settings_medium_page_hints,
-    settings_payees_hints, settings_picker_hints, settings_plain_page_hints, settings_tags_hints,
-    settings_tracing_hints,
-};
-use crate::settings::categories::{CategoriesPage, CategoryRowClicked};
-use crate::settings::documents::{DocumentsPage, RowClicked as DocumentsRowClicked};
-use crate::settings::inventory::{InventoryPage, RowClicked as InventoryRowClicked};
-use crate::settings::payees::{PayeesPage, RowClicked};
-use crate::settings::tags::{RowClicked as TagsRowClicked, TagsPage};
-use crate::settings::units::UnitsRowClicked;
+use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
     chrome::{statusline::PageStatus, window_size::WindowSize},
+    ledger_store::LedgerStore,
     navigation::key_router::Movement,
-    settings::accounts::{AccountsPage, hints::accounts_hints},
+    settings::accounts::AccountsPage,
+    settings::categories::CategoriesPage,
+    settings::display::{DisplayPage, DisplayPreferences},
+    settings::documents::DocumentsPage,
     settings::institutions::InstitutionsPage,
+    settings::inventory::InventoryPage,
+    settings::pages::{PageFrame, PageHandle, SettingsPages},
+    settings::payees::PayeesPage,
     settings::picker::PagePicker,
+    settings::tags::TagsPage,
     settings::tracing::TracingPage,
     settings::units::UnitsPage,
-    settings::{
-        SettingsFocus, SettingsPage,
-        display::{DisplayKey, DisplayPage, DisplayPreferences},
-    },
-    settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage},
+    settings::{SettingsFocus, SettingsPage},
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
@@ -42,162 +33,10 @@ use lib_list_cursor::Step;
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
-/// What the Settings pages read: the Entity of each page with Ledger data that draws itself.
-pub struct SettingsSources {
-    pub display: Entity<DisplayPage>,
-    pub institutions: Entity<InstitutionsPage>,
-    pub sync_server: Entity<SyncServerPage>,
-    pub data_backup: Entity<DataBackupPage>,
-    pub about: Entity<AboutPage>,
-    pub units: Entity<UnitsPage>,
-    pub accounts: Entity<AccountsPage>,
-    pub categories: Entity<CategoriesPage>,
-    pub payees: Entity<PayeesPage>,
-    pub tags: Entity<TagsPage>,
-    pub documents: Entity<DocumentsPage>,
-    pub inventory: Entity<InventoryPage>,
-    pub tracing: Entity<TracingPage>,
-}
-
-/// The open page's own Entity, while it has focus.
-#[derive(Clone)]
-enum FocusedPage {
-    Accounts(Entity<AccountsPage>),
-    Categories(Entity<CategoriesPage>),
-    Payees(Entity<PayeesPage>),
-    Tags(Entity<TagsPage>),
-    Documents(Entity<DocumentsPage>),
-    Inventory(Entity<InventoryPage>),
-    Units(Entity<UnitsPage>),
-    Institutions(Entity<InstitutionsPage>),
-    Tracing(Entity<TracingPage>),
-}
-
-impl FocusedPage {
-    fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Categories(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Tags(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Documents(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Inventory(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Units(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Institutions(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-            Self::Tracing(page) => page.update(cx, |page, cx| page.key_ahead(keystroke, cx)),
-        }
-    }
-
-    fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Categories(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Tags(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Documents(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Inventory(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Units(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Institutions(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-            Self::Tracing(page) => page.update(cx, |page, cx| page.handle_key(keystroke, cx)),
-        }
-    }
-
-    /// Whether the page took the movement; one without a selection leaves Settings to scroll.
-    fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Categories(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Payees(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Tags(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Documents(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Inventory(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx));
-                true
-            }
-            Self::Units(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
-            Self::Institutions(page) => {
-                page.update(cx, |page, cx| page.apply_movement(movement, cx))
-            }
-            Self::Tracing(page) => page.update(cx, |page, cx| page.apply_movement(movement, cx)),
-        }
-    }
-
-    fn escape(&self, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Categories(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Tags(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Documents(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Inventory(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Units(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Institutions(page) => page.update(cx, |page, cx| page.escape(cx)),
-            Self::Tracing(page) => page.update(cx, |page, cx| page.escape(cx)),
-        }
-    }
-
-    fn start_search(&self, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Categories(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Tags(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Documents(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Inventory(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Units(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Institutions(page) => page.update(cx, |page, cx| page.start_search(cx)),
-            Self::Tracing(page) => page.update(cx, |page, cx| page.start_search(cx)),
-        }
-    }
-
-    fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Accounts(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Categories(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Payees(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Tags(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Documents(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Inventory(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Units(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Institutions(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-            Self::Tracing(page) => page.update(cx, |page, cx| page.search_key(keystroke, cx)),
-        }
-    }
-
-    fn page_status(&self, cx: &App) -> Option<PageStatus> {
-        match self {
-            Self::Accounts(page) => page.read(cx).page_status(cx),
-            Self::Categories(page) => page.read(cx).page_status(cx),
-            Self::Payees(page) => page.read(cx).page_status(cx),
-            Self::Tags(page) => page.read(cx).page_status(cx),
-            Self::Documents(page) => page.read(cx).page_status(cx),
-            Self::Inventory(page) => page.read(cx).page_status(cx),
-            Self::Units(page) => page.read(cx).page_status(cx),
-            Self::Institutions(page) => page.read(cx).page_status(cx),
-            Self::Tracing(page) => page.read(cx).page_status(cx),
-        }
-    }
-}
-
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
 /// re-entering Settings, as `g s` relies on.
 pub struct SettingsView {
-    sources: SettingsSources,
+    pages: SettingsPages,
     selected_section: SettingsPage,
     focus: SettingsFocus,
     /// The page body's scroll, which also gives the Colour Theme grid its width.
@@ -212,44 +51,23 @@ pub struct SettingsView {
     window_size: WindowSize,
     /// The Medium page picker, while it is open.
     picker: Option<PagePicker>,
-    /// Keeps the Categories and Payees pages' row clicks reaching this View, which owns the page's
-    /// focus.
-    _categories_row_clicked: Subscription,
-    _payees_row_clicked: Subscription,
-    _tags_row_clicked: Subscription,
-    _documents_row_clicked: Subscription,
-    _inventory_row_clicked: Subscription,
-    _units_row_clicked: Subscription,
+    /// Keeps each page's events reaching this View: its `ViewEvent`s re-emitted for `Shell`, its
+    /// changes repainting this View and its row clicks handing it focus.
+    _page_subscriptions: Vec<Subscription>,
 }
 
 impl SettingsView {
-    pub fn new(sources: SettingsSources, cx: &mut Context<'_, Self>) -> Self {
-        let _categories_row_clicked = cx.subscribe(
-            &sources.categories,
-            |view, _page, _event: &CategoryRowClicked, cx| view.focus_page_from_click(cx),
-        );
-        let _payees_row_clicked = cx
-            .subscribe(&sources.payees, |view, _page, _event: &RowClicked, cx| {
-                view.focus_page_from_click(cx)
-            });
-        let _tags_row_clicked = cx
-            .subscribe(&sources.tags, |view, _page, _event: &TagsRowClicked, cx| {
-                view.focus_page_from_click(cx)
-            });
-        let _documents_row_clicked = cx.subscribe(
-            &sources.documents,
-            |view, _page, _event: &DocumentsRowClicked, cx| view.focus_page_from_click(cx),
-        );
-        let _inventory_row_clicked = cx.subscribe(
-            &sources.inventory,
-            |view, _page, _event: &InventoryRowClicked, cx| view.focus_page_from_click(cx),
-        );
-        let _units_row_clicked = cx.subscribe(
-            &sources.units,
-            |view, _page, _event: &UnitsRowClicked, cx| view.focus_page_from_click(cx),
-        );
+    /// Builds the pages from the Ledger. The Tracing capture arrives later, through
+    /// `Shell::set_log_capture`.
+    pub fn new(
+        ledger: &Entity<LedgerStore>,
+        today: chrono::NaiveDate,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let pages = SettingsPages::new(ledger, today, cx);
+        let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
         Self {
-            sources,
+            pages,
             selected_section: SettingsPage::default(),
             focus: SettingsFocus::default(),
             scroll_handle: ScrollHandle::new(),
@@ -257,90 +75,83 @@ impl SettingsView {
             zone_focused: false,
             window_size: WindowSize::Large,
             picker: None,
-            _categories_row_clicked,
-            _payees_row_clicked,
-            _tags_row_clicked,
-            _documents_row_clicked,
-            _inventory_row_clicked,
-            _units_row_clicked,
+            _page_subscriptions,
         }
     }
 
-    pub(super) fn sources(&self) -> &SettingsSources {
-        &self.sources
+    pub(super) fn pages(&self) -> &SettingsPages {
+        &self.pages
     }
 
     /// The Accounts page's Entity, for the `accounts` command.
     pub fn accounts(&self) -> &Entity<AccountsPage> {
-        &self.sources.accounts
+        &self.pages.accounts
     }
 
     /// The Categories page's Entity, for the Settings snapshots.
     pub fn categories(&self) -> &Entity<CategoriesPage> {
-        &self.sources.categories
+        &self.pages.categories
     }
 
     /// The Payees page's Entity, for the Settings snapshots.
     pub fn payees(&self) -> &Entity<PayeesPage> {
-        &self.sources.payees
+        &self.pages.payees
     }
 
     /// The Tags page's Entity, for the `tags merge` command and the Settings snapshots.
     pub fn tags(&self) -> &Entity<TagsPage> {
-        &self.sources.tags
+        &self.pages.tags
     }
 
     /// The Document Types page's Entity, for the Settings snapshots.
     pub fn documents(&self) -> &Entity<DocumentsPage> {
-        &self.sources.documents
+        &self.pages.documents
     }
 
     /// The Inventory page's Entity, for the Settings snapshots.
     pub fn inventory(&self) -> &Entity<InventoryPage> {
-        &self.sources.inventory
+        &self.pages.inventory
     }
 
     /// The Display page's Entity, for the Settings snapshots.
     pub fn display_page(&self) -> &Entity<DisplayPage> {
-        &self.sources.display
+        &self.pages.display
     }
 
     /// The Units page's Entity, for the Settings snapshots.
     pub fn units(&self) -> &Entity<UnitsPage> {
-        &self.sources.units
+        &self.pages.units
     }
 
     /// The Tracing page's Entity, for `Shell`'s capture feed and the Settings snapshots.
     pub fn tracing(&self) -> &Entity<TracingPage> {
-        &self.sources.tracing
+        &self.pages.tracing
     }
 
     /// The Institutions page's Entity, for the Settings snapshots.
     pub fn institutions(&self) -> &Entity<InstitutionsPage> {
-        &self.sources.institutions
+        &self.pages.institutions
     }
 
-    /// The open page's own Entity while it has focus: the page, rather than this View, then takes
-    /// its keys, movement and status. `None` on the index and on a page this View drives.
-    fn focused_page(&self) -> Option<FocusedPage> {
-        if self.focus != SettingsFocus::Page {
-            return None;
+    /// The open page, while it has focus: the page, rather than this View, then takes its keys,
+    /// movement and status. `None` on the index.
+    fn focused_page(&self) -> Option<&dyn PageHandle> {
+        (self.focus == SettingsFocus::Page).then(|| self.pages.get(self.selected_section))
+    }
+
+    /// The space the pages are drawn in, as the pages are told it.
+    fn frame(&self) -> PageFrame {
+        PageFrame {
+            window_size: self.window_size,
+            body_width: f32::from(self.scroll_handle.bounds().size.width),
         }
-        match self.selected_section {
-            SettingsPage::Accounts => Some(FocusedPage::Accounts(self.sources.accounts.clone())),
-            SettingsPage::Categories => {
-                Some(FocusedPage::Categories(self.sources.categories.clone()))
-            }
-            SettingsPage::Payees => Some(FocusedPage::Payees(self.sources.payees.clone())),
-            SettingsPage::Tags => Some(FocusedPage::Tags(self.sources.tags.clone())),
-            SettingsPage::Documents => Some(FocusedPage::Documents(self.sources.documents.clone())),
-            SettingsPage::Inventory => Some(FocusedPage::Inventory(self.sources.inventory.clone())),
-            SettingsPage::Units => Some(FocusedPage::Units(self.sources.units.clone())),
-            SettingsPage::Institutions => {
-                Some(FocusedPage::Institutions(self.sources.institutions.clone()))
-            }
-            SettingsPage::Tracing => Some(FocusedPage::Tracing(self.sources.tracing.clone())),
-            _ => None,
+    }
+
+    /// Tells every page the frame, so a page acts on the layout on screen, not the one it last saw.
+    pub(super) fn sync_frame(&self, cx: &mut App) {
+        let frame = self.frame();
+        for page in self.pages.all() {
+            page.set_frame(frame, cx);
         }
     }
 
@@ -352,9 +163,7 @@ impl SettingsView {
     /// Medium draws.
     pub fn set_window_size(&mut self, window_size: WindowSize, cx: &mut Context<'_, Self>) {
         self.window_size = window_size;
-        self.sources
-            .units
-            .update(cx, |page, cx| page.set_window_size(window_size, cx));
+        self.sync_frame(cx);
         if window_size != WindowSize::Medium && self.picker.is_some() {
             self.close_picker(cx);
         }
@@ -373,10 +182,10 @@ impl SettingsView {
     // The interface `Shell` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// Settings' keys ahead of the router, in order: the Display page's controls and Colour Theme
-    /// grid, the focused page's keys (Tracing's among them), then the index-and-page focus keys. The Display page goes
-    /// first, since its `h`/`l` must win over the focus keys' `h`. `false` for any key none of them
-    /// takes. `Esc` is left to [`Self::escape`].
+    /// Settings' keys ahead of the router, in order: the focused page's keys (the Display page's
+    /// controls and Colour Theme grid and Tracing's among them), then the index-and-page focus
+    /// keys. The page goes first, since a page's `h`/`l` must win over the focus keys' `h`. `false`
+    /// for any key none of them takes. `Esc` is left to [`Self::escape`].
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "escape" {
             return false;
@@ -391,11 +200,11 @@ impl SettingsView {
             return true;
         }
         // The focused page goes before `focus_key`, which would otherwise move focus to the index
-        // on `left` before the page could fold its own tree.
-        let taken = self.display_key(keystroke, cx)
-            || self
-                .focused_page()
-                .is_some_and(|page| page.key_ahead(keystroke, cx))
+        // on `left` before the page could fold its own tree, or take the Display page's `h`.
+        self.sync_frame(cx);
+        let taken = self
+            .focused_page()
+            .is_some_and(|page| page.key_ahead(keystroke, cx))
             || self.focus_key(keystroke, cx);
         if taken {
             cx.notify();
@@ -418,10 +227,6 @@ impl SettingsView {
         {
             return;
         }
-        // A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does.
-        self.sources
-            .display
-            .update(cx, |page, cx| page.leave_grid(cx));
         if self.focus == SettingsFocus::Index
             && matches!(
                 movement,
@@ -435,8 +240,8 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// `Esc` closes what the open page has open, then leaves the Colour Theme grid for the
-    /// control above it, or the page for the index.
+    /// `Esc` closes what the open page has open (the Colour Theme grid among it), then leaves the
+    /// page for the index.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         if self.picker.is_some() {
             self.close_picker(cx);
@@ -446,12 +251,6 @@ impl SettingsView {
         if let Some(page) = self.focused_page()
             && page.escape(cx)
         {
-            return true;
-        }
-        if self.selected_section == SettingsPage::Display
-            && self.sources.display.update(cx, |page, cx| page.escape(cx))
-        {
-            cx.notify();
             return true;
         }
         if self.focus == SettingsFocus::Page {
@@ -483,32 +282,23 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// Opens the page that owns the record, with focus in it, and has its Entity show it.
+    /// Opens the page that owns the record, with focus in it, and has the page show it.
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        match reveal {
-            Reveal::Account(_) => {
-                self.open_page(SettingsPage::Accounts, cx);
-                self.sources
-                    .accounts
-                    .update(cx, |page, cx| page.reveal(reveal, cx));
-            }
-            Reveal::Payee(_) => {
-                self.open_page(SettingsPage::Payees, cx);
-                self.sources
-                    .payees
-                    .update(cx, |page, cx| page.reveal(reveal, cx));
-            }
+        let page = match reveal {
+            Reveal::Account(_) => SettingsPage::Accounts,
+            Reveal::Payee(_) => SettingsPage::Payees,
             // The rest belong to other Views.
             Reveal::AccountTransactions(_)
             | Reveal::Transaction(_)
             | Reveal::BillEntry(_)
             | Reveal::BillPlan(_)
-            | Reveal::BillsPeriod(_) => {}
-        }
+            | Reveal::BillsPeriod(_) => return,
+        };
+        self.open_page(page, cx);
+        self.pages.get(page).reveal(reveal, cx);
     }
 
-    /// The status line's legend for the index or the open page, and the page's scope note, or
-    /// the open page's own Entity's status. `None` while the View zone doesn't have focus.
+    /// The status line's legend for the index or the open page, and the page's scope note. `None` while the View zone doesn't have focus.
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         if !self.zone_focused {
             return None;
@@ -522,7 +312,7 @@ impl SettingsView {
         let mut status = match self.focused_page() {
             Some(page) => page.page_status(cx)?,
             None => PageStatus {
-                hints: self.hints(cx),
+                hints: settings_index_hints(),
                 right: self.selected_section.scope_note(),
             },
         };
@@ -535,42 +325,11 @@ impl SettingsView {
     /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
     /// page's.
     pub fn cheat_sheet(&self, cx: &App) -> Vec<(String, &'static str)> {
-        let page = match self.selected_section {
-            SettingsPage::Accounts => accounts_hints(),
-            SettingsPage::Categories => settings_categories_hints(),
-            SettingsPage::Tags => settings_tags_hints(),
-            SettingsPage::Documents => settings_documents_hints(),
-            SettingsPage::Payees => settings_payees_hints(),
-            SettingsPage::Inventory => self.sources.inventory.read(cx).hints(cx),
-            SettingsPage::Display => {
-                let mut keys = settings_display_hints();
-                keys.extend(settings_colour_grid_hints().into_iter().take(2));
-                keys
-            }
-            SettingsPage::Tracing => settings_tracing_hints(),
-            _ => settings_plain_page_hints(),
-        };
         settings_index_hints()
             .into_iter()
-            .chain(page)
+            .chain(self.pages.get(self.selected_section).hints(cx))
             .map(|(keys, action)| (action, keys))
             .collect()
-    }
-
-    /// The legend for Settings' current focus: the index rail's keys, or the open page's.
-    fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
-        if self.focus == SettingsFocus::Index {
-            return settings_index_hints();
-        }
-        match self.selected_section {
-            SettingsPage::Display
-                if self.sources.display.read(cx).colour_theme_focus().is_some() =>
-            {
-                settings_colour_grid_hints()
-            }
-            SettingsPage::Display => settings_display_hints(),
-            _ => settings_plain_page_hints(),
-        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -616,7 +375,7 @@ impl SettingsView {
         if changed {
             cx.emit(ViewEvent::SettingsPageChanged(section));
         }
-        self.sources
+        self.pages
             .display
             .update(cx, |page, cx| page.clear_focus(cx));
     }
@@ -630,7 +389,7 @@ impl SettingsView {
         }
         self.focus = SettingsFocus::Page;
         if self.selected_section == SettingsPage::Display {
-            self.sources
+            self.pages
                 .display
                 .update(cx, |page, cx| page.focus_first(cx));
         }
@@ -638,7 +397,7 @@ impl SettingsView {
 
     fn focus_index(&mut self, cx: &mut Context<'_, Self>) {
         self.focus = SettingsFocus::Index;
-        self.sources
+        self.pages
             .display
             .update(cx, |page, cx| page.clear_focus(cx));
         self.reveal_index_row();
@@ -783,7 +542,7 @@ impl SettingsView {
                 true
             }
             (SettingsFocus::Page, "h" | "left")
-                if self.sources.display.read(cx).colour_theme_focus().is_none() =>
+                if self.pages.display.read(cx).colour_theme_focus().is_none() =>
             {
                 self.focus_index(cx);
                 true
@@ -798,35 +557,14 @@ impl SettingsView {
 
     /// The Display Preferences, which the Display page owns (ADR-0037).
     pub fn display(&self, cx: &App) -> DisplayPreferences {
-        self.sources.display.read(cx).preferences()
+        self.pages.display.read(cx).preferences()
     }
 
     /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
     /// `Shell`, which made the change itself.
     pub fn set_display(&mut self, display: DisplayPreferences, cx: &mut Context<'_, Self>) {
-        self.sources
+        self.pages
             .display
             .update(cx, |page, cx| page.set_preferences(display, cx));
-    }
-
-    /// The Display page's keys while it has focus. Its `h` at the grid's first column leaves the
-    /// page for the index, the one focus change the page cannot make itself.
-    fn display_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if self.focus != SettingsFocus::Page || self.selected_section != SettingsPage::Display {
-            return false;
-        }
-        let body_width = f32::from(self.scroll_handle.bounds().size.width);
-        match self
-            .sources
-            .display
-            .update(cx, |page, cx| page.key(keystroke, body_width, cx))
-        {
-            DisplayKey::Unhandled => false,
-            DisplayKey::Handled => true,
-            DisplayKey::FocusIndex => {
-                self.focus_index(cx);
-                true
-            }
-        }
     }
 }

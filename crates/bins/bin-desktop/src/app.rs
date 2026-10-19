@@ -50,7 +50,6 @@ use commands::record_history;
 pub use key_dispatch::PENDING_G_TIMEOUT;
 use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
-use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
@@ -64,26 +63,16 @@ pub use snapshots::{
 use std::time::Duration;
 
 use crate::ledger_store::{LedgerStore, notify_on};
-use crate::settings::institutions::InstitutionsPage;
-use crate::settings::inventory::InventoryPage;
-use crate::settings::state::{SettingsSources, SettingsView};
-use crate::settings::units::UnitsPage;
-use crate::settings::{about::AboutPage, data_backup::DataBackupPage, sync_server::SyncServerPage};
+use crate::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    ScrollHandle, Subscription, Task,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
 };
 
 use lib_ledger::Ledger;
 use lib_toast::Toasts;
 
-use crate::settings::accounts::AccountsPage;
-use crate::settings::categories::CategoriesPage;
-use crate::settings::documents::DocumentsPage;
-use crate::settings::payees::{PayeesPage, PayeesSources};
-use crate::settings::tags::TagsPage;
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
@@ -99,14 +88,7 @@ use crate::{
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router,
     navigation::nav::{NavState, RailMode},
-    settings::tracing::{
-        TracingPage,
-        log::{LogView, TracingLevel},
-    },
-    settings::{
-        SettingsPage,
-        display::{DisplayPage, DisplayPreferences},
-    },
+    settings::{SettingsPage, display::DisplayPreferences},
     view::dashboard::state::{DashboardSources, DashboardView},
 };
 use lib_categories::Category;
@@ -188,84 +170,10 @@ impl Shell {
         let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
         let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
-        let categories_page = cx.new(|cx| CategoriesPage::new(ledger.clone(), today, cx));
-        let categories_page_subscription = Self::view_event_subscription(&categories_page, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let categories_page_observer = cx.observe(&categories_page, |_, _, cx| cx.notify());
-        let accounts_view = cx.new(|cx| AccountsPage::new(ledger.clone(), cx));
-        let accounts_subscription = Self::view_event_subscription(&accounts_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let accounts_view_observer = cx.observe(&accounts_view, |_, _, cx| cx.notify());
         let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
-        let payees_view = cx.new(|cx| {
-            PayeesPage::new(
-                PayeesSources {
-                    ledger: ledger.clone(),
-                },
-                cx,
-            )
-        });
-        let payees_view_subscription = Self::view_event_subscription(&payees_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
-        let tags_page = cx.new(|cx| TagsPage::new(ledger.clone(), cx));
-        let tags_page_subscription = Self::view_event_subscription(&tags_page, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let tags_page_observer = cx.observe(&tags_page, |_, _, cx| cx.notify());
-        let documents_page = cx.new(|cx| DocumentsPage::new(ledger.clone(), cx));
-        let documents_page_subscription = Self::view_event_subscription(&documents_page, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let documents_page_observer = cx.observe(&documents_page, |_, _, cx| cx.notify());
-        let inventory_page = cx.new(|cx| InventoryPage::new(ledger.clone(), cx));
-        let inventory_page_subscription = Self::view_event_subscription(&inventory_page, cx);
-        // The status line reads the page's state, so a change in it repaints `Shell` too.
-        let inventory_page_observer = cx.observe(&inventory_page, |_, _, cx| cx.notify());
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let display_page = cx.new(|_| DisplayPage::default());
-        let display_page_subscription = Self::view_event_subscription(&display_page, cx);
-        // The status line reads the page's focus, so a change in it repaints `Shell` too.
-        let display_page_observer = cx.observe(&display_page, |_, _, cx| cx.notify());
-        let units_page = cx.new(|cx| UnitsPage::new(ledger.clone(), cx));
-        let units_page_subscription = Self::view_event_subscription(&units_page, cx);
-        let institutions_page = cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx));
-        let institutions_page_subscription = Self::view_event_subscription(&institutions_page, cx);
-        let sync_server_page = cx.new(|_| SyncServerPage);
-        let sync_server_page_subscription = Self::view_event_subscription(&sync_server_page, cx);
-        let data_backup_page = cx.new(|_| DataBackupPage);
-        let data_backup_page_subscription = Self::view_event_subscription(&data_backup_page, cx);
-        let about_page = cx.new(|_| AboutPage);
-        // A private, empty capture until `set_log_capture` hands over the real one.
-        let tracing_page = cx.new(|_| {
-            TracingPage::new(
-                LogView::new(
-                    lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-                    TracingLevel::default(),
-                ),
-                ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
-            )
-        });
-        let tracing_page_subscription = Self::view_event_subscription(&tracing_page, cx);
-        let settings_view = cx.new(|cx| {
-            SettingsView::new(
-                SettingsSources {
-                    display: display_page,
-                    institutions: institutions_page,
-                    sync_server: sync_server_page,
-                    data_backup: data_backup_page,
-                    about: about_page,
-                    units: units_page,
-                    accounts: accounts_view,
-                    categories: categories_page,
-                    payees: payees_view,
-                    tags: tags_page,
-                    documents: documents_page,
-                    inventory: inventory_page,
-                    tracing: tracing_page,
-                },
-                cx,
-            )
-        });
+        let settings_view = cx.new(|cx| SettingsView::new(&ledger, today, cx));
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
@@ -374,8 +282,6 @@ impl Shell {
             view_subscriptions: vec![
                 dashboard_subscription,
                 dashboard_view_observer,
-                accounts_subscription,
-                accounts_view_observer,
                 budgets_subscription,
                 budgets_view_observer,
                 bills_subscription,
@@ -386,28 +292,11 @@ impl Shell {
                 documents_view_observer,
                 tags_subscription,
                 payees_changed,
-                payees_view_subscription,
-                payees_view_observer,
-                tags_page_subscription,
-                tags_page_observer,
-                documents_page_subscription,
-                documents_page_observer,
                 categories_subscription,
                 units_subscription,
                 accounts_changed,
-                units_page_subscription,
-                tracing_page_subscription,
-                display_page_subscription,
-                display_page_observer,
                 institutions_subscription,
-                institutions_page_subscription,
-                sync_server_page_subscription,
-                data_backup_page_subscription,
                 inventory_changed,
-                inventory_page_subscription,
-                inventory_page_observer,
-                categories_page_subscription,
-                categories_page_observer,
                 settings_subscription,
                 settings_view_observer,
             ],

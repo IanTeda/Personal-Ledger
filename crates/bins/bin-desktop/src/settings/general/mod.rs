@@ -5,4 +5,19 @@
 
 mod render;
 
-pub(crate) use render::render;
+use gpui::EventEmitter;
+
+use crate::{
+    settings::{SettingsPage, pages::Page},
+    view::event::ViewEvent,
+};
+
+impl EventEmitter<ViewEvent> for GeneralPage {}
+
+/// The General page. It holds no state: the values it shows are the mockup's own.
+#[derive(Debug, Default)]
+pub struct GeneralPage;
+
+impl Page for GeneralPage {
+    const PAGE: SettingsPage = SettingsPage::General;
+}
