@@ -45,10 +45,10 @@ The result:
 
 ## Closing or review
 
-On finishing, Claude either closes the ticket itself or gates it for your review. The ticket's `agent:*` label sets the starting risk; the finished diff can escalate it, never downgrade it.
+On finishing, Claude either closes the ticket itself or gates it for your review, decided by the tripwires below. The `agent:*` label picks the model, not the review.
 
-- **Close:** `agent:haiku-medium` or `agent:sonnet-low`, no tripwire fired, and you didn't ask to review first. The closing comment says why Claude closed it without review: the agent label, no tripwire, every acceptance criterion verified.
-- **Gate:** `agent:opus-*`, any tripwire, or you asked to review first. Claude swaps the state for `state:30-needs-review`, comments with the commit and each tripwire that fired, and opens the run's final message with `Needs human review: #<n>` and those tripwires. The ticket stays open.
+- **Close:** no tripwire fired, and you didn't ask to review first. The closing comment says why Claude closed it without review: no tripwire, every acceptance criterion verified.
+- **Gate:** any tripwire fired, or you asked to review first. Claude swaps the state for `state:30-needs-review`, comments with the commit and each tripwire that fired, and opens the run's final message with `Needs human review: #<n>` and those tripwires. The ticket stays open.
 
 Tripwires, checked against the commit's diff and the run; the paths for each are in [This project](#this-project):
 
