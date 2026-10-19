@@ -937,6 +937,11 @@ fn add_unit_walks_type_and_source_by_key_and_saves_the_link(app: &mut TestAppCon
     let mut ui = on_units(app);
 
     ui.click("settings-add-unit");
+    assert_eq!(
+        ui.dialog_value("quote").as_deref(),
+        Some("aud (base unit)"),
+        "Quoted in defaults to the base unit"
+    );
     ui.press("e t h");
     // Type: down steps the closed select straight through the Kinds to Crypto.
     ui.press("tab down");
@@ -957,14 +962,19 @@ fn add_unit_walks_type_and_source_by_key_and_saves_the_link(app: &mut TestAppCon
     assert_eq!(ui.dialog_value("symbol").as_deref(), Some("bit"));
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
+    let page = ui.settings_units();
     assert_eq!(
-        ui.settings_units().unit_links.last(),
+        page.unit_links.last(),
         Some(&(
             "eth".to_string(),
             "CoinGecko".to_string(),
             "bit".to_string(),
             "aud".to_string()
         ))
+    );
+    assert_eq!(
+        page.unit_rows.last().map(|row| row.2.as_str()),
+        Some("crypto")
     );
 }
 

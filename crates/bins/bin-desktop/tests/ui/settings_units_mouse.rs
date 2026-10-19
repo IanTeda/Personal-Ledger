@@ -795,13 +795,19 @@ fn add_unit_picks_a_source_and_quote_by_mouse_and_saves_the_link(app: &mut TestA
     ui.click("add-unit-symbol");
     ui.press("e t h");
     ui.click("add-unit-quote");
-    ui.click("add-unit-quote-option-0");
+    ui.click("add-unit-quote-option-1");
     ui.click("add-unit-confirm");
     assert_eq!(ui.dialog(), None);
-    let link = ui.settings_units().unit_links.last().cloned().unwrap();
+    let page = ui.settings_units();
+    let link = page.unit_links.last().cloned().unwrap();
     assert_eq!(link.0, "eth");
     assert_eq!(link.1, "CoinGecko");
     assert_eq!(link.2, "eth");
+    assert_eq!(link.3, page.unit_codes[1], "the quote Unit picked by click");
+    assert_eq!(
+        page.unit_rows.last().map(|row| row.2.as_str()),
+        Some("crypto")
+    );
 }
 
 #[gpui::test]

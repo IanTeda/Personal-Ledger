@@ -28,6 +28,9 @@ use crate::{
     theme::color,
 };
 
+/// The Symbol box holds a source's own id, so it is drawn in the monospace face.
+const MONOSPACE: &str = "monospace";
+
 /// The open Units Dialog. Edit and Delete carry the row's [`UnitId`], so the confirm knows which
 /// row to overwrite or remove even if the table shifts under the open Dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -363,7 +366,7 @@ fn symbol_field(
                 } else {
                     color::border(cx)
                 })
-                .font_family("monospace")
+                .font_family(MONOSPACE)
                 .text_size(px(13.0))
                 .text_color(text_color)
                 .on_click(move |_event, window, cx| on_click(window, cx))

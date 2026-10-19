@@ -73,11 +73,18 @@ impl UnitOptions {
         units: &[UnitRow],
         base_label: impl Fn(&str) -> String,
     ) -> Self {
-        let sources = lib_units::price_sources(records, manual_name)
+        let listed = lib_units::price_sources(records, manual_name);
+        // Manual entry is labelled first so a Custom source named the same takes the suffix.
+        let mut seen = vec![manual_name.to_string()];
+        let sources = listed
             .iter()
             .map(|source: &PriceSource<'_>| SourceOption {
                 id: source.id,
-                name: source.name.to_string(),
+                name: if source.id == MANUAL_ENTRY {
+                    manual_name.to_string()
+                } else {
+                    unique_label(source.name, &mut seen)
+                },
                 kinds: UnitKind::all()
                     .iter()
                     .copied()
@@ -88,6 +95,7 @@ impl UnitOptions {
         let base = lib_units::base_unit(units)
             .or(units.first())
             .map(|unit| unit.id);
+        let mut seen = Vec::new();
         let units = units
             .iter()
             .map(|unit| {
@@ -96,7 +104,7 @@ impl UnitOptions {
                 } else {
                     unit.code.clone()
                 };
-                (unit.id, label)
+                (unit.id, unique_label(&label, &mut seen))
             })
             .collect();
         Self {
@@ -136,6 +144,19 @@ impl UnitOptions {
             .find(|(unit, _)| *unit == id)
             .map(|(_, label)| label.as_str())
     }
+}
+
+/// `label`, suffixed ` (2)`, ` (3)`... when an earlier option already shows it. A select keeps its
+/// value as the option's label, so two options sharing one would resolve to the first.
+fn unique_label(label: &str, seen: &mut Vec<String>) -> String {
+    let mut candidate = label.to_string();
+    let mut n = 1;
+    while seen.contains(&candidate) {
+        n += 1;
+        candidate = format!("{label} ({n})");
+    }
+    seen.push(candidate.clone());
+    candidate
 }
 
 /// The Add/Edit unit dialogs' own live form state (issues #184/#185/#715) -- pure, `gpui`-free,
@@ -232,11 +253,9 @@ impl UnitForm {
         self.source.value().unwrap_or_default()
     }
 
-    /// The Link the form describes. A Manual entry link keeps no Symbol; with no Units at all
-    /// the quote is an id naming none, which Manual entry never reads.
-    pub fn link(&self) -> PriceLink {
-        let quote = self
-            .quote
+    /// The Unit the Quoted in select holds, or the base Unit while it holds none.
+    fn quote_id(&self) -> Option<UnitId> {
+        self.quote
             .value()
             .and_then(|label| {
                 self.options
@@ -246,7 +265,13 @@ impl UnitForm {
                     .map(|(id, _)| *id)
             })
             .or(self.options.base)
-            .unwrap_or_else(UnitId::new);
+    }
+
+    /// The Link the form describes. A Manual entry link keeps no Symbol and never reads its
+    /// quote, so with no Units at all it gets an id naming none; a fetching source with no quote
+    /// Unit makes the form invalid instead ([`Self::is_valid`]).
+    pub fn link(&self) -> PriceLink {
+        let quote = self.quote_id().unwrap_or_else(UnitId::new);
         match self.selected_source() {
             Some(source) if source.id != MANUAL_ENTRY => PriceLink {
                 source_id: source.id,
@@ -438,9 +463,11 @@ impl UnitForm {
 
     /// The README's own "Dialog lifecycle" row: "fill Code / Name / Type (all required)" --
     /// Type always has a value (a select can't be empty), so only Code/Name gate the Add/Save
-    /// button's enabled state.
+    /// button's enabled state -- plus a quote Unit for any source that fetches.
     pub fn is_valid(&self) -> bool {
-        !self.code.is_blank() && !self.name.is_blank()
+        !self.code.is_blank()
+            && !self.name.is_blank()
+            && (self.is_manual() || self.quote_id().is_some())
     }
 }
 
@@ -593,5 +620,76 @@ mod tests {
         assert!(!form.is_valid());
         form.focused_text().unwrap().push('b');
         assert!(form.is_valid());
+    }
+
+    #[test]
+    fn same_named_options_get_distinct_labels_that_resolve_to_their_own_ids() {
+        crate::locale::init_for_tests();
+        let custom = |name: &str| {
+            PriceSourceRecord::Custom(lib_units::CustomSource {
+                id: PriceSourceId::new(),
+                name: name.to_string(),
+                endpoint: lib_units::Endpoint {
+                    address: "https://example.test".into(),
+                    request: "/{symbol}".into(),
+                    price_path: "/price".into(),
+                    auth: lib_units::PriceSourceAuth::None,
+                },
+                updates: lib_units::Updates::ManualOnly,
+            })
+        };
+        let records = [custom("Manual entry"), custom("Manual entry")];
+        let units = lib_units::default_units(chrono::Utc::now());
+        let options = UnitOptions::new(&records, "Manual entry", &units, |code| code.to_string());
+        let mut form = UnitForm::new(&options);
+        assert_eq!(
+            form.options_for(UnitField::Source),
+            [
+                "Frankfurter",
+                "Manual entry",
+                "Manual entry (2)",
+                "Manual entry (3)"
+            ]
+        );
+        assert!(form.is_manual());
+        pick(&mut form, UnitField::Source, "Manual entry (3)");
+        assert!(!form.is_manual());
+        assert_eq!(form.link().source_id, records[1].id());
+    }
+
+    #[test]
+    fn custom_sources_are_listed_alphabetically_among_the_built_ins() {
+        crate::locale::init_for_tests();
+        let record = PriceSourceRecord::Custom(lib_units::CustomSource {
+            id: PriceSourceId::new(),
+            name: "alpha feed".to_string(),
+            endpoint: lib_units::Endpoint {
+                address: "https://example.test".into(),
+                request: "/{symbol}".into(),
+                price_path: "/price".into(),
+                auth: lib_units::PriceSourceAuth::None,
+            },
+            updates: lib_units::Updates::ManualOnly,
+        });
+        let units = lib_units::default_units(chrono::Utc::now());
+        let options = UnitOptions::new(&[record], "Manual entry", &units, |code| code.to_string());
+        let mut form = UnitForm::new(&options);
+        pick(&mut form, UnitField::Type, &UnitKind::Crypto.label());
+        assert_eq!(
+            form.options_for(UnitField::Source),
+            ["alpha feed", "CoinGecko", "Manual entry"]
+        );
+    }
+
+    #[test]
+    fn a_fetching_source_needs_a_quote_unit_to_be_valid() {
+        crate::locale::init_for_tests();
+        let options = UnitOptions::new(&[], "Manual entry", &[], |code| code.to_string());
+        let mut form = UnitForm::new(&options);
+        form.code = TextField::new("x");
+        form.name = TextField::new("x");
+        assert!(form.is_valid(), "Manual entry never reads its quote");
+        pick(&mut form, UnitField::Source, "Frankfurter");
+        assert!(!form.is_valid());
     }
 }
