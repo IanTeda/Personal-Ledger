@@ -19,3 +19,7 @@ ADR-0038 kept `Ledger` in memory and left its persistence port to research (#597
 
 - **A port per domain crate.** Rejected: it brings back the missing home for cross-domain writes that ADR-0038 removed, and puts I/O-shaped traits into crates that must stay I/O-free.
 - **Commands call the repository directly.** Rejected: every command test would need a fake repository, and the commands would become async.
+
+## Amendment: decided in ADR-0044
+
+The trait is synchronous, applied on a serial writer thread with optimistic writes, and the SQLite adapter is the `lib-ledger-sqlite` crate (#685, ADR-0044).

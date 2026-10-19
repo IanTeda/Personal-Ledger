@@ -10,4 +10,4 @@ Configuration narrows correspondingly to settings that must be readable before t
 
 ## Amendment: the default Unit is the base Unit
 
-The default Unit for new Accounts is no longer a Preference of its own. The Ledger holds one base Unit, and new Accounts default to it, so the Units page marks the base Unit alone and there is no separate default to set or to drift from it (#682, decided in the #684 grilling on the Settings › Units mockups). The base Unit is edited from the General page's *Base unit* field.
+The default Unit for new Accounts is no longer a Preference of its own. The Ledger holds one base Unit, and new Accounts default to it, so the Units page marks the base Unit alone and there is no separate default to set or to drift from it (#682, decided in the #684 grilling on the Settings › Units mockups). The base Unit is edited from the General page's *Base unit* field. The base Unit is stored in the one-row `ledger` table, and `preferences` no longer seeds a default Unit (ADR-0044).
