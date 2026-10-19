@@ -856,3 +856,46 @@ fn the_base_glyph_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
     ui.click("settings-index-Units");
     assert_eq!(ui.settings_units().base_code.as_deref(), Some("vas"));
 }
+
+#[gpui::test]
+fn deleting_the_base_unit_offers_a_new_base_and_moves_it_by_click(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units();
+    assert_eq!(before.base_code.as_deref(), Some("aud"));
+
+    row_action(&mut ui, "unit-row-0", "delete-unit");
+    let options = ui.dialog_value("new_base_options").unwrap_or_default();
+    let options: Vec<&str> = options.split('|').collect();
+    assert_eq!(options.len(), before.unit_codes.len() - 1);
+    assert!(!options.iter().any(|option| option.starts_with("aud")));
+
+    ui.click("delete-unit-new-base");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+    ui.click("delete-unit-new-base-option-1");
+    assert_eq!(
+        ui.dialog_value("new_base").as_deref(),
+        Some(options[1]),
+        "the clicked row is the new base"
+    );
+
+    for ch in "aud".chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.click("delete-unit-confirm");
+
+    let after = ui.settings_units();
+    assert_eq!(ui.dialog(), None);
+    assert!(!after.unit_codes.contains(&"aud".to_string()));
+    let new_base = after.base_code.expect("the Ledger still has a base Unit");
+    assert!(options[1].starts_with(&new_base));
+}
+
+#[gpui::test]
+fn deleting_a_unit_that_is_not_the_base_asks_for_no_new_base(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog_value("new_base_options").as_deref(), Some(""));
+}

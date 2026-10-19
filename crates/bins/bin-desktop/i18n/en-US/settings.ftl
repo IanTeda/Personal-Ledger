@@ -174,6 +174,8 @@ desktop-settings-units-delete-warning = This unit is referenced by { $accounts -
 
 desktop-settings-units-delete-held = { $name } · { $quantity } held in { $name } account
 desktop-settings-units-delete-confirm-label = Type { $code } to confirm
+desktop-settings-units-delete-new-base-label = New base unit
+desktop-settings-units-delete-new-base-help = { $code } is the base unit. Choose the unit that takes over before it is deleted.
 
 ## The Units detail pane docked at X-Large.
 

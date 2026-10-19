@@ -480,10 +480,79 @@ impl UnitForm {
 /// while this dialog is open. The code to type back is copied in when the dialog opens, so the
 /// form validates without reading `Shell`'s Units (the dialog is modal: they can't change under
 /// it).
+///
+/// Deleting the base Unit also asks for the Unit that takes over as base ([`NewBase`]), since the
+/// Ledger always has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteUnitForm {
     pub code: String,
     pub confirm_input: TextField,
+    pub new_base: Option<NewBase>,
+}
+
+/// The Delete unit dialog's "New base unit" select, over the Units that stay. The labels are
+/// copied in at open, like the code, so the form needs no Ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewBase {
+    candidates: Vec<(UnitId, String)>,
+    pub select: SelectState,
+}
+
+impl NewBase {
+    /// `candidates` are the Units that stay, by code; the first is chosen to start with.
+    pub fn new(candidates: Vec<(UnitId, String)>) -> Self {
+        let first = candidates.first().map(|(_, label)| label.clone());
+        Self {
+            candidates,
+            select: SelectState::new(first),
+        }
+    }
+
+    pub fn options(&self) -> Vec<String> {
+        self.candidates
+            .iter()
+            .map(|(_, label)| label.clone())
+            .collect()
+    }
+
+    /// The Unit the select is on, `None` only when there were no candidates.
+    pub fn chosen(&self) -> Option<UnitId> {
+        let value = self.select.value()?;
+        self.candidates
+            .iter()
+            .find(|(_, label)| label == value)
+            .map(|(id, _)| *id)
+    }
+
+    /// A key on the select: `Up`/`Down` move the highlight while open and the value while closed,
+    /// `Enter` opens it or takes the highlighted row.
+    pub fn handle_select_key(&mut self, key: SelectKey) {
+        let options = self.options();
+        match (key, self.select.is_open()) {
+            (SelectKey::Up, true) => self.select.move_highlight(&options, -1),
+            (SelectKey::Down, true) => self.select.move_highlight(&options, 1),
+            (SelectKey::Up, false) => self.select.step(&options, -1),
+            (SelectKey::Down, false) => self.select.step(&options, 1),
+            (SelectKey::Activate, true) => self.select.commit(&options),
+            (SelectKey::Activate, false) => self.select.open(&options),
+        }
+    }
+
+    /// A click on the closed field toggles its list.
+    pub fn click(&mut self) {
+        let options = self.options();
+        if self.select.is_open() {
+            self.select.cancel();
+        } else {
+            self.select.open(&options);
+        }
+    }
+
+    /// A click on row `index` of the open list.
+    pub fn choose(&mut self, index: usize) {
+        let options = self.options();
+        self.select.choose(&options, index);
+    }
 }
 
 impl DeleteUnitForm {
@@ -491,13 +560,26 @@ impl DeleteUnitForm {
         Self {
             code: code.into(),
             confirm_input: TextField::default(),
+            new_base: None,
+        }
+    }
+
+    /// The form for the base Unit, which also picks the Unit that takes over.
+    pub fn for_base(code: impl Into<String>, candidates: Vec<(UnitId, String)>) -> Self {
+        Self {
+            new_base: Some(NewBase::new(candidates)),
+            ..Self::new(code)
         }
     }
 
     /// The README's own "disabled until the typed value matches the code exactly" -- a plain
     /// case-sensitive `==`, not a trim/lowercase-tolerant comparison, per the ticket's own body.
     pub fn is_valid(&self) -> bool {
-        self.confirm_input.text() == self.code
+        let base_chosen = self
+            .new_base
+            .as_ref()
+            .is_none_or(|new_base| new_base.chosen().is_some());
+        base_chosen && self.confirm_input.text() == self.code
     }
 }
 

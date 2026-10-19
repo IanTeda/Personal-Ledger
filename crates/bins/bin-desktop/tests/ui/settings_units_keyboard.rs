@@ -1045,3 +1045,28 @@ fn the_base_glyph_follows_the_ledgers_base_unit(app: &mut TestAppContext) {
     assert_eq!(ui.settings().page, "Units");
     assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
 }
+
+#[gpui::test]
+fn deleting_the_base_unit_moves_the_base_with_up_and_down(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    row_action(&mut ui, "unit-row-0", "delete-unit");
+    let options = ui.dialog_value("new_base_options").unwrap_or_default();
+    let options: Vec<&str> = options.split('|').collect();
+    assert_eq!(
+        ui.dialog_value("new_base").as_deref(),
+        Some(options[0]),
+        "the first Unit that stays starts chosen"
+    );
+
+    ui.press("down");
+    assert_eq!(ui.dialog_value("new_base").as_deref(), Some(options[1]));
+    let chosen = ui.dialog_value("new_base").expect("a chosen base");
+
+    for ch in "aud".chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    let base = ui.settings_units().base_code.expect("a base Unit");
+    assert!(chosen.starts_with(&base));
+}

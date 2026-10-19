@@ -16,8 +16,9 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 #[error("unit not found")]
 pub struct UnitGone;
 
-/// Why an add or edit of a Unit was refused. Both only happen when something was removed while the
-/// Dialog was open.
+/// Why an add, edit or delete of a Unit was refused. The first two only happen when something was
+/// removed while the Dialog was open; the last two are a delete of the base Unit that names no
+/// Unit to take over as base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SaveUnitRefusal {
     /// The Unit being edited is gone. An add never refuses with this.
@@ -26,6 +27,12 @@ pub enum SaveUnitRefusal {
     /// The link names a Price Source that doesn't exist.
     #[error("price source not found")]
     PriceSourceGone,
+    /// The Unit being deleted is the base Unit and no new base was given: the Ledger always has one.
+    #[error("the base unit needs a new base unit before it can be deleted")]
+    BaseUnitNeeded,
+    /// The new base Unit is the Unit being deleted, or isn't on the Ledger.
+    #[error("new base unit not found")]
+    NewBaseGone,
 }
 
 impl From<UnitGone> for SaveUnitRefusal {
@@ -67,8 +74,30 @@ impl Ledger {
         Ok(())
     }
 
-    pub fn delete_unit(&mut self, id: UnitId) -> Result<UnitRow, UnitGone> {
-        let unit = remove_unit(&mut self.units, id).ok_or(UnitGone)?;
+    /// Deletes a Unit. The base Unit can only go together with a move to `new_base`, which is
+    /// checked before anything is written so the Ledger is never left without a base; for any other
+    /// Unit `new_base` is ignored.
+    pub fn delete_unit(
+        &mut self,
+        id: UnitId,
+        new_base: Option<UnitId>,
+    ) -> Result<UnitRow, SaveUnitRefusal> {
+        if self.unit(id).is_none() {
+            return Err(SaveUnitRefusal::UnitGone);
+        }
+        let moves_base = if id == self.base_unit {
+            let new_base = new_base.ok_or(SaveUnitRefusal::BaseUnitNeeded)?;
+            if new_base == id || self.unit(new_base).is_none() {
+                return Err(SaveUnitRefusal::NewBaseGone);
+            }
+            Some(new_base)
+        } else {
+            None
+        };
+        if let Some(new_base) = moves_base {
+            self.set_base_unit(new_base)?;
+        }
+        let unit = remove_unit(&mut self.units, id).ok_or(SaveUnitRefusal::UnitGone)?;
         self.pending.push(LedgerChange::DeleteUnit(id));
         Ok(unit)
     }
@@ -132,17 +161,19 @@ impl LedgerCommand for EditUnit {
     }
 }
 
-/// [`Ledger::delete_unit`] as a value; the outcome is the Unit removed.
+/// [`Ledger::delete_unit`] as a value; the outcome is the Unit removed. `new_base` is the Unit that
+/// becomes the base when `id` is the base, and is ignored otherwise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteUnit {
     pub id: UnitId,
+    pub new_base: Option<UnitId>,
 }
 
 impl LedgerCommand for DeleteUnit {
     type Outcome = UnitRow;
-    type Refusal = UnitGone;
-    fn run(self, ledger: &mut Ledger) -> Result<UnitRow, UnitGone> {
-        ledger.delete_unit(self.id)
+    type Refusal = SaveUnitRefusal;
+    fn run(self, ledger: &mut Ledger) -> Result<UnitRow, SaveUnitRefusal> {
+        ledger.delete_unit(self.id, self.new_base)
     }
 }
 
@@ -294,11 +325,87 @@ mod tests {
         let id = id_at(&ledger, 1);
         let count = ledger.units().len();
 
-        let removed = DeleteUnit { id }.run(&mut ledger).unwrap();
+        let removed = DeleteUnit { id, new_base: None }.run(&mut ledger).unwrap();
 
         assert_eq!(removed.id, id);
         assert_eq!(ledger.units().len(), count - 1);
         assert_eq!(ledger.drain_changes(), vec![LedgerChange::DeleteUnit(id)]);
+    }
+
+    #[test]
+    fn deleting_the_base_unit_moves_the_base_first_and_records_both() {
+        let mut ledger = Ledger::stub();
+
+        let removed = DeleteUnit {
+            id: UnitId::SEED_AUD,
+            new_base: Some(UnitId::SEED_BTC),
+        }
+        .run(&mut ledger)
+        .unwrap();
+
+        assert_eq!(removed.id, UnitId::SEED_AUD);
+        assert_eq!(ledger.base_unit(), UnitId::SEED_BTC);
+        assert!(ledger.base_unit_row().is_some());
+        assert_eq!(
+            ledger.drain_changes(),
+            vec![
+                LedgerChange::SetBaseUnit(UnitId::SEED_BTC),
+                LedgerChange::DeleteUnit(UnitId::SEED_AUD)
+            ]
+        );
+    }
+
+    #[test]
+    fn deleting_the_base_unit_without_a_new_base_is_refused_and_the_ledger_is_untouched() {
+        let mut ledger = Ledger::stub();
+        let before = ledger.units().to_vec();
+
+        assert_eq!(
+            DeleteUnit {
+                id: UnitId::SEED_AUD,
+                new_base: None
+            }
+            .run(&mut ledger),
+            Err(SaveUnitRefusal::BaseUnitNeeded)
+        );
+
+        assert_eq!(ledger.units(), before);
+        assert_eq!(ledger.base_unit(), UnitId::SEED_AUD);
+        assert!(ledger.drain_changes().is_empty());
+    }
+
+    #[test]
+    fn a_new_base_that_is_the_deleted_unit_or_unknown_is_refused() {
+        let mut ledger = Ledger::stub();
+        for new_base in [UnitId::SEED_AUD, UnitId::new()] {
+            assert_eq!(
+                DeleteUnit {
+                    id: UnitId::SEED_AUD,
+                    new_base: Some(new_base)
+                }
+                .run(&mut ledger),
+                Err(SaveUnitRefusal::NewBaseGone)
+            );
+        }
+        assert_eq!(ledger.base_unit(), UnitId::SEED_AUD);
+        assert!(ledger.unit(UnitId::SEED_AUD).is_some());
+        assert!(ledger.drain_changes().is_empty());
+    }
+
+    #[test]
+    fn a_new_base_is_ignored_when_the_deleted_unit_is_not_the_base() {
+        let mut ledger = Ledger::stub();
+        DeleteUnit {
+            id: UnitId::SEED_BTC,
+            new_base: Some(UnitId::SEED_VAS),
+        }
+        .run(&mut ledger)
+        .unwrap();
+        assert_eq!(ledger.base_unit(), UnitId::SEED_AUD);
+        assert_eq!(
+            ledger.drain_changes(),
+            vec![LedgerChange::DeleteUnit(UnitId::SEED_BTC)]
+        );
     }
 
     #[test]
@@ -307,8 +414,12 @@ mod tests {
         let before = ledger.units().to_vec();
 
         assert_eq!(
-            DeleteUnit { id: UnitId::new() }.run(&mut ledger),
-            Err(UnitGone)
+            DeleteUnit {
+                id: UnitId::new(),
+                new_base: None
+            }
+            .run(&mut ledger),
+            Err(SaveUnitRefusal::UnitGone)
         );
 
         assert_eq!(ledger.units(), before);
@@ -321,7 +432,7 @@ mod tests {
         ledger
             .add_unit("eth".into(), "Ethereum".into(), UnitKind::Crypto, manual())
             .unwrap();
-        assert!(ledger.delete_unit(UnitId::new()).is_err());
+        assert!(ledger.delete_unit(UnitId::new(), None).is_err());
         assert!(
             ledger
                 .edit_unit(
@@ -371,6 +482,7 @@ mod tests {
         let before = ledger.price_source_records().to_vec();
         DeleteUnit {
             id: id_at(&ledger, 1),
+            new_base: None,
         }
         .run(&mut ledger)
         .unwrap();

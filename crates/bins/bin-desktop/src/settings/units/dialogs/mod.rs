@@ -15,6 +15,7 @@ use lib_units::{UnitId, UnitRow};
 
 use self::sources::test_not_built;
 use super::form::{DeleteUnitForm, UnitField, UnitForm};
+use crate::form::select::SelectKey;
 use crate::{
     chrome::dialog_host::{
         Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
@@ -51,6 +52,10 @@ pub enum Change {
     Field(UnitField),
     /// A click on row `.1` of the open list behind select `.0`.
     Option(UnitField, usize),
+    /// A click on the Delete dialog's "New base unit" field.
+    NewBaseField,
+    /// A click on row `.0` of the Delete dialog's open "New base unit" list.
+    NewBaseOption(usize),
 }
 
 /// The handlers a Units Dialog binds: changes to the open form, cancel and confirm.
@@ -95,13 +100,23 @@ impl UnitsDialog {
         }
     }
 
-    /// Applies a click's change to the Add or Edit form; Delete has no field to click into.
+    /// Applies a click's change to the open form.
     pub fn apply_change(&mut self, change: Change) {
-        if let Self::Add(form) | Self::Edit(_, form) = self {
-            match change {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => match change {
                 Change::Field(field) if field.is_select() => form.click_select(field),
                 Change::Field(field) => form.focus(field),
                 Change::Option(field, index) => form.choose_option(field, index),
+                Change::NewBaseField | Change::NewBaseOption(_) => {}
+            },
+            Self::Delete(_, form) => {
+                if let Some(new_base) = form.new_base.as_mut() {
+                    match change {
+                        Change::NewBaseField => new_base.click(),
+                        Change::NewBaseOption(index) => new_base.choose(index),
+                        Change::Field(_) | Change::Option(..) => {}
+                    }
+                }
             }
         }
     }
@@ -111,7 +126,17 @@ impl Dialog for UnitsDialog {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => form.handle_own_key(key),
-            Self::Delete(..) => None,
+            Self::Delete(_, form) => {
+                let new_base = form.new_base.as_mut()?;
+                let key = match key {
+                    DialogKey::Up => SelectKey::Up,
+                    DialogKey::Down => SelectKey::Down,
+                    DialogKey::Enter if new_base.select.is_open() => SelectKey::Activate,
+                    _ => return None,
+                };
+                new_base.handle_select_key(key);
+                Some(DialogOutcome::Handled)
+            }
         }
     }
 
@@ -131,7 +156,11 @@ impl Dialog for UnitsDialog {
     fn close_open_select(&mut self) -> bool {
         match self {
             Self::Add(form) | Self::Edit(_, form) => form.close_open_select(),
-            Self::Delete(..) => false,
+            Self::Delete(_, form) => form.new_base.as_mut().is_some_and(|new_base| {
+                let open = new_base.select.is_open();
+                new_base.select.cancel();
+                open
+            }),
         }
     }
 
@@ -182,7 +211,31 @@ impl Dialog for UnitsDialog {
             }
             Self::Delete(_, form) => (
                 "DeleteUnit",
-                vec![("confirm", form.confirm_input.text().to_string())],
+                vec![
+                    ("confirm", form.confirm_input.text().to_string()),
+                    (
+                        "new_base",
+                        form.new_base
+                            .as_ref()
+                            .and_then(|new_base| new_base.select.value())
+                            .unwrap_or_default()
+                            .to_string(),
+                    ),
+                    (
+                        "new_base_options",
+                        form.new_base
+                            .as_ref()
+                            .map(|new_base| new_base.options().join("|"))
+                            .unwrap_or_default(),
+                    ),
+                    (
+                        "select_open",
+                        form.new_base
+                            .as_ref()
+                            .is_some_and(|new_base| new_base.select.is_open())
+                            .to_string(),
+                    ),
+                ],
             ),
         };
         Some(DialogReadback { kind, values })

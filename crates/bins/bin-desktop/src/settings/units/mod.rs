@@ -780,7 +780,27 @@ impl UnitsPage {
         let Some(row) = self.units(cx).get(index) else {
             return;
         };
-        let form = DeleteUnitForm::new(row.code.as_str());
+        let ledger = self.ledger.read(cx).ledger();
+        let form = if row.id == ledger.base_unit() {
+            let candidates = ledger
+                .units_by_code()
+                .into_iter()
+                .filter(|unit| unit.id != row.id)
+                .map(|unit| {
+                    let label = crate::msg::desktop_settings_general_base_unit_option(
+                        &unit.code, &unit.name,
+                    );
+                    (unit.id, label)
+                })
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                // The only Unit is the base: with nothing to take over, it can't be deleted.
+                return;
+            }
+            DeleteUnitForm::for_base(row.code.as_str(), candidates)
+        } else {
+            DeleteUnitForm::new(row.code.as_str())
+        };
         open_dialog(UnitsDialog::Delete(row.id, form), Self::land, cx);
     }
 

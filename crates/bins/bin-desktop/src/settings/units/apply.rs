@@ -10,7 +10,7 @@ use lib_ledger::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal};
 use lib_toast::ToastKind;
 use lib_units::{PriceLink, UnitId, UnitKind};
 
-use super::dialogs::UnitsDialog;
+use super::{dialogs::UnitsDialog, form::NewBase};
 use crate::{
     chrome::{
         dialog_apply::{self, Apply, DialogForm, FormError},
@@ -37,6 +37,8 @@ pub enum UnitsCommand {
     },
     Delete {
         id: UnitId,
+        /// The Unit that takes over as base, for the base Unit only.
+        new_base: Option<UnitId>,
     },
 }
 
@@ -87,7 +89,10 @@ impl DialogForm for UnitsDialog {
                 kind: form.selected_kind(),
                 link: form.link(),
             },
-            Self::Delete(id, _) => UnitsCommand::Delete { id: *id },
+            Self::Delete(id, form) => UnitsCommand::Delete {
+                id: *id,
+                new_base: form.new_base.as_ref().and_then(NewBase::chosen),
+            },
         })
     }
 
@@ -172,11 +177,10 @@ impl Apply<UnitsCommand> for UnitsApply {
                     })
                     .map(|()| UnitsOutcome::Saved { code: saved })
             }
-            UnitsCommand::Delete { id } => self
+            UnitsCommand::Delete { id, new_base } => self
                 .ledger
-                .update(cx, |store, cx| store.apply(cx, DeleteUnit { id }))
-                .map(|unit| UnitsOutcome::Deleted { code: unit.code })
-                .map_err(SaveUnitRefusal::from),
+                .update(cx, |store, cx| store.apply(cx, DeleteUnit { id, new_base }))
+                .map(|unit| UnitsOutcome::Deleted { code: unit.code }),
         }
     }
 }
@@ -206,8 +210,8 @@ mod tests {
     #[gpui::test]
     fn deleting_a_unit_needs_its_code_typed_and_reports_it(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let code = cx.read(|cx| apply.ledger.read(cx).ledger().units()[0].code.clone());
-        let mut dialog = UnitsDialog::Delete(UnitId::SEED_AUD, DeleteUnitForm::new(code.as_str()));
+        let code = cx.read(|cx| apply.ledger.read(cx).ledger().units()[1].code.clone());
+        let mut dialog = UnitsDialog::Delete(UnitId::SEED_BTC, DeleteUnitForm::new(code.as_str()));
         assert_eq!(
             dialog.command(),
             Err(FormError),
@@ -219,6 +223,28 @@ mod tests {
         }
         let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
         assert_eq!(outcome, Some(UnitsOutcome::Deleted { code }));
+    }
+
+    #[gpui::test]
+    fn deleting_the_base_unit_moves_the_base_to_the_chosen_unit(cx: &mut TestAppContext) {
+        let mut apply = apply(cx);
+        let candidates = vec![
+            (UnitId::SEED_BTC, "btc".to_string()),
+            (UnitId::SEED_VAS, "vas".to_string()),
+        ];
+        let mut form = DeleteUnitForm::for_base("aud", candidates);
+        form.confirm_input = TextField::new("aud");
+        form.new_base.as_mut().unwrap().choose(1);
+        let mut dialog = UnitsDialog::Delete(UnitId::SEED_AUD, form);
+
+        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
+
+        assert_eq!(outcome, Some(UnitsOutcome::Deleted { code: "aud".into() }));
+        cx.read(|cx| {
+            let ledger = apply.ledger.read(cx).ledger();
+            assert_eq!(ledger.base_unit(), UnitId::SEED_VAS);
+            assert!(ledger.unit(UnitId::SEED_AUD).is_none());
+        });
     }
 
     #[gpui::test]
@@ -288,7 +314,15 @@ mod tests {
     #[gpui::test]
     fn a_delete_of_a_unit_that_vanished_is_refused(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let refused = cx.update(|cx| apply.apply(UnitsCommand::Delete { id: UnitId::new() }, cx));
+        let refused = cx.update(|cx| {
+            apply.apply(
+                UnitsCommand::Delete {
+                    id: UnitId::new(),
+                    new_base: None,
+                },
+                cx,
+            )
+        });
         assert_eq!(refused, Err(SaveUnitRefusal::UnitGone));
     }
 
