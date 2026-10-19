@@ -10,6 +10,10 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[features]
+# Exposes `lib_ledger::contract`, the suite every `LedgerRepository` adapter runs in its own tests.
+contract-tests = []
+
 [dependencies]
 ## -- Internal Dependencies --
 lib_core = { path = "../lib-core" }
