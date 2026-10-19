@@ -55,7 +55,10 @@ pub use price_source_commands::{
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
 pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
-pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal, SetBaseUnit, UnitGone};
+pub use unit_commands::{
+    AddUnit, DeactivateUnit, DeleteUnit, EditUnit, ReactivateUnit, SaveUnitRefusal, SetBaseUnit,
+    SetUnitActiveRefusal, UnitGone, UnitUse,
+};
 
 use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
 use lib_accounts::{Account, default_accounts};

@@ -31,6 +31,8 @@ toast-tag-merged = Merged tag { $source } into { $target } · { $transactions ->
    *[other] { $transactions } transactions retagged
 }
 toast-unit-deleted = Deleted unit { $name }
+toast-unit-deactivated = Deactivated unit { $name }
+toast-unit-reactivated = Reactivated unit { $name }
 toast-price-source-saved = Saved price source { $name }
 toast-price-source-deleted = Deleted price source { $name }{ $moved ->
     [0] {""}

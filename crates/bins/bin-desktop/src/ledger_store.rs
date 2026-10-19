@@ -28,6 +28,21 @@ impl LedgerStore {
         &self.ledger
     }
 
+    /// Leaves no Unit in use, so a test can delete a seeded one.
+    #[doc(hidden)]
+    pub fn drop_unit_users_for_test(&mut self, cx: &mut Context<'_, Self>) {
+        self.ledger.drop_unit_users_for_test();
+        cx.emit(LedgerChanged {
+            what: BTreeSet::from([
+                Domain::Units,
+                Domain::Accounts,
+                Domain::Bills,
+                Domain::Budgets,
+            ]),
+        });
+        cx.notify();
+    }
+
     /// Runs any command: the Dialog host's `Apply` (ADR-0037). A refusal changes nothing and emits
     /// nothing; a landed command announces the domains its recorded changes touched. Nothing
     /// persists the changes until the repository is wired (#636), so they're dropped here.

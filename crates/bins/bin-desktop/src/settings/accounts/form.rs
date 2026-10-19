@@ -102,6 +102,11 @@ impl AccountOptions {
         self.unit_ids.get(index).copied()
     }
 
+    /// Read back by the UI tests, which can't see the select's list otherwise.
+    pub fn unit_codes(&self) -> &[String] {
+        &self.units
+    }
+
     /// The options behind `field`; empty for a text field.
     pub fn for_field(&self, field: AccountField) -> &[String] {
         match field {
@@ -366,6 +371,11 @@ impl AccountForm {
             "" => Some(Money(BigDecimal::from(0))),
             text => text.parse().ok(),
         }
+    }
+
+    /// The Unit codes the Unit select offers, for a test to read back.
+    pub fn unit_choices(&self) -> &[String] {
+        self.options.unit_codes()
     }
 
     /// The README's dialog lifecycle: Name, Type, Unit and Opening balance are required (Type and

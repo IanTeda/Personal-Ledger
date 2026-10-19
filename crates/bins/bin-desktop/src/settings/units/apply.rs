@@ -6,7 +6,7 @@
 //! on it stay on it), Delete "confirm -> remove + close".
 
 use gpui::{App, Entity};
-use lib_ledger::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal};
+use lib_ledger::{AddUnit, DeactivateUnit, DeleteUnit, EditUnit, ReactivateUnit, SaveUnitRefusal};
 use lib_toast::ToastKind;
 use lib_units::{PriceLink, UnitId, UnitKind};
 
@@ -40,6 +40,13 @@ pub enum UnitsCommand {
         /// The Unit that takes over as base, for the base Unit only.
         new_base: Option<UnitId>,
     },
+    /// What the Delete Dialog does for a Unit that is in use.
+    Deactivate {
+        id: UnitId,
+    },
+    Reactivate {
+        id: UnitId,
+    },
 }
 
 /// What a landed [`UnitsCommand`] did, for the Toast that follows it.
@@ -47,18 +54,20 @@ pub enum UnitsCommand {
 pub enum UnitsOutcome {
     Saved { code: String },
     Deleted { code: String },
+    Deactivated { code: String },
+    Reactivated { code: String },
 }
 
 impl UnitsOutcome {
-    /// The Toast raised once the Dialog has closed: only a delete has one.
+    /// The Toast raised once the Dialog has closed: a save has none.
     pub fn toast(&self) -> Option<(ToastKind, String)> {
-        match self {
-            Self::Saved { .. } => None,
-            Self::Deleted { code } => Some((
-                ToastKind::Success,
-                lib_locale::msg::toast_unit_deleted(code),
-            )),
-        }
+        let text = match self {
+            Self::Saved { .. } => return None,
+            Self::Deleted { code } => lib_locale::msg::toast_unit_deleted(code),
+            Self::Deactivated { code } => lib_locale::msg::toast_unit_deactivated(code),
+            Self::Reactivated { code } => lib_locale::msg::toast_unit_reactivated(code),
+        };
+        Some((ToastKind::Success, text))
     }
 }
 
@@ -89,6 +98,7 @@ impl DialogForm for UnitsDialog {
                 kind: form.selected_kind(),
                 link: form.link(),
             },
+            Self::Delete(id, form) if form.deactivates() => UnitsCommand::Deactivate { id: *id },
             Self::Delete(id, form) => UnitsCommand::Delete {
                 id: *id,
                 new_base: form.new_base.as_ref().and_then(NewBase::chosen),
@@ -96,9 +106,15 @@ impl DialogForm for UnitsDialog {
         })
     }
 
-    /// A refusal means the Unit row or its Price Source vanished under an open, valid form, so
-    /// there is nothing left for the form to correct: the Dialog stays open and `Esc` closes it.
-    fn refuse(&mut self, _refusal: SaveUnitRefusal) {}
+    /// A Unit that something names turns the Delete Dialog into the refusal, offering Deactivate.
+    /// Any other refusal means the Unit row or its Price Source vanished under an open, valid
+    /// form, so there is nothing left for the form to correct: the Dialog stays open and `Esc`
+    /// closes it.
+    fn refuse(&mut self, refusal: SaveUnitRefusal) {
+        if let (Self::Delete(_, form), SaveUnitRefusal::UnitInUse(uses)) = (self, refusal) {
+            form.use_instead(uses);
+        }
+    }
 }
 
 impl ConfirmDialog for UnitsDialog {
@@ -121,6 +137,13 @@ impl ConfirmDialog for UnitsDialog {
 /// Runs [`UnitsCommand`]s as `lib_ledger` commands.
 pub struct UnitsApply {
     pub ledger: Entity<LedgerStore>,
+}
+
+impl UnitsApply {
+    /// The code of Unit `id`, read before a write that keeps the row.
+    fn code_of(&self, id: UnitId, cx: &App) -> String {
+        self.ledger.read(cx).ledger().unit_code(id).to_string()
+    }
 }
 
 impl Apply<UnitsCommand> for UnitsApply {
@@ -181,6 +204,20 @@ impl Apply<UnitsCommand> for UnitsApply {
                 .ledger
                 .update(cx, |store, cx| store.apply(cx, DeleteUnit { id, new_base }))
                 .map(|unit| UnitsOutcome::Deleted { code: unit.code }),
+            UnitsCommand::Deactivate { id } => {
+                let code = self.code_of(id, cx);
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, DeactivateUnit(id)))
+                    .map(|()| UnitsOutcome::Deactivated { code })
+                    .map_err(SaveUnitRefusal::from)
+            }
+            UnitsCommand::Reactivate { id } => {
+                let code = self.code_of(id, cx);
+                self.ledger
+                    .update(cx, |store, cx| store.apply(cx, ReactivateUnit(id)))
+                    .map(|()| UnitsOutcome::Reactivated { code })
+                    .map_err(SaveUnitRefusal::from)
+            }
         }
     }
 }

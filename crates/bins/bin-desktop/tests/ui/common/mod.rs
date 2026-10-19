@@ -232,6 +232,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Leaves no Unit in use, so a seeded Unit can be deleted rather than deactivated.
+    pub fn drop_unit_users(&mut self) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.drop_unit_users_for_test(cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// The Noun the Shell is showing.
     pub fn noun(&mut self) -> Noun {
         self.read(|shell| shell.nav().noun())

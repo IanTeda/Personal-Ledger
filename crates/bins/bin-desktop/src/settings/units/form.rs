@@ -1,6 +1,7 @@
 //! The Add, Edit and Delete unit dialogs' live form state -- pure, `gpui`-free; `Shell`'s Dialog
 //! host holds it inside [`UnitsDialog`](super::dialogs::UnitsDialog) and `dialogs/` draws it.
 
+use lib_ledger::UnitUse;
 use lib_locale::Label;
 use lib_units::{
     MANUAL_ENTRY, PriceLink, PriceSource, PriceSourceId, PriceSourceRecord, UnitId, UnitKind,
@@ -488,6 +489,11 @@ pub struct DeleteUnitForm {
     pub code: String,
     pub confirm_input: TextField,
     pub new_base: Option<NewBase>,
+    /// What names the Unit, once something does: the Dialog then says why it can't be deleted and
+    /// offers to deactivate it instead.
+    pub in_use: Option<UnitUse>,
+    /// Whether the Unit is the base Unit, which can't be deactivated either.
+    pub is_base: bool,
 }
 
 /// The Delete unit dialog's "New base unit" select, over the Units that stay. The labels are
@@ -561,6 +567,8 @@ impl DeleteUnitForm {
             code: code.into(),
             confirm_input: TextField::default(),
             new_base: None,
+            in_use: None,
+            is_base: false,
         }
     }
 
@@ -568,13 +576,29 @@ impl DeleteUnitForm {
     pub fn for_base(code: impl Into<String>, candidates: Vec<(UnitId, String)>) -> Self {
         Self {
             new_base: Some(NewBase::new(candidates)),
+            is_base: true,
             ..Self::new(code)
         }
+    }
+
+    /// Turns the form into the refusal: `uses` names the Unit, so it is deactivated rather than
+    /// deleted. No typed code is asked for, since deactivating loses nothing.
+    pub fn use_instead(&mut self, uses: UnitUse) {
+        self.in_use = Some(uses);
+        self.new_base = None;
+    }
+
+    /// Whether confirming deactivates the Unit instead of deleting it.
+    pub fn deactivates(&self) -> bool {
+        self.in_use.is_some()
     }
 
     /// The README's own "disabled until the typed value matches the code exactly" -- a plain
     /// case-sensitive `==`, not a trim/lowercase-tolerant comparison, per the ticket's own body.
     pub fn is_valid(&self) -> bool {
+        if self.deactivates() {
+            return !self.is_base;
+        }
         let base_chosen = self
             .new_base
             .as_ref()
@@ -801,5 +825,34 @@ mod tests {
         // Changing Type is what re-filters, and then the source falls back.
         pick(&mut form, UnitField::Type, &UnitKind::Equity.label());
         assert!(form.is_manual());
+    }
+
+    #[test]
+    fn a_delete_form_turned_into_the_refusal_deactivates_and_needs_no_typed_code() {
+        let mut form = DeleteUnitForm::new("btc");
+        assert!(!form.deactivates());
+        assert!(!form.is_valid(), "deleting asks for the code");
+
+        form.use_instead(UnitUse {
+            accounts: 1,
+            ..UnitUse::default()
+        });
+
+        assert!(form.deactivates());
+        assert!(form.is_valid());
+    }
+
+    #[test]
+    fn the_base_unit_in_use_cannot_confirm_a_deactivate_and_drops_its_new_base_select() {
+        let mut form = DeleteUnitForm::for_base("aud", vec![(UnitId::SEED_BTC, "btc".to_string())]);
+        assert!(form.new_base.is_some());
+
+        form.use_instead(UnitUse {
+            accounts: 3,
+            ..UnitUse::default()
+        });
+
+        assert!(form.new_base.is_none());
+        assert!(!form.is_valid());
     }
 }

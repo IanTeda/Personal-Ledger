@@ -189,6 +189,7 @@ fn the_delete_unit_confirm_button_refuses_until_the_code_is_typed_back(app: &mut
 #[gpui::test]
 fn the_delete_unit_confirm_button_removes_the_row_once_the_code_matches(app: &mut TestAppContext) {
     let mut ui = on_units(app);
+    ui.drop_unit_users();
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
@@ -262,6 +263,7 @@ fn at_x_large_a_unit_without_a_source_offers_to_add_one(app: &mut TestAppContext
 #[gpui::test]
 fn at_x_large_a_confirmed_delete_lands_in_activity_and_raises_no_toast(app: &mut TestAppContext) {
     let mut ui = on_units_xlarge(app);
+    ui.drop_unit_users();
     ui.click("unit-row-1");
     ui.click("units-pane-delete-unit");
     for ch in "btc".chars() {
@@ -860,6 +862,7 @@ fn the_base_glyph_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
 #[gpui::test]
 fn deleting_the_base_unit_offers_a_new_base_and_moves_it_by_click(app: &mut TestAppContext) {
     let mut ui = on_units(app);
+    ui.drop_unit_users();
     let before = ui.settings_units();
     assert_eq!(before.base_code.as_deref(), Some("aud"));
 
@@ -898,4 +901,59 @@ fn deleting_a_unit_that_is_not_the_base_asks_for_no_new_base(app: &mut TestAppCo
 
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.dialog_value("new_base_options").as_deref(), Some(""));
+}
+
+#[gpui::test]
+fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    ui.click("delete-unit-confirm");
+
+    let page = ui.settings_units();
+    assert_eq!(ui.dialog(), None);
+    assert!(page.unit_codes.contains(&"btc".to_string()));
+    assert_eq!(page.inactive_codes, vec!["btc".to_string()]);
+}
+
+#[gpui::test]
+fn only_a_deactivated_unit_has_reactivate_in_its_menu_and_clicking_it_reactivates(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.right_click("unit-row-1");
+    let (_, entries) = menu(&mut ui).expect("the row menu is open");
+    assert!(!entries.contains(&"reactivate-unit".to_string()));
+    ui.press("escape");
+
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+    ui.click("delete-unit-confirm");
+    ui.right_click("unit-row-1");
+    let (_, entries) = menu(&mut ui).expect("the row menu is open");
+    assert!(entries.contains(&"reactivate-unit".to_string()));
+
+    ui.click("settings-units-menu-reactivate-unit");
+    assert!(ui.settings_units().inactive_codes.is_empty());
+}
+
+#[gpui::test]
+fn at_x_large_the_pane_reactivates_a_deactivated_unit(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("unit-row-1");
+    assert!(!ui.is_drawn("units-pane-reactivate-unit"));
+    ui.click("units-pane-delete-unit");
+    ui.click("delete-unit-confirm");
+    assert_eq!(ui.settings_units().inactive_codes, vec!["btc".to_string()]);
+    assert_eq!(
+        ui.settings_units().activity,
+        vec!["Deactivated unit btc".to_string()]
+    );
+
+    ui.click("units-pane-reactivate-unit");
+    assert!(ui.settings_units().inactive_codes.is_empty());
+    assert_eq!(
+        ui.settings_units().activity.first().map(String::as_str),
+        Some("Reactivated unit btc")
+    );
 }

@@ -373,6 +373,7 @@ fn row(
         color::faint_text(cx)
     };
     let id = unit.id;
+    let active = unit.is_active;
     let RowHandlers { select, edit, menu } = handlers;
     row_frame(
         SharedString::from(format!("unit-row-{index}")),
@@ -388,6 +389,8 @@ fn row(
         move |position, window, cx| menu(MenuTarget::Unit(id), position, window, cx),
         cx,
     )
+    // A deactivated Unit stays listed, dimmed and tagged, rather than hidden.
+    .when(!active, |this| this.opacity(0.55))
     .child(
         div()
             .w(GLYPH_WIDTH)
@@ -409,7 +412,26 @@ fn row(
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .child(unit.code.clone()),
     )
-    .child(div().flex_1().child(unit.name.clone()))
+    .child(
+        div()
+            .flex_1()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .child(unit.name.clone())
+            .when(!active, |this| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .px(px(6.0))
+                        .py(px(1.0))
+                        .border_1()
+                        .text_size(px(10.0))
+                        .text_color(muted)
+                        .child(crate::msg::desktop_settings_units_inactive()),
+                )
+            }),
+    )
     .child(
         div()
             .w(TYPE_WIDTH)
@@ -548,38 +570,40 @@ fn row_menu(
     cx: &App,
 ) -> AnyElement {
     let hover = color::hover(cx);
-    let items = MenuAction::for_target(menu.target).iter().map(|&action| {
-        let on_action = on_action.clone();
-        let id = SharedString::from(format!("settings-units-menu-{}", action.slug()));
-        let item = div()
-            .debug_selector({
-                let id = id.clone();
-                move || id.to_string()
-            })
-            .id(id)
-            .cursor_pointer()
-            .py(px(7.0))
-            .px(px(12.0))
-            .text_size(px(12.5))
-            .text_color(if action.is_destructive() {
-                color::accent_text(cx)
+    let items = MenuAction::for_target(menu.target, menu.unit_inactive)
+        .iter()
+        .map(|&action| {
+            let on_action = on_action.clone();
+            let id = SharedString::from(format!("settings-units-menu-{}", action.slug()));
+            let item = div()
+                .debug_selector({
+                    let id = id.clone();
+                    move || id.to_string()
+                })
+                .id(id)
+                .cursor_pointer()
+                .py(px(7.0))
+                .px(px(12.0))
+                .text_size(px(12.5))
+                .text_color(if action.is_destructive() {
+                    color::accent_text(cx)
+                } else {
+                    color::foreground(cx)
+                })
+                .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
+                .on_click(move |_event, window, cx| on_action(action, window, cx))
+                .child(action.label());
+            if action.is_destructive() {
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().h(px(1.0)).my(px(4.0)).bg(color::hairline(cx)))
+                    .child(item)
+                    .into_any_element()
             } else {
-                color::foreground(cx)
-            })
-            .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
-            .on_click(move |_event, window, cx| on_action(action, window, cx))
-            .child(action.label());
-        if action.is_destructive() {
-            div()
-                .flex()
-                .flex_col()
-                .child(div().h(px(1.0)).my(px(4.0)).bg(color::hairline(cx)))
-                .child(item)
-                .into_any_element()
-        } else {
-            item.into_any_element()
-        }
-    });
+                item.into_any_element()
+            }
+        });
     gpui::deferred(
         gpui::anchored()
             .position(menu.position)
@@ -802,10 +826,10 @@ fn unit_group(
     let base = page
         .base_unit(cx)
         .map_or_else(|| unit.code.clone(), |row| row.code.clone());
-    let flags = if page.is_base(unit, cx) {
-        crate::msg::desktop_settings_units_flag_base()
-    } else {
-        crate::msg::desktop_settings_units_pane_none()
+    let flags = match (page.is_base(unit, cx), unit.is_active) {
+        (true, _) => crate::msg::desktop_settings_units_flag_base(),
+        (false, false) => crate::msg::desktop_settings_units_inactive(),
+        (false, true) => crate::msg::desktop_settings_units_pane_none(),
     };
     let index = page.selected_index(cx).unwrap_or_default();
     let accounts = page.accounts_in(unit, cx);
@@ -849,22 +873,34 @@ fn unit_group(
             ),
             cx,
         ))
-        .child(button_row([
-            pane_button(
-                "units-pane-edit-unit",
-                crate::msg::desktop_settings_units_pane_edit_unit(),
-                row_click(entity, index, UnitsPage::click_edit),
-                cx,
-            )
-            .into_any_element(),
-            pane_button(
-                "units-pane-delete-unit",
-                crate::msg::desktop_settings_units_pane_delete_unit(),
-                row_click(entity, index, UnitsPage::click_delete),
-                cx,
-            )
-            .into_any_element(),
-        ]));
+        .child(button_row(
+            [
+                pane_button(
+                    "units-pane-edit-unit",
+                    crate::msg::desktop_settings_units_pane_edit_unit(),
+                    row_click(entity, index, UnitsPage::click_edit),
+                    cx,
+                )
+                .into_any_element(),
+                pane_button(
+                    "units-pane-delete-unit",
+                    crate::msg::desktop_settings_units_pane_delete_unit(),
+                    row_click(entity, index, UnitsPage::click_delete),
+                    cx,
+                )
+                .into_any_element(),
+            ]
+            .into_iter()
+            .chain((!unit.is_active).then(|| {
+                pane_button(
+                    "units-pane-reactivate-unit",
+                    crate::msg::desktop_settings_units_pane_reactivate_unit(),
+                    row_click(entity, index, UnitsPage::click_reactivate),
+                    cx,
+                )
+                .into_any_element()
+            })),
+        ));
     pane_group(
         crate::msg::desktop_settings_units_pane_unit(),
         body,
@@ -906,7 +942,7 @@ fn price_source_group(
 /// The source's own menu entries as buttons (Test, Edit source and, for a Custom source, Delete
 /// source), running the handlers the keys and menu use.
 fn source_buttons(row: &SourceRow, entity: &Entity<UnitsPage>, cx: &App) -> impl IntoElement {
-    let buttons = MenuAction::for_target(MenuTarget::Source(row.id, row.kind))
+    let buttons = MenuAction::for_target(MenuTarget::Source(row.id, row.kind), false)
         .iter()
         .filter_map(|action| {
             let (id, label, on_click) = match action {
@@ -928,7 +964,9 @@ fn source_buttons(row: &SourceRow, entity: &Entity<UnitsPage>, cx: &App) -> impl
                     crate::msg::desktop_settings_units_pane_delete_source(),
                     source_click(entity, row.id, UnitsPage::delete_source),
                 ),
-                MenuAction::EditUnit | MenuAction::DeleteUnit => return None,
+                MenuAction::EditUnit | MenuAction::DeleteUnit | MenuAction::ReactivateUnit => {
+                    return None;
+                }
             };
             Some(pane_button(id, label, on_click, cx).into_any_element())
         })

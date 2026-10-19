@@ -42,6 +42,7 @@ impl GeneralPage {
             .ledger()
             .units_by_code()
             .into_iter()
+            .filter(|unit| unit.is_active)
             .map(|unit| (unit.id, unit.code.clone(), unit.name.clone()))
             .collect()
     }

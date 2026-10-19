@@ -152,6 +152,7 @@ desktop-settings-units-column-price-source = Price source
 desktop-settings-units-legend-base = base unit
 desktop-settings-units-menu-edit-unit = Edit unit…
 desktop-settings-units-menu-delete-unit = Delete unit…
+desktop-settings-units-menu-reactivate-unit = Reactivate unit
 desktop-settings-units-menu-test-source = Test price source
 desktop-settings-units-menu-edit-source = Edit price source…
 desktop-settings-units-menu-delete-source = Delete price source…
@@ -175,6 +176,26 @@ desktop-settings-units-delete-warning = This unit is referenced by { $accounts -
 desktop-settings-units-delete-held = { $name } · { $quantity } held in { $name } account
 desktop-settings-units-delete-confirm-label = Type { $code } to confirm
 desktop-settings-units-delete-new-base-label = New base unit
+desktop-settings-units-deactivate =
+    .title = Deactivate unit — { $code }
+    .submit = Deactivate unit
+
+desktop-settings-units-in-use = { $code } is used by { $uses }, so it can't be deleted.
+desktop-settings-units-in-use-accounts = { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+}
+desktop-settings-units-in-use-bill-plans = { $count ->
+    [one] { $count } bill plan
+   *[other] { $count } bill plans
+}
+desktop-settings-units-in-use-budgets = { $count ->
+    [one] { $count } budget
+   *[other] { $count } budgets
+}
+desktop-settings-units-in-use-help = Deactivating it keeps it on those and hides it from the unit pickers. You can reactivate it later.
+desktop-settings-units-in-use-base = It is also the base unit, so it stays active until another unit takes over as base on the General page.
+desktop-settings-units-inactive = inactive
 desktop-settings-units-delete-new-base-help = { $code } is the base unit. Choose the unit that takes over before it is deleted.
 
 ## The Units detail pane docked at X-Large.
@@ -196,6 +217,7 @@ desktop-settings-units-pane-title = { $code } · { $name }
 desktop-settings-units-pane-meta = { $kind } · valued in { $base }
 desktop-settings-units-pane-edit-unit = Edit unit
 desktop-settings-units-pane-delete-unit = Delete unit
+desktop-settings-units-pane-reactivate-unit = Reactivate unit
 desktop-settings-units-pane-test = Test
 desktop-settings-units-pane-edit-source = Edit source
 desktop-settings-units-pane-delete-source = Delete source
@@ -220,6 +242,8 @@ desktop-settings-units-pane-activity = Activity
 desktop-settings-units-pane-activity-note = This session's Units outcomes, newest first. Errors still toast.
 desktop-settings-units-activity-saved = Saved unit { $code }
 desktop-settings-units-activity-deleted = Deleted unit { $code }
+desktop-settings-units-activity-deactivated = Deactivated unit { $code }
+desktop-settings-units-activity-reactivated = Reactivated unit { $code }
 desktop-settings-units-activity-source-saved = Saved price source { $name }
 desktop-settings-units-activity-source-deleted = Deleted price source { $name }
 

@@ -259,3 +259,31 @@ fn the_status_line_shows_the_page_legend_and_the_account_count(app: &mut TestApp
     let accounts = ui.settings_accounts().account_names.len();
     assert!(right.contains(&accounts.to_string()), "{right}");
 }
+
+#[gpui::test]
+fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    ui.press("n");
+    let offered = ui.dialog_value("unit_options").unwrap_or_default();
+    assert!(offered.split('|').any(|code| code == "btc"));
+    ui.press("escape");
+
+    // Deactivate btc from the Units page: it is in use by an Account, so Delete offers it.
+    ui.press("escape");
+    ui.press("k k");
+    assert_eq!(ui.settings().page, "Units");
+    ui.press("l");
+    ui.press("j");
+    ui.press("d");
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    ui.press("enter");
+    ui.press("escape");
+    ui.press("j j");
+    assert_eq!(ui.settings().page, "Accounts");
+    ui.press("l");
+    ui.press("n");
+
+    let offered = ui.dialog_value("unit_options").unwrap_or_default();
+    assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
+    assert!(offered.split('|').any(|code| code == "aud"));
+}

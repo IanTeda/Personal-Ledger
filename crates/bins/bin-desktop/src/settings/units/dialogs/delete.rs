@@ -19,6 +19,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use lib_ledger::UnitUse;
 use lib_units::UnitRow;
 
 use super::{Change, UnitsDialogHandlers};
@@ -38,6 +39,9 @@ pub fn render(
     handlers: UnitsDialogHandlers,
     cx: &App,
 ) -> AnyElement {
+    if let Some(uses) = form.in_use {
+        return render_in_use(row, form, uses, handlers, cx);
+    }
     let code = row.code.as_str();
     let card = div()
         .flex()
@@ -66,6 +70,84 @@ pub fn render(
         ));
 
     dialog::overlay(dialog::WIDTH, true, card, cx)
+}
+
+/// The refusal: a Unit that an Account, a Bill Plan or a Budget names can't be deleted, so the
+/// Dialog says what names it and offers Deactivate on the neutral chrome. Deactivating loses
+/// nothing, so it asks for no typed code; the base Unit can't be deactivated, so its confirm stays
+/// disabled and the note says what to do first.
+fn render_in_use(
+    row: &UnitRow,
+    form: &DeleteUnitForm,
+    uses: UnitUse,
+    handlers: UnitsDialogHandlers,
+    cx: &App,
+) -> AnyElement {
+    let code = row.code.as_str();
+    let part = |count: usize, message: fn(i64) -> String| {
+        (count > 0).then(|| message(i64::try_from(count).unwrap_or(i64::MAX)))
+    };
+    let named = [
+        part(
+            uses.accounts,
+            crate::msg::desktop_settings_units_in_use_accounts,
+        ),
+        part(
+            uses.bill_plans,
+            crate::msg::desktop_settings_units_in_use_bill_plans,
+        ),
+        part(
+            uses.budgets,
+            crate::msg::desktop_settings_units_in_use_budgets,
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(", ");
+    let note = |text: String| {
+        div()
+            .text_size(px(11.5))
+            .text_color(color::muted(cx))
+            .child(text)
+            .into_any_element()
+    };
+    let mut fields = vec![
+        div()
+            .text_size(px(13.0))
+            .child(crate::msg::desktop_settings_units_in_use(code, &named))
+            .into_any_element(),
+        note(crate::msg::desktop_settings_units_in_use_help()),
+    ];
+    if form.is_base {
+        fields.push(note(crate::msg::desktop_settings_units_in_use_base()));
+    }
+    let card = div()
+        .flex()
+        .flex_col()
+        .child(dialog::header(
+            crate::msg::desktop_settings_units_deactivate_title(code),
+            false,
+            cx,
+        ))
+        .child(dialog::body(fields))
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-unit-cancel", handlers.on_cancel, cx)
+                    .into_any_element(),
+                dialog::confirm_button(
+                    "delete-unit-confirm",
+                    crate::msg::desktop_settings_units_deactivate_submit(),
+                    form.is_valid(),
+                    false,
+                    handlers.on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
+    dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
 fn fields(

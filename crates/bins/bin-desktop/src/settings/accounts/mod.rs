@@ -72,8 +72,14 @@ pub fn group_labels() -> Vec<String> {
 }
 
 /// The three selects' option lists, read live from Settings (so an institution added there
-/// appears in the Accounts dialogs) and the fixed type order.
-pub fn dialog_options(ledger: &Entity<LedgerStore>, cx: &App) -> AccountOptions {
+/// appears in the Accounts dialogs) and the fixed type order. A deactivated Unit is left out of the Unit
+/// picker, except `keep`: the Unit an Account being edited is already on, so its read-only Unit
+/// field still resolves.
+pub fn dialog_options(
+    ledger: &Entity<LedgerStore>,
+    keep: Option<lib_core::UnitId>,
+    cx: &App,
+) -> AccountOptions {
     AccountOptions::new(
         ledger
             .read(cx)
@@ -87,6 +93,7 @@ pub fn dialog_options(ledger: &Entity<LedgerStore>, cx: &App) -> AccountOptions 
             .ledger()
             .units()
             .iter()
+            .filter(|unit| unit.is_active || Some(unit.id) == keep)
             .map(|unit| (unit.id, unit.code.clone()))
             .collect(),
     )
@@ -278,15 +285,15 @@ impl AccountsPage {
     // Dialogs and the `accounts` command
     // -----------------------------------------------------------------------------------------
 
-    fn dialog_options(&self, cx: &App) -> AccountOptions {
-        dialog_options(&self.ledger, cx)
+    fn dialog_options(&self, keep: Option<lib_core::UnitId>, cx: &App) -> AccountOptions {
+        dialog_options(&self.ledger, keep, cx)
     }
 
     /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
     /// with Name pre-filled from `name` -- empty for `n` and the button, the typed argument for
     /// `accounts new <account name>`.
     fn open_add_dialog(&mut self, name: &str, cx: &mut Context<'_, Self>) {
-        let options = self.dialog_options(cx);
+        let options = self.dialog_options(None, cx);
         let default_unit = self
             .ledger
             .read(cx)
@@ -300,10 +307,10 @@ impl AccountsPage {
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
     fn open_edit_dialog(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
-        let options = self.dialog_options(cx);
         let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
             return;
         };
+        let options = self.dialog_options(Some(account.unit), cx);
         let form = AccountForm::from_account(account, &options);
         open_dialog(AccountsDialog::Edit(id, form), Self::land, cx);
     }

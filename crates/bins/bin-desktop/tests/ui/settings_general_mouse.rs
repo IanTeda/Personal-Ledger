@@ -54,3 +54,19 @@ fn the_units_page_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
     ui.click("settings-general-base-unit-btc");
     assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
 }
+
+#[gpui::test]
+fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    assert!(ui.settings_general().options.contains(&"btc".to_string()));
+
+    ui.click("settings-index-Units");
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    ui.click("delete-unit-confirm");
+    ui.click("settings-index-General");
+
+    assert_eq!(ui.settings_general().options, vec!["aud", "vas"]);
+    ui.click("settings-general-base-unit-vas");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("vas"));
+}

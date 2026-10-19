@@ -108,7 +108,7 @@ impl Dialog for AccountsDialog {
         Some(match self {
             Self::Add(form) => add::render(
                 form,
-                &dialog_options(&scope.ledger, cx),
+                &dialog_options(&scope.ledger, None, cx),
                 on_field_click,
                 on_option_click,
                 actions.cancel.clone(),
@@ -119,7 +119,7 @@ impl Dialog for AccountsDialog {
                 Some(account) => edit::render(
                     form,
                     account,
-                    &dialog_options(&scope.ledger, cx),
+                    &dialog_options(&scope.ledger, Some(account.unit), cx),
                     on_field_click,
                     on_option_click,
                     actions.cancel.clone(),
@@ -171,6 +171,7 @@ impl Dialog for AccountsDialog {
                     form.account_type.value().unwrap_or_default().to_string(),
                 ),
                 ("unit", form.unit.value().unwrap_or_default().to_string()),
+                ("unit_options", form.unit_choices().join("|")),
                 ("opening_balance", form.opening_balance.text().to_string()),
                 ("account_number", form.account_number.text().to_string()),
                 ("select_open", form.any_select_open().to_string()),

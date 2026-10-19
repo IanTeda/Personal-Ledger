@@ -407,6 +407,14 @@ impl Shell {
         });
     }
 
+    /// Leaves no Unit in use by an Account, a Bill Plan or a Budget, so a test can delete a
+    /// seeded Unit instead of meeting the in-use refusal.
+    #[doc(hidden)]
+    pub fn drop_unit_users_for_test(&mut self, cx: &mut App) {
+        self.ledger
+            .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
+    }
+
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
     #[doc(hidden)]
     pub fn status_message(&self) -> Option<&str> {

@@ -26,7 +26,7 @@ use crate::settings::{
 use chrono::Local;
 use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
-use lib_ledger::Domain;
+use lib_ledger::{Domain, ReactivateUnit};
 use lib_list_cursor::{resolve, step_id};
 use lib_units::{MANUAL_ENTRY, PriceSource, PriceSourceId, SourceOrigin, UnitId, UnitRow};
 
@@ -146,15 +146,20 @@ pub enum MenuTarget {
 pub enum MenuAction {
     EditUnit,
     DeleteUnit,
+    ReactivateUnit,
     TestSource,
     EditSource,
     DeleteSource,
 }
 
 impl MenuAction {
-    /// A row's entries in menu order, the destructive one last.
-    pub fn for_target(target: MenuTarget) -> &'static [Self] {
+    /// A row's entries in menu order, the destructive one last. A deactivated Unit offers
+    /// Reactivate where an active one has nothing, since it is hidden from the pickers until then.
+    pub fn for_target(target: MenuTarget, unit_inactive: bool) -> &'static [Self] {
         match target {
+            MenuTarget::Unit(_) if unit_inactive => {
+                &[Self::EditUnit, Self::ReactivateUnit, Self::DeleteUnit]
+            }
             MenuTarget::Unit(_) => &[Self::EditUnit, Self::DeleteUnit],
             MenuTarget::Source(_, SourceKind::Custom) => {
                 &[Self::TestSource, Self::EditSource, Self::DeleteSource]
@@ -169,6 +174,7 @@ impl MenuAction {
         match self {
             Self::EditUnit => crate::msg::desktop_settings_units_menu_edit_unit(),
             Self::DeleteUnit => crate::msg::desktop_settings_units_menu_delete_unit(),
+            Self::ReactivateUnit => crate::msg::desktop_settings_units_menu_reactivate_unit(),
             Self::TestSource => crate::msg::desktop_settings_units_menu_test_source(),
             Self::EditSource => crate::msg::desktop_settings_units_menu_edit_source(),
             Self::DeleteSource => crate::msg::desktop_settings_units_menu_delete_source(),
@@ -179,6 +185,7 @@ impl MenuAction {
         match self {
             Self::EditUnit => "edit-unit",
             Self::DeleteUnit => "delete-unit",
+            Self::ReactivateUnit => "reactivate-unit",
             Self::TestSource => "test-source",
             Self::EditSource => "edit-source",
             Self::DeleteSource => "delete-source",
@@ -217,6 +224,8 @@ impl PaneGroup {
 pub struct RowMenu {
     pub target: MenuTarget,
     pub position: Point<Pixels>,
+    /// Whether the Unit the menu opened on is deactivated, which adds Reactivate.
+    pub unit_inactive: bool,
 }
 
 /// One line of the detail pane's ACTIVITY: a Units outcome, with the time it landed.
@@ -383,7 +392,7 @@ impl UnitsPage {
             },
             None => return Vec::new(),
         };
-        MenuAction::for_target(MenuTarget::Source(row.id, row.kind))
+        MenuAction::for_target(MenuTarget::Source(row.id, row.kind), false)
             .iter()
             .map(|action| action.slug().to_string())
             .collect()
@@ -424,6 +433,12 @@ impl UnitsPage {
             UnitsOutcome::Saved { code } => crate::msg::desktop_settings_units_activity_saved(code),
             UnitsOutcome::Deleted { code } => {
                 crate::msg::desktop_settings_units_activity_deleted(code)
+            }
+            UnitsOutcome::Deactivated { code } => {
+                crate::msg::desktop_settings_units_activity_deactivated(code)
+            }
+            UnitsOutcome::Reactivated { code } => {
+                crate::msg::desktop_settings_units_activity_reactivated(code)
             }
         };
         self.log_activity(text, cx);
@@ -533,6 +548,7 @@ impl Page for UnitsPage {
             ("n", false) => self.click_add(cx),
             ("e", false) => self.edit_selected(cx),
             ("d", false) => self.delete_selected(cx),
+            ("r", false) => self.reactivate_selected(cx),
             ("t", false) => self.test_selected_source(cx),
             ("n", true) => self.click_add_source(cx),
             ("e", true) => self.edit_selected_source(cx),
@@ -644,7 +660,14 @@ impl UnitsPage {
         position: Point<Pixels>,
         cx: &mut Context<'_, Self>,
     ) {
-        if MenuAction::for_target(target).is_empty() {
+        let unit_inactive = match target {
+            MenuTarget::Unit(id) => self
+                .units(cx)
+                .iter()
+                .any(|unit| unit.id == id && !unit.is_active),
+            MenuTarget::Source(..) => false,
+        };
+        if MenuAction::for_target(target, unit_inactive).is_empty() {
             self.close_menu(cx);
             return;
         }
@@ -652,7 +675,11 @@ impl UnitsPage {
             MenuTarget::Unit(id) => UnitsSelection::Unit(id),
             MenuTarget::Source(id, _) => UnitsSelection::Source(id),
         });
-        self.menu = Some(RowMenu { target, position });
+        self.menu = Some(RowMenu {
+            target,
+            position,
+            unit_inactive,
+        });
         cx.emit(PageRowClicked);
         cx.notify();
     }
@@ -679,13 +706,18 @@ impl UnitsPage {
         match (action, unit_index, target) {
             (MenuAction::EditUnit, Some(index), _) => self.click_edit(index, cx),
             (MenuAction::DeleteUnit, Some(index), _) => self.click_delete(index, cx),
+            (MenuAction::ReactivateUnit, Some(index), _) => self.click_reactivate(index, cx),
             (MenuAction::TestSource, ..) => self.not_built(
                 crate::msg::desktop_status_test_price_source_not_yet_built(),
                 cx,
             ),
             (MenuAction::EditSource, _, MenuTarget::Source(id, _)) => self.edit_source(id, cx),
             (MenuAction::DeleteSource, _, MenuTarget::Source(id, _)) => self.delete_source(id, cx),
-            (MenuAction::EditUnit | MenuAction::DeleteUnit, None, _)
+            (
+                MenuAction::EditUnit | MenuAction::DeleteUnit | MenuAction::ReactivateUnit,
+                None,
+                _,
+            )
             | (MenuAction::EditSource | MenuAction::DeleteSource, _, MenuTarget::Unit(_)) => {}
         }
     }
@@ -699,6 +731,28 @@ impl UnitsPage {
     fn delete_selected(&mut self, cx: &mut Context<'_, Self>) {
         if let Some(index) = self.selected_index(cx) {
             self.click_delete(index, cx);
+        }
+    }
+
+    /// `r` reactivates the selected Unit when it is deactivated, and does nothing otherwise.
+    fn reactivate_selected(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(index) = self.selected_index(cx) {
+            self.click_reactivate(index, cx);
+        }
+    }
+
+    /// A deactivated Unit's **Reactivate** puts it back on the pickers. It loses nothing to undo,
+    /// so it runs at once, with no Dialog.
+    fn click_reactivate(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        let Some(unit) = self.units(cx).get(index).filter(|unit| !unit.is_active) else {
+            return;
+        };
+        let (id, code) = (unit.id, unit.code.clone());
+        let landed = self
+            .ledger
+            .update(cx, |store, cx| store.apply(cx, ReactivateUnit(id)));
+        if landed.is_ok() {
+            self.land(UnitsOutcome::Reactivated { code }, cx);
         }
     }
 
@@ -781,11 +835,11 @@ impl UnitsPage {
             return;
         };
         let ledger = self.ledger.read(cx).ledger();
-        let form = if row.id == ledger.base_unit() {
+        let mut form = if row.id == ledger.base_unit() {
             let candidates = ledger
                 .units_by_code()
                 .into_iter()
-                .filter(|unit| unit.id != row.id)
+                .filter(|unit| unit.id != row.id && unit.is_active)
                 .map(|unit| {
                     let label = crate::msg::desktop_settings_general_base_unit_option(
                         &unit.code, &unit.name,
@@ -801,6 +855,10 @@ impl UnitsPage {
         } else {
             DeleteUnitForm::new(row.code.as_str())
         };
+        let uses = ledger.unit_use(row.id);
+        if uses.is_used() {
+            form.use_instead(uses);
+        }
         open_dialog(UnitsDialog::Delete(row.id, form), Self::land, cx);
     }
 
@@ -863,6 +921,11 @@ impl UnitsPage {
         let units = self.units(cx);
         SettingsUnitsSnapshot {
             unit_codes: units.iter().map(|unit| unit.code.clone()).collect(),
+            inactive_codes: units
+                .iter()
+                .filter(|unit| !unit.is_active)
+                .map(|unit| unit.code.clone())
+                .collect(),
             base_code: self.base_unit(cx).map(|unit| unit.code.clone()),
             unit_rows: units
                 .iter()
@@ -929,7 +992,7 @@ impl UnitsPage {
                 };
                 (
                     row.unwrap_or_default(),
-                    MenuAction::for_target(menu.target)
+                    MenuAction::for_target(menu.target, menu.unit_inactive)
                         .iter()
                         .map(|action| action.slug().to_string())
                         .collect(),
@@ -999,6 +1062,8 @@ impl UnitsPage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
+    /// The codes of the deactivated Units, which are drawn dimmed and tagged.
+    pub inactive_codes: Vec<String>,
     pub unit_rows: Vec<(String, String, String)>,
     /// The code of the Unit the ◆ glyph marks: the Ledger's base Unit.
     pub base_code: Option<String>,

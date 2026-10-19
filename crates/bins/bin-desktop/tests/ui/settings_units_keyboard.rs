@@ -146,6 +146,7 @@ fn escape_discards_an_edit_unit_change(app: &mut TestAppContext) {
 #[gpui::test]
 fn delete_unit_enter_refuses_until_the_code_is_typed_back(app: &mut TestAppContext) {
     let mut ui = on_units(app);
+    ui.drop_unit_users();
     let before = ui.settings_units().unit_codes.clone();
     let code = before[0].clone();
 
@@ -240,6 +241,7 @@ fn at_x_large_n_opens_the_add_dialog(app: &mut TestAppContext) {
 #[gpui::test]
 fn at_x_large_d_deletes_the_selected_unit_into_activity_without_a_toast(app: &mut TestAppContext) {
     let mut ui = on_units_xlarge(app);
+    ui.drop_unit_users();
     ui.press("j");
     ui.press("d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
@@ -1049,6 +1051,7 @@ fn the_base_glyph_follows_the_ledgers_base_unit(app: &mut TestAppContext) {
 #[gpui::test]
 fn deleting_the_base_unit_moves_the_base_with_up_and_down(app: &mut TestAppContext) {
     let mut ui = on_units(app);
+    ui.drop_unit_users();
     row_action(&mut ui, "unit-row-0", "delete-unit");
     let options = ui.dialog_value("new_base_options").unwrap_or_default();
     let options: Vec<&str> = options.split('|').collect();
@@ -1069,4 +1072,89 @@ fn deleting_the_base_unit_moves_the_base_with_up_and_down(app: &mut TestAppConte
     assert_eq!(ui.dialog(), None);
     let base = ui.settings_units().base_code.expect("a base Unit");
     assert!(chosen.starts_with(&base));
+}
+
+#[gpui::test]
+fn deleting_a_unit_in_use_offers_deactivate_and_enter_keeps_it_dimmed(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.settings_units().unit_codes;
+
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    ui.press("enter");
+
+    let page = ui.settings_units();
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        page.unit_codes, before,
+        "an in-use Unit is kept, not deleted"
+    );
+    assert_eq!(page.inactive_codes, vec!["btc".to_string()]);
+    assert_eq!(
+        ui.toasts().visible.last().map(|toast| toast.text.as_str()),
+        Some("Deactivated unit btc")
+    );
+}
+
+#[gpui::test]
+fn the_base_unit_in_use_cannot_be_deactivated_from_the_delete_dialog(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "unit-row-0", "delete-unit");
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    ui.press("enter");
+
+    assert_eq!(
+        ui.dialog(),
+        Some("DeleteUnit"),
+        "the confirm stays disabled"
+    );
+    assert!(ui.settings_units().inactive_codes.is_empty());
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn r_reactivates_the_selected_deactivated_unit(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+    ui.press("enter");
+    assert_eq!(ui.settings_units().inactive_codes, vec!["btc".to_string()]);
+
+    ui.press("l");
+    assert_eq!(ui.settings_units().selected_code.as_deref(), Some("btc"));
+    ui.press("r");
+
+    assert!(ui.settings_units().inactive_codes.is_empty());
+    assert_eq!(
+        ui.toasts().visible.last().map(|toast| toast.text.as_str()),
+        Some("Reactivated unit btc")
+    );
+}
+
+#[gpui::test]
+fn r_does_nothing_on_an_active_unit(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("l");
+    ui.press("j");
+    ui.press("r");
+
+    assert!(ui.settings_units().inactive_codes.is_empty());
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn a_deactivated_unit_is_not_offered_as_the_new_base(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    row_action(&mut ui, "unit-row-1", "delete-unit");
+    ui.press("enter");
+    assert_eq!(ui.settings_units().inactive_codes, vec!["btc".to_string()]);
+
+    ui.drop_unit_users();
+    row_action(&mut ui, "unit-row-0", "delete-unit");
+
+    let options = ui.dialog_value("new_base_options").unwrap_or_default();
+    assert!(!options.contains("btc"), "{options}");
+    assert!(options.contains("vas"), "{options}");
 }

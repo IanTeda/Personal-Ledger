@@ -30,6 +30,9 @@ pub struct UnitRow {
     pub link: PriceLink,
     /// The newest price, kept with no history.
     pub last_price: Option<LastPrice>,
+    /// A deactivated Unit stays on the Ledger and on whatever uses it, but is no longer offered to
+    /// pick (the lifecycle Category, Payee and Account follow).
+    pub is_active: bool,
 }
 
 /// A Unit's link to its Price Source. The symbol and quote live here, not on the source, since one
@@ -73,6 +76,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             kind: UnitKind::Currency,
             link: PriceLink::manual(UnitId::SEED_AUD),
             last_price: None,
+            is_active: true,
         },
         UnitRow {
             id: UnitId::SEED_BTC,
@@ -88,6 +92,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
                 price: Money(BigDecimal::new(14_821_240.into(), 2)),
                 fetched_at: now - chrono::Duration::minutes(5),
             }),
+            is_active: true,
         },
         UnitRow {
             id: UnitId::SEED_VAS,
@@ -96,6 +101,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             kind: UnitKind::Equity,
             link: PriceLink::manual(UnitId::SEED_AUD),
             last_price: None,
+            is_active: true,
         },
     ]
 }
@@ -123,6 +129,7 @@ pub fn add_unit(
         kind,
         link,
         last_price: None,
+        is_active: true,
     };
     units.push(row.clone());
     row
@@ -152,7 +159,15 @@ pub fn edit_unit(
         kind,
         link,
         last_price,
+        is_active: existing.is_active,
     };
+    Some(existing)
+}
+
+/// Marks the row `id` active or deactivated and returns it, or `None` when no row has `id`.
+pub fn set_unit_active(units: &mut [UnitRow], id: UnitId, is_active: bool) -> Option<&UnitRow> {
+    let existing = units.iter_mut().find(|row| row.id == id)?;
+    existing.is_active = is_active;
     Some(existing)
 }
 
@@ -362,5 +377,43 @@ mod tests {
         )
         .expect("btc is seeded");
         assert_eq!(edited.id, UnitId::SEED_BTC);
+    }
+
+    #[test]
+    fn every_new_unit_starts_active_and_set_unit_active_flips_only_that_row() {
+        let mut units = seed();
+        assert!(units.iter().all(|unit| unit.is_active));
+        let added = add_unit(
+            &mut units,
+            "eth".into(),
+            "Ethereum".into(),
+            UnitKind::Crypto,
+            PriceLink::manual(UnitId::SEED_AUD),
+        );
+        assert!(added.is_active);
+
+        let flipped = set_unit_active(&mut units, UnitId::SEED_BTC, false).map(|u| u.is_active);
+
+        assert_eq!(flipped, Some(false));
+        assert_eq!(units.iter().filter(|unit| !unit.is_active).count(), 1);
+        assert!(set_unit_active(&mut units, UnitId::new(), false).is_none());
+    }
+
+    #[test]
+    fn editing_a_deactivated_unit_keeps_it_deactivated() {
+        let mut units = seed();
+        set_unit_active(&mut units, UnitId::SEED_VAS, false);
+        let link = units[2].link.clone();
+
+        edit_unit(
+            &mut units,
+            UnitId::SEED_VAS,
+            "vas".into(),
+            "Vanguard".into(),
+            UnitKind::Equity,
+            link,
+        );
+
+        assert!(!units[2].is_active);
     }
 }

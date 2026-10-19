@@ -92,3 +92,21 @@ fn a_base_unit_set_by_key_moves_the_units_pages_glyph(app: &mut TestAppContext) 
     assert_eq!(ui.settings().page, "Units");
     assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
 }
+
+#[gpui::test]
+fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    assert!(ui.settings_general().options.contains(&"btc".to_string()));
+
+    ui.press("j j");
+    ui.press("l");
+    ui.press("j");
+    ui.press("d");
+    ui.press("enter");
+    ui.press("escape");
+    ui.press("g g");
+
+    let general = ui.settings_general();
+    assert!(!general.options.contains(&"btc".to_string()));
+    assert_eq!(general.base_unit.as_deref(), Some("aud"));
+}

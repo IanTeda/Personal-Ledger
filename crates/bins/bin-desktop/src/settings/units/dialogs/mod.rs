@@ -213,6 +213,7 @@ impl Dialog for UnitsDialog {
                 "DeleteUnit",
                 vec![
                     ("confirm", form.confirm_input.text().to_string()),
+                    ("in_use", form.deactivates().to_string()),
                     (
                         "new_base",
                         form.new_base
