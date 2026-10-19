@@ -7,8 +7,8 @@ use chrono::NaiveDate;
 use gpui::{App, Entity};
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_ledger::{
-    AddCategory, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal, EditCategory,
-    MonthlyBudget, SaveCategoryRefusal,
+    AddCategory, DeleteCategory, DeleteCategoryRefusal, EditCategory, MonthlyBudget,
+    SaveCategoryRefusal,
 };
 
 use super::{dialogs::CategoriesDialog, form::CategoryForm};
@@ -154,35 +154,19 @@ impl Apply<CategoryCommand> for CategoriesApply {
                 Ok(CategoryOutcome::Saved)
             }
             CategoryCommand::Edit(id, form) => {
-                // `None` moves it to top level when the parent was cleared.
+                // `None` moves it to top level when the parent was cleared. A top-level
+                // Category's chosen type cascades to its descendants only now, in the same
+                // command, so a Cancel never wrote it and a refusal writes none of it.
                 let command = EditCategory {
                     id,
                     name: form.name.text().trim().to_string(),
                     parent_id: form.parent_id,
+                    category_type: form.category_type.clone(),
                     monthly: self.monthly_budget(&form, true),
                 };
                 self.ledger
                     .update(cx, |store, cx| store.apply(cx, command))
                     .map_err(CategoryRefusal::Save)?;
-                // A top-level Category's chosen type cascades to its descendants only now, so a
-                // Cancel never wrote it.
-                let changed_type = form.category_type.filter(|chosen| {
-                    form.parent_id.is_none()
-                        && self
-                            .ledger
-                            .read(cx)
-                            .ledger()
-                            .categories()
-                            .iter()
-                            .any(|c| c.id == id && &c.category_type != chosen)
-                });
-                if let Some(category_type) = changed_type {
-                    self.ledger
-                        .update(cx, |store, cx| {
-                            store.apply(cx, ChangeCategoryType { id, category_type })
-                        })
-                        .map_err(|error| CategoryRefusal::Save(error.into()))?;
-                }
                 Ok(CategoryOutcome::Saved)
             }
             CategoryCommand::Delete(id) => {

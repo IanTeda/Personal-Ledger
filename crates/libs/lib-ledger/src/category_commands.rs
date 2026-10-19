@@ -112,18 +112,23 @@ impl Ledger {
         Ok(())
     }
 
-    /// Renames and moves Category `id` together, then saves its Monthly budget, so the Edit dialog
-    /// lands whole or not at all.
+    /// Renames and moves Category `id` together, cascades `category_type` to its descendants when
+    /// it ends at top level, then saves its Monthly budget, so the Edit dialog lands whole or not
+    /// at all. Under a parent the type follows the parent, so `category_type` is ignored there.
     pub fn edit_category(
         &mut self,
         id: CategoryId,
         name: String,
         parent_id: Option<CategoryId>,
+        category_type: Option<CategoryTypes>,
         monthly: Option<&MonthlyBudget>,
     ) -> Result<(), SaveCategoryRefusal> {
         self.atomic(|ledger| {
             ledger.rename_category(id, name)?;
             ledger.move_category(id, parent_id)?;
+            if let Some(category_type) = category_type.filter(|_| parent_id.is_none()) {
+                ledger.change_category_type(id, category_type)?;
+            }
             if let Some(monthly) = monthly {
                 ledger.set_category_monthly_limit(id, monthly)?;
             }
@@ -355,6 +360,7 @@ pub struct EditCategory {
     pub id: CategoryId,
     pub name: String,
     pub parent_id: Option<CategoryId>,
+    pub category_type: Option<CategoryTypes>,
     pub monthly: Option<MonthlyBudget>,
 }
 
@@ -362,7 +368,13 @@ impl LedgerCommand for EditCategory {
     type Outcome = ();
     type Refusal = SaveCategoryRefusal;
     fn run(self, ledger: &mut Ledger) -> Result<(), SaveCategoryRefusal> {
-        ledger.edit_category(self.id, self.name, self.parent_id, self.monthly.as_ref())
+        ledger.edit_category(
+            self.id,
+            self.name,
+            self.parent_id,
+            self.category_type,
+            self.monthly.as_ref(),
+        )
     }
 }
 
@@ -480,7 +492,7 @@ mod tests {
         let mut ledger = ledger();
         let dining = category_id(&ledger, "Dining");
         ledger
-            .edit_category(dining, "Eating out".into(), None, None)
+            .edit_category(dining, "Eating out".into(), None, None, None)
             .expect("a move to top level");
 
         let category = get(ledger.categories(), dining).unwrap();
@@ -502,11 +514,119 @@ mod tests {
         let salary = category_id(&ledger, "Salary");
         let before = snapshot(&ledger);
 
-        let refusal = ledger.edit_category(dining, "Eating out".into(), Some(salary), None);
+        let refusal = ledger.edit_category(dining, "Eating out".into(), Some(salary), None, None);
 
         assert_eq!(
             refusal,
             Err(SaveCategoryRefusal::Category(CategoryError::TypeMismatch))
+        );
+        assert_eq!(snapshot(&ledger), before);
+        assert!(ledger.drain_changes().is_empty());
+    }
+
+    fn recorded_categories(ledger: &mut Ledger) -> Vec<CategoryId> {
+        let mut ids: Vec<CategoryId> = ledger
+            .drain_changes()
+            .into_iter()
+            .filter_map(|c| match c {
+                LedgerChange::UpsertCategory(c) => Some(c.id),
+                _ => None,
+            })
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    #[test]
+    fn editing_a_top_level_type_cascades_to_its_descendants() {
+        let mut ledger = ledger();
+        let food = category_id(&ledger, "Food");
+        ledger
+            .edit_category(food, "Food".into(), None, Some(CategoryTypes::Income), None)
+            .expect("a top-level Category");
+
+        let mut expected = lib_categories::descendants_inclusive(ledger.categories(), food);
+        expected.sort_unstable();
+        assert!(expected.len() > 1, "the stub nests Categories under Food");
+        assert!(expected.iter().all(|id| {
+            get(ledger.categories(), *id).unwrap().category_type == CategoryTypes::Income
+        }));
+        assert_eq!(recorded_categories(&mut ledger), expected);
+    }
+
+    #[test]
+    fn editing_without_a_type_change_touches_no_descendant() {
+        let mut ledger = ledger();
+        let food = category_id(&ledger, "Food");
+        let types_before: Vec<CategoryTypes> = ledger
+            .categories()
+            .iter()
+            .map(|c| c.category_type.clone())
+            .collect();
+
+        ledger
+            .edit_category(
+                food,
+                "Groceries and dining".into(),
+                None,
+                Some(CategoryTypes::Expense),
+                None,
+            )
+            .expect("an unchanged type");
+
+        let types_after: Vec<CategoryTypes> = ledger
+            .categories()
+            .iter()
+            .map(|c| c.category_type.clone())
+            .collect();
+        assert_eq!(types_after, types_before);
+        assert_eq!(recorded_categories(&mut ledger), vec![food]);
+    }
+
+    #[test]
+    fn a_type_for_a_category_with_a_parent_is_not_applied() {
+        let mut ledger = ledger();
+        let dining = category_id(&ledger, "Dining");
+        let food = category_id(&ledger, "Food");
+
+        ledger
+            .edit_category(
+                dining,
+                "Dining".into(),
+                Some(food),
+                Some(CategoryTypes::Income),
+                None,
+            )
+            .expect("the type follows the parent");
+
+        assert_eq!(
+            get(ledger.categories(), dining).unwrap().category_type,
+            CategoryTypes::Expense
+        );
+    }
+
+    #[test]
+    fn a_refused_edit_takes_the_type_cascade_back() {
+        let mut ledger = ledger();
+        let food = category_id(&ledger, "Food");
+        let before = snapshot(&ledger);
+        let missing_budget = MonthlyBudget {
+            budget_id: BudgetId::seed(u32::MAX),
+            ..monthly(Some(money("5")))
+        };
+
+        let refusal = ledger.edit_category(
+            food,
+            "Food".into(),
+            None,
+            Some(CategoryTypes::Income),
+            Some(&missing_budget),
+        );
+
+        assert_eq!(
+            refusal,
+            Err(SaveCategoryRefusal::Budget(BudgetError::NotFound))
         );
         assert_eq!(snapshot(&ledger), before);
         assert!(ledger.drain_changes().is_empty());
