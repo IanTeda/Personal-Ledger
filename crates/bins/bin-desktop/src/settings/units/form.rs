@@ -215,7 +215,9 @@ impl UnitForm {
             .iter()
             .find(|source| source.id == row.link.source_id)
             .map(|source| source.name.clone());
-        let mut form = Self {
+        // Not re-filtered: a stored link whose source can't price the stored Kind stays as it was
+        // until Type changes, so opening and saving never rewrites it.
+        Self {
             code: TextField::new(row.code.as_str()),
             name: TextField::new(row.name.as_str()),
             kind: SelectState::new(Some(row.kind.label())),
@@ -224,9 +226,7 @@ impl UnitForm {
             quote: SelectState::new(options.unit_label(row.link.quote).map(str::to_string)),
             focused_field: UnitField::default(),
             options: options.clone(),
-        };
-        form.sync_source();
-        form
+        }
     }
 
     /// The chosen Type; the first Kind while the select somehow holds no label.
@@ -691,5 +691,22 @@ mod tests {
         assert!(form.is_valid(), "Manual entry never reads its quote");
         pick(&mut form, UnitField::Source, "Frankfurter");
         assert!(!form.is_valid());
+    }
+
+    #[test]
+    fn editing_keeps_a_stored_source_that_cannot_price_the_stored_kind() {
+        let (options, units) = options();
+        let mut row = units
+            .iter()
+            .find(|unit| unit.id == UnitId::SEED_BTC)
+            .unwrap()
+            .clone();
+        row.kind = UnitKind::Currency;
+        let mut form = UnitForm::from_row(&row, &options);
+        assert_eq!(form.link(), row.link, "opening does not rewrite the link");
+        assert!(!form.is_manual());
+        // Changing Type is what re-filters, and then the source falls back.
+        pick(&mut form, UnitField::Type, &UnitKind::Equity.label());
+        assert!(form.is_manual());
     }
 }
