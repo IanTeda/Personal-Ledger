@@ -1,0 +1,456 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "VIPER Architecture: three example modules",
+    "output": "docs/diagrams/gui-architecture-viper.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "taps, types",
+      "pos": [
+        40,
+        290
+      ],
+      "size": [
+        120,
+        60
+      ]
+    },
+    {
+      "id": "accounts-view",
+      "type": "frontend",
+      "label": "Accounts View",
+      "sublabel": "account list",
+      "pos": [
+        250,
+        40
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "accounts-presenter",
+      "type": "frontend",
+      "label": "Accounts Presenter",
+      "sublabel": "formats for display",
+      "pos": [
+        490,
+        40
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "accounts-interactor",
+      "type": "backend",
+      "label": "Accounts Interactor",
+      "sublabel": "use cases",
+      "pos": [
+        780,
+        40
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "accounts-entity",
+      "type": "database",
+      "label": "Account",
+      "sublabel": "a bank or card account",
+      "pos": [
+        1040,
+        40
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "accounts-router",
+      "type": "cloud",
+      "label": "Accounts Router",
+      "sublabel": "navigation",
+      "pos": [
+        490,
+        170
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "transactions-view",
+      "type": "frontend",
+      "label": "Transactions View",
+      "sublabel": "entry + history",
+      "pos": [
+        250,
+        290
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "transactions-presenter",
+      "type": "frontend",
+      "label": "Transactions Presenter",
+      "sublabel": "formats for display",
+      "pos": [
+        490,
+        290
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "transactions-interactor",
+      "type": "backend",
+      "label": "Transactions Interactor",
+      "sublabel": "use cases",
+      "pos": [
+        780,
+        290
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "transactions-entity",
+      "type": "database",
+      "label": "Transaction",
+      "sublabel": "one money movement",
+      "pos": [
+        1040,
+        290
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "transactions-router",
+      "type": "cloud",
+      "label": "Transactions Router",
+      "sublabel": "navigation",
+      "pos": [
+        490,
+        420
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "budgets-view",
+      "type": "frontend",
+      "label": "Budgets View",
+      "sublabel": "limits per category",
+      "pos": [
+        250,
+        540
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "budgets-presenter",
+      "type": "frontend",
+      "label": "Budgets Presenter",
+      "sublabel": "formats for display",
+      "pos": [
+        490,
+        540
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "budgets-interactor",
+      "type": "backend",
+      "label": "Budgets Interactor",
+      "sublabel": "use cases",
+      "pos": [
+        780,
+        540
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "budgets-entity",
+      "type": "database",
+      "label": "Category",
+      "sublabel": "groups spending",
+      "pos": [
+        1040,
+        540
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "budgets-router",
+      "type": "cloud",
+      "label": "Budgets Router",
+      "sublabel": "navigation",
+      "pos": [
+        490,
+        670
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "accounts-u",
+      "from": "user",
+      "to": "accounts-view",
+      "label": "interacts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "accounts-vp",
+      "from": "accounts-view",
+      "to": "accounts-presenter",
+      "label": "user event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "accounts-pi",
+      "from": "accounts-presenter",
+      "to": "accounts-interactor",
+      "label": "asks for work",
+      "variant": "emphasis"
+    },
+    {
+      "id": "accounts-ie",
+      "from": "accounts-interactor",
+      "to": "accounts-entity",
+      "label": "reads/writes"
+    },
+    {
+      "id": "accounts-ip",
+      "from": "accounts-interactor",
+      "to": "accounts-presenter",
+      "label": "returns result",
+      "variant": "dashed"
+    },
+    {
+      "id": "accounts-pv",
+      "from": "accounts-presenter",
+      "to": "accounts-view",
+      "label": "view model",
+      "variant": "dashed"
+    },
+    {
+      "id": "accounts-pr",
+      "from": "accounts-presenter",
+      "to": "accounts-router",
+      "label": "navigate"
+    },
+    {
+      "id": "accounts-rn",
+      "from": "accounts-router",
+      "to": "transactions-view",
+      "label": "builds + shows",
+      "fromSide": "left",
+      "toSide": "top"
+    },
+    {
+      "id": "transactions-u",
+      "from": "user",
+      "to": "transactions-view",
+      "label": "interacts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transactions-vp",
+      "from": "transactions-view",
+      "to": "transactions-presenter",
+      "label": "user event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transactions-pi",
+      "from": "transactions-presenter",
+      "to": "transactions-interactor",
+      "label": "asks for work",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transactions-ie",
+      "from": "transactions-interactor",
+      "to": "transactions-entity",
+      "label": "reads/writes"
+    },
+    {
+      "id": "transactions-ip",
+      "from": "transactions-interactor",
+      "to": "transactions-presenter",
+      "label": "returns result",
+      "variant": "dashed"
+    },
+    {
+      "id": "transactions-pv",
+      "from": "transactions-presenter",
+      "to": "transactions-view",
+      "label": "view model",
+      "variant": "dashed"
+    },
+    {
+      "id": "transactions-pr",
+      "from": "transactions-presenter",
+      "to": "transactions-router",
+      "label": "navigate"
+    },
+    {
+      "id": "transactions-rn",
+      "from": "transactions-router",
+      "to": "budgets-view",
+      "label": "builds + shows",
+      "fromSide": "left",
+      "toSide": "top"
+    },
+    {
+      "id": "budgets-u",
+      "from": "user",
+      "to": "budgets-view",
+      "label": "interacts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "budgets-vp",
+      "from": "budgets-view",
+      "to": "budgets-presenter",
+      "label": "user event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "budgets-pi",
+      "from": "budgets-presenter",
+      "to": "budgets-interactor",
+      "label": "asks for work",
+      "variant": "emphasis"
+    },
+    {
+      "id": "budgets-ie",
+      "from": "budgets-interactor",
+      "to": "budgets-entity",
+      "label": "reads/writes"
+    },
+    {
+      "id": "budgets-ip",
+      "from": "budgets-interactor",
+      "to": "budgets-presenter",
+      "label": "returns result",
+      "variant": "dashed"
+    },
+    {
+      "id": "budgets-pv",
+      "from": "budgets-presenter",
+      "to": "budgets-view",
+      "label": "view model",
+      "variant": "dashed"
+    },
+    {
+      "id": "budgets-pr",
+      "from": "budgets-presenter",
+      "to": "budgets-router",
+      "label": "navigate"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "V: View",
+      "items": [
+        "The screen: labels, buttons, lists, forms",
+        "Passive: it renders exactly what the Presenter hands it",
+        "Reports taps and typing as events, e.g. 'Save tapped'",
+        "Holds no state it could not redraw from the view model",
+        "Easy to swap or test with a fake Presenter",
+        "Example: Accounts View lists accounts and reports 'Add tapped'"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "I: Interactor",
+      "items": [
+        "One use case per method, e.g. 'add a transaction'",
+        "Applies business rules: validation, totals, balances",
+        "Reads and saves data through Entities and storage",
+        "Returns plain results, never display text",
+        "No UI imports, so it tests without a screen",
+        "Example: Transactions Interactor checks an entry then saves a Transaction"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "P: Presenter",
+      "items": [
+        "The coordinator for one screen",
+        "Receives View events and decides which use case to call",
+        "Formats results: dates, currency, empty states, errors",
+        "Pushes a ready-to-draw view model to the View",
+        "Asks the Router to move on, never builds screens itself",
+        "Example: Budgets Presenter turns 4500 cents into '$45.00 of $60.00 used'"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "E: Entity",
+      "items": [
+        "The core domain objects, e.g. Account, Transaction, Money",
+        "Plain data with simple invariants, no persistence code",
+        "Passed between Interactors and storage",
+        "Know nothing about screens, flows or the Presenter",
+        "Stay stable while the UI changes around them",
+        "Examples: Account, Transaction and Category are separate Entities that any module's Interactor can share"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "R: Router",
+      "items": [
+        "Also called the Wireframe: owns how screens connect",
+        "Creates the next module's View, Presenter and Interactor and wires them",
+        "Handles presenting, pushing and dismissing screens",
+        "Passes any data the next module needs",
+        "Keeps modules decoupled: only the Router knows its neighbours",
+        "Example: Accounts Router builds the Transactions module when an account is opened"
+      ]
+    }
+  ]
+}

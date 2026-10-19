@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "VIPER Architecture",
+    "output": "docs/diagrams/gui-architecture-viper-basic.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "taps, types",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "view",
+      "type": "frontend",
+      "label": "View",
+      "sublabel": "passive UI",
+      "pos": [
+        270,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "presenter",
+      "type": "frontend",
+      "label": "Presenter",
+      "sublabel": "formats for display",
+      "pos": [
+        500,
+        40
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "interactor",
+      "type": "backend",
+      "label": "Interactor",
+      "sublabel": "business logic",
+      "pos": [
+        770,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "tag": "use cases"
+    },
+    {
+      "id": "entity",
+      "type": "database",
+      "label": "Entity",
+      "sublabel": "plain data models",
+      "pos": [
+        1030,
+        40
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "router",
+      "type": "cloud",
+      "label": "Router",
+      "sublabel": "wireframe / navigation",
+      "pos": [
+        500,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "next",
+      "type": "external",
+      "label": "Next module",
+      "sublabel": "another VIPER stack",
+      "pos": [
+        500,
+        380
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-to-view",
+      "from": "user",
+      "to": "view",
+      "label": "interacts",
+      "variant": "emphasis"
+    },
+    {
+      "id": "view-to-presenter",
+      "from": "view",
+      "to": "presenter",
+      "label": "user event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "presenter-to-interactor",
+      "from": "presenter",
+      "to": "interactor",
+      "label": "asks for work",
+      "variant": "emphasis"
+    },
+    {
+      "id": "interactor-to-entity",
+      "from": "interactor",
+      "to": "entity",
+      "label": "reads/writes"
+    },
+    {
+      "id": "interactor-to-presenter",
+      "from": "interactor",
+      "to": "presenter",
+      "label": "returns result",
+      "variant": "dashed"
+    },
+    {
+      "id": "presenter-to-view",
+      "from": "presenter",
+      "to": "view",
+      "label": "view model",
+      "variant": "dashed"
+    },
+    {
+      "id": "presenter-to-router",
+      "from": "presenter",
+      "to": "router",
+      "label": "navigate"
+    },
+    {
+      "id": "router-to-next",
+      "from": "router",
+      "to": "next",
+      "label": "builds + shows"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "V: View",
+      "items": [
+        "The screen: labels, buttons, lists, forms",
+        "Passive: it renders exactly what the Presenter hands it",
+        "Reports taps and typing as events, e.g. 'Save tapped'",
+        "Holds no state it could not redraw from the view model",
+        "Easy to swap or test with a fake Presenter"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "I: Interactor",
+      "items": [
+        "One use case per method, e.g. 'add a transaction'",
+        "Applies business rules: validation, totals, balances",
+        "Reads and saves data through Entities and storage",
+        "Returns plain results, never display text",
+        "No UI imports, so it tests without a screen"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "P: Presenter",
+      "items": [
+        "The coordinator for one screen",
+        "Receives View events and decides which use case to call",
+        "Formats results: dates, currency, empty states, errors",
+        "Pushes a ready-to-draw view model to the View",
+        "Asks the Router to move on, never builds screens itself"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "E: Entity",
+      "items": [
+        "The core domain objects, e.g. Account, Transaction, Money",
+        "Plain data with simple invariants, no persistence code",
+        "Passed between Interactors and storage",
+        "Know nothing about screens, flows or the Presenter",
+        "Stay stable while the UI changes around them"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "R: Router",
+      "items": [
+        "Also called the Wireframe: owns how screens connect",
+        "Creates the next module's View, Presenter and Interactor and wires them",
+        "Handles presenting, pushing and dismissing screens",
+        "Passes any data the next module needs",
+        "Keeps modules decoupled: only the Router knows its neighbours"
+      ]
+    }
+  ]
+}
