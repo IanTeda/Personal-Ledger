@@ -4,9 +4,8 @@
 //! stock, precious metal, or other tradeable instrument a Client's Accounts and
 //! Transactions are denominated in (FR.1, `docs/product-requirements.md`). No cross-Unit
 //! conversion exists in V1 (see `GLOSSARY.md`'s Unit glossary entry) — `unit_kind` is a
-//! descriptive grouping only, and `decimal_places` is used for display rounding, distinct
-//! from the decimal-separator Configuration decided in "Decide the application Settings /
-//! Preference model".
+//! descriptive grouping only. Each Unit links to a Price Source (`price_source_id`,
+//! `price_symbol`, `quote_unit_id`) and keeps its newest price with no history (ADR-0043).
 
 /// Database row model representing one persisted Unit.
 #[derive(Debug, sqlx::FromRow, serde::Deserialize, serde::Serialize, PartialEq, Clone)]
@@ -25,9 +24,22 @@ pub struct Units {
     /// Descriptive grouping — fiat, crypto, stock, precious metal, or other.
     pub unit_kind: lib_core::UnitKind,
 
-    /// Number of decimal places this Unit is naturally displayed with (e.g. 2 for AUD, 8
-    /// for BTC, 0 for JPY). Display rounding only; amounts are stored as exact decimals.
-    pub decimal_places: i64,
+    /// Id of the Price Source that prices this Unit. Not a foreign key yet: Price Sources
+    /// persist in a later ticket.
+    pub price_source_id: String,
+
+    /// What the Price Source calls this Unit, filling a request's `{symbol}`. Empty for
+    /// Manual entry.
+    pub price_symbol: String,
+
+    /// The Unit the price is quoted in. The base Unit quotes itself.
+    pub quote_unit_id: lib_core::RowID,
+
+    /// The newest price in `quote_unit_id`, as a decimal string so no precision is lost.
+    pub last_price: Option<String>,
+
+    /// When `last_price` was fetched or entered. `None` while there is no price.
+    pub last_price_fetched_on: Option<String>,
 
     /// Soft-delete flag — `false` means the Unit should not be used for new Accounts or
     /// Transactions, but existing ones remain valid.
@@ -59,7 +71,6 @@ impl Units {
             .with_code(code)
             .with_name(Self::generate_mock_name())
             .with_unit_kind(lib_core::UnitKind::mock())
-            .with_decimal_places(2)
             .with_is_active_opt(Some(true))
             .with_created_on_opt(Some(now))
             .with_updated_on_opt(Some(now))

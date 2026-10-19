@@ -17,14 +17,18 @@ impl crate::Units {
     pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let insert_result = sqlx::query!(
             r#"
-                INSERT INTO units (id, code, name, unit_kind, decimal_places, is_active, created_on, updated_on)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol, quote_unit_id, last_price, last_price_fetched_on, is_active, created_on, updated_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             self.id,
             self.code,
             self.name,
             self.unit_kind,
-            self.decimal_places,
+            self.price_source_id,
+            self.price_symbol,
+            self.quote_unit_id,
+            self.last_price,
+            self.last_price_fetched_on,
             self.is_active,
             self.created_on,
             self.updated_on
@@ -83,5 +87,82 @@ mod tests {
 
         let result = duplicate.insert(&pool).await;
         assert!(result.is_err());
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn insert_round_trips_the_price_link_and_last_price(pool: SqlitePool) {
+        let base = crate::Units::mock().insert(&pool).await.unwrap();
+        assert_eq!(base.quote_unit_id, base.id, "the base Unit quotes itself");
+
+        let btc = crate::units::UnitsBuilder::new()
+            .with_code("BTC")
+            .with_name("Bitcoin")
+            .with_unit_kind(lib_core::UnitKind::Crypto)
+            .with_price_source_id("coingecko")
+            .with_price_symbol("bitcoin")
+            .with_quote_unit_id(base.id)
+            .with_last_price("64000.12", "2026-10-19")
+            .build()
+            .unwrap()
+            .insert(&pool)
+            .await
+            .unwrap();
+
+        assert_eq!(btc.price_source_id, "coingecko");
+        assert_eq!(btc.price_symbol, "bitcoin");
+        assert_eq!(btc.quote_unit_id, base.id);
+        assert_eq!(btc.last_price.as_deref(), Some("64000.12"));
+        assert_eq!(btc.last_price_fetched_on.as_deref(), Some("2026-10-19"));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn insert_rejects_a_quote_unit_that_does_not_exist(pool: SqlitePool) {
+        let unit = crate::units::UnitsBuilder::new()
+            .with_code("BTC")
+            .with_name("Bitcoin")
+            .with_quote_unit_id(lib_core::RowID::new())
+            .build()
+            .unwrap();
+
+        assert!(unit.insert(&pool).await.is_err());
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn unit_kind_check_rejects_an_unknown_kind(pool: SqlitePool) {
+        let unit = crate::Units::mock();
+
+        let result = sqlx::query(
+            "INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol, quote_unit_id) \
+             VALUES (?, 'ZZZ', 'Zed', 'gizmo', 'manual', '', ?)",
+        )
+        .bind(unit.id)
+        .bind(unit.id)
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn ledger_table_holds_one_row_pointing_at_a_unit(pool: SqlitePool) {
+        let unit = crate::Units::mock().insert(&pool).await.unwrap();
+
+        sqlx::query("INSERT INTO ledger (id, base_unit_id) VALUES (1, ?)")
+            .bind(unit.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let second = sqlx::query("INSERT INTO ledger (id, base_unit_id) VALUES (2, ?)")
+            .bind(unit.id)
+            .execute(&pool)
+            .await;
+        assert!(second.is_err(), "only id = 1 is allowed");
+
+        let missing = sqlx::query("UPDATE ledger SET base_unit_id = ? WHERE id = 1")
+            .bind(lib_core::RowID::new())
+            .execute(&pool)
+            .await;
+        assert!(missing.is_err(), "base_unit_id must reference a Unit");
     }
 }

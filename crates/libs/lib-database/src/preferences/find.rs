@@ -16,7 +16,6 @@ impl crate::Preferences {
             r#"
                 SELECT
                     id               AS "id!: domain::RowID",
-                    default_unit_id  AS "default_unit_id: domain::RowID",
                     colour_theme,
                     colour_appearance,
                     date_style       AS "date_style: domain::DateStyle",

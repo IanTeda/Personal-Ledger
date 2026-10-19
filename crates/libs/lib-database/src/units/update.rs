@@ -3,8 +3,8 @@
 use lib_core as domain;
 
 impl crate::Units {
-    /// Replace this Unit's editable fields (`code`, `name`, `unit_kind`, `decimal_places`,
-    /// `is_active`) with its current values, then re-reads the row to confirm. `id` and
+    /// Replace this Unit's editable fields (`code`, `name`, `unit_kind`, the Price
+    /// Source link, the last price, `is_active`) with its current values, then re-reads the row to confirm. `id` and
     /// `created_on` never change; `updated_on` is refreshed by the `trg_units_set_updated_on`
     /// trigger.
     ///
@@ -21,13 +21,18 @@ impl crate::Units {
         let result = sqlx::query!(
             r#"
                 UPDATE units
-                SET code = ?, name = ?, unit_kind = ?, decimal_places = ?, is_active = ?
+                SET code = ?, name = ?, unit_kind = ?, price_source_id = ?, price_symbol = ?,
+                    quote_unit_id = ?, last_price = ?, last_price_fetched_on = ?, is_active = ?
                 WHERE id = ?
             "#,
             self.code,
             self.name,
             self.unit_kind,
-            self.decimal_places,
+            self.price_source_id,
+            self.price_symbol,
+            self.quote_unit_id,
+            self.last_price,
+            self.last_price_fetched_on,
             self.is_active,
             self.id
         )
@@ -83,12 +88,16 @@ mod tests {
     async fn update_replaces_editable_fields(pool: SqlitePool) {
         let mut unit = crate::Units::mock().insert(&pool).await.unwrap();
         unit.name = "Updated Name".to_string();
-        unit.decimal_places = 8;
+        unit.price_symbol = "bitcoin".to_string();
+        unit.last_price = Some("64000.12".to_string());
+        unit.last_price_fetched_on = Some("2026-10-19".to_string());
 
         let updated = unit.update(&pool).await.unwrap();
 
         assert_eq!(updated.name, "Updated Name");
-        assert_eq!(updated.decimal_places, 8);
+        assert_eq!(updated.price_symbol, "bitcoin");
+        assert_eq!(updated.last_price.as_deref(), Some("64000.12"));
+        assert_eq!(updated.last_price_fetched_on.as_deref(), Some("2026-10-19"));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

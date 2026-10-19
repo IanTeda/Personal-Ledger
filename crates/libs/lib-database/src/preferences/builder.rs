@@ -11,7 +11,6 @@ use super::Preferences;
 #[derive(Debug, Default, Clone)]
 pub struct PreferencesBuilder {
     id: Option<lib_core::RowID>,
-    default_unit_id: Option<lib_core::RowID>,
     colour_theme: Option<String>,
     colour_appearance: Option<String>,
     date_style: Option<lib_core::DateStyle>,
@@ -30,13 +29,6 @@ impl PreferencesBuilder {
     #[must_use]
     pub fn with_id(mut self, id: lib_core::RowID) -> Self {
         self.id = Some(id);
-        self
-    }
-
-    /// Set the default Unit for new Accounts (or clear it, with `None`).
-    #[must_use]
-    pub fn with_default_unit_id(mut self, default_unit_id: Option<lib_core::RowID>) -> Self {
-        self.default_unit_id = default_unit_id;
         self
     }
 
@@ -96,7 +88,6 @@ impl PreferencesBuilder {
                 reason = "RowID::default() is a nil UUID, not a usable row id"
             )]
             id: self.id.unwrap_or_else(lib_core::RowID::new),
-            default_unit_id: self.default_unit_id,
             colour_theme: self.colour_theme,
             colour_appearance: self.colour_appearance,
             date_style: self.date_style,
