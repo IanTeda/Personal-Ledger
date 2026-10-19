@@ -148,10 +148,7 @@ impl DashboardView {
         let ledger = self.sources.ledger.read(cx).ledger();
         let (plans, entries) = (ledger.bill_plans(), ledger.bill_entries());
         let units = ledger.units();
-        let base_unit = units
-            .iter()
-            .find(|unit| unit.is_base)
-            .map(|unit| unit.code.as_str());
+        let base_unit = ledger.base_unit_row().map(|unit| unit.code.as_str());
         bills::attention_entries(plans, entries, self.today)
             .into_iter()
             .filter_map(|id| {

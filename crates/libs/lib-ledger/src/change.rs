@@ -77,6 +77,8 @@ pub enum LedgerChange {
     UpsertInstitution(InstitutionRow),
     UpsertUnit(UnitRow),
     DeleteUnit(UnitId),
+    /// The Ledger's base Unit became this one.
+    SetBaseUnit(UnitId),
     UpsertPriceSource(PriceSourceRecord),
     DeletePriceSource(PriceSourceId),
 }
@@ -103,6 +105,7 @@ impl LedgerChange {
             // Price Sources are listed and edited on the Units page, and deleting one moves Units.
             Self::UpsertUnit(_)
             | Self::DeleteUnit(_)
+            | Self::SetBaseUnit(_)
             | Self::UpsertPriceSource(_)
             | Self::DeletePriceSource(_) => Domain::Units,
         }

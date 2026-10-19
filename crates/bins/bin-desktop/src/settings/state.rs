@@ -17,6 +17,7 @@ use crate::{
     settings::categories::CategoriesPage,
     settings::display::{DisplayPage, DisplayPreferences},
     settings::documents::DocumentsPage,
+    settings::general::GeneralPage,
     settings::institutions::InstitutionsPage,
     settings::inventory::InventoryPage,
     settings::pages::{PageFrame, PageHandle, SettingsPages},
@@ -111,6 +112,11 @@ impl SettingsView {
     /// The Inventory page's Entity, for the Settings snapshots.
     pub fn inventory(&self) -> &Entity<InventoryPage> {
         &self.pages.inventory
+    }
+
+    /// The General page's Entity, for the Settings snapshots.
+    pub fn general(&self) -> &Entity<GeneralPage> {
+        &self.pages.general
     }
 
     /// The Display page's Entity, for the Settings snapshots.

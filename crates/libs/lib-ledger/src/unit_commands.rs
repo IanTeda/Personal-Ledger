@@ -73,6 +73,14 @@ impl Ledger {
         Ok(unit)
     }
 
+    /// Makes `id` the base Unit, which new Accounts default to. Refuses a Unit that isn't there.
+    pub fn set_base_unit(&mut self, id: UnitId) -> Result<(), UnitGone> {
+        self.unit(id).ok_or(UnitGone)?;
+        self.base_unit = id;
+        self.pending.push(LedgerChange::SetBaseUnit(id));
+        Ok(())
+    }
+
     /// Refuses a link to a Price Source that is neither Manual entry, a built-in nor a stored Custom
     /// source.
     fn check_price_source(&self, id: PriceSourceId) -> Result<(), SaveUnitRefusal> {
@@ -138,6 +146,18 @@ impl LedgerCommand for DeleteUnit {
     }
 }
 
+/// [`Ledger::set_base_unit`] as a value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetBaseUnit(pub UnitId);
+
+impl LedgerCommand for SetBaseUnit {
+    type Outcome = ();
+    type Refusal = UnitGone;
+    fn run(self, ledger: &mut Ledger) -> Result<(), UnitGone> {
+        ledger.set_base_unit(self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,7 +194,6 @@ mod tests {
         let added = ledger.units()[index].clone();
         assert_eq!(added.code, "eth");
         assert_eq!(added.link, link);
-        assert!(!added.is_base && !added.is_default);
         assert_eq!(
             ledger.drain_changes(),
             vec![LedgerChange::UpsertUnit(added)]
@@ -182,10 +201,9 @@ mod tests {
     }
 
     #[test]
-    fn editing_a_unit_writes_its_link_keeps_its_flags_and_records_the_row() {
+    fn editing_a_unit_writes_its_link_and_records_the_row() {
         let mut ledger = Ledger::stub();
         let before = ledger.units()[0].clone();
-        assert!(before.is_base && before.is_default);
 
         EditUnit {
             id: UnitId::SEED_AUD,
@@ -203,7 +221,6 @@ mod tests {
             ("aud2", "Aussie")
         );
         assert_eq!(edited.link, before.link);
-        assert!(edited.is_base && edited.is_default);
         assert_eq!(
             ledger.drain_changes(),
             vec![LedgerChange::UpsertUnit(edited)]
@@ -228,6 +245,47 @@ mod tests {
         );
         assert_eq!(ledger.units(), before);
         assert!(ledger.drain_changes().is_empty());
+    }
+
+    #[test]
+    fn the_stub_holds_aud_as_its_base_unit() {
+        let ledger = Ledger::stub();
+        assert_eq!(ledger.base_unit(), UnitId::SEED_AUD);
+        assert_eq!(
+            ledger.base_unit_row().map(|unit| unit.code.as_str()),
+            Some("aud")
+        );
+    }
+
+    #[test]
+    fn setting_the_base_unit_moves_it_and_records_the_change() {
+        let mut ledger = Ledger::stub();
+
+        SetBaseUnit(UnitId::SEED_BTC).run(&mut ledger).unwrap();
+
+        assert_eq!(ledger.base_unit(), UnitId::SEED_BTC);
+        assert_eq!(
+            ledger.drain_changes(),
+            vec![LedgerChange::SetBaseUnit(UnitId::SEED_BTC)]
+        );
+    }
+
+    #[test]
+    fn setting_an_unknown_unit_as_base_is_refused_and_the_ledger_is_untouched() {
+        let mut ledger = Ledger::stub();
+
+        assert_eq!(SetBaseUnit(UnitId::new()).run(&mut ledger), Err(UnitGone));
+
+        assert_eq!(ledger.base_unit(), UnitId::SEED_AUD);
+        assert!(ledger.drain_changes().is_empty());
+    }
+
+    #[test]
+    fn setting_the_base_unit_leaves_the_unit_rows_alone() {
+        let mut ledger = Ledger::stub();
+        let before = ledger.units().to_vec();
+        SetBaseUnit(UnitId::SEED_VAS).run(&mut ledger).unwrap();
+        assert_eq!(ledger.units(), before);
     }
 
     #[test]

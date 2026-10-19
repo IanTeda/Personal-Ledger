@@ -30,11 +30,6 @@ pub struct UnitRow {
     pub link: PriceLink,
     /// The newest price, kept with no history.
     pub last_price: Option<LastPrice>,
-    /// The Ledger's own base Unit. Nothing lets a person change which Unit is base yet, so a
-    /// dialog-created Unit is never base.
-    pub is_base: bool,
-    /// The default Unit for new entries; the same "dialogs never set it" as [`Self::is_base`].
-    pub is_default: bool,
 }
 
 /// A Unit's link to its Price Source. The symbol and quote live here, not on the source, since one
@@ -78,8 +73,6 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             kind: UnitKind::Currency,
             link: PriceLink::manual(UnitId::SEED_AUD),
             last_price: None,
-            is_base: true,
-            is_default: true,
         },
         UnitRow {
             id: UnitId::SEED_BTC,
@@ -95,8 +88,6 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
                 price: Money(BigDecimal::new(14_821_240.into(), 2)),
                 fetched_at: now - chrono::Duration::minutes(5),
             }),
-            is_base: false,
-            is_default: false,
         },
         UnitRow {
             id: UnitId::SEED_VAS,
@@ -105,15 +96,8 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             kind: UnitKind::Equity,
             link: PriceLink::manual(UnitId::SEED_AUD),
             last_price: None,
-            is_base: false,
-            is_default: false,
         },
     ]
-}
-
-/// The Ledger's base Unit, if one is flagged.
-pub fn base_unit(units: &[UnitRow]) -> Option<&UnitRow> {
-    units.iter().find(|unit| unit.is_base)
 }
 
 /// The Units sorted by code, ignoring case.
@@ -123,8 +107,8 @@ pub fn units_by_code(units: &[UnitRow]) -> Vec<&UnitRow> {
     sorted
 }
 
-/// Appends a Unit from the Add unit dialog, with no price yet. It can't be the base or default
-/// Unit: nothing lets a person change which one that is. Returns the row it appended.
+/// Appends a Unit from the Add unit dialog, with no price yet. Which Unit is the base is the
+/// Ledger's field, so an added Unit is never it. Returns the row it appended.
 pub fn add_unit(
     units: &mut Vec<UnitRow>,
     code: String,
@@ -139,16 +123,13 @@ pub fn add_unit(
         kind,
         link,
         last_price: None,
-        is_base: false,
-        is_default: false,
     };
     units.push(row.clone());
     row
 }
 
-/// Rewrites the row `id` from the Edit unit dialog, keeping the base and default flags, which the
-/// dialog has no field for. The last price is kept unless the quote Unit changes, since a price in
-/// the old quote would read as one in the new. Returns the row it wrote, or `None` when no row has
+/// Rewrites the row `id` from the Edit unit dialog. The last price is kept unless the quote Unit
+/// changes, since a price in the old quote would read as one in the new. Returns the row it wrote, or `None` when no row has
 /// `id`.
 pub fn edit_unit(
     units: &mut [UnitRow],
@@ -171,8 +152,6 @@ pub fn edit_unit(
         kind,
         link,
         last_price,
-        is_base: existing.is_base,
-        is_default: existing.is_default,
     };
     Some(existing)
 }
@@ -239,21 +218,6 @@ mod tests {
     }
 
     #[test]
-    fn only_aud_carries_the_base_and_default_flags() {
-        let units = seed();
-        let flagged: Vec<_> = units
-            .iter()
-            .filter(|unit| unit.is_base || unit.is_default)
-            .map(|unit| unit.code.as_str())
-            .collect();
-        assert_eq!(flagged, vec!["aud"]);
-        assert_eq!(
-            base_unit(&units).map(|unit| unit.id),
-            Some(UnitId::SEED_AUD)
-        );
-    }
-
-    #[test]
     fn units_sort_by_code_ignoring_case() {
         let mut units = seed();
         add_unit(
@@ -278,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn a_dialog_added_unit_has_its_link_no_price_and_neither_flag() {
+    fn a_dialog_added_unit_has_its_link_and_no_price() {
         let mut units = seed();
         let link = PriceLink {
             source_id: COINGECKO,
@@ -295,12 +259,11 @@ mod tests {
         assert_eq!(added.code, "eth");
         assert_eq!(added.link, link);
         assert_eq!(added.last_price, None);
-        assert!(!added.is_base && !added.is_default);
         assert_eq!(units.len(), 4);
     }
 
     #[test]
-    fn editing_writes_the_link_and_keeps_the_flags_and_the_price_in_the_same_quote() {
+    fn editing_writes_the_link_and_keeps_the_price_in_the_same_quote() {
         let mut units = seed();
         let price = units[1].last_price.clone();
         let link = PriceLink {
@@ -320,18 +283,6 @@ mod tests {
         assert_eq!(edited.code, "xbt");
         assert_eq!(edited.link, link);
         assert_eq!(edited.last_price, price);
-        assert!(!edited.is_base && !edited.is_default);
-
-        let aud = edit_unit(
-            &mut units,
-            UnitId::SEED_AUD,
-            "aud".into(),
-            "Aussie".into(),
-            UnitKind::Currency,
-            PriceLink::manual(UnitId::SEED_AUD),
-        )
-        .expect("aud is seeded");
-        assert!(aud.is_base && aud.is_default);
     }
 
     #[test]

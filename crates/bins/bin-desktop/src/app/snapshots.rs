@@ -19,9 +19,9 @@ pub use overlays::{ToastSnapshot, ToastsSnapshot};
 pub use palette::PaletteSnapshot;
 pub use settings::{
     SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
-    SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
-    SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
-    SettingsUnitsSnapshot,
+    SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
+    SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
+    SettingsTracingSnapshot, SettingsUnitsSnapshot,
 };
 pub use status::StatusSnapshot;
 pub use transactions::{ChipSnapshot, ImportRowSnapshot, ImportSnapshot, TransactionsSnapshot};

@@ -9,7 +9,7 @@ pub mod categories;
 pub mod data_backup;
 pub mod display;
 pub mod documents;
-pub(crate) mod general;
+pub mod general;
 pub(crate) mod hints;
 pub mod institutions;
 pub mod inventory;

@@ -34,3 +34,23 @@ fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
     ui.click("settings-add-price-source");
     assert_eq!(ui.dialog(), Some("AddPriceSource"));
 }
+
+#[gpui::test]
+fn clicking_a_unit_in_the_base_unit_select_makes_it_the_base_unit(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("aud"));
+
+    ui.click("settings-general-base-unit-vas");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("vas"));
+    ui.click("settings-general-base-unit-aud");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("aud"));
+}
+
+#[gpui::test]
+fn the_units_page_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("aud"));
+
+    ui.click("settings-general-base-unit-btc");
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
+}

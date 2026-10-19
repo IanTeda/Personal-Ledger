@@ -291,9 +291,7 @@ impl AccountsPage {
             .ledger
             .read(cx)
             .ledger()
-            .units()
-            .iter()
-            .find(|unit| unit.is_default)
+            .base_unit_row()
             .map(|unit| unit.code.as_str());
         let mut form = AccountForm::new(&options, default_unit);
         form.name = TextField::new(name.trim());
@@ -484,10 +482,7 @@ mod tests {
 
     #[test]
     fn seeded_base_unit_rows_sum_to_the_mockups_net_worth() {
-        let base = lib_units::default_units(chrono::Utc::now())
-            .into_iter()
-            .find(|unit| unit.is_base)
-            .map(|unit| unit.id);
+        let base = Some(lib_core::UnitId::SEED_AUD);
         let net = default_accounts()
             .into_iter()
             .filter(|account| Some(account.unit) == base)

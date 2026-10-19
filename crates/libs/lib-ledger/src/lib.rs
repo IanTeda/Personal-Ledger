@@ -55,7 +55,7 @@ pub use price_source_commands::{
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
 pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
-pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal, UnitGone};
+pub use unit_commands::{AddUnit, DeleteUnit, EditUnit, SaveUnitRefusal, SetBaseUnit, UnitGone};
 
 use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
 use lib_accounts::{Account, default_accounts};
@@ -91,6 +91,8 @@ pub struct Ledger {
     inventory: Inventory,
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
+    /// The Ledger's one base Unit, which is also the default for new Accounts.
+    base_unit: UnitId,
     /// Only the Price Sources a person changed: built-in overrides and Custom sources.
     price_sources: Vec<PriceSourceRecord>,
     /// The changes recorded since the last [`Ledger::drain_changes`].
@@ -99,7 +101,7 @@ pub struct Ledger {
 
 /// Every collection a [`Ledger`] is built from. A test fills only the collections it reads and
 /// leaves the rest empty.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LedgerParts {
     pub accounts: Vec<Account>,
     pub categories: Vec<Category>,
@@ -114,7 +116,32 @@ pub struct LedgerParts {
     pub inventory: Inventory,
     pub institutions: Vec<InstitutionRow>,
     pub units: Vec<UnitRow>,
+    pub base_unit: UnitId,
     pub price_sources: Vec<PriceSourceRecord>,
+}
+
+impl Default for LedgerParts {
+    /// Empty collections. `base_unit` is the stub's aud, which an empty `units` doesn't hold: a
+    /// test that reads the base Unit supplies its own `units`.
+    fn default() -> Self {
+        Self {
+            accounts: Vec::new(),
+            categories: Vec::new(),
+            payees: Vec::new(),
+            tags: Vec::new(),
+            transactions: Vec::new(),
+            bill_plans: Vec::new(),
+            bill_entries: Vec::new(),
+            budgets: Budgets::default(),
+            documents: Vec::new(),
+            document_types: Vec::new(),
+            inventory: Inventory::default(),
+            institutions: Vec::new(),
+            units: Vec::new(),
+            base_unit: UnitId::SEED_AUD,
+            price_sources: Vec::new(),
+        }
+    }
 }
 
 impl Ledger {
@@ -134,6 +161,7 @@ impl Ledger {
             inventory,
             institutions,
             units,
+            base_unit,
             price_sources,
         } = parts;
         Self {
@@ -150,6 +178,7 @@ impl Ledger {
             inventory,
             institutions,
             units,
+            base_unit,
             price_sources,
             pending: Vec::new(),
         }
@@ -203,6 +232,7 @@ impl Ledger {
             inventory,
             institutions: default_institutions(),
             units: default_units(now),
+            base_unit: UnitId::SEED_AUD,
             price_sources: Vec::new(),
         })
     }
@@ -257,6 +287,16 @@ impl Ledger {
 
     pub fn units(&self) -> &[UnitRow] {
         &self.units
+    }
+
+    /// The Ledger's base Unit, which new Accounts default to.
+    pub fn base_unit(&self) -> UnitId {
+        self.base_unit
+    }
+
+    /// The base Unit's row, or `None` when it has since been removed.
+    pub fn base_unit_row(&self) -> Option<&UnitRow> {
+        self.unit(self.base_unit)
     }
 
     /// The Unit `id`, if it exists: how an Account's Unit reference becomes a code to show.

@@ -105,3 +105,17 @@ fn an_edit_action_saved_keeps_the_edited_account_selected(app: &mut TestAppConte
         Some(format!("{name}x"))
     );
 }
+
+#[gpui::test]
+fn a_new_account_defaults_to_the_base_unit_set_on_general(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s");
+    ui.click("settings-general-base-unit-btc");
+    ui.press("j j j j");
+    assert_eq!(ui.settings().page, "Accounts");
+    ui.press("l");
+
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddAccount"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+}

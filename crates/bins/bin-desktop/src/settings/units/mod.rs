@@ -450,6 +450,15 @@ impl UnitsPage {
         self.ledger.read(cx).ledger().units()
     }
 
+    /// The Ledger's base Unit row, which the ◆ glyph marks.
+    fn base_unit<'a>(&self, cx: &'a App) -> Option<&'a UnitRow> {
+        self.ledger.read(cx).ledger().base_unit_row()
+    }
+
+    fn is_base(&self, unit: &UnitRow, cx: &App) -> bool {
+        self.ledger.read(cx).ledger().base_unit() == unit.id
+    }
+
     /// Every Price Source in the Ledger's order, resolved for drawing.
     fn price_sources(&self, cx: &App) -> Vec<SourceRow> {
         let ledger = self.ledger.read(cx).ledger();
@@ -746,6 +755,7 @@ impl UnitsPage {
             ledger.price_source_records(),
             &lib_locale::msg::price_source_manual_entry(),
             ledger.units(),
+            ledger.base_unit(),
             crate::msg::desktop_settings_units_quote_base,
         )
     }
@@ -833,6 +843,7 @@ impl UnitsPage {
         let units = self.units(cx);
         SettingsUnitsSnapshot {
             unit_codes: units.iter().map(|unit| unit.code.clone()).collect(),
+            base_code: self.base_unit(cx).map(|unit| unit.code.clone()),
             unit_rows: units
                 .iter()
                 .map(|unit| {
@@ -969,6 +980,8 @@ impl UnitsPage {
 pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
     pub unit_rows: Vec<(String, String, String)>,
+    /// The code of the Unit the ◆ glyph marks: the Ledger's base Unit.
+    pub base_code: Option<String>,
     /// Each Unit's saved link as `(code, source, symbol, quoted in)`, with the source and the
     /// quote as the Ledger names them: the source's name, the quote Unit's code.
     pub unit_links: Vec<(String, String, String, String)>,

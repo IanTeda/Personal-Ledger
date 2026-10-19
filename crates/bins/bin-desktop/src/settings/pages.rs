@@ -257,7 +257,7 @@ impl SettingsPages {
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         Self {
-            general: cx.new(|_| GeneralPage),
+            general: cx.new(|cx| GeneralPage::new(ledger.clone(), cx)),
             display: cx.new(|_| DisplayPage::default()),
             units: cx.new(|cx| UnitsPage::new(ledger.clone(), cx)),
             institutions: cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx)),

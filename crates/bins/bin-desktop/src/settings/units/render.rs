@@ -94,6 +94,7 @@ impl Render for UnitsPage {
             ))
             .child(table(
                 self.units(cx),
+                self.ledger.read(cx).ledger().base_unit(),
                 &self
                     .units(cx)
                     .iter()
@@ -232,11 +233,14 @@ struct RowState {
     /// Whether the row takes the selection treatment: the selected row, or the row a menu is open
     /// on.
     inverted: bool,
+    /// Whether the row is the Ledger's base Unit, which takes the ◆ glyph.
+    is_base: bool,
 }
 
 /// `source_names` holds each Unit's Price Source name, in `units`' order.
 fn table(
     units: &[UnitRow],
+    base: UnitId,
     source_names: &[String],
     handlers: RowHandlers,
     selected: Option<UnitId>,
@@ -267,6 +271,7 @@ fn table(
                         index,
                         last: index == last_index,
                         inverted: selected == Some(unit.id) || menu_unit == Some(unit.id),
+                        is_base: unit.id == base,
                     };
                     row(unit, source_name.clone(), state, handlers.clone(), cx)
                 }),
@@ -360,6 +365,7 @@ fn row(
         index,
         last,
         inverted,
+        is_base,
     } = state;
     let muted = if inverted {
         color::selection_muted(cx)
@@ -387,7 +393,7 @@ fn row(
             .w(GLYPH_WIDTH)
             .flex_none()
             .text_size(px(12.0))
-            .when(unit.is_base, |this| {
+            .when(is_base, |this| {
                 this.text_color(if inverted {
                     color::selection_text(cx)
                 } else {
@@ -794,23 +800,12 @@ fn unit_group(
     cx: &App,
 ) -> impl IntoElement {
     let base = page
-        .units(cx)
-        .iter()
-        .find(|row| row.is_base)
+        .base_unit(cx)
         .map_or_else(|| unit.code.clone(), |row| row.code.clone());
-    let flags = [
-        unit.is_base
-            .then(crate::msg::desktop_settings_units_flag_base),
-        unit.is_default
-            .then(crate::msg::desktop_settings_units_flag_default),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
-    let flags = if flags.is_empty() {
-        crate::msg::desktop_settings_units_pane_none()
+    let flags = if page.is_base(unit, cx) {
+        crate::msg::desktop_settings_units_flag_base()
     } else {
-        flags.join(" \u{b7} ")
+        crate::msg::desktop_settings_units_pane_none()
     };
     let index = page.selected_index(cx).unwrap_or_default();
     let accounts = page.accounts_in(unit, cx);

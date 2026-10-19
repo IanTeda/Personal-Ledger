@@ -16,6 +16,7 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 - **Unit Code:** A unique uppercase identifier (e.g. AUD, BTC, AAPL).
 - **Unit Kind:** The fixed grouping a unit carries, one of six: Currency, Crypto, Equity, Fixed Income, Commodity or Custom. It also decides which Price Sources can price the unit.
 - **Price Source:** Where a unit's price comes from: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a custom source you add, or Manual entry, where you type the price yourself.
+- **Base Unit:** The one unit your ledger counts in. It is marked ◆ on the Units page, and new accounts start on it. There is no separate default unit. Change it with the *Base unit* field on the General page.
 - **Pricing Pair:** The unit you use to price another unit (e.g. BTC priced in AUD).
 - **Precision:** The number of decimal places supported (e.g. AUD uses 2, BTC uses 8).
 
@@ -31,7 +32,7 @@ An account's unit defines what its balance means. If you decide "this account is
 
 ## Approach
 
-When you create an account, choose a unit. If the unit already exists in your ledger (from another account), select it. If it's new, create it with a name and type (currency, crypto, stock, etc.). You can optionally set its precision (how many decimal places it uses — AUD uses 2, Bitcoin uses 8) and a pricing pair if you want valuations (e.g. "price Bitcoin in AUD").
+When you create an account, choose a unit; the form starts on your base unit. If the unit already exists in your ledger (from another account), select it. If it's new, create it with a name and type (currency, crypto, stock, etc.). You can optionally set its precision (how many decimal places it uses — AUD uses 2, Bitcoin uses 8) and a pricing pair if you want valuations (e.g. "price Bitcoin in AUD").
 
 ## Worked example
 

@@ -846,3 +846,13 @@ fn the_edit_unit_source_list_follows_a_clicked_type_change(app: &mut TestAppCont
         Some("Code|Type|Name|Source")
     );
 }
+
+#[gpui::test]
+fn the_base_glyph_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s");
+    ui.click("settings-general-base-unit-vas");
+
+    ui.click("settings-index-Units");
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("vas"));
+}

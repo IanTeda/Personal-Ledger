@@ -142,6 +142,14 @@ pub(crate) fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The General page's keys: `j`/`k` change the Base unit select.
+pub(crate) fn settings_general_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_change()),
+        ("h", crate::msg::desktop_hint_index()),
+    ]
+}
+
 /// The Tracing page's keys while it has focus: the level radios, scrolling the log box, and
 /// Clear logs.
 pub(crate) fn settings_tracing_hints() -> Vec<(&'static str, String)> {

@@ -272,9 +272,12 @@ impl Render for BillsView {
         let transactions = self.sources.ledger.read(cx).ledger().transactions();
         let accounts = self.sources.ledger.read(cx).ledger().accounts();
         let units = self.sources.ledger.read(cx).ledger().units();
-        let base_unit = units
-            .iter()
-            .find(|unit| unit.is_base)
+        let base_unit = self
+            .sources
+            .ledger
+            .read(cx)
+            .ledger()
+            .base_unit_row()
             .map(|unit| unit.code.as_str());
         let state = &self.state;
         let unfiltered = self.unfiltered_rows(cx);

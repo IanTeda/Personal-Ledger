@@ -1,23 +1,127 @@
 //! The **General** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", first in
-//! scroll order): ledger identity fields plus a "THIS LEDGER" summary panel. Dummy values
-//! throughout, matching the mockup's own -- no real `lib_database::Preferences` wiring in this
-//! map (see the Desktop Settings Surface map's Destination).
+//! scroll order): ledger identity fields plus a "THIS LEDGER" summary panel. The identity fields
+//! are still the mockup's own dummy values, with no `lib_database::Preferences` wiring; *Base unit*
+//! is real, a select over the Ledger's Units that runs `SetBaseUnit`.
 
 mod render;
 
-use gpui::EventEmitter;
+use gpui::{Context, Entity, EventEmitter, Keystroke, Subscription};
+use lib_core::UnitId;
+use lib_ledger::{Domain, SetBaseUnit};
 
 use crate::{
-    settings::{SettingsPage, pages::Page},
+    ledger_store::{LedgerStore, notify_on},
+    settings::{SettingsPage, hints::settings_general_hints, pages::Page},
     view::event::ViewEvent,
 };
 
 impl EventEmitter<ViewEvent> for GeneralPage {}
 
-/// The General page. It holds no state: the values it shows are the mockup's own.
-#[derive(Debug, Default)]
-pub struct GeneralPage;
+/// The General page. It reads the Ledger for the *Base unit* select and holds only whether the
+/// keyboard is on the page, which draws the select focused.
+pub struct GeneralPage {
+    ledger: Entity<LedgerStore>,
+    page_focused: bool,
+    _units_changed: Subscription,
+}
+
+impl GeneralPage {
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let units_changed = notify_on(&ledger, Domain::Units, cx);
+        Self {
+            ledger,
+            page_focused: false,
+            _units_changed: units_changed,
+        }
+    }
+
+    /// The select's options in the Ledger's by-code order: `(id, code, name)`.
+    fn unit_options(&self, cx: &gpui::App) -> Vec<(UnitId, String, String)> {
+        self.ledger
+            .read(cx)
+            .ledger()
+            .units_by_code()
+            .into_iter()
+            .map(|unit| (unit.id, unit.code.clone(), unit.name.clone()))
+            .collect()
+    }
+
+    fn base_unit(&self, cx: &gpui::App) -> UnitId {
+        self.ledger.read(cx).ledger().base_unit()
+    }
+
+    /// Makes `id` the base Unit. A refusal means the Unit was removed under the select, which
+    /// repaints without it, so there is nothing to report.
+    fn set_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
+        self.ledger.update(cx, |store, cx| {
+            let _ = store.apply(cx, SetBaseUnit(id));
+        });
+        cx.notify();
+    }
+
+    /// Clicking an option of the select.
+    fn click_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
+        self.set_base_unit(id, cx);
+    }
+
+    /// `j`/`k` move the select to the next or previous Unit, stopping at the ends.
+    fn step_base_unit(&mut self, delta: isize, cx: &mut Context<'_, Self>) {
+        let ids: Vec<_> = self
+            .unit_options(cx)
+            .into_iter()
+            .map(|(id, ..)| id)
+            .collect();
+        let next = crate::settings::step_choice(&ids, self.base_unit(cx), delta);
+        self.set_base_unit(next, cx);
+    }
+
+    /// The select's state for a test: the base Unit's code and the options' codes in order.
+    #[doc(hidden)]
+    pub fn snapshot(&self, cx: &gpui::App) -> SettingsGeneralSnapshot {
+        SettingsGeneralSnapshot {
+            base_unit: self
+                .ledger
+                .read(cx)
+                .ledger()
+                .base_unit_row()
+                .map(|unit| unit.code.clone()),
+            options: self
+                .unit_options(cx)
+                .into_iter()
+                .map(|(_, code, _)| code)
+                .collect(),
+        }
+    }
+}
+
+/// The General page for a test: the base Unit's code and the select's option codes in order.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsGeneralSnapshot {
+    pub base_unit: Option<String>,
+    pub options: Vec<String>,
+}
 
 impl Page for GeneralPage {
     const PAGE: SettingsPage = SettingsPage::General;
+
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        if !self.page_focused || keystroke.modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "j" | "down" => self.step_base_unit(1, cx),
+            "k" | "up" => self.step_base_unit(-1, cx),
+            _ => return false,
+        }
+        true
+    }
+
+    fn set_page_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
+    fn hints(&self, _cx: &gpui::App) -> Vec<(&'static str, String)> {
+        settings_general_hints()
+    }
 }

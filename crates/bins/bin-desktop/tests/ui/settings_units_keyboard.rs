@@ -1030,3 +1030,18 @@ fn edit_unit_keeps_the_stored_link_and_saves_a_changed_symbol(app: &mut TestAppC
     assert_eq!(link.1, "CoinGecko");
     assert_eq!(link.2, "bitcoi");
 }
+
+#[gpui::test]
+fn the_base_glyph_follows_the_ledgers_base_unit(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("aud"));
+
+    ui.press("escape");
+    ui.press("g g");
+    ui.press("l");
+    ui.press("j");
+    ui.press("escape escape");
+    ui.press("j j");
+    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
+}

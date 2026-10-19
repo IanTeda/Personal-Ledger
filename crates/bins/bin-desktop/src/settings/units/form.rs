@@ -65,12 +65,13 @@ pub struct UnitOptions {
 }
 
 impl UnitOptions {
-    /// Reads the sources and Units from the Ledger. `manual_name` is Manual entry's Message and
-    /// `base_label` the Message that marks the base Unit's option.
+    /// Reads the sources and Units from the Ledger. `manual_name` is Manual entry's Message,
+    /// `base` the Ledger's base Unit and `base_label` the Message that marks the base Unit's option.
     pub fn new(
         records: &[PriceSourceRecord],
         manual_name: &str,
         units: &[UnitRow],
+        base: UnitId,
         base_label: impl Fn(&str) -> String,
     ) -> Self {
         let listed = lib_units::price_sources(records, manual_name);
@@ -92,7 +93,9 @@ impl UnitOptions {
                     .collect(),
             })
             .collect();
-        let base = lib_units::base_unit(units)
+        let base = units
+            .iter()
+            .find(|unit| unit.id == base)
             .or(units.first())
             .map(|unit| unit.id);
         let mut seen = Vec::new();
@@ -507,7 +510,7 @@ mod tests {
     fn options() -> (UnitOptions, Vec<UnitRow>) {
         crate::locale::init_for_tests();
         let units = lib_units::default_units(chrono::Utc::now());
-        let options = UnitOptions::new(&[], "Manual entry", &units, |code| {
+        let options = UnitOptions::new(&[], "Manual entry", &units, UnitId::SEED_AUD, |code| {
             format!("{code} (base unit)")
         });
         (options, units)
@@ -524,13 +527,10 @@ mod tests {
 
     #[test]
     fn a_new_form_is_on_manual_entry_quoted_in_the_base_unit() {
-        let (options, units) = options();
+        let (options, _) = options();
         let form = UnitForm::new(&options);
         assert!(form.is_manual());
-        assert_eq!(
-            form.link(),
-            PriceLink::manual(lib_units::base_unit(&units).unwrap().id)
-        );
+        assert_eq!(form.link(), PriceLink::manual(UnitId::SEED_AUD));
         assert_eq!(form.quote.value(), Some("aud (base unit)"));
     }
 
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn a_fetching_source_links_its_symbol_and_quote() {
-        let (options, units) = options();
+        let (options, _) = options();
         let mut form = UnitForm::new(&options);
         pick(&mut form, UnitField::Type, &UnitKind::Crypto.label());
         pick(&mut form, UnitField::Source, "CoinGecko");
@@ -578,7 +578,7 @@ mod tests {
             PriceLink {
                 source_id: COINGECKO,
                 symbol: "x".to_string(),
-                quote: lib_units::base_unit(&units).unwrap().id,
+                quote: UnitId::SEED_AUD,
             }
         );
     }
@@ -640,7 +640,10 @@ mod tests {
         };
         let records = [custom("Manual entry"), custom("Manual entry")];
         let units = lib_units::default_units(chrono::Utc::now());
-        let options = UnitOptions::new(&records, "Manual entry", &units, |code| code.to_string());
+        let options =
+            UnitOptions::new(&records, "Manual entry", &units, UnitId::SEED_AUD, |code| {
+                code.to_string()
+            });
         let mut form = UnitForm::new(&options);
         assert_eq!(
             form.options_for(UnitField::Source),
@@ -672,7 +675,13 @@ mod tests {
             updates: lib_units::Updates::ManualOnly,
         });
         let units = lib_units::default_units(chrono::Utc::now());
-        let options = UnitOptions::new(&[record], "Manual entry", &units, |code| code.to_string());
+        let options = UnitOptions::new(
+            &[record],
+            "Manual entry",
+            &units,
+            UnitId::SEED_AUD,
+            |code| code.to_string(),
+        );
         let mut form = UnitForm::new(&options);
         pick(&mut form, UnitField::Type, &UnitKind::Crypto.label());
         assert_eq!(
@@ -684,7 +693,9 @@ mod tests {
     #[test]
     fn a_fetching_source_needs_a_quote_unit_to_be_valid() {
         crate::locale::init_for_tests();
-        let options = UnitOptions::new(&[], "Manual entry", &[], |code| code.to_string());
+        let options = UnitOptions::new(&[], "Manual entry", &[], UnitId::SEED_AUD, |code| {
+            code.to_string()
+        });
         let mut form = UnitForm::new(&options);
         form.code = TextField::new("x");
         form.name = TextField::new("x");

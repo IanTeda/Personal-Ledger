@@ -14,9 +14,10 @@ use bin_desktop::{
     app::{
         BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
         SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
-        SettingsDocumentTypesSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
-        SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
-        SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
+        SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
+        SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
+        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot,
+        TransactionsSnapshot,
     },
     build_shell,
     locale::init_for_tests,
@@ -313,6 +314,11 @@ impl<'a> Harness<'a> {
     /// The Settings Tracing page's state, read back for assertions.
     pub fn settings_tracing(&mut self) -> SettingsTracingSnapshot {
         self.read_app(Shell::settings_tracing_snapshot)
+    }
+
+    /// The Settings General page's state, read back for assertions.
+    pub fn settings_general(&mut self) -> SettingsGeneralSnapshot {
+        self.read_app(Shell::settings_general_snapshot)
     }
 
     /// The Settings Units page's state, read back for assertions.

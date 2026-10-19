@@ -22,12 +22,15 @@ type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// The section heading's meta: `7 accounts · net worth 83,995.87 aud · vas, btc held
 /// separately`. One net figure in the base Unit only, then every other Unit held named rather
 /// than summed or dropped.
-pub fn scope_note(accounts: &[Account], units: &[lib_units::UnitRow]) -> String {
+pub fn scope_note(
+    accounts: &[Account],
+    units: &[lib_units::UnitRow],
+    base_unit: lib_core::UnitId,
+) -> String {
     if accounts.is_empty() {
         return crate::msg::desktop_accounts_summary_empty();
     }
-    let base_unit = units.iter().find(|unit| unit.is_base).map(|unit| unit.id);
-    let net = accounts::net_worth(accounts, base_unit);
+    let net = accounts::net_worth(accounts, Some(base_unit));
 
     let mut parts = vec![count_text(&net)];
     if let Some(base) = net
@@ -75,7 +78,11 @@ impl Render for AccountsPage {
 impl AccountsPage {
     /// The section heading's meta, over the page's live rows and Settings' Units.
     pub(crate) fn scope_note(&self, cx: &App) -> String {
-        scope_note(self.accounts(cx), self.ledger.read(cx).ledger().units())
+        scope_note(
+            self.accounts(cx),
+            self.ledger.read(cx).ledger().units(),
+            self.ledger.read(cx).ledger().base_unit(),
+        )
     }
 }
 
@@ -342,6 +349,7 @@ mod tests {
         let note = scope_note(
             &accounts::default_accounts(),
             &lib_units::default_units(chrono::Utc::now()),
+            lib_core::UnitId::SEED_AUD,
         );
         assert_eq!(
             note,
@@ -353,7 +361,11 @@ mod tests {
     fn scope_note_with_no_accounts_says_so() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_note(&[], &lib_units::default_units(chrono::Utc::now())),
+            scope_note(
+                &[],
+                &lib_units::default_units(chrono::Utc::now()),
+                lib_core::UnitId::SEED_AUD
+            ),
             "no accounts yet"
         );
     }

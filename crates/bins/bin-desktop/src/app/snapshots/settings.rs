@@ -7,6 +7,8 @@ pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]
+pub use crate::settings::general::SettingsGeneralSnapshot;
+#[doc(hidden)]
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::inventory::SettingsInventorySnapshot;
@@ -86,6 +88,12 @@ impl Shell {
     #[doc(hidden)]
     pub fn settings_tags_snapshot(&self, cx: &gpui::App) -> SettingsTagsSnapshot {
         self.views.settings.read(cx).tags().read(cx).snapshot(cx)
+    }
+
+    /// The Settings General page for a test.
+    #[doc(hidden)]
+    pub fn settings_general_snapshot(&self, cx: &gpui::App) -> SettingsGeneralSnapshot {
+        self.views.settings.read(cx).general().read(cx).snapshot(cx)
     }
 
     /// The Settings Units page for a test, as the View builds it.

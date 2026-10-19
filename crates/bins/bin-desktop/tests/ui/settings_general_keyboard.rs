@@ -45,3 +45,50 @@ fn escape_on_the_index_stays_on_settings(app: &mut TestAppContext) {
     assert_eq!(page.page, "General");
     assert_eq!(ui.noun(), Noun::Settings);
 }
+
+#[gpui::test]
+fn the_base_unit_select_starts_on_aud_and_lists_every_unit(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+
+    let general = ui.settings_general();
+    assert_eq!(general.base_unit.as_deref(), Some("aud"));
+    assert_eq!(general.options, ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
+fn j_and_k_in_the_page_set_the_base_unit_and_stop_at_the_ends(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+
+    ui.press("l");
+    ui.press("j");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("btc"));
+    ui.press("j j");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("vas"));
+    ui.press("k");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("btc"));
+    ui.press("k k");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("aud"));
+}
+
+#[gpui::test]
+fn j_on_the_index_changes_the_page_and_not_the_base_unit(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+
+    ui.press("j");
+    assert_eq!(ui.settings().page, "Display");
+    assert_eq!(ui.settings_general().base_unit.as_deref(), Some("aud"));
+}
+
+#[gpui::test]
+fn a_base_unit_set_by_key_moves_the_units_pages_glyph(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+
+    ui.press("l");
+    ui.press("j");
+    ui.press("escape escape");
+    ui.press("j");
+    assert_eq!(ui.settings().page, "Display");
+    ui.press("j");
+    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
+}
