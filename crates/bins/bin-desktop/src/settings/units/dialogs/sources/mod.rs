@@ -225,7 +225,11 @@ fn help(text: String, cx: &App) -> impl IntoElement {
 
 /// A test button that has nothing behind it yet: drawn disabled beside its note, since fetching a
 /// price is still undecided.
-fn test_not_built(id: &'static str, label: String, cx: &App) -> impl IntoElement {
+pub(in crate::settings::units) fn test_not_built(
+    id: &'static str,
+    label: String,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()

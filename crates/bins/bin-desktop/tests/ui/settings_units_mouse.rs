@@ -92,9 +92,10 @@ fn the_add_unit_type_control_and_confirm_button_add_the_unit(app: &mut TestAppCo
 
     ui.click("settings-add-unit");
     ui.press("g o l d");
-    ui.press("tab");
+    ui.click("add-unit-name");
     ui.press("g o l d");
-    ui.click("add-unit-type-4");
+    ui.click("add-unit-type");
+    ui.click("add-unit-type-option-4");
     assert_eq!(ui.dialog_value("kind").as_deref(), Some("Commodity"));
     ui.click("add-unit-confirm");
     let units_page = ui.settings_units();
@@ -138,7 +139,8 @@ fn the_edit_unit_dialog_saves_a_changed_type_by_mouse(app: &mut TestAppContext) 
     let (code, name, _) = ui.settings_units().unit_rows[0].clone();
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
-    ui.click("edit-unit-type-1");
+    ui.click("edit-unit-type");
+    ui.click("edit-unit-type-option-1");
     assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
     ui.click("edit-unit-confirm");
     let units_page = ui.settings_units();
@@ -771,4 +773,70 @@ fn at_x_large_manual_entrys_pane_has_no_buttons(app: &mut TestAppContext) {
     );
     assert!(ui.is_drawn("units-pane-values"));
     assert!(ui.settings_units().pane_source_buttons.is_empty());
+}
+
+#[gpui::test]
+fn add_unit_picks_a_source_and_quote_by_mouse_and_saves_the_link(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    ui.press("e t h");
+    ui.click("add-unit-name");
+    ui.press("e t h e r");
+    ui.click("add-unit-type");
+    ui.click("add-unit-type-option-1");
+    assert_eq!(
+        ui.dialog_value("sources").as_deref(),
+        Some("CoinGecko|Manual entry")
+    );
+    ui.click("add-unit-source");
+    ui.click("add-unit-source-option-0");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("CoinGecko"));
+    ui.click("add-unit-symbol");
+    ui.press("e t h");
+    ui.click("add-unit-quote");
+    ui.click("add-unit-quote-option-0");
+    ui.click("add-unit-confirm");
+    assert_eq!(ui.dialog(), None);
+    let link = ui.settings_units().unit_links.last().cloned().unwrap();
+    assert_eq!(link.0, "eth");
+    assert_eq!(link.1, "CoinGecko");
+    assert_eq!(link.2, "eth");
+}
+
+#[gpui::test]
+fn choosing_manual_entry_by_mouse_hides_symbol_quote_and_test(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    assert!(!ui.is_drawn("add-unit-symbol"));
+    ui.click("add-unit-type");
+    ui.click("add-unit-type-option-1");
+    ui.click("add-unit-source");
+    ui.click("add-unit-source-option-0");
+    assert!(ui.is_drawn("add-unit-symbol"));
+    assert!(ui.is_drawn("add-unit-quote"));
+    assert!(ui.is_drawn("add-unit-test"));
+    ui.click("add-unit-source");
+    ui.click("add-unit-source-option-1");
+    assert_eq!(ui.dialog_value("manual").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("visible").as_deref(),
+        Some("Code|Type|Name|Source")
+    );
+}
+
+#[gpui::test]
+fn the_edit_unit_source_list_follows_a_clicked_type_change(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "unit-row-1", "edit-unit");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("CoinGecko"));
+    ui.click("edit-unit-type");
+    ui.click("edit-unit-type-option-2");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("Manual entry"));
+    assert_eq!(
+        ui.dialog_value("visible").as_deref(),
+        Some("Code|Type|Name|Source")
+    );
 }

@@ -26,13 +26,14 @@ pub enum UnitsCommand {
         code: String,
         name: String,
         kind: UnitKind,
+        link: PriceLink,
     },
     Edit {
         id: UnitId,
         code: String,
         name: String,
         kind: UnitKind,
-        link: Option<PriceLink>,
+        link: PriceLink,
     },
     Delete {
         id: UnitId,
@@ -70,21 +71,21 @@ impl DialogForm for UnitsDialog {
             return Err(FormError);
         }
         Ok(match self {
-            // No Add unit field carries a Price Source or a base or default flag, so a
-            // dialog-created unit lands on Manual entry, not base and not default.
+            // No Add unit field carries a base or default flag, so a dialog-created unit is
+            // not base and not default.
             Self::Add(form) => UnitsCommand::Add {
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
-                kind: form.kind,
+                kind: form.selected_kind(),
+                link: form.link(),
             },
-            // The link and the base and default flags aren't Edit unit fields either: the form
-            // carries the row's link back, and the Ledger keeps the flags.
+            // The base and default flags aren't Edit unit fields either: the Ledger keeps them.
             Self::Edit(id, form) => UnitsCommand::Edit {
                 id: *id,
                 code: form.code.text().to_string(),
                 name: form.name.text().to_string(),
-                kind: form.kind,
-                link: form.link.clone(),
+                kind: form.selected_kind(),
+                link: form.link(),
             },
             Self::Delete(id, _) => UnitsCommand::Delete { id: *id },
         })
@@ -127,9 +128,13 @@ impl Apply<UnitsCommand> for UnitsApply {
         cx: &mut App,
     ) -> Result<UnitsOutcome, SaveUnitRefusal> {
         match command {
-            UnitsCommand::Add { code, name, kind } => {
+            UnitsCommand::Add {
+                code,
+                name,
+                kind,
+                link,
+            } => {
                 let saved = code.clone();
-                let link = self.manual_link(cx);
                 self.ledger
                     .update(cx, |store, cx| {
                         store.apply(
@@ -152,7 +157,6 @@ impl Apply<UnitsCommand> for UnitsApply {
                 link,
             } => {
                 let saved = code.clone();
-                let link = link.unwrap_or_else(|| self.manual_link(cx));
                 self.ledger
                     .update(cx, |store, cx| {
                         store.apply(
@@ -174,18 +178,6 @@ impl Apply<UnitsCommand> for UnitsApply {
                 .map(|unit| UnitsOutcome::Deleted { code: unit.code })
                 .map_err(SaveUnitRefusal::from),
         }
-    }
-}
-
-impl UnitsApply {
-    /// A Manual entry link quoted in the base Unit. With no base Unit it falls back to the first
-    /// Unit, and with no Units at all to an id naming none, which Manual entry never reads.
-    fn manual_link(&self, cx: &App) -> PriceLink {
-        let units = self.ledger.read(cx).ledger().units();
-        let quote = lib_units::base_unit(units)
-            .or(units.first())
-            .map_or_else(UnitId::new, |unit| unit.id);
-        PriceLink::manual(quote)
     }
 }
 
@@ -230,7 +222,9 @@ mod tests {
     }
 
     #[gpui::test]
-    fn adding_and_editing_a_unit_land_in_the_ledger_and_keep_its_link(cx: &mut TestAppContext) {
+    fn adding_and_editing_a_unit_land_in_the_ledger_with_the_link_they_carry(
+        cx: &mut TestAppContext,
+    ) {
         let mut apply = apply(cx);
         let landed = cx.update(|cx| {
             apply.apply(
@@ -238,6 +232,11 @@ mod tests {
                     code: "eth".into(),
                     name: "Ethereum".into(),
                     kind: UnitKind::Crypto,
+                    link: PriceLink {
+                        source_id: lib_units::COINGECKO,
+                        symbol: "ethereum".into(),
+                        quote: UnitId::SEED_AUD,
+                    },
                 },
                 cx,
             )
@@ -250,7 +249,7 @@ mod tests {
                     code: "aud".into(),
                     name: "Aussie".into(),
                     kind: UnitKind::Currency,
-                    link: Some(PriceLink::manual(UnitId::SEED_AUD)),
+                    link: PriceLink::manual(UnitId::SEED_AUD),
                 },
                 cx,
             )
@@ -261,7 +260,8 @@ mod tests {
             let units = apply.ledger.read(cx).ledger().units();
             let added = units.last().expect("the added Unit");
             assert_eq!(added.code, "eth");
-            assert_eq!(added.link, PriceLink::manual(UnitId::SEED_AUD));
+            assert_eq!(added.link.source_id, lib_units::COINGECKO);
+            assert_eq!(added.link.symbol, "ethereum");
             assert_eq!(units[0].name, "Aussie");
             assert_eq!(units[0].link, PriceLink::manual(UnitId::SEED_AUD));
         });
@@ -277,7 +277,7 @@ mod tests {
                     code: "x".into(),
                     name: "x".into(),
                     kind: UnitKind::Currency,
-                    link: None,
+                    link: PriceLink::manual(UnitId::SEED_AUD),
                 },
                 cx,
             )

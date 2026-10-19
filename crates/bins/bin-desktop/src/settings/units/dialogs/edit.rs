@@ -1,7 +1,8 @@
-//! Renders the **Edit unit** dialog (issue #185's own "2c"), on the shared `crate::dialog`
-//! chrome. Same form and field-editing rules as [`super::add`] (see that module's own doc) --
-//! both wrap the same `UnitForm`, so the only real differences here are the dynamic title, the
-//! pre-filled starting values (`UnitsPage::click_edit`, via `UnitForm::from_row`), the usage-notice info panel, and the "Save" button label.
+//! Renders the **Edit unit** dialog (issue #185's own "2c", issue #715's PRICE SOURCE group), on
+//! the shared `crate::dialog` chrome. Same form and fields as [`super::add`] (both wrap the same
+//! `UnitForm`), so the only real differences here are the dynamic title, the pre-filled starting
+//! values (`UnitsPage::click_edit`, via `UnitForm::from_row`), the usage-notice info panel, and
+//! the "Save" button label.
 //!
 //! The usage notice ("Used by 4 accounts · 604 transactions...") is the ticket's own fixed
 //! mockup example, shown identically regardless of which row is being edited -- there's no real
@@ -12,14 +13,25 @@
 
 use gpui::{AnyElement, App, div, prelude::*};
 
-use super::{Change, UnitsDialogHandlers, add::type_field, on_change};
-use crate::{
-    dialog,
-    form::fields::text_field,
-    settings::units::form::{AddUnitField, UnitForm},
+use super::{FieldIds, UnitsDialogHandlers, form_fields};
+use crate::{dialog, settings::units::form::UnitForm};
+
+const IDS: FieldIds = FieldIds {
+    code: "edit-unit-code",
+    kind: "edit-unit-type",
+    name: "edit-unit-name",
+    source: "edit-unit-source",
+    symbol: "edit-unit-symbol",
+    quote: "edit-unit-quote",
+    test: "edit-unit-test",
 };
 
 pub fn render(form: &UnitForm, handlers: UnitsDialogHandlers, cx: &App) -> AnyElement {
+    let mut fields = form_fields(IDS, form, &handlers, cx);
+    fields.push(
+        dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604), cx)
+            .into_any_element(),
+    );
     let card = div()
         .flex()
         .flex_col()
@@ -28,31 +40,7 @@ pub fn render(form: &UnitForm, handlers: UnitsDialogHandlers, cx: &App) -> AnyEl
             false,
             cx,
         ))
-        .child(dialog::body([
-            text_field(
-                "edit-unit-code",
-                lib_locale::msg::column_code(),
-                form.code.text(),
-                &crate::msg::desktop_settings_units_code_placeholder(),
-                form.focused_field == AddUnitField::Code,
-                on_change(&handlers, Change::Field(AddUnitField::Code)),
-                cx,
-            )
-            .into_any_element(),
-            text_field(
-                "edit-unit-name",
-                lib_locale::msg::column_name(),
-                form.name.text(),
-                &crate::msg::desktop_settings_units_name_placeholder(),
-                form.focused_field == AddUnitField::Name,
-                on_change(&handlers, Change::Field(AddUnitField::Name)),
-                cx,
-            )
-            .into_any_element(),
-            type_field("edit-unit-type", form.kind, &handlers, cx).into_any_element(),
-            dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604), cx)
-                .into_any_element(),
-        ]))
+        .child(dialog::body(fields))
         .child(dialog::action_row(
             [
                 dialog::cancel_button("edit-unit-cancel", handlers.on_cancel.clone(), cx)

@@ -54,6 +54,8 @@ fn add_unit_types_into_code_then_tab_moves_to_name_and_enter_saves(app: &mut Tes
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
     ui.press("x y z");
     ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Type"));
+    ui.press("tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
     ui.press("t e s t");
     assert_eq!(ui.dialog_value("code").as_deref(), Some("xyz"));
@@ -78,7 +80,9 @@ fn tab_cycles_back_to_code_and_backspace_trims_the_focused_field(app: &mut TestA
 
     ui.click("settings-add-unit");
     ui.press("a b");
-    ui.press("tab tab");
+    ui.press("tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Source"));
+    ui.press("tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
     ui.press("backspace");
     assert_eq!(ui.dialog_value("code").as_deref(), Some("a"));
@@ -101,7 +105,7 @@ fn escape_discards_an_add_unit_draft(app: &mut TestAppContext) {
     let before = ui.settings_units().unit_rows.len();
 
     ui.click("settings-add-unit");
-    ui.press("a tab b");
+    ui.press("a tab tab b");
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_units().unit_rows.len(), before);
@@ -115,7 +119,7 @@ fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
     assert_eq!(ui.dialog(), Some("EditUnit"));
-    ui.press("tab");
+    ui.press("tab tab");
     ui.press("x");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
@@ -131,7 +135,7 @@ fn escape_discards_an_edit_unit_change(app: &mut TestAppContext) {
     let before = ui.settings_units().unit_rows.clone();
 
     row_action(&mut ui, "unit-row-0", "edit-unit");
-    ui.press("tab");
+    ui.press("tab tab");
     ui.press("x");
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
@@ -926,4 +930,93 @@ fn at_x_large_a_custom_source_shows_its_key_parameter_but_never_the_key(app: &mu
         page.pane_source_buttons,
         strings(&["test-source", "edit-source", "delete-source"])
     );
+}
+
+#[gpui::test]
+fn add_unit_walks_type_and_source_by_key_and_saves_the_link(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    ui.press("e t h");
+    // Type: down steps the closed select straight through the Kinds to Crypto.
+    ui.press("tab down");
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
+    ui.press("tab e t h e r");
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Source"));
+    assert_eq!(
+        ui.dialog_value("sources").as_deref(),
+        Some("CoinGecko|Manual entry")
+    );
+    // Enter opens the list on Manual entry, down wraps to CoinGecko and enter commits it.
+    ui.press("enter down enter");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("CoinGecko"));
+    assert_eq!(ui.dialog_value("manual").as_deref(), Some("false"));
+
+    ui.press("tab b i t");
+    assert_eq!(ui.dialog_value("symbol").as_deref(), Some("bit"));
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_units().unit_links.last(),
+        Some(&(
+            "eth".to_string(),
+            "CoinGecko".to_string(),
+            "bit".to_string(),
+            "aud".to_string()
+        ))
+    );
+}
+
+#[gpui::test]
+fn changing_type_refilters_source_and_falls_back_to_manual_entry(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    ui.press("tab down");
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
+    ui.press("tab tab enter down enter");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("CoinGecko"));
+
+    // Back to Type and down to Equity: CoinGecko no longer prices it.
+    ui.press("shift-tab shift-tab down");
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Equity"));
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("Manual entry"));
+    assert_eq!(
+        ui.dialog_value("sources").as_deref(),
+        Some("Manual entry|Yahoo Finance")
+    );
+}
+
+#[gpui::test]
+fn manual_entry_hides_symbol_and_quote_and_tab_skips_them(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-unit");
+    assert_eq!(ui.dialog_value("manual").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("visible").as_deref(),
+        Some("Code|Type|Name|Source")
+    );
+    ui.press("tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Source"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
+}
+
+#[gpui::test]
+fn edit_unit_keeps_the_stored_link_and_saves_a_changed_symbol(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    row_action(&mut ui, "unit-row-1", "edit-unit");
+    assert_eq!(ui.dialog_value("source").as_deref(), Some("CoinGecko"));
+    assert_eq!(ui.dialog_value("manual").as_deref(), Some("false"));
+    ui.press("tab tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Symbol"));
+    ui.press("backspace");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    let link = ui.settings_units().unit_links[1].clone();
+    assert_eq!(link.1, "CoinGecko");
+    assert_eq!(link.2, "bitcoi");
 }

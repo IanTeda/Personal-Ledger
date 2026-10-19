@@ -33,7 +33,7 @@ use crate::{
 };
 use apply::UnitsOutcome;
 use dialogs::{UnitsDialog, sources::PriceSourceDialog};
-use form::{DeleteUnitForm, UnitForm};
+use form::{DeleteUnitForm, UnitForm, UnitOptions};
 use source_apply::SourceOutcome;
 use source_form::{BuiltInSourceForm, CustomSourceForm, DeleteSourceForm};
 
@@ -729,9 +729,22 @@ impl UnitsPage {
         self.units(cx).iter().position(|unit| unit.id == id)
     }
 
+    /// What the Add and Edit unit selects choose from: the Ledger's sources and Units as they
+    /// stand when the dialog opens.
+    fn form_options(&self, cx: &App) -> UnitOptions {
+        let ledger = self.ledger.read(cx).ledger();
+        UnitOptions::new(
+            ledger.price_source_records(),
+            &lib_locale::msg::price_source_manual_entry(),
+            ledger.units(),
+            crate::msg::desktop_settings_units_quote_base,
+        )
+    }
+
     /// The square **+** beside UNITS opens the Add unit dialog.
     fn click_add(&mut self, cx: &mut Context<'_, Self>) {
-        open_dialog(UnitsDialog::Add(UnitForm::default()), Self::land, cx);
+        let form = UnitForm::new(&self.form_options(cx));
+        open_dialog(UnitsDialog::Add(form), Self::land, cx);
     }
 
     /// Edit unit (double-click, menu or pane) opens the Edit unit dialog filled from the row.
@@ -739,7 +752,7 @@ impl UnitsPage {
         let Some(row) = self.units(cx).get(index) else {
             return;
         };
-        let form = UnitForm::from_row(row);
+        let form = UnitForm::from_row(row, &self.form_options(cx));
         open_dialog(UnitsDialog::Edit(row.id, form), Self::land, cx);
     }
 
@@ -821,6 +834,25 @@ impl UnitsPage {
                     )
                 })
                 .collect(),
+            unit_links: {
+                let ledger = self.ledger.read(cx).ledger();
+                let manual = lib_locale::msg::price_source_manual_entry();
+                units
+                    .iter()
+                    .map(|unit| {
+                        let source = ledger
+                            .price_source(&manual, unit.link.source_id)
+                            .map(|source| source.name.to_string())
+                            .unwrap_or_default();
+                        (
+                            unit.code.clone(),
+                            source,
+                            unit.link.symbol.clone(),
+                            ledger.unit_code(unit.link.quote).to_string(),
+                        )
+                    })
+                    .collect()
+            },
             source_rows: self
                 .price_sources(cx)
                 .iter()
@@ -928,6 +960,9 @@ impl UnitsPage {
 pub struct SettingsUnitsSnapshot {
     pub unit_codes: Vec<String>,
     pub unit_rows: Vec<(String, String, String)>,
+    /// Each Unit's saved link as `(code, source, symbol, quoted in)`, with the source and the
+    /// quote as the Ledger names them: the source's name, the quote Unit's code.
+    pub unit_links: Vec<(String, String, String, String)>,
     /// The Price Sources rows in table order: `(name, source, last updated)`, as drawn.
     pub source_rows: Vec<(String, String, String)>,
     /// The selected Unit's code, which is the first row's until another is chosen; `None` while
