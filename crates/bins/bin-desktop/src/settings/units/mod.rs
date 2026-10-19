@@ -11,6 +11,7 @@
 pub mod apply;
 pub mod dialogs;
 pub mod form;
+mod pane;
 mod render;
 pub mod source_apply;
 pub mod source_form;
@@ -188,6 +189,28 @@ impl MenuAction {
     }
 }
 
+/// A group of the X-Large detail pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneGroup {
+    Unit,
+    PriceSource,
+    Accounts,
+    Values,
+    Activity,
+}
+
+impl PaneGroup {
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Unit => "unit",
+            Self::PriceSource => "source",
+            Self::Accounts => "accounts",
+            Self::Values => "values",
+            Self::Activity => "activity",
+        }
+    }
+}
+
 /// The context menu open on a row, drawn at the pointer that opened it (window coordinates).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RowMenu {
@@ -303,6 +326,75 @@ impl UnitsPage {
         let manual = lib_locale::msg::price_source_manual_entry();
         let source = ledger.price_source(&manual, unit.link.source_id)?;
         Some(SourceRow::new(&source, ledger))
+    }
+
+    /// A selected Unit's PRICE SOURCE group, or `None` while it sits on Manual entry.
+    fn linked_source(&self, unit: &UnitRow, cx: &App) -> Option<pane::LinkedSource> {
+        if unit.link.source_id == MANUAL_ENTRY {
+            return None;
+        }
+        let ledger = self.ledger.read(cx).ledger();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let source = ledger.price_source(&manual, unit.link.source_id)?;
+        let row = SourceRow::new(&source, ledger);
+        Some(pane::linked_source(&source, row, unit, ledger.units()))
+    }
+
+    /// The selected Price Source's PRICE SOURCE and VALUES groups, or `None` while a Unit is
+    /// selected.
+    fn source_detail(&self, cx: &App) -> Option<pane::SourceDetail> {
+        let UnitsSelection::Source(id) = self.selection(cx)? else {
+            return None;
+        };
+        let ledger = self.ledger.read(cx).ledger();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let source = ledger.price_source(&manual, id)?;
+        let row = SourceRow::new(&source, ledger);
+        Some(pane::source_detail(&source, row, ledger.units()))
+    }
+
+    /// The pane's groups in drawn order: a Unit's UNIT, PRICE SOURCE and ACCOUNTS, or a Price
+    /// Source's PRICE SOURCE and VALUES (DESKTOP-140), then ACTIVITY.
+    fn pane_groups(&self, cx: &App) -> &'static [PaneGroup] {
+        match self.selection(cx) {
+            Some(UnitsSelection::Unit(_)) => &[
+                PaneGroup::Unit,
+                PaneGroup::PriceSource,
+                PaneGroup::Accounts,
+                PaneGroup::Activity,
+            ],
+            Some(UnitsSelection::Source(_)) => &[
+                PaneGroup::PriceSource,
+                PaneGroup::Values,
+                PaneGroup::Activity,
+            ],
+            None => &[PaneGroup::Activity],
+        }
+    }
+
+    /// The PRICE SOURCE group's buttons as slugs: the source's own menu entries, or `add-source`
+    /// for a Unit on Manual entry.
+    fn pane_source_buttons(&self, cx: &App) -> Vec<String> {
+        let row = match self.selection(cx) {
+            Some(UnitsSelection::Unit(_)) => {
+                let Some(unit) = self.selected_unit(cx) else {
+                    return Vec::new();
+                };
+                match self.price_source_of(unit, cx) {
+                    Some(row) => row,
+                    None => return vec!["add-source".to_string()],
+                }
+            }
+            Some(UnitsSelection::Source(_)) => match self.selected_source(cx) {
+                Some(row) => row,
+                None => return Vec::new(),
+            },
+            None => return Vec::new(),
+        };
+        MenuAction::for_target(MenuTarget::Source(row.id, row.kind))
+            .iter()
+            .map(|action| action.slug().to_string())
+            .collect()
     }
 
     /// The name of the Price Source `id`, empty when it is gone.
@@ -771,6 +863,56 @@ impl UnitsPage {
                         .collect(),
                 )
             }),
+            pane_groups: if self.docked {
+                self.pane_groups(cx)
+                    .iter()
+                    .map(|group| group.slug().to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            pane_source_buttons: if self.docked {
+                self.pane_source_buttons(cx)
+            } else {
+                Vec::new()
+            },
+            source_facts: self
+                .selected_unit(cx)
+                .and_then(|unit| self.linked_source(unit, cx))
+                .map(|linked| linked.facts)
+                .or_else(|| self.source_detail(cx).map(|detail| detail.facts))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|fact| (fact.label, fact.value))
+                .collect(),
+            source_meta: self.source_detail(cx).and_then(|detail| detail.meta),
+            source_note: self.source_detail(cx).and_then(|detail| detail.note),
+            source_values: self
+                .source_detail(cx)
+                .map(|detail| {
+                    detail
+                        .values
+                        .iter()
+                        .map(|value| {
+                            (
+                                format!("{} \u{b7} {}", value.code, value.name),
+                                value.detail(),
+                                value.price.clone(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            account_values: self
+                .selected_unit(cx)
+                .map(|unit| {
+                    let units = self.units(cx);
+                    self.accounts_in(unit, cx)
+                        .iter()
+                        .filter_map(|account| pane::base_value(&account.balance, unit, units))
+                        .collect()
+                })
+                .unwrap_or_default(),
             activity: self
                 .activity
                 .iter()
@@ -796,6 +938,24 @@ pub struct SettingsUnitsSnapshot {
     /// The open row menu: the row it is on (`unit:btc`, `source:Bitcoin`) and its entries' slugs
     /// in order.
     pub menu: Option<(String, Vec<String>)>,
+    /// The docked pane's groups in drawn order (`unit`, `source`, `accounts`, `values`,
+    /// `activity`); empty below X-Large.
+    pub pane_groups: Vec<String>,
+    /// The docked pane's PRICE SOURCE buttons (`test-source`, `edit-source`, `delete-source`, or
+    /// `add-source`); empty below X-Large.
+    pub pane_source_buttons: Vec<String>,
+    /// The pane's PRICE SOURCE fact rows for the selection as `(label, value)`: the selected
+    /// Unit's linked source (DESKTOP-125) or the selected Price Source (DESKTOP-140). Empty for a
+    /// Unit or source on Manual entry.
+    pub source_facts: Vec<(String, String)>,
+    /// The selected Price Source's meta line; `None` for Manual entry or a selected Unit.
+    pub source_meta: Option<String>,
+    /// The note under the selected Price Source's fact rows.
+    pub source_note: Option<String>,
+    /// The selected Price Source's VALUES rows: `(code · name, symbol and quote, last price)`.
+    pub source_values: Vec<(String, String, String)>,
+    /// The selected Unit's accounts' values in the base Unit, for those it can price.
+    pub account_values: Vec<String>,
     /// ACTIVITY's lines, newest first.
     pub activity: Vec<String>,
 }

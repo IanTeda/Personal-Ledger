@@ -696,3 +696,79 @@ fn at_x_large_a_clicked_source_is_where_the_keys_carry_on_from(app: &mut TestApp
         "tab returns to the unit clicked last"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The X-Large pane for a selected Price Source (DESKTOP-140, #716)
+// ---------------------------------------------------------------------------------------------
+
+#[gpui::test]
+fn at_x_large_clicking_a_price_source_swaps_the_pane_to_its_groups(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(ui.is_drawn("units-pane-unit"));
+
+    ui.click("price-source-row-0");
+    assert_eq!(
+        ui.settings_units().selected_source.as_deref(),
+        Some("CoinGecko")
+    );
+    // `is_drawn` can't say a selector has gone (gpui keeps a frame's debug bounds), so the groups
+    // are read back.
+    assert_eq!(
+        ui.settings_units().pane_groups,
+        ["source", "values", "activity"]
+    );
+    assert!(ui.is_drawn("units-pane-values"));
+
+    ui.click("unit-row-1");
+    assert_eq!(
+        ui.settings_units().pane_groups,
+        ["unit", "source", "accounts", "activity"]
+    );
+}
+
+#[gpui::test]
+fn at_x_large_a_built_ins_pane_buttons_open_what_its_keys_do(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("price-source-row-0");
+
+    ui.click("units-pane-edit-source");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("CoinGecko"));
+    ui.press("escape");
+
+    assert_eq!(
+        ui.settings_units().pane_source_buttons,
+        ["test-source", "edit-source"]
+    );
+    ui.click("units-pane-test-source");
+    assert!(status(&mut ui).is_some(), "testing is not built yet");
+}
+
+#[gpui::test]
+fn at_x_large_a_custom_sources_pane_buttons_open_its_edit_and_delete(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    add_custom_source(&mut ui, "broker");
+    ui.click("price-source-row-0");
+    assert_eq!(
+        ui.settings_units().selected_source.as_deref(),
+        Some("broker")
+    );
+
+    ui.click("units-pane-edit-source");
+    assert_eq!(ui.dialog(), Some("EditPriceSource"));
+    ui.press("escape");
+    ui.click("units-pane-delete-source");
+    assert_eq!(ui.dialog(), Some("DeletePriceSource"));
+}
+
+#[gpui::test]
+fn at_x_large_manual_entrys_pane_has_no_buttons(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.click("price-source-row-2");
+    assert_eq!(
+        ui.settings_units().selected_source.as_deref(),
+        Some("Manual entry")
+    );
+    assert!(ui.is_drawn("units-pane-values"));
+    assert!(ui.settings_units().pane_source_buttons.is_empty());
+}

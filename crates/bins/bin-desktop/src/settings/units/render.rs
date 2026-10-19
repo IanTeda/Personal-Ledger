@@ -19,8 +19,9 @@ use lib_locale::Label;
 use lib_units::{PriceSourceId, UnitId, UnitRow};
 
 use super::{
-    LastUpdated, MenuAction, MenuTarget, NOT_FETCHED_GLYPH, RowMenu, SourceKind, SourceRow,
-    UnitsPage, UnitsSelection,
+    LastUpdated, MenuAction, MenuTarget, NOT_FETCHED_GLYPH, PaneGroup, RowMenu, SourceKind,
+    SourceRow, UnitsPage, UnitsSelection,
+    pane::{self, Fact, LinkedSource, SourceDetail, ValueRow},
 };
 use crate::{settings::SettingsPage, theme::color};
 
@@ -630,20 +631,28 @@ pub(crate) fn detail_pane(page: &UnitsPage, entity: &Entity<UnitsPage>, cx: &App
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
     let unit = page.selected_unit(cx);
-    // A selected Price Source shows its own group alone: UNIT and ACCOUNTS belong to a Unit
+    // A selected Price Source shows its own groups: UNIT and ACCOUNTS belong to a Unit
     // (DESKTOP-140).
-    let source = page.selected_source(cx);
-    pane.when_some(unit, |this, unit| {
-        let source = page.price_source_of(unit, cx);
-        this.child(unit_group(page, unit, entity, cx))
-            .child(price_source_group(source.as_ref(), entity, cx))
-            .child(accounts_group(page, unit, cx))
-    })
-    .when_some(source, |this, source| {
-        this.child(price_source_group(Some(&source), entity, cx))
-    })
-    .child(activity_group(page, cx))
-    .into_any_element()
+    let detail = page.source_detail(cx);
+    let groups = page.pane_groups(cx).iter().filter_map(|group| match group {
+        PaneGroup::Unit => unit.map(|unit| unit_group(page, unit, entity, cx).into_any_element()),
+        PaneGroup::PriceSource => match (unit, &detail) {
+            (Some(unit), _) => {
+                let linked = page.linked_source(unit, cx);
+                Some(price_source_group(linked.as_ref(), entity, cx).into_any_element())
+            }
+            (None, Some(detail)) => {
+                Some(source_detail_group(detail, entity, cx).into_any_element())
+            }
+            (None, None) => None,
+        },
+        PaneGroup::Accounts => unit.map(|unit| accounts_group(page, unit, cx).into_any_element()),
+        PaneGroup::Values => detail
+            .as_ref()
+            .map(|detail| values_group(detail, cx).into_any_element()),
+        PaneGroup::Activity => Some(activity_group(page, cx).into_any_element()),
+    });
+    pane.children(groups.collect::<Vec<_>>()).into_any_element()
 }
 
 /// A group: a caps label over a 2px rule, then the body.
@@ -681,6 +690,18 @@ fn pane_group(
 
 /// `padding:5px 0; border-bottom:1px solid` hairline; the label muted, the value right-aligned.
 fn fact_row(label: String, value: String, cx: &App) -> impl IntoElement {
+    fact(
+        Fact {
+            label,
+            value,
+            mono: false,
+        },
+        cx,
+    )
+}
+
+/// A [`Fact`] as a fact row. The value may shrink and wrap, so a long URL part stays in the pane.
+fn fact(fact: Fact, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -689,8 +710,52 @@ fn fact_row(label: String, value: String, cx: &App) -> impl IntoElement {
         .border_b(px(1.0))
         .border_color(color::hairline(cx))
         .text_size(px(12.0))
-        .child(div().text_color(color::muted(cx)).child(label))
-        .child(div().text_align(gpui::TextAlign::Right).child(value))
+        .child(
+            div()
+                .flex_none()
+                .text_color(color::muted(cx))
+                .child(fact.label),
+        )
+        .child(
+            div()
+                .min_w(px(0.0))
+                .text_align(gpui::TextAlign::Right)
+                .when(fact.mono, |this| this.font_family(MONOSPACE))
+                .child(fact.value),
+        )
+}
+
+const MONOSPACE: &str = "monospace";
+
+/// A group's 15px title and its 11.5px muted meta line.
+fn pane_title(title: String, meta: Option<String>, cx: &App) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .mb(px(8.0))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(15.0))
+                .line_height(gpui::relative(1.25))
+                .child(title),
+        )
+        .children(meta.map(|meta| {
+            div()
+                .mt(px(2.0))
+                .text_size(px(11.5))
+                .text_color(color::muted(cx))
+                .child(meta)
+        }))
+}
+
+/// An 11px faint note under a group's rows.
+fn pane_note(text: String, cx: &App) -> impl IntoElement {
+    div()
+        .mt(px(6.0))
+        .text_size(px(11.0))
+        .text_color(color::faint_text(cx))
+        .child(text)
 }
 
 fn pane_button(
@@ -813,62 +878,19 @@ fn unit_group(
     )
 }
 
+/// A selected Unit's PRICE SOURCE (DESKTOP-125): its linked source with the Unit's last price,
+/// or **Add price source** while it sits on Manual entry.
 fn price_source_group(
-    source: Option<&SourceRow>,
+    linked: Option<&LinkedSource>,
     entity: &Entity<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let body = match source {
-        Some(source) => div()
+    let body = match linked {
+        Some(linked) => div()
             .flex()
             .flex_col()
-            .child(fact_row(
-                crate::msg::desktop_settings_units_column_source(),
-                source.name.clone(),
-                cx,
-            ))
-            .child(fact_row(
-                crate::msg::desktop_settings_units_column_last_updated(),
-                source.last_updated_text(),
-                cx,
-            ))
-            .child(button_row(
-                [
-                    Some(
-                        pane_button(
-                            "units-pane-test-source",
-                            crate::msg::desktop_settings_units_pane_test(),
-                            stub(
-                                entity,
-                                crate::msg::desktop_status_test_price_source_not_yet_built,
-                            ),
-                            cx,
-                        )
-                        .into_any_element(),
-                    ),
-                    Some(
-                        pane_button(
-                            "units-pane-edit-source",
-                            crate::msg::desktop_settings_units_pane_edit_source(),
-                            source_click(entity, source.id, UnitsPage::edit_source),
-                            cx,
-                        )
-                        .into_any_element(),
-                    ),
-                    // Only a Custom source is deleted.
-                    (source.kind == SourceKind::Custom).then(|| {
-                        pane_button(
-                            "units-pane-delete-source",
-                            crate::msg::desktop_settings_units_pane_delete_source(),
-                            source_click(entity, source.id, UnitsPage::delete_source),
-                            cx,
-                        )
-                        .into_any_element()
-                    }),
-                ]
-                .into_iter()
-                .flatten(),
-            )),
+            .children(linked.facts.iter().cloned().map(|row| fact(row, cx)))
+            .child(source_buttons(&linked.row, entity, cx)),
         // A unit without a source offers to add one.
         None => div().flex().flex_col().child(button_row([pane_button(
             "units-pane-add-source",
@@ -886,9 +908,150 @@ fn price_source_group(
     )
 }
 
+/// The source's own menu entries as buttons (Test, Edit source and, for a Custom source, Delete
+/// source), running the handlers the keys and menu use.
+fn source_buttons(row: &SourceRow, entity: &Entity<UnitsPage>, cx: &App) -> impl IntoElement {
+    let buttons = MenuAction::for_target(MenuTarget::Source(row.id, row.kind))
+        .iter()
+        .filter_map(|action| {
+            let (id, label, on_click) = match action {
+                MenuAction::TestSource => (
+                    "units-pane-test-source",
+                    crate::msg::desktop_settings_units_pane_test(),
+                    stub(
+                        entity,
+                        crate::msg::desktop_status_test_price_source_not_yet_built,
+                    ),
+                ),
+                MenuAction::EditSource => (
+                    "units-pane-edit-source",
+                    crate::msg::desktop_settings_units_pane_edit_source(),
+                    source_click(entity, row.id, UnitsPage::edit_source),
+                ),
+                MenuAction::DeleteSource => (
+                    "units-pane-delete-source",
+                    crate::msg::desktop_settings_units_pane_delete_source(),
+                    source_click(entity, row.id, UnitsPage::delete_source),
+                ),
+                MenuAction::EditUnit | MenuAction::DeleteUnit => return None,
+            };
+            Some(pane_button(id, label, on_click, cx).into_any_element())
+        })
+        .collect::<Vec<_>>();
+    button_row(buttons)
+}
+
+/// A selected Price Source's PRICE SOURCE (DESKTOP-140): what its Edit price source Dialog
+/// shows, read-only. Manual entry shows only its title and note: it is neither edited nor
+/// deleted. No last-test box: testing isn't built, so no test has run.
+fn source_detail_group(
+    detail: &SourceDetail,
+    entity: &Entity<UnitsPage>,
+    cx: &App,
+) -> impl IntoElement {
+    let manual = detail.row.kind == SourceKind::ManualEntry;
+    let body = div()
+        .flex()
+        .flex_col()
+        .child(pane_title(detail.row.name.clone(), detail.meta.clone(), cx))
+        .children(detail.facts.iter().cloned().map(|row| fact(row, cx)))
+        .children(detail.note.clone().map(|note| pane_note(note, cx)))
+        .when(!manual, |this| {
+            this.child(source_buttons(&detail.row, entity, cx))
+        });
+    pane_group(
+        crate::msg::desktop_settings_price_sources_heading(),
+        body,
+        "units-pane-source",
+        cx,
+    )
+}
+
+/// The Units the selected source prices, one 12px row each.
+fn values_group(detail: &SourceDetail, cx: &App) -> impl IntoElement {
+    let body = if detail.values.is_empty() {
+        div()
+            .text_size(px(11.0))
+            .text_color(color::faint_text(cx))
+            .child(crate::msg::desktop_settings_units_pane_values_none())
+    } else {
+        div()
+            .flex()
+            .flex_col()
+            .children(detail.values.iter().map(|value| value_row(value, cx)))
+            .children(detail.values_note.clone().map(|note| pane_note(note, cx)))
+    };
+    pane_group(
+        crate::msg::desktop_settings_units_pane_values(),
+        body,
+        "units-pane-values",
+        cx,
+    )
+}
+
+/// `code · name` over `symbol … · quoted in …` (the symbol monospace) on the left; the last price
+/// over its age on the right.
+fn value_row(value: &ValueRow, cx: &App) -> impl IntoElement {
+    let faint = color::faint_text(cx);
+    let detail = div()
+        .flex()
+        .flex_wrap()
+        .gap(px(4.0))
+        .text_size(px(11.0))
+        .text_color(faint)
+        .when_some(value.symbol.clone(), |this, symbol| {
+            this.child(crate::msg::desktop_settings_units_pane_symbol())
+                .child(div().font_family(MONOSPACE).child(symbol))
+                .child("\u{b7}")
+        })
+        .child(value.quoted_in.clone());
+    div()
+        .flex()
+        .justify_between()
+        .gap(px(12.0))
+        .py(px(6.0))
+        .border_b(px(1.0))
+        .border_color(color::hairline(cx))
+        .text_size(px(12.0))
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                                .child(value.code.clone()),
+                        )
+                        .child("\u{b7}")
+                        .child(value.name.clone()),
+                )
+                .child(detail),
+        )
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .flex_col()
+                .items_end()
+                .child(value.price.clone())
+                .children(
+                    value
+                        .age
+                        .clone()
+                        .map(|age| div().text_size(px(11.0)).text_color(faint).child(age)),
+                ),
+        )
+}
+
 /// The accounts held in the selected unit, one 12px row each: name over type on the left, the
-/// balance in the unit's own precision on the right, and a bold **Total** closing the list. The
-/// base-unit value is not drawn: the ledger holds no price to convert by yet.
+/// balance in the unit's own precision over its value in the base unit on the right, and a bold
+/// **Total** closing the list. The value is the balance times the link's last price, so a unit
+/// without one draws the balance alone.
 fn accounts_group(page: &UnitsPage, unit: &UnitRow, cx: &App) -> impl IntoElement {
     let accounts = page.accounts_in(unit, cx);
     let body = if accounts.is_empty() {
@@ -898,8 +1061,25 @@ fn accounts_group(page: &UnitsPage, unit: &UnitRow, cx: &App) -> impl IntoElemen
             .child(crate::msg::desktop_settings_units_pane_accounts_none())
             .into_any_element()
     } else {
+        let units = page.units(cx);
+        let faint = color::faint_text(cx);
         let balance = |money: &lib_core::Money| {
-            format!("{} {}", crate::view::format::amount(money).1, unit.code)
+            div()
+                .flex()
+                .flex_col()
+                .items_end()
+                .child(format!(
+                    "{} {}",
+                    crate::view::format::amount(money).1,
+                    unit.code
+                ))
+                .children(pane::base_value(money, unit, units).map(|value| {
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(faint)
+                        .font_weight(gpui::FontWeight::NORMAL)
+                        .child(value)
+                }))
         };
         let total = lib_core::Money(
             accounts

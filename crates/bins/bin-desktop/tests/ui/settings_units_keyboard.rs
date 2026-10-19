@@ -719,3 +719,211 @@ fn the_status_line_follows_the_selections_table(app: &mut TestAppContext) {
     ui.press("tab");
     assert_eq!(hints(&mut ui), unit_hints);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The X-Large pane's PRICE SOURCE and VALUES groups (DESKTOP-125, DESKTOP-140, #716)
+// ---------------------------------------------------------------------------------------------
+
+/// The pane's PRICE SOURCE fact rows' labels.
+fn fact_labels(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.settings_units()
+        .source_facts
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect()
+}
+
+/// The pane's groups and PRICE SOURCE buttons, as drawn: `is_drawn` can't say a selector has
+/// gone, since gpui keeps a frame's debug bounds once drawn.
+fn pane(ui: &mut Harness<'_>) -> (Vec<String>, Vec<String>) {
+    let page = ui.settings_units();
+    (page.pane_groups, page.pane_source_buttons)
+}
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| item.to_string()).collect()
+}
+
+fn fact(ui: &mut Harness<'_>, label: &str) -> Option<String> {
+    ui.settings_units()
+        .source_facts
+        .into_iter()
+        .find_map(|(fact, value)| (fact == label).then_some(value))
+}
+
+#[gpui::test]
+fn at_x_large_a_selected_units_source_group_reads_its_link(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(fact_labels(&mut ui).is_empty(), "aud sits on Manual entry");
+    assert_eq!(pane(&mut ui).1, strings(&["add-source"]));
+
+    ui.press("j");
+    assert_eq!(
+        fact_labels(&mut ui),
+        ["Source", "URL", "Updates", "Last price", "Last updated"]
+    );
+    assert_eq!(fact(&mut ui, "Source").as_deref(), Some("CoinGecko"));
+    assert_eq!(
+        fact(&mut ui, "URL").as_deref(),
+        Some("https://api.coingecko.com/api/v3")
+    );
+    assert_eq!(fact(&mut ui, "Updates").as_deref(), Some("Every 15 min"));
+    assert_eq!(
+        fact(&mut ui, "Last price").as_deref(),
+        Some("148,212.40 aud")
+    );
+    assert_eq!(
+        pane(&mut ui),
+        (
+            strings(&["unit", "source", "accounts", "activity"]),
+            strings(&["test-source", "edit-source"])
+        ),
+        "a built-in is not deleted"
+    );
+}
+
+#[gpui::test]
+fn at_x_large_a_units_accounts_are_valued_by_its_last_price(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    assert!(
+        ui.settings_units().account_values.is_empty(),
+        "aud has no price to convert by"
+    );
+    ui.press("j");
+    let values = ui.settings_units().account_values;
+    assert!(
+        !values.is_empty(),
+        "btc's accounts take its CoinGecko price"
+    );
+    assert!(values.iter().all(|value| value.ends_with(" aud")));
+}
+
+#[gpui::test]
+fn at_x_large_a_selected_built_in_shows_its_endpoint_and_the_units_it_values(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units_xlarge(app);
+    ui.press("tab");
+    assert_eq!(selection(&mut ui), source("CoinGecko"));
+
+    assert_eq!(
+        pane(&mut ui),
+        (
+            strings(&["source", "values", "activity"]),
+            strings(&["test-source", "edit-source"])
+        )
+    );
+    assert!(ui.is_drawn("units-pane-values"));
+
+    let page = ui.settings_units();
+    assert_eq!(
+        page.source_meta.as_deref(),
+        Some("built-in · prices Crypto · key not needed")
+    );
+    assert_eq!(
+        fact_labels(&mut ui),
+        [
+            "Source",
+            "Address",
+            "Request",
+            "Price path",
+            "Updates",
+            "Last updated"
+        ]
+    );
+    assert_eq!(
+        fact(&mut ui, "Source").as_deref(),
+        Some("CoinGecko · built-in")
+    );
+    assert_eq!(
+        fact(&mut ui, "Request").as_deref(),
+        Some("/simple/price?ids={symbol}&vs_currencies={quote}")
+    );
+    assert_eq!(
+        page.source_note.as_deref(),
+        Some("Built-in sources update with the app, so their address isn't edited here.")
+    );
+    assert_eq!(
+        page.source_values,
+        vec![(
+            "btc · Bitcoin".to_string(),
+            "symbol bitcoin · quoted in aud".to_string(),
+            "148,212.40 aud".to_string()
+        )]
+    );
+}
+
+#[gpui::test]
+fn at_x_large_a_source_no_unit_uses_says_so_and_has_not_fetched(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.press("tab j");
+    assert_eq!(selection(&mut ui), source("Frankfurter"));
+    assert!(ui.settings_units().source_values.is_empty());
+    assert_eq!(
+        fact(&mut ui, "Last updated").as_deref(),
+        Some("\u{2717} Not fetched yet")
+    );
+}
+
+#[gpui::test]
+fn at_x_large_manual_entry_shows_its_note_and_the_units_priced_by_hand(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    ui.press("tab j j");
+    assert_eq!(selection(&mut ui), source("Manual entry"));
+
+    let page = ui.settings_units();
+    assert_eq!(page.source_meta, None);
+    assert!(page.source_facts.is_empty());
+    assert_eq!(
+        page.source_note.as_deref(),
+        Some("Prices you enter by hand.")
+    );
+    let priced: Vec<&str> = page
+        .source_values
+        .iter()
+        .map(|(unit, _, _)| unit.as_str())
+        .collect();
+    assert_eq!(
+        priced,
+        ["aud · Australian Dollar", "vas · Vanguard Aus Shares"]
+    );
+    assert_eq!(
+        pane(&mut ui),
+        (strings(&["source", "values", "activity"]), Vec::new()),
+        "Manual entry is neither tested, edited nor deleted"
+    );
+}
+
+#[gpui::test]
+fn at_x_large_a_custom_source_shows_its_key_parameter_but_never_the_key(app: &mut TestAppContext) {
+    let mut ui = on_units_xlarge(app);
+    fill_custom_source(&mut ui, "broker");
+    ui.press("tab right tab");
+    type_word(&mut ui, "apikey");
+    ui.press("tab");
+    type_word(&mut ui, "secret");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("tab");
+    assert_eq!(selection(&mut ui), source("broker"));
+
+    let page = ui.settings_units();
+    assert_eq!(
+        page.source_meta.as_deref(),
+        Some("custom · prices every kind · key needed")
+    );
+    assert_eq!(fact(&mut ui, "Source").as_deref(), Some("broker · custom"));
+    assert_eq!(fact(&mut ui, "Authentication").as_deref(), Some("API key"));
+    assert_eq!(fact(&mut ui, "Key parameter").as_deref(), Some("apikey"));
+    assert!(
+        page.source_facts
+            .iter()
+            .all(|(_, value)| !value.contains("secret")),
+        "the key is never shown"
+    );
+    assert_eq!(page.source_note, None, "no built-in note");
+    assert_eq!(
+        page.pane_source_buttons,
+        strings(&["test-source", "edit-source", "delete-source"])
+    );
+}
