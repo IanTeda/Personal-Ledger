@@ -1,22 +1,19 @@
-//! The Institutions Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it through [`LedgerStore::apply`] as a `lib_ledger` command.
+//! The Institutions Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
+//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
 
-use gpui::{App, Entity};
-use lib_ledger::AddInstitution;
+use gpui::App;
+use lib_ledger::{AddInstitution, Ledger, LedgerCommand};
 
 use super::dialogs::InstitutionsDialog;
-use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
-    },
-    ledger_store::LedgerStore,
+use crate::chrome::{
+    dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+    dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
 };
 
-/// What confirming an Institutions Dialog asks for.
+/// What confirming an Institutions Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstitutionsCommand {
-    Add { name: String, account_type: String },
+    Add(AddInstitution),
 }
 
 /// What a landed [`InstitutionsCommand`] did: nothing needs a Toast.
@@ -25,9 +22,22 @@ pub enum InstitutionsOutcome {
     Saved,
 }
 
+impl OutcomeToast for InstitutionsOutcome {}
+
 /// Why an Institutions command didn't land: none of them can be refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstitutionsRefusal {}
+
+impl LedgerCommand for InstitutionsCommand {
+    type Outcome = InstitutionsOutcome;
+    type Refusal = InstitutionsRefusal;
+
+    fn run(self, ledger: &mut Ledger) -> Result<InstitutionsOutcome, InstitutionsRefusal> {
+        let Self::Add(add) = self;
+        let Ok(()) = add.run(ledger);
+        Ok(InstitutionsOutcome::Saved)
+    }
+}
 
 impl DialogForm for InstitutionsDialog {
     type Command = InstitutionsCommand;
@@ -38,7 +48,7 @@ impl DialogForm for InstitutionsDialog {
             return Err(FormError);
         }
         let Self::Add(form) = self;
-        Ok(InstitutionsCommand::Add {
+        Ok(InstitutionsCommand::Add(AddInstitution {
             name: form.name.text().to_string(),
             account_type: form
                 .account_types
@@ -46,7 +56,7 @@ impl DialogForm for InstitutionsDialog {
                 .map(|account_type| account_type.label())
                 .collect::<Vec<_>>()
                 .join(" \u{b7} "),
-        })
+        }))
     }
 
     fn refuse(&mut self, refusal: InstitutionsRefusal) {
@@ -62,64 +72,77 @@ impl ConfirmDialog for InstitutionsDialog {
         scope: &DialogScope,
         cx: &mut App,
     ) -> Option<Landed<InstitutionsOutcome>> {
-        let mut apply = InstitutionsApply {
-            ledger: scope.ledger.clone(),
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        Some(Landed {
-            toast: None,
-            outcome,
-        })
+        confirm_ledger(self, &scope.ledger, cx)
     }
 }
 
-/// Runs [`InstitutionsCommand`]s as `lib_ledger` commands.
-pub struct InstitutionsApply {
-    pub ledger: Entity<LedgerStore>,
-}
-
-impl Apply<InstitutionsCommand> for InstitutionsApply {
-    type Outcome = InstitutionsOutcome;
-    type Refusal = InstitutionsRefusal;
-
-    fn apply(
-        &mut self,
-        command: InstitutionsCommand,
-        cx: &mut App,
-    ) -> Result<InstitutionsOutcome, InstitutionsRefusal> {
-        let InstitutionsCommand::Add { name, account_type } = command;
-        let Ok(()) = self.ledger.update(cx, |store, cx| {
-            store.apply(cx, AddInstitution { name, account_type })
-        });
-        Ok(InstitutionsOutcome::Saved)
-    }
-}
-
+/// An Institution can't be refused, so there's no refused case to drive.
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
     use lib_ledger::LedgerParts;
+    use lib_units::default_units;
 
     use super::*;
-    use crate::ledger_store::test_ledger;
+    use crate::{
+        form::field::TextField,
+        ledger_store::{LedgerStore, test_ledger},
+        settings::institutions::form::{AddInstitutionForm, InstitutionProduct},
+    };
+
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
+        test_ledger(
+            cx,
+            LedgerParts {
+                units: default_units(chrono::Utc::now()),
+                ..LedgerParts::default()
+            },
+        )
+    }
+
+    fn add_dialog(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> InstitutionsDialog {
+        let units = ledger.read_with(cx, |store, _| store.ledger().units().to_vec());
+        InstitutionsDialog::Add(AddInstitutionForm::new(&units))
+    }
 
     #[gpui::test]
-    fn adding_an_institution_lands_in_the_ledger(cx: &mut TestAppContext) {
-        let ledger = test_ledger(cx, LedgerParts::default());
-        let mut apply = InstitutionsApply { ledger };
-        let landed = cx.update(|cx| {
-            apply.apply(
-                InstitutionsCommand::Add {
-                    name: "Bank X".into(),
-                    account_type: "savings".into(),
-                },
-                cx,
-            )
+    fn an_add_without_a_name_stays_open_and_adds_nothing(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let mut dialog = add_dialog(&ledger, cx);
+
+        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
+
+        assert!(landed.is_none());
+        ledger.read_with(cx, |store, _| {
+            assert!(store.ledger().institutions().is_empty())
         });
-        assert_eq!(landed, Ok(InstitutionsOutcome::Saved));
-        cx.read(|cx| {
-            let institutions = apply.ledger.read(cx).ledger().institutions();
-            assert_eq!(institutions.last().expect("the added row").name, "Bank X");
+    }
+
+    #[gpui::test]
+    fn adding_an_institution_lands_in_the_ledger_with_no_toast(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let mut dialog = add_dialog(&ledger, cx);
+        let InstitutionsDialog::Add(form) = &mut dialog;
+        form.name = TextField::new("Bank X");
+        form.toggle_account_type(InstitutionProduct::Loan);
+
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("a named Institution lands");
+
+        assert_eq!(landed.outcome, InstitutionsOutcome::Saved);
+        assert_eq!(landed.toast, None);
+        ledger.read_with(cx, |store, _| {
+            let row = store.ledger().institutions().last().expect("the added row");
+            assert_eq!(row.name, "Bank X");
+            assert_eq!(
+                row.account_type,
+                format!(
+                    "{} \u{b7} {}",
+                    InstitutionProduct::Savings.label(),
+                    InstitutionProduct::Loan.label()
+                )
+            );
         });
     }
 }
