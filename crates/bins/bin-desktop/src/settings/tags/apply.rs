@@ -1,33 +1,26 @@
-//! The Tags Dialogs' confirm cycle (ADR-0037): the command each form describes and the [`Apply`]
-//! that runs it against the Ledger.
+//! The Tags Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
+//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
 
-use gpui::{App, Entity};
+use gpui::App;
 use lib_core::TagId;
+use lib_ledger::{AddTag, EditTag, Ledger, LedgerCommand, MergeTags, RemoveTag};
+use lib_tags::{TagError, get};
 use lib_toast::ToastKind;
 
-use lib_ledger::{AddTag, EditTag, MergeTags, RemoveTag};
-use lib_tags::{TagDraft, TagError, get};
-
 use super::dialogs::TagsDialog;
-use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, DialogScope, Landed},
-    },
-    ledger_store::LedgerStore,
+use crate::chrome::{
+    dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+    dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };
 
-/// What confirming a Tags Dialog asks for.
+/// What confirming a Tags Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagCommand {
-    Add(TagDraft),
+    Add(AddTag),
     /// Save the Tag's name and colour, then its Active flag.
-    Edit(TagId, TagDraft, bool),
-    Remove(TagId),
-    Merge {
-        source: TagId,
-        target: TagId,
-    },
+    Edit(EditTag),
+    Remove(RemoveTag),
+    Merge(MergeTags),
 }
 
 /// What a landed [`TagCommand`] did, for the selection and Toast that follow it.
@@ -46,10 +39,9 @@ pub enum TagOutcome {
     },
 }
 
-impl TagOutcome {
-    /// The Toast the host raises once the Dialog has closed: a removal or a merge has one, since
-    /// a save selects its Tag instead.
-    fn toast(&self) -> Option<(ToastKind, String)> {
+/// A removal or a merge raises its Toast; a save selects its Tag instead.
+impl OutcomeToast for TagOutcome {
+    fn toast(&self) -> Option<DialogToast> {
         match self {
             Self::Saved(_) => None,
             Self::Removed { name } => {
@@ -72,23 +64,73 @@ impl TagOutcome {
     }
 }
 
+/// Removing or merging a Tag rewrites the Transactions whose Splits carry it, which the Ledger
+/// does in the same command. Names are read before the write removes them, for the Toast.
+impl LedgerCommand for TagCommand {
+    type Outcome = TagOutcome;
+    type Refusal = TagError;
+
+    fn run(self, ledger: &mut Ledger) -> Result<TagOutcome, TagError> {
+        match self {
+            Self::Add(add) => add.run(ledger).map(TagOutcome::Saved),
+            Self::Edit(edit) => {
+                let id = edit.id;
+                edit.run(ledger).map(|()| TagOutcome::Saved(id))
+            }
+            Self::Remove(remove) => {
+                let name = tag_name(ledger, remove.0)?;
+                remove.run(ledger)?;
+                Ok(TagOutcome::Removed { name })
+            }
+            Self::Merge(merge) => {
+                let (source_name, target_name) = (
+                    tag_name(ledger, merge.source),
+                    tag_name(ledger, merge.target),
+                );
+                let (source_name, target_name) = (source_name?, target_name?);
+                let target = merge.target;
+                let retagged = merge.run(ledger)?;
+                Ok(TagOutcome::Merged {
+                    source_name,
+                    target_name,
+                    retagged,
+                    target,
+                })
+            }
+        }
+    }
+}
+
+fn tag_name(ledger: &Ledger, id: TagId) -> Result<String, TagError> {
+    get(ledger.tags(), id)
+        .map(|tag| tag.name.clone())
+        .ok_or(TagError::NotFound)
+}
+
 impl DialogForm for TagsDialog {
     type Command = TagCommand;
     type Refusal = TagError;
 
     fn command(&self) -> Result<TagCommand, FormError> {
         match self {
-            Self::Add(form) if form.is_valid() => {
-                form.draft().map(TagCommand::Add).ok_or(FormError)
-            }
+            Self::Add(form) if form.is_valid() => form
+                .draft()
+                .map(|draft| TagCommand::Add(AddTag(draft)))
+                .ok_or(FormError),
             Self::Edit(id, form) if form.is_valid() => form
                 .draft()
-                .map(|draft| TagCommand::Edit(*id, draft, form.is_active))
+                .map(|draft| {
+                    TagCommand::Edit(EditTag {
+                        id: *id,
+                        draft,
+                        is_active: form.is_active,
+                    })
+                })
                 .ok_or(FormError),
-            Self::Remove(id, form) if form.allows() => Ok(TagCommand::Remove(*id)),
+            Self::Remove(id, form) if form.allows() => Ok(TagCommand::Remove(RemoveTag(*id))),
             Self::Merge(form) => form
                 .pair()
-                .map(|(source, target)| TagCommand::Merge { source, target })
+                .map(|(source, target)| TagCommand::Merge(MergeTags { source, target }))
                 .ok_or(FormError),
             _ => Err(FormError),
         }
@@ -107,138 +149,91 @@ impl ConfirmDialog for TagsDialog {
     type Outcome = TagOutcome;
 
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<TagOutcome>> {
-        let mut apply = TagsApply {
-            ledger: scope.ledger.clone(),
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        Some(Landed {
-            toast: outcome.toast(),
-            outcome,
-        })
-    }
-}
-
-/// Runs [`TagCommand`]s against the Ledger as Ledger commands. Removing or merging a Tag rewrites
-/// the Transactions whose Splits carry it, which the Ledger does in the same command.
-pub struct TagsApply {
-    pub ledger: Entity<LedgerStore>,
-}
-
-impl Apply<TagCommand> for TagsApply {
-    type Outcome = TagOutcome;
-    type Refusal = TagError;
-
-    fn apply(&mut self, command: TagCommand, cx: &mut App) -> Result<TagOutcome, TagError> {
-        // Names are read before the write removes them, for the Toast that follows.
-        let name_of = |cx: &App, id| {
-            get(self.ledger.read(cx).ledger().tags(), id)
-                .map(|tag| tag.name.clone())
-                .ok_or(TagError::NotFound)
-        };
-        match command {
-            TagCommand::Add(draft) => self
-                .ledger
-                .update(cx, |store, cx| store.apply(cx, AddTag(draft)))
-                .map(TagOutcome::Saved),
-            TagCommand::Edit(id, draft, is_active) => self
-                .ledger
-                .update(cx, |store, cx| {
-                    store.apply(
-                        cx,
-                        EditTag {
-                            id,
-                            draft,
-                            is_active,
-                        },
-                    )
-                })
-                .map(|()| TagOutcome::Saved(id)),
-            TagCommand::Remove(id) => {
-                let name = name_of(cx, id)?;
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, RemoveTag(id)))?;
-                Ok(TagOutcome::Removed { name })
-            }
-            TagCommand::Merge { source, target } => {
-                let (source_name, target_name) = (name_of(cx, source), name_of(cx, target));
-                let (source_name, target_name) = (source_name?, target_name?);
-                let retagged = self.ledger.update(cx, |store, cx| {
-                    store.apply(cx, MergeTags { source, target })
-                })?;
-                Ok(TagOutcome::Merged {
-                    source_name,
-                    target_name,
-                    retagged,
-                    target,
-                })
-            }
-        }
+        confirm_ledger(self, &scope.ledger, cx)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
-
+    use gpui::{Entity, TestAppContext};
     use lib_ledger::LedgerParts;
 
     use super::*;
-    use crate::ledger_store::test_ledger;
     use crate::{
-        chrome::dialog_apply::confirm,
-        settings::tags::form::{MergeTagsForm, RemoveTagForm, TagForm},
+        form::field::TextField,
+        ledger_store::{LedgerStore, test_ledger},
+        settings::tags::form::{MergeTagsForm, RemoveTagForm, TagForm, merge_options},
     };
 
-    fn apply(cx: &mut TestAppContext) -> TagsApply {
-        let ledger = test_ledger(
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
+        test_ledger(
             cx,
             LedgerParts {
                 tags: lib_tags::default_tags(),
                 ..LedgerParts::default()
             },
-        );
-        TagsApply { ledger }
+        )
+    }
+
+    fn tags(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> Vec<lib_tags::Tag> {
+        ledger.read_with(cx, |store, _| store.ledger().tags().to_vec())
     }
 
     #[gpui::test]
-    fn an_invalid_form_is_not_a_command_and_a_free_name_lands(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let rows = lib_tags::default_tags();
-        let mut dialog = TagsDialog::Add(TagForm::new(rows));
-        assert_eq!(dialog.command(), Err(FormError), "a blank name");
+    fn a_blank_name_stays_open_and_a_free_name_lands(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = tags(&ledger, cx);
+        let mut dialog = TagsDialog::Add(TagForm::new(before.clone()));
+
+        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
+        assert!(landed.is_none());
+        assert_eq!(tags(&ledger, cx).len(), before.len());
 
         if let TagsDialog::Add(form) = &mut dialog {
-            form.name = crate::form::field::TextField::new("Groceries run");
+            form.name = TextField::new("Groceries run");
         }
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
-        assert!(matches!(outcome, Some(TagOutcome::Saved(_))));
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("a free name lands");
+        assert_eq!(landed.toast, None);
+        assert!(matches!(landed.outcome, TagOutcome::Saved(_)));
+        assert_eq!(tags(&ledger, cx).len(), before.len() + 1);
     }
 
     #[gpui::test]
-    fn a_vanished_tag_stays_open_with_the_refusal(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
+    fn a_vanished_tag_is_refused_onto_the_form_and_stays_open(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = tags(&ledger, cx);
         let mut dialog = TagsDialog::Remove(TagId::seed(999), RemoveTagForm::new("Gone", 0));
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
-        assert_eq!(outcome, None);
+
+        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
+
+        assert!(landed.is_none());
         assert!(matches!(&dialog, TagsDialog::Remove(_, form) if form.error.is_some()));
+        assert_eq!(tags(&ledger, cx).len(), before.len());
     }
 
     #[gpui::test]
-    fn a_merge_reports_both_names(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let rows = lib_tags::default_tags();
-        let options =
-            crate::settings::tags::form::merge_options(&rows, &[], |name, _| name.to_string());
+    fn a_merge_reports_both_names_and_toasts_them(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let rows = tags(&ledger, cx);
+        let options = merge_options(&rows, &[], |name, _| name.to_string());
         let mut dialog = TagsDialog::Merge(MergeTagsForm::new(
             options,
             Some(rows[1].id),
             Some(rows[2].id),
         ));
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
+
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("a merge of two Tags lands");
+
         assert!(matches!(
-            outcome,
-            Some(TagOutcome::Merged { ref source_name, ref target_name, .. })
+            landed.outcome,
+            TagOutcome::Merged { ref source_name, ref target_name, .. }
                 if *source_name == rows[1].name && *target_name == rows[2].name
         ));
+        assert!(matches!(landed.toast, Some((ToastKind::Success, _))));
+        assert!(tags(&ledger, cx).iter().all(|tag| tag.id != rows[1].id));
     }
 }
