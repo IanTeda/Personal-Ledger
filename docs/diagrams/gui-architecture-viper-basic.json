@@ -13,9 +13,11 @@
           "view",
           "presenter",
           "interactor",
+          "data-manager",
+          "database",
           "entity"
         ],
-        "note": "A use-case event, e.g. Save or Load: Presenter calls the Interactor, then formats its result into a view model."
+        "note": "A use case, e.g. Load: Interactor asks the Data Manager, which runs the SELECT and maps rows to Entities; Presenter formats the result."
       },
       {
         "id": "navigation",
@@ -34,6 +36,7 @@
         "focus": [
           "presenter",
           "interactor",
+          "data-manager",
           "router"
         ],
         "note": "Navigation can follow a result: the Interactor saves, and on success the Presenter, not the Interactor, asks the Router to dismiss."
@@ -108,13 +111,41 @@
       "tag": "use cases"
     },
     {
-      "id": "entity",
+      "id": "data-manager",
+      "type": "backend",
+      "label": "Data Manager",
+      "sublabel": "repository / queries",
+      "pos": [
+        1030,
+        40
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "database",
       "type": "database",
+      "label": "Database",
+      "sublabel": "SQLite",
+      "pos": [
+        1300,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "entity",
+      "type": "backend",
       "label": "Entity",
       "sublabel": "plain data models",
       "pos": [
         1030,
-        40
+        220
       ],
       "size": [
         140,
@@ -173,10 +204,36 @@
       "variant": "emphasis"
     },
     {
-      "id": "interactor-to-entity",
+      "id": "interactor-to-data-manager",
       "from": "interactor",
+      "to": "data-manager",
+      "label": "fetch / save"
+    },
+    {
+      "id": "data-manager-to-database",
+      "from": "data-manager",
+      "to": "database",
+      "label": "SELECT / INSERT"
+    },
+    {
+      "id": "database-to-data-manager",
+      "from": "database",
+      "to": "data-manager",
+      "label": "rows",
+      "variant": "dashed"
+    },
+    {
+      "id": "data-manager-to-entity",
+      "from": "data-manager",
       "to": "entity",
-      "label": "reads/writes"
+      "label": "maps rows to"
+    },
+    {
+      "id": "data-manager-to-interactor",
+      "from": "data-manager",
+      "to": "interactor",
+      "label": "returns Entities",
+      "variant": "dashed"
     },
     {
       "id": "interactor-to-presenter",
@@ -238,7 +295,7 @@
       "items": [
         "One use case per method, e.g. 'add a transaction'",
         "Applies business rules: validation, totals, balances",
-        "Reads and saves data through Entities and storage",
+        "Fetches and saves through the Data Manager, never writes SQL itself",
         "Returns plain results, never display text",
         "No UI imports, so it tests without a screen"
       ]
@@ -260,7 +317,7 @@
       "items": [
         "The core domain objects, e.g. Account, Transaction, Money",
         "Plain data with simple invariants, no persistence code",
-        "Passed between Interactors and storage",
+        "Built by the Data Manager from rows, then worked on by the Interactor",
         "Know nothing about screens, flows or the Presenter",
         "Stay stable while the UI changes around them"
       ]
@@ -274,6 +331,17 @@
         "Presents, pushes and dismisses from this module's View",
         "Passes data in, and hands results back to the Presenter via a delegate",
         "Keeps modules decoupled: only the Router knows its neighbours"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Data Manager",
+      "items": [
+        "Not one of the five VIPER letters, but the usual home for persistence",
+        "Owns how data is fetched: SQL, files, network or a cache",
+        "Runs the SELECT or INSERT and maps rows to and from Entities",
+        "Hands the Interactor plain Entities, never database types",
+        "Swappable for a fake, so Interactors test without a database"
       ]
     }
   ]
