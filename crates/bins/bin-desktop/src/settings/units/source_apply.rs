@@ -1,41 +1,25 @@
 //! The price source Dialogs' confirm cycle (ADR-0037): the command each form describes and the
 //! [`Apply`] that runs it through [`LedgerStore::apply`] as a `lib_ledger` command (#712).
 
-use gpui::{App, Entity};
+use gpui::App;
 use lib_ledger::{
     AddPriceSource, DeletePriceSource, DeletePriceSourceRefusal, EditPriceSource,
-    EditPriceSourceRefusal,
+    EditPriceSourceRefusal, Ledger, LedgerCommand,
 };
 use lib_toast::ToastKind;
-use lib_units::{Endpoint, PriceSourceId, Updates};
 
 use super::dialogs::sources::PriceSourceDialog;
-use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
-    },
-    ledger_store::LedgerStore,
+use crate::chrome::{
+    dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+    dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
 };
 
-/// What confirming a price source Dialog asks for.
+/// What confirming a price source Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceCommand {
-    Add {
-        name: String,
-        endpoint: Endpoint,
-        updates: Updates,
-    },
-    /// `endpoint` is `None` for a built-in, whose endpoint is code.
-    Edit {
-        id: PriceSourceId,
-        name: String,
-        updates: Updates,
-        endpoint: Option<Endpoint>,
-    },
-    Delete {
-        id: PriceSourceId,
-    },
+    Add(AddPriceSource),
+    Edit(EditPriceSource),
+    Delete(DeletePriceSource),
 }
 
 /// What a landed [`SourceCommand`] did, for the Toast or the ACTIVITY line that follows it.
@@ -92,24 +76,24 @@ impl DialogForm for PriceSourceDialog {
             return Err(FormError);
         }
         Ok(match self {
-            Self::Add(form) => SourceCommand::Add {
+            Self::Add(form) => SourceCommand::Add(AddPriceSource {
                 name: form.name(),
                 endpoint: form.endpoint(),
                 updates: form.updates,
-            },
-            Self::EditCustom(id, form) => SourceCommand::Edit {
+            }),
+            Self::EditCustom(id, form) => SourceCommand::Edit(EditPriceSource {
                 id: *id,
                 name: form.name(),
                 updates: form.updates,
                 endpoint: Some(form.endpoint()),
-            },
-            Self::EditBuiltIn(id, form) => SourceCommand::Edit {
+            }),
+            Self::EditBuiltIn(id, form) => SourceCommand::Edit(EditPriceSource {
                 id: *id,
                 name: form.name(),
                 updates: form.updates,
                 endpoint: None,
-            },
-            Self::Delete(id, _) => SourceCommand::Delete { id: *id },
+            }),
+            Self::Delete(id, _) => SourceCommand::Delete(DeletePriceSource { id: *id }),
         })
     }
 
@@ -120,209 +104,165 @@ impl DialogForm for PriceSourceDialog {
 impl ConfirmDialog for PriceSourceDialog {
     type Outcome = SourceOutcome;
 
-    /// The page decides between ACTIVITY and a Toast (`UnitsPage::land_source`).
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<SourceOutcome>> {
-        let mut apply = SourceApply {
-            ledger: scope.ledger.clone(),
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        Some(Landed {
-            toast: None,
-            outcome,
-        })
+        confirm_ledger(self, &scope.ledger, cx)
     }
 }
 
-/// Runs [`SourceCommand`]s as `lib_ledger` commands.
-pub struct SourceApply {
-    pub ledger: Entity<LedgerStore>,
-}
+/// The host raises no Toast: the page decides between ACTIVITY and a Toast
+/// (`UnitsPage::land_source`, through [`SourceOutcome::toast`]).
+impl OutcomeToast for SourceOutcome {}
 
-impl Apply<SourceCommand> for SourceApply {
+impl LedgerCommand for SourceCommand {
     type Outcome = SourceOutcome;
     type Refusal = SourceRefusal;
 
-    fn apply(
-        &mut self,
-        command: SourceCommand,
-        cx: &mut App,
-    ) -> Result<SourceOutcome, SourceRefusal> {
-        self.ledger.update(cx, |store, cx| match command {
-            SourceCommand::Add {
-                name,
-                endpoint,
-                updates,
-            } => {
-                let saved = name.clone();
-                match store.apply(
-                    cx,
-                    AddPriceSource {
-                        name,
-                        endpoint,
-                        updates,
-                    },
-                ) {
-                    Ok(_) => Ok(SourceOutcome::Saved { name: saved }),
+    fn run(self, ledger: &mut Ledger) -> Result<SourceOutcome, SourceRefusal> {
+        match self {
+            Self::Add(add) => {
+                let name = add.name.clone();
+                match add.run(ledger) {
+                    Ok(_) => Ok(SourceOutcome::Saved { name }),
                     Err(never) => match never {},
                 }
             }
-            SourceCommand::Edit {
-                id,
-                name,
-                updates,
-                endpoint,
-            } => {
-                let saved = name.clone();
-                store
-                    .apply(
-                        cx,
-                        EditPriceSource {
-                            id,
-                            name,
-                            updates,
-                            endpoint,
-                        },
-                    )
-                    .map(|()| SourceOutcome::Saved { name: saved })
-                    .map_err(SourceRefusal::Edit)
+            Self::Edit(edit) => {
+                let name = edit.name.clone();
+                edit.run(ledger).map_err(SourceRefusal::Edit)?;
+                Ok(SourceOutcome::Saved { name })
             }
-            SourceCommand::Delete { id } => store
-                .apply(cx, DeletePriceSource { id })
-                .map(|deleted| SourceOutcome::Deleted {
+            Self::Delete(delete) => {
+                let deleted = delete.run(ledger).map_err(SourceRefusal::Delete)?;
+                Ok(SourceOutcome::Deleted {
                     name: deleted.source.name,
                     moved: deleted.moved,
                 })
-                .map_err(SourceRefusal::Delete),
-        })
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
     use lib_ledger::LedgerParts;
-    use lib_units::{COINGECKO, MANUAL_ENTRY, PriceSourceAuth, UnitId};
+    use lib_units::{COINGECKO, MANUAL_ENTRY, PriceSourceId, UnitId, Updates};
 
     use super::*;
-    use crate::ledger_store::test_ledger;
+    use crate::{
+        form::field::TextField,
+        ledger_store::{LedgerStore, test_ledger},
+        settings::units::source_form::{
+            BuiltInSourceForm, CustomSourceForm, DeleteSourceForm, SourceField,
+        },
+    };
 
     const MANUAL: &str = "Manual entry";
 
-    fn apply(cx: &mut TestAppContext) -> SourceApply {
-        let ledger = test_ledger(
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
+        test_ledger(
             cx,
             LedgerParts {
                 units: lib_units::default_units(chrono::Utc::now()),
                 ..LedgerParts::default()
             },
-        );
-        SourceApply { ledger }
+        )
     }
 
-    fn endpoint() -> Endpoint {
-        Endpoint {
-            address: "https://broker.example".to_string().into(),
-            request: "/{symbol}".to_string().into(),
-            price_path: "/price".to_string().into(),
-            auth: PriceSourceAuth::None,
-        }
+    fn filled(name: &str) -> CustomSourceForm {
+        let mut form = CustomSourceForm::default();
+        form.name = TextField::new(name);
+        form.address = TextField::new("https://broker.example");
+        form.request = TextField::new("/{symbol}");
+        form.price_path = TextField::new("/price");
+        form.focused = SourceField::Name;
+        form
     }
 
-    fn add(apply: &mut SourceApply, cx: &mut TestAppContext) -> PriceSourceId {
-        let landed = cx.update(|cx| {
-            apply.apply(
-                SourceCommand::Add {
-                    name: "Broker".into(),
-                    endpoint: endpoint(),
-                    updates: Updates::Daily,
-                },
-                cx,
-            )
-        });
-        assert_eq!(
-            landed,
-            Ok(SourceOutcome::Saved {
-                name: "Broker".into()
-            })
-        );
-        cx.read(|cx| {
-            apply
-                .ledger
-                .read(cx)
+    fn confirm(
+        dialog: &mut PriceSourceDialog,
+        ledger: &Entity<LedgerStore>,
+        cx: &mut TestAppContext,
+    ) -> Option<Landed<SourceOutcome>> {
+        cx.update(|cx| confirm_ledger(dialog, ledger, cx))
+    }
+
+    fn source_id(ledger: &Entity<LedgerStore>, name: &str, cx: &TestAppContext) -> PriceSourceId {
+        ledger.read_with(cx, |store, _| {
+            store
                 .ledger()
                 .price_sources(MANUAL)
                 .iter()
-                .find(|source| source.name == "Broker")
-                .expect("the added source is listed")
+                .find(|source| source.name == name)
+                .expect("the source is listed")
                 .id
         })
     }
 
     #[gpui::test]
-    fn adding_editing_and_deleting_a_custom_source_land_in_the_ledger(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let id = add(&mut apply, cx);
+    fn an_invalid_form_is_not_confirmed(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let mut dialog = PriceSourceDialog::Add(CustomSourceForm::default());
+        assert_eq!(dialog.command(), Err(FormError));
+        assert!(confirm(&mut dialog, &ledger, cx).is_none());
+    }
 
-        let edited = cx.update(|cx| {
-            apply.apply(
-                SourceCommand::Edit {
-                    id,
-                    name: "My broker".into(),
-                    updates: Updates::Hourly,
-                    endpoint: Some(endpoint()),
-                },
-                cx,
-            )
-        });
+    #[gpui::test]
+    fn adding_editing_and_deleting_a_custom_source_land_in_the_ledger(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let mut add = PriceSourceDialog::Add(filled("Broker"));
+        let landed = confirm(&mut add, &ledger, cx).expect("a valid source lands");
         assert_eq!(
-            edited,
-            Ok(SourceOutcome::Saved {
+            landed.outcome,
+            SourceOutcome::Saved {
+                name: "Broker".into()
+            }
+        );
+        assert_eq!(landed.toast, None, "the page picks ACTIVITY or a Toast");
+        let id = source_id(&ledger, "Broker", cx);
+
+        let mut edit = PriceSourceDialog::EditCustom(id, filled("My broker"));
+        let edited = confirm(&mut edit, &ledger, cx).expect("the edit lands");
+        assert_eq!(
+            edited.outcome,
+            SourceOutcome::Saved {
                 name: "My broker".into()
-            })
+            }
         );
 
-        let deleted = cx.update(|cx| apply.apply(SourceCommand::Delete { id }, cx));
+        let mut form = DeleteSourceForm::new("My broker");
+        form.confirm_input = TextField::new("My broker");
+        let mut delete = PriceSourceDialog::Delete(id, form);
+        let deleted = confirm(&mut delete, &ledger, cx).expect("the delete lands");
         assert_eq!(
-            deleted,
-            Ok(SourceOutcome::Deleted {
+            deleted.outcome,
+            SourceOutcome::Deleted {
                 name: "My broker".into(),
                 moved: 0
-            })
+            }
         );
-        cx.read(|cx| {
-            let ledger = apply.ledger.read(cx).ledger();
-            assert!(ledger.price_source(MANUAL, id).is_none());
-            assert!(ledger.price_source_records().is_empty());
+        ledger.read_with(cx, |store, _| {
+            assert!(store.ledger().price_source(MANUAL, id).is_none());
         });
     }
 
     #[gpui::test]
     fn a_built_in_is_renamed_but_neither_re_pointed_nor_deleted(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let renamed = cx.update(|cx| {
-            apply.apply(
-                SourceCommand::Edit {
-                    id: COINGECKO,
-                    name: "Gecko".into(),
-                    updates: Updates::Daily,
-                    endpoint: None,
-                },
-                cx,
-            )
-        });
-        assert!(renamed.is_ok());
-        let deleted = cx.update(|cx| apply.apply(SourceCommand::Delete { id: COINGECKO }, cx));
-        assert_eq!(
-            deleted,
-            Err(SourceRefusal::Delete(DeletePriceSourceRefusal::BuiltIn))
+        let ledger = ledger(cx);
+        let mut rename = PriceSourceDialog::EditBuiltIn(
+            COINGECKO,
+            BuiltInSourceForm::new("Gecko", Updates::Daily),
         );
-        let manual = cx.update(|cx| apply.apply(SourceCommand::Delete { id: MANUAL_ENTRY }, cx));
-        assert_eq!(
-            manual,
-            Err(SourceRefusal::Delete(DeletePriceSourceRefusal::ManualEntry))
-        );
-        cx.read(|cx| {
-            let ledger = apply.ledger.read(cx).ledger();
+        assert!(confirm(&mut rename, &ledger, cx).is_some());
+
+        for (id, name) in [(COINGECKO, "Gecko"), (MANUAL_ENTRY, MANUAL)] {
+            let mut form = DeleteSourceForm::new(name);
+            form.confirm_input = TextField::new(name);
+            let mut delete = PriceSourceDialog::Delete(id, form);
+            assert!(confirm(&mut delete, &ledger, cx).is_none(), "{name} stays");
+        }
+        ledger.read_with(cx, |store, _| {
+            let ledger = store.ledger();
             assert_eq!(
                 ledger.price_source(MANUAL, COINGECKO).unwrap().name,
                 "Gecko"
