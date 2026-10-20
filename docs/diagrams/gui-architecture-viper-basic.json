@@ -4,7 +4,50 @@
   "meta": {
     "title": "VIPER Architecture",
     "output": "docs/diagrams/gui-architecture-viper-basic.html",
-    "quality_profile": "showcase"
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "business",
+        "label": "Business event round trip",
+        "focus": [
+          "view",
+          "presenter",
+          "interactor",
+          "entity"
+        ],
+        "note": "A use-case event, e.g. Save or Load: Presenter calls the Interactor, then formats its result into a view model."
+      },
+      {
+        "id": "navigation",
+        "label": "Navigation event",
+        "focus": [
+          "view",
+          "presenter",
+          "router",
+          "next"
+        ],
+        "note": "A navigation event, e.g. open detail or back: Presenter asks the Router, which builds and shows the next module."
+      },
+      {
+        "id": "save-dismiss",
+        "label": "Save then dismiss",
+        "focus": [
+          "presenter",
+          "interactor",
+          "router"
+        ],
+        "note": "Navigation can follow a result: the Interactor saves, and on success the Presenter, not the Interactor, asks the Router to dismiss."
+      },
+      {
+        "id": "return",
+        "label": "Result from next module",
+        "focus": [
+          "next",
+          "presenter"
+        ],
+        "note": "The next module hands its outcome, e.g. a picked Payee, back to this Presenter through a delegate or callback."
+      }
+    ]
   },
   "components": [
     {
@@ -39,7 +82,7 @@
       "id": "presenter",
       "type": "frontend",
       "label": "Presenter",
-      "sublabel": "formats for display",
+      "sublabel": "decides per event",
       "pos": [
         500,
         40
@@ -98,8 +141,8 @@
       "label": "Next module",
       "sublabel": "another VIPER stack",
       "pos": [
-        500,
-        380
+        770,
+        220
       ],
       "size": [
         140,
@@ -126,7 +169,7 @@
       "id": "presenter-to-interactor",
       "from": "presenter",
       "to": "interactor",
-      "label": "asks for work",
+      "label": "business event",
       "variant": "emphasis"
     },
     {
@@ -153,13 +196,28 @@
       "id": "presenter-to-router",
       "from": "presenter",
       "to": "router",
-      "label": "navigate"
+      "label": "navigation event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "router-to-view",
+      "from": "router",
+      "to": "view",
+      "label": "presents from",
+      "variant": "dashed"
     },
     {
       "id": "router-to-next",
       "from": "router",
       "to": "next",
       "label": "builds + shows"
+    },
+    {
+      "id": "next-to-presenter",
+      "from": "next",
+      "to": "presenter",
+      "label": "passes result back",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -190,10 +248,10 @@
       "title": "P: Presenter",
       "items": [
         "The coordinator for one screen",
-        "Receives View events and decides which use case to call",
+        "Decides per event: a use case goes to the Interactor, navigation to the Router",
         "Formats results: dates, currency, empty states, errors",
         "Pushes a ready-to-draw view model to the View",
-        "Asks the Router to move on, never builds screens itself"
+        "May navigate after a result, e.g. dismiss once a save succeeds"
       ]
     },
     {
@@ -213,8 +271,8 @@
       "items": [
         "Also called the Wireframe: owns how screens connect",
         "Creates the next module's View, Presenter and Interactor and wires them",
-        "Handles presenting, pushing and dismissing screens",
-        "Passes any data the next module needs",
+        "Presents, pushes and dismisses from this module's View",
+        "Passes data in, and hands results back to the Presenter via a delegate",
         "Keeps modules decoupled: only the Router knows its neighbours"
       ]
     }
