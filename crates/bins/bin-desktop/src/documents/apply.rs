@@ -76,7 +76,7 @@ pub enum DocumentOutcome {
     Accepted(Option<FilingUndo>),
 }
 
-/// Every outcome closes the Dialog with no Toast: the Shell raises the Toast from the outcome.
+/// No Outcome carries a Toast from the host: the page raises its own from the outcome it is handed.
 impl OutcomeToast for DocumentOutcome {}
 
 /// Why a Documents command didn't land.
