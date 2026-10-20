@@ -1,5 +1,5 @@
-//! The Units Dialogs' confirm cycle (ADR-0037): the command each form describes and the [`Apply`]
-//! that runs it through [`LedgerStore::apply`] as a `lib_ledger` command.
+//! The Units Dialogs' confirm cycle (ADR-0037): the command each form describes and the command
+//! runs through [`confirm_ledger`](crate::chrome::dialog_apply::confirm_ledger) as a `lib_ledger` command.
 //!
 //! The README's own "Dialog lifecycle" rows: Add "validate -> append to Units table -> close",
 //! Edit "Save -> update the in-memory row -> close" (a changed code keeps the row's id, so the Accounts

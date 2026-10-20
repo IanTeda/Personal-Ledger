@@ -6,8 +6,7 @@
 //! [`DialogForm::refuse`] so it can show it as a Message; the domain libs stay locale-free.
 //!
 //! A page whose command is a [`LedgerCommand`] confirms through [`confirm_ledger`], which runs it
-//! through [`LedgerStore::apply`] and takes the Toast from the Outcome's [`OutcomeToast`]. The
-//! pages not moved yet still go through their own [`Apply`] and [`confirm`] (#719).
+//! through [`LedgerStore::apply`] and takes the Toast from the Outcome's [`OutcomeToast`].
 
 use gpui::{App, Entity};
 use lib_ledger::LedgerCommand;
@@ -33,31 +32,6 @@ pub trait DialogForm {
     fn refuse(&mut self, refusal: Self::Refusal);
 }
 
-/// Runs a command of type `C` against the data the Dialog edits.
-pub trait Apply<C> {
-    type Outcome;
-    type Refusal;
-
-    fn apply(&mut self, command: C, cx: &mut App) -> Result<Self::Outcome, Self::Refusal>;
-}
-
-/// One confirm: `Some(outcome)` when the command landed and the Dialog should close, `None` when
-/// the form is not valid or the domain refused it (the refusal is already on the form).
-pub fn confirm<F, A>(form: &mut F, apply: &mut A, cx: &mut App) -> Option<A::Outcome>
-where
-    F: DialogForm,
-    A: Apply<F::Command, Refusal = F::Refusal>,
-{
-    let command = form.command().ok()?;
-    match apply.apply(command, cx) {
-        Ok(outcome) => Some(outcome),
-        Err(refusal) => {
-            form.refuse(refusal);
-            None
-        }
-    }
-}
-
 /// The Toast a landed command's Outcome raises. Most Outcomes have none, so that's the default.
 pub trait OutcomeToast {
     fn toast(&self) -> Option<DialogToast> {
@@ -79,7 +53,23 @@ where
     F::Command: LedgerCommand<Refusal = F::Refusal>,
     <F::Command as LedgerCommand>::Outcome: OutcomeToast,
 {
-    let command = form.command().ok()?;
+    confirm_ledger_with(form, ledger, cx, |command| command)
+}
+
+/// [`confirm_ledger`] for a page whose command needs context the form does not hold, such as the
+/// Budget on show: `finish` wraps the form's command with it before it runs.
+pub fn confirm_ledger_with<F, C>(
+    form: &mut F,
+    ledger: &Entity<LedgerStore>,
+    cx: &mut App,
+    finish: impl FnOnce(F::Command) -> C,
+) -> Option<Landed<C::Outcome>>
+where
+    F: DialogForm,
+    C: LedgerCommand<Refusal = F::Refusal>,
+    C::Outcome: OutcomeToast,
+{
+    let command = finish(form.command().ok()?);
     match ledger.update(cx, |store, cx| store.apply(cx, command)) {
         Ok(outcome) => Some(Landed {
             toast: outcome.toast(),
@@ -97,68 +87,6 @@ mod tests {
     use super::*;
 
     #[derive(Default)]
-    struct Form {
-        text: String,
-        shown: Option<String>,
-    }
-
-    impl DialogForm for Form {
-        type Command = String;
-        type Refusal = String;
-
-        fn command(&self) -> Result<String, FormError> {
-            if self.text.is_empty() {
-                Err(FormError)
-            } else {
-                Ok(self.text.clone())
-            }
-        }
-
-        fn refuse(&mut self, refusal: String) {
-            self.shown = Some(refusal);
-        }
-    }
-
-    /// Refuses a command it has seen before.
-    #[derive(Default)]
-    struct Seen(Vec<String>);
-
-    impl Apply<String> for Seen {
-        type Outcome = usize;
-        type Refusal = String;
-
-        fn apply(&mut self, command: String, _cx: &mut App) -> Result<usize, String> {
-            if self.0.contains(&command) {
-                return Err(format!("{command} is taken"));
-            }
-            self.0.push(command);
-            Ok(self.0.len())
-        }
-    }
-
-    #[gpui::test]
-    fn a_landed_command_closes_and_a_refused_one_stays_open_with_the_refusal(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let mut seen = Seen::default();
-        cx.update(|cx| {
-            let mut form = Form::default();
-            assert_eq!(
-                confirm(&mut form, &mut seen, cx),
-                None,
-                "invalid stays open"
-            );
-            assert!(seen.0.is_empty() && form.shown.is_none());
-
-            form.text = "Netflix".into();
-            assert_eq!(confirm(&mut form, &mut seen, cx), Some(1));
-
-            assert_eq!(confirm(&mut form, &mut seen, cx), None);
-            assert_eq!(form.shown.as_deref(), Some("Netflix is taken"));
-        });
-    }
-
-    /// Adds an Institution unless one already has the name.
     struct AddOnce(String);
 
     #[derive(Debug, PartialEq, Eq)]

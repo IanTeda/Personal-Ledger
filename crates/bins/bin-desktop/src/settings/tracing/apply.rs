@@ -1,11 +1,12 @@
-//! The Tracing Dialog's confirm cycle (ADR-0037): Clear logs, which nothing can refuse.
+//! The Tracing Dialog's confirm cycle (ADR-0037): Clear logs, which nothing can refuse and which
+//! runs without the Ledger.
 
 use gpui::App;
 use lib_toast::ToastKind;
 
 use super::dialogs::TracingDialog;
 use crate::chrome::{
-    dialog_apply::{self, Apply, DialogForm, FormError},
+    dialog_apply::{DialogForm, FormError},
     dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
 };
 
@@ -14,6 +15,15 @@ use crate::chrome::{
 pub enum TracingCommand {
     /// Clear logs: the capture lives on the page, which `Shell` empties.
     ClearLogs,
+}
+
+impl TracingCommand {
+    /// Clear logs lands whatever the page holds, so nothing here can refuse.
+    pub fn run(self) -> TracingOutcome {
+        match self {
+            Self::ClearLogs => TracingOutcome::LogsConfirmed,
+        }
+    }
 }
 
 /// What a landed [`TracingCommand`] did, for what follows it.
@@ -60,8 +70,8 @@ impl ConfirmDialog for TracingDialog {
     type Outcome = TracingOutcome;
 
     /// A landed Clear logs raises its Toast and hands the outcome to the page.
-    fn confirm(&mut self, _scope: &DialogScope, cx: &mut App) -> Option<Landed<TracingOutcome>> {
-        let outcome = dialog_apply::confirm(self, &mut TracingApply, cx)?;
+    fn confirm(&mut self, _scope: &DialogScope, _cx: &mut App) -> Option<Landed<TracingOutcome>> {
+        let outcome = self.command().ok()?.run();
         Some(Landed {
             toast: outcome.toast(),
             outcome,
@@ -69,36 +79,18 @@ impl ConfirmDialog for TracingDialog {
     }
 }
 
-/// Runs [`TracingCommand`]s.
-pub struct TracingApply;
-
-impl Apply<TracingCommand> for TracingApply {
-    type Outcome = TracingOutcome;
-    type Refusal = TracingRefusal;
-
-    fn apply(
-        &mut self,
-        command: TracingCommand,
-        _cx: &mut App,
-    ) -> Result<TracingOutcome, TracingRefusal> {
-        match command {
-            TracingCommand::ClearLogs => Ok(TracingOutcome::LogsConfirmed),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
-
     use super::*;
-    use crate::chrome::dialog_apply::confirm;
 
-    #[gpui::test]
-    fn clear_logs_only_confirms(cx: &mut TestAppContext) {
-        let mut dialog = TracingDialog::ClearLogs;
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut TracingApply, cx));
-        assert_eq!(outcome, Some(TracingOutcome::LogsConfirmed));
+    #[test]
+    fn clear_logs_only_confirms() {
+        let command = TracingDialog::ClearLogs.command();
+        assert_eq!(command, Ok(TracingCommand::ClearLogs));
+        assert_eq!(
+            TracingCommand::ClearLogs.run(),
+            TracingOutcome::LogsConfirmed
+        );
     }
 
     #[test]

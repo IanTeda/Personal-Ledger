@@ -1,21 +1,19 @@
-//! The Budgets write Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Ledger, which reads the Accounts, Categories,
-//! Transactions and Bills the rules check against.
+//! The Budgets write Dialogs' confirm cycle (ADR-0037): the command each form describes, wrapped
+//! with the Budget on show and today into an [`OnBudget`] `lib_ledger` command, confirmed through
+//! [`confirm_ledger_with`](crate::chrome::dialog_apply::confirm_ledger_with).
 //!
 //! Only the forms that write are here. The Switcher, Manage and Category detail lists answer
 //! with a request that opens another Dialog or moves the cursor, which stays `Shell`'s.
 
 use chrono::NaiveDate;
-use gpui::{App, Entity};
 use lib_core::{BudgetId, CategoryId};
 use lib_ledger::{
-    AddBudget, EditBudget, FillBudget, LedgerCommand, SetBudgetAmount, StopBudgeting,
+    AddBudget, EditBudget, FillBudget, Ledger, LedgerCommand, SetBudgetAmount, StopBudgeting,
 };
 
 use super::{BudgetError, BudgetsDialog, FillSource, form::BudgetDraft, limit_form::LimitDraft};
 use crate::{
-    chrome::dialog_apply::{Apply, DialogForm, FormError},
-    ledger_store::LedgerStore,
+    chrome::dialog_apply::{DialogForm, FormError, OutcomeToast},
     period::Period,
 };
 
@@ -35,13 +33,23 @@ pub enum BudgetCommand {
     Fill { month: Period, source: FillSource },
 }
 
-/// What a landed [`BudgetCommand`] did, for the View that follows it.
+/// A [`BudgetCommand`] with the context the form does not hold: the Budget on show and today.
+#[derive(Debug, Clone)]
+pub struct OnBudget {
+    pub command: BudgetCommand,
+    pub budget: BudgetId,
+    pub today: NaiveDate,
+}
+
+/// What a landed [`OnBudget`] did, for the View that follows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetOutcome {
     /// A Budget was created: the surface switches to it.
     Created(BudgetId),
     Saved,
 }
+
+impl OutcomeToast for BudgetOutcome {}
 
 /// Why a Budgets command didn't land.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +62,75 @@ pub enum BudgetRefusal {
 impl From<BudgetError> for BudgetRefusal {
     fn from(error: BudgetError) -> Self {
         Self::Budget(error)
+    }
+}
+
+impl LedgerCommand for OnBudget {
+    type Outcome = BudgetOutcome;
+    type Refusal = BudgetRefusal;
+
+    fn run(self, ledger: &mut Ledger) -> Result<BudgetOutcome, BudgetRefusal> {
+        let Self {
+            command,
+            budget,
+            today,
+        } = self;
+        match command {
+            BudgetCommand::SaveBudget(BudgetDraft::Create(new)) => {
+                let id = AddBudget { new, today }.run(ledger)?;
+                Ok(BudgetOutcome::Created(id))
+            }
+            BudgetCommand::SaveBudget(BudgetDraft::Edit {
+                id,
+                name,
+                account_ids,
+            }) => {
+                EditBudget {
+                    id,
+                    name,
+                    account_ids,
+                }
+                .run(ledger)?;
+                Ok(BudgetOutcome::Saved)
+            }
+            BudgetCommand::SetLimit(draft) => {
+                SetBudgetAmount {
+                    budget_id: budget,
+                    category_id: draft.category_id,
+                    month: draft.month,
+                    span: draft.span,
+                    amount: draft.amount,
+                    rollover: Some(draft.rollover),
+                    today,
+                }
+                .run(ledger)?;
+                Ok(BudgetOutcome::Saved)
+            }
+            BudgetCommand::Stop { category_id, month } => {
+                StopBudgeting {
+                    budget_id: budget,
+                    category_id,
+                    month,
+                    today,
+                }
+                .run(ledger)?;
+                Ok(BudgetOutcome::Saved)
+            }
+            BudgetCommand::Fill { month, source } => {
+                let filled = FillBudget {
+                    budget_id: budget,
+                    target: month,
+                    source,
+                    today,
+                }
+                .run(ledger)?;
+                if filled > 0 {
+                    Ok(BudgetOutcome::Saved)
+                } else {
+                    Err(BudgetRefusal::NothingToFill)
+                }
+            }
+        }
     }
 }
 
@@ -94,115 +171,23 @@ impl DialogForm for BudgetsDialog {
     }
 }
 
-/// Runs [`BudgetCommand`]s against the Ledger; `current` is the Budget on show.
-pub struct BudgetsApply {
-    pub ledger: Entity<LedgerStore>,
-    pub current: BudgetId,
-    pub today: NaiveDate,
-}
-
-impl Apply<BudgetCommand> for BudgetsApply {
-    type Outcome = BudgetOutcome;
-    type Refusal = BudgetRefusal;
-
-    fn apply(
-        &mut self,
-        command: BudgetCommand,
-        cx: &mut App,
-    ) -> Result<BudgetOutcome, BudgetRefusal> {
-        let today = self.today;
-        let current = self.current;
-        match command {
-            BudgetCommand::SaveBudget(BudgetDraft::Create(new)) => {
-                let id = self.run(cx, AddBudget { new, today })?;
-                Ok(BudgetOutcome::Created(id))
-            }
-            BudgetCommand::SaveBudget(BudgetDraft::Edit {
-                id,
-                name,
-                account_ids,
-            }) => {
-                self.run(
-                    cx,
-                    EditBudget {
-                        id,
-                        name,
-                        account_ids,
-                    },
-                )?;
-                Ok(BudgetOutcome::Saved)
-            }
-            BudgetCommand::SetLimit(draft) => {
-                self.run(
-                    cx,
-                    SetBudgetAmount {
-                        budget_id: current,
-                        category_id: draft.category_id,
-                        month: draft.month,
-                        span: draft.span,
-                        amount: draft.amount,
-                        rollover: Some(draft.rollover),
-                        today,
-                    },
-                )?;
-                Ok(BudgetOutcome::Saved)
-            }
-            BudgetCommand::Stop { category_id, month } => {
-                self.run(
-                    cx,
-                    StopBudgeting {
-                        budget_id: current,
-                        category_id,
-                        month,
-                        today,
-                    },
-                )?;
-                Ok(BudgetOutcome::Saved)
-            }
-            BudgetCommand::Fill { month, source } => {
-                let filled = self.run(
-                    cx,
-                    FillBudget {
-                        budget_id: current,
-                        target: month,
-                        source,
-                        today,
-                    },
-                )?;
-                if filled > 0 {
-                    Ok(BudgetOutcome::Saved)
-                } else {
-                    Err(BudgetRefusal::NothingToFill)
-                }
-            }
-        }
-    }
-}
-
-impl BudgetsApply {
-    fn run<C>(&self, cx: &mut App, command: C) -> Result<C::Outcome, BudgetError>
-    where
-        C: LedgerCommand<Refusal = BudgetError>,
-    {
-        self.ledger.update(cx, |store, cx| store.apply(cx, command))
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
     use lib_ledger::LedgerParts;
 
     use super::*;
-    use crate::ledger_store::test_ledger;
+    use crate::ledger_store::{LedgerStore, test_ledger};
 
-    fn apply(cx: &mut TestAppContext) -> BudgetsApply {
-        let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
+    }
+
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
         let accounts = lib_accounts::default_accounts();
         let categories = lib_categories::default_categories();
-        let seeded = crate::budgets::default_budgets(&accounts, &categories, today);
-        let current = crate::budgets::PERSONAL_SPENDING_ID;
-        let ledger = test_ledger(
+        let seeded = crate::budgets::default_budgets(&accounts, &categories, today());
+        test_ledger(
             cx,
             LedgerParts {
                 accounts,
@@ -210,39 +195,34 @@ mod tests {
                 budgets: seeded,
                 ..LedgerParts::default()
             },
-        );
-        BudgetsApply {
-            ledger,
-            current,
-            today,
-        }
+        )
     }
 
     #[gpui::test]
     fn a_stop_on_a_category_that_is_not_budgeted_is_refused_and_the_lists_are_not_commands(
         cx: &mut TestAppContext,
     ) {
-        let mut apply = apply(cx);
-        let month = Period::of(apply.today);
-        let refused = cx.update(|cx| {
-            apply.apply(
-                BudgetCommand::Stop {
-                    category_id: CategoryId::seed(9999),
-                    month,
-                },
-                cx,
-            )
-        });
+        let ledger = ledger(cx);
+        let command = OnBudget {
+            command: BudgetCommand::Stop {
+                category_id: CategoryId::seed(9999),
+                month: Period::of(today()),
+            },
+            budget: crate::budgets::PERSONAL_SPENDING_ID,
+            today: today(),
+        };
+        let refused = ledger.update(cx, |store, cx| store.apply(cx, command));
         assert!(matches!(refused, Err(BudgetRefusal::Budget(_))));
 
-        let today = apply.today;
         let seeded = crate::budgets::default_budgets(
             &lib_accounts::default_accounts(),
             &lib_categories::default_categories(),
-            today,
+            today(),
         );
-        let switcher =
-            BudgetsDialog::Switcher(crate::budgets::Switcher::new(&seeded, apply.current));
+        let switcher = BudgetsDialog::Switcher(crate::budgets::Switcher::new(
+            &seeded,
+            crate::budgets::PERSONAL_SPENDING_ID,
+        ));
         assert!(switcher.command().is_err(), "a list answers with a request");
     }
 }

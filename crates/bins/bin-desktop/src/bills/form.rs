@@ -583,6 +583,11 @@ impl BillPlanForm {
 
     /// What Save submits, or `None` while a field is empty or has a problem. An empty First Due
     /// counts as missing.
+    /// The day the form was opened on, which the Plan's Schedule is built from.
+    pub fn today(&self) -> NaiveDate {
+        self.source.today
+    }
+
     pub fn draft(&self) -> Option<BillPlanDraft> {
         let (today, date_style) = (self.source.today, self.source.date_style);
         if self.name.is_blank() || !self.errors().is_empty() {

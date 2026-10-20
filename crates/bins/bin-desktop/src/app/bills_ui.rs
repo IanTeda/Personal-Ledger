@@ -8,11 +8,7 @@ use crate::bills::BillsDialog;
 use std::rc::Rc;
 
 use crate::{
-    bills::{
-        self,
-        apply::{BillOutcome, BillsApply},
-        pay_form::PayForm,
-    },
+    bills::{self, apply::BillOutcome, pay_form::PayForm},
     chrome::dialog_apply,
     view::bills as bills_view,
     view::format,
@@ -42,18 +38,15 @@ impl Shell {
     /// one closes the dialog. **Add bill plan** / **Save** select the Plan on the Planner tab; a
     /// refused Skip closes with the reason in the status line.
     pub(super) fn confirm_bills_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        let mut apply = BillsApply {
-            ledger: self.ledger.clone(),
-            today: self.today,
-        };
+        let ledger = self.ledger.clone();
         let Some(dialog) = self.dialog_mut::<BillsDialog>() else {
             return;
         };
-        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+        let Some(landed) = dialog_apply::confirm_ledger(dialog, &ledger, cx) else {
             return;
         };
         self.close_dialog();
-        match outcome {
+        match landed.outcome {
             BillOutcome::PlanSaved(id) => {
                 self.views
                     .bills

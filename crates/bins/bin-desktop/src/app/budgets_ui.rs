@@ -5,7 +5,7 @@
 
 use crate::budgets::{
     BudgetsDialog,
-    apply::{BudgetOutcome, BudgetsApply},
+    apply::{BudgetOutcome, OnBudget},
 };
 use lib_core::{BudgetId, CategoryId};
 use lib_ledger::{ArchiveBudget, DuplicateBudget, LedgerCommand, RestoreBudget, SetDefaultBudget};
@@ -169,19 +169,22 @@ impl Shell {
             self.apply_budgets_request(*dialog, cx);
             return;
         }
-        let mut apply = BudgetsApply {
-            ledger: self.ledger.clone(),
-            current: self.budgets_current(cx),
-            today: self.today,
-        };
+        let ledger = self.ledger.clone();
+        let (budget, today) = (self.budgets_current(cx), self.today);
         let Some(dialog) = self.dialog_mut::<BudgetsDialog>() else {
             return;
         };
-        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+        let Some(landed) =
+            dialog_apply::confirm_ledger_with(dialog, &ledger, cx, |command| OnBudget {
+                command,
+                budget,
+                today,
+            })
+        else {
             return;
         };
         self.close_dialog();
-        if let BudgetOutcome::Created(id) = outcome {
+        if let BudgetOutcome::Created(id) = landed.outcome {
             self.switch_budget(id, cx);
         }
     }

@@ -13,7 +13,7 @@ use lib_toast::ToastKind;
 use super::{OpenDialog, Shell};
 use crate::{
     chrome::dialog_apply,
-    documents::apply::{DocumentOutcome, DocumentsApply, exists_on_disk},
+    documents::apply::{DocumentOutcome, OnDocuments, exists_on_disk},
     documents::form::{
         DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm, import_lines,
     },
@@ -207,24 +207,28 @@ impl Shell {
             self.apply_documents_picker(*state, cx);
             return;
         }
-        let mut apply = DocumentsApply {
-            ledger: self.ledger.clone(),
-            today: self.today,
-            focus: self
-                .views
-                .documents
-                .read(cx)
-                .selected_document(cx)
-                .map(|document| document.id),
-        };
+        let ledger = self.ledger.clone();
+        let today = self.today;
+        let focus = self
+            .views
+            .documents
+            .read(cx)
+            .selected_document(cx)
+            .map(|document| document.id);
         let Some(dialog) = self.dialog_mut::<DocumentsDialog>() else {
             return;
         };
-        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+        let Some(landed) =
+            dialog_apply::confirm_ledger_with(dialog, &ledger, cx, |command| OnDocuments {
+                command,
+                today,
+                focus,
+            })
+        else {
             return;
         };
         self.close_dialog();
-        match outcome {
+        match landed.outcome {
             DocumentOutcome::Added { id, title } => {
                 self.views
                     .documents

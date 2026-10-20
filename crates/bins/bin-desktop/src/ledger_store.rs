@@ -1,6 +1,6 @@
-//! The Desktop's one copy of the Ledger (ADR-0038). [`LedgerStore`] holds the only [`Ledger`]; the
-//! per-domain stores hold none of their own rows, reading through it and re-emitting their own
-//! event when a [`LedgerChanged`] names their domain, so the Views reading them don't change yet.
+//! The Desktop's one copy of the Ledger (ADR-0038). [`LedgerStore`] holds the only [`Ledger`]: a
+//! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
+//! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 
 use std::collections::BTreeSet;
 
@@ -43,7 +43,7 @@ impl LedgerStore {
         cx.notify();
     }
 
-    /// Runs any command: the Dialog host's `Apply` (ADR-0037). A refusal changes nothing and emits
+    /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes nothing and emits
     /// nothing; a landed command announces the domains its recorded changes touched. Nothing
     /// persists the changes until the repository is wired (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(

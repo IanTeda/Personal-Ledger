@@ -7,9 +7,8 @@ use crate::navigation::nav::Noun;
 use crate::settings::inventory::InventoryPage;
 use crate::view::help::HelpDialog;
 use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm},
-        dialog_host::{Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog},
+    chrome::dialog_host::{
+        Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
     },
     navigation::nav::InputMode,
     settings::accounts::AccountsPage,
@@ -94,7 +93,7 @@ impl Shell {
             }
             return;
         }
-        // Every domain's Dialog runs through the host's cycle (`DialogForm`/`Apply`, ADR-0037).
+        // Every domain's Dialog runs through the host's cycle (`DialogForm`/`confirm_ledger`, ADR-0037).
         match self.chrome.dialog {
             Some(OpenDialog::Bills(_)) => self.confirm_bills_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
@@ -126,19 +125,6 @@ impl Shell {
     /// The Accounts page's Entity, which the Settings View owns.
     pub(super) fn accounts_page(&self, cx: &gpui::App) -> gpui::Entity<AccountsPage> {
         self.views.settings.read(cx).accounts().clone()
-    }
-
-    /// Confirms the open `T` Dialog through the host's cycle (ADR-0037): the form's command runs
-    /// through `apply`, and a landed one closes the Dialog. `None` while the form is invalid or
-    /// the command was refused, leaving the Dialog open.
-    fn confirm_dialog<T, A>(&mut self, apply: &mut A, cx: &mut gpui::App) -> Option<A::Outcome>
-    where
-        T: DialogVariant + DialogForm,
-        A: Apply<T::Command, Refusal = T::Refusal>,
-    {
-        let outcome = dialog_apply::confirm(self.dialog_mut::<T>()?, apply, cx)?;
-        self.close_dialog();
-        Some(outcome)
     }
 
     /// The cancel button: closes the Dialog without applying it.

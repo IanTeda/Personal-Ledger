@@ -1,5 +1,5 @@
 //! The price source Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it through [`LedgerStore::apply`] as a `lib_ledger` command (#712).
+//! command runs through [`confirm_ledger`](crate::chrome::dialog_apply::confirm_ledger) as a `lib_ledger` command (#712).
 
 use gpui::App;
 use lib_ledger::{

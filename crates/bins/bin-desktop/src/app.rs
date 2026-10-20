@@ -132,8 +132,8 @@ pub struct Shell {
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
-    /// The only copy of the Ledger (ADR-0038). Every per-domain store below reads through it and
-    /// holds no rows of its own.
+    /// The only copy of the Ledger (ADR-0038). Every page below reads through it and holds no rows
+    /// of its own.
     ledger: Entity<LedgerStore>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.

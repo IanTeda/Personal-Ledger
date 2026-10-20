@@ -185,8 +185,8 @@ pub struct Landed<O> {
     pub outcome: O,
 }
 
-/// A hosted Dialog's confirm: its form's command runs through its page's `Apply`
-/// (`dialog_apply::confirm`).
+/// A hosted Dialog's confirm: its form's command runs through the Ledger store
+/// (`dialog_apply::confirm_ledger`), or on its own when it needs no Ledger.
 pub trait ConfirmDialog: Dialog + DialogVariant + 'static {
     type Outcome: 'static;
 
