@@ -1,32 +1,30 @@
-//! The Categories Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Ledger as Ledger commands.
+//! The Categories Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
+//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
 
 use std::fmt;
 
-use chrono::NaiveDate;
-use gpui::{App, Entity};
-use lib_core::{CategoryId, CategoryTypes, Money};
+use gpui::App;
+use lib_core::{CategoryTypes, Money};
 use lib_ledger::{
-    AddCategory, DeleteCategory, DeleteCategoryRefusal, EditCategory, MonthlyBudget,
-    SaveCategoryRefusal,
+    AddCategory, DeleteCategory, DeleteCategoryRefusal, EditCategory, Ledger, LedgerCommand,
+    MonthlyBudget, SaveCategoryRefusal,
 };
 
 use super::{dialogs::CategoriesDialog, form::CategoryForm};
 use crate::{
     budgets,
     chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, DialogScope, Landed},
+        dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+        dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
     },
-    ledger_store::LedgerStore,
 };
 
-/// What confirming a Categories Dialog asks for.
+/// What confirming a Categories Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryCommand {
-    Add(CategoryForm),
-    Edit(CategoryId, CategoryForm),
-    Delete(CategoryId),
+    Add(AddCategory),
+    Edit(EditCategory),
+    Delete(DeleteCategory),
 }
 
 /// What a landed [`CategoryCommand`] did, for the selection and Toast that follow it.
@@ -58,15 +56,54 @@ impl fmt::Display for CategoryRefusal {
     }
 }
 
+/// Categories 5c's write on a saved dialog: the Monthly budget text as an Onward amount from the
+/// month `form` opened in, in the Personal spending Budget, or a Stop when `clears` and it is
+/// blank. A locked field (a parent's rollup, an archived Budget) or text that isn't an amount
+/// writes nothing.
+fn monthly_budget(form: &CategoryForm, clears: bool) -> Option<MonthlyBudget> {
+    if form.budget_lock.is_some() {
+        return None;
+    }
+    let limit = if form.budget.is_blank() {
+        if !clears {
+            return None;
+        }
+        None
+    } else {
+        Some(form.budget.text().trim().parse::<Money>().ok()?)
+    };
+    Some(MonthlyBudget {
+        budget_id: budgets::PERSONAL_SPENDING_ID,
+        today: form.today,
+        limit,
+    })
+}
+
 impl DialogForm for CategoriesDialog {
     type Command = CategoryCommand;
     type Refusal = CategoryRefusal;
 
     fn command(&self) -> Result<CategoryCommand, FormError> {
         match self {
-            Self::Add { form, .. } if form.is_valid() => Ok(CategoryCommand::Add(form.clone())),
-            Self::Edit(id, form) if form.is_valid() => Ok(CategoryCommand::Edit(*id, form.clone())),
-            Self::Delete(id, form) if form.is_valid() => Ok(CategoryCommand::Delete(*id)),
+            Self::Add { form, .. } if form.is_valid() => Ok(CategoryCommand::Add(AddCategory {
+                name: form.name.text().trim().to_string(),
+                parent_id: form.parent_id,
+                category_type: form.category_type.clone().unwrap_or(CategoryTypes::Expense),
+                monthly: monthly_budget(form, false),
+            })),
+            // `None` moves it to top level when the parent was cleared. A top-level Category's
+            // chosen type cascades to its descendants only now, in the same command, so a Cancel
+            // never wrote it and a refusal writes none of it.
+            Self::Edit(id, form) if form.is_valid() => Ok(CategoryCommand::Edit(EditCategory {
+                id: *id,
+                name: form.name.text().trim().to_string(),
+                parent_id: form.parent_id,
+                category_type: form.category_type.clone(),
+                monthly: monthly_budget(form, true),
+            })),
+            Self::Delete(id, form) if form.is_valid() => {
+                Ok(CategoryCommand::Delete(DeleteCategory(*id)))
+            }
             _ => Err(FormError),
         }
     }
@@ -82,98 +119,40 @@ impl DialogForm for CategoriesDialog {
 impl ConfirmDialog for CategoriesDialog {
     type Outcome = CategoryOutcome;
 
-    /// A Delete toasts the Splits it moved.
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<CategoryOutcome>> {
-        let mut apply = CategoriesApply {
-            ledger: scope.ledger.clone(),
-            today: scope.today,
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        let toast = match &outcome {
-            CategoryOutcome::Saved => None,
-            CategoryOutcome::Deleted { name, moved } => Some((
+        confirm_ledger(self, &scope.ledger, cx)
+    }
+}
+
+/// A Delete toasts the Splits it moved; a save raises none.
+impl OutcomeToast for CategoryOutcome {
+    fn toast(&self) -> Option<DialogToast> {
+        match self {
+            Self::Saved => None,
+            Self::Deleted { name, moved } => Some((
                 lib_toast::ToastKind::Success,
                 lib_locale::msg::toast_category_deleted(name, *moved),
             )),
-        };
-        Some(Landed { toast, outcome })
-    }
-}
-
-/// Runs [`CategoryCommand`]s against the Ledger. `today` anchors the Monthly budget write.
-pub struct CategoriesApply {
-    pub ledger: Entity<LedgerStore>,
-    pub today: NaiveDate,
-}
-
-impl CategoriesApply {
-    /// Categories 5c's write on a saved dialog: the Monthly budget text as an Onward amount from
-    /// the current month in the Personal spending Budget, or a Stop when `clears` and it is
-    /// blank. A locked field (a parent's rollup, an archived Budget) or text that isn't an amount
-    /// writes nothing.
-    fn monthly_budget(&self, form: &CategoryForm, clears: bool) -> Option<MonthlyBudget> {
-        if form.budget_lock.is_some() {
-            return None;
         }
-        let limit = if form.budget.is_blank() {
-            if !clears {
-                return None;
-            }
-            None
-        } else {
-            Some(form.budget.text().trim().parse::<Money>().ok()?)
-        };
-        Some(MonthlyBudget {
-            budget_id: budgets::PERSONAL_SPENDING_ID,
-            today: self.today,
-            limit,
-        })
     }
 }
 
-impl Apply<CategoryCommand> for CategoriesApply {
+impl LedgerCommand for CategoryCommand {
     type Outcome = CategoryOutcome;
     type Refusal = CategoryRefusal;
 
-    fn apply(
-        &mut self,
-        command: CategoryCommand,
-        cx: &mut App,
-    ) -> Result<CategoryOutcome, CategoryRefusal> {
-        match command {
-            CategoryCommand::Add(form) => {
-                let command = AddCategory {
-                    name: form.name.text().trim().to_string(),
-                    parent_id: form.parent_id,
-                    category_type: form.category_type.clone().unwrap_or(CategoryTypes::Expense),
-                    monthly: self.monthly_budget(&form, false),
-                };
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, command))
-                    .map_err(CategoryRefusal::Save)?;
+    fn run(self, ledger: &mut Ledger) -> Result<CategoryOutcome, CategoryRefusal> {
+        match self {
+            Self::Add(add) => {
+                add.run(ledger).map_err(CategoryRefusal::Save)?;
                 Ok(CategoryOutcome::Saved)
             }
-            CategoryCommand::Edit(id, form) => {
-                // `None` moves it to top level when the parent was cleared. A top-level
-                // Category's chosen type cascades to its descendants only now, in the same
-                // command, so a Cancel never wrote it and a refusal writes none of it.
-                let command = EditCategory {
-                    id,
-                    name: form.name.text().trim().to_string(),
-                    parent_id: form.parent_id,
-                    category_type: form.category_type.clone(),
-                    monthly: self.monthly_budget(&form, true),
-                };
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, command))
-                    .map_err(CategoryRefusal::Save)?;
+            Self::Edit(edit) => {
+                edit.run(ledger).map_err(CategoryRefusal::Save)?;
                 Ok(CategoryOutcome::Saved)
             }
-            CategoryCommand::Delete(id) => {
-                let deleted = self
-                    .ledger
-                    .update(cx, |store, cx| store.apply(cx, DeleteCategory(id)))
-                    .map_err(CategoryRefusal::Delete)?;
+            Self::Delete(delete) => {
+                let deleted = delete.run(ledger).map_err(CategoryRefusal::Delete)?;
                 Ok(CategoryOutcome::Deleted {
                     name: deleted.name,
                     moved: i64::try_from(deleted.splits_moved).unwrap_or(i64::MAX),
@@ -185,60 +164,117 @@ impl Apply<CategoryCommand> for CategoriesApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
+    use lib_core::CategoryId;
     use lib_ledger::LedgerParts;
+    use lib_toast::ToastKind;
 
     use super::*;
-    use crate::ledger_store::test_ledger;
     use crate::{
-        chrome::dialog_apply::confirm, form::field::TextField,
+        form::field::TextField,
+        ledger_store::{LedgerStore, test_ledger},
         settings::categories::form::DeleteCategoryForm,
     };
 
-    fn apply(cx: &mut TestAppContext) -> CategoriesApply {
-        let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let ledger = test_ledger(
+    fn today() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
+    }
+
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
+        test_ledger(
             cx,
             LedgerParts {
                 categories: lib_categories::default_categories(),
                 budgets: budgets::default_budgets(
                     &lib_accounts::default_accounts(),
                     &lib_categories::default_categories(),
-                    today,
+                    today(),
                 ),
                 ..LedgerParts::default()
             },
-        );
-        CategoriesApply { ledger, today }
+        )
+    }
+
+    fn category_count(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> usize {
+        ledger.read_with(cx, |store, _| store.ledger().categories().len())
     }
 
     #[gpui::test]
-    fn adding_a_blank_name_is_not_a_command_and_a_named_one_lands(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
+    fn an_invalid_form_is_not_confirmed(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = category_count(&ledger, cx);
         let mut dialog = CategoriesDialog::Add {
             parent_id: None,
-            form: CategoryForm::default(),
+            form: CategoryForm::new(today()),
         };
         assert_eq!(dialog.command(), Err(FormError));
+        assert!(
+            cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+                .is_none()
+        );
+        assert_eq!(category_count(&ledger, cx), before);
+    }
 
-        if let CategoriesDialog::Add { form, .. } = &mut dialog {
-            form.name = TextField::new("Pet care");
-        }
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
-        assert_eq!(outcome, Some(CategoryOutcome::Saved));
+    #[gpui::test]
+    fn a_named_category_lands_without_a_toast(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = category_count(&ledger, cx);
+        let mut form = CategoryForm::new(today());
+        form.name = TextField::new("Pet care");
+        let mut dialog = CategoriesDialog::Add {
+            parent_id: None,
+            form,
+        };
+
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("a named Category lands");
+
+        assert_eq!(landed.outcome, CategoryOutcome::Saved);
+        assert_eq!(landed.toast, None);
+        assert_eq!(category_count(&ledger, cx), before + 1);
     }
 
     #[gpui::test]
     fn a_vanished_category_stays_open_with_the_refusal(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
+        let ledger = ledger(cx);
         let mut dialog =
             CategoriesDialog::Delete(CategoryId::seed(9999), DeleteCategoryForm::new(""));
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
-        assert_eq!(outcome, None);
+
+        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
+
+        assert!(landed.is_none());
         assert!(matches!(
             &dialog,
             CategoriesDialog::Delete(_, form)
                 if form.error == Some(CategoryRefusal::Delete(DeleteCategoryRefusal::NotFound))
         ));
+    }
+
+    #[gpui::test]
+    fn a_confirmed_delete_lands_and_toasts_the_moved_splits(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = category_count(&ledger, cx);
+        let (id, name) = ledger.read_with(cx, |store, _| {
+            let leaf = store
+                .ledger()
+                .categories()
+                .iter()
+                .find(|c| lib_categories::is_leaf(store.ledger().categories(), c.id))
+                .expect("a seeded leaf Category");
+            (leaf.id, leaf.name.to_string())
+        });
+        let name_copy = name.clone();
+        let mut form = DeleteCategoryForm::new(name);
+        form.confirmation_name = TextField::new(name_copy);
+        let mut dialog = CategoriesDialog::Delete(id, form);
+
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("the seeded Category exists");
+
+        assert!(matches!(landed.outcome, CategoryOutcome::Deleted { .. }));
+        assert!(matches!(landed.toast, Some((ToastKind::Success, _))));
+        assert_eq!(category_count(&ledger, cx), before - 1);
     }
 }

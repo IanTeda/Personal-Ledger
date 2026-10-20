@@ -2,6 +2,7 @@
 //! `gpui`-free, like the rest of this page's domain. `dialogs::CategoriesDialog` holds them behind
 //! the Dialog host, and `dialogs/` renders them.
 
+use chrono::NaiveDate;
 use lib_core::{CategoryId, CategoryTypes};
 
 use crate::{
@@ -51,10 +52,13 @@ pub struct CategoryForm {
     pub focused: CategoryField,
     /// What the domain refused the confirm with, shown in the dialog.
     pub error: Option<super::apply::CategoryRefusal>,
+    /// The day the dialog opened, which anchors the Monthly budget write.
+    pub today: NaiveDate,
 }
 
-impl Default for CategoryForm {
-    fn default() -> Self {
+impl CategoryForm {
+    /// A blank Add form opened on `today`.
+    pub fn new(today: NaiveDate) -> Self {
         CategoryForm {
             name: TextField::default(),
             parent_id: None,
@@ -63,11 +67,10 @@ impl Default for CategoryForm {
             budget_lock: None,
             focused: CategoryField::Name,
             error: None,
+            today,
         }
     }
-}
 
-impl CategoryForm {
     pub fn focus_field(&mut self, field: CategoryField) {
         self.focused = field;
     }
@@ -145,7 +148,7 @@ mod tests {
     fn add_category() -> OpenDialog {
         OpenDialog::Categories(CategoriesDialog::Add {
             parent_id: None,
-            form: CategoryForm::default(),
+            form: CategoryForm::new(NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()),
         })
     }
 

@@ -344,6 +344,7 @@ impl CategoriesPage {
             budget_lock: self.budget_lock(None, cx),
             focused: CategoryField::Name,
             error: None,
+            today: self.today,
         };
         self.open(CategoriesDialog::Add { parent_id, form }, cx);
     }
@@ -380,6 +381,7 @@ impl CategoriesPage {
             budget_lock: self.budget_lock(Some(category_id), cx),
             focused: CategoryField::Name,
             error: None,
+            today: self.today,
         };
         self.open(CategoriesDialog::Edit(category_id, form), cx);
     }
