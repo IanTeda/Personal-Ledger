@@ -2,6 +2,7 @@ dictionaries = ["en_gb"]
 words = [
     "ADR",
     "AFK",
+    "Archivo",
     "Esc",
     "Focusable",
     "TUI",

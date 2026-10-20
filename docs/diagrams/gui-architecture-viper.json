@@ -79,7 +79,7 @@
     },
     {
       "id": "accounts-router",
-      "type": "cloud",
+      "type": "frontend",
       "label": "Accounts Router",
       "sublabel": "navigation",
       "pos": [
@@ -149,7 +149,7 @@
     },
     {
       "id": "transactions-router",
-      "type": "cloud",
+      "type": "frontend",
       "label": "Transactions Router",
       "sublabel": "navigation",
       "pos": [
@@ -219,7 +219,7 @@
     },
     {
       "id": "budgets-router",
-      "type": "cloud",
+      "type": "frontend",
       "label": "Budgets Router",
       "sublabel": "navigation",
       "pos": [

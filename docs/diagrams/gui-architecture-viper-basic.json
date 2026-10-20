@@ -80,7 +80,7 @@
     },
     {
       "id": "router",
-      "type": "cloud",
+      "type": "frontend",
       "label": "Router",
       "sublabel": "wireframe / navigation",
       "pos": [
