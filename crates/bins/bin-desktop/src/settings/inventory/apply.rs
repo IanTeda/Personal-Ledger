@@ -1,40 +1,31 @@
-//! The Inventory Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Ledger, which also drops the Document Links a removed
-//! Location's Items had.
+//! The Inventory Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
+//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`]. Removing a Location
+//! also drops the Document Links its Items had, in the same Ledger command.
 
-use gpui::{App, Entity};
+use gpui::App;
 use lib_core::{AreaId, LocationId};
-use lib_inventory::{AreaError, Inventory, LocationDraft, LocationError};
-use lib_ledger::{AddArea, AddLocation, EditArea, EditLocation, RemoveArea, RemoveLocation};
+use lib_inventory::{AreaError, LocationError};
+use lib_ledger::{
+    AddArea, AddLocation, EditArea, EditLocation, Ledger, LedgerCommand, RemoveArea, RemoveLocation,
+};
 use lib_toast::ToastKind;
 
 use super::{InventoryRow, dialogs::InventoryDialog};
-use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
-    },
-    ledger_store::LedgerStore,
+use crate::chrome::{
+    dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+    dialog_host::{ConfirmDialog, Dialog, DialogScope, DialogToast, Landed},
 };
 
-/// What confirming an Inventory Dialog asks for.
+/// What confirming an Inventory Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryCommand {
-    AddLocation {
-        draft: LocationDraft,
-        unit: String,
-    },
-    EditLocation(LocationId, LocationDraft),
-    RemoveLocation(LocationId),
-    AddArea {
-        location: LocationId,
-        name: String,
-    },
-    EditArea {
-        id: AreaId,
-        name: String,
-    },
-    /// Remove the Area, moving its Items to the Area named `destination`.
+    AddLocation(AddLocation),
+    EditLocation(EditLocation),
+    RemoveLocation(RemoveLocation),
+    AddArea(AddArea),
+    EditArea(EditArea),
+    /// Remove the Area, moving its Items to the Area named `destination`: the form holds Area
+    /// names, so `run` resolves the name to an id against the Location.
     RemoveArea {
         id: AreaId,
         destination: Option<String>,
@@ -79,9 +70,9 @@ pub enum InventoryOutcome {
     Dismissed,
 }
 
-impl InventoryOutcome {
-    /// The Toast a landed command raises; the Area-blocked notice raises none.
-    pub fn toast(&self) -> Option<(ToastKind, String)> {
+/// The Toast a landed command raises; the Area-blocked notice raises none.
+impl OutcomeToast for InventoryOutcome {
+    fn toast(&self) -> Option<DialogToast> {
         let message = match self {
             Self::LocationAdded { name, .. } => {
                 crate::msg::desktop_inventory_toast_location_added(name)
@@ -135,21 +126,24 @@ impl DialogForm for InventoryDialog {
             Self::Add(form) => {
                 let unit = form.unit_code().ok_or(FormError)?.to_string();
                 let draft = form.draft();
-                Ok(InventoryCommand::AddLocation { draft, unit })
+                Ok(InventoryCommand::AddLocation(AddLocation { draft, unit }))
             }
             Self::Edit(id, form) => {
                 let draft = form.draft();
-                Ok(InventoryCommand::EditLocation(*id, draft))
+                Ok(InventoryCommand::EditLocation(EditLocation {
+                    id: *id,
+                    draft,
+                }))
             }
-            Self::Remove(id, _) => Ok(InventoryCommand::RemoveLocation(*id)),
-            Self::AddArea(location, form) => Ok(InventoryCommand::AddArea {
+            Self::Remove(id, _) => Ok(InventoryCommand::RemoveLocation(RemoveLocation(*id))),
+            Self::AddArea(location, form) => Ok(InventoryCommand::AddArea(AddArea {
                 location: *location,
                 name: form.name.text().trim().to_string(),
-            }),
-            Self::EditArea(id, form) => Ok(InventoryCommand::EditArea {
-                id: *id,
+            })),
+            Self::EditArea(id, form) => Ok(InventoryCommand::EditArea(EditArea {
+                area: *id,
                 name: form.name.text().trim().to_string(),
-            }),
+            })),
             Self::RemoveArea(id, form) => Ok(InventoryCommand::RemoveArea {
                 id: *id,
                 destination: form.select.value().map(str::to_string),
@@ -166,67 +160,31 @@ impl DialogForm for InventoryDialog {
 impl ConfirmDialog for InventoryDialog {
     type Outcome = InventoryOutcome;
 
-    /// A landed confirm raises the Toast its outcome names and hands the outcome to the page; the
-    /// Area-blocked notice raises none.
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<InventoryOutcome>> {
-        let mut apply = InventoryApply {
-            ledger: scope.ledger.clone(),
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        Some(Landed {
-            toast: outcome.toast(),
-            outcome,
-        })
+        confirm_ledger(self, &scope.ledger, cx)
     }
 }
 
-/// Runs [`InventoryCommand`]s against the Ledger as Ledger commands. Removing a Location drops the
-/// Document Links of its Items in the same command.
-pub struct InventoryApply {
-    pub ledger: Entity<LedgerStore>,
-}
-
-impl InventoryApply {
-    fn inventory<'a>(&self, cx: &'a App) -> &'a Inventory {
-        self.ledger.read(cx).ledger().inventory()
-    }
-}
-
-impl Apply<InventoryCommand> for InventoryApply {
+/// Names are read before the write removes them, for the Toast and the cursor that follow.
+impl LedgerCommand for InventoryCommand {
     type Outcome = InventoryOutcome;
     type Refusal = InventoryRefusal;
 
-    fn apply(
-        &mut self,
-        command: InventoryCommand,
-        cx: &mut App,
-    ) -> Result<InventoryOutcome, InventoryRefusal> {
-        match command {
-            InventoryCommand::AddLocation { draft, unit } => {
-                let name = draft.name.trim().to_string();
-                let id = self
-                    .ledger
-                    .update(cx, |store, cx| {
-                        store.apply(
-                            cx,
-                            AddLocation {
-                                draft: draft.clone(),
-                                unit,
-                            },
-                        )
-                    })
-                    .map_err(InventoryRefusal::Location)?;
+    fn run(self, ledger: &mut Ledger) -> Result<InventoryOutcome, InventoryRefusal> {
+        match self {
+            Self::AddLocation(add) => {
+                let name = add.draft.name.trim().to_string();
+                let id = add.run(ledger).map_err(InventoryRefusal::Location)?;
                 Ok(InventoryOutcome::LocationAdded { id, name })
             }
-            InventoryCommand::EditLocation(id, draft) => {
-                let name = draft.name.trim().to_string();
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, EditLocation { id, draft }))
-                    .map_err(InventoryRefusal::Location)?;
+            Self::EditLocation(edit) => {
+                let (id, name) = (edit.id, edit.draft.name.trim().to_string());
+                edit.run(ledger).map_err(InventoryRefusal::Location)?;
                 Ok(InventoryOutcome::LocationSaved { id, name })
             }
-            InventoryCommand::RemoveLocation(id) => {
-                let inventory = self.inventory(cx);
+            Self::RemoveLocation(remove) => {
+                let id = remove.0;
+                let inventory = ledger.inventory();
                 let name = inventory
                     .location(id)
                     .map(|location| location.name.clone())
@@ -237,47 +195,25 @@ impl Apply<InventoryCommand> for InventoryApply {
                     .iter()
                     .position(|location| location.id == id)
                     .unwrap_or(0);
-                // The command also drops the Document Links to the Location's Items.
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, RemoveLocation(id)))
-                    .map_err(InventoryRefusal::Location)?;
-                let locations = &self.inventory(cx).locations;
+                remove.run(ledger).map_err(InventoryRefusal::Location)?;
+                let locations = &ledger.inventory().locations;
                 let selected = locations
                     .get(position.min(locations.len().saturating_sub(1)))
                     .map(|location| InventoryRow::Location(location.id));
                 Ok(InventoryOutcome::LocationRemoved { id, name, selected })
             }
-            InventoryCommand::AddArea { location, name } => {
-                let id = self
-                    .ledger
-                    .update(cx, |store, cx| {
-                        store.apply(
-                            cx,
-                            AddArea {
-                                location,
-                                name: name.clone(),
-                            },
-                        )
-                    })
-                    .map_err(InventoryRefusal::Area)?;
+            Self::AddArea(add) => {
+                let (location, name) = (add.location, add.name.clone());
+                let id = add.run(ledger).map_err(InventoryRefusal::Area)?;
                 Ok(InventoryOutcome::AreaAdded { location, id, name })
             }
-            InventoryCommand::EditArea { id, name } => {
-                self.ledger
-                    .update(cx, |store, cx| {
-                        store.apply(
-                            cx,
-                            EditArea {
-                                area: id,
-                                name: name.clone(),
-                            },
-                        )
-                    })
-                    .map_err(InventoryRefusal::Area)?;
+            Self::EditArea(edit) => {
+                let (id, name) = (edit.area, edit.name.clone());
+                edit.run(ledger).map_err(InventoryRefusal::Area)?;
                 Ok(InventoryOutcome::AreaSaved { id, name })
             }
-            InventoryCommand::RemoveArea { id, destination } => {
-                let inventory = self.inventory(cx);
+            Self::RemoveArea { id, destination } => {
+                let inventory = ledger.inventory();
                 let (location, area) = inventory
                     .area(id)
                     .ok_or(InventoryRefusal::Area(AreaError::UnknownArea))?;
@@ -295,21 +231,15 @@ impl Apply<InventoryCommand> for InventoryApply {
                         .find(|area| area.id != id && area.name == chosen)
                         .map(|area| (area.id, area.name.clone()))
                 });
-                let destination_id = destination.as_ref().map(|(id, _)| *id);
-                self.ledger
-                    .update(cx, |store, cx| {
-                        store.apply(
-                            cx,
-                            RemoveArea {
-                                area: id,
-                                destination: destination_id,
-                            },
-                        )
-                    })
-                    .map_err(InventoryRefusal::Area)?;
+                RemoveArea {
+                    area: id,
+                    destination: destination.as_ref().map(|(id, _)| *id),
+                }
+                .run(ledger)
+                .map_err(InventoryRefusal::Area)?;
                 // The cursor lands on the Area that takes the removed row's place, else the Location.
-                let areas = self
-                    .inventory(cx)
+                let areas = ledger
+                    .inventory()
                     .location(location_id)
                     .map(|location| location.areas.as_slice())
                     .unwrap_or_default();
@@ -325,61 +255,102 @@ impl Apply<InventoryCommand> for InventoryApply {
                     selected,
                 })
             }
-            InventoryCommand::Dismiss => Ok(InventoryOutcome::Dismissed),
+            Self::Dismiss => Ok(InventoryOutcome::Dismissed),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
+    use lib_inventory::Inventory;
     use lib_ledger::LedgerParts;
 
     use super::*;
-    use crate::chrome::dialog_apply::confirm;
-    use crate::ledger_store::test_ledger;
+    use crate::{
+        ledger_store::{LedgerStore, test_ledger},
+        settings::inventory::form::{LocationContext, LocationForm, RemoveLocationForm},
+    };
 
-    fn apply(cx: &mut TestAppContext) -> InventoryApply {
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let ledger = test_ledger(
+        test_ledger(
             cx,
             LedgerParts {
                 inventory: lib_inventory::default_inventory(today),
                 ..LedgerParts::default()
             },
-        );
-        InventoryApply { ledger }
+        )
+    }
+
+    fn location_ids(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> Vec<LocationId> {
+        ledger.read_with(cx, |store, _| {
+            store
+                .ledger()
+                .inventory()
+                .locations
+                .iter()
+                .map(|l| l.id)
+                .collect()
+        })
     }
 
     #[gpui::test]
-    fn removing_a_location_selects_its_neighbour(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let first = cx.read(|cx| apply.inventory(cx).locations[0].id);
-        let outcome = cx
-            .update(|cx| apply.apply(InventoryCommand::RemoveLocation(first), cx))
+    fn removing_a_location_lands_selects_its_neighbour_and_toasts(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let first = location_ids(&ledger, cx)[0];
+        let mut dialog = InventoryDialog::Remove(first, RemoveLocationForm::new("Home", false));
+
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
             .expect("the seeded Location exists");
+
         assert!(matches!(
-            outcome,
+            landed.outcome,
             InventoryOutcome::LocationRemoved { id, selected: Some(_), .. } if id == first
         ));
+        assert!(matches!(landed.toast, Some((ToastKind::Success, _))));
+        assert!(!location_ids(&ledger, cx).contains(&first));
     }
 
     #[gpui::test]
     fn a_vanished_area_is_refused_and_the_notice_only_closes(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let refused = cx.update(|cx| {
-            apply.apply(
-                InventoryCommand::RemoveArea {
-                    id: AreaId::seed(9999),
-                    destination: None,
-                },
-                cx,
-            )
-        });
-        assert_eq!(refused, Err(InventoryRefusal::Area(AreaError::UnknownArea)));
+        let ledger = ledger(cx);
+        let before = location_ids(&ledger, cx);
+        let mut vanished = InventoryDialog::RemoveArea(
+            AreaId::seed(9999),
+            crate::settings::inventory::form::RemoveAreaForm::new(Vec::new(), None, false),
+        );
+        assert!(
+            cx.update(|cx| confirm_ledger(&mut vanished, &ledger, cx))
+                .is_none()
+        );
+        assert_eq!(location_ids(&ledger, cx), before);
 
         let mut notice = InventoryDialog::AreaBlocked(AreaId::seed(1));
-        let outcome = cx.update(|cx| confirm(&mut notice, &mut apply, cx));
-        assert_eq!(outcome, Some(InventoryOutcome::Dismissed));
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut notice, &ledger, cx))
+            .expect("the notice closes");
+        assert_eq!(landed.outcome, InventoryOutcome::Dismissed);
+        assert_eq!(landed.toast, None);
+    }
+
+    #[gpui::test]
+    fn an_invalid_form_is_not_confirmed(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = location_ids(&ledger, cx);
+        let mut dialog = InventoryDialog::Add(LocationForm::for_add(
+            None,
+            LocationContext {
+                inventory: Inventory::default(),
+                unit_choices: Vec::new(),
+            },
+        ));
+        assert_eq!(dialog.command(), Err(FormError));
+        assert!(
+            cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+                .is_none()
+        );
+        assert_eq!(location_ids(&ledger, cx), before);
     }
 }

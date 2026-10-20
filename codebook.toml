@@ -5,6 +5,7 @@ words = [
     "Archivo",
     "Esc",
     "Focusable",
+    "Interactor",
     "TUI",
     "Teda",
     "Wayfinder",
