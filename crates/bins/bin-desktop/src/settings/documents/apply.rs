@@ -1,31 +1,24 @@
-//! The Document type Dialogs' confirm cycle (ADR-0037): the command each form describes and the
-//! [`Apply`] that runs it against the Ledger.
+//! The Document type Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
+//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
 
-use gpui::{App, Entity};
+use gpui::App;
 use lib_core::DocumentTypeId;
-use lib_ledger::{AddDocumentType, EditDocumentType, RemoveDocumentType};
-
 use lib_documents::types::{self, RemoveError};
+use lib_ledger::{AddDocumentType, EditDocumentType, Ledger, LedgerCommand, RemoveDocumentType};
 
-use super::{dialogs::DocumentTypesDialog, form::DocumentTypeForm};
-use crate::{
-    chrome::{
-        dialog_apply::{self, Apply, DialogForm, FormError},
-        dialog_host::{ConfirmDialog, DialogScope, Landed},
-    },
-    ledger_store::LedgerStore,
+use super::dialogs::DocumentTypesDialog;
+use crate::chrome::{
+    dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
+    dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };
 
-/// What confirming a Document types Dialog asks for.
+/// What confirming a Document types Dialog asks the Ledger for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentTypeCommand {
-    Add(DocumentTypeForm),
-    Edit(DocumentTypeId, DocumentTypeForm),
+    Add(AddDocumentType),
+    Edit(EditDocumentType),
     /// Remove the type, moving its Filed files to the type named `destination` (or the Default).
-    Remove {
-        id: DocumentTypeId,
-        destination: Option<String>,
-    },
+    Remove(RemoveDocumentType),
     /// The Default's notice: nothing to change, the Dialog only closes.
     Dismiss,
 }
@@ -42,20 +35,64 @@ pub enum DocumentTypeOutcome {
     Dismissed,
 }
 
+/// Every outcome closes the Dialog with no Toast: a save or a removal selects its type.
+impl OutcomeToast for DocumentTypeOutcome {
+    fn toast(&self) -> Option<DialogToast> {
+        None
+    }
+}
+
+/// Removing a type moves its Filed Documents in the same command.
+impl LedgerCommand for DocumentTypeCommand {
+    type Outcome = DocumentTypeOutcome;
+    type Refusal = RemoveError;
+
+    fn run(self, ledger: &mut Ledger) -> Result<DocumentTypeOutcome, RemoveError> {
+        match self {
+            Self::Add(add) => {
+                let Ok(id) = add.run(ledger);
+                Ok(DocumentTypeOutcome::Saved(id))
+            }
+            Self::Edit(edit) => {
+                let id = edit.id;
+                edit.run(ledger).map_err(|_| RemoveError::Unknown)?;
+                Ok(DocumentTypeOutcome::Saved(id))
+            }
+            Self::Remove(remove) => {
+                let position = types::position(ledger.document_types(), remove.id).unwrap_or(0);
+                remove.run(ledger)?;
+                let rows = ledger.document_types();
+                let selected = rows
+                    .get(position.min(rows.len().saturating_sub(1)))
+                    .map(|row| row.id);
+                Ok(DocumentTypeOutcome::Removed { selected })
+            }
+            Self::Dismiss => Ok(DocumentTypeOutcome::Dismissed),
+        }
+    }
+}
+
 impl DialogForm for DocumentTypesDialog {
     type Command = DocumentTypeCommand;
     type Refusal = RemoveError;
 
     fn command(&self) -> Result<DocumentTypeCommand, FormError> {
         match self {
-            Self::Add(form) if form.is_valid() => Ok(DocumentTypeCommand::Add(form.clone())),
-            Self::Edit(id, form) if form.is_valid() => {
-                Ok(DocumentTypeCommand::Edit(*id, form.clone()))
+            Self::Add(form) if form.is_valid() => {
+                Ok(DocumentTypeCommand::Add(AddDocumentType(form.draft())))
             }
-            Self::Remove(id, form) if form.is_valid() => Ok(DocumentTypeCommand::Remove {
-                id: *id,
-                destination: form.select.value().map(str::to_string),
-            }),
+            Self::Edit(id, form) if form.is_valid() => {
+                Ok(DocumentTypeCommand::Edit(EditDocumentType {
+                    id: *id,
+                    draft: form.draft(),
+                }))
+            }
+            Self::Remove(id, form) if form.is_valid() => {
+                Ok(DocumentTypeCommand::Remove(RemoveDocumentType {
+                    id: *id,
+                    destination: form.select.value().map(str::to_string),
+                }))
+            }
             Self::DefaultNotice => Ok(DocumentTypeCommand::Dismiss),
             _ => Err(FormError),
         }
@@ -68,137 +105,102 @@ impl DialogForm for DocumentTypesDialog {
     }
 }
 
-/// Runs [`DocumentTypeCommand`]s against the Ledger as Ledger commands. Removing a type moves its
-/// Filed Documents in the same command.
-pub struct DocumentTypesApply {
-    pub ledger: Entity<LedgerStore>,
-}
-
 impl ConfirmDialog for DocumentTypesDialog {
     type Outcome = DocumentTypeOutcome;
 
-    /// Every outcome closes the Dialog with no Toast: a save or a removal selects its type.
     fn confirm(
         &mut self,
         scope: &DialogScope,
         cx: &mut App,
     ) -> Option<Landed<DocumentTypeOutcome>> {
-        let mut apply = DocumentTypesApply {
-            ledger: scope.ledger.clone(),
-        };
-        let outcome = dialog_apply::confirm(self, &mut apply, cx)?;
-        Some(Landed {
-            toast: None,
-            outcome,
-        })
-    }
-}
-
-impl Apply<DocumentTypeCommand> for DocumentTypesApply {
-    type Outcome = DocumentTypeOutcome;
-    type Refusal = RemoveError;
-
-    fn apply(
-        &mut self,
-        command: DocumentTypeCommand,
-        cx: &mut App,
-    ) -> Result<DocumentTypeOutcome, RemoveError> {
-        match command {
-            DocumentTypeCommand::Add(form) => {
-                let command = AddDocumentType(form.draft());
-                let Ok(id) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
-                Ok(DocumentTypeOutcome::Saved(id))
-            }
-            DocumentTypeCommand::Edit(id, form) => {
-                let command = EditDocumentType {
-                    id,
-                    draft: form.draft(),
-                };
-                self.ledger
-                    .update(cx, |store, cx| store.apply(cx, command))
-                    .map_err(|_| RemoveError::Unknown)?;
-                Ok(DocumentTypeOutcome::Saved(id))
-            }
-            DocumentTypeCommand::Remove { id, destination } => {
-                let position = types::position(self.ledger.read(cx).ledger().document_types(), id)
-                    .unwrap_or(0);
-                self.ledger.update(cx, |store, cx| {
-                    store.apply(cx, RemoveDocumentType { id, destination })
-                })?;
-                let rows = self.ledger.read(cx).ledger().document_types();
-                let selected = rows
-                    .get(position.min(rows.len().saturating_sub(1)))
-                    .map(|row| row.id);
-                Ok(DocumentTypeOutcome::Removed { selected })
-            }
-            DocumentTypeCommand::Dismiss => Ok(DocumentTypeOutcome::Dismissed),
-        }
+        confirm_ledger(self, &scope.ledger, cx)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
     use lib_ledger::LedgerParts;
 
     use super::*;
-    use crate::chrome::dialog_apply::confirm;
-    use crate::ledger_store::test_ledger;
-    use crate::settings::documents::form::RemoveForm;
+    use crate::{
+        ledger_store::{LedgerStore, test_ledger},
+        settings::documents::form::{DocumentTypeForm, RemoveForm},
+    };
 
-    fn apply(cx: &mut TestAppContext) -> DocumentTypesApply {
-        let ledger = test_ledger(
+    fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
+        test_ledger(
             cx,
             LedgerParts {
                 document_types: types::default_types(),
                 ..LedgerParts::default()
             },
-        );
-        DocumentTypesApply { ledger }
+        )
+    }
+
+    fn rows(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> Vec<types::DocumentTypeRow> {
+        ledger.read_with(cx, |store, _| store.ledger().document_types().to_vec())
     }
 
     #[gpui::test]
-    fn removing_a_type_selects_its_neighbour_and_the_default_notice_only_closes(
-        cx: &mut TestAppContext,
-    ) {
-        let mut apply = apply(cx);
-        let rows = types::default_types();
+    fn an_invalid_form_stays_open_and_the_default_notice_only_closes(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let before = rows(&ledger, cx).len();
+        let mut add = DocumentTypesDialog::Add(DocumentTypeForm::new(&types::default_types()));
+        assert_eq!(add.command(), Err(FormError), "a blank name");
+        assert!(
+            cx.update(|cx| confirm_ledger(&mut add, &ledger, cx))
+                .is_none()
+        );
+        assert_eq!(rows(&ledger, cx).len(), before);
+
+        let mut notice = DocumentTypesDialog::DefaultNotice;
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut notice, &ledger, cx))
+            .expect("the notice closes");
+        assert_eq!(landed.outcome, DocumentTypeOutcome::Dismissed);
+        assert_eq!(landed.toast, None);
+    }
+
+    #[gpui::test]
+    fn removing_a_type_selects_its_neighbour(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
         let mut remove = DocumentTypesDialog::Remove(
             DocumentTypeId::seed(3),
-            RemoveForm::new(&rows, DocumentTypeId::seed(3)),
+            RemoveForm::new(&types::default_types(), DocumentTypeId::seed(3)),
         );
-        let outcome = cx.update(|cx| confirm(&mut remove, &mut apply, cx));
+        let landed = cx
+            .update(|cx| confirm_ledger(&mut remove, &ledger, cx))
+            .expect("the removal lands");
         assert!(matches!(
-            outcome,
-            Some(DocumentTypeOutcome::Removed { selected: Some(selected) })
+            landed.outcome,
+            DocumentTypeOutcome::Removed { selected: Some(selected) }
                 if selected != DocumentTypeId::seed(3)
         ));
-        let remaining = cx.read(|cx| apply.ledger.read(cx).ledger().document_types().to_vec());
         assert!(
-            remaining
+            rows(&ledger, cx)
                 .iter()
                 .all(|row| row.id != DocumentTypeId::seed(3))
         );
-
-        let mut notice = DocumentTypesDialog::DefaultNotice;
-        let outcome = cx.update(|cx| confirm(&mut notice, &mut apply, cx));
-        assert_eq!(outcome, Some(DocumentTypeOutcome::Dismissed));
     }
 
     #[gpui::test]
     fn a_refused_remove_stays_open_with_the_refusal(cx: &mut TestAppContext) {
-        let mut apply = apply(cx);
-        let rows = types::default_types();
+        let ledger = ledger(cx);
+        let before = rows(&ledger, cx).len();
         // A type removed while its dialog was open: the form is valid, the domain refuses.
         let mut dialog = DocumentTypesDialog::Remove(
             DocumentTypeId::seed(999),
-            RemoveForm::new(&rows, DocumentTypeId::seed(999)),
+            RemoveForm::new(&types::default_types(), DocumentTypeId::seed(999)),
         );
-        let outcome = cx.update(|cx| confirm(&mut dialog, &mut apply, cx));
-        assert_eq!(outcome, None);
+        assert!(
+            cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+                .is_none()
+        );
         assert!(matches!(
             &dialog,
             DocumentTypesDialog::Remove(_, form) if form.error == Some(RemoveError::Unknown)
         ));
+        assert_eq!(rows(&ledger, cx).len(), before);
     }
 }
