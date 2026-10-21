@@ -116,7 +116,7 @@ The width at which one Window Size gives way to the next.
 _Avoid_: using it for the Window Size itself ("the Medium breakpoint").
 
 **Settings page**:
-One entry in the Desktop Client's Settings index rail and the View it opens, such as Units or Display. Each Settings page owns its rendering, keys, Dialogs and commands, and on the Desktop it lives in its own folder under `settings/`.
+One entry in the Desktop Client's Settings index rail and the View it opens, such as Units or Display. Each Settings page owns its rendering, keys, Dialogs and commands.
 _Avoid_: section, tab, settings screen.
 
 **Colour Theme**:

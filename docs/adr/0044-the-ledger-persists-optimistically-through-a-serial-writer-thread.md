@@ -25,3 +25,7 @@ ADR-0039 gave the Ledger one `LedgerRepository` port fed by recorded `LedgerChan
 
 - The UI never waits on storage, but a failed write is visible only as a Toast and a reload that drops the queued writes.
 - Change Sets (ADR-0009) are still not emitted; the change list remains the future sync outbox.
+
+## Amendment: the writer moves into the per-domain adapters (ADR-0046)
+
+Superseded in part by [ADR-0046](0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md). The synchronous port, the serial writer thread, optimistic writes with rollback by reload, and one transaction per write all stay, but they move from `LedgerStore` into the `lib-database` adapters behind the per-domain ports, with one writer thread shared by every domain. `lib-ledger-sqlite` (#724) and the `LedgerStore` writer (#725) are not built. The blocking load at start and the halfway seeding of an empty database with the stub's Units carry over to the Units adapter.

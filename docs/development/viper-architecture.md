@@ -67,7 +67,7 @@ Personal-Ledger/
                 ├── interactor/<use_case>.rs  # One file per user intent
                 ├── presenter/<view>.rs       # View model + event enum + Presenter
                 ├── protocols.rs       # Ports (repository traits) and the <Domain>Router trait
-                ├── keymap.rs          # Default keys: chord text -> event
+                ├── keymap.rs          # Default keys: command name + chord -> event
                 └── fake.rs            # In-memory port impls and stub seed, for tests and UI-first work
 ```
 
@@ -117,7 +117,8 @@ These are the rules Claude follows and a review checks against.
 
 ### Input
 
-- Each module declares its default keys in `keymap.rs` as chord text mapped to events, for example `"p"` → `BillsListEvent::Pay`. The chord text is the same text as `[keybindings]` Configuration, so a user override applies per module, and both Clients share one keymap.
+- Each module declares its default keys in `keymap.rs` as a command name and its default chord mapped to an event, for example `pay` / `"p"` → `BillsListEvent::Pay`. `[keybindings]` Configuration overrides a key by command name, and both Clients share one keymap.
+- A command name shared across modules stays flat (`new`, `delete`, `move_down`), so one override applies in every module. A command only one module has is namespaced by the module, for example `units.set_base`.
 - `lib-shell` owns the keys that work in every View: switching View, opening the command palette, moving focus between the Shell and the View.
 - Each bin has one `input.rs`. It turns a toolkit key into chord text and offers it to an open Dialog first, which takes every key, then to the Shell, then to the focused module's keymap. It sends the resulting event to that module's Presenter. It doesn't grow when a module is added.
 - A Presenter receives events (`Pay`), never keys (`p`).
@@ -129,7 +130,8 @@ These are the rules Claude follows and a review checks against.
 ### Tests
 
 - Entities, Interactors and Presenters have unit tests in their crate, run against the in-memory ports in `fake.rs`. These carry the behaviour coverage: a Presenter test is "send events, assert on the view model".
-- Each View still has `<view>_keyboard.rs` and `<view>_mouse.rs` in the bin's `tests/ui/`, but they check wiring and drawing (the key reaches the Presenter, the view model is drawn), not behaviour the Presenter tests already cover.
+- Each View still has `<view>_keyboard.rs` and `<view>_mouse.rs` in the bin's `tests/ui/`, but they check wiring and drawing (the key reaches the Presenter, the view model is drawn), not behaviour the Presenter tests already cover. They run on the `fake.rs` ports, which `build_shell` takes as parameters, so they never open SQLite.
+- An end-to-end smoke test per module runs the real app on a temporary SQLite file: start, change a row, restart, see it. It runs when a parent ticket closes and before a merge to `main`.
 
 ## The Shell module
 
@@ -142,11 +144,15 @@ The Shell is the always-present frame around the current View (see GLOSSARY.md).
 ## Out of scope
 
 - **The Sync Server** has no Views, so it isn't split into VIPER modules. It reuses Interactors and ports where it needs domain rules.
-- **The transition** from today's code to this layout is planned in tickets, not here.
+- **The transition** from today's code to this layout is planned in tickets, not here: it starts with the slices decided in [#745](https://github.com/IanTeda/Personal-Ledger/issues/745).
 
 ## Persistence
 
 Each module owns its repository ports, replacing the single `LedgerRepository` ([ADR-0039](../adr/0039-ledger-persists-through-one-store-wide-repository.md), amended).
+
+Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)). Each `lib-database` adapter holds its domain's rows in memory, loaded when the Client starts, and serves reads from there. A write changes memory at once and goes to one writer thread shared by every domain, which runs it in one database transaction. A failed write makes the adapter reload from SQLite and is reported on a channel the bin listens on, so it can redraw and show an error Toast.
+
+Each module's ports have a contract suite in its crate, behind a `contract-tests` feature, run against both `fake.rs` and the `lib-database` adapter: write, reload, and get the same rows.
 
 An operation that writes more than one domain belongs to a cross-domain module, one crate per user workflow rather than per operation. It holds one Interactor per operation and one atomic port, which `lib-database` implements with one database transaction, so all of an operation's changes are saved or none are. The expected cross-domain modules are:
 
@@ -156,6 +162,4 @@ An operation that writes more than one domain belongs to a cross-domain module, 
 | `lib-document-filing` | Accept a Document, accept all | Documents, Transactions, Payees |
 | `lib-transaction-import` | Commit an Import | Transactions, Payees |
 | `lib-reassign` | Delete or merge a Category, Tag or Location, re-pointing the rows that use it | Categories, Tags, Inventory, Transactions, Bill Plans, Budgets, Documents |
-| `lib-pricing` | Delete a Price source, set the base Unit | Units, Price sources |
-
-`lib-reassign` may split per domain if it grows, and Units and Price sources may merge into one domain, since they only change together. The transition tickets confirm the list against the code.
+`lib-reassign` may split per domain if it grows. Units and Price Sources are one domain, `lib-units`, since they only change together, so deleting a Price Source and setting the base Unit are single-domain Interactors. The transition tickets confirm the list against the code.
