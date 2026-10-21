@@ -6,7 +6,7 @@
 
 use lib_core::UnitId;
 
-use super::{Choice, DialogFrame, SelectView, TextFieldView, UnitsOutcome, count};
+use super::{Choice, DialogFrame, SelectView, TextFieldView, UnitChange, UnitsOutcome, count};
 use crate::interactor::{DeactivateUnit, DeactivateUnitRefusal, DeleteUnit, DeleteUnitRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{UnitUse, msg, units_by_code};
@@ -175,7 +175,10 @@ impl DeleteUnitPresenter {
         let code = self.code.as_str();
         self.refusal = match deleted {
             Ok(unit) => {
-                router.close_dialog(Some(UnitsOutcome::Deleted { code: unit.code }));
+                router.close_dialog(Some(UnitsOutcome::Unit {
+                    change: UnitChange::Deleted,
+                    code: unit.code,
+                }));
                 None
             }
             Err(DeleteUnitRefusal::UnitInUse(uses)) => {
@@ -200,7 +203,10 @@ impl DeleteUnitPresenter {
         };
         self.refusal = match deactivated {
             Ok(unit) => {
-                router.close_dialog(Some(UnitsOutcome::Deactivated { code: unit.code }));
+                router.close_dialog(Some(UnitsOutcome::Unit {
+                    change: UnitChange::Deactivated,
+                    code: unit.code,
+                }));
                 None
             }
             Err(DeactivateUnitRefusal::UnitGone) => Some(msg::units_refusal_unit_gone()),
@@ -277,7 +283,8 @@ mod tests {
         );
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(UnitsOutcome::Deleted {
+            [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
+                change: UnitChange::Deleted,
                 code: "btc".into()
             }))]
         );
@@ -357,7 +364,8 @@ mod tests {
         let calls = send(&mut dialog, vec![DeleteUnitEvent::Confirm]);
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(UnitsOutcome::Deactivated {
+            [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
+                change: UnitChange::Deactivated,
                 code: "btc".into()
             }))]
         );

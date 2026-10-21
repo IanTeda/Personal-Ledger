@@ -9,7 +9,7 @@ use lib_locale::Label as _;
 use lib_toast::ToastKind;
 
 use super::units_pane::{DetailPane, PaneInput, detail_pane};
-use super::{Clock, UnitsOutcome, ago};
+use super::{Clock, UnitChange, UnitsOutcome, ago};
 use crate::interactor::ReactivateUnit;
 use crate::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, NEXT_TABLE, TEST_SOURCE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
@@ -609,7 +609,13 @@ impl UnitsPagePresenter {
             ReactivateUnit(id).run(ports.split_mut().units)
         };
         if let Ok(unit) = reactivated {
-            self.land(UnitsOutcome::Reactivated { code: unit.code }, router);
+            self.land(
+                UnitsOutcome::Unit {
+                    change: UnitChange::Reactivated,
+                    code: unit.code,
+                },
+                router,
+            );
         }
     }
 
@@ -1034,7 +1040,10 @@ mod tests {
     #[test]
     fn an_outcome_toasts_below_x_large_and_goes_to_activity_when_docked() {
         let mut page = Page::new();
-        let deleted = || UnitsOutcome::Deleted { code: "btc".into() };
+        let deleted = || UnitsOutcome::Unit {
+            change: UnitChange::Deleted,
+            code: "btc".into(),
+        };
 
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
@@ -1044,7 +1053,8 @@ mod tests {
             )]
         );
         assert_eq!(
-            page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Saved {
+            page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {
+                change: UnitChange::Saved,
                 code: "eth".into()
             }))),
             vec![],

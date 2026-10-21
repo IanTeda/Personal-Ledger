@@ -112,12 +112,7 @@ pub fn open_storage(path: &Path) -> lib_database::Result<Storage> {
     let units = match UnitsAdapter::load(writer.clone()) {
         Err(lib_database::Error::NotFound(_)) => {
             let seed = InMemoryPorts::stub(Utc::now());
-            UnitsAdapter::seed(
-                &writer,
-                seed.units.units,
-                seed.price_sources.records,
-                seed.base_unit.0,
-            )?;
+            UnitsAdapter::seed_from(&writer, seed)?;
             tracing::info!(path = %path.display(), "Seeded a new Ledger with the stub's Units");
             UnitsAdapter::load(writer.clone())?
         }

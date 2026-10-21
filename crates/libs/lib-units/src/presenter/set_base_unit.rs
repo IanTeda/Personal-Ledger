@@ -2,7 +2,7 @@
 
 use lib_core::UnitId;
 
-use super::{Choice, DialogFrame, SelectView, UnitsOutcome};
+use super::{Choice, DialogFrame, SelectView, UnitChange, UnitsOutcome};
 use crate::interactor::{SetBaseUnit, SetBaseUnitRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{msg, units_by_code};
@@ -96,7 +96,10 @@ impl SetBaseUnitPresenter {
         };
         self.refusal = match (set, code) {
             (Ok(()), Some(code)) => {
-                router.close_dialog(Some(UnitsOutcome::BaseSet { code }));
+                router.close_dialog(Some(UnitsOutcome::Unit {
+                    change: UnitChange::BaseSet,
+                    code,
+                }));
                 None
             }
             (Err(SetBaseUnitRefusal::UnitGone), _) | (Ok(()), None) => {
@@ -147,7 +150,8 @@ mod tests {
 
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(UnitsOutcome::BaseSet {
+            [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
+                change: UnitChange::BaseSet,
                 code: "btc".into()
             }))]
         );

@@ -12,8 +12,9 @@ use super::{ago, count, updates_label};
 use crate::protocols::UnitsPorts;
 use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
 
-/// The ✗ before LAST UPDATED for a source that hasn't fetched yet. A glyph, not a Message.
-const NOT_FETCHED_GLYPH: &str = "\u{2717}";
+/// The ✗ before LAST UPDATED for a source that hasn't fetched yet. A glyph, not a Message; both
+/// Clients draw it from here.
+pub const NOT_FETCHED_GLYPH: &str = "\u{2717}";
 
 /// The pane's groups in drawn order.
 #[derive(Debug, Clone, PartialEq, Eq)]

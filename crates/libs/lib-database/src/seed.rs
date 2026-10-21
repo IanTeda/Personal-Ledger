@@ -27,13 +27,7 @@ use crate::writer::Writer;
 /// Returns the error of the write; nothing is written then.
 #[tracing::instrument(name = "Seed the stub", level = "debug", skip(writer), err)]
 pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
-    let units = InMemoryPorts::stub(now);
-    UnitsAdapter::seed(
-        writer,
-        units.units.units,
-        units.price_sources.records,
-        units.base_unit.0,
-    )
+    UnitsAdapter::seed_from(writer, InMemoryPorts::stub(now))
 }
 
 /// Fixed so the generated rows are the same on every run, which keeps `fake` seeding idempotent.

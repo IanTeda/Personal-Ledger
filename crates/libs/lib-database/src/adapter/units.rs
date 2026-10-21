@@ -82,6 +82,19 @@ impl UnitsAdapter {
     /// an empty database, before the first [`Self::load`]. A Ledger that already has a base Unit
     /// keeps it, so seeding again never resets the person's choice.
     ///
+    /// [`Self::seed`] with the rows of an in-memory set, the stub's or a test's.
+    ///
+    /// # Errors
+    /// Returns the error of the write; nothing is written then.
+    pub fn seed_from(writer: &Writer, ports: lib_units::fake::InMemoryPorts) -> Result<()> {
+        Self::seed(
+            writer,
+            ports.units.units,
+            ports.price_sources.records,
+            ports.base_unit.0,
+        )
+    }
+
     /// # Errors
     /// Returns the error of the write; nothing is written then.
     #[tracing::instrument(name = "Seed the Units", level = "debug", skip_all, err)]
@@ -570,13 +583,7 @@ mod tests {
         type Ports = UnitsAdapter;
 
         fn create(&mut self, seed: InMemoryPorts) -> UnitsAdapter {
-            UnitsAdapter::seed(
-                &self.writer,
-                seed.units.units,
-                seed.price_sources.records,
-                seed.base_unit.0,
-            )
-            .expect("the seed is written");
+            UnitsAdapter::seed_from(&self.writer, seed).expect("the seed is written");
             UnitsAdapter::load(self.writer.clone()).expect("the seed loads")
         }
 

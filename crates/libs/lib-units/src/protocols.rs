@@ -111,23 +111,23 @@ pub struct PortsMut<'a> {
 /// the page's table as soon as the Dialog closes. Single-threaded, as both Clients' UI threads are.
 pub type SharedPorts = Rc<RefCell<dyn UnitsPorts>>;
 
+/// What a Dialog did to a Unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitChange {
+    /// Added or edited.
+    Saved,
+    Deleted,
+    Deactivated,
+    Reactivated,
+    BaseSet,
+}
+
 /// What a confirmed Units Dialog did, handed to the page when the Dialog closes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitsOutcome {
-    /// A Unit added or edited.
-    Saved {
-        code: String,
-    },
-    Deleted {
-        code: String,
-    },
-    Deactivated {
-        code: String,
-    },
-    Reactivated {
-        code: String,
-    },
-    BaseSet {
+    /// What a Dialog did to the Unit `code`.
+    Unit {
+        change: UnitChange,
         code: String,
     },
     SourceSaved {

@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
+use lib_list_cursor::Step;
 
 pub use delete_price_source::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
@@ -37,12 +38,12 @@ pub use units_page::{
     UnitColumns, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
 };
 pub use units_pane::{
-    AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, PaneButton, PaneGroup,
-    SourceGroup, UnitGroup, ValueLine, ValuesGroup,
+    AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, NOT_FETCHED_GLYPH, PaneButton,
+    PaneGroup, SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
-pub use crate::protocols::UnitsOutcome;
 use crate::protocols::UnitsPorts;
+pub use crate::protocols::{UnitChange, UnitsOutcome};
 use crate::{Updates, msg};
 
 /// Where a Presenter reads the time from: `Utc::now` in a Client, a fixed instant in a test.
@@ -52,10 +53,12 @@ impl UnitsOutcome {
     /// The Toast raised while the detail pane isn't docked; a saved Unit or a new base raises none.
     fn toast(&self) -> Option<String> {
         Some(match self {
-            Self::Saved { .. } | Self::BaseSet { .. } => return None,
-            Self::Deleted { code } => msg::units_toast_deleted(code),
-            Self::Deactivated { code } => msg::units_toast_deactivated(code),
-            Self::Reactivated { code } => msg::units_toast_reactivated(code),
+            Self::Unit { change, code } => match change {
+                UnitChange::Saved | UnitChange::BaseSet => return None,
+                UnitChange::Deleted => msg::units_toast_deleted(code),
+                UnitChange::Deactivated => msg::units_toast_deactivated(code),
+                UnitChange::Reactivated => msg::units_toast_reactivated(code),
+            },
             Self::SourceSaved { name } => msg::units_toast_source_saved(name),
             Self::SourceDeleted { name, moved } => {
                 msg::units_toast_source_deleted(name, count(*moved))
@@ -66,11 +69,13 @@ impl UnitsOutcome {
     /// The line ACTIVITY logs while the detail pane is docked.
     fn activity(&self) -> String {
         match self {
-            Self::Saved { code } => msg::units_activity_saved(code),
-            Self::Deleted { code } => msg::units_activity_deleted(code),
-            Self::Deactivated { code } => msg::units_activity_deactivated(code),
-            Self::Reactivated { code } => msg::units_activity_reactivated(code),
-            Self::BaseSet { code } => msg::units_activity_base_set(code),
+            Self::Unit { change, code } => match change {
+                UnitChange::Saved => msg::units_activity_saved(code),
+                UnitChange::Deleted => msg::units_activity_deleted(code),
+                UnitChange::Deactivated => msg::units_activity_deactivated(code),
+                UnitChange::Reactivated => msg::units_activity_reactivated(code),
+                UnitChange::BaseSet => msg::units_activity_base_set(code),
+            },
             Self::SourceSaved { name } => msg::units_activity_source_saved(name),
             Self::SourceDeleted { name, .. } => msg::units_activity_source_deleted(name),
         }
@@ -217,9 +222,14 @@ fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {
         .iter()
         .position(|option| *option == current)
         .unwrap_or(0);
-    let next = index
-        .saturating_add_signed(delta)
-        .min(options.len().saturating_sub(1));
+    let direction = match delta.signum() {
+        1 => Step::Next,
+        -1 => Step::Prev,
+        _ => return current,
+    };
+    let next = (0..delta.unsigned_abs()).fold(index, |at, _| {
+        lib_list_cursor::step(at, options.len(), direction)
+    });
     options.get(next).copied().unwrap_or(current)
 }
 

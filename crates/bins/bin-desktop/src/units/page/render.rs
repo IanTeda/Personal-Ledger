@@ -13,8 +13,8 @@ use gpui::{
     div, point, prelude::*, px,
 };
 use lib_units::presenter::{
-    MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine, UnitColumns, UnitLine,
-    UnitsPageEvent, UnitsPageViewModel, UnitsRow,
+    MenuEntry, NOT_FETCHED_GLYPH, RowMenu, SourceColumns, SourceKind, SourceLine, UnitColumns,
+    UnitLine, UnitsPageEvent, UnitsPageViewModel, UnitsRow,
 };
 
 use super::UnitsPage;
@@ -29,8 +29,6 @@ const TABLE_MIN_WIDTH: Pixels = px(610.0);
 const ADD_BUTTON_SIZE: Pixels = px(26.0);
 /// The base unit's marker, in the table's unheaded glyph column. A glyph, not a Message.
 const BASE_GLYPH: &str = "\u{25c6}";
-/// The ✗ before LAST UPDATED for a source that hasn't fetched yet.
-const NOT_FETCHED_GLYPH: &str = "\u{2717}";
 
 const GLYPH_WIDTH: Pixels = px(24.0);
 const CODE_WIDTH: Pixels = px(100.0);

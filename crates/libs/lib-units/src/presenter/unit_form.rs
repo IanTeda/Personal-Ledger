@@ -8,7 +8,9 @@
 use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_locale::Label as _;
 
-use super::{Choice, DialogFrame, SelectView, TextFieldView, UnitsOutcome, cycle, unique_label};
+use super::{
+    Choice, DialogFrame, SelectView, TextFieldView, UnitChange, UnitsOutcome, cycle, unique_label,
+};
 use crate::interactor::{AddUnit, EditUnit, EditUnitRefusal, PriceSourceGone};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{MANUAL_ENTRY, PriceLink, msg, price_sources};
@@ -411,7 +413,10 @@ impl UnitFormPresenter {
         match saved {
             Ok(unit) => {
                 self.refusal = None;
-                router.close_dialog(Some(UnitsOutcome::Saved { code: unit.code }));
+                router.close_dialog(Some(UnitsOutcome::Unit {
+                    change: UnitChange::Saved,
+                    code: unit.code,
+                }));
             }
             Err(text) => self.refusal = Some(text),
         }
@@ -555,7 +560,8 @@ mod tests {
 
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(UnitsOutcome::Saved {
+            [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
+                change: UnitChange::Saved,
                 code: "eth".into()
             }))]
         );
@@ -610,7 +616,8 @@ mod tests {
 
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(UnitsOutcome::Saved {
+            [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
+                change: UnitChange::Saved,
                 code: "xbt".into()
             }))]
         );
