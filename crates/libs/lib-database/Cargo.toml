@@ -24,6 +24,8 @@ lib_units = { path = "../../../crates/libs/lib-units" }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 csv = { workspace = true }
+## The dev seed (`seed::fake`) generates its rows, so this is not only for tests.
+fake = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }
@@ -37,11 +39,6 @@ uuid = { workspace = true }
 
 
 [dev-dependencies]
-## Use `fake` as a dev-dependency for tests and examples. We declare the
-## version and features locally here instead of inheriting from the
-## workspace to avoid manifest parsing issues when `fake` is only listed
-## under `workspace.dev-dependencies` in the top-level manifest.
-fake = { workspace = true }
 lib_units = { path = "../../../crates/libs/lib-units", features = ["contract-tests"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
