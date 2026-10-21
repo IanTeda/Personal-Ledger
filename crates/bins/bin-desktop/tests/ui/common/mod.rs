@@ -96,11 +96,13 @@ impl<'a> Harness<'a> {
                 ShellBindings {
                     dismiss_toasts: "ctrl+l".to_string(),
                     toast_history: None,
+                    keybindings: lib_config::KeyBindingConfig::default(),
                 },
                 ShellLogs {
                     buffer: logs.clone(),
                     configured_level,
                 },
+                Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
                 today(),
                 focus_handle,
                 cx,
@@ -333,6 +335,42 @@ impl<'a> Harness<'a> {
     /// The Settings Units page's state, read back for assertions.
     pub fn settings_units(&mut self) -> SettingsUnitsSnapshot {
         self.read_app(Shell::settings_units_snapshot)
+    }
+
+    /// The Units table's rows as `(code, name, type)`, as drawn.
+    pub fn unit_rows(&mut self) -> Vec<(String, String, String)> {
+        self.settings_units()
+            .units
+            .into_iter()
+            .map(|unit| (unit.code, unit.name, unit.kind))
+            .collect()
+    }
+
+    /// The Units' codes in table order.
+    pub fn unit_codes(&mut self) -> Vec<String> {
+        self.unit_rows()
+            .into_iter()
+            .map(|(code, ..)| code)
+            .collect()
+    }
+
+    /// The code of the Unit the ◆ marks: the base Unit.
+    pub fn base_unit_code(&mut self) -> Option<String> {
+        self.settings_units()
+            .units
+            .into_iter()
+            .find(|unit| unit.is_base)
+            .map(|unit| unit.code)
+    }
+
+    /// The codes of the deactivated Units, drawn dimmed and tagged.
+    pub fn inactive_unit_codes(&mut self) -> Vec<String> {
+        self.settings_units()
+            .units
+            .into_iter()
+            .filter(|unit| unit.inactive_tag.is_some())
+            .map(|unit| unit.code)
+            .collect()
     }
 
     /// The open Add or Edit account dialog's form, read back through the Dialog itself; panics if

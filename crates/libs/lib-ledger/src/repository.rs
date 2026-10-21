@@ -18,15 +18,15 @@ pub enum RepositoryError {
 }
 
 /// Where the Ledger is kept. `apply` takes one command's changes in recorded order and writes them
-/// together, so a `SetBaseUnit` lands before the `DeleteUnit` that needed it.
+/// together.
 pub trait LedgerRepository {
     fn load(&self) -> Result<Ledger, RepositoryError>;
     fn apply(&self, changes: &[LedgerChange]) -> Result<(), RepositoryError>;
 }
 
 /// An in-memory repository for tests and the headless UI tests (ADR-0030). It records every batch
-/// it is given and replays the persisted domains onto its Ledger, so a reload matches what an
-/// adapter would return. Clones share one state, so a test keeps a handle on a repository it has
+/// it is given. No domain persists through it any more (the Units moved to `lib-units`' ports,
+/// #751), so a reload returns the Ledger it was built with. Clones share one state, so a test keeps a handle on a repository it has
 /// given away.
 #[derive(Debug, Clone)]
 pub struct StubRepository {
@@ -106,37 +106,15 @@ impl LedgerRepository for StubRepository {
     fn apply(&self, changes: &[LedgerChange]) -> Result<(), RepositoryError> {
         let mut state = self.state();
         state.take_failure()?;
-        for change in changes {
-            state.ledger.replay(change);
-        }
         state.applied.push(changes.to_vec());
         Ok(())
-    }
-}
-
-impl Ledger {
-    /// Writes one recorded change back onto the Ledger, as loading it from storage would. Only the
-    /// Units are persisted so far (ADR-0044's halfway state): every other change is ignored, as the
-    /// SQLite adapter ignores it, and a reload takes those domains from the stub.
-    fn replay(&mut self, change: &LedgerChange) {
-        match change {
-            LedgerChange::UpsertUnit(unit) => {
-                match self.units.iter_mut().find(|row| row.id == unit.id) {
-                    Some(row) => *row = unit.clone(),
-                    None => self.units.push(unit.clone()),
-                }
-            }
-            LedgerChange::DeleteUnit(id) => self.units.retain(|row| row.id != *id),
-            LedgerChange::SetBaseUnit(id) => self.base_unit = *id,
-            _ => {}
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_core::UnitId;
+    use lib_core::{PayeeId, UnitId};
 
     #[test]
     fn a_new_stub_loads_the_stub_ledger() {
@@ -149,8 +127,8 @@ mod tests {
     #[test]
     fn apply_records_each_batch_in_order() {
         let repository = StubRepository::new();
-        let first = vec![LedgerChange::SetBaseUnit(UnitId::SEED_AUD)];
-        let second = vec![LedgerChange::DeleteUnit(UnitId::SEED_AUD)];
+        let first = vec![LedgerChange::DeletePayee(PayeeId::seed(1))];
+        let second = vec![LedgerChange::DeletePayee(PayeeId::seed(2))];
         repository.apply(&first).unwrap();
         repository.apply(&second).unwrap();
         assert_eq!(repository.applied(), vec![first, second]);
@@ -169,7 +147,7 @@ mod tests {
         let repository = StubRepository::new();
         repository.fail_next();
         assert!(matches!(
-            repository.apply(&[LedgerChange::DeleteUnit(UnitId::SEED_AUD)]),
+            repository.apply(&[LedgerChange::DeletePayee(PayeeId::seed(1))]),
             Err(RepositoryError::StubFailure)
         ));
         assert!(repository.applied().is_empty());
@@ -189,9 +167,9 @@ mod tests {
         assert!(repository.load().unwrap().units().is_empty());
     }
 
-    /// Accounts aren't persisted yet, so their changes are recorded but leave a reload as it was.
+    /// No domain persists through it, so changes are recorded but leave a reload as it was.
     #[test]
-    fn changes_to_an_unpersisted_domain_are_not_replayed() {
+    fn changes_are_recorded_but_not_replayed() {
         let repository = StubRepository::new();
         let before = repository.load().unwrap().accounts().len();
         let id = repository.load().unwrap().accounts()[0].id;
@@ -200,29 +178,5 @@ mod tests {
             .unwrap();
         assert_eq!(repository.load().unwrap().accounts().len(), before);
         assert_eq!(repository.applied().len(), 1);
-    }
-
-    #[test]
-    fn the_stub_meets_the_units_contract() {
-        crate::contract::units(StubRepository::new);
-    }
-
-    /// Accepts every batch and keeps none of it, as `LedgerStore` does before #725.
-    struct ForgetfulRepository(Ledger);
-
-    impl LedgerRepository for ForgetfulRepository {
-        fn load(&self) -> Result<Ledger, RepositoryError> {
-            Ok(self.0.clone())
-        }
-
-        fn apply(&self, _: &[LedgerChange]) -> Result<(), RepositoryError> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "add a Unit")]
-    fn a_repository_that_drops_its_changes_fails_the_contract() {
-        crate::contract::units(|| ForgetfulRepository(Ledger::stub()));
     }
 }

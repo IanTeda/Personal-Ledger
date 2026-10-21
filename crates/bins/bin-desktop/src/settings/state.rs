@@ -25,8 +25,8 @@ use crate::{
     settings::picker::PagePicker,
     settings::tags::TagsPage,
     settings::tracing::TracingPage,
-    settings::units::UnitsPage,
     settings::{SettingsFocus, SettingsPage},
+    units::{UnitsPage, UnitsSetup},
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
@@ -63,9 +63,10 @@ impl SettingsView {
     pub fn new(
         ledger: &Entity<LedgerStore>,
         today: chrono::NaiveDate,
+        units: UnitsSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let pages = SettingsPages::new(ledger, today, cx);
+        let pages = SettingsPages::new(ledger, today, units, cx);
         let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
         Self {
             pages,

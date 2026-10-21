@@ -13,6 +13,7 @@ mod price_source_form;
 mod set_base_unit;
 mod unit_form;
 mod units_page;
+mod units_pane;
 
 use std::rc::Rc;
 
@@ -32,8 +33,12 @@ pub use price_source_form::{
 pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 pub use unit_form::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
 pub use units_page::{
-    ActivityLine, Hint, MenuAction, MenuEntry, RowMenu, SourceKind, SourceLine, UnitLine,
-    UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
+    ActivityLine, Hint, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,
+    UnitColumns, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
+};
+pub use units_pane::{
+    AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, PaneButton, PaneGroup,
+    SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
 pub use crate::protocols::UnitsOutcome;

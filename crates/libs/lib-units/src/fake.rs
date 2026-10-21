@@ -12,8 +12,8 @@ use lib_toast::ToastKind;
 
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
-    BaseUnitRepository, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
-    UnitUsage, UnitUse, default_units,
+    BaseUnitRepository, Holding, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
+    UnitRepository, UnitRow, UnitUsage, UnitUse, default_units,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -85,6 +85,18 @@ impl UnitUsage for InMemoryUnitUsage {
     }
 }
 
+/// Holdings a test sets per Unit; a Unit not listed is held by no Account.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InMemoryHoldings {
+    pub by_unit: HashMap<UnitId, Vec<Holding>>,
+}
+
+impl UnitHoldings for InMemoryHoldings {
+    fn holdings(&self, id: UnitId) -> Vec<Holding> {
+        self.by_unit.get(&id).cloned().unwrap_or_default()
+    }
+}
+
 /// Every Units port in memory, together, so a test can hand an Interactor the ones it takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InMemoryPorts {
@@ -92,6 +104,7 @@ pub struct InMemoryPorts {
     pub price_sources: InMemoryPriceSources,
     pub base_unit: InMemoryBaseUnit,
     pub usage: InMemoryUnitUsage,
+    pub holdings: InMemoryHoldings,
 }
 
 impl InMemoryPorts {
@@ -106,6 +119,7 @@ impl InMemoryPorts {
             price_sources: InMemoryPriceSources::default(),
             base_unit: InMemoryBaseUnit(UnitId::SEED_AUD),
             usage: InMemoryUnitUsage::default(),
+            holdings: InMemoryHoldings::default(),
         }
     }
 }
@@ -134,6 +148,10 @@ impl UnitsPorts for InMemoryPorts {
 
     fn usage(&self) -> &dyn UnitUsage {
         &self.usage
+    }
+
+    fn holdings(&self) -> &dyn UnitHoldings {
+        &self.holdings
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {

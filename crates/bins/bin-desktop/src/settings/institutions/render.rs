@@ -1,7 +1,7 @@
 //! The **Institutions** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
 //! table (INSTITUTION / ACCOUNT TYPE) read from the Ledger,
 //! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
-//! `settings::units`, just a two-column table instead of three.
+//! the Units page (`units::page`), just a two-column table instead of three.
 //!
 //! "+ Add institution" opens the real Add institution dialog (issue #187). Row edit/delete have
 //! **no dialog ticket anywhere on this map** -- unlike Units, whose `2c`/`2d` dialogs are named
@@ -199,7 +199,7 @@ fn row_action_button(
 /// The "+ Add institution" button: `padding:10px 16px; border:1px solid rgba(32,30,29,.30);
 /// background:#eae9e9; font-weight:800; width:fit-content; margin-top:16px` -- the mockup's own
 /// markup for this button already uses `margin-top:16px` (not the table's own inline
-/// `margin-bottom:48px` slip `settings::units`' `add_button`'s doc calls out), so this one needs no
+/// `margin-bottom:48px` slip the Units page's **+** button calls out), so this one needs no
 /// deviation from the raw markup.
 fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level

@@ -162,9 +162,12 @@ impl Shell {
         nav: NavState,
         focus_handle: FocusHandle,
         today: chrono::NaiveDate,
+        units: crate::units::UnitsSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
+        // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
+        crate::units::ports::sync(&units.ports, &ledger, cx);
         // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
@@ -174,7 +177,7 @@ impl Shell {
         let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let settings_view = cx.new(|cx| SettingsView::new(&ledger, today, cx));
+        let settings_view = cx.new(|cx| SettingsView::new(&ledger, today, units, cx));
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());

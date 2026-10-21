@@ -54,6 +54,7 @@ lib_tracing = { path = "../../libs/lib-tracing" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
+secrecy = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
 serde = { workspace = true }

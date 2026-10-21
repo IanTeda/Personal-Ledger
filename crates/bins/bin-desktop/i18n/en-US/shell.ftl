@@ -21,12 +21,6 @@ desktop-hint-toggle-sidebar = toggle sidebar
 ## A page's own hint strip, beside its keys.
 
 desktop-hint-row = row
-desktop-hint-unit = unit
-desktop-hint-test-source = test source
-desktop-hint-price-source = price source
-desktop-hint-test = test
-desktop-hint-units = units
-desktop-hint-price-sources = price sources
 desktop-hint-open-ledger = open ledger
 desktop-hint-open = open
 desktop-hint-edit = edit
@@ -75,7 +69,6 @@ desktop-status-delete-children-first = delete or move its children first
 desktop-status-open-transaction-not-yet-built = open transaction — not yet built
 desktop-status-add-transaction-not-yet-built = add transaction — not yet built
 desktop-status-edit-transaction-not-yet-built = edit transaction — not yet built
-desktop-status-test-price-source-not-yet-built = test price source — not yet built
 desktop-status-edit-institution-not-yet-built = edit institution — not yet built
 desktop-status-delete-institution-not-yet-built = delete institution — not yet built
 desktop-status-sync-now-not-implemented = sync now — not implemented

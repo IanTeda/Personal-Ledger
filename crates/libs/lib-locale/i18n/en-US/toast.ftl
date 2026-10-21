@@ -30,15 +30,6 @@ toast-tag-merged = Merged tag { $source } into { $target } · { $transactions ->
     [one] { $transactions } transaction retagged
    *[other] { $transactions } transactions retagged
 }
-toast-unit-deleted = Deleted unit { $name }
-toast-unit-deactivated = Deactivated unit { $name }
-toast-unit-reactivated = Reactivated unit { $name }
-toast-price-source-saved = Saved price source { $name }
-toast-price-source-deleted = Deleted price source { $name }{ $moved ->
-    [0] {""}
-    [one] {" · "}1 unit moved to Manual entry
-   *[other] {" · "}{ $moved } units moved to Manual entry
-}
 
 ## A store refusal. $entity is the thing being saved ("account", "tag"), $reason the store's own words.
 

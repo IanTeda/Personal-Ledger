@@ -23,7 +23,8 @@ static INFO: OnceLock<LocaleInfo> = OnceLock::new();
 /// Sets the process-wide Locale (with this bin's own Message layer) and remembers how it was
 /// chosen. Call once, after configuration is parsed.
 pub fn init(requested: &str, source: LocaleSource) -> Locale {
-    let effective = lib_locale::init_with_layers(requested, &[crate::msg::LAYER]);
+    let effective =
+        lib_locale::init_with_layers(requested, &[crate::msg::LAYER, lib_units::msg::LAYER]);
     let _ = INFO.set(LocaleInfo {
         requested: requested.to_string(),
         effective,
@@ -37,7 +38,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
 /// harness's entry (`test-support`), which never runs `main` either.
 #[cfg(any(test, feature = "test-support"))]
 pub fn init_for_tests() {
-    lib_locale::init_with_layers("en-US", &[crate::msg::LAYER]);
+    lib_locale::init_with_layers("en-US", &[crate::msg::LAYER, lib_units::msg::LAYER]);
 }
 
 /// The startup record, or the Locale in effect from the default if nothing was recorded (as in

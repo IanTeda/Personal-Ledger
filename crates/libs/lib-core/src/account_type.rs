@@ -4,7 +4,9 @@
 //! Cash, Bank, Credit Card, Investment, or Loan.
 
 /// One of the five kinds of place value can be held or owed.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub enum AccountType {
     #[default]
     Cash,

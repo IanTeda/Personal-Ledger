@@ -21,7 +21,7 @@ pub use crate::settings::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::tracing::SettingsTracingSnapshot;
 #[doc(hidden)]
-pub use crate::settings::units::SettingsUnitsSnapshot;
+pub use crate::units::SettingsUnitsSnapshot;
 
 pub use crate::settings::categories::SettingsCategoriesSnapshot;
 
@@ -99,7 +99,7 @@ impl Shell {
     /// The Settings Units page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
-        self.views.settings.read(cx).units().read(cx).snapshot(cx)
+        self.views.settings.read(cx).units().read(cx).view_model(cx)
     }
 
     /// The Settings Institutions page for a test, as the View builds it.

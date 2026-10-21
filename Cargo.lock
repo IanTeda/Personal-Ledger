@@ -737,6 +737,7 @@ dependencies = [
  "lib_tracing",
  "lib_transactions",
  "lib_units",
+ "secrecy",
  "serde",
  "serde_json",
  "tempfile",

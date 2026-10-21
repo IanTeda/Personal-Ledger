@@ -43,6 +43,20 @@ impl LedgerStore {
         cx.notify();
     }
 
+    /// Refreshes the Units read copy from the Units ports (#746's halfway shim), announcing
+    /// `Domain::Units` only when it changed.
+    pub fn refresh_units(
+        &mut self,
+        units: Vec<lib_units::UnitRow>,
+        base_unit: lib_core::UnitId,
+        price_sources: Vec<lib_units::PriceSourceRecord>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if self.ledger.refresh_units(units, base_unit, price_sources) {
+            self.announce(cx, BTreeSet::from([Domain::Units]));
+        }
+    }
+
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes nothing and emits
     /// nothing; a landed command announces the domains its recorded changes touched. Nothing
     /// persists the changes until the repository is wired (#636), so they're dropped here.

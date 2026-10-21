@@ -1,6 +1,5 @@
-## The Units module's Messages, read by its Presenters. Copied from the Desktop's catalogue
-## (`desktop-settings-units-*`, `desktop-settings-price-source-*`), which keeps its copy until the
-## Desktop draws these view models.
+## The Units module's Messages, read by its Presenters. Each Client composes this layer into its
+## Locale; no Client catalogue keeps a copy.
 
 ## The Units Settings page: both tables, the row menu, the legend and ACTIVITY.
 
@@ -41,6 +40,48 @@ units-activity-reactivated = Reactivated unit { $code }
 units-activity-base-set = Made { $code } the base unit
 units-activity-source-saved = Saved price source { $name }
 units-activity-source-deleted = Deleted price source { $name }
+
+## The detail pane docked at X-Large.
+
+units-pane-unit = Unit
+units-pane-used-by = Used by
+units-pane-used-by-value = { $accounts ->
+    [one] { $accounts } account
+   *[other] { $accounts } accounts
+} · { $transactions ->
+    [one] { $transactions } transaction
+   *[other] { $transactions } transactions
+}
+units-pane-accounts = Accounts
+units-pane-accounts-total = Total
+units-pane-accounts-none = No accounts use this unit.
+units-pane-title = { $code } · { $name }
+units-pane-meta = { $kind } · valued in { $base }
+units-pane-edit-unit = Edit unit
+units-pane-delete-unit = Delete unit
+units-pane-reactivate-unit = Reactivate unit
+units-pane-test = Test
+units-pane-edit-source = Edit source
+units-pane-delete-source = Delete source
+units-pane-add-source = Add price source
+units-pane-url = URL
+units-pane-last-price = Last price
+units-pane-source-meta = { $origin } · prices { $kinds } · { $key }
+units-pane-origin-built-in = built-in
+units-pane-origin-custom = custom
+units-pane-every-kind = every kind
+units-pane-key-needed = key needed
+units-pane-key-not-needed = key not needed
+units-pane-source-custom = { $name } · custom
+units-pane-manual-note = Prices you enter by hand.
+units-pane-values = Values
+units-pane-values-none = No units use this source.
+units-pane-symbol = symbol
+units-pane-quoted-in = quoted in { $code }
+units-pane-values-note = Each unit sets its own symbol in Edit unit.
+units-pane-values-note-custom = Each unit sets its own symbol in Edit unit. Deleting this source moves these units to Manual entry.
+units-pane-activity = Activity
+units-pane-activity-note = This session's Units outcomes, newest first. Errors still toast.
 
 ## The Toasts an outcome raises while the detail pane isn't docked.
 

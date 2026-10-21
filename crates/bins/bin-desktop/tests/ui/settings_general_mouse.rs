@@ -49,10 +49,10 @@ fn clicking_a_unit_in_the_base_unit_select_makes_it_the_base_unit(app: &mut Test
 #[gpui::test]
 fn the_units_page_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
-    assert_eq!(ui.settings_units().base_code.as_deref(), Some("aud"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
 
     ui.click("settings-general-base-unit-btc");
-    assert_eq!(ui.settings_units().base_code.as_deref(), Some("btc"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
 }
 
 #[gpui::test]
@@ -63,6 +63,9 @@ fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext)
     ui.click("settings-index-Units");
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
+    // Delete is refused for a Unit in use, which turns the Dialog into Deactivate.
+    ui.press("b t c");
+    ui.click("delete-unit-confirm");
     ui.click("delete-unit-confirm");
     ui.click("settings-index-General");
 

@@ -8,6 +8,7 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_toast::ToastKind;
 
+use super::units_pane::{DetailPane, PaneInput, detail_pane};
 use super::{Clock, UnitsOutcome, ago};
 use crate::interactor::ReactivateUnit;
 use crate::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, NEXT_TABLE, TEST_SOURCE};
@@ -32,7 +33,7 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
-    fn of(source: &PriceSource<'_>) -> Self {
+    pub(super) fn of(source: &PriceSource<'_>) -> Self {
         match source.origin {
             SourceOrigin::ManualEntry => Self::ManualEntry,
             SourceOrigin::BuiltIn(_) => Self::BuiltIn,
@@ -56,7 +57,7 @@ impl MenuAction {
     /// A row's actions in menu order, the destructive one last. A deactivated Unit offers
     /// Reactivate, since it is hidden from the pickers until then; Manual entry offers nothing and
     /// a built-in no Delete.
-    fn for_row(row: Row<'_>) -> &'static [Self] {
+    pub(super) fn for_row(row: Row<'_>) -> &'static [Self] {
         match row {
             Row::Unit(unit) if !unit.is_active => {
                 &[Self::EditUnit, Self::ReactivateUnit, Self::DeleteUnit]
@@ -81,6 +82,30 @@ impl MenuAction {
         }
     }
 
+    /// The label its detail pane button shows, shorter than the menu's.
+    pub(super) fn pane_label(self) -> String {
+        match self {
+            Self::EditUnit => msg::units_pane_edit_unit(),
+            Self::ReactivateUnit => msg::units_pane_reactivate_unit(),
+            Self::DeleteUnit => msg::units_pane_delete_unit(),
+            Self::TestSource => msg::units_pane_test(),
+            Self::EditSource => msg::units_pane_edit_source(),
+            Self::DeleteSource => msg::units_pane_delete_source(),
+        }
+    }
+
+    /// A stable name (`edit-unit`), for a Client's element ids and tests.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::EditUnit => "edit-unit",
+            Self::ReactivateUnit => "reactivate-unit",
+            Self::DeleteUnit => "delete-unit",
+            Self::TestSource => "test-source",
+            Self::EditSource => "edit-source",
+            Self::DeleteSource => "delete-source",
+        }
+    }
+
     fn entry(self) -> MenuEntry {
         MenuEntry {
             action: self,
@@ -92,7 +117,7 @@ impl MenuAction {
 
 /// A row as the rules about its actions see it.
 #[derive(Debug, Clone, Copy)]
-enum Row<'a> {
+pub(super) enum Row<'a> {
     Unit(&'a UnitRow),
     Source(PriceSourceId, SourceKind),
 }
@@ -108,6 +133,11 @@ pub enum UnitsPageEvent {
     Select(UnitsRow),
     /// A double-click on a row: selects it and opens its Edit Dialog.
     Activate(UnitsRow),
+    /// The **+** beside either table, whatever is selected.
+    NewUnit,
+    NewPriceSource,
+    /// A detail pane button: `action` on `row`, as its menu entry runs it.
+    Action(MenuAction, UnitsRow),
     /// New, Edit, Delete, Reactivate and Test act on the selected row's table.
     New,
     Edit,
@@ -146,6 +176,8 @@ pub struct UnitsPageViewModel {
     pub docked: bool,
     /// This session's outcomes, newest first, while docked.
     pub activity: Vec<ActivityLine>,
+    /// The detail pane, while docked.
+    pub pane: Option<DetailPane>,
     pub open_dialog: Option<UnitsDialog>,
 }
 
@@ -278,6 +310,9 @@ impl UnitsPagePresenter {
                 };
                 self.open(dialog, router);
             }
+            UnitsPageEvent::NewUnit => self.open(UnitsDialog::AddUnit, router),
+            UnitsPageEvent::NewPriceSource => self.open(UnitsDialog::AddPriceSource, router),
+            UnitsPageEvent::Action(action, row) => self.run(action, row, router),
             UnitsPageEvent::Edit => self.edit(router),
             UnitsPageEvent::Delete => {
                 let action = match self.selection() {
@@ -419,6 +454,17 @@ impl UnitsPagePresenter {
             } else {
                 Vec::new()
             },
+            pane: self.docked.then(|| {
+                detail_pane(&PaneInput {
+                    ports: &*ports,
+                    units: &units,
+                    sources: &sources,
+                    base,
+                    selection,
+                    activity: &self.activity,
+                    now,
+                })
+            }),
             open_dialog: self.open_dialog,
         }
     }
@@ -629,6 +675,7 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
     use crate::keymap::units_page_keymap;
+    use crate::presenter::{PaneButton, PaneGroup, SourceGroup};
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
 
     struct Page {
@@ -1056,6 +1103,296 @@ mod tests {
         page.send(UnitsPageEvent::NextTable);
         assert_eq!(hints(&page)[0], ("j/k".into(), "price source".into()));
         assert_eq!(hints(&page)[5], ("tab".into(), "units".into()));
+    }
+
+    fn docked() -> Page {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::SetDocked(true));
+        page
+    }
+
+    fn pane(page: &Page) -> Vec<PaneGroup> {
+        page.view().pane.expect("the page is docked").groups
+    }
+
+    fn slugs(groups: &[PaneGroup]) -> Vec<&'static str> {
+        groups.iter().map(PaneGroup::slug).collect()
+    }
+
+    fn source_group(groups: &[PaneGroup]) -> SourceGroup {
+        groups
+            .iter()
+            .find_map(|group| match group {
+                PaneGroup::Source(source) => Some(source.clone()),
+                _ => None,
+            })
+            .expect("a PRICE SOURCE group")
+    }
+
+    fn facts(group: &SourceGroup) -> Vec<(&str, &str)> {
+        group
+            .facts
+            .iter()
+            .map(|fact| (fact.label.as_str(), fact.value.as_str()))
+            .collect()
+    }
+
+    fn button_slugs(buttons: &[PaneButton]) -> Vec<&'static str> {
+        buttons.iter().map(|button| button.slug).collect()
+    }
+
+    #[test]
+    fn the_pane_is_built_only_while_docked() {
+        let mut page = Page::new();
+        assert_eq!(page.view().pane, None);
+        page.send(UnitsPageEvent::SetDocked(true));
+        assert!(page.view().pane.is_some());
+    }
+
+    #[test]
+    fn a_unit_on_manual_entry_offers_to_add_a_price_source() {
+        let page = docked();
+        let groups = pane(&page);
+
+        assert_eq!(slugs(&groups), ["unit", "source", "accounts", "activity"]);
+        let PaneGroup::Unit(unit) = &groups[0] else {
+            panic!("UNIT first")
+        };
+        assert_eq!(unit.title, "aud · Australian Dollar");
+        assert_eq!(unit.meta, "Currency · valued in aud");
+        assert_eq!(unit.facts[0].value, "base");
+        assert_eq!(button_slugs(&unit.buttons), ["edit-unit", "delete-unit"]);
+        let source = source_group(&groups);
+        assert!(source.facts.is_empty());
+        assert_eq!(button_slugs(&source.buttons), ["add-source"]);
+        assert_eq!(source.buttons[0].event, UnitsPageEvent::NewPriceSource);
+    }
+
+    #[test]
+    fn a_selected_units_price_source_reads_its_link() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let source = source_group(&pane(&page));
+
+        assert_eq!(
+            facts(&source),
+            [
+                ("Source", "CoinGecko"),
+                ("URL", "https://api.coingecko.com/api/v3"),
+                ("Updates", "Every 15 min"),
+                ("Last price", "148,212.40 aud"),
+                ("Last updated", "5 minutes ago"),
+            ]
+        );
+        assert_eq!(
+            button_slugs(&source.buttons),
+            ["test-source", "edit-source"],
+            "a built-in is not deleted"
+        );
+        assert_eq!(
+            source.buttons[1].event,
+            UnitsPageEvent::Action(MenuAction::EditSource, UnitsRow::Source(COINGECKO))
+        );
+    }
+
+    #[test]
+    fn a_units_accounts_are_counted_and_valued_in_its_quote_unit() {
+        let mut page = docked();
+        let holding = crate::Holding {
+            name: "Cold wallet".into(),
+            kind: lib_core::AccountType::Investment,
+            balance: lib_core::Money("0.4120".parse().expect("a decimal")),
+            transactions: 9,
+        };
+        page.ports
+            .borrow_mut()
+            .holdings
+            .by_unit
+            .insert(UnitId::SEED_BTC, vec![holding]);
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let groups = pane(&page);
+
+        let PaneGroup::Unit(unit) = &groups[0] else {
+            panic!("UNIT first")
+        };
+        assert_eq!(unit.facts[1].value, "1 account · 9 transactions");
+        let PaneGroup::Accounts(accounts) = &groups[2] else {
+            panic!("ACCOUNTS third")
+        };
+        let row = &accounts.rows[0];
+        assert_eq!(
+            (
+                row.name.as_str(),
+                row.kind.as_str(),
+                row.balance.as_str(),
+                row.value.as_deref()
+            ),
+            (
+                "Cold wallet",
+                "Investment",
+                "0.4120 btc",
+                Some("61,063.51 aud")
+            )
+        );
+        assert_eq!(
+            accounts.total.as_ref().map(|total| total.name.as_str()),
+            Some("Total")
+        );
+        assert_eq!(accounts.empty, None);
+    }
+
+    #[test]
+    fn a_selected_built_in_shows_its_endpoint_and_the_units_it_values() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        let groups = pane(&page);
+
+        assert_eq!(slugs(&groups), ["source", "values", "activity"]);
+        let source = source_group(&groups);
+        assert_eq!(
+            source.meta.as_deref(),
+            Some("built-in · prices Crypto · key not needed")
+        );
+        assert_eq!(
+            facts(&source),
+            [
+                ("Source", "CoinGecko · built-in"),
+                ("Address", "https://api.coingecko.com/api/v3"),
+                (
+                    "Request",
+                    "/simple/price?ids={symbol}&vs_currencies={quote}"
+                ),
+                ("Price path", "/{symbol}/{quote}"),
+                ("Updates", "Every 15 min"),
+                ("Last updated", "5 minutes ago"),
+            ]
+        );
+        assert_eq!(
+            source.note.as_deref(),
+            Some("Built-in sources update with the app, so their address isn't edited here.")
+        );
+        let PaneGroup::Values(values) = &groups[1] else {
+            panic!("VALUES second")
+        };
+        let row = &values.rows[0];
+        assert_eq!(
+            (
+                row.code.as_str(),
+                row.symbol.clone(),
+                row.quoted_in.as_str(),
+                row.price.as_str()
+            ),
+            (
+                "btc",
+                Some(("symbol".to_string(), "bitcoin".to_string())),
+                "quoted in aud",
+                "148,212.40 aud"
+            )
+        );
+    }
+
+    #[test]
+    fn a_source_no_unit_uses_says_so_and_has_not_fetched() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+        let groups = pane(&page);
+
+        let last = source_group(&groups)
+            .facts
+            .last()
+            .map(|fact| fact.value.clone());
+        assert_eq!(last.as_deref(), Some("\u{2717} Not fetched yet"));
+        let PaneGroup::Values(values) = &groups[1] else {
+            panic!("VALUES second")
+        };
+        assert!(values.rows.is_empty());
+        assert_eq!(values.empty.as_deref(), Some("No units use this source."));
+    }
+
+    #[test]
+    fn manual_entry_shows_its_note_and_the_units_priced_by_hand_with_no_buttons() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(MANUAL_ENTRY)));
+        let groups = pane(&page);
+
+        let source = source_group(&groups);
+        assert_eq!(source.meta, None);
+        assert!(source.facts.is_empty());
+        assert!(source.buttons.is_empty());
+        assert_eq!(source.note.as_deref(), Some("Prices you enter by hand."));
+        let PaneGroup::Values(values) = &groups[1] else {
+            panic!("VALUES second")
+        };
+        let codes: Vec<_> = values.rows.iter().map(|row| row.code.as_str()).collect();
+        assert_eq!(codes, ["aud", "vas"]);
+    }
+
+    #[test]
+    fn a_custom_sources_pane_shows_its_key_parameter_but_never_the_key() {
+        let mut page = docked();
+        let mut endpoint = crate::built_in(COINGECKO).unwrap().endpoint.clone();
+        endpoint.auth = crate::PriceSourceAuth::ApiKey {
+            placement: crate::KeyPlacement::Param,
+            name: "apikey".into(),
+        };
+        let custom = crate::interactor::AddPriceSource {
+            name: "broker".into(),
+            endpoint,
+            updates: crate::Updates::Daily,
+        }
+        .run(&mut page.ports.borrow_mut().price_sources);
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(custom.id)));
+        let source = source_group(&pane(&page));
+
+        assert_eq!(
+            source.meta.as_deref(),
+            Some("custom · prices every kind · key needed")
+        );
+        let facts = facts(&source);
+        assert!(facts.contains(&("Source", "broker · custom")));
+        assert!(facts.contains(&("Authentication", "API key")));
+        assert!(facts.contains(&("Key parameter", "apikey")));
+        assert_eq!(source.note, None);
+        assert_eq!(
+            button_slugs(&source.buttons),
+            ["test-source", "edit-source", "delete-source"]
+        );
+    }
+
+    #[test]
+    fn the_plus_buttons_open_their_tables_add_dialog_whatever_is_selected() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        assert_eq!(
+            page.send(UnitsPageEvent::NewUnit),
+            vec![RouterCall::OpenDialog(UnitsDialog::AddUnit)]
+        );
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
+        assert_eq!(
+            page.send(UnitsPageEvent::NewPriceSource),
+            vec![RouterCall::OpenDialog(UnitsDialog::AddPriceSource)]
+        );
+    }
+
+    #[test]
+    fn a_pane_action_runs_on_its_row_only_when_the_row_offers_it() {
+        let mut page = Page::new();
+        assert_eq!(
+            page.send(UnitsPageEvent::Action(
+                MenuAction::EditSource,
+                UnitsRow::Source(COINGECKO)
+            )),
+            vec![RouterCall::OpenDialog(UnitsDialog::EditPriceSource(
+                COINGECKO
+            ))]
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::Action(
+                MenuAction::DeleteSource,
+                UnitsRow::Source(COINGECKO)
+            )),
+            vec![]
+        );
     }
 
     #[test]

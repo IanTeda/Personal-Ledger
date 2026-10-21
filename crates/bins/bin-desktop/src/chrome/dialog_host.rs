@@ -36,7 +36,6 @@ use crate::{
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
-    settings::units::dialogs::UnitsDialog, settings::units::dialogs::sources::PriceSourceDialog,
     view::event::ViewEvent, view::help::HelpDialog,
 };
 
@@ -278,9 +277,7 @@ impl Dialog for ToastHistoryDialog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    Units(UnitsDialog),
-    /// Boxed: a Custom source's form carries every part of its endpoint.
-    PriceSources(Box<PriceSourceDialog>),
+    Units(crate::units::UnitsDialog),
     Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
@@ -302,7 +299,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
-            Self::PriceSources(dialog) => &**dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -322,7 +318,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::Units(dialog) => dialog,
-            Self::PriceSources(dialog) => &mut **dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -374,8 +369,7 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Units, UnitsDialog);
-dialog_variant!(PriceSources, PriceSourceDialog);
+dialog_variant!(Units, crate::units::UnitsDialog);
 dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
@@ -475,8 +469,6 @@ pub(crate) fn type_text(dialog: &mut impl Dialog, text: &str) {
 mod tests {
     use super::*;
 
-    use crate::settings::units::form::UnitForm;
-
     #[test]
     fn a_dialog_without_text_fields_ignores_typing_but_swallows_tab() {
         let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
@@ -500,7 +492,7 @@ mod tests {
 
     #[test]
     fn other_keys_fall_through() {
-        let mut dialog = OpenDialog::Units(UnitsDialog::Add(UnitForm::default()));
+        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Other),
             DialogOutcome::Ignored

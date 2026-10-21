@@ -71,7 +71,7 @@ fn the_units_add_edit_and_delete_buttons_open_their_dialogs(app: &mut TestAppCon
     ui.click("add-unit-cancel");
     assert_eq!(ui.dialog(), None);
 
-    let first = ui.settings_units().unit_codes[0].clone();
+    let first = ui.unit_codes()[0].clone();
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-edit-unit");
     assert_eq!(ui.dialog(), Some("EditUnit"));
@@ -94,7 +94,7 @@ fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut Tes
     ui.resize_to(WindowSize::Large);
     ui.drop_unit_users();
     ui.click("settings-index-Units");
-    let before = ui.settings_units().unit_codes.clone();
+    let before = ui.unit_codes();
 
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
@@ -102,7 +102,7 @@ fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut Tes
         ui.press(&ch.to_string());
     }
     ui.click("delete-unit-confirm");
-    let after = ui.settings_units().unit_codes;
+    let after = ui.unit_codes();
     assert_eq!(after.len(), before.len() - 1);
     assert!(!after.contains(&before[0]));
 }

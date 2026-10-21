@@ -1,17 +1,21 @@
 //! The **General** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", first in
 //! scroll order): ledger identity fields plus a "THIS LEDGER" summary panel. The identity fields
 //! are still the mockup's own dummy values, with no `lib_database::Preferences` wiring; *Base unit*
-//! is real, a select over the Ledger's Units that runs `SetBaseUnit`.
+//! is real, a select over the Ledger's Units that runs `lib-units`' `SetBaseUnit` Interactor on the
+//! Units ports.
 
 mod render;
 
 use gpui::{Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_core::UnitId;
-use lib_ledger::{Domain, SetBaseUnit};
+use lib_ledger::Domain;
+use lib_units::UnitsPorts as _;
+use lib_units::interactor::SetBaseUnit;
 
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     settings::{SettingsPage, hints::settings_general_hints, pages::Page},
+    units::DesktopPorts,
     view::event::ViewEvent,
 };
 
@@ -21,15 +25,21 @@ impl EventEmitter<ViewEvent> for GeneralPage {}
 /// keyboard is on the page, which draws the select focused.
 pub struct GeneralPage {
     ledger: Entity<LedgerStore>,
+    ports: DesktopPorts,
     page_focused: bool,
     _units_changed: Subscription,
 }
 
 impl GeneralPage {
-    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        ledger: Entity<LedgerStore>,
+        ports: DesktopPorts,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
         let units_changed = notify_on(&ledger, Domain::Units, cx);
         Self {
             ledger,
+            ports,
             page_focused: false,
             _units_changed: units_changed,
         }
@@ -54,9 +64,12 @@ impl GeneralPage {
     /// Makes `id` the base Unit. A refusal means the Unit was removed under the select, which
     /// repaints without it, so there is nothing to report.
     fn set_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
-        self.ledger.update(cx, |store, cx| {
-            let _ = store.apply(cx, SetBaseUnit(id));
-        });
+        let _ = {
+            let mut ports = self.ports.borrow_mut();
+            let ports = ports.split_mut();
+            SetBaseUnit(id).run(ports.units, ports.base_unit)
+        };
+        crate::units::ports::sync(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 

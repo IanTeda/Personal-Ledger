@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{PriceSourceId, UnitId};
+use lib_core::{AccountType, Money, PriceSourceId, UnitId};
 use lib_toast::ToastKind;
 
 use crate::{PriceSourceRecord, UnitRow};
@@ -52,6 +52,22 @@ pub trait UnitUsage {
     fn unit_usage(&self, id: UnitId) -> UnitUse;
 }
 
+/// The Accounts held in a Unit, for the detail pane's ACCOUNTS group and its Used by count. A read
+/// port, so `lib-units` needn't depend on the Accounts crate.
+pub trait UnitHoldings {
+    /// The Accounts whose Unit is `id`, in the Ledger's order.
+    fn holdings(&self, id: UnitId) -> Vec<Holding>;
+}
+
+/// One Account held in a Unit, as the Units page shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Holding {
+    pub name: String,
+    pub kind: AccountType,
+    pub balance: Money,
+    pub transactions: u32,
+}
+
 /// How many rows name a Unit, carried by the delete refusal so a Dialog can say why and offer
 /// Deactivate instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -77,6 +93,8 @@ pub trait UnitsPorts {
     fn base_unit(&self) -> &dyn BaseUnitRepository;
 
     fn usage(&self) -> &dyn UnitUsage;
+
+    fn holdings(&self) -> &dyn UnitHoldings;
 
     fn split_mut(&mut self) -> PortsMut<'_>;
 }

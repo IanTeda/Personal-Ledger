@@ -1,13 +1,10 @@
-//! The Settings Institutions and Units pages' dialogs driven by keys once open: typing, `tab`
-//! between the unit fields, `enter` to save and `escape` to cancel. The pages have no keys of
-//! their own, so each dialog is opened with its tagged button. State is read back from `Shell`.
+//! The Settings Institutions page's dialog driven by keys once open: typing, `enter` to save and
+//! `escape` to cancel. The page has no keys of its own, so the dialog is opened with its tagged
+//! button. State is read back from `Shell`.
 
 use super::common;
 
-use bin_desktop::{
-    WindowSize,
-    navigation::nav::{InputMode, Noun},
-};
+use bin_desktop::navigation::nav::Noun;
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -18,85 +15,6 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
     ui.click(&format!("settings-index-{page}"));
     assert_eq!(ui.settings().page, page);
     ui
-}
-
-#[gpui::test]
-fn add_unit_types_into_code_then_tab_moves_to_name_and_enter_saves(app: &mut TestAppContext) {
-    let mut ui = on_page(app, "Units");
-    let before = ui.settings_units().unit_rows.len();
-
-    ui.click("settings-add-unit");
-    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
-    ui.press("x y z");
-    ui.press("tab");
-    assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
-    ui.press("t e s t");
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("xyz"));
-    assert_eq!(ui.dialog_value("name").as_deref(), Some("test"));
-    ui.press("enter");
-    let units_page = ui.settings_units();
-    assert_eq!(ui.dialog(), None);
-    assert_eq!(units_page.unit_rows.len(), before + 1);
-    assert_eq!(
-        units_page.unit_rows.last(),
-        Some(&(
-            "xyz".to_string(),
-            "test".to_string(),
-            "currency".to_string()
-        ))
-    );
-}
-
-#[gpui::test]
-fn tab_cycles_back_to_code_and_backspace_trims_the_focused_field(app: &mut TestAppContext) {
-    let mut ui = on_page(app, "Units");
-
-    ui.click("settings-add-unit");
-    ui.press("a b");
-    ui.press("tab tab");
-    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
-    ui.press("backspace");
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("a"));
-}
-
-#[gpui::test]
-fn add_unit_enter_does_nothing_until_code_and_name_are_filled(app: &mut TestAppContext) {
-    let mut ui = on_page(app, "Units");
-    let before = ui.settings_units().unit_rows.len();
-
-    ui.click("settings-add-unit");
-    ui.press("a enter");
-    assert_eq!(ui.dialog(), Some("AddUnit"));
-    assert_eq!(ui.settings_units().unit_rows.len(), before);
-}
-
-#[gpui::test]
-fn escape_discards_an_add_unit_draft(app: &mut TestAppContext) {
-    let mut ui = on_page(app, "Units");
-    let before = ui.settings_units().unit_rows.len();
-
-    ui.click("settings-add-unit");
-    ui.press("a tab b");
-    ui.press("escape");
-    assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_units().unit_rows.len(), before);
-    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
-}
-
-#[gpui::test]
-fn edit_unit_saves_a_changed_name_with_enter(app: &mut TestAppContext) {
-    let mut ui = on_page(app, "Units");
-    ui.resize_to(WindowSize::Large);
-    let (code, name, kind) = ui.settings_units().unit_rows[0].clone();
-
-    ui.right_click("unit-row-0");
-    ui.click("settings-units-menu-edit-unit");
-    ui.press("tab");
-    ui.press("x");
-    ui.press("enter");
-    let units_page = ui.settings_units();
-    assert_eq!(ui.dialog(), None);
-    assert_eq!(units_page.unit_rows[0], (code, format!("{name}x"), kind));
 }
 
 #[gpui::test]

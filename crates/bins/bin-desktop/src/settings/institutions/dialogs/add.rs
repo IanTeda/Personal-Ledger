@@ -5,7 +5,7 @@
 //! Three field shapes, none reused verbatim from the Unit dialogs:
 //! - **Institution name**: a real text field, but the dialog's only one -- reuses
 //!   `form::fields::text_field` with `focused: true` and a no-op click handler, the same
-//!   "implicitly focused, nothing to click into" shape `settings::units::dialogs::delete`'s own confirm field
+//!   "implicitly focused, nothing to click into" shape `units::dialogs::delete_unit`'s own confirm field
 //!   uses.
 //! - **Account types**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s
 //!   `.chip` role) -- the first *multi*-select control in this crate; every other "pick one"
@@ -14,7 +14,7 @@
 //!   compile-time enum -- `form::fields::segmented_control`'s `&'static [T]` bound can't take a
 //!   runtime slice, so this module builds its own segmented-style row instead of reusing that
 //!   function. Still a segmented control rather than the raw mockup's own `<select>`, same
-//!   reasoning as `settings::units::dialogs::add`'s own Type field.
+//!   reasoning as `units::dialogs::unit_form`'s own Type field.
 
 use std::rc::Rc;
 

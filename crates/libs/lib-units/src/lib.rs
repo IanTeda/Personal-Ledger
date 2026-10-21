@@ -4,8 +4,8 @@
 //! ports they reach storage through, with no UI toolkit and no I/O. `fake` holds in-memory ports
 //! and the stub seed for tests and UI-first work.
 //!
-//! Until the Desktop switches over, the rules also live in `lib-ledger`'s Units and Price Source
-//! commands, which still call the collection functions re-exported here.
+//! The Desktop draws the Presenters' view models (`bin-desktop/src/units/`); `lib-ledger` keeps
+//! only a read copy of the Units for the domains not yet migrated (#746).
 
 mod entity;
 pub mod fake;
@@ -25,6 +25,6 @@ pub use entity::{
 };
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
-    BaseUnitRepository, PortsMut, PriceSourceRepository, SharedPorts, UnitRepository, UnitUsage,
-    UnitUse, UnitsDialog, UnitsPorts, UnitsRouter,
+    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, SharedPorts, UnitHoldings,
+    UnitRepository, UnitUsage, UnitUse, UnitsDialog, UnitsPorts, UnitsRouter,
 };

@@ -34,8 +34,8 @@ use crate::{
             TracingPage,
             log::{LogView, TracingLevel},
         },
-        units::UnitsPage,
     },
+    units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
 };
 
@@ -254,12 +254,13 @@ impl SettingsPages {
     pub fn new(
         ledger: &Entity<LedgerStore>,
         today: NaiveDate,
+        units: UnitsSetup,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         Self {
-            general: cx.new(|cx| GeneralPage::new(ledger.clone(), cx)),
+            general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
             display: cx.new(|_| DisplayPage::default()),
-            units: cx.new(|cx| UnitsPage::new(ledger.clone(), cx)),
+            units: units_page(units.ports, ledger.clone(), units.keymap, cx),
             institutions: cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx)),
             accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), cx)),
             categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), today, cx)),

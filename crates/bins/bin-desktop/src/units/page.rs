@@ -1,0 +1,312 @@
+//! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It turns keys
+//! into chord text for the Units keymap and clicks into events, draws the view model
+//! (`render.rs`, `pane.rs`), and keeps the Ledger read copy in line after every event
+//! ([`ports::sync`]). The Settings View hosts it as any other page.
+
+mod pane;
+mod render;
+
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
+
+use chrono::Utc;
+use gpui::{
+    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
+    Subscription,
+};
+use lib_ledger::Domain;
+use lib_units::keymap::Keymap;
+use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
+
+use super::ports::{self, DesktopPorts};
+use super::router::PageRouter;
+use crate::{
+    chrome::{statusline::PageStatus, window_size::WindowSize},
+    ledger_store::{LedgerStore, notify_on},
+    navigation::key_router::{KeyOutcome, Movement, route_key},
+    navigation::nav::InputMode,
+    settings::{
+        SettingsPage,
+        page::PageRowClicked,
+        pages::{Page, PageFrame, focus_on_row_click},
+        state::SettingsView,
+    },
+    view::event::ViewEvent,
+};
+
+pub use pane::detail_pane;
+
+impl EventEmitter<ViewEvent> for UnitsPage {}
+impl EventEmitter<PageRowClicked> for UnitsPage {}
+
+pub struct UnitsPage {
+    presenter: UnitsPagePresenter,
+    ports: DesktopPorts,
+    ledger: Entity<LedgerStore>,
+    keymap: Keymap<UnitsPageEvent>,
+    /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
+    menu_at: Point<Pixels>,
+    _units_changed: Subscription,
+    _accounts_changed: Subscription,
+}
+
+impl UnitsPage {
+    pub fn new(
+        ports: DesktopPorts,
+        ledger: Entity<LedgerStore>,
+        keymap: Keymap<UnitsPageEvent>,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let presenter = UnitsPagePresenter::new(ports.clone(), Rc::new(Utc::now), keymap.clone());
+        Self {
+            presenter,
+            ports,
+            _units_changed: notify_on(&ledger, Domain::Units, cx),
+            // The pane's ACCOUNTS group reads the Ledger's Accounts.
+            _accounts_changed: notify_on(&ledger, Domain::Accounts, cx),
+            ledger,
+            keymap,
+            menu_at: Point::default(),
+        }
+    }
+
+    /// Sends `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
+    /// in line with whatever it wrote.
+    pub(super) fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+        ports::sync(&self.ports, &self.ledger, cx);
+        let mut router = PageRouter {
+            ports: self.ports.clone(),
+            cx,
+        };
+        self.presenter.handle(event, &mut router);
+        ports::sync(&self.ports, &self.ledger, cx);
+        cx.notify();
+    }
+
+    /// A confirmed Dialog's outcome, handed back by the Dialog host.
+    pub(super) fn dialog_landed(
+        &mut self,
+        outcome: lib_units::presenter::UnitsOutcome,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.send(UnitsPageEvent::DialogClosed(Some(outcome)), cx);
+    }
+
+    /// The page as drawn, with usage and holdings as the Ledger has them now.
+    pub fn view_model(&self, cx: &App) -> UnitsPageViewModel {
+        ports::copy_usage(&self.ports, self.ledger.read(cx).ledger());
+        self.presenter.view_model()
+    }
+
+    /// A row click: `event`, and focus on the page.
+    fn click(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+        self.send(event, cx);
+        cx.emit(PageRowClicked);
+    }
+
+    /// A right-click on a row opens its menu at the pointer.
+    fn open_menu(
+        &mut self,
+        row: lib_units::presenter::UnitsRow,
+        at: Point<Pixels>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.menu_at = at;
+        self.click(UnitsPageEvent::OpenMenu(row), cx);
+    }
+}
+
+/// `keystroke` as `[keybindings]` writes a chord (`ctrl+d`, `G`, `tab`), or `None` for one the
+/// keymap can't name.
+fn chord(keystroke: &Keystroke) -> Option<String> {
+    let modifiers = &keystroke.modifiers;
+    if modifiers.platform || modifiers.function {
+        return None;
+    }
+    let key = keystroke.key.as_str();
+    let letter = key.len() == 1 && key.chars().all(|ch| ch.is_ascii_alphabetic());
+    let mut chord = String::new();
+    if modifiers.control {
+        chord.push_str("ctrl+");
+    }
+    if modifiers.alt {
+        chord.push_str("alt+");
+    }
+    // A shifted letter is written as its capital, as `G` is.
+    if modifiers.shift && letter && !modifiers.control && !modifiers.alt {
+        chord.push_str(&key.to_ascii_uppercase());
+        return Some(chord);
+    }
+    if modifiers.shift {
+        chord.push_str("shift+");
+    }
+    chord.push_str(key);
+    Some(chord)
+}
+
+/// Whether today's dispatch keeps `keystroke` for the whole Shell (`?`, `:`, `/`, `a`, `b`, the
+/// `g` prefix, `Shift-Tab`), so the Units keymap never shadows it.
+fn is_global(keystroke: &Keystroke) -> bool {
+    let modifiers = &keystroke.modifiers;
+    matches!(
+        route_key(
+            InputMode::Normal,
+            false,
+            &keystroke.key,
+            modifiers.control,
+            modifiers.shift
+        ),
+        KeyOutcome::EnterHelp
+            | KeyOutcome::EnterCommand
+            | KeyOutcome::EnterSearch
+            | KeyOutcome::EnterInsert
+            | KeyOutcome::ToggleRail
+            | KeyOutcome::ArmPendingG
+            | KeyOutcome::CycleFocusBackward
+            | KeyOutcome::EscapeNoOp
+    )
+}
+
+thread_local! {
+    static CHORDS: RefCell<HashSet<&'static str>> = RefCell::new(HashSet::new());
+}
+
+/// `chord` as the `&'static str` the status line's hints take. Each distinct chord is leaked
+/// once: the keymap has a fixed set, so this stays a handful of strings for the process's life.
+fn interned(chord: &str) -> &'static str {
+    CHORDS.with(|chords| {
+        let mut chords = chords.borrow_mut();
+        if let Some(found) = chords.get(chord) {
+            return *found;
+        }
+        let leaked: &'static str = Box::leak(chord.to_string().into_boxed_str());
+        chords.insert(leaked);
+        leaked
+    })
+}
+
+impl Page for UnitsPage {
+    const PAGE: SettingsPage = SettingsPage::Units;
+
+    /// Every chord the Units keymap binds, looked up ahead of the router, except the Shell's own
+    /// global keys. `g g` stays the router's, since `g` is its jump prefix: it comes back as a
+    /// movement.
+    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        if is_global(keystroke) {
+            return false;
+        }
+        let Some(event) = chord(keystroke).and_then(|chord| self.keymap.event(&chord)) else {
+            return false;
+        };
+        self.send(event, cx);
+        true
+    }
+
+    /// The router's movements the keymap didn't take (`g g`, the arrows) walk both tables.
+    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
+        if let Some(step) = movement.step() {
+            self.send(UnitsPageEvent::Move(step), cx);
+        }
+        true
+    }
+
+    /// `Esc` closes an open row menu; otherwise it is left to Settings.
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.presenter.view_model().menu.is_none() {
+            return false;
+        }
+        self.send(UnitsPageEvent::CloseMenu, cx);
+        true
+    }
+
+    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        Some(PageStatus {
+            hints: self
+                .presenter
+                .view_model()
+                .hints
+                .into_iter()
+                .map(|hint| (interned(&hint.chord), hint.action))
+                .collect(),
+            right: SettingsPage::Units.scope_note(),
+        })
+    }
+
+    /// X-Large docks the detail pane.
+    fn set_frame(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
+        let docked = frame.window_size == WindowSize::XLarge;
+        if docked != self.presenter.view_model().docked {
+            self.send(UnitsPageEvent::SetDocked(docked), cx);
+        }
+    }
+
+    fn heading_meta(&self, _cx: &App) -> AnyElement {
+        self.presenter.view_model().scope.into_any_element()
+    }
+
+    fn side_pane(&self, entity: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        let view = self.view_model(cx);
+        let pane = view.pane.as_ref()?;
+        Some(detail_pane(pane, entity, cx))
+    }
+
+    fn subscribe_row_clicks(
+        entity: &Entity<Self>,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Option<Subscription> {
+        focus_on_row_click(entity, cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::Modifiers;
+
+    use super::*;
+
+    fn keystroke(key: &str, modifiers: Modifiers) -> Keystroke {
+        Keystroke {
+            modifiers,
+            key: key.to_string(),
+            key_char: None,
+        }
+    }
+
+    #[test]
+    fn a_keystroke_becomes_the_chord_keybindings_writes() {
+        let none = Modifiers::default();
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        let ctrl = Modifiers {
+            control: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(chord(&keystroke("d", none)).as_deref(), Some("d"));
+        assert_eq!(chord(&keystroke("g", shift)).as_deref(), Some("G"));
+        assert_eq!(chord(&keystroke("d", ctrl)).as_deref(), Some("ctrl+d"));
+        assert_eq!(chord(&keystroke("tab", none)).as_deref(), Some("tab"));
+        assert_eq!(
+            chord(&keystroke("tab", shift)).as_deref(),
+            Some("shift+tab")
+        );
+    }
+
+    #[test]
+    fn the_shells_global_keys_stay_global() {
+        let none = Modifiers::default();
+        for key in ["b", "a", "g", ":", "/"] {
+            assert!(is_global(&keystroke(key, none)), "{key}");
+        }
+        for key in ["j", "d", "n", "tab", "t"] {
+            assert!(!is_global(&keystroke(key, none)), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_chord_is_interned_once() {
+        assert!(std::ptr::eq(interned("ctrl+x"), interned("ctrl+x")));
+    }
+}

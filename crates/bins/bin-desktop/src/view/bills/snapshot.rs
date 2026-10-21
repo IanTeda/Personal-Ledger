@@ -38,6 +38,8 @@ pub struct BillsSnapshot {
     pub dialog: Option<String>,
     /// The open Add or Edit dialog's Name draft.
     pub plan_name: Option<String>,
+    /// The open Add or Edit dialog's Unit, by code.
+    pub plan_unit: Option<String>,
     /// The open Pay dialog's panel, `Match` or `Pay`.
     pub pay_mode: Option<String>,
     /// How many Transactions the open Pay dialog offers to match.
@@ -87,6 +89,7 @@ impl BillsView {
                 .map(|(field, _)| format!("{field:?}")),
             dialog: None,
             plan_name: None,
+            plan_unit: None,
             pay_mode: None,
             pay_candidates: None,
         }

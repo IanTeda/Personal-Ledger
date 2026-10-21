@@ -24,6 +24,7 @@ pub mod persistence;
 mod settings;
 pub mod theme;
 mod transactions;
+mod units;
 mod view;
 
 /// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
@@ -59,6 +60,8 @@ const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraB
 pub struct ShellBindings {
     pub dismiss_toasts: String,
     pub toast_history: Option<String>,
+    /// The whole `[keybindings]` section, which a VIPER module's keymap reads its overrides from.
+    pub keybindings: lib_config::KeyBindingConfig,
 }
 
 /// The live log capture the Tracing page shows, and the configured `log` level it opens on.
@@ -69,10 +72,12 @@ pub struct ShellLogs {
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
+/// `units` are the Units ports: the app's persisted ones, or a test's in memory.
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
+    units: Box<dyn lib_units::UnitsPorts>,
     today: chrono::NaiveDate,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
@@ -93,7 +98,8 @@ pub fn build_shell(
         .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
-    let mut shell = Shell::with_today(nav, focus_handle, today, cx);
+    let units = units::UnitsSetup::new(units, &bindings.keybindings);
+    let mut shell = Shell::with_today(nav, focus_handle, today, units, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
@@ -124,6 +130,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
         .keybindings_config()
         .key_for("toast_history")
         .map(str::to_string);
+    let keybindings = config.keybindings_config().clone();
 
     // Resolved once, before any window opens; the Locale never changes at runtime.
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
@@ -204,11 +211,15 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                             ShellBindings {
                                 dismiss_toasts: dismiss_toasts_binding,
                                 toast_history: toast_history_binding,
+                                keybindings,
                             },
                             ShellLogs {
                                 buffer: logs,
                                 configured_level,
                             },
+                            // Until persistence lands (#752), the Units live in memory, seeded
+                            // from the stub so its Accounts, Bill Plans and Budgets resolve.
+                            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
                             chrono::Local::now().date_naive(),
                             focus_handle,
                             cx,

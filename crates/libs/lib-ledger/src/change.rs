@@ -13,8 +13,8 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{
-    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, PriceSourceId,
-    TagId, TransactionId, UnitId,
+    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, TagId,
+    TransactionId,
 };
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
@@ -22,7 +22,6 @@ use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
-use lib_units::{PriceSourceRecord, UnitRow};
 
 use crate::Ledger;
 
@@ -41,6 +40,8 @@ pub enum Domain {
     DocumentTypes,
     Inventory,
     Institutions,
+    /// No change carries it: the Units ports are written outside the Ledger, and the read copy's
+    /// refresh ([`Ledger::refresh_units`]) announces it (#746).
     Units,
 }
 
@@ -75,12 +76,6 @@ pub enum LedgerChange {
     UpsertItem(Item),
     DeleteItem(ItemId),
     UpsertInstitution(InstitutionRow),
-    UpsertUnit(UnitRow),
-    DeleteUnit(UnitId),
-    /// The Ledger's base Unit became this one.
-    SetBaseUnit(UnitId),
-    UpsertPriceSource(PriceSourceRecord),
-    DeletePriceSource(PriceSourceId),
 }
 
 impl LedgerChange {
@@ -102,12 +97,6 @@ impl LedgerChange {
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
             Self::UpsertInstitution(_) => Domain::Institutions,
-            // Price Sources are listed and edited on the Units page, and deleting one moves Units.
-            Self::UpsertUnit(_)
-            | Self::DeleteUnit(_)
-            | Self::SetBaseUnit(_)
-            | Self::UpsertPriceSource(_)
-            | Self::DeletePriceSource(_) => Domain::Units,
         }
     }
 }
@@ -144,17 +133,11 @@ mod tests {
     }
 
     #[test]
-    fn institution_and_unit_changes_name_their_own_domains() {
-        let unit = lib_units::default_units(chrono::Utc::now()).remove(0);
+    fn an_institution_change_names_its_own_domain() {
         assert_eq!(
             LedgerChange::UpsertInstitution(lib_institutions::default_institutions().remove(0))
                 .domain(),
             Domain::Institutions
-        );
-        assert_eq!(LedgerChange::UpsertUnit(unit).domain(), Domain::Units);
-        assert_eq!(
-            LedgerChange::DeleteUnit(UnitId::SEED_AUD).domain(),
-            Domain::Units
         );
     }
 

@@ -104,6 +104,23 @@ pub(crate) fn segmented_control_sized<T: Copy + PartialEq + 'static, L: Into<Sha
     option_width: Option<gpui::Pixels>,
     cx: &App,
 ) -> impl IntoElement {
+    let labelled: Vec<(T, SharedString)> = options
+        .iter()
+        .map(|&option| (option, label(option).into()))
+        .collect();
+    segmented_labelled(id_prefix, labelled, current, on_click, option_width, cx)
+}
+
+/// [`segmented_control_sized`] over options that arrive already labelled, as a Presenter's view
+/// model hands them over.
+pub(crate) fn segmented_labelled<T: Copy + PartialEq + 'static>(
+    id_prefix: &'static str,
+    options: Vec<(T, SharedString)>,
+    current: T,
+    on_click: OnSegmentClick<T>,
+    option_width: Option<gpui::Pixels>,
+    cx: &App,
+) -> impl IntoElement {
     // A block-level flex row would stretch to the column and leave an empty trailing "button" of
     // bar, so a uniform control is exactly as wide as its options (plus the 1px border each side).
     let bar_width = option_width.map(|width| width * options.len() as f32 + px(2.0));
@@ -112,28 +129,33 @@ pub(crate) fn segmented_control_sized<T: Copy + PartialEq + 'static, L: Into<Sha
         .when_some(bar_width, |this, width| this.w(width))
         .border_1()
         .border_color(color::divider(cx))
-        .children(options.iter().enumerate().map(|(index, &option)| {
-            let selected = option == current;
-            let on_click = on_click.clone();
-            div()
-                .id(SharedString::from(format!("{id_prefix}-{index}")))
-                .debug_selector(move || format!("{id_prefix}-{index}"))
-                .cursor_pointer()
-                .py(px(7.0))
-                .px(px(12.0))
-                .text_size(px(13.0))
-                .when_some(option_width, |this, width| {
-                    this.w(width).flex().justify_center()
-                })
-                .when(index > 0, |this| {
-                    this.border_l(px(1.0)).border_color(color::divider(cx))
-                })
-                .when(selected, |this| {
-                    this.bg(color::accent(cx)).text_color(color::background(cx))
-                })
-                .on_click(move |_event, window, cx| on_click(option, window, cx))
-                .child(label(option).into())
-        }))
+        .children(
+            options
+                .into_iter()
+                .enumerate()
+                .map(|(index, (option, label))| {
+                    let selected = option == current;
+                    let on_click = on_click.clone();
+                    div()
+                        .id(SharedString::from(format!("{id_prefix}-{index}")))
+                        .debug_selector(move || format!("{id_prefix}-{index}"))
+                        .cursor_pointer()
+                        .py(px(7.0))
+                        .px(px(12.0))
+                        .text_size(px(13.0))
+                        .when_some(option_width, |this, width| {
+                            this.w(width).flex().justify_center()
+                        })
+                        .when(index > 0, |this| {
+                            this.border_l(px(1.0)).border_color(color::divider(cx))
+                        })
+                        .when(selected, |this| {
+                            this.bg(color::accent(cx)).text_color(color::background(cx))
+                        })
+                        .on_click(move |_event, window, cx| on_click(option, window, cx))
+                        .child(label)
+                }),
+        )
 }
 
 /// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;

@@ -106,7 +106,6 @@ impl Shell {
                 | OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
                 | OpenDialog::Units(_)
-                | OpenDialog::PriceSources(_)
                 | OpenDialog::Institutions(_)
                 | OpenDialog::Accounts(_)
                 | OpenDialog::Payees(_)

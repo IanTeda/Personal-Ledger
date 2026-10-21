@@ -27,6 +27,12 @@ impl Shell {
             }
             _ => None,
         };
+        snapshot.plan_unit = match dialog {
+            Some(BillsDialog::Add(form) | BillsDialog::Edit(_, form)) => {
+                form.unit.value().map(str::to_string)
+            }
+            _ => None,
+        };
         snapshot.pay_mode = match dialog {
             Some(BillsDialog::Pay(form)) => Some(format!("{:?}", form.mode)),
             _ => None,
