@@ -23,3 +23,7 @@ ADR-0038 kept `Ledger` in memory and left its persistence port to research (#597
 ## Amendment: decided in ADR-0044
 
 The trait is synchronous, applied on a serial writer thread with optimistic writes, and the SQLite adapter is the `lib-ledger-sqlite` crate (#685, ADR-0044).
+
+## Amendment: per-domain ports (VIPER)
+
+Superseded in part by `docs/development/viper-architecture.md` and its grilling. Each feature crate now owns its repository ports in `protocols.rs`, and `lib-database` implements them, so the "port per domain crate" option above is accepted. Its two objections are answered this way: a port is a trait with no I/O of its own, so the crate stays I/O-free, a read of another domain is a read port in the reading crate, and a write that spans domains (paying a Bill writes Transactions) belongs to a cross-domain module, one crate per user workflow, whose single port `lib-database` implements with one database transaction, so it still reaches storage as one atomic unit. The considered alternative, a shared unit-of-work port in `lib-core`, was rejected because every domain port would have to accept it. The single `LedgerRepository`, the `LedgerChange` list and the ADR-0044 writer thread stay until the transition tickets replace them.

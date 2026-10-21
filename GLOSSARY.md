@@ -99,16 +99,16 @@ _Avoid_: level, type, severity (alone).
 A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
 _Avoid_: modal (as a noun), popup, window.
 
-**Chrome**:
-The always-present frame the Desktop Client draws around the current view: the top bar, the rails, the status line, the command palette, Toasts and the host that opens Dialogs. It stays the same whichever view is showing; the view's own content is never Chrome.
-_Avoid_: shell (the whole application, not just its frame), frame, layout.
+**Shell**:
+The always-present frame a Client draws around the current View: the top bar, the rails, the status line, the command palette, Toasts and the host that opens Dialogs. It stays the same whichever View is showing; the View's own content is never the Shell. On the Desktop it is the `lib-shell` module, whose Router is the root Router ([ADR-0045](docs/adr/0045-the-frame-is-the-shell-not-the-chrome.md)).
+_Avoid_: Chrome (a web-browser term), frame, layout. The whole application is the Client, not the Shell.
 
 **View**:
-The content the Desktop Client shows inside the Chrome for where the user is: one destination's page, or one Settings page. A destination can have more than one View: Transactions shows either the list or an Import.
+The content the Desktop Client shows inside the Shell for where the user is: one destination's page, or one Settings page. A destination can have more than one View: Transactions shows either the list or an Import.
 _Avoid_: screen, page (alone), tab.
 
 **Window Size**:
-Which of Medium, Large or X-Large the Desktop Client's window width falls in; the Chrome and each View arrange themselves by it. It is the window that counts, not the monitor, so a tiled window on a large monitor can be Medium. Height never changes the Window Size: a short window scrolls. The window cannot be made narrower than Medium.
+Which of Medium, Large or X-Large the Desktop Client's window width falls in; the Shell and each View arrange themselves by it. It is the window that counts, not the monitor, so a tiled window on a large monitor can be Medium. Height never changes the Window Size: a short window scrolls. The window cannot be made narrower than Medium.
 _Avoid_: screen size, device size, size class.
 
 **Breakpoint**:
