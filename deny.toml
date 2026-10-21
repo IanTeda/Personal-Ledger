@@ -8,6 +8,9 @@ all-features = true
 # dependencies without any change on our side.
 [advisories]
 version = 2
+# Inside the repo (gitignored `target/`) rather than `~/.cargo`, so a sandboxed agent that can't
+# write `~/.cargo` can still lock and fetch the database.
+db-path = "target/advisory-dbs"
 yanked = "deny"
 # Only flag unmaintained crates we depend on directly; transitive ones (mostly under gpui) are the
 # upstream crate's to replace, and we can't act on them.

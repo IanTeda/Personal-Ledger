@@ -96,7 +96,9 @@ run = [
 
 [tasks.deny]
 description = "Check dependencies for advisories, licences, bans and sources (deny.toml)"
-run = "cargo deny check"
+# Duplicate-version warnings each print a full inclusion graph (~14,000 lines in all), which
+# buries the result line; hiding them keeps the warnings and the summary.
+run = "cargo deny check --hide-inclusion-graph"
 
 # Opt this checkout into the repo's git hooks (`.githooks/pre-push` runs `mise run lint`).
 [tasks.install-hooks]
