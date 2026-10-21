@@ -1,38 +1,50 @@
-//! Shared connection to the TUI's own local embedded-SQLite Ledger store: one agreed
-//! database file and one Client migration set (`migrations/client`), so every caller that
-//! reads or writes real data opens its own pool but agrees on where the file lives and
-//! which migrations apply.
-//!
-//! Currently unreferenced. Its only callers were the retired `app`/`screen` stack (ADR-0013);
-//! the `view/` layer that replaced it renders in-memory mock data, and wiring persistence
-//! back in is a later phase. Kept because it is neutral plumbing, not part of the retired
-//! screen architecture — the first `View` that needs real data starts here.
+//! The TUI's Ledger file, opened at start-up the way the Desktop opens it: the shared writer on
+//! the `[Personal-Ledger] file`, the Client migrations, then the Units adapter, so both Clients
+//! read and write the same rows (ADR-0046).
 
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::mpsc;
 
-/// The Client's own SQLite file, in the OS temp directory so `cargo run` never leaves a
-/// stray file in the repo working directory (also `.gitignore`d via `*.sqlite`).
-fn database_url() -> String {
-    let path: PathBuf = std::env::temp_dir().join("personal-ledger-tui-feasibility-demo.sqlite");
-    format!("sqlite://{}?mode=rwc", path.display())
+use chrono::Utc;
+use lib_database::{UnitsAdapter, WriteFailure, Writer};
+use lib_units::fake::InMemoryPorts;
+
+/// The Ledger file as start-up opens it: the Units adapter, and the writer every adapter saves
+/// through, with its failure reports.
+pub struct Storage {
+    pub units: UnitsAdapter,
+    /// Flushed when the TUI quits, so the last writes land before the thread dies.
+    pub writer: Writer,
+    pub failures: mpsc::Receiver<WriteFailure>,
 }
 
-/// Connect to the Client's local Ledger store and apply the Client migration set
-/// (`migrations/client`), returning a ready-to-use pool.
-pub async fn connect() -> crate::Result<sqlx::SqlitePool> {
-    connect_to(database_url()).await
-}
-
-/// Same as [`connect`], against an explicit database URL — split out so tests can point it
-/// at an isolated, throwaway SQLite file instead of the shared one.
-pub async fn connect_to(url: String) -> crate::Result<sqlx::SqlitePool> {
-    let connection = lib_database::DatabaseConnection::new(url).await?;
-    let pool = connection.into_pool();
-
-    sqlx::migrate!("../../libs/lib-database/migrations/client")
-        .run(&pool)
-        .await
-        .map_err(lib_database::Error::from)?;
-
-    Ok(pool)
+/// Opens the Ledger at `path`, creating and migrating it if need be, and loads the Units, blocking.
+/// A Ledger with no base Unit is new, so it is seeded first with the stub's Units, Price Sources
+/// and base Unit, as the Desktop seeds it: the stub Accounts, Bill Plans and Budgets still name
+/// them (#746's first-launch seed, removed once every domain persists).
+///
+/// # Errors
+/// Returns the error opening, migrating, seeding or reading the file.
+#[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
+pub fn open_storage(path: &Path) -> lib_database::Result<Storage> {
+    let (writer, failures) = Writer::open_ledger(path)?;
+    let units = match UnitsAdapter::load(writer.clone()) {
+        Err(lib_database::Error::NotFound(_)) => {
+            let seed = InMemoryPorts::stub(Utc::now());
+            UnitsAdapter::seed(
+                &writer,
+                seed.units.units,
+                seed.price_sources.records,
+                seed.base_unit.0,
+            )?;
+            tracing::info!(path = %path.display(), "Seeded a new Ledger with the stub's Units");
+            UnitsAdapter::load(writer.clone())?
+        }
+        loaded => loaded?,
+    };
+    Ok(Storage {
+        units,
+        writer,
+        failures,
+    })
 }

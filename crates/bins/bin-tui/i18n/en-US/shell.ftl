@@ -67,3 +67,8 @@ tui-footer-not-yet-built = { $command } — not yet built
 ## Toasts. The line above the stack counting Toasts held back out of view.
 
 tui-toast-more = +{ $count } more
+
+## A failed save of the Units, after which they are read back as stored.
+
+tui-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
+tui-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved

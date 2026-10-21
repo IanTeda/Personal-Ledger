@@ -91,22 +91,18 @@ pub enum Action {
     /// `crate::popup::command::CommandPopup::recall_history`'s doc for the cursor's own
     /// behaviour). A no-op against an empty history.
     CommandPopupHistoryRecall,
-    /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the placeholder
-    /// Units view (`docs/ux/tui-mockups/07-units/README.md`), the first domain to land a real (if still
-    /// wireframe-stage) destination behind the command popup's `unit` entry.
+    /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the Units view
+    /// (`docs/ux/tui-mockups/07-units/README.md`), drawn from the `lib-units` page Presenter.
     OpenUnits,
-    /// `n` on the Units view, or `Enter` on the command popup's `unit new <code> <type>`
-    /// command — opens the "new unit" popup (`docs/ux/tui-mockups/07-units/README.md` §4b).
+    /// `Enter` on the command popup's `unit new` command — opens the Units view if need be, then
+    /// its Add unit Dialog, as `n` there does.
     OpenNewUnitPopup,
-    /// `e` on the Units view, or `Enter` on the command popup's `unit edit <code>` command —
-    /// opens the "edit unit" popup (`docs/ux/tui-mockups/07-units/README.md` §4c).
+    /// `Enter` on the command popup's `unit edit` command — the Units view's Edit on its
+    /// selection, as `e` there does.
     OpenEditUnitPopup,
-    /// `d` on the Units view, or `Enter` on the command popup's `unit delete <code>` command —
-    /// opens the "delete unit" popup (`docs/ux/tui-mockups/07-units/README.md` §4d/§4e).
+    /// `Enter` on the command popup's `unit delete` command — the Units view's Delete on its
+    /// selection, as `d` there does.
     OpenDeleteUnitPopup,
-    /// `Esc` while a unit popup (new, edit or delete) is open — closes it without saving or
-    /// deleting anything.
-    CloseUnitPopup,
     /// `g d` (the `docs/ux/tui-mockups/01-chrome/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
@@ -169,7 +165,7 @@ pub enum Action {
     /// Transactions view.
     OpenTransactions,
     /// `Esc`, only reached when no popup is open (a popup's own `Esc` maps to
-    /// `CloseCommandPopup`/`CloseUnitPopup` first) — pops one view off `Shell`'s
+    /// `CloseCommandPopup` first) — pops one view off `Shell`'s
     /// `view_stack`, or no-ops if the stack is empty (already at Dashboard, the app's root).
     PopView,
     /// `q` (lowercase), live only when no popup is open — quits the app, identically to
@@ -654,6 +650,17 @@ pub trait View {
     fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
         Vec::new()
     }
+
+    /// Whether the view hosts an open Dialog of its own (the Units Dialogs). `Shell` then hands
+    /// it every key but `Ctrl+C`, treats it as an open popup, and draws it through
+    /// [`View::render_dialog`] over the dimmed frame.
+    fn dialog_open(&self) -> bool {
+        false
+    }
+
+    /// Draws the open Dialog over `area`, the whole frame. Only called while
+    /// [`View::dialog_open`].
+    fn render_dialog(&self, _frame: &mut Frame<'_>, _area: Rect, _c: &Colours) {}
 
     /// Tells the view the Toasts Preference, whenever it opens or changes, for the one view
     /// that shows it (Settings). `Shell` owns the Preference inside its `Toasts`.

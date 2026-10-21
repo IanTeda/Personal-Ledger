@@ -5,7 +5,7 @@
 mod account;
 mod category;
 pub mod colours;
-mod db;
+pub mod db;
 pub mod error;
 pub mod event;
 mod fixture;
@@ -17,6 +17,7 @@ pub mod shell;
 mod tag;
 mod toast;
 mod tui;
+pub mod units;
 mod view;
 
 /// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
@@ -26,6 +27,7 @@ mod msg {
 
 pub use error::Error;
 pub use shell::Shell;
+pub use units::UnitsStore;
 
 use lib_config::KeyBindingConfig;
 
@@ -36,7 +38,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Builds the `Shell` the way `main` does, from the key bindings and the Colours already
 /// resolved. Takes only what the shell reads so tests can build one without parsing the
-/// user's config, and never touches the locale or the terminal.
-pub fn build_shell(keybindings: KeyBindingConfig, colours: colours::Colours) -> Shell {
-    Shell::with_keybindings(keybindings).with_colours(colours)
+/// user's config, and never touches the locale or the terminal. `units` is where the Units are
+/// kept: the Ledger file's adapter, or a test's in-memory ports; `failures` is the writer's
+/// failure channel, on which a failed write rolls back.
+pub fn build_shell(
+    keybindings: KeyBindingConfig,
+    colours: colours::Colours,
+    units: Box<dyn UnitsStore>,
+    failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
+) -> Shell {
+    Shell::with_keybindings(keybindings)
+        .with_units(units, failures)
+        .with_colours(colours)
 }

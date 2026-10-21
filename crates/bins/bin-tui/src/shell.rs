@@ -9,6 +9,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
+use lib_database::{Domain, WriteFailure};
 use lib_locale::format::upper;
 use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
@@ -45,9 +46,9 @@ use crate::{
         },
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         toast_history::ToastHistoryPopup,
-        unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
     tui::Tui,
+    units::{UnitsSetup, UnitsStore},
     view::{
         Action, View, ViewId, accounts::AccountsView, balance_checks::BalanceChecksView,
         budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
@@ -91,21 +92,13 @@ pub struct Shell {
     /// open and history must survive the popup being closed and reopened. Session-only (lost
     /// on quit), capped and deduplicated by `popup::command::record_history`.
     command_history: Vec<String>,
-    /// Whichever unit-domain form (`docs/ux/tui-mockups/07-units/README.md` "The forms") is open —
-    /// `Some` while one is. Owned here for the same reason as `command_popup`: it floats over
-    /// whatever view is on screen and intercepts keys before the view sees them. Mutually
-    /// exclusive with `command_popup` (opening one closes the other), and with itself — only
-    /// one unit form is ever open at a time, hence the single `Option<UnitPopup>` rather than
-    /// one field per form.
-    unit_popup: Option<UnitPopup>,
     /// The Category-domain popup (`crate::popup::category`) — `Some` while one is open. Owned
-    /// here, mirroring `unit_popup`, per "Categories: 5b move popup"'s own instruction to
-    /// follow `popup::unit`'s structure — even though the tree it acts on lives inside
+    /// here, mirroring `command_popup`, even though the tree it acts on lives inside
     /// `CategoriesView`, not here; see `popup::category::move_popup`'s module doc for how it
-    /// still reaches it. Mutually exclusive with `command_popup`/`unit_popup`.
+    /// still reaches it. Mutually exclusive with `command_popup`.
     category_popup: Option<CategoryPopup>,
     /// The Settings-domain popup (`crate::popup::settings`) — `Some` while one is open. Owned
-    /// here, mirroring `unit_popup`. Mutually exclusive with `command_popup`/`unit_popup`/
+    /// here, mirroring `category_popup`. Mutually exclusive with `command_popup`/
     /// `category_popup`.
     settings_popup: Option<SettingsPopup>,
     /// The Account-domain popup (`crate::popup::account`) — `Some` while one is open. Owned
@@ -161,6 +154,11 @@ pub struct Shell {
     /// start and after `:close`, when the Dashboard's place shows the "no ledger loaded" note
     /// instead; every other view still opens, as in `bin-desktop`'s `NavState::ledger_open`.
     ledger_open: bool,
+    /// The Units ports and keymap every Units View is built on, so each one shows the same rows.
+    units: UnitsSetup,
+    /// The writer's failure reports, polled on each tick: a failed Units write puts the Units back
+    /// as stored (ADR-0046). `None` once the writer has gone, or for a `Shell` built without one.
+    write_failures: Option<std::sync::mpsc::Receiver<WriteFailure>>,
 }
 
 impl Shell {
@@ -187,7 +185,6 @@ impl Shell {
             action_tx,
             command_popup: None,
             command_history: Vec::new(),
-            unit_popup: None,
             category_popup: None,
             settings_popup: None,
             account_popup: None,
@@ -196,12 +193,26 @@ impl Shell {
             pending_leader: false,
             view_stack: Vec::new(),
             jump_not_yet_built: None,
-            keybindings,
             colours: Colours::default(),
             toasts: Toasts::default(),
             toast_history: None,
             ledger_open: false,
+            units: UnitsSetup::stub(&keybindings),
+            write_failures: None,
+            keybindings,
         }
+    }
+
+    /// Puts the Units on `store`, under the key bindings already set, and listens on `failures`
+    /// for a write to roll back.
+    pub fn with_units(
+        mut self,
+        store: Box<dyn UnitsStore>,
+        failures: std::sync::mpsc::Receiver<WriteFailure>,
+    ) -> Self {
+        self.units = UnitsSetup::new(store, &self.keybindings);
+        self.write_failures = Some(failures);
+        self
     }
 
     /// Replaces the default `Colours` with ones built from Configuration.
@@ -215,10 +226,45 @@ impl Shell {
         self.toasts.raise(kind, text, Local::now());
     }
 
+    /// Puts the Units back as stored for each failed write that names them, and raises an error
+    /// Toast saying so. If they can't be read back either, the rows in memory stand and the Toast
+    /// says they aren't saved. The Units View redraws from the ports on the next frame.
+    fn roll_back_failed_writes(&mut self) {
+        let Some(failures) = &self.write_failures else {
+            return;
+        };
+        let mut failed = Vec::new();
+        loop {
+            match failures.try_recv() {
+                Ok(failure) => failed.push(failure),
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.write_failures = None;
+                    break;
+                }
+            }
+        }
+        // Units is the only domain an adapter saves so far; later ones join here.
+        for failure in failed {
+            if !failure.domains.contains(&Domain::Units) {
+                continue;
+            }
+            tracing::warn!(error = %failure.error, "A Units write failed; reloading the Units");
+            let text = match self.units.ports.borrow_mut().reload() {
+                Ok(()) => crate::msg::tui_toast_write_failed_units(),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to reload the Units after a failed write");
+                    crate::msg::tui_toast_write_failed_units_unsaved()
+                }
+            };
+            self.raise_toast(ToastKind::Error, text);
+        }
+    }
+
     /// Whether any popup is open: the view behind is inert and Toast timers pause.
     fn popup_open(&self) -> bool {
         self.command_popup.is_some()
-            || self.unit_popup.is_some()
+            || self.view.dialog_open()
             || self.category_popup.is_some()
             || self.settings_popup.is_some()
             || self.account_popup.is_some()
@@ -281,9 +327,8 @@ impl Shell {
     /// binding (`?` by default) opens the placeholder Help view, the configured `back` binding
     /// (`Esc` by default) pops the view-navigation stack ([`Action::PopView`]), `Q` (shift)
     /// quits, `q` (lowercase) also quits via its own [`Action::GracefulQuit`], a lone `g` arms
-    /// the leader, and anything left falls to the active view's own `handle_key` (which is how
-    /// the Units view's own `n`/`e`/`d` reach [`Action::OpenNewUnitPopup`]/
-    /// [`Action::OpenEditUnitPopup`]/[`Action::OpenDeleteUnitPopup`]). `quit`, unlike the other
+    /// the leader, and anything left falls to the active view's own `handle_key`. A view with a
+    /// Dialog open (the Units View's) takes every key but `Ctrl+C`, as a popup does. `quit`, unlike the other
     /// three, is deliberately not part of `self.keybindings` at all (`docs/navigation-design.md`'s own
     /// "Quit" section) — `Ctrl+C`/`Q`/`q` stay hardcoded. `Event::Resize` never reaches here —
     /// `run` intercepts it directly to clear the terminal, since that's a `Tui`-level concern
@@ -316,8 +361,8 @@ impl Shell {
                     }
                     return self.map_command_popup_key(key);
                 }
-                if self.unit_popup.is_some() {
-                    return map_unit_popup_key(key);
+                if self.view.dialog_open() {
+                    return self.view.handle_key(key);
                 }
                 if self.category_popup.is_some() {
                     return self.map_category_popup_key(key);
@@ -1122,6 +1167,7 @@ impl Shell {
                     self.toasts.resume();
                 }
                 self.toasts.advance(TICK_RATE);
+                self.roll_back_failed_writes();
                 self.view.update(&action);
             }
             Action::DismissNewestToast => {
@@ -1193,22 +1239,10 @@ impl Shell {
                     self.view = previous;
                 }
             }
-            Action::OpenNewUnitPopup => {
-                self.unit_popup = Some(UnitPopup::New(NewUnitPopup::new()));
-                self.command_popup = None;
+            Action::OpenNewUnitPopup | Action::OpenEditUnitPopup | Action::OpenDeleteUnitPopup => {
+                self.open(UnitsView::new(&self.units));
+                self.view.update(&action);
             }
-            Action::OpenEditUnitPopup => {
-                self.unit_popup = Some(UnitPopup::Edit(EditUnitPopup::new()));
-                self.command_popup = None;
-            }
-            Action::OpenDeleteUnitPopup => {
-                // Always the refused (§4d) variant for now — no reference-count resolution is
-                // wired up yet to pick between it and `DeleteUnitPopup::allowed` (see
-                // `popup::unit::delete`'s own module doc).
-                self.unit_popup = Some(UnitPopup::Delete(DeleteUnitPopup::refused()));
-                self.command_popup = None;
-            }
-            Action::CloseUnitPopup => self.unit_popup = None,
             Action::OpenEditSettingPopup => {
                 self.settings_popup = Some(SettingsPopup::Edit(EditSettingPopup::new()));
                 self.command_popup = None;
@@ -1241,7 +1275,7 @@ impl Shell {
                     self.set_colour_preference(popup.original());
                 }
             }
-            Action::OpenUnits => self.open(UnitsView::new()),
+            Action::OpenUnits => self.open(UnitsView::new(&self.units)),
             Action::OpenDashboard => self.open(DashboardView::new()),
             // Both land on the Dashboard, which is what the flag changes, and clear the view
             // stack the way opening it always does.
@@ -1272,7 +1306,6 @@ impl Shell {
                     self.category_popup = Some(CategoryPopup::Move(MovePopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.settings_popup = None;
             }
             Action::CloseCategoryPopup => self.category_popup = None,
@@ -1308,7 +1341,6 @@ impl Shell {
                     self.category_popup = Some(CategoryPopup::New(NewPopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.settings_popup = None;
             }
             Action::CategoryNewPopupInput(c) => {
@@ -1341,7 +1373,6 @@ impl Shell {
                     self.category_popup = Some(CategoryPopup::Edit(EditPopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.settings_popup = None;
             }
             Action::CategoryEditPopupInput(c) => {
@@ -1375,7 +1406,6 @@ impl Shell {
             Action::OpenAccountNewPopup => {
                 self.account_popup = Some(AccountPopup::New(NewAccountPopup::new()));
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
             }
@@ -1420,7 +1450,6 @@ impl Shell {
                     self.account_popup = Some(AccountPopup::Edit(EditAccountPopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
             }
@@ -1459,7 +1488,6 @@ impl Shell {
                         Some(AccountPopup::Delete(DeleteAccountPopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
             }
@@ -1491,7 +1519,6 @@ impl Shell {
             Action::OpenTagNewPopup => {
                 self.tag_popup = Some(TagPopup::New(NewTagPopup::new()));
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1525,7 +1552,6 @@ impl Shell {
                     self.tag_popup = Some(TagPopup::Edit(EditTagPopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1556,7 +1582,6 @@ impl Shell {
             Action::OpenPayeeNewPopup => {
                 self.payee_popup = Some(PayeePopup::New(NewPayeePopup::new()));
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1593,7 +1618,6 @@ impl Shell {
                     self.payee_popup = Some(PayeePopup::Edit(EditPayeePopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1623,7 +1647,6 @@ impl Shell {
             Action::OpenPayeeMatchesPopup(id) => {
                 self.payee_popup = Some(PayeePopup::Matches(PayeeMatchesPopup::new(id)));
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1698,7 +1721,6 @@ impl Shell {
                     self.payee_popup = Some(PayeePopup::Delete(DeletePayeePopup::new(store, id)));
                 }
                 self.command_popup = None;
-                self.unit_popup = None;
                 self.category_popup = None;
                 self.settings_popup = None;
                 self.account_popup = None;
@@ -1746,7 +1768,6 @@ impl Shell {
 
         if view.id() == self.view.id() {
             self.command_popup = None;
-            self.unit_popup = None;
             self.category_popup = None;
             self.settings_popup = None;
             return;
@@ -1763,7 +1784,6 @@ impl Shell {
         }
 
         self.command_popup = None;
-        self.unit_popup = None;
         self.category_popup = None;
         self.settings_popup = None;
         self.account_popup = None;
@@ -1806,7 +1826,7 @@ impl Shell {
             .split(frame.area());
 
         let command_popup_open = self.command_popup.is_some();
-        let unit_popup_open = self.unit_popup.is_some();
+        let unit_dialog_open = self.view.dialog_open();
         let category_popup_open = self.category_popup.is_some();
         let edit_setting_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Edit(_)));
         let base_unit_guard_popup_open =
@@ -1828,7 +1848,7 @@ impl Shell {
         // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
             Some(crate::msg::tui_mode_command())
-        } else if unit_popup_open
+        } else if unit_dialog_open
             || category_popup_open
             || account_popup_open
             || tag_popup_open
@@ -1883,7 +1903,7 @@ impl Shell {
         // Generic across every form variant — the Category popup's Move/New/Edit share one
         // hint, as the unit form's own footer already did, rather than tailoring the wording
         // per variant.
-        let close_form_noun = if unit_popup_open {
+        let close_form_noun = if unit_dialog_open {
             Some(crate::msg::tui_form_noun_unit())
         } else if category_popup_open {
             Some(crate::msg::tui_form_noun_category())
@@ -1973,9 +1993,9 @@ impl Shell {
         if let Some(popup) = &self.command_popup {
             frame.render_widget(Dim, rows[1]);
             popup.render(frame, frame.area(), c);
-        } else if let Some(popup) = &self.unit_popup {
+        } else if unit_dialog_open {
             frame.render_widget(Dim, rows[1]);
-            popup.render(frame, frame.area(), c);
+            self.view.render_dialog(frame, frame.area(), c);
         } else if let Some(popup) = &self.category_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.category_store() {
@@ -2124,21 +2144,8 @@ fn is_graceful_quit(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('q'))
 }
 
-/// Routes a key while a unit form (new, edit or delete) is open. Only `Esc` does anything yet — no
-/// field is editable until each form's fields land (`docs/ux/tui-mockups/07-units/README.md` §4b/§4c);
-/// every other key is swallowed, since the popup owns every key while it's up (mirroring
-/// `Shell::map_command_popup_key`). A free function rather than a method — unlike the command
-/// popup, there's no draft state yet to consult, and `Esc` behaves the same regardless of
-/// which form is open.
-fn map_unit_popup_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        KeyCode::Esc => Some(Action::CloseUnitPopup),
-        _ => None,
-    }
-}
-
 /// Routes a key while a settings popup (the §4b editor or the §4c guard) is open. Only `Esc`
-/// does anything yet, mirroring [`map_unit_popup_key`] — no field is editable and nothing
+/// does anything yet — no field is editable and nothing
 /// commits until the settings registry lands.
 fn map_settings_popup_key(key: KeyEvent) -> Option<Action> {
     match key.code {
@@ -3588,10 +3595,11 @@ mod tests {
     }
 
     #[test]
-    fn n_on_the_units_view_opens_the_new_unit_popup() {
+    fn n_on_the_units_view_opens_a_units_dialog() {
+        crate::locale::init_for_tests();
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert!(shell.unit_popup.is_none());
+        assert!(!shell.view.dialog_open());
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
@@ -3601,99 +3609,65 @@ mod tests {
             .expect("n on the units view always maps to an action");
         shell.update(action);
 
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
+        assert!(shell.view.dialog_open());
+        assert!(shell.popup_open(), "an open Dialog counts as a popup");
     }
 
     #[test]
-    fn e_on_the_units_view_opens_the_edit_unit_popup() {
-        let mut shell = Shell::new();
-        shell.update(Action::OpenUnits);
-        assert!(shell.unit_popup.is_none());
-
-        let action = shell
-            .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Char('e'),
-                KeyModifiers::NONE,
-            )))
-            .expect("e on the units view always maps to an action");
-        shell.update(action);
-
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
-    }
-
-    #[test]
-    fn d_on_the_units_view_opens_the_delete_unit_popup() {
-        let mut shell = Shell::new();
-        shell.update(Action::OpenUnits);
-        assert!(shell.unit_popup.is_none());
-
-        let action = shell
-            .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Char('d'),
-                KeyModifiers::NONE,
-            )))
-            .expect("d on the units view always maps to an action");
-        shell.update(action);
-
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
-    }
-
-    #[test]
-    fn esc_closes_an_open_unit_popup() {
+    fn esc_closes_an_open_units_dialog() {
+        crate::locale::init_for_tests();
         for open in [
             Action::OpenNewUnitPopup,
             Action::OpenEditUnitPopup,
             Action::OpenDeleteUnitPopup,
         ] {
             let mut shell = Shell::new();
-            shell.update(open);
+            shell.update(open.clone());
+            assert!(shell.view.dialog_open(), "{open:?} opens a Dialog");
 
             let action = shell
                 .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
                 .expect("esc while open always maps to an action");
             shell.update(action);
 
-            assert!(shell.unit_popup.is_none());
+            assert!(!shell.view.dialog_open());
+            assert_eq!(
+                shell.view.id(),
+                ViewId::Units,
+                "Esc closed the Dialog, not the view"
+            );
         }
     }
 
     #[test]
-    fn other_keys_are_swallowed_while_a_unit_popup_is_open() {
+    fn an_open_units_dialog_takes_the_shells_global_keys() {
+        crate::locale::init_for_tests();
         let mut shell = Shell::new();
         shell.update(Action::OpenNewUnitPopup);
 
-        let action = shell.map_event(Event::Key(KeyEvent::new(
-            KeyCode::Char('n'),
-            KeyModifiers::NONE,
-        )));
-        assert_eq!(action, None);
+        for key in ['q', ':', '?', 'g'] {
+            let action = shell.map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char(key),
+                KeyModifiers::NONE,
+            )));
+            assert_eq!(action, Some(Action::NoOp), "{key} is typed into the Dialog");
+        }
+        assert!(!shell.should_quit);
+        assert!(shell.command_popup.is_none());
+        assert!(shell.view.dialog_open());
     }
 
     #[test]
-    fn opening_a_unit_popup_closes_an_open_command_popup() {
+    fn opening_a_units_dialog_closes_an_open_command_popup() {
+        crate::locale::init_for_tests();
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
         assert!(shell.command_popup.is_some());
 
         shell.update(Action::OpenNewUnitPopup);
 
-        assert!(shell.unit_popup.is_some());
+        assert!(shell.view.dialog_open());
         assert!(shell.command_popup.is_none());
-    }
-
-    #[test]
-    fn opening_a_unit_popup_replaces_any_other_open_unit_popup() {
-        let mut shell = Shell::new();
-        shell.update(Action::OpenNewUnitPopup);
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
-
-        shell.update(Action::OpenEditUnitPopup);
-
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
-
-        shell.update(Action::OpenDeleteUnitPopup);
-
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
     }
 
     #[test]
@@ -3866,7 +3840,7 @@ mod tests {
             .expect("enter on the `unit new` command always maps to an action");
         shell.update(action);
 
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
+        assert!(shell.view.dialog_open());
         assert!(shell.command_popup.is_none());
     }
 
@@ -3892,7 +3866,7 @@ mod tests {
             .expect("enter on the `unit edit` command always maps to an action");
         shell.update(action);
 
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
+        assert!(shell.view.dialog_open());
         assert!(shell.command_popup.is_none());
     }
 
@@ -3918,7 +3892,7 @@ mod tests {
             .expect("enter on the `unit delete` command always maps to an action");
         shell.update(action);
 
-        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
+        assert!(shell.view.dialog_open());
         assert!(shell.command_popup.is_none());
     }
 

@@ -15,7 +15,6 @@ pub mod payee;
 pub mod settings;
 pub mod tag;
 pub mod toast_history;
-pub mod unit;
 
 use ratatui::{
     layout::Rect,

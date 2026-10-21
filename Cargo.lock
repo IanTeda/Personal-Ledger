@@ -782,7 +782,6 @@ name = "bin_tui"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
- "chandelier",
  "chrono",
  "clap",
  "crossterm",
@@ -791,14 +790,18 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_database",
+ "lib_ledger",
+ "lib_list_cursor",
  "lib_locale",
  "lib_locale_build",
  "lib_toast",
  "lib_tracing",
+ "lib_units",
  "ratatui",
  "regex",
  "rustix 1.1.4",
- "sqlx",
+ "secrecy",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -1198,16 +1201,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "chandelier"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a002097404eea1eb31538d1c028962fc66f620e124b3c5cf7acbfc41242ebfe"
-dependencies = [
- "ratatui-core",
- "ratatui-widgets",
 ]
 
 [[package]]

@@ -23,9 +23,13 @@ lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
+# The stub Ledger answers the Units' usage and holdings until those domains persist (#746).
+lib_ledger = { path = "../../libs/lib-ledger" }
+lib_list_cursor = { path = "../../libs/lib-list-cursor" }
 lib_locale = { path = "../../libs/lib-locale" }
 lib_toast = { path = "../../libs/lib-toast" }
 lib_tracing = { path = "../../libs/lib-tracing" }
+lib_units = { path = "../../libs/lib-units" }
 
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
@@ -33,14 +37,13 @@ chrono = { workspace = true }
 clap = { workspace = true }
 futures-util = { workspace = true }
 regex = { workspace = true }
-sqlx = { workspace = true }
+secrecy = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 
 ## -- Crate Dependencies --
-chandelier = { version = "0.4.0" }
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 ratatui = { version = "0.30.2" }
 tui-box-text = { version = "0.3.4" }
@@ -49,6 +52,10 @@ tui-piechart = { version = "1.0.2" }
 # Polls stdin with a timeout for the start-up terminal colour probe (`detect.rs`), safely.
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1.4", features = ["event"] }
+
+[dev-dependencies]
+# The Units persistence test opens a real Ledger file in a throwaway directory.
+tempfile = { workspace = true }
 
 [build-dependencies]
 lib_locale_build = { path = "../../libs/lib-locale-build" }
