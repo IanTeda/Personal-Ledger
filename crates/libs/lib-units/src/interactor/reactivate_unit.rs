@@ -1,0 +1,56 @@
+use lib_core::UnitId;
+
+use crate::UnitRow;
+use crate::interactor::UnitGone;
+use crate::protocols::UnitRepository;
+
+/// Reactivate a deactivated Unit, so it is offered to pick again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReactivateUnit(pub UnitId);
+
+impl ReactivateUnit {
+    /// Returns the Unit as written.
+    pub fn run(self, units: &mut dyn UnitRepository) -> Result<UnitRow, UnitGone> {
+        let mut unit = units.unit(self.0).ok_or(UnitGone)?;
+        unit.is_active = true;
+        units.upsert_unit(unit.clone());
+        Ok(unit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::*;
+    use crate::fake::InMemoryPorts;
+    use crate::interactor::DeactivateUnit;
+
+    #[test]
+    fn reactivating_a_deactivated_unit_puts_it_back_as_it_was() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+        let before = ports.clone();
+        DeactivateUnit(UnitId::SEED_BTC)
+            .run(&mut ports.units, &ports.base_unit)
+            .unwrap();
+
+        let unit = ReactivateUnit(UnitId::SEED_BTC)
+            .run(&mut ports.units)
+            .unwrap();
+
+        assert!(unit.is_active);
+        assert_eq!(ports, before);
+    }
+
+    #[test]
+    fn reactivating_a_unit_that_is_gone_is_refused_and_nothing_is_written() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+        let before = ports.clone();
+
+        assert_eq!(
+            ReactivateUnit(UnitId::new()).run(&mut ports.units),
+            Err(UnitGone)
+        );
+        assert_eq!(ports, before);
+    }
+}

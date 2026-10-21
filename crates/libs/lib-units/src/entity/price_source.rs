@@ -234,6 +234,11 @@ pub fn price_sources<'a>(
     sources
 }
 
+/// Whether a Unit can link to source `id`: Manual entry, a built-in or a stored Custom source.
+pub fn price_source_exists(records: &[PriceSourceRecord], id: PriceSourceId) -> bool {
+    id == MANUAL_ENTRY || built_in(id).is_some() || records.iter().any(|record| record.id() == id)
+}
+
 /// The source `id`, if it exists.
 pub fn price_source<'a>(
     records: &'a [PriceSourceRecord],
@@ -344,7 +349,7 @@ pub fn move_units_to_manual(units: &mut [UnitRow], id: PriceSourceId) -> Vec<Uni
         .iter_mut()
         .filter(|unit| unit.link.source_id == id)
         .map(|unit| {
-            unit.link.source_id = MANUAL_ENTRY;
+            unit.move_to_manual();
             unit.clone()
         })
         .collect()

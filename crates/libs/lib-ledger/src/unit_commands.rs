@@ -6,9 +6,8 @@
 //! on it alone. The Price Source writes are in `price_source_commands`.
 
 use lib_core::{PriceSourceId, UnitId};
-use lib_units::{
-    MANUAL_ENTRY, PriceLink, UnitKind, UnitRow, add_unit, edit_unit, remove_unit, set_unit_active,
-};
+pub use lib_units::UnitUse;
+use lib_units::{PriceLink, UnitKind, UnitRow, add_unit, edit_unit, remove_unit, set_unit_active};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -17,20 +16,6 @@ use crate::{Ledger, LedgerChange, LedgerCommand};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("unit not found")]
 pub struct UnitGone;
-
-/// How many rows name a Unit, so a Dialog can offer Delete or only Deactivate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UnitUse {
-    pub accounts: usize,
-    pub bill_plans: usize,
-    pub budgets: usize,
-}
-
-impl UnitUse {
-    pub fn is_used(self) -> bool {
-        self.accounts + self.bill_plans + self.budgets > 0
-    }
-}
 
 /// Why an add, edit or delete of a Unit was refused. The first two only happen when something was
 /// removed while the Dialog was open; `UnitInUse` is a delete of a Unit that something names, which
@@ -198,10 +183,7 @@ impl Ledger {
     /// Refuses a link to a Price Source that is neither Manual entry, a built-in nor a stored Custom
     /// source.
     fn check_price_source(&self, id: PriceSourceId) -> Result<(), SaveUnitRefusal> {
-        let exists = id == MANUAL_ENTRY
-            || lib_units::built_in(id).is_some()
-            || self.price_sources.iter().any(|record| record.id() == id);
-        if exists {
+        if lib_units::price_source_exists(&self.price_sources, id) {
             Ok(())
         } else {
             Err(SaveUnitRefusal::PriceSourceGone)

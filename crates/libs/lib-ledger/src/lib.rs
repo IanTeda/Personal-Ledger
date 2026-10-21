@@ -20,6 +20,7 @@ pub mod seed;
 mod tag_commands;
 mod transaction_commands;
 mod unit_commands;
+mod unit_usage;
 
 pub use account_commands::{
     AccountDeleted, AddAccount, CountImportedTransactions, DeleteAccount, EditAccount,

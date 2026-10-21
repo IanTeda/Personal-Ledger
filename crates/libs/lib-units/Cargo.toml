@@ -17,6 +17,7 @@ lib_core = { path = "../lib-core" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
