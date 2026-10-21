@@ -588,6 +588,36 @@ mod tests {
             }
             fresh
         }
+
+        fn commit(&mut self, ports: &mut UnitsAdapter) {
+            ports.commit();
+        }
+
+        fn break_writes(&mut self, _ports: &mut UnitsAdapter) {
+            self.writer
+                .run(|pool| async move {
+                    sqlx::query(
+                        "CREATE TRIGGER refuse_units BEFORE INSERT ON units
+                         BEGIN SELECT RAISE(ABORT, 'writes are refused'); END",
+                    )
+                    .execute(&pool)
+                    .await?;
+                    Ok(())
+                })
+                .expect("the trigger is created");
+        }
+
+        fn recover(&mut self, mut ports: UnitsAdapter) -> (UnitsAdapter, usize) {
+            self.writer.flush().expect("the writer is running");
+            let mut failures = 0;
+            while let Ok(failure) = self.failures.try_recv() {
+                if failure.domains == [Domain::Units] {
+                    failures += 1;
+                }
+            }
+            ports.reload().expect("the rows load");
+            (ports, failures)
+        }
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -615,6 +645,16 @@ mod tests {
         );
     }
 
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_failed_write_reloads_and_reports(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::a_failed_write_reloads_and_reports(&mut AdapterFactory::new(options));
+    }
+
+    /// The contract covers one refused write; what it can't reach is the adapter's writer
+    /// dropping the writes queued behind the failed one, held back here by a gate.
     #[sqlx::test(migrations = "migrations/client")]
     async fn a_failed_write_drops_the_queued_writes_and_the_adapter_reloads(
         _: SqlitePoolOptions,

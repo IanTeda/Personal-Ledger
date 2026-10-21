@@ -35,6 +35,17 @@ pub trait PortsFactory {
     /// Ends the Interactor calls made on `ports`, then loads a fresh set from wherever they were
     /// stored, as a restart would.
     fn reload(&mut self, ports: Self::Ports) -> Self::Ports;
+
+    /// Ends one Interactor call made on `ports`, sending its changes to storage as an adapter's
+    /// owner does after each call.
+    fn commit(&mut self, ports: &mut Self::Ports);
+
+    /// Makes every write from now on fail, as a store that refuses it would.
+    fn break_writes(&mut self, ports: &mut Self::Ports);
+
+    /// Settles the writes sent so far, then returns `ports` reloaded to the last committed rows,
+    /// with the number of failures reported naming the Units domain.
+    fn recover(&mut self, ports: Self::Ports) -> (Self::Ports, usize);
 }
 
 impl StoredPorts for InMemoryPorts {
@@ -48,19 +59,43 @@ impl StoredPorts for InMemoryPorts {
     }
 }
 
-/// The in-memory ports are their own storage, so a reload hands them back as they are.
+/// The in-memory ports are their own storage, so a reload hands them back as they are. It keeps
+/// a copy as of the last commit, which a failed write falls back to.
 #[derive(Debug, Default)]
-pub struct InMemoryFactory;
+pub struct InMemoryFactory {
+    committed: Option<InMemoryPorts>,
+    broken: bool,
+    failures: usize,
+}
 
 impl PortsFactory for InMemoryFactory {
     type Ports = InMemoryPorts;
 
     fn create(&mut self, seed: InMemoryPorts) -> InMemoryPorts {
+        self.committed = Some(seed.clone());
         seed
     }
 
-    fn reload(&mut self, ports: InMemoryPorts) -> InMemoryPorts {
+    fn reload(&mut self, mut ports: InMemoryPorts) -> InMemoryPorts {
+        self.commit(&mut ports);
         ports
+    }
+
+    fn commit(&mut self, ports: &mut InMemoryPorts) {
+        if self.broken {
+            self.failures += 1;
+        } else {
+            self.committed = Some(ports.clone());
+        }
+    }
+
+    fn break_writes(&mut self, _ports: &mut InMemoryPorts) {
+        self.broken = true;
+    }
+
+    fn recover(&mut self, _ports: InMemoryPorts) -> (InMemoryPorts, usize) {
+        let committed = self.committed.clone().expect("create ran first");
+        (committed, std::mem::take(&mut self.failures))
     }
 }
 
@@ -240,22 +275,48 @@ pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>
     assert_eq!(gold.link.symbol, "gold", "a moved Unit keeps its symbol");
 }
 
+/// A write that fails is reported once, naming the Units domain, and the ports go back to the last
+/// committed rows rather than keeping the change the store refused.
+pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
+    let usage = InMemoryUnitUsage::default();
+    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let stored = snapshot(&mut ports);
+
+    factory.break_writes(&mut ports);
+    add_unit(
+        ports.split_mut(&usage),
+        "eur",
+        UnitKind::Currency,
+        PriceLink::manual(UnitId::SEED_AUD),
+    );
+    factory.commit(&mut ports);
+
+    let (mut ports, failures) = factory.recover(ports);
+    assert_eq!(failures, 1, "one failure naming the Units domain");
+    assert_eq!(snapshot(&mut ports), stored, "the refused write is gone");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn in_memory_written_rows_reload_the_same() {
-        written_rows_reload_the_same(&mut InMemoryFactory);
+        written_rows_reload_the_same(&mut InMemoryFactory::default());
     }
 
     #[test]
     fn in_memory_deleting_the_base_unit_with_a_move_lands_in_order() {
-        deleting_the_base_unit_with_a_move_lands_in_order(&mut InMemoryFactory);
+        deleting_the_base_unit_with_a_move_lands_in_order(&mut InMemoryFactory::default());
     }
 
     #[test]
     fn in_memory_deleting_a_custom_source_moves_its_units_to_manual_entry() {
-        deleting_a_custom_source_moves_its_units_to_manual_entry(&mut InMemoryFactory);
+        deleting_a_custom_source_moves_its_units_to_manual_entry(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_failed_write_reloads_and_reports() {
+        a_failed_write_reloads_and_reports(&mut InMemoryFactory::default());
     }
 }
