@@ -47,18 +47,9 @@ date.format("%Y-%m-%d")
 
 ## Database persistence
 
-Split CRUD by operation: each entity gets `find.rs`, `insert.rs`, `update.rs`, `delete.rs`, `builder.rs` (for complex construction), and `model.rs` (the domain type). No `SELECT *` — list columns explicitly.
+A migrated domain's adapter is one file, `crates/libs/lib-database/src/adapter/<domain>.rs` (ADR-0041): it implements the module's ports, holds the domain's rows in memory and sends writes to the one shared writer, `writer.rs` (ADR-0046). `adapter/units.rs` is the model. Don't add per-entity `find.rs`/`insert.rs`/`update.rs`/`delete.rs` directories; the remaining ones predate the migration. No `SELECT *` — list columns explicitly.
 
-Example structure:
-```
-crates/libs/lib-database/src/accounts/
-  ├── find.rs       (find_by_id, find_all)
-  ├── insert.rs     (insert)
-  ├── update.rs     (update)
-  ├── delete.rs     (delete)
-  ├── builder.rs    (AccountBuilder)
-  └── model.rs      (Account type)
-```
+How commits, reloads and write failures work is in the Persistence section of `docs/development/viper-architecture.md`; follow it there rather than restating it here.
 
 ## Secrets and sensitive data
 
@@ -87,7 +78,7 @@ let token: SecretString = api_response.token.into();
 
 ## Patterns
 
-**Builder pattern:** For complex construction (especially with optional fields). Use `builder.rs` for the builder struct.
+**Builder pattern:** For complex construction (especially with optional fields).
 
 **Mock helpers in tests:** Gate behind `#[cfg(test)]` or document invariants in the `expect` message. For test fixtures of literal dates, a small helper (returning `Result` or built via `const`) is preferred over dozens of repeated `expect("valid date")`.
 

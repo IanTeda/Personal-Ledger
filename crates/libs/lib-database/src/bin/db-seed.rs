@@ -1,5 +1,5 @@
-//! `mise run db-seed`: writes the stub seed, and generated Units on top, into the migrated dev database named by the path in
-//! argument one. The task drops, creates and migrates it first; this only writes rows.
+//! `mise run db-seed`: adds the stub seed, and generated Units on top, to the already-migrated dev database named by the
+//! path in argument one. It never drops or migrates the database, and it is idempotent: running it again leaves the same rows.
 
 use std::process::ExitCode;
 
