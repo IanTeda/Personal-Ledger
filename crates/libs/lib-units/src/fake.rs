@@ -1,11 +1,16 @@
 //! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
-//! field so a test can set up or read state directly.
+//! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
+//! records what it was asked.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
+use lib_toast::ToastKind;
 
+use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
     UnitUsage, UnitUse, default_units,
@@ -102,6 +107,84 @@ impl InMemoryPorts {
             base_unit: InMemoryBaseUnit(UnitId::SEED_AUD),
             usage: InMemoryUnitUsage::default(),
         }
+    }
+}
+
+impl InMemoryPorts {
+    /// These ports as the Presenters share them, with the handle a test keeps to read them back.
+    pub fn shared(self) -> (Rc<RefCell<Self>>, SharedPorts) {
+        let ports = Rc::new(RefCell::new(self));
+        let shared: SharedPorts = ports.clone();
+        (ports, shared)
+    }
+}
+
+impl UnitsPorts for InMemoryPorts {
+    fn units(&self) -> &dyn UnitRepository {
+        &self.units
+    }
+
+    fn price_sources(&self) -> &dyn PriceSourceRepository {
+        &self.price_sources
+    }
+
+    fn base_unit(&self) -> &dyn BaseUnitRepository {
+        &self.base_unit
+    }
+
+    fn usage(&self) -> &dyn UnitUsage {
+        &self.usage
+    }
+
+    fn split_mut(&mut self) -> PortsMut<'_> {
+        PortsMut {
+            units: &mut self.units,
+            price_sources: &mut self.price_sources,
+            base_unit: &mut self.base_unit,
+            usage: &self.usage,
+        }
+    }
+}
+
+/// One request a Presenter made of its Router.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterCall {
+    OpenDialog(UnitsDialog),
+    CloseDialog(Option<UnitsOutcome>),
+    RaiseToast(ToastKind, String),
+    SetStatus(String),
+}
+
+/// A Router that does nothing but record each call, in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingRouter {
+    pub calls: Vec<RouterCall>,
+}
+
+impl RecordingRouter {
+    /// The calls made since the last `take`.
+    pub fn take(&mut self) -> Vec<RouterCall> {
+        std::mem::take(&mut self.calls)
+    }
+}
+
+impl UnitsRouter for RecordingRouter {
+    /// Always opens: the recording Router builds no Presenter that could fail.
+    fn open_dialog(&mut self, dialog: UnitsDialog) -> bool {
+        self.calls.push(RouterCall::OpenDialog(dialog));
+        true
+    }
+
+    fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+
+    fn raise_toast(&mut self, kind: ToastKind, text: String) {
+        self.calls.push(RouterCall::RaiseToast(kind, text));
+    }
+
+    fn set_status(&mut self, text: String) {
+        self.calls.push(RouterCall::SetStatus(text));
     }
 }
 

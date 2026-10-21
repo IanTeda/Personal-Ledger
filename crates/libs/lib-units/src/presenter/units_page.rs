@@ -1,0 +1,1069 @@
+//! The Units Settings page: the Units table above the Price Sources table, one row selected
+//! across both, the row menu, and where a confirmed Dialog's outcome lands (a Toast, or ACTIVITY
+//! while the detail pane is docked).
+
+use chrono::Local;
+use lib_core::{PriceSourceId, UnitId};
+use lib_list_cursor::{Step, resolve, step_id};
+use lib_locale::Label as _;
+use lib_toast::ToastKind;
+
+use super::{Clock, UnitsOutcome, ago};
+use crate::interactor::ReactivateUnit;
+use crate::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, NEXT_TABLE, TEST_SOURCE};
+use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
+use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, price_sources};
+
+/// A row of either table. One is selected at a time, the Units drawn above the Price Sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitsRow {
+    Unit(UnitId),
+    Source(PriceSourceId),
+}
+
+/// What a listed Price Source is, which decides the actions its row offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceKind {
+    /// Neither edited nor deleted: it is the fallback every Unit can sit on.
+    ManualEntry,
+    /// Renamed and retimed, never deleted.
+    BuiltIn,
+    Custom,
+}
+
+impl SourceKind {
+    fn of(source: &PriceSource<'_>) -> Self {
+        match source.origin {
+            SourceOrigin::ManualEntry => Self::ManualEntry,
+            SourceOrigin::BuiltIn(_) => Self::BuiltIn,
+            SourceOrigin::Custom(_) => Self::Custom,
+        }
+    }
+}
+
+/// An action a row offers, in its menu and through its keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    EditUnit,
+    ReactivateUnit,
+    DeleteUnit,
+    TestSource,
+    EditSource,
+    DeleteSource,
+}
+
+impl MenuAction {
+    /// A row's actions in menu order, the destructive one last. A deactivated Unit offers
+    /// Reactivate, since it is hidden from the pickers until then; Manual entry offers nothing and
+    /// a built-in no Delete.
+    fn for_row(row: Row<'_>) -> &'static [Self] {
+        match row {
+            Row::Unit(unit) if !unit.is_active => {
+                &[Self::EditUnit, Self::ReactivateUnit, Self::DeleteUnit]
+            }
+            Row::Unit(_) => &[Self::EditUnit, Self::DeleteUnit],
+            Row::Source(_, SourceKind::Custom) => {
+                &[Self::TestSource, Self::EditSource, Self::DeleteSource]
+            }
+            Row::Source(_, SourceKind::BuiltIn) => &[Self::TestSource, Self::EditSource],
+            Row::Source(_, SourceKind::ManualEntry) => &[],
+        }
+    }
+
+    fn label(self) -> String {
+        match self {
+            Self::EditUnit => msg::units_menu_edit_unit(),
+            Self::ReactivateUnit => msg::units_menu_reactivate_unit(),
+            Self::DeleteUnit => msg::units_menu_delete_unit(),
+            Self::TestSource => msg::units_menu_test_source(),
+            Self::EditSource => msg::units_menu_edit_source(),
+            Self::DeleteSource => msg::units_menu_delete_source(),
+        }
+    }
+
+    fn entry(self) -> MenuEntry {
+        MenuEntry {
+            action: self,
+            label: self.label(),
+            destructive: matches!(self, Self::DeleteUnit | Self::DeleteSource),
+        }
+    }
+}
+
+/// A row as the rules about its actions see it.
+#[derive(Debug, Clone, Copy)]
+enum Row<'a> {
+    Unit(&'a UnitRow),
+    Source(PriceSourceId, SourceKind),
+}
+
+/// What the page is told.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnitsPageEvent {
+    /// `j`/`k`, `g g`, `G`, `Ctrl-d`/`Ctrl-u`: both tables walked as one list.
+    Move(Step),
+    /// `Tab`: the other table's last-selected row, or its first.
+    NextTable,
+    /// A click on a row.
+    Select(UnitsRow),
+    /// A double-click on a row: selects it and opens its Edit Dialog.
+    Activate(UnitsRow),
+    /// New, Edit, Delete, Reactivate and Test act on the selected row's table.
+    New,
+    Edit,
+    Delete,
+    Reactivate,
+    Test,
+    SetBase,
+    /// A right-click on a row. A row with no actions opens no menu.
+    OpenMenu(UnitsRow),
+    CloseMenu,
+    /// An entry of the open menu.
+    Menu(MenuAction),
+    /// Whether the detail pane is docked (X-Large), which sends outcomes to ACTIVITY.
+    SetDocked(bool),
+    /// The open Dialog closed, with what its confirm did or `None` when cancelled.
+    DialogClosed(Option<UnitsOutcome>),
+}
+
+/// The page as drawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitsPageViewModel {
+    /// The heading's meta: `3 units · synced`.
+    pub scope: String,
+    pub unit_columns: UnitColumns,
+    pub units: Vec<UnitLine>,
+    pub price_sources_heading: String,
+    pub source_columns: SourceColumns,
+    pub price_sources: Vec<SourceLine>,
+    /// The legend under the Units table for the ◆ that marks the base Unit.
+    pub base_legend: String,
+    /// The status-line legend for the selected row's table, as `(chord, action)`.
+    pub hints: Vec<Hint>,
+    /// What the selected row offers, for the detail pane's buttons.
+    pub selected_actions: Vec<MenuEntry>,
+    pub menu: Option<RowMenu>,
+    pub docked: bool,
+    /// This session's outcomes, newest first, while docked.
+    pub activity: Vec<ActivityLine>,
+    pub open_dialog: Option<UnitsDialog>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitColumns {
+    pub code: String,
+    pub name: String,
+    pub kind: String,
+    pub price_source: String,
+    pub flags: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceColumns {
+    pub name: String,
+    pub source: String,
+    pub last_updated: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitLine {
+    pub id: UnitId,
+    pub code: String,
+    pub name: String,
+    /// The Unit Kind's label.
+    pub kind: String,
+    /// The name of the Price Source the Unit's link names; empty when it is gone.
+    pub price_source: String,
+    pub is_base: bool,
+    /// `base` for the base Unit.
+    pub base_flag: Option<String>,
+    /// `inactive` for a deactivated Unit, which is drawn dimmed.
+    pub inactive_tag: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLine {
+    pub id: PriceSourceId,
+    pub kind: SourceKind,
+    pub name: String,
+    /// The address it fetches from, or — for Manual entry.
+    pub address: String,
+    /// How long ago it last fetched, `Not fetched yet`, or — for Manual entry.
+    pub last_updated: String,
+    /// Whether it fetches but has not yet, which draws a muted ✗ before LAST UPDATED.
+    pub not_fetched: bool,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hint {
+    pub chord: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuEntry {
+    pub action: MenuAction,
+    pub label: String,
+    pub destructive: bool,
+}
+
+/// The menu open on a row, its entries in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowMenu {
+    pub row: UnitsRow,
+    pub entries: Vec<MenuEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityLine {
+    /// The local time it landed, `HH:MM`.
+    pub time: String,
+    pub text: String,
+}
+
+pub struct UnitsPagePresenter {
+    ports: SharedPorts,
+    clock: Clock,
+    keymap: Keymap<UnitsPageEvent>,
+    /// It may name a row that is gone, so it is read through [`Self::selection`].
+    selected: Option<UnitsRow>,
+    /// Each table's last-selected row, which `Tab` returns to. Either may be gone.
+    last_unit: Option<UnitId>,
+    last_source: Option<PriceSourceId>,
+    menu: Option<UnitsRow>,
+    docked: bool,
+    activity: Vec<ActivityLine>,
+    open_dialog: Option<UnitsDialog>,
+}
+
+impl UnitsPagePresenter {
+    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
+    pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<UnitsPageEvent>) -> Self {
+        Self {
+            ports,
+            clock,
+            keymap,
+            selected: None,
+            last_unit: None,
+            last_source: None,
+            menu: None,
+            docked: false,
+            activity: Vec::new(),
+            open_dialog: None,
+        }
+    }
+
+    pub fn handle(&mut self, event: UnitsPageEvent, router: &mut dyn UnitsRouter) {
+        // Any event but the menu's own closes it, as a key or click elsewhere does.
+        let menu = self.menu.take();
+        match event {
+            UnitsPageEvent::Move(step) => {
+                let rows = self.rows();
+                if let Some(row) = step_id(&rows, self.selection(), step) {
+                    self.select(row);
+                }
+            }
+            UnitsPageEvent::NextTable => self.next_table(),
+            UnitsPageEvent::Select(row) => self.select(row),
+            UnitsPageEvent::Activate(row) => {
+                self.select(row);
+                self.edit(router);
+            }
+            UnitsPageEvent::New => {
+                let dialog = match self.selection() {
+                    Some(UnitsRow::Source(_)) => UnitsDialog::AddPriceSource,
+                    _ => UnitsDialog::AddUnit,
+                };
+                self.open(dialog, router);
+            }
+            UnitsPageEvent::Edit => self.edit(router),
+            UnitsPageEvent::Delete => {
+                let action = match self.selection() {
+                    Some(UnitsRow::Unit(_)) => MenuAction::DeleteUnit,
+                    _ => MenuAction::DeleteSource,
+                };
+                self.run_on_selection(action, router);
+            }
+            UnitsPageEvent::Reactivate => {
+                self.run_on_selection(MenuAction::ReactivateUnit, router);
+            }
+            UnitsPageEvent::Test => self.test(router),
+            UnitsPageEvent::SetBase => self.open(UnitsDialog::SetBaseUnit, router),
+            UnitsPageEvent::OpenMenu(row) => {
+                if self.with_row(row, |row| !MenuAction::for_row(row).is_empty()) == Some(true) {
+                    self.select(row);
+                    self.menu = Some(row);
+                }
+            }
+            UnitsPageEvent::CloseMenu => {}
+            UnitsPageEvent::Menu(action) => {
+                if let Some(row) = menu {
+                    self.run(action, row, router);
+                }
+            }
+            UnitsPageEvent::SetDocked(docked) => {
+                self.docked = docked;
+                self.menu = menu;
+            }
+            UnitsPageEvent::DialogClosed(outcome) => {
+                self.open_dialog = None;
+                if let Some(outcome) = outcome {
+                    self.land(outcome, router);
+                }
+            }
+        }
+    }
+
+    pub fn view_model(&self) -> UnitsPageViewModel {
+        let ports = self.ports.borrow();
+        let units = ports.units().units();
+        let records = ports.price_sources().price_source_records();
+        let base = ports.base_unit().base_unit();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        let sources = price_sources(&records, &manual);
+        let selection = resolve(Self::rows_of(&units, &sources), self.selected);
+        let now = (self.clock)();
+
+        let unit_lines = units
+            .iter()
+            .map(|unit| UnitLine {
+                id: unit.id,
+                code: unit.code.clone(),
+                name: unit.name.clone(),
+                kind: unit.kind.label(),
+                price_source: sources
+                    .iter()
+                    .find(|source| source.id == unit.link.source_id)
+                    .map(|source| source.name.to_string())
+                    .unwrap_or_default(),
+                is_base: unit.id == base,
+                base_flag: (unit.id == base).then(msg::units_flag_base),
+                inactive_tag: (!unit.is_active).then(msg::units_inactive),
+                selected: selection == Some(UnitsRow::Unit(unit.id)),
+            })
+            .collect();
+        let source_lines = sources
+            .iter()
+            .map(|source| {
+                let fetched = last_fetched(&units, source.id);
+                let fetches = source.endpoint().is_some();
+                SourceLine {
+                    id: source.id,
+                    kind: SourceKind::of(source),
+                    name: source.name.to_string(),
+                    address: source
+                        .endpoint()
+                        .map_or_else(msg::units_none, |endpoint| endpoint.address.to_string()),
+                    last_updated: match fetched {
+                        _ if !fetches => msg::units_none(),
+                        Some(at) => ago(at, now),
+                        None => msg::units_not_fetched_yet(),
+                    },
+                    not_fetched: fetches && fetched.is_none(),
+                    selected: selection == Some(UnitsRow::Source(source.id)),
+                }
+            })
+            .collect();
+        let selected_row = selection.and_then(|selection| match selection {
+            UnitsRow::Unit(id) => units.iter().find(|unit| unit.id == id).map(Row::Unit),
+            UnitsRow::Source(id) => sources
+                .iter()
+                .find(|source| source.id == id)
+                .map(|source| Row::Source(id, SourceKind::of(source))),
+        });
+        let entries = |row: Row<'_>| {
+            MenuAction::for_row(row)
+                .iter()
+                .map(|action| action.entry())
+                .collect::<Vec<_>>()
+        };
+
+        UnitsPageViewModel {
+            scope: msg::units_scope(super::count(units.len())),
+            unit_columns: UnitColumns {
+                code: lib_locale::msg::column_code(),
+                name: lib_locale::msg::column_name(),
+                kind: lib_locale::msg::column_type(),
+                price_source: msg::units_column_price_source(),
+                flags: msg::units_column_flags(),
+            },
+            units: unit_lines,
+            price_sources_heading: msg::units_price_sources_heading(),
+            source_columns: SourceColumns {
+                name: lib_locale::msg::column_name(),
+                source: msg::units_column_source(),
+                last_updated: msg::units_column_last_updated(),
+            },
+            price_sources: source_lines,
+            base_legend: msg::units_legend_base(),
+            hints: self.hints(matches!(selection, Some(UnitsRow::Source(_)))),
+            selected_actions: selected_row.map(entries).unwrap_or_default(),
+            menu: self.menu.and_then(|row| {
+                let found = match row {
+                    UnitsRow::Unit(id) => units.iter().find(|unit| unit.id == id).map(Row::Unit),
+                    UnitsRow::Source(id) => sources
+                        .iter()
+                        .find(|source| source.id == id)
+                        .map(|source| Row::Source(id, SourceKind::of(source))),
+                }?;
+                Some(RowMenu {
+                    row,
+                    entries: entries(found),
+                })
+            }),
+            docked: self.docked,
+            activity: if self.docked {
+                self.activity.clone()
+            } else {
+                Vec::new()
+            },
+            open_dialog: self.open_dialog,
+        }
+    }
+
+    fn rows_of(units: &[UnitRow], sources: &[PriceSource<'_>]) -> Vec<UnitsRow> {
+        units
+            .iter()
+            .map(|unit| UnitsRow::Unit(unit.id))
+            .chain(sources.iter().map(|source| UnitsRow::Source(source.id)))
+            .collect()
+    }
+
+    /// Every row of both tables in drawn order: the Units, then the Price Sources.
+    fn rows(&self) -> Vec<UnitsRow> {
+        let ports = self.ports.borrow();
+        let units = ports.units().units();
+        let records = ports.price_sources().price_source_records();
+        let manual = lib_locale::msg::price_source_manual_entry();
+        Self::rows_of(&units, &price_sources(&records, &manual))
+    }
+
+    /// The selected row, or the first while nothing (or a removed row) is selected.
+    fn selection(&self) -> Option<UnitsRow> {
+        resolve(self.rows(), self.selected)
+    }
+
+    /// Selects `row`, remembering it as its table's last row for `Tab`.
+    fn select(&mut self, row: UnitsRow) {
+        match row {
+            UnitsRow::Unit(id) => self.last_unit = Some(id),
+            UnitsRow::Source(id) => self.last_source = Some(id),
+        }
+        self.selected = Some(row);
+    }
+
+    /// Selects the other table's last-selected row, or its first while it has none (or that row
+    /// is gone). An empty Units table leaves the selection where it is.
+    fn next_table(&mut self) {
+        let rows = self.rows();
+        let target = match self.selection() {
+            Some(UnitsRow::Unit(_)) => resolve(
+                rows.iter().filter_map(|row| match row {
+                    UnitsRow::Source(id) => Some(*id),
+                    UnitsRow::Unit(_) => None,
+                }),
+                self.last_source,
+            )
+            .map(UnitsRow::Source),
+            Some(UnitsRow::Source(_)) => resolve(
+                rows.iter().filter_map(|row| match row {
+                    UnitsRow::Unit(id) => Some(*id),
+                    UnitsRow::Source(_) => None,
+                }),
+                self.last_unit,
+            )
+            .map(UnitsRow::Unit),
+            None => None,
+        };
+        if let Some(target) = target {
+            self.select(target);
+        }
+    }
+
+    /// Runs `f` on `row` as the action rules see it, `None` when the row is gone.
+    fn with_row<T>(&self, row: UnitsRow, f: impl FnOnce(Row<'_>) -> T) -> Option<T> {
+        let ports = self.ports.borrow();
+        match row {
+            UnitsRow::Unit(id) => ports.units().unit(id).map(|unit| f(Row::Unit(&unit))),
+            UnitsRow::Source(id) => {
+                let records = ports.price_sources().price_source_records();
+                let manual = lib_locale::msg::price_source_manual_entry();
+                let source = crate::price_source(&records, &manual, id)?;
+                Some(f(Row::Source(id, SourceKind::of(&source))))
+            }
+        }
+    }
+
+    fn edit(&mut self, router: &mut dyn UnitsRouter) {
+        let action = match self.selection() {
+            Some(UnitsRow::Unit(_)) => MenuAction::EditUnit,
+            _ => MenuAction::EditSource,
+        };
+        self.run_on_selection(action, router);
+    }
+
+    fn run_on_selection(&mut self, action: MenuAction, router: &mut dyn UnitsRouter) {
+        if let Some(row) = self.selection() {
+            self.run(action, row, router);
+        }
+    }
+
+    /// Runs `action` on `row` when the row offers it, as its menu entry, key or button does.
+    fn run(&mut self, action: MenuAction, row: UnitsRow, router: &mut dyn UnitsRouter) {
+        let offered = self.with_row(row, |found| MenuAction::for_row(found).contains(&action));
+        if offered != Some(true) {
+            return;
+        }
+        match (action, row) {
+            (MenuAction::EditUnit, UnitsRow::Unit(id)) => {
+                self.open(UnitsDialog::EditUnit(id), router);
+            }
+            (MenuAction::DeleteUnit, UnitsRow::Unit(id)) => {
+                self.open(UnitsDialog::DeleteUnit(id), router);
+            }
+            (MenuAction::ReactivateUnit, UnitsRow::Unit(id)) => self.reactivate(id, router),
+            (MenuAction::TestSource, _) => {
+                router.set_status(msg::units_status_test_not_yet_built())
+            }
+            (MenuAction::EditSource, UnitsRow::Source(id)) => {
+                self.open(UnitsDialog::EditPriceSource(id), router);
+            }
+            (MenuAction::DeleteSource, UnitsRow::Source(id)) => {
+                self.open(UnitsDialog::DeletePriceSource(id), router);
+            }
+            _ => {}
+        }
+    }
+
+    /// `t`: on a Price Source row its own Test, on a Unit row the Test of the source it links to
+    /// (none on Manual entry). Testing has no backing yet, so it says so on the status line.
+    fn test(&mut self, router: &mut dyn UnitsRouter) {
+        let row = match self.selection() {
+            Some(UnitsRow::Unit(id)) => {
+                let link = self.ports.borrow().units().unit(id).map(|unit| unit.link);
+                match link {
+                    Some(link) if link.source_id != MANUAL_ENTRY => {
+                        UnitsRow::Source(link.source_id)
+                    }
+                    _ => return,
+                }
+            }
+            Some(row) => row,
+            None => return,
+        };
+        self.run(MenuAction::TestSource, row, router);
+    }
+
+    /// Reactivating loses nothing to undo, so it runs at once, with no Dialog.
+    fn reactivate(&mut self, id: UnitId, router: &mut dyn UnitsRouter) {
+        let reactivated = {
+            let mut ports = self.ports.borrow_mut();
+            ReactivateUnit(id).run(ports.split_mut().units)
+        };
+        if let Ok(unit) = reactivated {
+            self.land(UnitsOutcome::Reactivated { code: unit.code }, router);
+        }
+    }
+
+    fn open(&mut self, dialog: UnitsDialog, router: &mut dyn UnitsRouter) {
+        if router.open_dialog(dialog) {
+            self.open_dialog = Some(dialog);
+        }
+    }
+
+    /// The docked detail pane is already in view beside the row, so an outcome goes to ACTIVITY,
+    /// newest first, instead of raising a Toast (DESKTOP-125).
+    fn land(&mut self, outcome: UnitsOutcome, router: &mut dyn UnitsRouter) {
+        if self.docked {
+            let time = (self.clock)()
+                .with_timezone(&Local)
+                .format("%H:%M")
+                .to_string();
+            self.activity.insert(
+                0,
+                ActivityLine {
+                    time,
+                    text: outcome.activity(),
+                },
+            );
+        } else if let Some(text) = outcome.toast() {
+            router.raise_toast(ToastKind::Success, text);
+        }
+    }
+
+    fn hints(&self, on_source: bool) -> Vec<Hint> {
+        let chord = |command| self.keymap.chord(command).unwrap_or_default().to_string();
+        let hint = |chord: String, action: String| Hint { chord, action };
+        let moves = format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP));
+        let (row, test, other) = if on_source {
+            (
+                msg::units_hint_price_source(),
+                msg::units_hint_test(),
+                msg::units_hint_units(),
+            )
+        } else {
+            (
+                msg::units_hint_unit(),
+                msg::units_hint_test_source(),
+                msg::units_hint_price_sources(),
+            )
+        };
+        vec![
+            hint(moves, row),
+            hint(chord(EDIT), msg::units_hint_edit()),
+            hint(chord(DELETE), msg::units_hint_delete()),
+            hint(chord(NEW), msg::units_hint_new()),
+            hint(chord(TEST_SOURCE), test),
+            hint(chord(NEXT_TABLE), other),
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lib_config::KeyBindingConfig;
+
+    use super::super::test_support::{clock, stub};
+    use super::*;
+    use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
+    use crate::keymap::units_page_keymap;
+    use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
+
+    struct Page {
+        ports: std::rc::Rc<std::cell::RefCell<InMemoryPorts>>,
+        presenter: UnitsPagePresenter,
+        router: RecordingRouter,
+    }
+
+    impl Page {
+        fn new() -> Self {
+            Self::with(KeyBindingConfig::default())
+        }
+
+        fn with(config: KeyBindingConfig) -> Self {
+            let (ports, shared) = stub();
+            Self {
+                ports,
+                presenter: UnitsPagePresenter::new(shared, clock(), units_page_keymap(&config)),
+                router: RecordingRouter::default(),
+            }
+        }
+
+        fn send(&mut self, event: UnitsPageEvent) -> Vec<RouterCall> {
+            self.presenter.handle(event, &mut self.router);
+            self.router.take()
+        }
+
+        fn view(&self) -> UnitsPageViewModel {
+            self.presenter.view_model()
+        }
+
+        /// The selected row's text: a Unit's code or a source's name.
+        fn selected(&self) -> String {
+            let view = self.view();
+            view.units
+                .iter()
+                .find(|unit| unit.selected)
+                .map(|unit| unit.code.clone())
+                .or_else(|| {
+                    view.price_sources
+                        .iter()
+                        .find(|source| source.selected)
+                        .map(|source| source.name.clone())
+                })
+                .unwrap_or_default()
+        }
+    }
+
+    #[test]
+    fn the_tables_show_the_units_and_every_price_source_with_the_first_row_selected() {
+        let page = Page::new();
+        let view = page.view();
+
+        let units: Vec<_> = view
+            .units
+            .iter()
+            .map(|unit| {
+                (
+                    unit.code.as_str(),
+                    unit.kind.as_str(),
+                    unit.price_source.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            units,
+            [
+                ("aud", "Currency", "Manual entry"),
+                ("btc", "Crypto", "CoinGecko"),
+                ("vas", "Equity", "Manual entry"),
+            ]
+        );
+        assert_eq!(view.units[0].base_flag.as_deref(), Some("base"));
+        assert_eq!(view.units[1].base_flag, None);
+        assert_eq!(view.scope, "3 units · synced");
+        let sources: Vec<_> = view
+            .price_sources
+            .iter()
+            .map(|source| {
+                (
+                    source.name.as_str(),
+                    source.address.as_str(),
+                    source.last_updated.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            sources,
+            [
+                (
+                    "CoinGecko",
+                    "https://api.coingecko.com/api/v3",
+                    "5 minutes ago"
+                ),
+                (
+                    "Frankfurter",
+                    "https://api.frankfurter.app",
+                    "Not fetched yet"
+                ),
+                ("Manual entry", "—", "—"),
+                (
+                    "Yahoo Finance",
+                    "https://query1.finance.yahoo.com",
+                    "Not fetched yet"
+                ),
+            ]
+        );
+        assert!(view.price_sources[1].not_fetched);
+        assert!(!view.price_sources[2].not_fetched);
+        assert_eq!(page.selected(), "aud");
+    }
+
+    #[test]
+    fn moving_walks_both_tables_as_one_list_and_clamps_at_the_ends() {
+        let mut page = Page::new();
+
+        page.send(UnitsPageEvent::Move(Step::Prev));
+        assert_eq!(page.selected(), "aud");
+        for _ in 0..3 {
+            page.send(UnitsPageEvent::Move(Step::Next));
+        }
+        assert_eq!(
+            page.selected(),
+            "CoinGecko",
+            "j on the last Unit reaches the sources"
+        );
+        page.send(UnitsPageEvent::Move(Step::Last));
+        assert_eq!(page.selected(), "Yahoo Finance");
+        page.send(UnitsPageEvent::Move(Step::Next));
+        assert_eq!(page.selected(), "Yahoo Finance");
+        page.send(UnitsPageEvent::Move(Step::First));
+        assert_eq!(page.selected(), "aud");
+    }
+
+    #[test]
+    fn tab_jumps_to_the_other_tables_last_selected_row() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+
+        page.send(UnitsPageEvent::NextTable);
+        assert_eq!(
+            page.selected(),
+            "CoinGecko",
+            "a table not yet visited starts at its first"
+        );
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+        page.send(UnitsPageEvent::NextTable);
+        assert_eq!(page.selected(), "vas");
+        page.send(UnitsPageEvent::NextTable);
+        assert_eq!(page.selected(), "Frankfurter");
+    }
+
+    #[test]
+    fn new_edit_and_delete_open_the_selected_tables_dialogs_through_the_router() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let open = |dialog| vec![RouterCall::OpenDialog(dialog)];
+
+        assert_eq!(page.send(UnitsPageEvent::New), open(UnitsDialog::AddUnit));
+        assert_eq!(page.view().open_dialog, Some(UnitsDialog::AddUnit));
+        page.send(UnitsPageEvent::DialogClosed(None));
+        assert_eq!(page.view().open_dialog, None);
+        assert_eq!(
+            page.send(UnitsPageEvent::Edit),
+            open(UnitsDialog::EditUnit(UnitId::SEED_BTC))
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::Delete),
+            open(UnitsDialog::DeleteUnit(UnitId::SEED_BTC))
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::SetBase),
+            open(UnitsDialog::SetBaseUnit)
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(YAHOO_FINANCE)));
+        assert_eq!(
+            page.send(UnitsPageEvent::New),
+            open(UnitsDialog::AddPriceSource)
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::Edit),
+            open(UnitsDialog::EditPriceSource(YAHOO_FINANCE))
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::Activate(UnitsRow::Unit(UnitId::SEED_AUD))),
+            open(UnitsDialog::EditUnit(UnitId::SEED_AUD)),
+            "a double-click selects and edits"
+        );
+    }
+
+    #[test]
+    fn delete_on_a_custom_source_opens_its_dialog_by_key_and_by_menu() {
+        let mut page = Page::new();
+        let custom = crate::interactor::AddPriceSource {
+            name: "Broker".into(),
+            endpoint: crate::built_in(COINGECKO).unwrap().endpoint.clone(),
+            updates: crate::Updates::Daily,
+        }
+        .run(&mut page.ports.borrow_mut().price_sources);
+        let open = vec![RouterCall::OpenDialog(UnitsDialog::DeletePriceSource(
+            custom.id,
+        ))];
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(custom.id)));
+        assert_eq!(page.send(UnitsPageEvent::Delete), open);
+        page.send(UnitsPageEvent::OpenMenu(UnitsRow::Source(custom.id)));
+        assert_eq!(
+            page.send(UnitsPageEvent::Menu(MenuAction::DeleteSource)),
+            open
+        );
+    }
+
+    #[test]
+    fn a_dialog_the_router_could_not_open_is_not_shown_as_open() {
+        struct Refusing;
+        impl UnitsRouter for Refusing {
+            fn open_dialog(&mut self, _dialog: UnitsDialog) -> bool {
+                false
+            }
+            fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
+            fn raise_toast(&mut self, _kind: ToastKind, _text: String) {}
+            fn set_status(&mut self, _text: String) {}
+        }
+        let mut page = Page::new();
+
+        page.presenter.handle(UnitsPageEvent::New, &mut Refusing);
+
+        assert_eq!(page.view().open_dialog, None);
+    }
+
+    #[test]
+    fn a_unit_in_use_still_opens_its_delete_dialog_since_the_refusal_decides_deactivate() {
+        let mut page = Page::new();
+        page.ports.borrow_mut().usage.uses.insert(
+            UnitId::SEED_BTC,
+            crate::UnitUse {
+                accounts: 2,
+                ..Default::default()
+            },
+        );
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+
+        assert_eq!(
+            page.send(UnitsPageEvent::Delete),
+            vec![RouterCall::OpenDialog(UnitsDialog::DeleteUnit(
+                UnitId::SEED_BTC
+            ))]
+        );
+    }
+
+    #[test]
+    fn a_built_in_offers_no_delete_and_manual_entry_offers_nothing() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        assert_eq!(page.send(UnitsPageEvent::Delete), vec![]);
+        let actions: Vec<_> = page
+            .view()
+            .selected_actions
+            .iter()
+            .map(|entry| entry.action)
+            .collect();
+        assert_eq!(actions, [MenuAction::TestSource, MenuAction::EditSource]);
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(MANUAL_ENTRY)));
+        for event in [
+            UnitsPageEvent::Edit,
+            UnitsPageEvent::Delete,
+            UnitsPageEvent::Test,
+        ] {
+            assert_eq!(page.send(event), vec![]);
+        }
+        page.send(UnitsPageEvent::OpenMenu(UnitsRow::Source(MANUAL_ENTRY)));
+        assert_eq!(page.view().menu, None);
+    }
+
+    #[test]
+    fn the_row_menu_lists_a_rows_actions_and_an_entry_runs_on_that_row() {
+        let mut page = Page::new();
+        page.ports.borrow_mut().units.units[2].is_active = false;
+
+        page.send(UnitsPageEvent::OpenMenu(UnitsRow::Unit(UnitId::SEED_VAS)));
+        let menu = page.view().menu.expect("vas has actions");
+        let labels: Vec<_> = menu
+            .entries
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Edit unit…", "Reactivate unit", "Delete unit…"]);
+        assert!(menu.entries[2].destructive);
+        assert_eq!(page.selected(), "vas", "opening the menu selects its row");
+
+        assert_eq!(
+            page.send(UnitsPageEvent::Menu(MenuAction::DeleteUnit)),
+            vec![RouterCall::OpenDialog(UnitsDialog::DeleteUnit(
+                UnitId::SEED_VAS
+            ))]
+        );
+        assert_eq!(page.view().menu, None);
+    }
+
+    #[test]
+    fn any_other_event_closes_the_menu() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::OpenMenu(UnitsRow::Source(COINGECKO)));
+        assert!(page.view().menu.is_some());
+
+        page.send(UnitsPageEvent::Move(Step::Next));
+        assert_eq!(page.view().menu, None);
+        assert_eq!(
+            page.send(UnitsPageEvent::Menu(MenuAction::EditSource)),
+            vec![],
+            "with no menu open an entry does nothing"
+        );
+    }
+
+    #[test]
+    fn reactivating_a_deactivated_unit_runs_at_once_and_toasts() {
+        let mut page = Page::new();
+        page.ports.borrow_mut().units.units[1].is_active = false;
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(
+            page.view().units[1].inactive_tag.as_deref(),
+            Some("inactive")
+        );
+
+        let calls = page.send(UnitsPageEvent::Reactivate);
+
+        assert_eq!(
+            calls,
+            vec![RouterCall::RaiseToast(
+                ToastKind::Success,
+                "Reactivated unit btc".into()
+            )]
+        );
+        assert!(page.ports.borrow().units.units[1].is_active);
+        assert_eq!(
+            page.send(UnitsPageEvent::Reactivate),
+            vec![],
+            "an active Unit has none"
+        );
+    }
+
+    #[test]
+    fn test_says_on_the_status_line_that_it_is_not_built_unless_the_unit_is_priced_by_hand() {
+        let mut page = Page::new();
+        let not_built = vec![RouterCall::SetStatus(
+            "test price source — not yet built".to_string(),
+        )];
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(page.send(UnitsPageEvent::Test), not_built);
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
+        assert_eq!(page.send(UnitsPageEvent::Test), vec![]);
+    }
+
+    #[test]
+    fn an_outcome_toasts_below_x_large_and_goes_to_activity_when_docked() {
+        let mut page = Page::new();
+        let deleted = || UnitsOutcome::Deleted { code: "btc".into() };
+
+        assert_eq!(
+            page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
+            vec![RouterCall::RaiseToast(
+                ToastKind::Success,
+                "Deleted unit btc".into()
+            )]
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Saved {
+                code: "eth".into()
+            }))),
+            vec![],
+            "a save raises no Toast"
+        );
+
+        page.send(UnitsPageEvent::SetDocked(true));
+        assert_eq!(
+            page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
+            vec![]
+        );
+        page.send(UnitsPageEvent::DialogClosed(Some(
+            UnitsOutcome::SourceDeleted {
+                name: "Broker".into(),
+                moved: 1,
+            },
+        )));
+        let lines: Vec<_> = page
+            .view()
+            .activity
+            .into_iter()
+            .map(|line| line.text)
+            .collect();
+        assert_eq!(lines, ["Deleted price source Broker", "Deleted unit btc"]);
+    }
+
+    #[test]
+    fn the_legend_follows_the_selected_table_and_the_keymaps_chords() {
+        let mut config = KeyBindingConfig::default();
+        config.bindings.insert("edit".into(), "E".into());
+        let mut page = Page::with(config);
+        let hints = |page: &Page| -> Vec<(String, String)> {
+            page.view()
+                .hints
+                .into_iter()
+                .map(|hint| (hint.chord, hint.action))
+                .collect()
+        };
+        let pairs = |list: &[(&str, &str)]| -> Vec<(String, String)> {
+            list.iter()
+                .map(|(chord, action)| (chord.to_string(), action.to_string()))
+                .collect()
+        };
+
+        assert_eq!(
+            hints(&page),
+            pairs(&[
+                ("j/k", "unit"),
+                ("E", "edit"),
+                ("d", "delete"),
+                ("n", "new"),
+                ("t", "test source"),
+                ("tab", "price sources"),
+            ])
+        );
+        page.send(UnitsPageEvent::NextTable);
+        assert_eq!(hints(&page)[0], ("j/k".into(), "price source".into()));
+        assert_eq!(hints(&page)[5], ("tab".into(), "units".into()));
+    }
+
+    #[test]
+    fn a_removed_selection_falls_back_to_the_first_row() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        page.ports.borrow_mut().units.units.remove(2);
+
+        assert_eq!(page.selected(), "aud");
+    }
+}

@@ -98,6 +98,14 @@ pub struct LastPrice {
     pub fetched_at: DateTime<Utc>,
 }
 
+impl LastPrice {
+    /// A balance of the Unit at this price, rounded to two places. It is in the link's quote
+    /// Unit, not the base Unit: a Unit quoted in usd values in usd even on an aud Ledger.
+    pub fn value(&self, balance: &Money) -> Money {
+        Money((&balance.0 * &self.price.0).round(2))
+    }
+}
+
 /// The stub seed's three Units: aud and vas on Manual entry, btc on CoinGecko with a price
 /// fetched five minutes before `now`.
 pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
@@ -240,6 +248,18 @@ mod tests {
             );
             assert_eq!(unit.last_price, None);
         }
+    }
+
+    #[test]
+    fn a_balance_is_valued_at_the_last_price_in_the_quote_unit_to_two_places() {
+        let btc = &seed()[1];
+        let price = btc.last_price.as_ref().expect("btc is seeded with a price");
+
+        let value = price.value(&"0.4120".parse().unwrap());
+
+        // 0.4120 × 148,212.40 = 61,063.50888, quoted in btc's quote Unit (aud).
+        assert_eq!(value, "61063.51".parse().unwrap());
+        assert_eq!(btc.link.quote, UnitId::SEED_AUD);
     }
 
     #[test]

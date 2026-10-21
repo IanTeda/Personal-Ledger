@@ -1106,7 +1106,7 @@ fn accounts_group(page: &UnitsPage, unit: &UnitRow, cx: &App) -> impl IntoElemen
                     crate::view::format::amount(money).1,
                     unit.code
                 ))
-                .children(pane::base_value(money, unit, units).map(|value| {
+                .children(pane::quote_value(money, unit, units).map(|value| {
                     div()
                         .text_size(px(11.0))
                         .text_color(faint)

@@ -10,6 +10,9 @@
 mod entity;
 pub mod fake;
 pub mod interactor;
+pub mod keymap;
+pub mod msg;
+pub mod presenter;
 pub mod protocols;
 
 pub use entity::{
@@ -22,5 +25,6 @@ pub use entity::{
 };
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
-    BaseUnitRepository, PriceSourceRepository, UnitRepository, UnitUsage, UnitUse,
+    BaseUnitRepository, PortsMut, PriceSourceRepository, SharedPorts, UnitRepository, UnitUsage,
+    UnitUse, UnitsDialog, UnitsPorts, UnitsRouter,
 };

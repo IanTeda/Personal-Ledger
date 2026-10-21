@@ -293,15 +293,14 @@ pub(super) fn source_detail(
     }
 }
 
-/// An account's balance in the base Unit: the balance times `unit`'s last price, at two places,
-/// in the quote Unit. `None` without a price to convert by.
-pub(super) fn base_value(
+/// An account's balance valued at `unit`'s last price ([`LastPrice::value`]), labelled with the
+/// quote Unit's code, which is what the value is in. `None` without a price to convert by.
+pub(super) fn quote_value(
     balance: &lib_core::Money,
     unit: &UnitRow,
     units: &[UnitRow],
 ) -> Option<String> {
-    let price = unit.last_price.as_ref()?;
-    let value = lib_core::Money((&balance.0 * &price.price.0).round(2));
+    let value = unit.last_price.as_ref()?.value(balance);
     Some(format!(
         "{} {}",
         crate::view::format::amount(&value).1,

@@ -1044,7 +1044,7 @@ impl UnitsPage {
                     let units = self.units(cx);
                     self.accounts_in(unit, cx)
                         .iter()
-                        .filter_map(|account| pane::base_value(&account.balance, unit, units))
+                        .filter_map(|account| pane::quote_value(&account.balance, unit, units))
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -1096,7 +1096,7 @@ pub struct SettingsUnitsSnapshot {
     pub source_note: Option<String>,
     /// The selected Price Source's VALUES rows: `(code · name, symbol and quote, last price)`.
     pub source_values: Vec<(String, String, String)>,
-    /// The selected Unit's accounts' values in the base Unit, for those it can price.
+    /// The selected Unit's accounts' values in its quote Unit, for those it can price.
     pub account_values: Vec<String>,
     /// ACTIVITY's lines, newest first.
     pub activity: Vec<String>,
