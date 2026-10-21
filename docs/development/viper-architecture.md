@@ -14,6 +14,8 @@ VIPER splits each module (one area of concern, such as Bills) into five parts, e
 
 ## How VIPER maps to this workspace
 
+The [VIPER target architecture diagram](../diagrams/viper-architecture.html) shows one module end to end, from a key press to SQLite.
+
 Personal Ledger has two Clients, the Desktop (gpui) and the TUI (ratatui), that show the same Ledger. So a module is split across two places:
 
 - **A feature crate per domain**, `crates/libs/lib-<domain>`, holds everything that doesn't touch a UI toolkit: Entities, Interactors, Presenters, ports, the Router trait and the keymap. Both Clients share it.

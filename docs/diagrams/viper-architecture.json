@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "VIPER target architecture (end state)",
+    "output": "docs/diagrams/viper-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "keys and clicks", "pos": [40, 270], "size": [130, 64] },
+    { "id": "input", "type": "frontend", "label": "input.rs", "sublabel": "toolkit key to chord", "pos": [260, 150], "size": [150, 64], "tag": "one per bin" },
+    { "id": "view", "type": "frontend", "label": "View", "sublabel": "draws view model, mouse", "pos": [260, 270], "size": [150, 64] },
+    { "id": "router", "type": "frontend", "label": "Router impl", "sublabel": "builds module, opens next", "pos": [260, 400], "size": [150, 64] },
+    { "id": "shell", "type": "backend", "label": "lib-shell", "sublabel": "global keys, root Router", "pos": [500, 30], "size": [150, 64] },
+    { "id": "keymap", "type": "backend", "label": "keymap.rs", "sublabel": "chord to event", "pos": [500, 150], "size": [150, 64] },
+    { "id": "presenter", "type": "backend", "label": "Presenter", "sublabel": "handle(event), view_model()", "pos": [500, 270], "size": [150, 64], "tag": "one per View" },
+    { "id": "interactor", "type": "backend", "label": "Interactor", "sublabel": "one per user intent", "pos": [740, 270], "size": [150, 64] },
+    { "id": "entity", "type": "backend", "label": "Entity", "sublabel": "data + own rules, no I/O", "pos": [740, 400], "size": [150, 64] },
+    { "id": "ports", "type": "security", "label": "protocols.rs", "sublabel": "ports + Router trait", "pos": [980, 270], "size": [150, 64] },
+    { "id": "crossdomain", "type": "backend", "label": "Cross-domain module", "sublabel": "one per workflow", "pos": [740, 540], "size": [150, 64], "tag": "atomic port" },
+    { "id": "database", "type": "database", "label": "lib-database", "sublabel": "implements ports, sqlx", "pos": [980, 540], "size": [150, 64] },
+    { "id": "sqlite", "type": "database", "label": "SQLite", "sublabel": "the Ledger file", "pos": [980, 660], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "bin-desktop / bin-tui: <domain>/ (toolkit code)", "wraps": ["input", "view", "router"] },
+    { "kind": "region", "label": "lib-<domain>: toolkit-free feature crate", "wraps": ["keymap", "presenter", "interactor", "entity", "ports"] }
+  ],
+  "connections": [
+    { "id": "user-keys", "from": "user", "to": "input", "label": "keys", "variant": "emphasis" },
+    { "id": "user-clicks", "from": "user", "to": "view", "label": "clicks" },
+    { "id": "input-shell", "from": "input", "to": "shell", "label": "chord, Shell first" },
+    { "id": "input-keymap", "from": "input", "to": "keymap", "label": "then module" },
+    { "id": "keymap-presenter", "from": "keymap", "to": "presenter", "label": "event", "variant": "emphasis" },
+    { "id": "view-presenter", "from": "view", "to": "presenter", "label": "events", "variant": "emphasis" },
+    { "id": "presenter-router", "from": "presenter", "to": "router", "label": "navigate via trait", "variant": "dashed" },
+    { "id": "presenter-interactor", "from": "presenter", "to": "interactor", "label": "use case", "variant": "emphasis" },
+    { "id": "interactor-entity", "from": "interactor", "to": "entity", "label": "rules" },
+    { "id": "interactor-ports", "from": "interactor", "to": "ports", "label": "read/write", "variant": "emphasis" },
+    { "id": "database-ports", "from": "database", "to": "ports", "label": "implements", "variant": "dashed" },
+    { "id": "crossdomain-database", "from": "crossdomain", "to": "database", "label": "one transaction" },
+    { "id": "database-sqlite", "from": "database", "to": "sqlite", "label": "SQL" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Bin (per Client)", "items": ["View draws the view model; no logic, no formatting", "Router impl builds its module and calls other modules' public entry points", "Desktop wraps each Presenter in a gpui Entity; the TUI holds it directly"] },
+    { "dot": "emerald", "title": "Feature crate (shared)", "items": ["No UI toolkit, no lib-database, no other feature crate", "Presenter localises through its crate's i18n/ Messages", "fake.rs holds in-memory ports for unit tests"] },
+    { "dot": "violet", "title": "Shell and input", "items": ["An open Dialog takes every key first", "Then lib-shell's global keys, then the focused module's keymap", "main calls shell::router::build"] },
+    { "dot": "amber", "title": "Persistence", "items": ["Each module owns its ports; reads of another domain are read ports", "Writes across domains go through a cross-domain module, one per workflow", "Shared value types (RowID, Money) live in lib-core"] }
+  ]
+}
