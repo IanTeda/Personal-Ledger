@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id                    AS \"id!: UnitId\",\n               code,\n               name,\n               unit_kind             AS \"unit_kind!: UnitKind\",\n               price_source_id       AS \"price_source_id!: PriceSourceId\",\n               price_symbol,\n               quote_unit_id         AS \"quote_unit_id!: UnitId\",\n               last_price            AS \"last_price?: Money\",\n               last_price_fetched_on AS \"last_price_fetched_on?: DateTime<Utc>\",\n               is_active\n           FROM units",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: UnitId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_kind!: UnitKind",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "price_source_id!: PriceSourceId",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "price_symbol",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "quote_unit_id!: UnitId",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "last_price?: Money",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_price_fetched_on?: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 9,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "043840561d518fb1ba4f0cd8f570e975edd270b9fd27fcc8a26234fb35a40ee5"
+}

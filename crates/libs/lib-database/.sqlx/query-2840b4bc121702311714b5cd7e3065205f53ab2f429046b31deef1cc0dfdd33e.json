@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT base_unit_id AS \"base_unit_id!: UnitId\" FROM ledger WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "base_unit_id!: UnitId",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2840b4bc121702311714b5cd7e3065205f53ab2f429046b31deef1cc0dfdd33e"
+}

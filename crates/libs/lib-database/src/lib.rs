@@ -74,6 +74,14 @@ pub use preferences::Preferences;
 pub mod change_sets;
 pub use change_sets::ChangeSet;
 
+/// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
+pub mod adapter;
+pub use adapter::units::UnitsAdapter;
+
+/// The one writer thread every adapter saves through (ADR-0046).
+pub mod writer;
+pub use writer::{Domain, WriteFailure, Writer};
+
 /// Crate error type for all database operations.
 mod error;
 pub use error::Error;

@@ -2,9 +2,9 @@
 -- and other tradeable instruments Accounts and Transactions are denominated in (FR.1-3,
 -- CC-TUI-005). A Unit carries its Price Source link (source id, symbol, quote Unit) and its
 -- newest price, kept with no history (ADR-0043, ADR-0044). The quote Unit is the base Unit
--- unless a person picks another, and the base Unit quotes itself. price_source_id has no FK
--- yet: Price Sources persist in a later ticket. last_price is a decimal string so no
--- precision is lost to a float.
+-- unless a person picks another, and the base Unit quotes itself. price_source_id has no FK:
+-- Manual entry and a built-in nobody has renamed have no price_sources row (see that table).
+-- last_price is a decimal string so no precision is lost to a float.
 
 CREATE TABLE IF NOT EXISTS units (
     id UUID PRIMARY KEY,

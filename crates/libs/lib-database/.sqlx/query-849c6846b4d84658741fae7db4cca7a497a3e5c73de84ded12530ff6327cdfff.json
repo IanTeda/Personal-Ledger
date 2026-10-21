@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ledger (id, base_unit_id) VALUES (1, ?)\n                 ON CONFLICT (id) DO UPDATE SET base_unit_id = excluded.base_unit_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "849c6846b4d84658741fae7db4cca7a497a3e5c73de84ded12530ff6327cdfff"
+}

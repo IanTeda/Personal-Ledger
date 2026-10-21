@@ -4764,6 +4764,7 @@ dependencies = [
  "fake",
  "lib_config",
  "lib_core",
+ "lib_units",
  "regex",
  "serde",
  "serde_json",

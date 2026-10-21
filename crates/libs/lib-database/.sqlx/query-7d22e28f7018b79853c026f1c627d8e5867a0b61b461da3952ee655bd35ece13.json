@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO price_sources (id, origin, name, updates, address, request, price_path,\n                                    key_placement, key_name)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             origin = excluded.origin,\n             name = excluded.name,\n             updates = excluded.updates,\n             address = excluded.address,\n             request = excluded.request,\n             price_path = excluded.price_path,\n             key_placement = excluded.key_placement,\n             key_name = excluded.key_name",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "7d22e28f7018b79853c026f1c627d8e5867a0b61b461da3952ee655bd35ece13"
+}

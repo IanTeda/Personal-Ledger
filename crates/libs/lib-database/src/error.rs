@@ -153,6 +153,12 @@ pub enum Error {
     #[error("Database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
+    /// Writer Stopped Error
+    ///
+    /// The shared writer thread has stopped, so nothing more can be saved or loaded through it.
+    #[error("The database writer has stopped")]
+    WriterStopped,
+
     /// Validation errors originating from the DB layer (e.g. constraint violations)
     ///
     /// Used for domain validation failures, such as unique constraint violations or invalid data formats.
@@ -187,6 +193,7 @@ impl PartialEq for Error {
             (Error::Validation(a), Error::Validation(b)) => a == b,
             (Error::NotFound(a), Error::NotFound(b)) => a == b,
             (Error::Generic(a), Error::Generic(b)) => a == b,
+            (Error::WriterStopped, Error::WriterStopped) => true,
             _ => false,
         }
     }

@@ -18,6 +18,7 @@ doctest = false
 ## -- Internal Dependencies --
 lib_config = { path = "../../../crates/libs/lib-config" }
 lib_core = { path = "../../../crates/libs/lib-core", features = ["sqlx"] }
+lib_units = { path = "../../../crates/libs/lib-units" }
 
 ## -- Workspace Shared Dependencies --
 bigdecimal = { workspace = true }
@@ -41,6 +42,7 @@ uuid = { workspace = true }
 ## workspace to avoid manifest parsing issues when `fake` is only listed
 ## under `workspace.dev-dependencies` in the top-level manifest.
 fake = { workspace = true }
+lib_units = { path = "../../../crates/libs/lib-units", features = ["contract-tests"] }
 serde_json = { workspace = true }
 
 [lints]

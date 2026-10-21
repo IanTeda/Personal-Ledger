@@ -7,6 +7,12 @@
 //! The Desktop draws the Presenters' view models (`bin-desktop/src/units/`); `lib-ledger` keeps
 //! only a read copy of the Units for the domains not yet migrated (#746).
 
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
 mod entity;
 pub mod fake;
 pub mod interactor;

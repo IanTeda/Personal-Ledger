@@ -24,6 +24,10 @@ chrono = { workspace = true }
 secrecy = { workspace = true }
 thiserror = { workspace = true }
 
+[features]
+# The port contract suite (`contract`), for `lib-database` to run against its adapter.
+contract-tests = []
+
 [build-dependencies]
 lib_locale_build = { path = "../lib-locale-build" }
 
