@@ -1,5 +1,5 @@
-//! Personal Ledger desktop entry point: config, tracing, then a call into the lib, where the
-//! window and `Shell` setup live so integration tests can share them.
+//! Personal Ledger desktop entry point: config, tracing, the Ledger file, then a call into the lib,
+//! where the window and `Shell` setup live so integration tests can share them.
 
 use bin_desktop::Result;
 use clap::Parser;
@@ -23,6 +23,15 @@ async fn main() -> Result<()> {
     // The Tracing page's live view of this run's events.
     let logs = lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY);
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path, Some(logs.clone()))?;
-    bin_desktop::run(&config, logs);
+    // The Ledger opens before any window: the app never runs on a file it can't save to.
+    let path = config.personal_ledger_config().file();
+    let storage = match bin_desktop::open_storage(path) {
+        Ok(storage) => storage,
+        Err(error) => {
+            tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
+            return Err(error.into());
+        }
+    };
+    bin_desktop::run(&config, logs, storage);
     Ok(())
 }

@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs, WindowSize,
+    ShellBindings, ShellLogs, UnitsStore, WindowSize,
     app::{
         BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
         SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
@@ -81,6 +81,31 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
     ) -> Self {
+        Self::build(
+            app,
+            logs,
+            configured_level,
+            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+        )
+    }
+
+    /// As [`Harness::new`], on `units` rather than the in-memory stub: the smoke test's stored
+    /// ones.
+    pub fn with_units(app: &'a mut TestAppContext, units: Box<dyn UnitsStore>) -> Self {
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            units,
+        )
+    }
+
+    fn build(
+        app: &'a mut TestAppContext,
+        logs: lib_tracing::LogBuffer,
+        configured_level: Option<lib_tracing::Levels>,
+        units: Box<dyn UnitsStore>,
+    ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
         init_for_tests();
@@ -102,7 +127,7 @@ impl<'a> Harness<'a> {
                     buffer: logs.clone(),
                     configured_level,
                 },
-                Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+                units,
                 today(),
                 focus_handle,
                 cx,

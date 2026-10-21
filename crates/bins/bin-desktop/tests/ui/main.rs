@@ -54,5 +54,6 @@ mod settings_units_keyboard;
 mod settings_units_mouse;
 mod shell_keyboard;
 mod shell_mouse;
+mod smoke_units_persist;
 mod transactions_keyboard;
 mod transactions_mouse;

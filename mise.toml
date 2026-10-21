@@ -69,6 +69,8 @@ env = { SQLX_OFFLINE = "true" }
 # argument runs them all. All the UI tests are one `ui` binary (ADR-0030), so the filter is a
 # test-name substring, and the lib unit tests run beside them as `--tests` did before.
 # Run the full suite when closing a parent ticket (a Wayfinder map or any issue with sub-issues).
+# `smoke` runs the end-to-end smoke test, the one UI test on a real SQLite file: at parent close and
+# before any merge to `main`.
 usage = 'arg "[view]" help="Substring of the tests/ui module names to run, e.g. settings_inventory"'
 run = '''
 set -eu

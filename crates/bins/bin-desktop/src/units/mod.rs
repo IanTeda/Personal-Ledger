@@ -8,16 +8,19 @@
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
 //! - `ports.rs` holds the halfway shims: usage and holdings answered from the Ledger, and the
 //!   Ledger read copy refreshed after each write (#746).
+//! - `store.rs` is where the Units are kept: the SQLite adapter opened at start, or memory.
 
 mod dialogs;
 mod page;
 pub mod ports;
 mod router;
+mod store;
 
 pub use dialogs::UnitsDialog;
 pub use page::UnitsPage;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
+pub use store::{Storage, UnitsStore, open_storage};
 
 /// The Units page as the UI tests read it: its view model.
 #[doc(hidden)]
@@ -30,10 +33,7 @@ pub struct UnitsSetup {
 }
 
 impl UnitsSetup {
-    pub fn new(
-        ports: Box<dyn lib_units::UnitsPorts>,
-        config: &lib_config::KeyBindingConfig,
-    ) -> Self {
+    pub fn new(ports: Box<dyn UnitsStore>, config: &lib_config::KeyBindingConfig) -> Self {
         Self {
             ports: LedgerBackedPorts::shared(ports),
             keymap: lib_units::keymap::units_page_keymap(config),

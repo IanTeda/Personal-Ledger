@@ -10,17 +10,26 @@
 //!
 //! [`Writer::run`] also queues blocking work, such as an adapter's load, behind the writes already
 //! sent, so a reload sees every write before it.
+//!
+//! A Client starts its writer with [`Writer::open_ledger`], which also brings the file's schema up
+//! to date, and [`Writer::flush`]es it before exiting so the last writes aren't lost with the
+//! thread.
 
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{SqliteConnection, SqlitePool};
 use tokio::runtime::Runtime;
 
 use crate::{Error, Result};
+
+/// The Client Ledger's schema, which [`Writer::open_ledger`] applies.
+static CLIENT_MIGRATIONS: Migrator = sqlx::migrate!("./migrations/client");
 
 /// A boxed future a [`Batch`] or a [`Writer::run`] job returns.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -94,6 +103,36 @@ impl Writer {
             .recv()
             .map_err(|_| Error::Connection("The writer thread stopped while opening".into()))??;
         Ok((Self { jobs }, failure_reports))
+    }
+
+    /// Starts the writer on the Client Ledger file at `path`, creating the file and its directory
+    /// if missing, and runs the Client migrations on it, blocking until both are done.
+    ///
+    /// # Errors
+    /// Returns [`Error::Connection`] if the directory can't be made or the file can't be opened,
+    /// or [`Error::Migration`] if the schema can't be brought up to date.
+    #[tracing::instrument(name = "Open the Ledger", level = "debug", err)]
+    pub fn open_ledger(path: &Path) -> Result<(Self, mpsc::Receiver<WriteFailure>)> {
+        if let Some(directory) = path.parent() {
+            std::fs::create_dir_all(directory).map_err(|e| {
+                Error::Connection(format!("Failed to make {}: {e}", directory.display()))
+            })?;
+        }
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        let (writer, failures) = Self::spawn(options)?;
+        writer.run(|pool| async move { Ok(CLIENT_MIGRATIONS.run(&pool).await?) })?;
+        Ok((writer, failures))
+    }
+
+    /// Blocks until every write already sent has landed or failed. The thread dies with the
+    /// process, so a Client calls this before exiting.
+    ///
+    /// # Errors
+    /// Returns [`Error::WriterStopped`] if the thread has stopped.
+    pub fn flush(&self) -> Result<()> {
+        self.run(|_| async { Ok(()) })
     }
 
     /// Queues `batch` behind every write already sent. Never waits: a failure is reported on the
@@ -299,6 +338,55 @@ mod tests {
         assert!(matches!(failure.error, Error::Sqlx(_)));
         assert_eq!(notes, 1, "only the write after the failure");
         assert!(failures.try_recv().is_err());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn flush_returns_once_the_writes_already_sent_have_landed(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let (writer, _failures) = Writer::spawn(options).unwrap();
+        let ran = Arc::new(Mutex::new(Vec::new()));
+        let (release, gate) = mpsc::channel();
+        writer.write(Box::new(Gate(gate)));
+        writer.write(Box::new(Statement {
+            sql: "CREATE TABLE notes (body TEXT NOT NULL)",
+            ran: ran.clone(),
+        }));
+        release.send(()).unwrap();
+
+        writer.flush().unwrap();
+
+        assert_eq!(ran.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn opening_a_new_ledger_creates_the_file_and_migrates_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join("ledger.pldb");
+
+        let (writer, _failures) = Writer::open_ledger(&path).unwrap();
+        let units: i64 = writer
+            .run(|pool| async move {
+                Ok(sqlx::query_scalar("SELECT COUNT(*) FROM units")
+                    .fetch_one(&pool)
+                    .await?)
+            })
+            .unwrap();
+
+        assert!(path.is_file());
+        assert_eq!(units, 0);
+    }
+
+    #[test]
+    fn opening_a_ledger_whose_directory_is_a_file_is_an_error() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let path = file.path().join("ledger.pldb");
+
+        assert!(matches!(
+            Writer::open_ledger(&path).map(|_| ()),
+            Err(Error::Connection(_))
+        ));
     }
 
     #[test]

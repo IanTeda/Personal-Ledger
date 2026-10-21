@@ -1,6 +1,6 @@
-//! The Units ports as the Desktop holds them: the ports `build_shell` is given, with `UnitUsage`
+//! The Units ports as the Desktop holds them: the store `build_shell` is given, with `UnitUsage`
 //! and `UnitHoldings` answered from the Ledger read copy (#746's halfway shims), and the step that
-//! keeps that read copy in line after a Units write.
+//! commits a Units write and keeps that read copy in line after it.
 //!
 //! Usage and holdings are copied from the Ledger before each Units event, since a port can't reach
 //! the `LedgerStore` Entity without a gpui context. They go with the shims, when Accounts, Bills
@@ -19,6 +19,7 @@ use lib_units::{
     UnitsPorts,
 };
 
+use super::store::UnitsStore;
 use crate::ledger_store::LedgerStore;
 
 /// The Units ports the Units module and the General page share.
@@ -26,13 +27,13 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// `store`'s Units, Price Sources and base Unit, with usage and holdings copied from the Ledger.
 pub struct LedgerBackedPorts {
-    store: Box<dyn UnitsPorts>,
+    store: Box<dyn UnitsStore>,
     usage: InMemoryUnitUsage,
     holdings: InMemoryHoldings,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn UnitsPorts>) -> DesktopPorts {
+    pub fn shared(store: Box<dyn UnitsStore>) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store,
             usage: InMemoryUnitUsage::default(),
@@ -79,13 +80,7 @@ impl UnitsPorts for LedgerBackedPorts {
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
-        let store = self.store.split_mut();
-        PortsMut {
-            units: store.units,
-            price_sources: store.price_sources,
-            base_unit: store.base_unit,
-            usage: &self.usage,
-        }
+        self.store.split_mut(&self.usage)
     }
 }
 
@@ -95,12 +90,14 @@ pub fn copy_usage(ports: &DesktopPorts, ledger: &Ledger) {
     ports.borrow_mut().copy_usage(ledger);
 }
 
-/// Brings the Ledger read copy in line with the ports, announcing `Domain::Units` when it changed,
-/// then copies usage and holdings back for the next Units event. Run after every Units event and
-/// Dialog confirm, so Bills, Budgets, Transactions and the Dashboard see a write at once.
+/// Commits the Interactor call just made, if any, then brings the Ledger read copy in line with
+/// the ports, announcing `Domain::Units` when it changed, and copies usage and holdings back for the
+/// next Units event. Run after every Units event and Dialog confirm, so a write is saved as one
+/// transaction and Bills, Budgets, Transactions and the Dashboard see it at once.
 pub fn sync(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
     let (units, base, records) = {
-        let ports = ports.borrow();
+        let mut ports = ports.borrow_mut();
+        ports.store.commit();
         (
             ports.units().units(),
             ports.base_unit().base_unit(),

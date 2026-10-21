@@ -43,6 +43,7 @@ use app::Shell;
 pub use chrome::window_size::WindowSize;
 pub use error::Error;
 use persistence::{PersistedState, WindowGeometry};
+pub use units::{Storage, UnitsStore, open_storage};
 
 /// Crate Result type alias used across the Desktop binary.
 ///
@@ -72,12 +73,12 @@ pub struct ShellLogs {
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
-/// `units` are the Units ports: the app's persisted ones, or a test's in memory.
+/// `units` is where the Units are kept: the app's SQLite adapter, or a test's in-memory ports.
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
-    units: Box<dyn lib_units::UnitsPorts>,
+    units: Box<dyn UnitsStore>,
     today: chrono::NaiveDate,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
@@ -116,8 +117,16 @@ pub fn build_shell(
 }
 
 /// Opens the main window and runs the app until it quits. Tracing is already initialised, feeding
-/// `logs` for the Tracing page.
-pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
+/// `logs` for the Tracing page, and `storage` is the Ledger file [`open_storage`] opened.
+pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: Storage) {
+    let Storage {
+        units,
+        writer,
+        failures,
+    } = storage;
+    // Nothing listens for a failed write until #754 rolls the Units back on one; until then the
+    // writer's own error log is the only report.
+    drop(failures);
     let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
@@ -217,9 +226,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                                 buffer: logs,
                                 configured_level,
                             },
-                            // Until persistence lands (#752), the Units live in memory, seeded
-                            // from the stub so its Accounts, Bill Plans and Budgets resolve.
-                            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+                            Box::new(units),
                             chrono::Local::now().date_naive(),
                             focus_handle,
                             cx,
@@ -244,6 +251,10 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
             // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
             // crate) rather than binding and dropping it.
             cx.on_app_quit(move |cx| {
+                // The writer thread dies with the process, taking any write still queued.
+                if let Err(error) = writer.flush() {
+                    tracing::error!(%error, "Failed to save the last Ledger writes");
+                }
                 let _ = window_handle.update(cx, |shell, window, cx| {
                     let bounds = window.bounds();
                     let state = PersistedState {
