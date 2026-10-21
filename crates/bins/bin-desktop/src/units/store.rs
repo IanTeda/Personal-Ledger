@@ -26,6 +26,12 @@ pub trait UnitsStore {
 
     /// Ends one Interactor call's writes: the adapter sends them to the writer as one transaction.
     fn commit(&mut self);
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> lib_database::Result<()>;
 }
 
 impl UnitsStore for UnitsAdapter {
@@ -48,9 +54,13 @@ impl UnitsStore for UnitsAdapter {
     fn commit(&mut self) {
         UnitsAdapter::commit(self);
     }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        UnitsAdapter::reload(self)
+    }
 }
 
-/// Memory is all there is, so a commit has nowhere to send.
+/// Memory is all there is, so a commit has nowhere to send and a reload nothing to read.
 impl UnitsStore for InMemoryPorts {
     fn units(&self) -> &dyn UnitRepository {
         UnitsPorts::units(self)
@@ -74,6 +84,10 @@ impl UnitsStore for InMemoryPorts {
     }
 
     fn commit(&mut self) {}
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        Ok(())
+    }
 }
 
 /// The Ledger file as start-up opens it: the Units adapter, and the writer every adapter saves

@@ -100,3 +100,9 @@ desktop-empty-state-hint = Run <open>{ $open }</open> to load a ledger file, or 
 ## Toasts. The line above the stack counting Toasts held back out of view.
 
 desktop-toast-more = +{ $count } more
+
+## A write that didn't reach the Ledger file. The Units are put back as stored, or, when they
+## can't be read back either, left as shown.
+
+desktop-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
+desktop-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved

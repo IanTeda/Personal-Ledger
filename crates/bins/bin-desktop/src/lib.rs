@@ -74,11 +74,17 @@ pub struct ShellLogs {
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
 /// `units` is where the Units are kept: the app's SQLite adapter, or a test's in-memory ports.
+/// `failures` is the writer's failure channel, on which a failed write rolls back.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each is one start-up input the app and the tests both supply"
+)]
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
     units: Box<dyn UnitsStore>,
+    failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
     today: chrono::NaiveDate,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
@@ -108,6 +114,7 @@ pub fn build_shell(
     shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
     shell.set_toast_history_binding(bindings.toast_history);
     shell.start_toast_clock(cx);
+    shell.listen_for_write_failures(failures, cx);
     shell.set_log_capture(
         logs.buffer,
         settings::tracing::log::TracingLevel::from_configured(logs.configured_level),
@@ -124,9 +131,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
         writer,
         failures,
     } = storage;
-    // Nothing listens for a failed write until #754 rolls the Units back on one; until then the
-    // writer's own error log is the only report.
-    drop(failures);
     let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
@@ -227,6 +231,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                                 configured_level,
                             },
                             Box::new(units),
+                            failures,
                             chrono::Local::now().date_naive(),
                             focus_handle,
                             cx,

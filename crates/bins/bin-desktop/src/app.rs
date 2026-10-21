@@ -44,6 +44,7 @@ mod status;
 mod toasts;
 mod transactions_ui;
 mod view_events;
+mod write_failures;
 
 #[cfg(test)]
 use commands::record_history;
@@ -60,6 +61,7 @@ pub use snapshots::{
     SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,
     TransactionsSnapshot,
 };
+pub use write_failures::WRITE_FAILURE_POLL;
 
 use std::time::Duration;
 
@@ -135,6 +137,9 @@ pub struct Shell {
     /// The only copy of the Ledger (ADR-0038). Every page below reads through it and holds no rows
     /// of its own.
     ledger: Entity<LedgerStore>,
+    /// The Units ports the Units page and the General page share, reloaded here when a write to
+    /// them fails.
+    units: crate::units::DesktopPorts,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -168,6 +173,7 @@ impl Shell {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
         crate::units::ports::sync(&units.ports, &ledger, cx);
+        let units_ports = units.ports.clone();
         // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
@@ -274,6 +280,7 @@ impl Shell {
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
             ledger,
+            units: units_ports,
             today,
             views: ViewEntities {
                 dashboard: dashboard_view,

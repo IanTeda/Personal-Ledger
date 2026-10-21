@@ -31,7 +31,69 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
+use lib_database::{Domain, WriteFailure};
+use lib_units::fake::InMemoryPorts;
+use lib_units::{
+    BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
+};
+use std::sync::mpsc;
 use std::time::Duration;
+
+/// A failure channel nothing will report on: the in-memory ports have no writer.
+fn no_failures() -> mpsc::Receiver<WriteFailure> {
+    mpsc::channel().1
+}
+
+/// Units ports whose writes never reach `stored`, the rows as they are on disk: a commit with
+/// changes since the last reports a failure, as the writer would, and a reload puts `memory`
+/// back to `stored`.
+struct FailingUnits {
+    memory: InMemoryPorts,
+    /// `memory` at the last commit, so a commit with nothing new reports nothing.
+    committed: InMemoryPorts,
+    stored: InMemoryPorts,
+    report: mpsc::Sender<WriteFailure>,
+    reload_fails: bool,
+}
+
+impl UnitsStore for FailingUnits {
+    fn units(&self) -> &dyn UnitRepository {
+        UnitsPorts::units(&self.memory)
+    }
+
+    fn price_sources(&self) -> &dyn PriceSourceRepository {
+        UnitsPorts::price_sources(&self.memory)
+    }
+
+    fn base_unit(&self) -> &dyn BaseUnitRepository {
+        UnitsPorts::base_unit(&self.memory)
+    }
+
+    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
+        UnitsStore::split_mut(&mut self.memory, usage)
+    }
+
+    fn commit(&mut self) {
+        if self.memory != self.committed {
+            self.committed = self.memory.clone();
+            let _ = self.report.send(WriteFailure {
+                domains: vec![Domain::Units],
+                error: lib_database::Error::Generic("the test's write fails".into()),
+            });
+        }
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        if self.reload_fails {
+            return Err(lib_database::Error::Generic(
+                "the test's reload fails".into(),
+            ));
+        }
+        self.memory = self.stored.clone();
+        self.committed = self.stored.clone();
+        Ok(())
+    }
+}
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
 pub fn today() -> NaiveDate {
@@ -85,7 +147,8 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+            no_failures(),
         )
     }
 
@@ -97,6 +160,28 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             units,
+            no_failures(),
+        )
+    }
+
+    /// As [`Harness::new`], on Units ports whose every write fails, as SQLite refusing it would;
+    /// with `reload_fails`, so does the reload after it. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_units(app: &'a mut TestAppContext, reload_fails: bool) -> Self {
+        let (report, failures) = mpsc::channel();
+        let stored = InMemoryPorts::stub(chrono::Utc::now());
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Box::new(FailingUnits {
+                memory: stored.clone(),
+                committed: stored.clone(),
+                stored,
+                report,
+                reload_fails,
+            }),
+            failures,
         )
     }
 
@@ -105,6 +190,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         units: Box<dyn UnitsStore>,
+        failures: mpsc::Receiver<WriteFailure>,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
@@ -128,12 +214,18 @@ impl<'a> Harness<'a> {
                     configured_level,
                 },
                 units,
+                failures,
                 today(),
                 focus_handle,
                 cx,
             )
         });
         Self { shell, cx, logs }
+    }
+
+    /// Lets the Shell hear of a failed write: past one poll of the writer's failure channel.
+    pub fn settle_writes(&mut self) {
+        self.advance_clock(bin_desktop::app::WRITE_FAILURE_POLL);
     }
 
     /// Lets the Tracing page's live feed pull what was pushed: past its coalescing window.

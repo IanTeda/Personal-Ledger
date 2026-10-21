@@ -449,3 +449,58 @@ fn both_tables_fill_the_page_from_the_medium_floor_to_x_large(app: &mut TestAppC
         "X-Large draws past the Settings cap"
     );
 }
+
+/// Renames `aud` to `aux` on the Units page of `ui`, which must have focus on it.
+fn rename_aud_to_aux(ui: &mut Harness<'_>) {
+    ui.press("e");
+    ui.press("backspace backspace backspace");
+    type_word(ui, "aux");
+    ui.press("enter");
+    assert_eq!(ui.unit_codes()[0], "aux", "memory changes at once");
+}
+
+fn visible_toasts(ui: &mut Harness<'_>) -> Vec<(String, String)> {
+    ui.toasts()
+        .visible
+        .into_iter()
+        .map(|toast| (toast.kind, toast.text))
+        .collect()
+}
+
+#[gpui::test]
+fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_units(app, false);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s j j l");
+    rename_aud_to_aux(&mut ui);
+
+    ui.settle_writes();
+
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Error".to_string(),
+        "Couldn't save the change to units, so they are back as last saved".to_string()
+    )));
+    ui.press("g w n");
+    assert_eq!(
+        ui.bills().plan_unit.as_deref(),
+        Some("aud"),
+        "the Bill Plan form's Unit picker reads the stored rows"
+    );
+}
+
+#[gpui::test]
+fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_units(app, true);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s j j l");
+    rename_aud_to_aux(&mut ui);
+
+    ui.settle_writes();
+
+    assert_eq!(ui.unit_codes()[0], "aux");
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Error".to_string(),
+        "Couldn't save the change to units or reload them, so what you see isn't saved".to_string()
+    )));
+}

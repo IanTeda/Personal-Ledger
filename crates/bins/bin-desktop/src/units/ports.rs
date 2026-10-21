@@ -95,9 +95,30 @@ pub fn copy_usage(ports: &DesktopPorts, ledger: &Ledger) {
 /// next Units event. Run after every Units event and Dialog confirm, so a write is saved as one
 /// transaction and Bills, Budgets, Transactions and the Dashboard see it at once.
 pub fn sync(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ports.borrow_mut().store.commit();
+    refresh(ports, ledger, cx);
+}
+
+/// Puts the ports back to the rows as stored, after a write that named the Units failed, and
+/// brings the Ledger read copy in line, announcing `Domain::Units` so every Units view model is
+/// rebuilt (ADR-0046).
+///
+/// # Errors
+/// Returns the error reading the rows back; the ports and the read copy are left as they were.
+pub fn reload(
+    ports: &DesktopPorts,
+    ledger: &Entity<LedgerStore>,
+    cx: &mut App,
+) -> lib_database::Result<()> {
+    ports.borrow_mut().store.reload()?;
+    refresh(ports, ledger, cx);
+    Ok(())
+}
+
+/// Brings the Ledger read copy in line with the ports and copies usage and holdings back.
+fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
     let (units, base, records) = {
-        let mut ports = ports.borrow_mut();
-        ports.store.commit();
+        let ports = ports.borrow();
         (
             ports.units().units(),
             ports.base_unit().base_unit(),
