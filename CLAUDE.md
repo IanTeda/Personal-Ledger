@@ -14,6 +14,7 @@ Toolchain and dev tools (Rust, protoc, mdBook, sqlx-cli, bacon, cargo-deny) are 
 
 - `mise run db` resets the dev DB (drop, create, migrate) **and regenerates the `.sqlx` cache**, so commit any `.sqlx` changes it leaves.
 - `mise run db-migrate` applies new migrations and keeps existing data.
+- `mise run db-seed` resets the dev DB (drop, create, migrate) and writes each persisted domain's stub seed through `lib-database` (`lib_database::seed::stub`), so ids match the stub Ledger; it is idempotent and skips the `.sqlx` regeneration. A module's stub seed is the one seed for its domain: a change to a persisted entity updates that seed, and `db-seed` follows (`docs/development/database.md`).
 
 Migrations come in two sets: `migrations/client/` (the Client Ledger) and `migrations/sync-server/` (`change_sets`, `sync_users`). While the schema is in concept there is one `create_<table>_table.sql` per table: edit that file rather than adding an `ALTER` migration, then `mise run db`.
 

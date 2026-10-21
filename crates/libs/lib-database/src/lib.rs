@@ -78,6 +78,9 @@ pub use change_sets::ChangeSet;
 pub mod adapter;
 pub use adapter::units::UnitsAdapter;
 
+/// The dev seed: each persisted domain's stub seed, written through its adapter.
+pub mod seed;
+
 /// The one writer thread every adapter saves through (ADR-0046).
 pub mod writer;
 pub use writer::{Domain, WriteFailure, Writer};

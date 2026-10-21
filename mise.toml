@@ -269,3 +269,16 @@ run = "cargo sqlx prepare --check -- --all-targets"
 [tasks.db]
 description = "Reset the dev database: drop, create, migrate, then refresh the sqlx query cache"
 run = "mise run db-drop && mise run db-create && mise run db-migrate && mise run db-prepare-generate && mise run db-prepare-check"
+
+# Dev data for local runs during the VIPER transition: drops the dev database, migrates it and
+# writes each persisted domain's stub seed, so ids match the stub Ledger. Idempotent. Point a Client
+# at the file (`[Personal-Ledger] file`) to see the rows. Skips `db-prepare-*`: use `db` for those.
+[tasks.db-seed]
+description = "Reset the dev database and seed it from each persisted domain's stub seed"
+run = """
+set -eu
+mise run db-drop && mise run db-create && mise run db-migrate
+# `sqlx` reads .env itself, but the shell doesn't.
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+cargo run --quiet --package lib_database --bin db-seed -- "${DATABASE_URL#sqlite:}"
+"""
