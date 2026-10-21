@@ -16,6 +16,7 @@ unmaintained = "workspace"
 # { id = "RUSTSEC-0000-0000", reason = "not reachable: we never call the affected API" },
 ignore = [
   { id = "RUSTSEC-2023-0071", reason = "rsa is pulled in by jsonwebtoken, but the Sync Server signs and verifies HS256 only (bin-sync-server/src/auth/jwt.rs), so no RSA key is ever used; no patched rsa exists yet" },
+  { id = "RUSTSEC-2026-0381", reason = "flags webpki-roots 0.26.11, which sqlx 0.8 pins; 0.26.11 bundles no certificates of its own but re-exports webpki-roots 1.x, locked at the patched 1.0.10. Remove once sqlx moves to webpki-roots 1.x (added 2026-10-21)" },
 ]
 
 # Licences must keep the shipped binaries distributable under this project's MIT licence, so
