@@ -29,3 +29,7 @@ ADR-0039 gave the Ledger one `LedgerRepository` port fed by recorded `LedgerChan
 ## Amendment: the writer moves into the per-domain adapters (ADR-0046)
 
 Superseded in part by [ADR-0046](0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md). The synchronous port, the serial writer thread, optimistic writes with rollback by reload, and one transaction per write all stay, but they move from `LedgerStore` into the `lib-database` adapters behind the per-domain ports, with one writer thread shared by every domain. `lib-ledger-sqlite` (#724) and the `LedgerStore` writer (#725) are not built. The blocking load at start and the halfway seeding of an empty database with the stub's Units carry over to the Units adapter.
+
+## Amendment: the Ledger file is the `file` key
+
+No `[Personal-Ledger]` `database` key exists, so the Decision's "the `database` key, defaulting to the XDG data directory" was never built. The Clients open the existing `file` key, defaulting to `<data>/My-Personal-Ledger.pldb` with `data` defaulting to the Documents directory (`docs/settings.md`), decided during #753 and recorded in #746's findings log.

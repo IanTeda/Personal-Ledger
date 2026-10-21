@@ -1,6 +1,6 @@
 # Personal Ledger - VIPER Architecture
 
-This page describes the end state the Clients are moving to. It does not describe the code as it is today: tickets take the codebase from here to there. The goal is a codebase that Claude can change one module at a time, that a person can review one layer at a time, and that grows by adding modules rather than by growing a central file.
+This page describes the end state the Clients are moving to. It does not describe the code as it is today: tickets take the codebase from here to there, and [During the transition](#during-the-transition) lists what stands in for the parts not built yet. Slice 1 (Units and Price Sources, [#746](https://github.com/IanTeda/Personal-Ledger/issues/746)) built one module to this page, and its findings are folded in. The goal is a codebase that Claude can change one module at a time, that a person can review one layer at a time, and that grows by adding modules rather than by growing a central file.
 
 ## VIPER
 
@@ -50,6 +50,7 @@ Personal-Ledger/
     │   │   │   └── <domain>/
     │   │   │       ├── mod.rs
     │   │   │       ├── view/<view>.rs # Draws the view model, handles mouse, sends events
+    │   │   │       ├── view/dialog/<dialog>.rs  # One per Dialog Presenter
     │   │   │       └── router.rs      # impl <Domain>Router: builds the module, opens what's next
     │   │   └── tests/ui/              # Wiring and drawing tests only
     │   ├── bin-tui/                   # Same shape as bin-desktop, drawn with ratatui
@@ -68,6 +69,8 @@ Personal-Ledger/
                 ├── presenter/<view>.rs       # View model + event enum + Presenter
                 ├── protocols.rs       # Ports (repository traits) and the <Domain>Router trait
                 ├── keymap.rs          # Default keys: command name + chord -> event
+                ├── msg.rs             # This module's msg:: accessors, generated from i18n/
+                ├── contract.rs        # Port contract suite, behind the contract-tests feature
                 └── fake.rs            # In-memory port impls and stub seed, for tests and UI-first work
 ```
 
@@ -77,11 +80,12 @@ These are the rules Claude follows and a review checks against.
 
 ### Dependencies
 
-- A feature crate never depends on a UI toolkit (gpui, gpui-component, ratatui, crossterm), on `lib-database`, or on another feature crate.
-- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`.
-- An Interactor that only reads another domain ("is this Payee used by a Split?") declares a read port in its own crate's `protocols.rs`, and `lib-database` answers it. It doesn't add a crate.
+- A feature crate never depends on a UI toolkit (gpui, gpui-component, ratatui, crossterm), on `lib-database`, or on another feature crate. `deny.toml`'s bans and the `cargo metadata` test (`lib-ledger/tests/viper_dependencies.rs`) check this for each migrated crate.
+- A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor` and `lib-toast` (a Router asks for a Toast by `ToastKind`).
+- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`. Generic types every module's Presenters and keymap use (`Keymap`, `Binding`, a form's field and select views, a Dialog's frame) belong in a shared toolkit-free crate, not in the first feature crate that needed them ([#760](https://github.com/IanTeda/Personal-Ledger/issues/760)).
+- An Interactor or Presenter that only reads another domain ("is this Payee used by a Split?", "which Accounts hold this Unit?") declares a read port in its own crate's `protocols.rs`, and `lib-database` answers it. It doesn't add a crate. `lib-units`' `UnitUsage` and `UnitHoldings` are the first.
 - Operations that write more than one domain live in a cross-domain module, one per user workflow (see Persistence). It may depend on the feature crates it writes; feature crates never depend on it.
-- `lib-database` depends on the feature crates and implements their ports. Dependencies point inward, toward the Entities.
+- `lib-database` depends on the feature crates and implements their ports. Dependencies point inward, toward the Entities. Only bins and cross-domain modules depend on `lib-database`; `lib-rpc` is a recorded exception until the Sync Server's storage is decided ([#759](https://github.com/IanTeda/Personal-Ledger/issues/759)).
 - No `cfg` flag selects a UI toolkit inside a lib.
 
 ### Entity
@@ -93,25 +97,31 @@ These are the rules Claude follows and a review checks against.
 - One Interactor per user intent, in its own file.
 - Reaches storage only through the ports in `protocols.rs`. Refusals are typed errors, not strings.
 - Knows nothing about Views, Presenters, Messages or keys.
+- Enforces every rule itself, even one a Presenter already keeps a person from reaching (the Delete unit Dialog always offers a new base Unit, so `BaseUnitNeeded` is reachable only through the Interactor). A refusal no Client can reach is tested at the Interactor.
 
 ### Presenter
 
 - One Presenter per View, holding that View's state.
-- Its contract is `handle(event)` and `view_model()`. The view model is plain data: formatted Money and dates, localised text from `msg::` accessors, selection, enabled flags, which Dialog is open. The View never formats or decides anything.
+- Its contract is `handle(event, router)` and `view_model()`, where `router` is a `&mut dyn <Domain>Router`. The view model is plain data: formatted Money and dates, localised text from `msg::` accessors, selection, enabled flags, which Dialog is open. The View never formats or decides anything.
 - It doesn't hold a reference to its View. Both Clients redraw from the view model, so nothing calls into the View.
-- It asks for navigation only through its module's `<Domain>Router` trait.
+- It asks for navigation only through its module's `<Domain>Router` trait, which it is lent for each `handle` call rather than holding: the Desktop can open a Dialog only through the gpui context that call runs in.
+- An enabled flag or an offered action comes from a read, not from a refused write. If a Unit in use can only be deactivated, the Presenter reads its usage before the person confirms a Delete, rather than offering Deactivate after the Interactor refuses ([#763](https://github.com/IanTeda/Personal-Ledger/issues/763)).
+- What a View shows and where an outcome lands are separate settings. A Client that shows a detail pane is not thereby one that logs outcomes to ACTIVITY instead of raising Toasts ([#765](https://github.com/IanTeda/Personal-Ledger/issues/765)).
+- A Dialog's Presenter holds its fields' values, focus, which fields show, validity and refusal text, and it tells the page Presenter its outcome when it closes, confirmed or cancelled.
 - List movement goes through `lib-list-cursor`.
 
 ### View
 
 - Lives in the bin. Draws the view model, handles the mouse for its own layout, and sends events to the Presenter.
 - No business logic, no formatting, no hardcoded display text.
-- On the Desktop, the bin wraps each Presenter in a gpui `Entity` and calls `cx.notify()` after `handle`. The TUI holds the Presenter directly.
+- Keeps a widget's own mechanics, which are the toolkit's and decide nothing: a text field's caret, a select's open list and highlight, a secret field's typed text before it is sent.
+- On the Desktop, the bin wraps each page Presenter in a gpui `Entity` and calls `cx.notify()` after `handle`. A Dialog's Presenter sits in the Dialog host (`Rc<RefCell<_>>`), since today's `Dialog` trait gets no gpui context to update an Entity through; `lib-shell`'s Dialog host can take one. The TUI holds every Presenter directly.
 
 ### Router
 
 - Each module declares a `<Domain>Router` trait in `protocols.rs` (`show_transaction(id)`, `open_pay_dialog(bill)`), and each bin implements it in `<domain>/router.rs`. Routing is a module concern; only the implementation is toolkit-specific.
-- A Router builds its own module: View, Presenter, Interactor and ports.
+- A Router builds its own module: View, Presenter, Interactor and ports. On the Desktop it is built for each `handle` call around that call's gpui context, and the module's entry point (`units::router::units_page`) builds the page.
+- `open_dialog` returns whether the Dialog opened, so a Presenter whose row went away under it doesn't record a Dialog as open.
 - To go to another module, a Router calls that module's public entry point in the same bin (for example `transactions::router::show(cx, id)`). It never builds another module's View or Presenter itself.
 - The Router doesn't handle keys.
 
@@ -121,15 +131,19 @@ These are the rules Claude follows and a review checks against.
 - A command name shared across modules stays flat (`new`, `delete`, `move_down`), so one override applies in every module. A command only one module has is namespaced by the module, for example `units.set_base`.
 - `lib-shell` owns the keys that work in every View: switching View, opening the command palette, moving focus between the Shell and the View.
 - Each bin has one `input.rs`. It turns a toolkit key into chord text and offers it to an open Dialog first, which takes every key, then to the Shell, then to the focused module's keymap. It sends the resulting event to that module's Presenter. It doesn't grow when a module is added.
+- The Shell's global keys win, so a module's default chord must not be a global key in either Client. Slice 1 found three clashes: `units.set_base`'s `b` is the Desktop's rail toggle, and `ctrl+u` and `g g` are TUI View jumps. A test per Client checks every module's defaults against its global keys ([#764](https://github.com/IanTeda/Personal-Ledger/issues/764)).
+- A Dialog's keys (confirm, cancel, next field, select stepping) are the Dialog host's keymap in `lib-shell`, under the same flat names (`confirm`, `cancel`), so a `[keybindings]` override reaches every module's Dialogs. The host sends the Dialog's Presenter its `Cancel` event when `Esc` closes it.
 - A Presenter receives events (`Pay`), never keys (`p`).
 
 ### Localisation
 
 - New UI text is a Message. A module's Messages live in its crate's `i18n/` and are read by its Presenter. A bin's own catalogue holds only text that belongs to one toolkit, such as the Desktop menu bar.
+- A module's Message ids carry its domain as a prefix (`units-`), generated by `lib-locale-build` with `id_prefix`. A count in a plural is `{ $count }`, never a typed digit.
+- A time or date in a view model is formatted by `lib-locale`, never by `chrono` in the Presenter ([#762](https://github.com/IanTeda/Personal-Ledger/issues/762) adds the minutes-only time ACTIVITY needs).
 
 ### Tests
 
-- Entities, Interactors and Presenters have unit tests in their crate, run against the in-memory ports in `fake.rs`. These carry the behaviour coverage: a Presenter test is "send events, assert on the view model".
+- Entities, Interactors and Presenters have unit tests in their crate, run against the in-memory ports in `fake.rs`. These carry the behaviour coverage: a Presenter test is "send events, assert on the view model". `fake.rs`'s `RecordingRouter` records what the Presenter asked for.
 - Each View still has `<view>_keyboard.rs` and `<view>_mouse.rs` in the bin's `tests/ui/`, but they check wiring and drawing (the key reaches the Presenter, the view model is drawn), not behaviour the Presenter tests already cover. They run on the `fake.rs` ports, which `build_shell` takes as parameters, so they never open SQLite.
 - An end-to-end smoke test per module runs the real app on a temporary SQLite file: start, change a row, restart, see it. It runs when a parent ticket closes and before a merge to `main`.
 
@@ -144,13 +158,21 @@ The Shell is the always-present frame around the current View (see GLOSSARY.md).
 ## Out of scope
 
 - **The Sync Server** has no Views, so it isn't split into VIPER modules. It reuses Interactors and ports where it needs domain rules.
-- **The transition** from today's code to this layout is planned in tickets, not here: it starts with the slices decided in [#745](https://github.com/IanTeda/Personal-Ledger/issues/745).
+- **The transition** from today's code to this layout is planned in tickets, not here: it starts with the slices decided in [#745](https://github.com/IanTeda/Personal-Ledger/issues/745). [During the transition](#during-the-transition) lists only what stands in meanwhile.
 
 ## Persistence
 
 Each module owns its repository ports, replacing the single `LedgerRepository` ([ADR-0039](../adr/0039-ledger-persists-through-one-store-wide-repository.md), amended).
 
-Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)). Each `lib-database` adapter holds its domain's rows in memory, loaded when the Client starts, and serves reads from there. A write changes memory at once and goes to one writer thread shared by every domain, which runs it in one database transaction. A failed write makes the adapter reload from SQLite and is reported on a channel the bin listens on, so it can redraw and show an error Toast.
+Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)). Each `lib-database` adapter holds its domain's rows in memory, loaded when the Client starts, and serves reads from there. A write changes memory at once and goes to one writer thread shared by every domain, which runs it in one database transaction. A failed write is reported on a channel the bin listens on, so it can reload, redraw and show an error Toast.
+
+What that means for a module, as slice 1 built it (`lib-database`'s `adapter/units.rs` and `writer.rs`):
+
+- **The bin ends each Interactor call.** A port write is one row (`upsert_unit`, `set_base_unit`), so a port can't tell where an Interactor call ends. The adapter keeps a call's writes pending, shared by the module's ports, and the bin calls `commit()` after each Presenter `handle`, which sends them to the writer as one transaction. Deleting a Price Source (N Unit moves and the delete) and deleting the base Unit (the move and the delete) each land whole.
+- **The bin reloads.** Ports know nothing about the failure channel, so on a `WriteFailure` the bin calls `reload()` on each adapter the failure names. A failure also names the domains of the writes dropped behind it, since their adapters are stale too. If the reload fails, the rows in memory stand and the Toast says they aren't saved.
+- **Loads go through the writer**, queued behind the writes, so a reload sees every earlier write and one runtime owns the pool.
+- **A row may name a row defined in code.** A Unit's Price Source can be Manual entry (never stored) or a built-in with no override row (ADR-0043), so `units.price_source_id` has no foreign key. The schema says why, and the Interactor guards the link.
+- **A port's rules match the schema's.** A foreign key the in-memory ports don't model fails only in SQLite, as a rollback the person can't explain. Each such constraint is an Interactor rule and a contract check ([#761](https://github.com/IanTeda/Personal-Ledger/issues/761): deleting a Unit other Units quote).
 
 Each module's ports have a contract suite in its crate, behind a `contract-tests` feature, run against both `fake.rs` and the `lib-database` adapter: write, reload, and get the same rows.
 
@@ -163,3 +185,17 @@ An operation that writes more than one domain belongs to a cross-domain module, 
 | `lib-transaction-import` | Commit an Import | Transactions, Payees |
 | `lib-reassign` | Delete or merge a Category, Tag or Location, re-pointing the rows that use it | Categories, Tags, Inventory, Transactions, Bill Plans, Budgets, Documents |
 `lib-reassign` may split per domain if it grows. Units and Price Sources are one domain, `lib-units`, since they only change together, so deleting a Price Source and setting the base Unit are single-domain Interactors. The transition tickets confirm the list against the code.
+
+## During the transition
+
+Until every domain is a module and `lib-shell` exists, these stand in, each removed when its condition is met. Slice 1 added them for Units (`bin-desktop/src/units/`, `bin-tui/src/units/`).
+
+| Stand-in | Why | Removed when |
+|---|---|---|
+| The `Ledger` read copy of Units, the base Unit and the Price Sources, refreshed after each Units write and on rollback (`LedgerStore::refresh_units`) | Bills, Budgets, Transactions, the Dashboard and the Bill and Budget forms still read Units from `Ledger` | The last of them reads Units through its own domain's read port |
+| `impl UnitUsage` and `impl UnitHoldings` for `Ledger` in `lib-ledger`, reached through `LedgerBackedPorts`, which copies them from the Ledger before each Units event | Accounts, Bill Plans and Budgets aren't persisted, and a port can't read the `LedgerStore` Entity without a gpui context | Each count moves to `lib-database` as its domain migrates |
+| The first-launch seed: a Ledger with no base Unit is seeded with `InMemoryPorts::stub`'s Units, Price Sources and base Unit (`UnitsAdapter::seed`) | The stub Accounts, Bill Plans and Budgets name the stub's Units | Every domain persists; a new database then starts through the new-Ledger workflow |
+| `UnitsRouter::raise_toast` and `set_status` | The Toasts and the status line are `lib-shell`'s, which isn't built; the TUI, with no status slot, raises an Info Toast | `lib-shell`'s Router takes them |
+| Keys reach the Units keymap through today's dispatch (`route_key` on the Desktop, `shell.rs` in the TUI), and the View maps arrows, Home/End and Page keys to `Move` | No `input.rs` yet | Each bin has its one `input.rs` |
+| Each bin's `units/store.rs` (`UnitsStore`) and `open_storage` | Built in the Desktop first, then copied for the TUI | They move into `lib-database` ([#766](https://github.com/IanTeda/Personal-Ledger/issues/766)) |
+| `LedgerRepository` and `LedgerChange`, persisting nothing since Units left | Other domains still apply changes through them | Charted in [#758](https://github.com/IanTeda/Personal-Ledger/issues/758) |

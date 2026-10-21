@@ -5400,8 +5400,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="815" y="596" class="t-backend" font-size="7" text-anchor="middle">atomic port</text>
         </g>
 
-        <g id="node-database" data-node-id="database" data-node-label="lib-database" tabindex="0" role="button" aria-label="Focus lib-database, implements ports, sqlx, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="implements ports, sqlx" data-node-context="Architecture component">
-          <title>lib-database · implements ports, sqlx · Architecture component</title>
+        <g id="node-database" data-node-id="database" data-node-label="lib-database" tabindex="0" role="button" aria-label="Focus lib-database, adapters + one writer, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="adapters + one writer" data-node-context="Architecture component">
+          <title>lib-database · adapters + one writer · Architecture component</title>
           <rect x="980" y="540" width="150" height="64" rx="8" class="c-mask"/>
           <rect x="980" y="540" width="150" height="64" rx="8" class="c-database" data-animate="node" style="--step:10" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(986 546) scale(0.6875)">
@@ -5409,7 +5409,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="1055" y="570" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">lib-database</text>
-        <text data-detail="context" x="1055" y="586" class="t-muted" font-size="9" text-anchor="middle">implements ports, sqlx</text>
+        <text data-detail="context" x="1055" y="586" class="t-muted" font-size="9" text-anchor="middle">adapters + one writer</text>
         </g>
 
         <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite" tabindex="0" role="button" aria-label="Focus SQLite, the Ledger file, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="the Ledger file" data-node-context="Architecture component">
@@ -5734,6 +5734,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>Each module owns its ports; reads of another domain are read ports</li>
           <li>Writes across domains go through a cross-domain module, one per workflow</li>
+          <li>The bin commits each Interactor call; a write failure comes back on a channel and the bin reloads</li>
           <li>Shared value types (RowID, Money) live in lib-core</li>
         </ul>
       </div>

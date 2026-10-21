@@ -19,7 +19,7 @@
     { "id": "entity", "type": "backend", "label": "Entity", "sublabel": "data + own rules, no I/O", "pos": [740, 400], "size": [150, 64] },
     { "id": "ports", "type": "security", "label": "protocols.rs", "sublabel": "ports + Router trait", "pos": [980, 270], "size": [150, 64] },
     { "id": "crossdomain", "type": "backend", "label": "Cross-domain module", "sublabel": "one per workflow", "pos": [740, 540], "size": [150, 64], "tag": "atomic port" },
-    { "id": "database", "type": "database", "label": "lib-database", "sublabel": "implements ports, sqlx", "pos": [980, 540], "size": [150, 64] },
+    { "id": "database", "type": "database", "label": "lib-database", "sublabel": "adapters + one writer", "pos": [980, 540], "size": [150, 64] },
     { "id": "sqlite", "type": "database", "label": "SQLite", "sublabel": "the Ledger file", "pos": [980, 660], "size": [150, 64] }
   ],
   "boundaries": [
@@ -45,6 +45,6 @@
     { "dot": "cyan", "title": "Bin (per Client)", "items": ["View draws the view model; no logic, no formatting", "Router impl builds its module and calls other modules' public entry points", "Desktop wraps each Presenter in a gpui Entity; the TUI holds it directly"] },
     { "dot": "emerald", "title": "Feature crate (shared)", "items": ["No UI toolkit, no lib-database, no other feature crate", "Presenter localises through its crate's i18n/ Messages", "fake.rs holds in-memory ports for unit tests"] },
     { "dot": "violet", "title": "Shell and input", "items": ["An open Dialog takes every key first", "Then lib-shell's global keys, then the focused module's keymap", "main calls shell::router::build"] },
-    { "dot": "amber", "title": "Persistence", "items": ["Each module owns its ports; reads of another domain are read ports", "Writes across domains go through a cross-domain module, one per workflow", "Shared value types (RowID, Money) live in lib-core"] }
+    { "dot": "amber", "title": "Persistence", "items": ["Each module owns its ports; reads of another domain are read ports", "Writes across domains go through a cross-domain module, one per workflow", "The bin commits each Interactor call; a write failure comes back on a channel and the bin reloads", "Shared value types (RowID, Money) live in lib-core"] }
   ]
 }
