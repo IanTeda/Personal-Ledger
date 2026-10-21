@@ -123,8 +123,30 @@ pub fn build_shell(
     shell
 }
 
+/// The Desktop's start-up before any window: opens the Ledger file the configuration names,
+/// creating and seeding it when new. The app never runs on a file it can't save to, so a failure
+/// is the caller's to report and stop on. `main` and the smoke test both start here.
+///
+/// # Errors
+/// Returns the error opening, migrating, seeding or reading the Ledger file.
+pub fn start(config: &lib_config::Config) -> lib_database::Result<Storage> {
+    let path = config.personal_ledger_config().file();
+    open_storage(path).inspect_err(|error| {
+        tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
+    })
+}
+
+/// The Desktop's quit: commits the writes still queued, since the writer thread dies with the
+/// process. `run` calls it as the app quits and the smoke test calls it in place of a window
+/// closing.
+pub fn quit(writer: &lib_database::Writer) {
+    if let Err(error) = writer.flush() {
+        tracing::error!(%error, "Failed to save the last Ledger writes");
+    }
+}
+
 /// Opens the main window and runs the app until it quits. Tracing is already initialised, feeding
-/// `logs` for the Tracing page, and `storage` is the Ledger file [`open_storage`] opened.
+/// `logs` for the Tracing page, and `storage` is the Ledger file [`start`] opened.
 pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: Storage) {
     let Storage {
         units,
@@ -256,10 +278,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
             // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
             // crate) rather than binding and dropping it.
             cx.on_app_quit(move |cx| {
-                // The writer thread dies with the process, taking any write still queued.
-                if let Err(error) = writer.flush() {
-                    tracing::error!(%error, "Failed to save the last Ledger writes");
-                }
+                quit(&writer);
                 let _ = window_handle.update(cx, |shell, window, cx| {
                     let bounds = window.bounds();
                     let state = PersistedState {

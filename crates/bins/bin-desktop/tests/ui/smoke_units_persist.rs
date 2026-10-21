@@ -27,15 +27,26 @@ fn type_word(ui: &mut Harness<'_>, word: &str) {
     ui.press(&keys.join(" "));
 }
 
+/// The configuration `main` would hold, pointed at the Ledger file `path`.
+fn config_for(path: &std::path::Path) -> lib_config::Config {
+    let mut config = lib_config::Config::default();
+    lib_config::ConfigArgs {
+        file: Some(path.to_path_buf()),
+        ..Default::default()
+    }
+    .apply_overrides(&mut config);
+    config
+}
+
 #[gpui::test]
 fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let path = dir.path().join("ledger.pldb");
+    let config = config_for(&dir.path().join("ledger.pldb"));
 
     {
-        let storage = bin_desktop::open_storage(&path).expect("a new Ledger opens");
+        let storage = bin_desktop::start(&config).expect("a new Ledger starts");
         let writer = storage.writer.clone();
-        let mut ui = Harness::with_units(app, Box::new(storage.units));
+        let mut ui = Harness::with_storage(app, storage);
         assert_eq!(
             ui.unit_codes(),
             ["aud", "btc", "vas"],
@@ -45,11 +56,10 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
 
         add_unit(&mut ui, "nzd", "New Zealand dollar");
         assert!(ui.unit_codes().contains(&"nzd".to_string()));
-        // What quitting the app does, so the write isn't lost with the writer thread.
-        writer.flush().expect("the writer is running");
+        bin_desktop::quit(&writer);
     }
 
-    let storage = bin_desktop::open_storage(&path).expect("the Ledger opens again");
-    let mut ui = Harness::with_units(app, Box::new(storage.units));
+    let storage = bin_desktop::start(&config).expect("the Ledger starts again");
+    let mut ui = Harness::with_storage(app, storage);
     assert_eq!(ui.unit_codes(), ["aud", "btc", "vas", "nzd"]);
 }

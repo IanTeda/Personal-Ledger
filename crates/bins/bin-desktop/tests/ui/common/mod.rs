@@ -164,6 +164,18 @@ impl<'a> Harness<'a> {
         )
     }
 
+    /// As [`Harness::new`], on the `storage` the Desktop's real start-up opened, its failure
+    /// channel included.
+    pub fn with_storage(app: &'a mut TestAppContext, storage: bin_desktop::Storage) -> Self {
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Box::new(storage.units),
+            storage.failures,
+        )
+    }
+
     /// As [`Harness::new`], on Units ports whose every write fails, as SQLite refusing it would;
     /// with `reload_fails`, so does the reload after it. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.

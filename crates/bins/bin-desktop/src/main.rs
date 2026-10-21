@@ -24,14 +24,7 @@ async fn main() -> Result<()> {
     let logs = lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY);
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path, Some(logs.clone()))?;
     // The Ledger opens before any window: the app never runs on a file it can't save to.
-    let path = config.personal_ledger_config().file();
-    let storage = match bin_desktop::open_storage(path) {
-        Ok(storage) => storage,
-        Err(error) => {
-            tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
-            return Err(error.into());
-        }
-    };
+    let storage = bin_desktop::start(&config)?;
     bin_desktop::run(&config, logs, storage);
     Ok(())
 }
