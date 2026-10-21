@@ -83,6 +83,7 @@ impl UnitsAdapter {
     ///
     /// # Errors
     /// Returns the error of the write; nothing is written then.
+    #[tracing::instrument(name = "Seed the Units", level = "debug", skip_all, err)]
     pub fn seed(
         writer: &Writer,
         units: Vec<UnitRow>,
@@ -127,6 +128,7 @@ impl UnitsAdapter {
 
     /// Sends the changes made since the last commit to the writer as one transaction. Call once
     /// after each Interactor call; it never waits.
+    #[tracing::instrument(name = "Commit the Units", level = "debug", skip_all)]
     pub fn commit(&mut self) {
         let changes = std::mem::take(&mut *self.pending.borrow_mut());
         if !changes.is_empty() {

@@ -60,7 +60,8 @@ pub struct WriteFailure {
 type RunJob = Box<dyn FnOnce(&Runtime, &SqlitePool) + Send>;
 
 enum Job {
-    Write(Box<dyn Batch>),
+    /// A batch and the span it was sent from, so a failure logs under the call that made it.
+    Write(Box<dyn Batch>, tracing::Span),
     Run(RunJob),
 }
 
@@ -76,7 +77,8 @@ impl Writer {
     /// Migrations are the caller's: the writer only reads and writes rows.
     ///
     /// # Errors
-    /// Returns [`Error::Connection`] if the runtime can't start or the database can't be opened.
+    /// Returns [`Error::Io`] if the thread or its runtime can't start, [`Error::Sqlx`] if the
+    /// database can't be opened, or [`Error::WriterStopped`] if the thread stops while opening.
     pub fn spawn(options: SqliteConnectOptions) -> Result<(Self, mpsc::Receiver<WriteFailure>)> {
         let (jobs, job_queue) = mpsc::channel();
         let (failures, failure_reports) = mpsc::channel();
@@ -97,11 +99,8 @@ impl Writer {
                 };
                 serve(&runtime, &pool, &job_queue, &failures);
                 runtime.block_on(pool.close());
-            })
-            .map_err(|e| Error::Connection(format!("Failed to start the writer thread: {e}")))?;
-        open_result
-            .recv()
-            .map_err(|_| Error::Connection("The writer thread stopped while opening".into()))??;
+            })?;
+        open_result.recv().map_err(|_| Error::WriterStopped)??;
         Ok((Self { jobs }, failure_reports))
     }
 
@@ -109,14 +108,12 @@ impl Writer {
     /// if missing, and runs the Client migrations on it, blocking until both are done.
     ///
     /// # Errors
-    /// Returns [`Error::Connection`] if the directory can't be made or the file can't be opened,
-    /// or [`Error::Migration`] if the schema can't be brought up to date.
+    /// Returns [`Error::Io`] if the directory can't be made, the errors of [`Self::spawn`] if the
+    /// file can't be opened, or [`Error::Migration`] if the schema can't be brought up to date.
     #[tracing::instrument(name = "Open the Ledger", level = "debug", err)]
     pub fn open_ledger(path: &Path) -> Result<(Self, mpsc::Receiver<WriteFailure>)> {
         if let Some(directory) = path.parent() {
-            std::fs::create_dir_all(directory).map_err(|e| {
-                Error::Connection(format!("Failed to make {}: {e}", directory.display()))
-            })?;
+            std::fs::create_dir_all(directory)?;
         }
         let options = SqliteConnectOptions::new()
             .filename(path)
@@ -139,7 +136,11 @@ impl Writer {
     /// failure channel.
     pub fn write(&self, batch: Box<dyn Batch>) {
         let domain = batch.domain();
-        if self.jobs.send(Job::Write(batch)).is_err() {
+        if self
+            .jobs
+            .send(Job::Write(batch, tracing::Span::current()))
+            .is_err()
+        {
             tracing::error!(?domain, "The writer thread has stopped; a write was lost");
         }
     }
@@ -167,18 +168,15 @@ impl Writer {
 fn open(options: SqliteConnectOptions) -> Result<(Runtime, SqlitePool)> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()
-        .map_err(|e| Error::Connection(format!("Failed to start the writer runtime: {e}")))?;
-    let pool = runtime
-        .block_on(
-            SqlitePoolOptions::new()
-                // One connection, so one writer, and no idle timer to outlive the runtime.
-                .max_connections(1)
-                .idle_timeout(None)
-                .max_lifetime(None)
-                .connect_with(options.foreign_keys(true)),
-        )
-        .map_err(|e| Error::Connection(format!("Failed to open the database: {e}")))?;
+        .build()?;
+    let pool = runtime.block_on(
+        SqlitePoolOptions::new()
+            // One connection, so one writer, and no idle timer to outlive the runtime.
+            .max_connections(1)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(options.foreign_keys(true)),
+    )?;
     Ok((runtime, pool))
 }
 
@@ -189,14 +187,16 @@ fn serve(
     failures: &mpsc::Sender<WriteFailure>,
 ) {
     while let Ok(job) = jobs.recv() {
-        let batch = match job {
+        let (batch, sender) = match job {
             Job::Run(job) => {
                 job(runtime, pool);
                 continue;
             }
-            Job::Write(batch) => batch,
+            Job::Write(batch, sender) => (batch, sender),
         };
         let domain = batch.domain();
+        let span = tracing::debug_span!(parent: &sender, "Apply a write", ?domain);
+        let _entered = span.enter();
         let Err(error) = runtime.block_on(apply(pool, batch)) else {
             continue;
         };
@@ -206,7 +206,7 @@ fn serve(
         while let Ok(job) = jobs.try_recv() {
             match job {
                 Job::Run(job) => waiting.push(job),
-                Job::Write(dropped) => {
+                Job::Write(dropped, _) => {
                     if !domains.contains(&dropped.domain()) {
                         domains.push(dropped.domain());
                     }
@@ -385,7 +385,7 @@ mod tests {
 
         assert!(matches!(
             Writer::open_ledger(&path).map(|_| ()),
-            Err(Error::Connection(_))
+            Err(Error::Io(_))
         ));
     }
 
@@ -396,7 +396,7 @@ mod tests {
             .create_if_missing(false);
         assert!(matches!(
             Writer::spawn(options).map(|_| ()),
-            Err(Error::Connection(_))
+            Err(Error::Sqlx(_))
         ));
     }
 }

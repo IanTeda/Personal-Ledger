@@ -153,6 +153,13 @@ pub enum Error {
     #[error("Database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
+    /// File system or thread error
+    ///
+    /// Occurs when the Ledger file's directory can't be made, or the writer's thread or runtime
+    /// can't start.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
     /// Writer Stopped Error
     ///
     /// The shared writer thread has stopped, so nothing more can be saved or loaded through it.
@@ -193,6 +200,7 @@ impl PartialEq for Error {
             (Error::Validation(a), Error::Validation(b)) => a == b,
             (Error::NotFound(a), Error::NotFound(b)) => a == b,
             (Error::Generic(a), Error::Generic(b)) => a == b,
+            (Error::Io(a), Error::Io(b)) => a.kind() == b.kind(),
             (Error::WriterStopped, Error::WriterStopped) => true,
             _ => false,
         }
