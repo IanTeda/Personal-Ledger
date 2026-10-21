@@ -68,7 +68,7 @@ use lib_inventory::{Inventory, default_inventory};
 use lib_payees::{Payee, default_payees};
 use lib_tags::{Tag, default_tags};
 use lib_transactions::Transaction;
-use lib_units::{PriceSource, PriceSourceRecord, UnitRow, default_units};
+use lib_units::{PriceSource, PriceSourceRecord, UnitRow};
 
 /// Every domain collection the Clients read, owned in one place. Every write is a
 /// [`LedgerCommand`] that records what it changed.
@@ -197,6 +197,7 @@ impl Ledger {
     }
 
     fn stub_at(today: NaiveDate, now: DateTime<Utc>) -> Self {
+        let units = lib_units::fake::InMemoryPorts::stub(now);
         let accounts = default_accounts();
         let categories = default_categories();
         let payees = default_payees();
@@ -227,8 +228,8 @@ impl Ledger {
             document_types: default_types(),
             inventory,
             institutions: default_institutions(),
-            units: default_units(now),
-            base_unit: UnitId::SEED_AUD,
+            units: units.units.units,
+            base_unit: units.base_unit.0,
             price_sources: Vec::new(),
         })
     }
