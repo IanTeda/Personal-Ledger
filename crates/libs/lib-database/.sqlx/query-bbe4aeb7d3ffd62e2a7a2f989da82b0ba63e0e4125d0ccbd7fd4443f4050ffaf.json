@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ledger (id, base_unit_id) VALUES (1, ?) ON CONFLICT (id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bbe4aeb7d3ffd62e2a7a2f989da82b0ba63e0e4125d0ccbd7fd4443f4050ffaf"
+}

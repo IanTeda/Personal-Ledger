@@ -2,7 +2,8 @@
 //! seed is the one seed for its domain, so a change to a persisted entity updates that seed and
 //! this follows. Ids match `lib-ledger`'s stub, which the domains not yet persisted still read.
 //!
-//! Every write is an upsert, so seeding twice leaves the same rows.
+//! Every write is an upsert, so seeding twice leaves the same rows. The base Unit is the exception:
+//! it is written only when the Ledger has none, so a base the person changed survives a re-seed.
 
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Duration, Utc};
@@ -119,6 +120,33 @@ mod tests {
         assert!(!units.is_empty());
         assert_eq!(second.units().units(), units);
         assert_eq!(second.base_unit().base_unit(), base);
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn seeding_again_keeps_a_changed_base_unit(
+        _: sqlx::sqlite::SqlitePoolOptions,
+        options: sqlx::sqlite::SqliteConnectOptions,
+    ) {
+        let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
+        let now = Utc::now();
+        stub(&writer, now).expect("the first seed lands");
+        let mut adapter = UnitsAdapter::load(writer.clone()).expect("the seed loads");
+        assert_eq!(adapter.base_unit().base_unit(), UnitId::SEED_AUD);
+        let changed = adapter
+            .units()
+            .units()
+            .into_iter()
+            .map(|unit| unit.id)
+            .find(|id| *id != UnitId::SEED_AUD)
+            .expect("the stub has a second Unit");
+        let usage = lib_units::fake::InMemoryUnitUsage::default();
+        adapter.split_mut(&usage).base_unit.set_base_unit(changed);
+        adapter.commit();
+
+        stub(&writer, now).expect("the second seed lands");
+        let reseeded = UnitsAdapter::load(writer.clone()).expect("the seed loads again");
+
+        assert_eq!(reseeded.base_unit().base_unit(), changed);
     }
 
     #[test]
