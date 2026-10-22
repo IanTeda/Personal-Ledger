@@ -59,6 +59,7 @@ Personal-Ledger/
         ├── lib-core/                  # Shared value types: RowID, Money, periods
         ├── lib-database/              # Adapter: implements the modules' ports with sqlx
         ├── lib-shell/                 # The Shell module (see below)
+        ├── lib-viper/                 # Generic Presenter types: Keymap, form and Dialog views
         └── lib-<domain>/              # One VIPER module, toolkit-free
             ├── Cargo.toml
             ├── i18n/                  # This module's Messages
@@ -81,8 +82,8 @@ These are the rules Claude follows and a review checks against.
 ### Dependencies
 
 - A feature crate never depends on a UI toolkit (gpui, gpui-component, ratatui, crossterm), on `lib-database`, or on another feature crate. `deny.toml`'s bans and the `cargo metadata` test (`lib-ledger/tests/viper_dependencies.rs`) check this for each migrated crate.
-- A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor` and `lib-toast` (a Router asks for a Toast by `ToastKind`).
-- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`. Generic types every module's Presenters and keymap use (`Keymap`, `Binding`, a form's field and select views, a Dialog's frame) belong in a shared toolkit-free crate, not in the first feature crate that needed them ([#760](https://github.com/IanTeda/Personal-Ledger/issues/760)).
+- A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor`, `lib-toast` (a Router asks for a Toast by `ToastKind`) and `lib-viper`.
+- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`. Generic types every module's Presenters and keymap use live in `lib-viper`, not in the first feature crate that needed them ([#760](https://github.com/IanTeda/Personal-Ledger/issues/760)): `keymap` holds `Keymap`, `Binding` and the flat command names modules share, and `view` a form's `TextFieldView`, `SelectView` and `Choice` and a Dialog's `DialogFrame`. It is not a feature crate and holds no domain; it keeps the feature crates' bans.
 - An Interactor or Presenter that only reads another domain ("is this Payee used by a Split?", "which Accounts hold this Unit?") declares a read port in its own crate's `protocols.rs`, and `lib-database` answers it. It doesn't add a crate. `lib-units`' `UnitUsage` and `UnitHoldings` are the first.
 - Operations that write more than one domain live in a cross-domain module, one per user workflow (see Persistence). It may depend on the feature crates it writes; feature crates never depend on it.
 - `lib-database` depends on the feature crates and implements their ports. Dependencies point inward, toward the Entities. Only bins and cross-domain modules depend on `lib-database`; `lib-rpc` is a recorded exception until the Sync Server's storage is decided ([#759](https://github.com/IanTeda/Personal-Ledger/issues/759)).
@@ -127,8 +128,8 @@ These are the rules Claude follows and a review checks against.
 
 ### Input
 
-- Each module declares its default keys in `keymap.rs` as a command name and its default chord mapped to an event, for example `pay` / `"p"` → `BillsListEvent::Pay`. `[keybindings]` Configuration overrides a key by command name, and both Clients share one keymap.
-- A command name shared across modules stays flat (`new`, `delete`, `move_down`), so one override applies in every module. A command only one module has is namespaced by the module, for example `units.set_base`.
+- Each module declares its default keys in `keymap.rs` as `lib_viper::keymap::Binding`s, a command name and its default chord mapped to an event, for example `pay` / `"p"` → `BillsListEvent::Pay`. `[keybindings]` Configuration overrides a key by command name, and both Clients share one keymap.
+- A command name shared across modules stays flat (`new`, `delete`, `move_down`), so one override applies in every module; its constant lives in `lib_viper::keymap`. A command only one module has is namespaced by the module, for example `units.set_base`.
 - `lib-shell` owns the keys that work in every View: switching View, opening the command palette, moving focus between the Shell and the View.
 - Each bin has one `input.rs`. It turns a toolkit key into chord text and offers it to an open Dialog first, which takes every key, then to the Shell, then to the focused module's keymap. It sends the resulting event to that module's Presenter. It doesn't grow when a module is added.
 - The Shell's global keys win, so a module's default chord must not be a global key in either Client. Slice 1 found three clashes: `units.set_base`'s `b` is the Desktop's rail toggle, and `ctrl+u` and `g g` are TUI View jumps. A test per Client checks every module's defaults against its global keys ([#764](https://github.com/IanTeda/Personal-Ledger/issues/764)).

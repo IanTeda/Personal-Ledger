@@ -14,10 +14,10 @@ use lib_list_cursor::Step;
 use lib_locale::format::upper;
 use lib_toast::ToastKind;
 use lib_units::SharedPorts;
-use lib_units::keymap::Keymap;
 use lib_units::presenter::{
     SourceLine, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel,
 };
+use lib_viper::keymap::Keymap;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},

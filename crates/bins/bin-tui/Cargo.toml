@@ -30,6 +30,7 @@ lib_locale = { path = "../../libs/lib-locale" }
 lib_toast = { path = "../../libs/lib-toast" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 lib_units = { path = "../../libs/lib-units" }
+lib_viper = { path = "../../libs/lib-viper" }
 
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }

@@ -1,71 +1,16 @@
-//! The Units page's default keys: each command name and its default chord, mapped to the event it
-//! sends. `[keybindings]` overrides a key by command name ([`KeyBindingConfig`]). A name other
-//! modules share stays flat (`new`, `delete`, `move_down`), so one override applies everywhere; a
-//! command only Units has is namespaced (`units.set_base`).
-//!
-//! A chord is text as `[keybindings]` writes it: modifiers joined to the key with `+`
-//! (`ctrl+d`), and a sequence of keys separated by a space (`g g`). Each Client turns its toolkit's
-//! key into that text before looking it up, so both share one keymap.
+//! The Units page's default keys, built on `lib_viper`'s [`Keymap`]. The commands every module
+//! shares keep their flat names from `lib_viper::keymap`; those only Units has are namespaced here
+//! (`units.set_base`).
 
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
+use lib_viper::keymap::{
+    Binding, DELETE, EDIT, HALF_PAGE_DOWN, HALF_PAGE_UP, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST,
+    MOVE_UP, NEW, REACTIVATE,
+};
 
 use crate::presenter::UnitsPageEvent;
 
-/// One command: its name in `[keybindings]`, its chord when nothing overrides it, and its event.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Binding<E> {
-    pub command: &'static str,
-    pub chord: &'static str,
-    pub event: E,
-}
-
-/// A module's bindings with any overrides applied, looked up by chord.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Keymap<E> {
-    bindings: Vec<(String, &'static str, E)>,
-}
-
-impl<E: Clone> Keymap<E> {
-    /// `defaults`, each chord replaced by the one `config` binds its command to.
-    pub fn new(defaults: &[Binding<E>], config: &KeyBindingConfig) -> Self {
-        let bindings = defaults
-            .iter()
-            .map(|binding| {
-                let chord = config.key_for(binding.command).unwrap_or(binding.chord);
-                (chord.to_string(), binding.command, binding.event.clone())
-            })
-            .collect();
-        Self { bindings }
-    }
-
-    /// The event `chord` sends, if it is bound.
-    pub fn event(&self, chord: &str) -> Option<E> {
-        self.bindings
-            .iter()
-            .find(|(bound, ..)| bound == chord)
-            .map(|(.., event)| event.clone())
-    }
-
-    /// The chord `command` is bound to, for the legend.
-    pub fn chord(&self, command: &str) -> Option<&str> {
-        self.bindings
-            .iter()
-            .find(|(_, name, _)| *name == command)
-            .map(|(chord, ..)| chord.as_str())
-    }
-}
-
-pub const MOVE_DOWN: &str = "move_down";
-pub const MOVE_UP: &str = "move_up";
-pub const MOVE_FIRST: &str = "move_first";
-pub const MOVE_LAST: &str = "move_last";
-pub const HALF_PAGE_DOWN: &str = "half_page_down";
-pub const HALF_PAGE_UP: &str = "half_page_up";
-pub const NEW: &str = "new";
-pub const EDIT: &str = "edit";
-pub const DELETE: &str = "delete";
-pub const REACTIVATE: &str = "reactivate";
 pub const TEST_SOURCE: &str = "units.test_source";
 pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";

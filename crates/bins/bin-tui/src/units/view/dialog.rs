@@ -10,10 +10,11 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeleteUnitEvent, DeleteUnitPresenter,
-    DialogFrame, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SelectView,
-    SetBaseUnitEvent, SetBaseUnitPresenter, TextFieldView, UnitFormEvent, UnitFormPresenter,
+    PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SetBaseUnitEvent,
+    SetBaseUnitPresenter, UnitFormEvent, UnitFormPresenter,
 };
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
+use lib_viper::view::{DialogFrame, SelectView, TextFieldView};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -475,7 +476,7 @@ fn popup_rect(area: Rect, content_rows: u16) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use lib_units::presenter::Choice;
+    use lib_viper::view::Choice;
 
     use super::*;
 

@@ -12,9 +12,10 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_units::Updates;
 use lib_units::presenter::{
-    AuthChoice, Choice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
-    PriceSourceFormViewModel, SelectView, TextFieldView,
+    AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
+    PriceSourceFormViewModel,
 };
+use lib_viper::view::{Choice, SelectView, TextFieldView};
 use secrecy::{ExposeSecret as _, SecretString};
 
 use super::{Shared, UnitsDialog, View, enter, help, refusal, send, test_not_built, typed};

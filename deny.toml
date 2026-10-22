@@ -62,8 +62,9 @@ allow-wildcard-paths = true
 # The VIPER dependency rules (docs/development/viper-architecture.md, Rules > Dependencies): a UI
 # toolkit belongs to its own bin, and only bins reach `lib_database`, so every lib stays
 # toolkit-free and I/O-free. A crate listed in `deny` may only be a direct dependency of its
-# `wrappers`; the third-party wrappers are the toolkits' own companion crates. `lib_rpc` is the
-# Sync Server's service layer and predates the rule, so it keeps `lib_database` for now.
+# `wrappers`, so a new lib such as `lib_viper` is banned by not being listed; the third-party
+# wrappers are the toolkits' own companion crates. `lib_rpc` is the Sync Server's service layer
+# and predates the rule, so it keeps `lib_database` for now.
 deny = [
   { crate = "gpui", wrappers = ["bin_desktop", "gpui-component"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "gpui-component", wrappers = ["bin_desktop"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },

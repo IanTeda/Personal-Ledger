@@ -2,11 +2,12 @@
 //! Units it prices, which fall back to Manual entry.
 
 use lib_core::PriceSourceId;
+use lib_viper::view::{DialogFrame, TextFieldView};
 
-use super::{DialogFrame, TextFieldView, UnitsOutcome, count, linked_codes};
+use super::{UnitsOutcome, count, linked_codes};
 use crate::interactor::{DeletePriceSource, DeletePriceSourceRefusal};
+use crate::msg;
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{msg, price_source};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeletePriceSourceEvent {
@@ -43,9 +44,7 @@ impl DeletePriceSourcePresenter {
     pub fn new(ports: SharedPorts, id: PriceSourceId) -> Option<Self> {
         let (name, codes) = {
             let ports = ports.borrow();
-            let records = ports.price_sources().price_source_records();
-            let manual = lib_locale::msg::price_source_manual_entry();
-            let name = price_source(&records, &manual, id)?.name.to_string();
+            let name = ports.source_catalogue().source(id)?.name.to_string();
             (name, linked_codes(&*ports, id))
         };
         Some(Self {

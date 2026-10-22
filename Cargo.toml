@@ -91,6 +91,7 @@ members = [
   "./crates/libs/lib-rpc",
   "./crates/libs/lib-toast",
   "./crates/libs/lib-list-cursor",
+  "./crates/libs/lib-viper",
 ]
 
 

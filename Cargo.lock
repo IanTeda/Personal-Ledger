@@ -737,6 +737,7 @@ dependencies = [
  "lib_tracing",
  "lib_transactions",
  "lib_units",
+ "lib_viper",
  "secrecy",
  "serde",
  "serde_json",
@@ -797,6 +798,7 @@ dependencies = [
  "lib_toast",
  "lib_tracing",
  "lib_units",
+ "lib_viper",
  "ratatui",
  "regex",
  "rustix 1.1.4",
@@ -4941,8 +4943,16 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_toast",
+ "lib_viper",
  "secrecy",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "lib_viper"
+version = "0.1.0"
+dependencies = [
+ "lib_config",
 ]
 
 [[package]]

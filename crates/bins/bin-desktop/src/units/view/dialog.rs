@@ -23,10 +23,11 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_toast::ToastKind;
 use lib_units::presenter::{
-    DeletePriceSourcePresenter, DeleteUnitPresenter, PriceSourceFormPresenter, SelectView,
+    DeletePriceSourcePresenter, DeleteUnitPresenter, PriceSourceFormPresenter,
     SetBaseUnitPresenter, UnitFormPresenter, UnitsOutcome,
 };
 use lib_units::{UnitsDialog as Which, UnitsRouter};
+use lib_viper::view::SelectView;
 
 use self::price_source_form::ApiKeyInput;
 use self::unit_form::UnitSelects;

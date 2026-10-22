@@ -20,8 +20,9 @@ use std::rc::Rc;
 use lib_config::KeyBindingConfig;
 use lib_database::{Commit, InMemoryCommit, UnitsStore};
 use lib_ledger::Ledger;
-use lib_units::keymap::{Keymap, units_page_keymap};
+use lib_units::keymap::units_page_keymap;
 use lib_units::presenter::UnitsPageEvent;
+use lib_viper::keymap::Keymap;
 
 pub use ports::{LedgerBackedPorts, TuiPorts};
 

@@ -11,7 +11,7 @@ use std::rc::Rc;
 use lib_core::{AccountType, Money, PriceSourceId, UnitId};
 use lib_toast::ToastKind;
 
-use crate::{PriceSourceRecord, UnitRow};
+use crate::{PriceSource, PriceSourceRecord, UnitRow, price_source, price_sources};
 
 /// The Units on the Ledger.
 pub trait UnitRepository {
@@ -97,6 +97,37 @@ pub trait UnitsPorts {
     fn holdings(&self) -> &dyn UnitHoldings;
 
     fn split_mut(&mut self) -> PortsMut<'_>;
+
+    /// The Price Sources as the Presenters list them, read once from the stored records.
+    fn source_catalogue(&self) -> SourceCatalogue {
+        SourceCatalogue {
+            records: self.price_sources().price_source_records(),
+            manual: lib_locale::msg::price_source_manual_entry(),
+        }
+    }
+}
+
+/// The stored Price Source records with Manual entry's localised name, which together make the
+/// sources ([`price_sources`]): owned, so the sources can borrow from it.
+pub struct SourceCatalogue {
+    records: Vec<PriceSourceRecord>,
+    manual: String,
+}
+
+impl SourceCatalogue {
+    /// Every source, in [`price_sources`]' order.
+    pub fn sources(&self) -> Vec<PriceSource<'_>> {
+        price_sources(&self.records, &self.manual)
+    }
+
+    pub fn source(&self, id: PriceSourceId) -> Option<PriceSource<'_>> {
+        price_source(&self.records, &self.manual, id)
+    }
+
+    /// Manual entry's name in the Locale.
+    pub fn manual_name(&self) -> &str {
+        &self.manual
+    }
 }
 
 /// The ports borrowed together for one Interactor call.

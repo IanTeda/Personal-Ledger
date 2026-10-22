@@ -45,7 +45,7 @@ impl UnitsRouter for PageRouter<'_, '_> {
 pub fn units_page(
     ports: DesktopPorts,
     ledger: gpui::Entity<crate::ledger_store::LedgerStore>,
-    keymap: lib_units::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
+    keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;

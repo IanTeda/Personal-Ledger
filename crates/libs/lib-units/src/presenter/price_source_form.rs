@@ -6,15 +6,13 @@
 //! keychain's, off this module (ADR-0043).
 
 use lib_core::PriceSourceId;
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::{
-    Choice, DialogFrame, SelectView, TextFieldView, UnitsOutcome, count, cycle, step,
-    updates_choices,
-};
+use super::{UnitsOutcome, count, cycle, step, updates_choices};
 use crate::interactor::{AddPriceSource, EditPriceSource, EditPriceSourceRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{Endpoint, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg, price_source};
+use crate::{Endpoint, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg};
 
 /// The Authentication control's value: whether the source needs a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -162,9 +160,8 @@ impl PriceSourceFormPresenter {
     pub fn edit(ports: SharedPorts, id: PriceSourceId) -> Option<Self> {
         let mut form = Self::add(ports.clone());
         let ports = ports.borrow();
-        let records = ports.price_sources().price_source_records();
-        let manual = lib_locale::msg::price_source_manual_entry();
-        let source = price_source(&records, &manual, id)?;
+        let catalogue = ports.source_catalogue();
+        let source = catalogue.source(id)?;
         form.name = source.name.to_string();
         form.updates = source.updates;
         match source.origin {

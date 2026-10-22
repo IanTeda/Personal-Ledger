@@ -40,6 +40,7 @@ lib_inventory = { path = "../../libs/lib-inventory" }
 lib_payees = { path = "../../libs/lib-payees" }
 lib_tags = { path = "../../libs/lib-tags" }
 lib_units = { path = "../../libs/lib-units" }
+lib_viper = { path = "../../libs/lib-viper" }
 lib_transactions = { path = "../../libs/lib-transactions" }
 lib_ledger = { path = "../../libs/lib-ledger" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }

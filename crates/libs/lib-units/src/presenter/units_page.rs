@@ -7,13 +7,14 @@ use lib_core::{PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_toast::ToastKind;
+use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
 use super::units_pane::{DetailPane, PaneInput, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago};
 use crate::interactor::ReactivateUnit;
-use crate::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, NEXT_TABLE, TEST_SOURCE};
+use crate::keymap::{NEXT_TABLE, TEST_SOURCE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, price_sources};
+use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg};
 
 /// A row of either table. One is selected at a time, the Units drawn above the Price Sources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,10 +355,9 @@ impl UnitsPagePresenter {
     pub fn view_model(&self) -> UnitsPageViewModel {
         let ports = self.ports.borrow();
         let units = ports.units().units();
-        let records = ports.price_sources().price_source_records();
+        let catalogue = ports.source_catalogue();
         let base = ports.base_unit().base_unit();
-        let manual = lib_locale::msg::price_source_manual_entry();
-        let sources = price_sources(&records, &manual);
+        let sources = catalogue.sources();
         let selection = resolve(Self::rows_of(&units, &sources), self.selected);
         let now = (self.clock)();
 
@@ -481,9 +481,7 @@ impl UnitsPagePresenter {
     fn rows(&self) -> Vec<UnitsRow> {
         let ports = self.ports.borrow();
         let units = ports.units().units();
-        let records = ports.price_sources().price_source_records();
-        let manual = lib_locale::msg::price_source_manual_entry();
-        Self::rows_of(&units, &price_sources(&records, &manual))
+        Self::rows_of(&units, &ports.source_catalogue().sources())
     }
 
     /// The selected row, or the first while nothing (or a removed row) is selected.
@@ -534,9 +532,8 @@ impl UnitsPagePresenter {
         match row {
             UnitsRow::Unit(id) => ports.units().unit(id).map(|unit| f(Row::Unit(&unit))),
             UnitsRow::Source(id) => {
-                let records = ports.price_sources().price_source_records();
-                let manual = lib_locale::msg::price_source_manual_entry();
-                let source = crate::price_source(&records, &manual, id)?;
+                let catalogue = ports.source_catalogue();
+                let source = catalogue.source(id)?;
                 Some(f(Row::Source(id, SourceKind::of(&source))))
             }
         }

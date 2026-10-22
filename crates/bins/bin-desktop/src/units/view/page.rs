@@ -16,8 +16,8 @@ use gpui::{
     Subscription,
 };
 use lib_ledger::Domain;
-use lib_units::keymap::Keymap;
 use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
+use lib_viper::keymap::Keymap;
 
 use crate::units::ports::{self, DesktopPorts};
 use crate::units::router::PageRouter;

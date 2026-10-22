@@ -32,7 +32,7 @@ pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 /// What `build_shell` hands the Units module: its ports and its keymap under `[keybindings]`.
 pub struct UnitsSetup {
     pub ports: DesktopPorts,
-    pub keymap: lib_units::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
+    pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
 }
 
 impl UnitsSetup {

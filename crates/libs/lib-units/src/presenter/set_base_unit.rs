@@ -1,8 +1,9 @@
 //! The Set base unit Dialog: a select over the active Units, by code, on the base Unit to start.
 
 use lib_core::UnitId;
+use lib_viper::view::{Choice, DialogFrame, SelectView};
 
-use super::{Choice, DialogFrame, SelectView, UnitChange, UnitsOutcome};
+use super::{UnitChange, UnitsOutcome};
 use crate::interactor::{SetBaseUnit, SetBaseUnitRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{msg, units_by_code};

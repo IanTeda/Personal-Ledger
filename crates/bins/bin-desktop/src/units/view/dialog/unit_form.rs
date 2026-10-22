@@ -5,9 +5,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_units::presenter::{
-    SelectView, TextFieldView, UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel,
-};
+use lib_units::presenter::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
+use lib_viper::view::{SelectView, TextFieldView};
 
 use super::{
     Shared, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,

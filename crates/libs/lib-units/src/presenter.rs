@@ -4,8 +4,8 @@
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`UnitsRouter`](crate::protocols::UnitsRouter) the Client passes in.
 //!
-//! The Presenters hold field values, focus and which fields show; a text field's caret and a
-//! select's open list are the View's, as widget mechanics of its toolkit.
+//! The Presenters hold field values, focus and which fields show, and build their forms from
+//! `lib_viper::view`'s field, select and Dialog views.
 
 mod delete_price_source;
 mod delete_unit;
@@ -20,6 +20,7 @@ use std::rc::Rc;
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 use lib_list_cursor::Step;
+use lib_viper::view::Choice;
 
 pub use delete_price_source::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
@@ -80,42 +81,6 @@ impl UnitsOutcome {
             Self::SourceDeleted { name, .. } => msg::units_activity_source_deleted(name),
         }
     }
-}
-
-/// One option of a select or segmented control: the value it sets and the text it shows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Choice<T> {
-    pub value: T,
-    pub label: String,
-}
-
-/// A text field as drawn: its label, what it holds, its placeholder and whether it has focus.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TextFieldView {
-    pub label: String,
-    pub text: String,
-    pub placeholder: String,
-    pub focused: bool,
-}
-
-/// A select or segmented control as drawn: its label, options, the value chosen and whether it
-/// has focus.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectView<T> {
-    pub label: String,
-    pub options: Vec<Choice<T>>,
-    pub chosen: Option<T>,
-    pub focused: bool,
-}
-
-/// A Dialog's buttons and title: the submit's label and whether it is enabled, and whether it
-/// destroys something (drawn in the danger colour).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DialogFrame {
-    pub title: String,
-    pub submit: String,
-    pub can_confirm: bool,
-    pub destructive: bool,
 }
 
 /// The codes of the Units source `id` prices, in the Ledger's order.

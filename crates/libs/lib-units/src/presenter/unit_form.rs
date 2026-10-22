@@ -7,13 +7,12 @@
 
 use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_locale::Label as _;
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
-use super::{
-    Choice, DialogFrame, SelectView, TextFieldView, UnitChange, UnitsOutcome, cycle, unique_label,
-};
+use super::{UnitChange, UnitsOutcome, cycle, unique_label};
 use crate::interactor::{AddUnit, EditUnit, EditUnitRefusal, PriceSourceGone};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceLink, msg, price_sources};
+use crate::{MANUAL_ENTRY, PriceLink, msg};
 
 /// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name, then the
 /// PRICE SOURCE group.
@@ -136,16 +135,17 @@ impl UnitFormPresenter {
     fn blank(ports: SharedPorts) -> Self {
         let (sources, quotes) = {
             let ports = ports.borrow();
-            let records = ports.price_sources().price_source_records();
-            let manual = lib_locale::msg::price_source_manual_entry();
+            let catalogue = ports.source_catalogue();
+            let manual = catalogue.manual_name();
             // Manual entry is labelled first so a Custom source named the same takes the suffix.
-            let mut seen = vec![manual.clone()];
-            let sources = price_sources(&records, &manual)
+            let mut seen = vec![manual.to_string()];
+            let sources = catalogue
+                .sources()
                 .iter()
                 .map(|source| SourceOption {
                     id: source.id,
                     label: if source.id == MANUAL_ENTRY {
-                        manual.clone()
+                        manual.to_string()
                     } else {
                         unique_label(source.name, &mut seen)
                     },

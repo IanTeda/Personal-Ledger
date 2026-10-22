@@ -13,8 +13,9 @@ use std::process::Command;
 
 use serde_json::Value;
 
-/// Feature crates that have moved to the VIPER layout and must keep the rule.
-const MIGRATED: &[&str] = &["lib_units"];
+/// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and
+/// `lib_viper`, the generic types they share, which no feature crate may reach another through.
+const MIGRATED: &[&str] = &["lib_units", "lib_viper"];
 
 /// Every feature crate, migrated or not: one per domain.
 const FEATURE_CRATES: &[&str] = &[
