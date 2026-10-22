@@ -4,12 +4,13 @@
 //! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-chrome/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
+use std::rc::Rc;
 use std::time::Duration;
 
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{Domain, UnitsStore, WriteFailure};
+use lib_database::{Commit, Domain, UnitsStore, WriteFailure};
 use lib_locale::format::upper;
 use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
@@ -203,14 +204,15 @@ impl Shell {
         }
     }
 
-    /// Puts the Units on `store`, under the key bindings already set, and listens on `failures`
-    /// for a write to roll back.
+    /// Puts the Units on `store`, under the key bindings already set, committing each Interactor
+    /// call through `commit`, and listens on `failures` for a write to roll back.
     pub fn with_units(
         mut self,
         store: Box<dyn UnitsStore>,
+        commit: Rc<dyn Commit>,
         failures: std::sync::mpsc::Receiver<WriteFailure>,
     ) -> Self {
-        self.units = UnitsSetup::new(store, &self.keybindings);
+        self.units = UnitsSetup::new(store, commit, &self.keybindings);
         self.write_failures = Some(failures);
         self
     }

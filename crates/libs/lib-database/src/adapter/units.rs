@@ -2,15 +2,11 @@
 //! `price_sources` and `ledger` tables (ADR-0046).
 //!
 //! It loads every row into memory, blocking, and serves reads from there. A port write changes
-//! memory at once and joins the pending changes the three ports share; [`UnitsAdapter::commit`]
-//! sends them to the [`Writer`] as one batch. The ports can't tell where an Interactor call ends,
-//! so the bin commits after each one, which keeps one call to one transaction.
+//! memory at once and joins the [`PendingWrites`] every adapter shares, which the bin commits
+//! after each Interactor call, so one call is one transaction whatever domains it writes.
 //!
 //! A built-in Price Source has a row only once a person overrides it, and Manual entry never has
 //! one (ADR-0043), so `units.price_source_id` is not a foreign key.
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use chrono::{DateTime, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
@@ -21,12 +17,13 @@ use lib_units::{
 };
 use sqlx::SqliteConnection;
 
-use crate::writer::{Batch, BoxFuture, Domain, Writer};
+use crate::commit::PendingWrites;
+use crate::writer::{BoxFuture, Change, Domain, Writer};
 use crate::{Error, Result};
 
 /// One port write, saved in the order it was made.
 #[derive(Debug, Clone)]
-enum Change {
+enum UnitsChange {
     UpsertUnit(UnitRow),
     DeleteUnit(UnitId),
     UpsertPriceSource(PriceSourceRecord),
@@ -34,32 +31,27 @@ enum Change {
     SetBaseUnit(UnitId),
 }
 
-/// The changes made since the last commit, shared by the three ports so their order holds across
-/// them. Single-threaded, as the ports are.
-type Pending = Rc<RefCell<Vec<Change>>>;
-
 /// The Units domain, held in memory and saved through the shared writer.
 pub struct UnitsAdapter {
     units: StoredUnits,
     price_sources: StoredPriceSources,
     base_unit: StoredBaseUnit,
-    pending: Pending,
-    writer: Writer,
+    pending: PendingWrites,
 }
 
 impl UnitsAdapter {
-    /// Loads every Unit, Price Source row and the base Unit, blocking until they are read.
+    /// Loads every Unit, Price Source row and the base Unit through `pending`'s writer, blocking
+    /// until they are read. The adapter's writes join `pending`.
     ///
     /// # Errors
     /// Returns [`Error::NotFound`] if the database has no base Unit yet, as an empty one doesn't:
     /// [`Self::seed`] it first. Otherwise the error of the read.
     #[tracing::instrument(name = "Load the Units", level = "debug", skip_all)]
-    pub fn load(writer: Writer) -> Result<Self> {
-        let rows = writer.run(|pool| async move {
+    pub fn load(pending: PendingWrites) -> Result<Self> {
+        let rows = pending.writer().run(|pool| async move {
             let mut conn = pool.acquire().await?;
             read(&mut conn).await
         })?;
-        let pending = Pending::default();
         Ok(Self {
             units: StoredUnits {
                 rows: rows.units,
@@ -74,7 +66,6 @@ impl UnitsAdapter {
                 pending: pending.clone(),
             },
             pending,
-            writer,
         })
     }
 
@@ -104,10 +95,10 @@ impl UnitsAdapter {
         records: Vec<PriceSourceRecord>,
         base_unit: UnitId,
     ) -> Result<()> {
-        let changes: Vec<Change> = units
+        let changes: Vec<UnitsChange> = units
             .into_iter()
-            .map(Change::UpsertUnit)
-            .chain(records.into_iter().map(Change::UpsertPriceSource))
+            .map(UnitsChange::UpsertUnit)
+            .chain(records.into_iter().map(UnitsChange::UpsertPriceSource))
             .collect();
         writer.run(move |pool| async move {
             let mut transaction = pool.begin().await?;
@@ -124,7 +115,7 @@ impl UnitsAdapter {
         })
     }
 
-    /// Drops the changes not yet committed and loads the rows again, blocking. For after a
+    /// Drops the Units changes not yet committed and loads the rows again, blocking. For after a
     /// [`WriteFailure`](crate::writer::WriteFailure) names [`Domain::Units`], so memory matches
     /// the file again.
     ///
@@ -132,22 +123,12 @@ impl UnitsAdapter {
     /// Returns the error of the read; memory is left as it was then.
     #[tracing::instrument(name = "Reload the Units", level = "debug", skip_all)]
     pub fn reload(&mut self) -> Result<()> {
-        let fresh = Self::load(self.writer.clone())?;
+        let fresh = Self::load(self.pending.clone())?;
         self.units.rows = fresh.units.rows;
         self.price_sources.rows = fresh.price_sources.rows;
         self.base_unit.id = fresh.base_unit.id;
-        self.pending.borrow_mut().clear();
+        self.pending.discard(Domain::Units);
         Ok(())
-    }
-
-    /// Sends the changes made since the last commit to the writer as one transaction. Call once
-    /// after each Interactor call; it never waits.
-    #[tracing::instrument(name = "Commit the Units", level = "debug", skip_all)]
-    pub fn commit(&mut self) {
-        let changes = std::mem::take(&mut *self.pending.borrow_mut());
-        if !changes.is_empty() {
-            self.writer.write(Box::new(UnitsBatch(changes)));
-        }
     }
 
     pub fn units(&self) -> &dyn UnitRepository {
@@ -175,7 +156,7 @@ impl UnitsAdapter {
 
 struct StoredUnits {
     rows: Vec<UnitRow>,
-    pending: Pending,
+    pending: PendingWrites,
 }
 
 impl UnitRepository for StoredUnits {
@@ -188,18 +169,18 @@ impl UnitRepository for StoredUnits {
             Some(row) => *row = unit.clone(),
             None => self.rows.push(unit.clone()),
         }
-        self.pending.borrow_mut().push(Change::UpsertUnit(unit));
+        self.pending.push(UnitsChange::UpsertUnit(unit));
     }
 
     fn delete_unit(&mut self, id: UnitId) {
         self.rows.retain(|row| row.id != id);
-        self.pending.borrow_mut().push(Change::DeleteUnit(id));
+        self.pending.push(UnitsChange::DeleteUnit(id));
     }
 }
 
 struct StoredPriceSources {
     rows: Vec<PriceSourceRecord>,
-    pending: Pending,
+    pending: PendingWrites,
 }
 
 impl PriceSourceRepository for StoredPriceSources {
@@ -212,22 +193,18 @@ impl PriceSourceRepository for StoredPriceSources {
             Some(row) => *row = record.clone(),
             None => self.rows.push(record.clone()),
         }
-        self.pending
-            .borrow_mut()
-            .push(Change::UpsertPriceSource(record));
+        self.pending.push(UnitsChange::UpsertPriceSource(record));
     }
 
     fn delete_price_source(&mut self, id: PriceSourceId) {
         self.rows.retain(|row| row.id() != id);
-        self.pending
-            .borrow_mut()
-            .push(Change::DeletePriceSource(id));
+        self.pending.push(UnitsChange::DeletePriceSource(id));
     }
 }
 
 struct StoredBaseUnit {
     id: UnitId,
-    pending: Pending,
+    pending: PendingWrites,
 }
 
 impl BaseUnitRepository for StoredBaseUnit {
@@ -237,45 +214,37 @@ impl BaseUnitRepository for StoredBaseUnit {
 
     fn set_base_unit(&mut self, id: UnitId) {
         self.id = id;
-        self.pending.borrow_mut().push(Change::SetBaseUnit(id));
+        self.pending.push(UnitsChange::SetBaseUnit(id));
     }
 }
 
-/// One Interactor call's changes, for the writer.
-struct UnitsBatch(Vec<Change>);
-
-impl Batch for UnitsBatch {
+impl Change for UnitsChange {
     fn domain(&self) -> Domain {
         Domain::Units
     }
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
-        Box::pin(async move {
-            for change in &self.0 {
-                save(conn, change).await?;
-            }
-            Ok(())
-        })
+        Box::pin(async move { save(conn, &self).await })
     }
 }
 
-async fn save(conn: &mut SqliteConnection, change: &Change) -> Result<()> {
+async fn save(conn: &mut SqliteConnection, change: &UnitsChange) -> Result<()> {
     match change {
-        Change::UpsertUnit(unit) => upsert_unit(conn, unit).await,
-        Change::DeleteUnit(id) => {
+        UnitsChange::UpsertUnit(unit) => upsert_unit(conn, unit).await,
+        UnitsChange::DeleteUnit(id) => {
             sqlx::query!("DELETE FROM units WHERE id = ?", id)
                 .execute(conn)
                 .await?;
             Ok(())
         }
-        Change::UpsertPriceSource(record) => upsert_price_source(conn, record).await,
-        Change::DeletePriceSource(id) => {
+        UnitsChange::UpsertPriceSource(record) => upsert_price_source(conn, record).await,
+        UnitsChange::DeletePriceSource(id) => {
             sqlx::query!("DELETE FROM price_sources WHERE id = ?", id)
                 .execute(conn)
                 .await?;
             Ok(())
         }
-        Change::SetBaseUnit(id) => {
+        UnitsChange::SetBaseUnit(id) => {
             sqlx::query!(
                 "INSERT INTO ledger (id, base_unit_id) VALUES (1, ?)
                  ON CONFLICT (id) DO UPDATE SET base_unit_id = excluded.base_unit_id",
@@ -557,6 +526,7 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::commit::Commit;
     use crate::writer::{Gate, WriteFailure};
 
     impl StoredPorts for UnitsAdapter {
@@ -565,17 +535,23 @@ mod tests {
         }
     }
 
-    /// Adapters on one test database. A reload commits, loads afresh, and fails the check if
-    /// the writer reported a failure, so a write SQLite refuses can't pass unseen.
+    /// Adapters on one test database, sharing one pending batch. A reload commits, loads afresh,
+    /// and fails the check if the writer reported a failure, so a write SQLite refuses can't pass
+    /// unseen.
     struct AdapterFactory {
         writer: Writer,
+        pending: PendingWrites,
         failures: mpsc::Receiver<WriteFailure>,
     }
 
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            Self { writer, failures }
+            Self {
+                pending: PendingWrites::new(writer.clone()),
+                writer,
+                failures,
+            }
         }
     }
 
@@ -584,20 +560,20 @@ mod tests {
 
         fn create(&mut self, seed: InMemoryPorts) -> UnitsAdapter {
             UnitsAdapter::seed_from(&self.writer, seed).expect("the seed is written");
-            UnitsAdapter::load(self.writer.clone()).expect("the seed loads")
+            UnitsAdapter::load(self.pending.clone()).expect("the seed loads")
         }
 
-        fn reload(&mut self, mut ports: UnitsAdapter) -> UnitsAdapter {
-            ports.commit();
-            let fresh = UnitsAdapter::load(self.writer.clone()).expect("the rows load");
+        fn reload(&mut self, _ports: UnitsAdapter) -> UnitsAdapter {
+            self.pending.commit();
+            let fresh = UnitsAdapter::load(self.pending.clone()).expect("the rows load");
             if let Ok(failure) = self.failures.try_recv() {
                 panic!("a write failed: {failure:?}");
             }
             fresh
         }
 
-        fn commit(&mut self, ports: &mut UnitsAdapter) {
-            ports.commit();
+        fn commit(&mut self, _ports: &mut UnitsAdapter) {
+            self.pending.commit();
         }
 
         fn break_writes(&mut self, _ports: &mut UnitsAdapter) {
@@ -670,6 +646,7 @@ mod tests {
         let mut factory = AdapterFactory::new(options);
         let mut adapter = factory.create(InMemoryPorts::stub(Utc::now()));
         let stored = snapshot(&mut adapter);
+        let pending = factory.pending.clone();
         let add = |adapter: &mut UnitsAdapter, code: &str| {
             let usage = lib_units::fake::InMemoryUnitUsage::default();
             let ports = adapter.split_mut(&usage);
@@ -681,11 +658,11 @@ mod tests {
             }
             .run(ports.units, ports.price_sources)
             .expect("Manual entry exists");
-            adapter.commit();
+            pending.commit();
         };
 
-        let (release, gate) = mpsc::channel();
-        factory.writer.write(Box::new(Gate(gate)));
+        let (gate, release) = Gate::batch();
+        factory.writer.write(gate);
         // A second aud breaks units.code's UNIQUE; eur queues behind it.
         add(&mut adapter, "aud");
         add(&mut adapter, "eur");
@@ -701,7 +678,7 @@ mod tests {
         assert!(matches!(failure.error, Error::Sqlx(_)));
         adapter.reload().expect("the rows load");
         assert_eq!(snapshot(&mut adapter), stored, "both writes are gone");
-        let mut fresh = UnitsAdapter::load(factory.writer.clone()).expect("the rows load");
+        let mut fresh = UnitsAdapter::load(factory.pending.clone()).expect("the rows load");
         assert_eq!(snapshot(&mut fresh), stored, "the queued eur was dropped");
     }
 
@@ -712,7 +689,7 @@ mod tests {
     ) {
         let (writer, _failures) = Writer::spawn(options).unwrap();
         assert!(matches!(
-            UnitsAdapter::load(writer).map(|_| ()),
+            UnitsAdapter::load(PendingWrites::new(writer)).map(|_| ()),
             Err(Error::NotFound(_))
         ));
     }

@@ -11,25 +11,32 @@ use lib_units::{
     UnitsPorts,
 };
 
-use lib_database::UnitsStore;
+use lib_database::{Commit, UnitsStore};
 
 /// The Units ports the Units View and its Dialogs share.
 pub type TuiPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// `store`'s Units, Price Sources and base Unit, with usage and holdings read from `ledger`.
+/// `store`'s Units, Price Sources and base Unit, with usage and holdings read from `ledger`, and
+/// the commit that ends each Interactor call. The commit is every adapter's, held here while Units
+/// is the only module that writes through it.
 pub struct LedgerBackedPorts {
     store: Box<dyn UnitsStore>,
+    commit: Rc<dyn Commit>,
     ledger: Ledger,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn UnitsStore>, ledger: Ledger) -> TuiPorts {
-        Rc::new(RefCell::new(Self { store, ledger }))
+    pub fn shared(store: Box<dyn UnitsStore>, commit: Rc<dyn Commit>, ledger: Ledger) -> TuiPorts {
+        Rc::new(RefCell::new(Self {
+            store,
+            commit,
+            ledger,
+        }))
     }
 
     /// Ends the Interactor call just made, if any, as one transaction.
     pub fn commit(&mut self) {
-        self.store.commit();
+        self.commit.commit();
     }
 
     /// Puts the rows back as stored, after a write that named the Units failed (ADR-0046).

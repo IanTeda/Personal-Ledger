@@ -31,11 +31,15 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
-use lib_database::{Domain, UnitsStore, WriteFailure};
-use lib_units::fake::InMemoryPorts;
+use lib_core::{PriceSourceId, UnitId};
+use lib_database::{Commit, Domain, InMemoryCommit, UnitsStore, WriteFailure};
+use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
 use lib_units::{
-    BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
+    BaseUnitRepository, PortsMut, PriceSourceRecord, PriceSourceRepository, UnitRepository,
+    UnitRow, UnitUsage,
 };
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -44,42 +48,105 @@ fn no_failures() -> mpsc::Receiver<WriteFailure> {
     mpsc::channel().1
 }
 
-/// Units ports whose writes never reach `stored`, the rows as they are on disk: a commit with
-/// changes since the last reports a failure, as the writer would, and a reload puts `memory`
-/// back to `stored`.
+/// Marks `written` on every write through it, so the commit after it knows there is one to fail.
+struct Marked<T> {
+    inner: T,
+    written: Rc<Cell<bool>>,
+}
+
+impl<T: UnitRepository> UnitRepository for Marked<T> {
+    fn units(&self) -> Vec<UnitRow> {
+        self.inner.units()
+    }
+
+    fn upsert_unit(&mut self, unit: UnitRow) {
+        self.written.set(true);
+        self.inner.upsert_unit(unit);
+    }
+
+    fn delete_unit(&mut self, id: UnitId) {
+        self.written.set(true);
+        self.inner.delete_unit(id);
+    }
+}
+
+impl<T: PriceSourceRepository> PriceSourceRepository for Marked<T> {
+    fn price_source_records(&self) -> Vec<PriceSourceRecord> {
+        self.inner.price_source_records()
+    }
+
+    fn upsert_price_source(&mut self, record: PriceSourceRecord) {
+        self.written.set(true);
+        self.inner.upsert_price_source(record);
+    }
+
+    fn delete_price_source(&mut self, id: PriceSourceId) {
+        self.written.set(true);
+        self.inner.delete_price_source(id);
+    }
+}
+
+impl<T: BaseUnitRepository> BaseUnitRepository for Marked<T> {
+    fn base_unit(&self) -> UnitId {
+        self.inner.base_unit()
+    }
+
+    fn set_base_unit(&mut self, id: UnitId) {
+        self.written.set(true);
+        self.inner.set_base_unit(id);
+    }
+}
+
+/// Units ports whose writes never reach `stored`, the rows as they are on disk: a reload puts
+/// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingUnits {
-    memory: InMemoryPorts,
-    /// `memory` at the last commit, so a commit with nothing new reports nothing.
-    committed: InMemoryPorts,
+    units: Marked<InMemoryUnits>,
+    price_sources: Marked<InMemoryPriceSources>,
+    base_unit: Marked<InMemoryBaseUnit>,
     stored: InMemoryPorts,
-    report: mpsc::Sender<WriteFailure>,
     reload_fails: bool,
+}
+
+impl FailingUnits {
+    fn new(stored: InMemoryPorts, written: &Rc<Cell<bool>>, reload_fails: bool) -> Self {
+        Self {
+            units: Marked {
+                inner: stored.units.clone(),
+                written: written.clone(),
+            },
+            price_sources: Marked {
+                inner: stored.price_sources.clone(),
+                written: written.clone(),
+            },
+            base_unit: Marked {
+                inner: stored.base_unit,
+                written: written.clone(),
+            },
+            stored,
+            reload_fails,
+        }
+    }
 }
 
 impl UnitsStore for FailingUnits {
     fn units(&self) -> &dyn UnitRepository {
-        UnitsPorts::units(&self.memory)
+        &self.units
     }
 
     fn price_sources(&self) -> &dyn PriceSourceRepository {
-        UnitsPorts::price_sources(&self.memory)
+        &self.price_sources
     }
 
     fn base_unit(&self) -> &dyn BaseUnitRepository {
-        UnitsPorts::base_unit(&self.memory)
+        &self.base_unit
     }
 
     fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        UnitsStore::split_mut(&mut self.memory, usage)
-    }
-
-    fn commit(&mut self) {
-        if self.memory != self.committed {
-            self.committed = self.memory.clone();
-            let _ = self.report.send(WriteFailure {
-                domains: vec![Domain::Units],
-                error: lib_database::Error::Generic("the test's write fails".into()),
-            });
+        PortsMut {
+            units: &mut self.units,
+            price_sources: &mut self.price_sources,
+            base_unit: &mut self.base_unit,
+            usage,
         }
     }
 
@@ -89,9 +156,28 @@ impl UnitsStore for FailingUnits {
                 "the test's reload fails".into(),
             ));
         }
-        self.memory = self.stored.clone();
-        self.committed = self.stored.clone();
+        self.units.inner = self.stored.units.clone();
+        self.price_sources.inner = self.stored.price_sources.clone();
+        self.base_unit.inner = self.stored.base_unit;
         Ok(())
+    }
+}
+
+/// A commit with writes since the last reports a failure naming the Units, as the writer would
+/// when SQLite refuses them; a commit with nothing new reports nothing.
+struct FailingCommit {
+    written: Rc<Cell<bool>>,
+    report: mpsc::Sender<WriteFailure>,
+}
+
+impl Commit for FailingCommit {
+    fn commit(&self) {
+        if self.written.replace(false) {
+            let _ = self.report.send(WriteFailure {
+                domains: vec![Domain::Units],
+                error: lib_database::Error::Generic("the test's write fails".into()),
+            });
+        }
     }
 }
 
@@ -148,18 +234,7 @@ impl<'a> Harness<'a> {
             logs,
             configured_level,
             Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-            no_failures(),
-        )
-    }
-
-    /// As [`Harness::new`], on `units` rather than the in-memory stub: the smoke test's stored
-    /// ones.
-    pub fn with_units(app: &'a mut TestAppContext, units: Box<dyn UnitsStore>) -> Self {
-        Self::build(
-            app,
-            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-            None,
-            units,
+            Rc::new(InMemoryCommit),
             no_failures(),
         )
     }
@@ -172,6 +247,7 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             Box::new(storage.units),
+            Rc::new(storage.pending),
             storage.failures,
         )
     }
@@ -181,18 +257,17 @@ impl<'a> Harness<'a> {
     /// Shell hear of the failure.
     pub fn with_failing_units(app: &'a mut TestAppContext, reload_fails: bool) -> Self {
         let (report, failures) = mpsc::channel();
-        let stored = InMemoryPorts::stub(chrono::Utc::now());
+        let written = Rc::new(Cell::new(false));
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(FailingUnits {
-                memory: stored.clone(),
-                committed: stored.clone(),
-                stored,
-                report,
+            Box::new(FailingUnits::new(
+                InMemoryPorts::stub(chrono::Utc::now()),
+                &written,
                 reload_fails,
-            }),
+            )),
+            Rc::new(FailingCommit { written, report }),
             failures,
         )
     }
@@ -202,6 +277,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         units: Box<dyn UnitsStore>,
+        commit: Rc<dyn Commit>,
         failures: mpsc::Receiver<WriteFailure>,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
@@ -226,6 +302,7 @@ impl<'a> Harness<'a> {
                     configured_level,
                 },
                 units,
+                commit,
                 failures,
                 today(),
                 focus_handle,

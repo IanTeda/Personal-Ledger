@@ -9,12 +9,13 @@
     reason = "test support: an unknown key token is a typo in the test and should fail it loudly"
 )]
 
+use std::rc::Rc;
 use std::sync::mpsc;
 
 use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{UnitsStore, WriteFailure};
+use lib_database::{Commit, InMemoryCommit, UnitsStore, WriteFailure};
 use lib_units::fake::InMemoryPorts;
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -30,17 +31,24 @@ pub fn shell() -> Shell {
 
 /// [`shell`], with the sender of its writer failure channel, so a test can report a failed write.
 pub fn shell_with_failures() -> (Shell, mpsc::Sender<WriteFailure>) {
-    shell_on(Box::new(InMemoryPorts::stub(chrono::Utc::now())))
+    shell_on(
+        Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+        Rc::new(InMemoryCommit),
+    )
 }
 
-/// A `Shell` whose Units are kept in `units`.
-pub fn shell_on(units: Box<dyn UnitsStore>) -> (Shell, mpsc::Sender<WriteFailure>) {
+/// A `Shell` whose Units are kept in `units`, committed through `commit`.
+pub fn shell_on(
+    units: Box<dyn UnitsStore>,
+    commit: Rc<dyn Commit>,
+) -> (Shell, mpsc::Sender<WriteFailure>) {
     locale::init_for_tests();
     let (report, failures) = mpsc::channel();
     let shell = build_shell(
         KeyBindingConfig::default(),
         Colours::default(),
         units,
+        commit,
         failures,
     );
     (shell, report)

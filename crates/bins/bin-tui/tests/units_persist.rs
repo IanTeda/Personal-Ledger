@@ -12,7 +12,7 @@ fn a_unit_added_in_the_tui_is_there_after_a_restart() {
     let path = directory.path().join("ledger.pldb");
 
     let storage = lib_database::open_storage(&path).expect("a new Ledger opens and is seeded");
-    let (mut shell, _report) = shell_on(Box::new(storage.units));
+    let (mut shell, _report) = shell_on(Box::new(storage.units), std::rc::Rc::new(storage.pending));
     press(&mut shell, "g u n");
     type_text(&mut shell, "xau");
     press(&mut shell, "Tab Tab");
@@ -23,7 +23,7 @@ fn a_unit_added_in_the_tui_is_there_after_a_restart() {
     drop(storage.writer);
 
     let storage = lib_database::open_storage(&path).expect("the Ledger opens again");
-    let (mut shell, _report) = shell_on(Box::new(storage.units));
+    let (mut shell, _report) = shell_on(Box::new(storage.units), std::rc::Rc::new(storage.pending));
     press(&mut shell, "g u");
     let frame = screen(&mut shell);
 

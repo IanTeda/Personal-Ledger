@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
     .with_system(system);
     let lib_database::Storage {
         units,
+        pending,
         writer,
         failures,
     } = storage;
@@ -74,6 +75,7 @@ async fn main() -> Result<()> {
         config.keybindings_config().clone(),
         colours,
         Box::new(units),
+        std::rc::Rc::new(pending),
         failures,
     )
     .run()

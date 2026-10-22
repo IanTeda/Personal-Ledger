@@ -2,7 +2,8 @@
 //! `tokio` runtime and a one-connection pool, so the Clients' synchronous ports never wait on
 //! `sqlx` and writes from every domain land in the order they were sent.
 //!
-//! An adapter sends each Interactor call's changes as one [`Batch`], run in one transaction with
+//! Every adapter's changes from one Interactor call are sent as one [`Batch`]
+//! ([`PendingWrites`](crate::commit::PendingWrites) gathers them), run in one transaction with
 //! foreign keys on. When a batch fails, the writer drops every write queued behind it, since each
 //! was made on top of memory that no longer matches the file, and reports a [`WriteFailure`] on
 //! the channel [`Writer::spawn`] returns. The bin listens there and has each named domain's
@@ -34,18 +35,48 @@ static CLIENT_MIGRATIONS: Migrator = sqlx::migrate!("./migrations/client");
 /// A boxed future a [`Batch`] or a [`Writer::run`] job returns.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The domain a batch belongs to, so a failure can name the adapters that must reload.
+/// The domain a change belongs to, so a failure can name the adapters that must reload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Domain {
     Units,
+    /// The test-only second adapter, which proves one commit spans domains.
+    #[cfg(test)]
+    Test,
 }
 
-/// One Interactor call's changes to one domain, applied in one transaction.
-pub trait Batch: Send + 'static {
+/// One port write, saved inside its batch's transaction.
+pub trait Change: Send + 'static {
+    /// The domain whose adapter holds the row in memory, so must reload if the write is lost.
     fn domain(&self) -> Domain;
 
-    /// Runs the changes, in order, on `conn`, which is inside the batch's transaction.
+    /// Runs the write on `conn`, which is inside the batch's transaction.
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>>;
+}
+
+/// One Interactor call's changes, from every adapter, applied in the order they were made in one
+/// transaction: all of them land or none do.
+pub struct Batch(Vec<Box<dyn Change>>);
+
+impl Batch {
+    pub fn new(changes: Vec<Box<dyn Change>>) -> Self {
+        Self(changes)
+    }
+
+    /// Each domain the changes belong to, once, in the order first written.
+    pub fn domains(&self) -> Vec<Domain> {
+        let mut domains = Vec::new();
+        self.add_domains_to(&mut domains);
+        domains
+    }
+
+    /// Adds each of the batch's domains not already in `domains`, keeping their order.
+    fn add_domains_to(&self, domains: &mut Vec<Domain>) {
+        for change in &self.0 {
+            if !domains.contains(&change.domain()) {
+                domains.push(change.domain());
+            }
+        }
+    }
 }
 
 /// A failed batch, with every domain whose writes were lost: the failed batch's and those of
@@ -61,7 +92,7 @@ type RunJob = Box<dyn FnOnce(&Runtime, &SqlitePool) + Send>;
 
 enum Job {
     /// A batch and the span it was sent from, so a failure logs under the call that made it.
-    Write(Box<dyn Batch>, tracing::Span),
+    Write(Batch, tracing::Span),
     Run(RunJob),
 }
 
@@ -134,14 +165,14 @@ impl Writer {
 
     /// Queues `batch` behind every write already sent. Never waits: a failure is reported on the
     /// failure channel.
-    pub fn write(&self, batch: Box<dyn Batch>) {
-        let domain = batch.domain();
+    pub fn write(&self, batch: Batch) {
+        let domains = batch.domains();
         if self
             .jobs
             .send(Job::Write(batch, tracing::Span::current()))
             .is_err()
         {
-            tracing::error!(?domain, "The writer thread has stopped; a write was lost");
+            tracing::error!(?domains, "The writer thread has stopped; a write was lost");
         }
     }
 
@@ -194,23 +225,18 @@ fn serve(
             }
             Job::Write(batch, sender) => (batch, sender),
         };
-        let domain = batch.domain();
-        let span = tracing::debug_span!(parent: &sender, "Apply a write", ?domain);
+        let mut domains = batch.domains();
+        let span = tracing::debug_span!(parent: &sender, "Apply a write", ?domains);
         let _entered = span.enter();
         let Err(error) = runtime.block_on(apply(pool, batch)) else {
             continue;
         };
-        tracing::error!(?domain, %error, "A write failed; dropping the writes queued behind it");
-        let mut domains = vec![domain];
+        tracing::error!(?domains, %error, "A write failed; dropping the writes queued behind it");
         let mut waiting = Vec::new();
         while let Ok(job) = jobs.try_recv() {
             match job {
                 Job::Run(job) => waiting.push(job),
-                Job::Write(dropped, _) => {
-                    if !domains.contains(&dropped.domain()) {
-                        domains.push(dropped.domain());
-                    }
-                }
+                Job::Write(dropped, _) => dropped.add_domains_to(&mut domains),
             }
         }
         // Reported before the waiting jobs run, so whoever they answer can already see it.
@@ -222,19 +248,30 @@ fn serve(
     }
 }
 
-async fn apply(pool: &SqlitePool, batch: Box<dyn Batch>) -> Result<()> {
+async fn apply(pool: &SqlitePool, batch: Batch) -> Result<()> {
     let mut transaction = pool.begin().await?;
-    batch.apply(&mut transaction).await?;
+    for change in batch.0 {
+        change.apply(&mut transaction).await?;
+    }
     transaction.commit().await?;
     Ok(())
 }
 
-/// A batch that holds the writer until the test lets it go, so later writes queue behind it.
+/// A change that holds the writer until the test lets it go, so later writes queue behind it.
 #[cfg(test)]
 pub(crate) struct Gate(pub(crate) mpsc::Receiver<()>);
 
 #[cfg(test)]
-impl Batch for Gate {
+impl Gate {
+    /// A batch of the gate alone, and the sender that lets it go.
+    pub(crate) fn batch() -> (Batch, mpsc::Sender<()>) {
+        let (release, gate) = mpsc::channel();
+        (Batch::new(vec![Box::new(Self(gate))]), release)
+    }
+}
+
+#[cfg(test)]
+impl Change for Gate {
     fn domain(&self) -> Domain {
         Domain::Units
     }
@@ -253,13 +290,22 @@ mod tests {
 
     use super::*;
 
-    /// A batch that runs one SQL statement and records that it ran.
+    /// A change that runs one SQL statement and records that it ran.
     struct Statement {
         sql: &'static str,
         ran: Arc<Mutex<Vec<&'static str>>>,
     }
 
-    impl Batch for Statement {
+    impl Statement {
+        fn batch(sql: &'static str, ran: &Arc<Mutex<Vec<&'static str>>>) -> Batch {
+            Batch::new(vec![Box::new(Self {
+                sql,
+                ran: ran.clone(),
+            })])
+        }
+    }
+
+    impl Change for Statement {
         fn domain(&self) -> Domain {
             Domain::Units
         }
@@ -285,10 +331,7 @@ mod tests {
             "INSERT INTO notes VALUES ('first')",
             "INSERT INTO notes VALUES ('second')",
         ] {
-            writer.write(Box::new(Statement {
-                sql,
-                ran: ran.clone(),
-            }));
+            writer.write(Statement::batch(sql, &ran));
         }
 
         let bodies: Vec<String> = writer
@@ -311,15 +354,10 @@ mod tests {
     ) {
         let (writer, failures) = Writer::spawn(options).unwrap();
         let ran = Arc::new(Mutex::new(Vec::new()));
-        let write = |sql| {
-            writer.write(Box::new(Statement {
-                sql,
-                ran: ran.clone(),
-            }))
-        };
+        let write = |sql| writer.write(Statement::batch(sql, &ran));
         write("CREATE TABLE notes (body TEXT NOT NULL)");
-        let (release, gate) = mpsc::channel();
-        writer.write(Box::new(Gate(gate)));
+        let (gate, release) = Gate::batch();
+        writer.write(gate);
         write("INSERT INTO notes VALUES (NULL)");
         write("INSERT INTO notes VALUES ('queued')");
         release.send(()).unwrap();
@@ -347,12 +385,12 @@ mod tests {
     ) {
         let (writer, _failures) = Writer::spawn(options).unwrap();
         let ran = Arc::new(Mutex::new(Vec::new()));
-        let (release, gate) = mpsc::channel();
-        writer.write(Box::new(Gate(gate)));
-        writer.write(Box::new(Statement {
-            sql: "CREATE TABLE notes (body TEXT NOT NULL)",
-            ran: ran.clone(),
-        }));
+        let (gate, release) = Gate::batch();
+        writer.write(gate);
+        writer.write(Statement::batch(
+            "CREATE TABLE notes (body TEXT NOT NULL)",
+            &ran,
+        ));
         release.send(()).unwrap();
 
         writer.flush().unwrap();

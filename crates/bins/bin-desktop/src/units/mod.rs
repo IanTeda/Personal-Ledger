@@ -17,7 +17,9 @@ pub mod ports;
 mod router;
 mod view;
 
-use lib_database::UnitsStore;
+use std::rc::Rc;
+
+use lib_database::{Commit, UnitsStore};
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
 pub use view::dialog::UnitsDialog;
@@ -34,9 +36,13 @@ pub struct UnitsSetup {
 }
 
 impl UnitsSetup {
-    pub fn new(ports: Box<dyn UnitsStore>, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(
+        ports: Box<dyn UnitsStore>,
+        commit: Rc<dyn Commit>,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
-            ports: LedgerBackedPorts::shared(ports),
+            ports: LedgerBackedPorts::shared(ports, commit),
             keymap: lib_units::keymap::units_page_keymap(config),
         }
     }
@@ -46,6 +52,7 @@ impl UnitsSetup {
     pub fn stub() -> Self {
         Self::new(
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+            Rc::new(lib_database::InMemoryCommit),
             &lib_config::KeyBindingConfig::default(),
         )
     }

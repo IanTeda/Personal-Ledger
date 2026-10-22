@@ -33,6 +33,7 @@ mod msg {
 }
 
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, TitlebarOptions, WindowBounds, WindowOptions,
@@ -42,7 +43,7 @@ use gpui::{
 use app::Shell;
 pub use chrome::window_size::WindowSize;
 pub use error::Error;
-use lib_database::{Storage, UnitsStore, open_storage};
+use lib_database::{Commit, Storage, UnitsStore, open_storage};
 use persistence::{PersistedState, WindowGeometry};
 
 /// Crate Result type alias used across the Desktop binary.
@@ -74,7 +75,8 @@ pub struct ShellLogs {
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
 /// `units` is where the Units are kept: the app's SQLite adapter, or a test's in-memory ports.
-/// `failures` is the writer's failure channel, on which a failed write rolls back.
+/// `commit` ends each Interactor call's writes, every adapter's at once. `failures` is the
+/// writer's failure channel, on which a failed write rolls back.
 #[expect(
     clippy::too_many_arguments,
     reason = "each is one start-up input the app and the tests both supply"
@@ -84,6 +86,7 @@ pub fn build_shell(
     bindings: ShellBindings,
     logs: ShellLogs,
     units: Box<dyn UnitsStore>,
+    commit: Rc<dyn Commit>,
     failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
     today: chrono::NaiveDate,
     focus_handle: FocusHandle,
@@ -105,7 +108,7 @@ pub fn build_shell(
         .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
-    let units = units::UnitsSetup::new(units, &bindings.keybindings);
+    let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
     let mut shell = Shell::with_today(nav, focus_handle, today, units, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
@@ -150,6 +153,7 @@ pub fn quit(writer: &lib_database::Writer) {
 pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: Storage) {
     let Storage {
         units,
+        pending,
         writer,
         failures,
     } = storage;
@@ -253,6 +257,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                                 configured_level,
                             },
                             Box::new(units),
+                            Rc::new(pending),
                             failures,
                             chrono::Local::now().date_naive(),
                             focus_handle,

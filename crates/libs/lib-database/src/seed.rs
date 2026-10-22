@@ -91,6 +91,7 @@ pub fn fake(writer: &Writer, now: DateTime<Utc>, count: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commit::{Commit, PendingWrites};
 
     fn temp_writer() -> (tempfile::TempDir, Writer) {
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -104,12 +105,13 @@ mod tests {
         let (_dir, writer) = temp_writer();
         let now = Utc::now();
         stub(&writer, now).expect("the first seed lands");
-        let first = UnitsAdapter::load(writer.clone()).expect("the seed loads");
+        let first = UnitsAdapter::load(PendingWrites::new(writer.clone())).expect("the seed loads");
         let units = first.units().units();
         let base = first.base_unit().base_unit();
 
         stub(&writer, now).expect("the second seed lands");
-        let second = UnitsAdapter::load(writer.clone()).expect("the seed loads again");
+        let second =
+            UnitsAdapter::load(PendingWrites::new(writer.clone())).expect("the seed loads again");
 
         assert!(!units.is_empty());
         assert_eq!(second.units().units(), units);
@@ -124,7 +126,8 @@ mod tests {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
         let now = Utc::now();
         stub(&writer, now).expect("the first seed lands");
-        let mut adapter = UnitsAdapter::load(writer.clone()).expect("the seed loads");
+        let pending = PendingWrites::new(writer.clone());
+        let mut adapter = UnitsAdapter::load(pending.clone()).expect("the seed loads");
         assert_eq!(adapter.base_unit().base_unit(), UnitId::SEED_AUD);
         let changed = adapter
             .units()
@@ -135,10 +138,11 @@ mod tests {
             .expect("the stub has a second Unit");
         let usage = lib_units::fake::InMemoryUnitUsage::default();
         adapter.split_mut(&usage).base_unit.set_base_unit(changed);
-        adapter.commit();
+        pending.commit();
 
         stub(&writer, now).expect("the second seed lands");
-        let reseeded = UnitsAdapter::load(writer.clone()).expect("the seed loads again");
+        let reseeded =
+            UnitsAdapter::load(PendingWrites::new(writer.clone())).expect("the seed loads again");
 
         assert_eq!(reseeded.base_unit().base_unit(), changed);
     }
@@ -169,11 +173,12 @@ mod tests {
         let now = Utc::now();
         stub(&writer, now).expect("the stub lands");
         fake(&writer, now, 20).expect("the first generated seed lands");
-        let first = UnitsAdapter::load(writer.clone()).expect("the seed loads");
+        let first = UnitsAdapter::load(PendingWrites::new(writer.clone())).expect("the seed loads");
         let units = first.units().units();
 
         fake(&writer, now, 20).expect("the second generated seed lands");
-        let second = UnitsAdapter::load(writer.clone()).expect("the seed loads again");
+        let second =
+            UnitsAdapter::load(PendingWrites::new(writer.clone())).expect("the seed loads again");
 
         assert_eq!(units.len(), 3 + 20);
         assert_eq!(second.units().units(), units);

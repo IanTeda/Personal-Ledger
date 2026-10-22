@@ -15,8 +15,10 @@ pub mod ports;
 pub mod router;
 pub mod view;
 
+use std::rc::Rc;
+
 use lib_config::KeyBindingConfig;
-use lib_database::UnitsStore;
+use lib_database::{Commit, InMemoryCommit, UnitsStore};
 use lib_ledger::Ledger;
 use lib_units::keymap::{Keymap, units_page_keymap};
 use lib_units::presenter::UnitsPageEvent;
@@ -32,9 +34,13 @@ pub struct UnitsSetup {
 }
 
 impl UnitsSetup {
-    pub fn new(store: Box<dyn UnitsStore>, config: &KeyBindingConfig) -> Self {
+    pub fn new(
+        store: Box<dyn UnitsStore>,
+        commit: Rc<dyn Commit>,
+        config: &KeyBindingConfig,
+    ) -> Self {
         Self {
-            ports: LedgerBackedPorts::shared(store, Ledger::stub()),
+            ports: LedgerBackedPorts::shared(store, commit, Ledger::stub()),
             keymap: units_page_keymap(config),
         }
     }
@@ -43,6 +49,7 @@ impl UnitsSetup {
     pub fn stub(config: &KeyBindingConfig) -> Self {
         Self::new(
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+            Rc::new(InMemoryCommit),
             config,
         )
     }

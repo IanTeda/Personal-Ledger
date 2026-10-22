@@ -25,7 +25,9 @@ mod msg {
 }
 
 pub use error::Error;
-use lib_database::UnitsStore;
+use std::rc::Rc;
+
+use lib_database::{Commit, UnitsStore};
 pub use shell::Shell;
 
 use lib_config::KeyBindingConfig;
@@ -38,15 +40,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Builds the `Shell` the way `main` does, from the key bindings and the Colours already
 /// resolved. Takes only what the shell reads so tests can build one without parsing the
 /// user's config, and never touches the locale or the terminal. `units` is where the Units are
-/// kept: the Ledger file's adapter, or a test's in-memory ports; `failures` is the writer's
-/// failure channel, on which a failed write rolls back.
+/// kept: the Ledger file's adapter, or a test's in-memory ports; `commit` ends each Interactor
+/// call's writes, every adapter's at once; `failures` is the writer's failure channel, on which a
+/// failed write rolls back.
 pub fn build_shell(
     keybindings: KeyBindingConfig,
     colours: colours::Colours,
     units: Box<dyn UnitsStore>,
+    commit: Rc<dyn Commit>,
     failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
 ) -> Shell {
     Shell::with_keybindings(keybindings)
-        .with_units(units, failures)
+        .with_units(units, commit, failures)
         .with_colours(colours)
 }
