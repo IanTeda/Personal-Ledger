@@ -6,7 +6,7 @@ End-user documentation: [Bills](../bills.md).
 
 The Bills domain has two entities: a **Bill Plan**, the recurring definition, and a **Bill Schedule** entry, one dated instance of it that is Matched to a Split once paid. [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) and its amendments settled the design, and the [Desktop Bills Surface](https://github.com/IanTeda/Personal-Ledger/issues/364) map settled the details (#365 recurrence anchor, #366 statuses, #367 generation and edits, #368 settlement, #369 History figures, #381 History merged into the Schedule).
 
-The desktop app builds the whole Bills surface (handoff `docs/ux/desktop-mockups/12-bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule). Bill Plans and the Bill Schedule persist to SQLite through `lib-bills`' ports ([#777](https://github.com/IanTeda/Personal-Ledger/issues/777)), while the Bills View still writes through `lib-ledger`'s `bill_commands` and the Desktop's forwarding shim. The TUI has no Bills screen.
+The desktop app builds the whole Bills surface (handoff `docs/ux/desktop-mockups/12-bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule). Bill Plans and the Bill Schedule persist to SQLite through `lib-bills`' ports ([#777](https://github.com/IanTeda/Personal-Ledger/issues/777)), and the Bills View runs on the `lib-bills` VIPER module ([#778](https://github.com/IanTeda/Personal-Ledger/issues/778)): its Interactors, Presenters, keymap and Messages are the lib's, its Views and Router the Desktop's. Pay it directly still writes through `lib-ledger`'s `pay_bill` and the Desktop's forwarding shim until `lib-bill-payments` ([#779](https://github.com/IanTeda/Personal-Ledger/issues/779)). The TUI has no Bills screen.
 
 ## Data model
 
@@ -22,25 +22,33 @@ In memory the entry holds its Match as `Resolution::Paid(SplitRef)`. On disk the
 
 ## Domain types
 
-`lib-core` holds the ids, `BillPlanId` and `BillScheduleEntryId`. The domain types (`BillPlan`, `Recurrence`, `AmountKind`, `BillScheduleEntry`, `EntryId`, `SplitRef`, `Resolution`, `BillStatus`) and rules live in `lib-bills`, which the Desktop's `src/bills/mod.rs` re-exports.
+`lib-core` holds the ids, `BillPlanId` and `BillScheduleEntryId`. The domain types (`BillPlan`, `Recurrence`, `AmountKind`, `BillScheduleEntry`, `EntryId`, `SplitRef`, `Resolution`, `BillStatus`) and the rules over them (`bills.rs`, `history.rs`) live in `lib-bills`, which the Desktop's `src/bills/mod.rs` re-exports.
+
+The module, as `docs/development/viper-architecture.md` lays one out:
+
+- **Interactors** (`interactor/`) — `PopulateSchedule`, `AddBillPlan`, `EditBillPlan` (with its activation), `MatchBill` and the `MatchCandidates` read Pay opens on, `SkipBill`, `UnmatchBill` and `UnskipBill`. Each reads the Plans and entries, applies the rules to a copy and writes back only the rows that changed; refusals are `BillError`.
+- **Presenters** (`presenter/`) — `BillsPagePresenter` (the header, tabs and status line, holding `SchedulePresenter` and `PlannerPresenter`, and generating a month the Client crosses into), `PlanFormPresenter` (8c) and `SkipPresenter` (8e).
+- **`protocols.rs`** — the ports, `BillUnits` for Unit codes, `BillsPorts` (the set the Presenters share) and `BillsRouter` (the Plan form, Skip, Pay, `show_transaction`, `raise_toast`, `set_status`).
+- **`keymap.rs`** — the page's default keys, `bills.`-namespaced where only Bills has the command; **`i18n/`** — the `bills-` Messages.
 
 ## Persistence
 
-- **Ports** — `lib-bills`' `protocols.rs`: `BillPlanRepository` and `BillScheduleRepository`, and the read ports `BillTransactions` (Match candidates, a Paid entry's figures), `BillAccounts`, `BillCategories` and `BillPayees`. `fake.rs` holds the in-memory twins, and `contract.rs` (behind `contract-tests`) the suite both they and the adapter pass.
+- **Ports** — `lib-bills`' `protocols.rs`: `BillPlanRepository` and `BillScheduleRepository` (together `BillsRepository`), and the read ports `BillTransactions` (Match candidates, a Paid entry's figures), `BillAccounts`, `BillCategories`, `BillPayees` and `BillUnits`. `fake.rs` holds the in-memory twins, the stub (`InMemoryPorts::stub`) and `RecordingRouter`, and `contract.rs` (behind `contract-tests`) the suite both they and the adapter pass.
 - **Schema** — `bill_plans` (a foreign key to `units` only), `bill_schedule_entries` (UUIDv7 `id`, `UNIQUE (bill_plan_id, due)`, the resolution, the Skipped snapshot amount and `superseded`), and `splits.bill_schedule_entry_id`.
 - **Adapter** — `lib-database`'s `adapter/bills.rs`: rows in memory, writes through the shared batch, reload on failure. A Paid entry whose Split has gone with its Transaction loads as Unresolved. The Transactions adapter keeps a Split's Match when it rewrites the Transaction, and answers `BillTransactions`.
-- **Generation** — `bin_desktop::start_on`, which `start` calls, runs `lib_bills::populate_stored` over the loaded rows and commits the new entries before the Shell is built.
+- **Generation** — `bin_desktop::start_on`, which `start` calls, runs `PopulateSchedule` over the loaded rows and commits the new entries before the Shell is built; the Bills page runs it again on its next event once a running Desktop crosses into a new calendar month.
 - **Seeds** — the first launch and `mise run db-seed` write the stub Ledger's Bill Plans and entries (`lib_bills::default_bills`, with `seed_entry_id`'s fixed ids), after the Transactions their Paid entries name; `db-seed` then adds generated Bill Plans (`seed::fake_bills`).
 
 ## UI
 
-- **Desktop** — on the Ledger read copy of the Bills ports:
-  - `src/bills/mod.rs` — the `gpui`-free model and rules: recurrence stepping, `populate` and `horizon`, `status`, `needs_attention` and `attention_entries`, `insert_plan`/`edit_plan`/`set_active`, `pay`, `match_candidates`/`preselected_candidate`/`match_split`, `skip`, `unmatch`/`unskip`/`unmatch_transaction`, `carries_bill`, `schedule_rows`, `period_summary` and `planner_order`, plus the `BillsTab` and Shell-owned `BillsDialog` enums. Start here; it is unit-tested without a window.
-  - `src/bills/form.rs` (8c), `src/bills/pay_form.rs` (8d) and `src/bills/history.rs` (the Schedule's `BillFilters` and the stat callout's `plan_stats`) — the dialogs' and filters' pure state.
-  - `src/view/bills/` — `mod.rs` the page chrome and tabs, `schedule.rs` (8a), `planner.rs` (8b), `plan_dialog.rs` (8c), `pay_dialog.rs` (8d), `skip_dialog.rs` (8e), `filters.rs` (the Schedule's filter row and stat callout, from 8f).
-  - `src/shell.rs` — `handle_bills_key` (`n`/`e`/`p`/`s`/`[`/`]`/`0`/`f`/`1`–`5`), `handle_bills_tab_key`, `handle_bills_dialog_key`, the `open_*_bill_*_dialog` openers, and `open_bill_transaction`, which hands a Paid row off to its Transaction.
-  - `src/chrome/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard.rs` — real Bill rows in Needs Attention from `bills::attention_entries`.
-  - Messages in `i18n/en-US/bills.ftl`.
+- **Desktop** — `src/bills/`, the module's Desktop half:
+  - `view/page.rs` — `BillsPage`, the page Presenter in an Entity: keys to the keymap, clicks to events, and the focused scope select's open list; `view/schedule.rs` (8a), `view/filters.rs` (the filter row and stat callout), `view/planner.rs` (8b) draw the view model.
+  - `view/dialog.rs` — the Plan form (`view/dialog/plan_form.rs`, 8c) and Skip (`view/dialog/skip.rs`, 8e) in the Dialog host.
+  - `router.rs` — `impl BillsRouter` and the entry point, `bills_page`. `show_transaction` calls `transactions::router::show`.
+  - `ports.rs` — `LedgerBackedPorts`: the store shared with `LedgerStore`, the reads copied from the Ledger, the forwarding shim (`forward`) and `sync`, which commits and refreshes the Ledger read copy after each event.
+  - `pay_form.rs`, `apply.rs` and `view/pay_dialog.rs` — today's Pay Dialog (8d), which the Router opens and `app/bills_ui.rs` draws and confirms.
+  - `src/chrome/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard/` — real Bill rows in Needs Attention from `bills::attention_entries`.
+  - Messages in `lib-bills`' `i18n/en-US/bills.ftl`; the Pay Dialog's in the Desktop's `i18n/en-US/bills.ftl`.
 - **TUI** — nothing.
 
 ## Traceability
@@ -49,14 +57,14 @@ Desktop locations for the ticked requirements.
 
 | Requirement | Desktop location |
 | --- | --- |
-| BIL-001 | `bills::insert_plan`, `bills/form.rs`, `view/bills/plan_dialog.rs` |
-| BIL-003 | `bills::edit_plan`, `view/bills/plan_dialog.rs` |
-| BIL-004 | `bills::set_active`, `view/bills/planner.rs` |
-| BIL-005 | `bills::populate`, `bills::schedule_rows`, `view/bills/schedule.rs` |
-| BIL-006 | `bills::pay`, `bills::match_split`, `bills/pay_form.rs`, `view/bills/pay_dialog.rs` |
-| BIL-007 | `bills::skip`, `view/bills/skip_dialog.rs` |
+| BIL-001 | `interactor::AddBillPlan`, `presenter::PlanFormPresenter`, `bills/view/dialog/plan_form.rs` |
+| BIL-003 | `interactor::EditBillPlan`, `bills/view/dialog/plan_form.rs` |
+| BIL-004 | `interactor::EditBillPlan`, `presenter::PlannerPresenter`, `bills/view/planner.rs` |
+| BIL-005 | `interactor::PopulateSchedule`, `presenter::SchedulePresenter`, `bills/view/schedule.rs` |
+| BIL-006 | `bills::pay`, `interactor::MatchBill`, `bills/pay_form.rs`, `bills/view/pay_dialog.rs` |
+| BIL-007 | `interactor::SkipBill`, `presenter::SkipPresenter`, `bills/view/dialog/skip.rs` |
 | BIL-009 | `budgets::period_figures` (Known Costs), `view/budgets/progress.rs` |
-| BIL-011 | `bills::history::plan_stats`, `view/bills/filters.rs` |
+| BIL-011 | `bills::history::plan_stats`, `presenter::SchedulePresenter`, `bills/view/filters.rs` |
 | BIL-012 | `bills::needs_attention`, `chrome/rail/primary.rs`, `view/dashboard.rs` |
 
 ## Decisions
@@ -67,7 +75,7 @@ Desktop locations for the ticked requirements.
 
 ## Open questions and known gaps
 
-- **Unmatch and Unskip have no UI.** `bills::unmatch` and `bills::unskip` exist and are tested, but the handoff gives them no key or control.
+- **Unmatch and Unskip have no UI.** The `UnmatchBill` and `UnskipBill` Interactors exist and are tested, but the handoff gives them no key or control, so no Presenter sends them yet.
 - **Deleting a Matched Split Unmatches only through Account delete**, the one Desktop path that deletes a Transaction: the forwarding shim applies `bills::unmatch_transaction` in the same commit.
 - **No "carries a Bill" marker on the Transactions list.** `bills::carries_bill` exists; nothing draws it.
 - **BIL-002 and BIL-010 are partial.** The Planner has no active/recurrence filter, and the Schedule has no Payee filter.

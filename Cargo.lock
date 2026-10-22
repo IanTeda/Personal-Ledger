@@ -787,6 +787,7 @@ dependencies = [
  "clap",
  "crossterm",
  "futures-util",
+ "lib_bills",
  "lib_colour_theme",
  "lib_config",
  "lib_core",
@@ -4674,9 +4675,15 @@ dependencies = [
  "chrono",
  "lib_accounts",
  "lib_categories",
+ "lib_config",
  "lib_core",
+ "lib_list_cursor",
+ "lib_locale",
+ "lib_locale_build",
  "lib_payees",
+ "lib_toast",
  "lib_transactions",
+ "lib_viper",
  "thiserror 2.0.20",
 ]
 

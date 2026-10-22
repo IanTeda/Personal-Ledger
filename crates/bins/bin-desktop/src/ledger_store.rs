@@ -4,20 +4,25 @@
 //!
 //! The Ledger's Transactions, Bill Plans and Bill Schedule are read copies of their ports (#774):
 //! `apply` forwards a command's Transaction and Bills changes to the ports, commits, and refreshes
-//! the copies from them.
+//! the copies from them. The Bills ports are shared with the Bills module, which writes them
+//! through its Interactors and refreshes the copy after each event ([`LedgerStore::refresh_bills`]).
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
-use lib_database::{BillsStore, Commit, TransactionsStore};
+use lib_bills::BillsPorts as _;
+use lib_database::{Commit, TransactionsStore};
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
-/// What `build_shell` hands the Ledger: where its Transactions and Bills are kept, and the commit
-/// that ends each call's writes, every adapter's at once.
+use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
+
+/// What `build_shell` hands the Ledger: where its Transactions are kept, the Bills ports it
+/// shares with the Bills module, and the commit that ends each call's writes, every adapter's at
+/// once.
 pub struct LedgerSetup {
     pub transactions: Box<dyn TransactionsStore>,
-    pub bills: Box<dyn BillsStore>,
+    pub bills: DesktopBillsPorts,
     pub commit: Rc<dyn Commit>,
 }
 
@@ -31,10 +36,7 @@ impl LedgerSetup {
             transactions: Box::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }),
-            bills: Box::new(lib_bills::fake::InMemoryBills {
-                plans: ledger.bill_plans().to_vec(),
-                entries: ledger.bill_entries().to_vec(),
-            }),
+            bills: LedgerBackedPorts::in_memory(&ledger),
             commit: Rc::new(lib_database::InMemoryCommit),
         }
     }
@@ -49,7 +51,7 @@ pub struct LedgerChanged {
 pub struct LedgerStore {
     ledger: Ledger,
     transactions: Box<dyn TransactionsStore>,
-    bills: Box<dyn BillsStore>,
+    bills: DesktopBillsPorts,
     commit: Rc<dyn Commit>,
 }
 
@@ -62,14 +64,11 @@ impl LedgerStore {
         let transactions = lib_transactions::fake::InMemoryTransactions {
             transactions: ledger.transactions().to_vec(),
         };
-        let bills = lib_bills::fake::InMemoryBills {
-            plans: ledger.bill_plans().to_vec(),
-            entries: ledger.bill_entries().to_vec(),
-        };
+        let bills = LedgerBackedPorts::in_memory(&ledger);
         Self {
             ledger,
             transactions: Box::new(transactions),
-            bills: Box::new(bills),
+            bills,
             commit: Rc::new(lib_database::InMemoryCommit),
         }
     }
@@ -84,7 +83,7 @@ impl LedgerStore {
             commit: setup.commit,
         };
         store.refresh_transactions();
-        store.refresh_bills();
+        store.copy_bills();
         store
     }
 
@@ -135,13 +134,13 @@ impl LedgerStore {
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
             crate::transactions::ports::forward(self.transactions.as_mut(), &changes);
-            let bills_written = crate::bills::ports::forward(self.bills.as_mut(), &changes);
+            let bills_written = crate::bills::ports::forward(&self.bills, &changes);
             self.commit.commit();
             let mut what = domains(&changes);
             if what.contains(&Domain::Transactions) {
                 self.refresh_transactions();
             }
-            if bills_written && self.refresh_bills() {
+            if bills_written && self.copy_bills() {
                 what.insert(Domain::Bills);
             }
             self.announce(cx, what);
@@ -168,10 +167,18 @@ impl LedgerStore {
     /// # Errors
     /// Returns the error reading them back; the ports and the read copy are left as they were.
     pub fn reload_bills(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.bills.reload()?;
-        self.refresh_bills();
+        self.bills.borrow_mut().reload()?;
+        self.copy_bills();
         self.announce(cx, BTreeSet::from([Domain::Bills]));
         Ok(())
+    }
+
+    /// Brings the Bills read copy in line with the ports after the Bills module wrote them,
+    /// announcing `Domain::Bills` only when it changed.
+    pub fn refresh_bills(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_bills() {
+            self.announce(cx, BTreeSet::from([Domain::Bills]));
+        }
     }
 
     /// Brings the read copy in line with the port.
@@ -181,11 +188,12 @@ impl LedgerStore {
     }
 
     /// Brings the Bills read copy in line with the ports, returning whether it changed.
-    fn refresh_bills(&mut self) -> bool {
-        self.ledger.refresh_bills(
-            self.bills.plans().bill_plans(),
-            self.bills.entries().entries(),
-        )
+    fn copy_bills(&mut self) -> bool {
+        let (plans, entries) = {
+            let ports = self.bills.borrow();
+            (ports.bills().bill_plans(), ports.bills().entries())
+        };
+        self.ledger.refresh_bills(plans, entries)
     }
 
     fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
@@ -288,17 +296,28 @@ mod tests {
     }
 
     fn on_storage(cx: &mut TestAppContext, storage: lib_database::Storage) -> Entity<LedgerStore> {
+        on_storage_with_bills(cx, storage).0
+    }
+
+    /// [`on_storage`] with the Bills ports the store shares, which the Bills module writes.
+    fn on_storage_with_bills(
+        cx: &mut TestAppContext,
+        storage: lib_database::Storage,
+    ) -> (Entity<LedgerStore>, DesktopBillsPorts) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
-        cx.new(|_| {
+        let commit: Rc<dyn Commit> = Rc::new(storage.pending);
+        let bills = LedgerBackedPorts::shared(Box::new(storage.bills), commit.clone());
+        let store = cx.new(|_| {
             LedgerStore::with_storage(
                 Ledger::stub_on(today),
                 LedgerSetup {
                     transactions: Box::new(storage.transactions),
-                    bills: Box::new(storage.bills),
-                    commit: Rc::new(storage.pending),
+                    bills: bills.clone(),
+                    commit,
                 },
             )
-        })
+        });
+        (store, bills)
     }
 
     #[gpui::test]
@@ -403,14 +422,15 @@ mod tests {
 
     #[gpui::test]
     fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAppContext) {
+        use lib_bills::interactor::{EditBillPlan, MatchBill, SkipBill};
         use lib_bills::{BillPlanDraft, Resolution};
-        use lib_ledger::{EditBillPlan, MatchBill, PayBill, SkipBill};
+        use lib_ledger::PayBill;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let store = on_storage(cx, storage);
+        let (store, bills) = on_storage_with_bills(cx, storage);
         let (plans, entries) = bills_of(cx, &store);
         let (matched, split) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
@@ -452,42 +472,48 @@ mod tests {
                     },
                 )
                 .expect("the entry is paid");
-            store
-                .apply(
-                    cx,
-                    MatchBill {
-                        entry: matched,
-                        split,
-                    },
-                )
-                .expect("the entry is matched");
-            store
-                .apply(cx, SkipBill(skipped))
-                .expect("the entry is skipped");
-            store
-                .apply(
-                    cx,
-                    EditBillPlan {
-                        id: plan.id,
-                        draft: BillPlanDraft {
-                            name: "Renamed plan".into(),
-                            category_id: plan.category_id,
-                            unit: plan.unit,
-                            account_id: plan.account_id,
-                            payee_id: plan.payee_id,
-                            planned_amount: plan.planned_amount.clone(),
-                            amount_kind: plan.amount_kind,
-                            recurrence: plan.recurrence,
-                            first_due: plan.first_due,
-                            ends_on: plan.ends_on,
-                            attention_lead: plan.attention_lead,
-                        },
-                        is_active: plan.is_active,
-                        today,
-                    },
-                )
-                .expect("the plan is edited");
         });
+        // Match, Skip and the edit are the Bills module's, through its Interactors.
+        cx.update(|cx| crate::bills::ports::copy_reads(&bills, store.read(cx).ledger()));
+        {
+            let mut ports = bills.borrow_mut();
+            let ports = ports.split_mut();
+            MatchBill {
+                entry: matched,
+                split,
+            }
+            .run(
+                ports.bills,
+                ports.transactions,
+                ports.accounts,
+                ports.categories,
+            )
+            .expect("the entry is matched");
+            SkipBill { entry: skipped }
+                .run(ports.bills)
+                .expect("the entry is skipped");
+            EditBillPlan {
+                id: plan.id,
+                draft: BillPlanDraft {
+                    name: "Renamed plan".into(),
+                    category_id: plan.category_id,
+                    unit: plan.unit,
+                    account_id: plan.account_id,
+                    payee_id: plan.payee_id,
+                    planned_amount: plan.planned_amount.clone(),
+                    amount_kind: plan.amount_kind,
+                    recurrence: plan.recurrence,
+                    first_due: plan.first_due,
+                    ends_on: plan.ends_on,
+                    attention_lead: plan.attention_lead,
+                },
+                is_active: plan.is_active,
+                today,
+            }
+            .run(ports.bills, ports.accounts, ports.categories)
+            .expect("the plan is edited");
+        }
+        cx.update(|cx| crate::bills::ports::sync(&bills, &store, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
 

@@ -1,5 +1,7 @@
-//! The Bills page driven by keys: tabs, row selection, the period and filter chips, and the plan,
-//! pay and skip dialogs. State is read back from `Shell`.
+//! The Bills page driven by keys, on the in-memory ports: each key reaches the `lib-bills`
+//! Presenter through the Bills keymap or the router, and what it changes is drawn. The rules behind
+//! each (which rows show, what Pay and Skip refuse, generation) are the Presenters' tests in
+//! `lib-bills`; these check the wiring, the Dialogs the Router opens and the status line.
 
 use super::common;
 
@@ -71,12 +73,8 @@ fn brackets_step_the_period_and_zero_toggles_all(app: &mut TestAppContext) {
 
     ui.press("0");
     assert!(ui.bills().all);
-    assert!(ui.bills().rows.len() > 7);
-    // A step from All returns to the month last viewed rather than moving it.
-    ui.press("]");
-    let page = ui.bills();
-    assert!(!page.all);
-    assert_eq!(page.period, (2026, 5));
+    ui.press("0");
+    assert!(!ui.bills().all);
 }
 
 #[gpui::test]
@@ -205,10 +203,60 @@ fn pay_and_skip_refuse_a_row_with_nothing_to_settle(app: &mut TestAppContext) {
     ui.press("shift-g");
     ui.press("p");
     assert_eq!(ui.bills().dialog, None);
-    assert!(ui.read(|s| s.status_message().is_some()));
+    assert_eq!(
+        ui.read(|s| s.status_message().map(str::to_string))
+            .as_deref(),
+        Some("this bill isn't actionable")
+    );
 
     ui.press("s");
     assert_eq!(ui.bills().dialog, None);
+}
+
+#[gpui::test]
+fn the_status_line_draws_each_tabs_legend_and_count(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    let status = ui.status().expect("Bills has a page status");
+    let keys: Vec<&str> = status.hints.iter().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(
+        keys,
+        ["j/k", "p", "s", "[/]", "0", "1\u{2013}5", "f", "tab"]
+    );
+    assert!(status.right.ends_with("7 of 7 entries"), "{}", status.right);
+
+    ui.press("tab");
+    let status = ui.status().expect("Bills has a page status");
+    let keys: Vec<&str> = status.hints.iter().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(keys, ["j/k", "e", "n", "tab"]);
+    assert_eq!(status.right, "10 bill plans");
+}
+
+#[gpui::test]
+fn the_pay_dialogs_match_panel_matches_through_the_bills_module(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    let row = ui
+        .bills()
+        .rows
+        .iter()
+        .position(|row| row.plan == "Telstra Internet")
+        .expect("Telstra Internet is due this month");
+    for _ in 0..row {
+        ui.press("j");
+    }
+
+    ui.press("p");
+    let page = ui.bills();
+    assert_eq!(page.pay_mode.as_deref(), Some("Match"));
+    assert!(page.pay_candidates.unwrap_or(0) > 0);
+    ui.press("enter");
+
+    let page = ui.bills();
+    assert_eq!(page.dialog, None);
+    assert_eq!(
+        page.rows.iter().filter(|row| row.status == "Paid").count(),
+        2
+    );
 }
 
 #[gpui::test]
@@ -235,6 +283,8 @@ fn n_opens_the_add_dialog_and_escape_closes_it(app: &mut TestAppContext) {
 
     ui.press("n");
     assert_eq!(ui.bills().dialog.as_deref(), Some("Add"));
+    assert_eq!(ui.dialog_value("title").as_deref(), Some("Add bill plan"));
+    assert!(ui.is_drawn("bill-plan-name"));
     ui.press("g y m");
     assert_eq!(ui.bills().plan_name.as_deref(), Some("gym"));
     ui.press("escape");

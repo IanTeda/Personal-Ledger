@@ -111,13 +111,15 @@ pub fn build_shell(
         .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
+    let bills = bills::LedgerBackedPorts::shared(bills, commit.clone());
     let storage = ledger_store::LedgerSetup {
         transactions,
-        bills,
+        bills: bills.clone(),
         commit: commit.clone(),
     };
+    let bills = bills::BillsSetup::new(bills, &bindings.keybindings);
     let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
-    let mut shell = Shell::with_today(nav, focus_handle, today, units, storage, cx);
+    let mut shell = Shell::with_today(nav, focus_handle, today, units, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);

@@ -77,7 +77,6 @@ use lib_ledger::Ledger;
 use lib_toast::Toasts;
 
 use crate::view::active::{ActiveViewEntity, ViewEntities};
-use crate::view::bills::state::{BillsSources, BillsView};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
 use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
@@ -140,6 +139,9 @@ pub struct Shell {
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
     units: crate::units::DesktopPorts,
+    /// The Bills ports the Bills page, its Dialogs and `LedgerStore` share, which today's Pay
+    /// Dialog matches through.
+    bills: crate::bills::DesktopPorts,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -168,6 +170,7 @@ impl Shell {
         focus_handle: FocusHandle,
         today: chrono::NaiveDate,
         units: crate::units::UnitsSetup,
+        bills: crate::bills::BillsSetup,
         storage: crate::ledger_store::LedgerSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -232,15 +235,14 @@ impl Shell {
         });
         let dashboard_subscription = Self::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
-        let bills_view = cx.new(|cx| {
-            BillsView::new(
-                BillsSources {
-                    ledger: ledger.clone(),
-                },
-                today,
-                cx,
-            )
-        });
+        let bills_ports = bills.ports.clone();
+        let bills_view = crate::bills::bills_page(
+            bills.ports,
+            ledger.clone(),
+            bills.keymap,
+            crate::bills::clock(today),
+            cx,
+        );
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
@@ -284,6 +286,7 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             ledger,
             units: units_ports,
+            bills: bills_ports,
             today,
             views: ViewEntities {
                 dashboard: dashboard_view,

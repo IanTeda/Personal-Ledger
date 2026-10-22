@@ -10,9 +10,10 @@
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
-    bills::state::BillsView, budgets::state::BudgetsView, dashboard::state::DashboardView,
-    documents::state::DocumentsView, event::Reveal, transactions::state::TransactionsView,
+    budgets::state::BudgetsView, dashboard::state::DashboardView, documents::state::DocumentsView,
+    event::Reveal, transactions::state::TransactionsView,
 };
+use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
 use crate::{
     chrome::statusline::PageStatus,
@@ -23,7 +24,7 @@ use crate::{
 #[derive(Clone)]
 pub enum ActiveViewEntity {
     Dashboard(Entity<DashboardView>),
-    Bills(Entity<BillsView>),
+    Bills(Entity<BillsPage>),
     Budgets(Entity<BudgetsView>),
     /// The Transactions page, and the Import step that takes it over while it is open.
     Transactions(Entity<TransactionsView>),
@@ -47,7 +48,7 @@ pub enum ShellView {
 /// The View Entities `Shell` owns, one per View that renders and handles its own input.
 pub struct ViewEntities {
     pub dashboard: Entity<DashboardView>,
-    pub bills: Entity<BillsView>,
+    pub bills: Entity<BillsPage>,
     pub budgets: Entity<BudgetsView>,
     pub transactions: Entity<TransactionsView>,
     pub documents: Entity<DocumentsView>,

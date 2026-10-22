@@ -1,46 +1,33 @@
 //! What the integration tests read back of the Bills page. The Bills Entity builds the page's
-//! part; the open dialog is the Dialog host's, so it is filled in here.
+//! part from its view model; the open Dialog is the Dialog host's, so it is filled in here: a
+//! hosted Bills Dialog through its readback, today's Pay Dialog from its form.
 
 use crate::app::Shell;
 use crate::bills::BillsDialog;
+use crate::bills::pay_form::PayForm;
 #[doc(hidden)]
-pub use crate::view::bills::snapshot::{BillRowSnapshot, BillsSnapshot};
+pub use crate::bills::{BillRowSnapshot, BillsSnapshot};
+use crate::chrome::dialog_host::Dialog as _;
 
 impl Shell {
-    /// The Bills page for a test, as its Entity builds it, plus the open Bills dialog.
+    /// The Bills page for a test, as its Entity builds it, plus the open Bills Dialog.
     #[doc(hidden)]
     pub fn bills_snapshot(&self, cx: &gpui::App) -> BillsSnapshot {
-        let mut snapshot = self.views.bills.read(cx).snapshot(cx);
-        let dialog = self.dialog::<BillsDialog>();
-        snapshot.dialog = dialog.map(|dialog| {
-            match dialog {
-                BillsDialog::Add(_) => "Add",
-                BillsDialog::Edit(..) => "Edit",
-                BillsDialog::Pay(_) => "Pay",
-                BillsDialog::Skip(_) => "Skip",
+        let mut snapshot = self.views.bills.read(cx).snapshot();
+        if let Some(dialog) = self.dialog::<BillsDialog>()
+            && let Some(readback) = dialog.readback(&self.dialog_scope(), cx)
+        {
+            snapshot.dialog = Some(readback.kind.to_string());
+            if readback.kind != "Skip" {
+                snapshot.plan_name = readback.value("name").map(str::to_string);
+                snapshot.plan_unit = readback.value("unit").map(str::to_string);
             }
-            .to_string()
-        });
-        snapshot.plan_name = match dialog {
-            Some(BillsDialog::Add(form) | BillsDialog::Edit(_, form)) => {
-                Some(form.name.text().to_string())
-            }
-            _ => None,
-        };
-        snapshot.plan_unit = match dialog {
-            Some(BillsDialog::Add(form) | BillsDialog::Edit(_, form)) => {
-                form.unit.value().map(str::to_string)
-            }
-            _ => None,
-        };
-        snapshot.pay_mode = match dialog {
-            Some(BillsDialog::Pay(form)) => Some(format!("{:?}", form.mode)),
-            _ => None,
-        };
-        snapshot.pay_candidates = match dialog {
-            Some(BillsDialog::Pay(form)) => Some(form.candidates.len()),
-            _ => None,
-        };
+        }
+        if let Some(form) = self.dialog::<PayForm>() {
+            snapshot.dialog = Some("Pay".to_string());
+            snapshot.pay_mode = Some(format!("{:?}", form.mode));
+            snapshot.pay_candidates = Some(form.candidates.len());
+        }
         snapshot
     }
 }

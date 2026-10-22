@@ -99,13 +99,15 @@ mod tests {
     fn each_view_event_reaches_shell(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
+        let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
             Shell::with_today(
                 NavState::new(),
                 cx.focus_handle(),
                 today,
                 crate::units::UnitsSetup::stub(),
-                crate::ledger_store::LedgerSetup::stub(today),
+                crate::bills::BillsSetup::stub(&storage),
+                storage,
                 cx,
             )
         });
@@ -157,20 +159,22 @@ mod tests {
     fn a_reveal_makes_its_destination_active_and_shows_the_record(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
+        let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
             Shell::with_today(
                 NavState::new(),
                 cx.focus_handle(),
                 today,
                 crate::units::UnitsSetup::stub(),
-                crate::ledger_store::LedgerSetup::stub(today),
+                crate::bills::BillsSetup::stub(&storage),
+                storage,
                 cx,
             )
         });
         let view = cx.new(|_| StandInView);
         shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));
         let (id, last_plan) = shell.read_with(cx, |shell, cx| {
-            crate::bills::planner_order(shell.bill_plans(cx))
+            lib_bills::planner_order(shell.bill_plans(cx))
                 .last()
                 .map(|plan| (plan.id, plan.name.clone()))
                 .expect("the seed has Bill Plans")

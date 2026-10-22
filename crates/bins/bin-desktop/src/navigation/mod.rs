@@ -3,6 +3,7 @@
 //! (`explorer`).
 
 pub mod active_view;
+pub(crate) mod chord;
 pub(crate) mod command;
 pub(crate) mod explorer;
 #[doc(hidden)]

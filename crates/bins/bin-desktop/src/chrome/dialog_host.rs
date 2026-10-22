@@ -30,9 +30,9 @@ use lib_toast::ToastKind;
 
 use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
-    bills::BillsDialog, budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
-    form::field::TextField, ledger_store::LedgerStore, settings::accounts::dialogs::AccountsDialog,
-    settings::documents::dialogs::DocumentTypesDialog,
+    bills::BillsDialog, bills::pay_form::PayForm, budgets::BudgetsDialog, dialog::OnClick,
+    documents::form::DocumentsDialog, form::field::TextField, ledger_store::LedgerStore,
+    settings::accounts::dialogs::AccountsDialog, settings::documents::dialogs::DocumentTypesDialog,
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
@@ -285,8 +285,10 @@ pub enum OpenDialog {
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
     Tags(TagsDialog),
-    /// Boxed: the plan form carries its select choices, which would swell every variant.
-    Bills(Box<BillsDialog>),
+    Bills(BillsDialog),
+    /// Today's Pay Dialog, which the Shell still draws and confirms (#779). Boxed: it carries its
+    /// Match candidates.
+    PayBill(Box<PayForm>),
     /// Boxed: its forms carry their select choices.
     Budgets(Box<BudgetsDialog>),
     Documents(DocumentsDialog),
@@ -306,7 +308,8 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
-            Self::Bills(dialog) => &**dialog,
+            Self::Bills(dialog) => dialog,
+            Self::PayBill(dialog) => &**dialog,
             Self::Budgets(dialog) => &**dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
@@ -325,7 +328,8 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
-            Self::Bills(dialog) => &mut **dialog,
+            Self::Bills(dialog) => dialog,
+            Self::PayBill(dialog) => &mut **dialog,
             Self::Budgets(dialog) => &mut **dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
@@ -378,6 +382,7 @@ dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Inventory, InventoryDialog);
 dialog_variant!(Tags, TagsDialog);
 dialog_variant!(Bills, BillsDialog);
+dialog_variant!(PayBill, PayForm);
 dialog_variant!(Budgets, BudgetsDialog);
 dialog_variant!(Documents, DocumentsDialog);
 dialog_variant!(Help, HelpDialog);

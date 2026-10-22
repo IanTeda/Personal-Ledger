@@ -1,16 +1,26 @@
 //! The in-memory Bills ports, for tests and UI-first work. Each holds its rows in plain fields so a
-//! test can set up or read state directly. The stub seed is `seed`'s [`default_bills`](crate::default_bills).
+//! test can set up or read state directly. The stub seed is `seed`'s [`default_bills`](crate::default_bills),
+//! joined in [`InMemoryPorts::stub`] with the stub Accounts, Categories and Payees it names.
+//! [`RecordingRouter`] records what a Presenter asked for.
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_categories::Category;
-use lib_core::TransactionId;
+use lib_core::{BillPlanId, TransactionId, UnitId};
 use lib_payees::Payee;
+use lib_toast::ToastKind;
 use lib_transactions::Transaction;
 
+use crate::protocols::{
+    BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
+    SharedPorts,
+};
 use crate::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
-    BillScheduleRepository, BillTransactions, BillsSeed,
+    BillScheduleRepository, BillTransactions, BillsSeed, EntryId,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -94,6 +104,176 @@ impl BillCategories for InMemoryBillReads {
 impl BillPayees for InMemoryBillReads {
     fn bill_payees(&self) -> Vec<Payee> {
         self.payees.clone()
+    }
+}
+
+/// The Units Bills names, held in memory as `(id, code)`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InMemoryBillUnits {
+    pub codes: Vec<(UnitId, String)>,
+    pub base: Option<UnitId>,
+}
+
+impl InMemoryBillUnits {
+    /// The stub's Units, aud the base.
+    pub fn stub() -> Self {
+        Self {
+            codes: vec![
+                (UnitId::SEED_AUD, "aud".to_string()),
+                (UnitId::SEED_BTC, "btc".to_string()),
+                (UnitId::SEED_VAS, "vas".to_string()),
+            ],
+            base: Some(UnitId::SEED_AUD),
+        }
+    }
+}
+
+impl BillUnits for InMemoryBillUnits {
+    fn unit_code(&self, id: UnitId) -> Option<String> {
+        self.codes
+            .iter()
+            .find(|(unit, _)| *unit == id)
+            .map(|(_, code)| code.clone())
+    }
+
+    fn base_unit(&self) -> Option<UnitId> {
+        self.base
+    }
+}
+
+/// Every Bills port in memory, as the Presenters share them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct InMemoryPorts {
+    pub bills: InMemoryBills,
+    pub reads: InMemoryBillReads,
+    pub units: InMemoryBillUnits,
+}
+
+impl InMemoryPorts {
+    /// The stub Bill Plans and their Schedule as of `today`, with the stub Accounts, Categories
+    /// and Payees they name and the Transactions their Paid entries were paid by.
+    pub fn stub(today: NaiveDate) -> Self {
+        let accounts = lib_accounts::default_accounts();
+        let categories = lib_categories::default_categories();
+        let payees = lib_payees::default_payees();
+        let mut transactions = Vec::new();
+        let seed = crate::default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        Self {
+            bills: seed.into(),
+            reads: InMemoryBillReads {
+                accounts,
+                categories,
+                payees,
+                transactions,
+            },
+            units: InMemoryBillUnits::stub(),
+        }
+    }
+
+    /// These ports shared as the Presenters hold them, with the handle a test reads them through.
+    pub fn shared(self) -> (Rc<RefCell<Self>>, SharedPorts) {
+        let ports = Rc::new(RefCell::new(self));
+        let shared: SharedPorts = ports.clone();
+        (ports, shared)
+    }
+}
+
+impl BillsPorts for InMemoryPorts {
+    fn bills(&self) -> &dyn BillsRepository {
+        &self.bills
+    }
+
+    fn transactions(&self) -> &dyn BillTransactions {
+        &self.reads
+    }
+
+    fn accounts(&self) -> &dyn BillAccounts {
+        &self.reads
+    }
+
+    fn categories(&self) -> &dyn BillCategories {
+        &self.reads
+    }
+
+    fn payees(&self) -> &dyn BillPayees {
+        &self.reads
+    }
+
+    fn units(&self) -> &dyn BillUnits {
+        &self.units
+    }
+
+    fn split_mut(&mut self) -> PortsMut<'_> {
+        PortsMut {
+            bills: &mut self.bills,
+            transactions: &self.reads,
+            accounts: &self.reads,
+            categories: &self.reads,
+        }
+    }
+}
+
+/// What a Presenter asked its Router for, in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Routed {
+    PlanForm(Option<BillPlanId>),
+    Skip(EntryId),
+    Pay(PayRequest),
+    Closed(Option<BillsOutcome>),
+    Transaction(TransactionId),
+    Toast(ToastKind, String),
+    Status(Option<String>),
+}
+
+/// A Router that records every request and opens every Dialog it is asked for, unless told not
+/// to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingRouter {
+    pub routed: Vec<Routed>,
+    /// Refuses to open any Dialog, as a Client does on a row gone under it.
+    pub refuse: bool,
+}
+
+impl RecordingRouter {
+    /// The last status the Presenter set, if any.
+    pub fn status(&self) -> Option<&Option<String>> {
+        self.routed.iter().rev().find_map(|routed| match routed {
+            Routed::Status(text) => Some(text),
+            _ => None,
+        })
+    }
+}
+
+impl BillsRouter for RecordingRouter {
+    fn open_plan_form(&mut self, plan: Option<BillPlanId>) -> bool {
+        self.routed.push(Routed::PlanForm(plan));
+        !self.refuse
+    }
+
+    fn open_skip(&mut self, entry: EntryId) -> bool {
+        self.routed.push(Routed::Skip(entry));
+        !self.refuse
+    }
+
+    fn open_pay(&mut self, request: PayRequest) -> bool {
+        self.routed.push(Routed::Pay(request));
+        !self.refuse
+    }
+
+    fn close_dialog(&mut self, outcome: Option<BillsOutcome>) {
+        self.routed.push(Routed::Closed(outcome));
+    }
+
+    fn show_transaction(&mut self, id: TransactionId) {
+        self.routed.push(Routed::Transaction(id));
+    }
+
+    fn raise_toast(&mut self, kind: ToastKind, text: String) {
+        self.routed.push(Routed::Toast(kind, text));
+    }
+
+    fn set_status(&mut self, text: Option<String>) {
+        self.routed.push(Routed::Status(text));
     }
 }
 

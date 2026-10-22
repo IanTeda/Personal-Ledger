@@ -1,16 +1,21 @@
-//! The Bills Dialogs in the Dialog host: Add and Edit bill plan, Pay and Skip, which the Bills
-//! View opens through `ViewEvent::OpenDialog` (ADR-0037). The page itself is the `BillsView`
-//! Entity (`view::bills`); the pure rules live in `bills`.
+//! Today's Pay Dialog in the Dialog host, which the Bills Router opens through
+//! `ViewEvent::OpenDialog` and the Shell still draws and confirms until `lib-bill-payments` takes it
+//! (#779). The Bills page and its other Dialogs are the Bills module's (`crate::bills`).
 
 use super::Shell;
-use crate::bills::BillsDialog;
 
 use std::rc::Rc;
 
+use lib_bills::BillsPorts as _;
+use lib_bills::interactor::MatchBill;
+
 use crate::{
-    bills::{self, apply::BillOutcome, pay_form::PayForm},
+    bills::view::pay_dialog,
+    bills::{
+        self,
+        pay_form::{PayAction, PayForm},
+    },
     chrome::dialog_apply,
-    view::bills as bills_view,
     view::format,
 };
 
@@ -27,88 +32,53 @@ impl Shell {
         self.ledger.read(cx).ledger().bill_entries()
     }
 
-    /// The form behind the open Add or Edit bill plan dialog, if that is what's open.
-    pub(super) fn bill_plan_form_mut(&mut self) -> Option<&mut bills::form::BillPlanForm> {
-        self.dialog_mut::<BillsDialog>()
-            .and_then(BillsDialog::plan_form_mut)
-    }
-
-    /// Confirms the open Bills dialog through the host's cycle (`Enter` and the confirm button):
-    /// the form's command runs against the Ledger, a refusal stays on the form, and a landed
-    /// one closes the dialog. **Add bill plan** / **Save** select the Plan on the Planner tab; a
-    /// refused Skip closes with the reason in the status line.
-    pub(super) fn confirm_bills_dialog(&mut self, cx: &mut Context<'_, Self>) {
+    /// Confirms the Pay Dialog through the host's cycle (`Enter` and the confirm button). Pay it
+    /// directly runs `lib-ledger`'s command; Match runs `lib-bills`' Interactor on the Bills ports.
+    /// A refusal stays on the form, and a landed one closes the Dialog.
+    pub(super) fn confirm_pay_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let ledger = self.ledger.clone();
-        let Some(dialog) = self.dialog_mut::<BillsDialog>() else {
+        let ports = self.bills.clone();
+        let Some(form) = self.dialog_mut::<PayForm>() else {
             return;
         };
-        let Some(landed) = dialog_apply::confirm_ledger(dialog, &ledger, cx) else {
-            return;
-        };
-        self.close_dialog();
-        match landed.outcome {
-            BillOutcome::PlanSaved(id) => {
-                self.views
-                    .bills
-                    .update(cx, |view, cx| view.show_saved_plan(id, cx));
+        let landed = match form.action() {
+            Some(PayAction::Pay { .. }) => {
+                dialog_apply::confirm_ledger(form, &ledger, cx).is_some()
             }
-            BillOutcome::Paid | BillOutcome::Skipped => {}
-            BillOutcome::SkipRefused => {
-                self.chrome.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
-            }
-        }
-    }
-
-    pub(super) fn handle_bill_plan_field_click(
-        &mut self,
-        field: bills::form::BillPlanField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(form) = self.bill_plan_form_mut() {
-            match field {
-                bills::form::BillPlanField::Category
-                | bills::form::BillPlanField::Unit
-                | bills::form::BillPlanField::Account
-                | bills::form::BillPlanField::Payee
-                | bills::form::BillPlanField::Recurrence => form.click_select(field),
-                bills::form::BillPlanField::Active => {
-                    form.focus(field);
-                    form.toggle();
+            Some(PayAction::Match(split)) => {
+                bills::ports::copy_reads(&ports, ledger.read(cx).ledger());
+                let matched = {
+                    let mut ports = ports.borrow_mut();
+                    let ports = ports.split_mut();
+                    MatchBill {
+                        entry: form.entry,
+                        split,
+                    }
+                    .run(
+                        ports.bills,
+                        ports.transactions,
+                        ports.accounts,
+                        ports.categories,
+                    )
+                };
+                bills::ports::sync(&ports, &ledger, cx);
+                match matched {
+                    Ok(()) => true,
+                    Err(refusal) => {
+                        form.error = Some(refusal);
+                        false
+                    }
                 }
-                _ => form.focus(field),
             }
+            None => false,
+        };
+        if landed {
+            self.close_dialog();
         }
-        cx.notify();
-    }
-
-    pub(super) fn handle_bill_plan_option_click(
-        &mut self,
-        field: bills::form::BillPlanField,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(form) = self.bill_plan_form_mut() {
-            form.choose(field, index);
-        }
-        cx.notify();
-    }
-
-    pub(super) fn handle_bill_plan_amount_kind_click(
-        &mut self,
-        kind: bills::AmountKind,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(form) = self.bill_plan_form_mut() {
-            form.set_amount_kind(kind);
-        }
-        cx.notify();
     }
 
     pub(super) fn pay_form_mut(&mut self) -> Option<&mut PayForm> {
-        match self.dialog_mut::<BillsDialog>() {
-            Some(BillsDialog::Pay(form)) => Some(form),
-            _ => None,
-        }
+        self.dialog_mut::<PayForm>()
     }
 
     pub(super) fn handle_pay_bill_mode_click(
@@ -152,13 +122,13 @@ impl Shell {
         cx: &App,
     ) -> Option<gpui::AnyElement> {
         let plan = bills::get(self.bill_plans(cx), form.entry.plan_id)?;
-        let on_mode_click: bills_view::pay_dialog::OnModeClick = {
+        let on_mode_click: pay_dialog::OnModeClick = {
             let entity = entity.clone();
             Rc::new(move |mode, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_pay_bill_mode_click(mode, cx));
             })
         };
-        let on_choice_click: bills_view::pay_dialog::OnChoiceClick = {
+        let on_choice_click: pay_dialog::OnChoiceClick = {
             let entity = entity.clone();
             Rc::new(move |choice, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -166,7 +136,7 @@ impl Shell {
                 });
             })
         };
-        let on_field_click: bills_view::pay_dialog::OnFieldClick = {
+        let on_field_click: pay_dialog::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_pay_bill_field_click(field, cx));
@@ -194,8 +164,8 @@ impl Shell {
             .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
         let category =
             lib_categories::path(self.categories(cx), plan.category_id).unwrap_or_default();
-        Some(bills_view::pay_dialog::render(
-            bills_view::pay_dialog::PayDialogProps {
+        Some(pay_dialog::render(
+            pay_dialog::PayDialogProps {
                 plan_name: &plan.name,
                 due: lib_locale::format::format_month_day(form.entry.due),
                 form,
@@ -209,7 +179,7 @@ impl Shell {
                     .as_ref()
                     .map(|_| crate::msg::desktop_bills_pay_error_gone()),
                 valid: form.action().is_some(),
-                handlers: bills_view::pay_dialog::PayDialogHandlers {
+                handlers: pay_dialog::PayDialogHandlers {
                     on_mode_click,
                     on_choice_click,
                     on_field_click,
@@ -226,7 +196,7 @@ impl Shell {
         &self,
         form: &PayForm,
         cx: &App,
-    ) -> Vec<bills_view::pay_dialog::CandidateRow> {
+    ) -> Vec<pay_dialog::CandidateRow> {
         form.candidates
             .iter()
             .filter_map(|split_ref| {
@@ -250,7 +220,7 @@ impl Shell {
                     .find(|a| a.id == transaction.account_id)
                     .map(|a| a.name.clone())
                     .unwrap_or_default();
-                Some(bills_view::pay_dialog::CandidateRow {
+                Some(pay_dialog::CandidateRow {
                     summary: format!(
                         "{payee} \u{b7} {} \u{b7} {}",
                         lib_locale::format::format_month_day(transaction.date),
@@ -262,101 +232,13 @@ impl Shell {
             .collect()
     }
 
-    /// The Skip dialog (8e) over the Schedule, or nothing once its entry's Plan is gone.
-    pub(super) fn render_skip_bill_dialog(
-        &self,
-        entry: bills::EntryId,
-        entity: &Entity<Self>,
-        cx: &App,
-    ) -> Option<gpui::AnyElement> {
-        let plan = bills::get(self.bill_plans(cx), entry.plan_id)?;
-        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-            let entity = entity.clone();
-            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        Some(bills_view::skip_dialog::render(
-            bills_view::skip_dialog::SkipDialogProps {
-                plan_name: &plan.name,
-                due: lib_locale::format::format_month_day(entry.due),
-                one_shot: plan.recurrence == bills::Recurrence::OneShot,
-                on_cancel: plain(Shell::handle_dialog_cancel),
-                on_confirm: plain(Shell::handle_dialog_confirm),
-            },
-            cx,
-        ))
-    }
-
-    /// The open Bills dialog in the Dialog host: Add or Edit bill plan, Pay or Skip.
+    /// Today's Pay Dialog, if it is the one open.
     pub(super) fn render_bills_dialog(
         &self,
         entity: &Entity<Self>,
         cx: &App,
     ) -> Option<gpui::AnyElement> {
-        self.dialog::<BillsDialog>().and_then(|dialog| {
-            let (editing, form) = match dialog {
-                BillsDialog::Add(form) => (None, form),
-                BillsDialog::Edit(id, form) => (
-                    Some(bills::get(self.bill_plans(cx), *id)?.name.as_str()),
-                    form,
-                ),
-                BillsDialog::Pay(form) => {
-                    return self.render_pay_bill_dialog(form, entity, cx);
-                }
-                BillsDialog::Skip(entry) => {
-                    return self.render_skip_bill_dialog(*entry, entity, cx);
-                }
-            };
-            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, handler);
-                });
-                on_click
-            };
-            let on_field_click: bills_view::plan_dialog::OnFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_field_click(field, cx)
-                    });
-                })
-            };
-            let on_option_click: bills_view::plan_dialog::OnOptionClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_option_click(field, index, cx);
-                    });
-                })
-            };
-            let on_amount_kind_click: bills_view::plan_dialog::OnAmountKindClick = {
-                let entity = entity.clone();
-                Rc::new(move |kind, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_bill_plan_amount_kind_click(kind, cx);
-                    });
-                })
-            };
-            Some(bills_view::plan_dialog::render(
-                bills_view::plan_dialog::PlanDialogProps {
-                    editing,
-                    form,
-                    options: &form.options,
-                    errors: form.errors(),
-                    valid: form.draft().is_some(),
-                    handlers: bills_view::plan_dialog::PlanDialogHandlers {
-                        on_field_click,
-                        on_option_click,
-                        on_amount_kind_click,
-                        on_cancel: plain(Shell::handle_dialog_cancel),
-                        on_confirm: plain(Shell::handle_dialog_confirm),
-                    },
-                },
-                cx,
-            ))
-        })
+        let form = self.dialog::<PayForm>()?;
+        self.render_pay_bill_dialog(form, entity, cx)
     }
 }

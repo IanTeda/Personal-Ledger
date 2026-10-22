@@ -3093,10 +3093,13 @@ mod tests {
     /// Every migrated module's default bindings, as `(command, chord)`. A new VIPER module adds
     /// its keymap here.
     fn module_defaults() -> Vec<(&'static str, &'static str)> {
-        lib_units::keymap::UNITS_PAGE_BINDINGS
+        let units = lib_units::keymap::UNITS_PAGE_BINDINGS
             .iter()
-            .map(|binding| (binding.command, binding.chord))
-            .collect()
+            .map(|binding| (binding.command, binding.chord));
+        let bills = lib_bills::keymap::BILLS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
+        units.chain(bills).collect()
     }
 
     /// A default kept on a global key on purpose: `g` is the View-jump leader, so `g g` opens Tags

@@ -1,6 +1,7 @@
-//! The Bills page driven by clicks: tabs, period nav, status chips, rows and their Pay and Skip
-//! buttons, the add button, and the plan, pay and skip dialogs' buttons. Only elements tagged with
-//! `debug_selector` are clicked; state is read back from `Shell`.
+//! The Bills page driven by clicks, on the in-memory ports: tabs, period nav, status chips, rows
+//! and their Pay, Skip and view transaction buttons, the add button, and the Dialogs' buttons. Each
+//! click reaches the `lib-bills` Presenter and what it changes is drawn; the rules are the
+//! Presenters' tests. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
 use lib_core::BillPlanId;

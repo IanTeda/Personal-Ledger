@@ -3,7 +3,6 @@
 //! placeholder views, a separate ticket (#153).
 
 pub mod active;
-pub mod bills;
 pub mod budgets;
 pub mod dashboard;
 pub mod documents;

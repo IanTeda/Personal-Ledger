@@ -93,6 +93,23 @@ pub fn row_height_px(density: RowDensity) -> f32 {
     row_padding_y_px(density) * 2.0 + ROW_LINE_HEIGHT_PX
 }
 
+/// The code of Unit `id`, empty when the Unit is gone.
+pub(crate) fn unit_code(units: &[lib_units::UnitRow], id: lib_core::UnitId) -> &str {
+    units
+        .iter()
+        .find(|unit| unit.id == id)
+        .map_or("", |unit| unit.code.as_str())
+}
+
+/// An amount's text, naming its Unit only when that isn't the base Unit.
+pub(crate) fn with_unit(text: String, unit: &str, base_unit: Option<&str>) -> String {
+    if Some(unit) == base_unit {
+        text
+    } else {
+        format!("{text} {unit}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

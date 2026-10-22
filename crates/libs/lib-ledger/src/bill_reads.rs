@@ -4,8 +4,8 @@
 //!   answered from the stub's Accounts, Categories and Payees, which aren't persisted. Each moves
 //!   to `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s.
 //! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
-//!   Ledger keeps a copy for today's Bills View, the Dashboard, Budgets and Documents. It goes when
-//!   the last of them reads Bills through `lib-bills`.
+//!   Ledger keeps a copy for the Dashboard, the rail badge, Budgets, Documents and today's Pay
+//!   Dialog. It goes when the last of them reads Bills through `lib-bills`.
 
 use lib_accounts::Account;
 use lib_bills::{BillAccounts, BillCategories, BillPayees, BillPlan, BillScheduleEntry};

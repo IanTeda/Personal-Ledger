@@ -8,3 +8,4 @@ pub mod fields;
 pub mod select;
 pub mod select_field;
 pub mod swatch;
+pub(crate) mod viper;

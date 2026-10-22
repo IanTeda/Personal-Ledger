@@ -8,6 +8,7 @@ pub(crate) mod chips;
 pub(crate) mod filter_form;
 pub(crate) mod ports;
 pub(crate) mod query;
+pub(crate) mod router;
 pub(crate) mod rows;
 
 #[cfg(test)]

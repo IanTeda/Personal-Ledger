@@ -20,7 +20,6 @@ use crate::{
     period::Period,
     settings::display::StatusGlyphs,
     view::{
-        bills as bills_view,
         event::{Reveal, ViewEvent},
         format, scroll_by_movement,
     },
@@ -160,9 +159,9 @@ impl DashboardView {
                     plan: plan.name.clone(),
                     overdue: bills::status(entry, self.today) == bills::BillStatus::Overdue,
                     due: format::date(id.due, self.date_style),
-                    amount: bills_view::schedule::with_unit(
+                    amount: format::with_unit(
                         format::amount(&amount).1,
-                        bills_view::schedule::unit_code(units, plan.unit),
+                        format::unit_code(units, plan.unit),
                         base_unit,
                     ),
                 })

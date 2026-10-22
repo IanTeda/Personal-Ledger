@@ -22,9 +22,13 @@
 //! Matching an entry to a Transaction Split, and everything that reads Accounts, Categories or
 //! Payees, stays with the Client that owns those records.
 //!
-//! Becoming a VIPER module (`docs/development/viper-architecture.md`, #774): the repository and
-//! read ports in `protocols`, which `lib-database` implements, their in-memory twins in `fake`,
-//! and the contract both keep in `contract`. No Interactors or Presenters yet.
+//! The Bills VIPER module (`docs/development/viper-architecture.md`, #778): the rules above as
+//! Entities, one Interactor per intent (`interactor`), one Presenter per View and Dialog
+//! (`presenter`), the ports and the `BillsRouter` (`protocols`), the page's default keys
+//! (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub seed and a
+//! recording Router; `contract` the checks both they and `lib-database`'s adapter keep. The
+//! Desktop draws the view models (`bin-desktop/src/bills/`); today's Pay Dialog still pays through
+//! `lib-ledger` until `lib-bill-payments` (#779).
 
 pub mod bills;
 #[cfg(feature = "contract-tests")]
@@ -34,10 +38,15 @@ pub mod bills;
 )]
 pub mod contract;
 pub mod fake;
+pub mod interactor;
+pub mod keymap;
+pub mod msg;
+pub mod presenter;
 pub mod protocols;
 pub use protocols::{
     BillAccounts, BillCategories, BillPayees, BillPlanRepository, BillScheduleRepository,
-    BillTransactions,
+    BillTransactions, BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter,
+    PayRequest, PortsMut, SharedPorts,
 };
 
 pub use bills::*;
@@ -45,6 +54,8 @@ pub mod history;
 pub use history::*;
 pub mod seed;
 pub use seed::*;
+#[cfg(test)]
+mod seed_tests;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::{
@@ -340,27 +351,6 @@ pub fn populate(plans: &[BillPlan], entries: &mut Vec<BillScheduleEntry>, today:
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
 }
 
-/// Runs generation over a store's Bill Plans and entries and writes back each entry it added or
-/// revived: on Client start, once the stored rows have loaded. Returns how many it wrote.
-pub fn populate_stored<P>(ports: &mut P, today: NaiveDate) -> usize
-where
-    P: BillPlanRepository + BillScheduleRepository + ?Sized,
-{
-    let plans = ports.bill_plans();
-    let before = ports.entries();
-    let mut entries = before.clone();
-    populate(&plans, &mut entries, today);
-    let changed: Vec<BillScheduleEntry> = entries
-        .into_iter()
-        .filter(|entry| !before.contains(entry))
-        .collect();
-    let written = changed.len();
-    for entry in changed {
-        ports.upsert_entry(entry);
-    }
-    written
-}
-
 /// The Transactions in `transactions` dated from `from` to `to`, both included: the one window
 /// rule every [`BillTransactions`] answers by.
 pub fn transactions_between(
@@ -449,43 +439,6 @@ mod tests {
         assert_eq!(superseded, 1);
         assert!(service.plans().is_empty());
         assert!(service.entries()[0].superseded);
-    }
-
-    #[test]
-    fn populating_a_store_writes_only_the_entries_it_adds() {
-        let plan = BillPlan {
-            id: BillPlanId::seed(1),
-            name: "Rent".into(),
-            category_id: CategoryId::seed(1),
-            unit: UnitId::SEED_AUD,
-            account_id: AccountId::seed(1),
-            payee_id: None,
-            planned_amount: Money(bigdecimal::BigDecimal::from(100)),
-            amount_kind: AmountKind::Fixed,
-            recurrence: Recurrence::Monthly,
-            first_due: date(2026, 9, 20),
-            ends_on: None,
-            attention_lead: None,
-            is_active: true,
-            generate_from: date(2026, 9, 20),
-        };
-        let stored = open(date(2026, 9, 20));
-        let mut ports = fake::InMemoryBills {
-            plans: vec![plan],
-            entries: vec![stored.clone()],
-        };
-
-        assert_eq!(populate_stored(&mut ports, today()), 1, "October's entry");
-        assert_eq!(
-            populate_stored(&mut ports, today()),
-            0,
-            "nothing more to add"
-        );
-        assert_eq!(
-            ports.entries[0], stored,
-            "the stored entry is left as it was"
-        );
-        assert_eq!(ports.entries[1].due, date(2026, 10, 20));
     }
 
     #[test]

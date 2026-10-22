@@ -415,7 +415,7 @@ fn describe(
         }
         DocumentLink::BillPlan(id) => {
             let plan = crate::bills::get(lookups.plans, id)?;
-            let cadence = crate::view::bills::planner::recurrence_label(plan.recurrence);
+            let cadence = lib_bills::presenter::recurrence_label(plan.recurrence);
             let payee = plan
                 .payee_id
                 .and_then(|id| lib_payees::get(lookups.payees, id))
