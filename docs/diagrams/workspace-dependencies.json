@@ -1,0 +1,3138 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Workspace dependencies against the VIPER layers",
+    "output": "docs/diagrams/workspace-dependencies.html",
+    "quality_profile": "standard",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/IanTeda/Personal-Ledger",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "2ef177e125024fcfaddb8683c8ba332c4ccca0fd"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "bin: Views and Router implementations"
+        },
+        "backend": {
+          "label": "feature crate: one domain, toolkit-free"
+        },
+        "messagebus": {
+          "label": "cross-domain module"
+        },
+        "database": {
+          "label": "adapter"
+        },
+        "cloud": {
+          "label": "Presenter support"
+        },
+        "security": {
+          "label": "halfway aggregate"
+        },
+        "external": {
+          "label": "infrastructure, and lib-core's shared value types"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "bin-desktop",
+      "type": "frontend",
+      "label": "bin-desktop",
+      "sublabel": "gpui Client",
+      "tag": "bin",
+      "pos": [
+        248,
+        40.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/bins/bin-desktop/Cargo.toml",
+          "line": 31,
+          "end_line": 70
+        },
+        {
+          "path": "crates/bins/bin-desktop/Cargo.toml",
+          "line": 72,
+          "end_line": 73
+        }
+      ]
+    },
+    {
+      "id": "bin-tui",
+      "type": "frontend",
+      "label": "bin-tui",
+      "sublabel": "Ratatui Client",
+      "tag": "bin",
+      "pos": [
+        816,
+        40.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/bins/bin-tui/Cargo.toml",
+          "line": 20,
+          "end_line": 53
+        },
+        {
+          "path": "crates/bins/bin-tui/Cargo.toml",
+          "line": 63,
+          "end_line": 64
+        }
+      ]
+    },
+    {
+      "id": "bin-sync-server",
+      "type": "frontend",
+      "label": "bin-sync-server",
+      "sublabel": "tonic + auth routes",
+      "tag": "bin",
+      "pos": [
+        1384,
+        40.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/bins/bin-sync-server/Cargo.toml",
+          "line": 26,
+          "end_line": 50
+        }
+      ]
+    },
+    {
+      "id": "lib-bill-payments",
+      "type": "messagebus",
+      "label": "lib-bill-payments",
+      "sublabel": "Pay it directly",
+      "tag": "cross-domain",
+      "pos": [
+        176,
+        192.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-bill-payments/Cargo.toml",
+          "line": 13,
+          "end_line": 25
+        },
+        {
+          "path": "crates/libs/lib-bill-payments/Cargo.toml",
+          "line": 31,
+          "end_line": 32
+        }
+      ]
+    },
+    {
+      "id": "lib-database",
+      "type": "database",
+      "label": "lib-database",
+      "sublabel": "SQLx ports",
+      "tag": "adapter",
+      "pos": [
+        1032,
+        192.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-database/Cargo.toml",
+          "line": 17,
+          "end_line": 44
+        }
+      ]
+    },
+    {
+      "id": "lib-ledger",
+      "type": "security",
+      "label": "lib-ledger",
+      "sublabel": "Ledger aggregate",
+      "tag": "halfway",
+      "pos": [
+        600,
+        192.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-ledger/Cargo.toml",
+          "line": 13,
+          "end_line": 31
+        }
+      ]
+    },
+    {
+      "id": "lib-rpc",
+      "type": "external",
+      "label": "lib-rpc",
+      "sublabel": "protos, tonic",
+      "tag": "infrastructure",
+      "pos": [
+        1456,
+        192.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-rpc/Cargo.toml",
+          "line": 16,
+          "end_line": 31
+        },
+        {
+          "path": "crates/libs/lib-rpc/Cargo.toml",
+          "line": 33,
+          "end_line": 34
+        }
+      ]
+    },
+    {
+      "id": "lib-documents",
+      "type": "backend",
+      "label": "lib-documents",
+      "sublabel": "6 rule breaks",
+      "tag": "feature",
+      "pos": [
+        384,
+        344.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-documents/Cargo.toml",
+          "line": 13,
+          "end_line": 26
+        }
+      ]
+    },
+    {
+      "id": "lib-budgets",
+      "type": "backend",
+      "label": "lib-budgets",
+      "sublabel": "4 rule breaks",
+      "tag": "feature",
+      "pos": [
+        1248,
+        344.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-budgets/Cargo.toml",
+          "line": 13,
+          "end_line": 24
+        }
+      ]
+    },
+    {
+      "id": "lib-bills",
+      "type": "backend",
+      "label": "lib-bills",
+      "sublabel": "4 rule breaks",
+      "tag": "feature",
+      "pos": [
+        816,
+        496.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-bills/Cargo.toml",
+          "line": 13,
+          "end_line": 29
+        },
+        {
+          "path": "crates/libs/lib-bills/Cargo.toml",
+          "line": 35,
+          "end_line": 36
+        }
+      ]
+    },
+    {
+      "id": "lib-categories",
+      "type": "backend",
+      "label": "lib-categories",
+      "sublabel": "2 rule breaks",
+      "tag": "feature",
+      "pos": [
+        248,
+        648.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-categories/Cargo.toml",
+          "line": 13,
+          "end_line": 22
+        }
+      ]
+    },
+    {
+      "id": "lib-payees",
+      "type": "backend",
+      "label": "lib-payees",
+      "sublabel": "2 rule breaks",
+      "tag": "feature",
+      "pos": [
+        816,
+        648.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-payees/Cargo.toml",
+          "line": 13,
+          "end_line": 22
+        }
+      ]
+    },
+    {
+      "id": "lib-tags",
+      "type": "backend",
+      "label": "lib-tags",
+      "sublabel": "2 rule breaks",
+      "tag": "feature",
+      "pos": [
+        1384,
+        648.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-tags/Cargo.toml",
+          "line": 13,
+          "end_line": 22
+        }
+      ]
+    },
+    {
+      "id": "lib-units",
+      "type": "backend",
+      "label": "lib-units",
+      "sublabel": "migrated",
+      "tag": "feature",
+      "pos": [
+        128,
+        800.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-units/Cargo.toml",
+          "line": 13,
+          "end_line": 26
+        },
+        {
+          "path": "crates/libs/lib-units/Cargo.toml",
+          "line": 32,
+          "end_line": 33
+        }
+      ]
+    },
+    {
+      "id": "lib-accounts",
+      "type": "backend",
+      "label": "lib-accounts",
+      "sublabel": "complies",
+      "tag": "feature",
+      "pos": [
+        472,
+        800.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-accounts/Cargo.toml",
+          "line": 13,
+          "end_line": 20
+        }
+      ]
+    },
+    {
+      "id": "lib-transactions",
+      "type": "backend",
+      "label": "lib-transactions",
+      "sublabel": "migrated",
+      "tag": "feature",
+      "pos": [
+        816,
+        800.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-transactions/Cargo.toml",
+          "line": 13,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "lib-inventory",
+      "type": "backend",
+      "label": "lib-inventory",
+      "sublabel": "complies",
+      "tag": "feature",
+      "pos": [
+        1160,
+        800.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-inventory/Cargo.toml",
+          "line": 13,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "lib-institutions",
+      "type": "backend",
+      "label": "lib-institutions",
+      "sublabel": "no dependencies",
+      "tag": "feature",
+      "pos": [
+        1504,
+        800.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-institutions/Cargo.toml",
+          "line": 1,
+          "end_line": 14
+        }
+      ]
+    },
+    {
+      "id": "lib-viper",
+      "type": "cloud",
+      "label": "lib-viper",
+      "sublabel": "Keymap, form views",
+      "tag": "Presenter support",
+      "pos": [
+        128,
+        952.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-viper/Cargo.toml",
+          "line": 13,
+          "end_line": 15
+        }
+      ]
+    },
+    {
+      "id": "lib-locale",
+      "type": "cloud",
+      "label": "lib-locale",
+      "sublabel": "Messages, ICU4X",
+      "tag": "Presenter support",
+      "pos": [
+        472,
+        952.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-locale/Cargo.toml",
+          "line": 14,
+          "end_line": 35
+        },
+        {
+          "path": "crates/libs/lib-locale/Cargo.toml",
+          "line": 37,
+          "end_line": 38
+        }
+      ]
+    },
+    {
+      "id": "lib-toast",
+      "type": "cloud",
+      "label": "lib-toast",
+      "sublabel": "Toast model",
+      "tag": "Presenter support",
+      "pos": [
+        816,
+        952.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-toast/Cargo.toml",
+          "line": 13,
+          "end_line": 13
+        }
+      ]
+    },
+    {
+      "id": "lib-list-cursor",
+      "type": "cloud",
+      "label": "lib-list-cursor",
+      "sublabel": "list movement",
+      "tag": "Presenter support",
+      "pos": [
+        1160,
+        952.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-list-cursor/Cargo.toml",
+          "line": 13,
+          "end_line": 13
+        }
+      ]
+    },
+    {
+      "id": "lib-colour-theme",
+      "type": "cloud",
+      "label": "lib-colour-theme",
+      "sublabel": "Colour Themes",
+      "tag": "Presenter support",
+      "pos": [
+        1504,
+        952.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-colour-theme/Cargo.toml",
+          "line": 14,
+          "end_line": 16
+        }
+      ]
+    },
+    {
+      "id": "lib-tracing",
+      "type": "external",
+      "label": "lib-tracing",
+      "sublabel": "imported as telemetry",
+      "tag": "infrastructure",
+      "pos": [
+        1384,
+        1104.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-tracing/Cargo.toml",
+          "line": 13,
+          "end_line": 25
+        }
+      ]
+    },
+    {
+      "id": "lib-config",
+      "type": "external",
+      "label": "lib-config",
+      "sublabel": "layered INI",
+      "tag": "infrastructure",
+      "pos": [
+        816,
+        1104.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-config/Cargo.toml",
+          "line": 13,
+          "end_line": 32
+        }
+      ]
+    },
+    {
+      "id": "lib-locale-build",
+      "type": "external",
+      "label": "lib-locale-build",
+      "sublabel": "build-time codegen",
+      "tag": "infrastructure",
+      "pos": [
+        248,
+        1104.0
+      ],
+      "size": [
+        160,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-locale-build/Cargo.toml",
+          "line": 13,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "lib-core",
+      "type": "external",
+      "label": "lib-core",
+      "sublabel": "RowID, Money, periods",
+      "tag": "value types",
+      "pos": [
+        744,
+        1256.0
+      ],
+      "size": [
+        304,
+        64.0
+      ],
+      "sources": [
+        {
+          "path": "crates/libs/lib-core/Cargo.toml",
+          "line": 19,
+          "end_line": 33
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "bin-desktop--lib-accounts",
+      "from": "bin-desktop",
+      "to": "lib-accounts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          568.0,
+          168.0
+        ],
+        [
+          568.0,
+          768.0
+        ],
+        [
+          552.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-bill-payments",
+      "from": "bin-desktop",
+      "to": "lib-bill-payments",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          256.0,
+          160.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-bills",
+      "from": "bin-desktop",
+      "to": "lib-bills",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          888.0,
+          168.0
+        ],
+        [
+          888.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-budgets",
+      "from": "bin-desktop",
+      "to": "lib-budgets",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          1328.0,
+          160.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-categories",
+      "from": "bin-desktop",
+      "to": "lib-categories",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          360.0,
+          168.0
+        ],
+        [
+          360.0,
+          616.0
+        ],
+        [
+          328.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-colour-theme",
+      "from": "bin-desktop",
+      "to": "lib-colour-theme",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          920.0
+        ],
+        [
+          1584.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-config",
+      "from": "bin-desktop",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          1072.0
+        ],
+        [
+          896.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-core",
+      "from": "bin-desktop",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-database",
+      "from": "bin-desktop",
+      "to": "lib-database",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          1112.0,
+          160.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-documents",
+      "from": "bin-desktop",
+      "to": "lib-documents",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          464.0,
+          168.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-institutions",
+      "from": "bin-desktop",
+      "to": "lib-institutions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          1432.0,
+          160.0
+        ],
+        [
+          1432.0,
+          616.0
+        ],
+        [
+          1584.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-inventory",
+      "from": "bin-desktop",
+      "to": "lib-inventory",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          768.0
+        ],
+        [
+          1240.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-ledger",
+      "from": "bin-desktop",
+      "to": "lib-ledger",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          680.0,
+          160.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-list-cursor",
+      "from": "bin-desktop",
+      "to": "lib-list-cursor",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          920.0
+        ],
+        [
+          1240.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-locale",
+      "from": "bin-desktop",
+      "to": "lib-locale",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          360.0,
+          168.0
+        ],
+        [
+          360.0,
+          616.0
+        ],
+        [
+          448.0,
+          616.0
+        ],
+        [
+          448.0,
+          920.0
+        ],
+        [
+          552.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-locale-build",
+      "from": "bin-desktop",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          152.0,
+          168.0
+        ],
+        [
+          152.0,
+          776.0
+        ],
+        [
+          328.0,
+          776.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-payees",
+      "from": "bin-desktop",
+      "to": "lib-payees",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          616.0
+        ],
+        [
+          896.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-tags",
+      "from": "bin-desktop",
+      "to": "lib-tags",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          1432.0,
+          160.0
+        ],
+        [
+          1432.0,
+          616.0
+        ],
+        [
+          1464.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-toast",
+      "from": "bin-desktop",
+      "to": "lib-toast",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          920.0
+        ],
+        [
+          896.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-tracing",
+      "from": "bin-desktop",
+      "to": "lib-tracing",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          160.0
+        ],
+        [
+          1008.0,
+          160.0
+        ],
+        [
+          1008.0,
+          1072.0
+        ],
+        [
+          1464.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-transactions",
+      "from": "bin-desktop",
+      "to": "lib-transactions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          792.0,
+          168.0
+        ],
+        [
+          792.0,
+          768.0
+        ],
+        [
+          896.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-units",
+      "from": "bin-desktop",
+      "to": "lib-units",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          152.0,
+          168.0
+        ],
+        [
+          152.0,
+          768.0
+        ],
+        [
+          208.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-desktop--lib-viper",
+      "from": "bin-desktop",
+      "to": "lib-viper",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          168.0
+        ],
+        [
+          104.0,
+          168.0
+        ],
+        [
+          104.0,
+          920.0
+        ],
+        [
+          208.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-sync-server--lib-config",
+      "from": "bin-sync-server",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          168.0
+        ],
+        [
+          1216.0,
+          168.0
+        ],
+        [
+          1216.0,
+          776.0
+        ],
+        [
+          1016.0,
+          776.0
+        ],
+        [
+          1016.0,
+          1064.0
+        ],
+        [
+          896.0,
+          1064.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-sync-server--lib-core",
+      "from": "bin-sync-server",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          168.0
+        ],
+        [
+          1000.0,
+          168.0
+        ],
+        [
+          1000.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-sync-server--lib-database",
+      "from": "bin-sync-server",
+      "to": "lib-database",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          152.0
+        ],
+        [
+          1112.0,
+          152.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-sync-server--lib-rpc",
+      "from": "bin-sync-server",
+      "to": "lib-rpc",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          160.0
+        ],
+        [
+          1536.0,
+          160.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-sync-server--lib-tracing",
+      "from": "bin-sync-server",
+      "to": "lib-tracing",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          168.0
+        ],
+        [
+          1640.0,
+          168.0
+        ],
+        [
+          1640.0,
+          776.0
+        ],
+        [
+          1464.0,
+          776.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-colour-theme",
+      "from": "bin-tui",
+      "to": "lib-colour-theme",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          1360.0,
+          472.0
+        ],
+        [
+          1360.0,
+          920.0
+        ],
+        [
+          1584.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-config",
+      "from": "bin-tui",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          784.0,
+          472.0
+        ],
+        [
+          784.0,
+          1072.0
+        ],
+        [
+          896.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-core",
+      "from": "bin-tui",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          1000.0,
+          472.0
+        ],
+        [
+          1000.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-database",
+      "from": "bin-tui",
+      "to": "lib-database",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          152.0
+        ],
+        [
+          1112.0,
+          152.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-ledger",
+      "from": "bin-tui",
+      "to": "lib-ledger",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          152.0
+        ],
+        [
+          680.0,
+          152.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-list-cursor",
+      "from": "bin-tui",
+      "to": "lib-list-cursor",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          1136.0,
+          472.0
+        ],
+        [
+          1136.0,
+          912.0
+        ],
+        [
+          1240.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-locale",
+      "from": "bin-tui",
+      "to": "lib-locale",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          656.0,
+          472.0
+        ],
+        [
+          656.0,
+          920.0
+        ],
+        [
+          552.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-locale-build",
+      "from": "bin-tui",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          432.0,
+          472.0
+        ],
+        [
+          432.0,
+          1072.0
+        ],
+        [
+          328.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-toast",
+      "from": "bin-tui",
+      "to": "lib-toast",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          1024.0,
+          472.0
+        ],
+        [
+          1024.0,
+          912.0
+        ],
+        [
+          896.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-tracing",
+      "from": "bin-tui",
+      "to": "lib-tracing",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          1360.0,
+          472.0
+        ],
+        [
+          1360.0,
+          1072.0
+        ],
+        [
+          1464.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-units",
+      "from": "bin-tui",
+      "to": "lib-units",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          320.0
+        ],
+        [
+          208.0,
+          320.0
+        ]
+      ]
+    },
+    {
+      "id": "bin-tui--lib-viper",
+      "from": "bin-tui",
+      "to": "lib-viper",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          472.0
+        ],
+        [
+          432.0,
+          472.0
+        ],
+        [
+          432.0,
+          920.0
+        ],
+        [
+          208.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-accounts--lib-core",
+      "from": "lib-accounts",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          552.0,
+          912.0
+        ],
+        [
+          776.0,
+          912.0
+        ],
+        [
+          776.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-bills",
+      "from": "lib-bill-payments",
+      "to": "lib-bills",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          312.0
+        ],
+        [
+          888.0,
+          312.0
+        ],
+        [
+          888.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-core",
+      "from": "lib-bill-payments",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          624.0
+        ],
+        [
+          776.0,
+          624.0
+        ],
+        [
+          776.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-locale",
+      "from": "lib-bill-payments",
+      "to": "lib-locale",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          624.0
+        ],
+        [
+          448.0,
+          624.0
+        ],
+        [
+          448.0,
+          920.0
+        ],
+        [
+          552.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-locale-build",
+      "from": "lib-bill-payments",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          624.0
+        ],
+        [
+          224.0,
+          624.0
+        ],
+        [
+          224.0,
+          776.0
+        ],
+        [
+          328.0,
+          776.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-transactions",
+      "from": "lib-bill-payments",
+      "to": "lib-transactions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          312.0
+        ],
+        [
+          776.0,
+          312.0
+        ],
+        [
+          776.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bill-payments--lib-viper",
+      "from": "lib-bill-payments",
+      "to": "lib-viper",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          256.0,
+          312.0
+        ],
+        [
+          104.0,
+          312.0
+        ],
+        [
+          104.0,
+          920.0
+        ],
+        [
+          208.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-accounts",
+      "from": "lib-bills",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          552.0,
+          608.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-categories",
+      "from": "lib-bills",
+      "to": "lib-categories",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          328.0,
+          608.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-config",
+      "from": "lib-bills",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          784.0,
+          608.0
+        ],
+        [
+          784.0,
+          1072.0
+        ],
+        [
+          896.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-core",
+      "from": "lib-bills",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          624.0
+        ],
+        [
+          1000.0,
+          624.0
+        ],
+        [
+          1000.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-list-cursor",
+      "from": "lib-bills",
+      "to": "lib-list-cursor",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          1136.0,
+          608.0
+        ],
+        [
+          1136.0,
+          912.0
+        ],
+        [
+          1240.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-locale",
+      "from": "lib-bills",
+      "to": "lib-locale",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          656.0,
+          608.0
+        ],
+        [
+          656.0,
+          920.0
+        ],
+        [
+          552.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-locale-build",
+      "from": "lib-bills",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          664.0,
+          608.0
+        ],
+        [
+          664.0,
+          1072.0
+        ],
+        [
+          328.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-payees",
+      "from": "lib-bills",
+      "to": "lib-payees",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "lib-bills--lib-toast",
+      "from": "lib-bills",
+      "to": "lib-toast",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          1024.0,
+          608.0
+        ],
+        [
+          1024.0,
+          912.0
+        ],
+        [
+          896.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-transactions",
+      "from": "lib-bills",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          1016.0,
+          608.0
+        ],
+        [
+          1016.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-bills--lib-viper",
+      "from": "lib-bills",
+      "to": "lib-viper",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          608.0
+        ],
+        [
+          664.0,
+          608.0
+        ],
+        [
+          664.0,
+          904.0
+        ],
+        [
+          208.0,
+          904.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-budgets--lib-accounts",
+      "from": "lib-budgets",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1328.0,
+          456.0
+        ],
+        [
+          552.0,
+          456.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-budgets--lib-bills",
+      "from": "lib-budgets",
+      "to": "lib-bills",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1328.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-budgets--lib-categories",
+      "from": "lib-budgets",
+      "to": "lib-categories",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1328.0,
+          456.0
+        ],
+        [
+          328.0,
+          456.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-budgets--lib-core",
+      "from": "lib-budgets",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1328.0,
+          776.0
+        ],
+        [
+          1344.0,
+          776.0
+        ],
+        [
+          1344.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-budgets--lib-transactions",
+      "from": "lib-budgets",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1328.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-categories--lib-accounts",
+      "from": "lib-categories",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          768.0
+        ],
+        [
+          552.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-categories--lib-core",
+      "from": "lib-categories",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          768.0
+        ],
+        [
+          440.0,
+          768.0
+        ],
+        [
+          440.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-categories--lib-transactions",
+      "from": "lib-categories",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          328.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-colour-theme--lib-core",
+      "from": "lib-colour-theme",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1584.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-config--lib-colour-theme",
+      "from": "lib-config",
+      "to": "lib-colour-theme",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          896.0,
+          1080.0
+        ],
+        [
+          1576.0,
+          1080.0
+        ],
+        [
+          1576.0,
+          1048.0
+        ],
+        [
+          1584.0,
+          1048.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-config--lib-core",
+      "from": "lib-config",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "lib-config--lib-tracing",
+      "from": "lib-config",
+      "to": "lib-tracing",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "lib-database--lib-bill-payments",
+      "from": "lib-database",
+      "to": "lib-bill-payments",
+      "fromSide": "left",
+      "toSide": "right",
+      "via": [
+        [
+          784.0,
+          224.0
+        ],
+        [
+          784.0,
+          280.0
+        ],
+        [
+          368.0,
+          280.0
+        ],
+        [
+          368.0,
+          224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-database--lib-bills",
+      "from": "lib-database",
+      "to": "lib-bills",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1112.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-database--lib-config",
+      "from": "lib-database",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1112.0,
+          1064.0
+        ],
+        [
+          896.0,
+          1064.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-database--lib-core",
+      "from": "lib-database",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1112.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-database--lib-ledger",
+      "from": "lib-database",
+      "to": "lib-ledger",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "lib-database--lib-transactions",
+      "from": "lib-database",
+      "to": "lib-transactions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1112.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-database--lib-units",
+      "from": "lib-database",
+      "to": "lib-units",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1112.0,
+          320.0
+        ],
+        [
+          208.0,
+          320.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-accounts",
+      "from": "lib-documents",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          768.0
+        ],
+        [
+          552.0,
+          768.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-bills",
+      "from": "lib-documents",
+      "to": "lib-bills",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          448.0
+        ],
+        [
+          888.0,
+          448.0
+        ],
+        [
+          888.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-categories",
+      "from": "lib-documents",
+      "to": "lib-categories",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          464.0
+        ],
+        [
+          328.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-core",
+      "from": "lib-documents",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          776.0
+        ],
+        [
+          776.0,
+          776.0
+        ],
+        [
+          776.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-inventory",
+      "from": "lib-documents",
+      "to": "lib-inventory",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          448.0
+        ],
+        [
+          1240.0,
+          448.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-payees",
+      "from": "lib-documents",
+      "to": "lib-payees",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          616.0
+        ],
+        [
+          896.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-documents--lib-transactions",
+      "from": "lib-documents",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          464.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-inventory--lib-core",
+      "from": "lib-inventory",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1240.0,
+          904.0
+        ],
+        [
+          1120.0,
+          904.0
+        ],
+        [
+          1120.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-accounts",
+      "from": "lib-ledger",
+      "to": "lib-accounts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          464.0
+        ],
+        [
+          552.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-bills",
+      "from": "lib-ledger",
+      "to": "lib-bills",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          464.0
+        ],
+        [
+          896.0,
+          464.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-budgets",
+      "from": "lib-ledger",
+      "to": "lib-budgets",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          304.0
+        ],
+        [
+          1328.0,
+          304.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-categories",
+      "from": "lib-ledger",
+      "to": "lib-categories",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          304.0
+        ],
+        [
+          328.0,
+          304.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-core",
+      "from": "lib-ledger",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-documents",
+      "from": "lib-ledger",
+      "to": "lib-documents",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          304.0
+        ],
+        [
+          464.0,
+          304.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-institutions",
+      "from": "lib-ledger",
+      "to": "lib-institutions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          304.0
+        ],
+        [
+          1584.0,
+          304.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-inventory",
+      "from": "lib-ledger",
+      "to": "lib-inventory",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          600.0
+        ],
+        [
+          1240.0,
+          600.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-payees",
+      "from": "lib-ledger",
+      "to": "lib-payees",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          616.0
+        ],
+        [
+          896.0,
+          616.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-tags",
+      "from": "lib-ledger",
+      "to": "lib-tags",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          304.0
+        ],
+        [
+          1464.0,
+          304.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-transactions",
+      "from": "lib-ledger",
+      "to": "lib-transactions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-ledger--lib-units",
+      "from": "lib-ledger",
+      "to": "lib-units",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          680.0,
+          320.0
+        ],
+        [
+          208.0,
+          320.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-locale--lib-core",
+      "from": "lib-locale",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          552.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-locale--lib-locale-build",
+      "from": "lib-locale",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          552.0,
+          1072.0
+        ],
+        [
+          328.0,
+          1072.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-payees--lib-accounts",
+      "from": "lib-payees",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          752.0
+        ],
+        [
+          552.0,
+          752.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-payees--lib-core",
+      "from": "lib-payees",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          752.0
+        ],
+        [
+          1000.0,
+          752.0
+        ],
+        [
+          1000.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-payees--lib-transactions",
+      "from": "lib-payees",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "lib-rpc--lib-core",
+      "from": "lib-rpc",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1536.0,
+          624.0
+        ],
+        [
+          1344.0,
+          624.0
+        ],
+        [
+          1344.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-rpc--lib-database",
+      "from": "lib-rpc",
+      "to": "lib-database",
+      "label": "recorded exception #759",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "lib-tags--lib-accounts",
+      "from": "lib-tags",
+      "to": "lib-accounts",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          744.0
+        ],
+        [
+          552.0,
+          744.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-tags--lib-core",
+      "from": "lib-tags",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          768.0
+        ],
+        [
+          1344.0,
+          768.0
+        ],
+        [
+          1344.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-tags--lib-transactions",
+      "from": "lib-tags",
+      "to": "lib-transactions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1464.0,
+          760.0
+        ],
+        [
+          896.0,
+          760.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-transactions--lib-core",
+      "from": "lib-transactions",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          896.0,
+          904.0
+        ],
+        [
+          1000.0,
+          904.0
+        ],
+        [
+          1000.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-config",
+      "from": "lib-units",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          424.0,
+          896.0
+        ],
+        [
+          424.0,
+          1064.0
+        ],
+        [
+          896.0,
+          1064.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-core",
+      "from": "lib-units",
+      "to": "lib-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          440.0,
+          896.0
+        ],
+        [
+          440.0,
+          1224.0
+        ],
+        [
+          896.0,
+          1224.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-list-cursor",
+      "from": "lib-units",
+      "to": "lib-list-cursor",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          1232.0,
+          896.0
+        ],
+        [
+          1232.0,
+          912.0
+        ],
+        [
+          1240.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-locale",
+      "from": "lib-units",
+      "to": "lib-locale",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          544.0,
+          896.0
+        ],
+        [
+          544.0,
+          920.0
+        ],
+        [
+          552.0,
+          920.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-locale-build",
+      "from": "lib-units",
+      "to": "lib-locale-build",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          328.0,
+          896.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-toast",
+      "from": "lib-units",
+      "to": "lib-toast",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          896.0
+        ],
+        [
+          888.0,
+          896.0
+        ],
+        [
+          888.0,
+          912.0
+        ],
+        [
+          896.0,
+          912.0
+        ]
+      ]
+    },
+    {
+      "id": "lib-units--lib-viper",
+      "from": "lib-units",
+      "to": "lib-viper",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "lib-viper--lib-config",
+      "from": "lib-viper",
+      "to": "lib-config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          208.0,
+          1064.0
+        ],
+        [
+          896.0,
+          1064.0
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Rule breaks (red edges)",
+      "items": [
+        "A feature crate depending on another feature crate, a UI toolkit or lib-database (viper-architecture.md, Dependencies)",
+        "20 edges, all feature crate to feature crate; none reaches a toolkit or lib-database",
+        "lib-documents 6, lib-bills 4, lib-budgets 4, lib-categories 2, lib-payees 2, lib-tags 2",
+        "lib-accounts, lib-inventory, lib-institutions and the migrated lib-transactions and lib-units comply"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Edge styles",
+      "items": [
+        "Solid: normal dependency, read from cargo metadata",
+        "Dashed: build-dependency only (lib-locale-build's Catalogue codegen)",
+        "Dev-dependencies are not drawn: bin-tui on lib-bills, lib-budgets on lib-payees and lib-tags, lib-payees on lib-categories, and lib-database's contract-tests features on lib-units, lib-transactions, lib-bills and lib-bill-payments",
+        "lib-rpc on lib-database is the recorded exception until the Sync Server's storage is decided (#759)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Guarded today",
+      "items": [
+        "lib-ledger/tests/viper_dependencies.rs checks lib-transactions, lib-units and lib-viper, and that no feature crate depends on lib-bill-payments",
+        "deny.toml bans the toolkits and lib-database outside the bins",
+        "Not built yet: the Shell module (lib-shell)"
+      ]
+    }
+  ]
+}
