@@ -33,7 +33,7 @@ Invariants and gaps:
 - **`price_sources` has no Unit Kinds column.** `lib_units::CustomSource` declares none: a Custom source is offered for every Kind, so the column would always be empty. Add it if Custom sources gain Kinds.
 - **No column holds an API key** (ADR-0043's amendment); only where a key goes in the request.
 - **A Unit referenced by an Account, a Bill Plan or a Budget must not be deleted**, only deactivated, the same lifecycle as Category, Payee and Account. `lib-units`' `DeleteUnit` Interactor refuses it through the `UnitUsage` read port.
-- **Deleting a Unit other Units quote fails in SQLite** (`quote_unit_id`'s foreign key) and rolls back by reload; the in-memory ports accept it. [#761](https://github.com/IanTeda/Personal-Ledger/issues/761) adds the rule.
+- **A Unit other Units are quoted in must not be deleted**, since `units.quote_unit_id` references `units` and SQLite refuses the delete. `DeleteUnit` counts the quoting Units from the Unit repository itself and refuses with `QuotedBy(n)` before any write; it doesn't re-quote them, which would drop their last prices. `contract::deleting_a_quoted_unit_is_refused_and_writes_nothing` runs against the in-memory ports and the adapter (#761).
 - **No pricing or conversion tables exist, by decision.** FR.2 and FR.3's cross-Unit exchange-rate and weekly-price-snapshot machinery is superseded by the "no cross-Unit conversion in V1" rule in `GLOSSARY.md`'s Unit entry and the Constraints section of `docs/product-requirements.md`. The migration comment records this so nobody re-adds them casually.
 
 ## Domain types

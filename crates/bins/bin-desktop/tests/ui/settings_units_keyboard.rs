@@ -242,6 +242,7 @@ fn a_confirmed_delete_below_x_large_raises_the_presenters_toast(app: &mut TestAp
 fn deleting_the_base_unit_moves_the_base_with_down(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.drop_unit_users();
+    ui.unquote_units();
     ui.press("d");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
@@ -503,4 +504,21 @@ fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut Test
         "Error".to_string(),
         "Couldn't save the change to units or reload them, so what you see isn't saved".to_string()
     )));
+}
+
+#[gpui::test]
+fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.press("d");
+    type_word(&mut ui, "aud");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert!(
+        ui.dialog_value("refusal")
+            .is_some_and(|text| text.starts_with("aud is the quote unit of 2 other units")),
+        "the refusal says how many units quote it"
+    );
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
 }

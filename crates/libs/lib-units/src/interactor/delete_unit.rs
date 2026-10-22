@@ -8,6 +8,8 @@ use crate::protocols::{BaseUnitRepository, UnitRepository, UnitUsage, UnitUse};
 ///
 /// A Unit in use is refused with its counts, and that refusal is the one place "in use, so
 /// deactivate instead" is decided: no caller checks usage first to pick Delete or Deactivate.
+/// A Unit other Units are quoted in is refused with how many, since storage keeps every quote on a
+/// Unit; this reads the Units themselves, so it needs no usage port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeleteUnit {
     pub id: UnitId,
@@ -33,6 +35,10 @@ pub enum DeleteUnitRefusal {
     /// The new base Unit is deactivated; the base Unit is always active.
     #[error("a deactivated unit can't be the base unit")]
     NewBaseInactive,
+    /// This many other Units are priced in the Unit, and a Unit's quote must stay on the Ledger.
+    /// Re-quoting them would drop their last prices, so the person edits them first.
+    #[error("{0} other units are quoted in this unit")]
+    QuotedBy(usize),
 }
 
 impl DeleteUnit {
@@ -69,6 +75,13 @@ impl DeleteUnit {
         } else {
             None
         };
+        let quoted_by = all
+            .iter()
+            .filter(|other| other.id != self.id && other.link.quote == self.id)
+            .count();
+        if quoted_by > 0 {
+            return Err(DeleteUnitRefusal::QuotedBy(quoted_by));
+        }
         if let Some(new_base) = moves_base {
             base_unit.set_base_unit(new_base);
         }
@@ -83,6 +96,7 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryPorts, InMemoryUnits};
+    use crate::presenter::test_support::unquote_aud;
 
     fn delete(
         ports: &mut InMemoryPorts,
@@ -128,6 +142,7 @@ mod tests {
     #[test]
     fn deleting_the_base_unit_moves_the_base_to_the_new_base() {
         let mut ports = InMemoryPorts::stub(Utc::now());
+        unquote_aud(&mut ports);
 
         let removed = delete(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)).unwrap();
 
@@ -182,6 +197,35 @@ mod tests {
                 DeleteUnitRefusal::UnitInUse(uses)
             );
         }
+    }
+
+    #[test]
+    fn deleting_a_unit_other_units_quote_is_refused_with_how_many() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+        assert_eq!(
+            refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),
+            DeleteUnitRefusal::QuotedBy(2),
+            "btc and vas are quoted in aud"
+        );
+
+        ports.units.units[2].link.quote = UnitId::SEED_BTC;
+        assert_eq!(
+            refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_VAS)),
+            DeleteUnitRefusal::QuotedBy(1)
+        );
+        assert_eq!(
+            ports.base_unit.0,
+            UnitId::SEED_AUD,
+            "the base doesn't move for a refused delete"
+        );
+    }
+
+    #[test]
+    fn a_unit_quoted_only_by_itself_can_be_deleted() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+        ports.units.units[1].link.quote = UnitId::SEED_BTC;
+
+        delete(&mut ports, UnitId::SEED_BTC, None).expect("only btc quotes btc");
     }
 
     #[test]

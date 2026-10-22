@@ -10,8 +10,8 @@ use lib_core::UnitId;
 
 use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
-    AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, EditPriceSource,
-    EditUnit, SetBaseUnit,
+    AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, DeleteUnitRefusal,
+    EditPriceSource, EditUnit, SetBaseUnit,
 };
 use crate::protocols::PortsMut;
 use crate::{
@@ -238,6 +238,32 @@ pub fn deleting_the_base_unit_with_a_move_lands_in_order<F: PortsFactory>(factor
     assert!(after.units.iter().all(|unit| unit.id != usd.id));
 }
 
+/// Deleting a Unit other Units are quoted in is refused with how many, before any write reaches
+/// storage, whose foreign key would refuse it: the stub's btc and vas are quoted in aud, the base.
+pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
+    let usage = InMemoryUnitUsage::default();
+    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let before = snapshot(&mut ports);
+
+    let split = ports.split_mut(&usage);
+    let refusal = DeleteUnit {
+        id: UnitId::SEED_AUD,
+        new_base: Some(UnitId::SEED_BTC),
+    }
+    .run(split.units, split.base_unit, split.usage)
+    .expect_err("btc and vas are quoted in aud");
+    assert_eq!(refusal, DeleteUnitRefusal::QuotedBy(2));
+    factory.commit(&mut ports);
+
+    assert_eq!(
+        snapshot(&mut ports),
+        before,
+        "the refused delete wrote nothing"
+    );
+    let mut ports = factory.reload(ports);
+    assert_eq!(snapshot(&mut ports), before);
+}
+
 /// Deleting a Custom source moves its Units to Manual entry, and they stay there after a reload.
 pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
@@ -308,6 +334,11 @@ mod tests {
     #[test]
     fn in_memory_deleting_the_base_unit_with_a_move_lands_in_order() {
         deleting_the_base_unit_with_a_move_lands_in_order(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_deleting_a_quoted_unit_is_refused_and_writes_nothing() {
+        deleting_a_quoted_unit_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
     }
 
     #[test]

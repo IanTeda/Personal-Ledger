@@ -619,6 +619,16 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
+    async fn deleting_a_quoted_unit_is_refused_and_writes_nothing(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::deleting_a_quoted_unit_is_refused_and_writes_nothing(&mut AdapterFactory::new(
+            options,
+        ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
     async fn deleting_a_custom_source_moves_its_units_to_manual_entry(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,

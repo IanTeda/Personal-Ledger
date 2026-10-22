@@ -193,6 +193,9 @@ impl DeleteUnitPresenter {
             }
             Err(DeleteUnitRefusal::NewBaseGone) => Some(msg::units_refusal_new_base_gone()),
             Err(DeleteUnitRefusal::NewBaseInactive) => Some(msg::units_refusal_inactive_base()),
+            Err(DeleteUnitRefusal::QuotedBy(quoting)) => {
+                Some(msg::units_refusal_quoted(count(quoting), code))
+            }
         };
     }
 
@@ -235,7 +238,7 @@ fn uses_text(uses: UnitUse) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::{stub, unquote_aud};
     use super::*;
     use crate::UnitRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -295,6 +298,7 @@ mod tests {
     #[test]
     fn deleting_the_base_unit_moves_the_base_to_the_chosen_active_unit() {
         let (ports, shared) = stub();
+        unquote_aud(&mut ports.borrow_mut());
         ports.borrow_mut().units.units[1].is_active = false;
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
         let new_base = dialog.view_model().new_base.expect("aud is the base");
@@ -324,6 +328,46 @@ mod tests {
         );
 
         assert_eq!(ports.borrow().base_unit.0, UnitId::SEED_VAS);
+    }
+
+    #[test]
+    fn deleting_a_unit_other_units_quote_is_refused_as_text_with_the_count() {
+        let (ports, shared) = stub();
+        let before = ports.borrow().clone();
+        let mut dialog = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD).unwrap();
+        send(
+            &mut dialog,
+            vec![
+                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::Confirm,
+            ],
+        );
+        assert_eq!(
+            dialog.view_model().refusal.as_deref(),
+            Some(
+                "aud is the quote unit of 2 other units, so it can't be deleted. Change their \
+                 quotes first."
+            )
+        );
+        assert_eq!(*ports.borrow(), before, "a refused delete writes nothing");
+
+        ports.borrow_mut().units.units[2].link.quote = UnitId::SEED_AUD;
+        ports.borrow_mut().units.units[1].link.quote = UnitId::SEED_VAS;
+        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        send(
+            &mut dialog,
+            vec![
+                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::Confirm,
+            ],
+        );
+        assert_eq!(
+            dialog.view_model().refusal.as_deref(),
+            Some(
+                "aud is the quote unit of 1 other unit, so it can't be deleted. Change that \
+                 unit's quote first."
+            )
+        );
     }
 
     #[test]

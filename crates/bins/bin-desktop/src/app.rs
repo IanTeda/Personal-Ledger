@@ -427,6 +427,13 @@ impl Shell {
             .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
     }
 
+    /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the
+    /// quoted refusal.
+    #[doc(hidden)]
+    pub fn unquote_units_for_test(&mut self, cx: &mut App) {
+        crate::units::ports::unquote_for_test(&self.units, &self.ledger, cx);
+    }
+
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
     #[doc(hidden)]
     pub fn status_message(&self) -> Option<&str> {

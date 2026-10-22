@@ -218,6 +218,7 @@ fn the_delete_confirm_button_shows_the_refusal_then_deactivates(app: &mut TestAp
 fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.drop_unit_users();
+    ui.unquote_units();
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
     ui.click("delete-unit-new-base");
@@ -331,4 +332,22 @@ fn the_menus_test_entry_puts_not_built_on_the_status_line(app: &mut TestAppConte
         Some("test price source \u{2014} not yet built")
     );
     assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
+    ui.press("a u d");
+    ui.click("delete-unit-confirm");
+
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert!(
+        ui.dialog_value("refusal")
+            .is_some_and(|text| text.starts_with("aud is the quote unit of 2 other units")),
+        "the refusal says how many units quote it"
+    );
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
 }

@@ -186,6 +186,10 @@ units-refusal-only-unit = { $code } is the only unit, so it can't be deleted.
 units-refusal-base-unit-needed = { $code } is the base unit, and no active unit can take over as base.
 units-refusal-new-base-gone = The unit chosen as the new base unit is gone.
 units-refusal-inactive-base = A deactivated unit can't be the base unit.
+units-refusal-quoted = { $count ->
+    [one] { $code } is the quote unit of { $count } other unit, so it can't be deleted. Change that unit's quote first.
+   *[other] { $code } is the quote unit of { $count } other units, so it can't be deleted. Change their quotes first.
+}
 units-refusal-manual-entry = Manual entry can't be edited or deleted.
 units-refusal-built-in-endpoint = A built-in price source's address isn't edited here.
 units-refusal-built-in-delete = A built-in price source can't be deleted.

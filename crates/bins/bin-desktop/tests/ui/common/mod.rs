@@ -535,6 +535,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Leaves no Unit quoted in another, so the base Unit can be deleted rather than refused.
+    pub fn unquote_units(&mut self) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.unquote_units_for_test(cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// The Noun the Shell is showing.
     pub fn noun(&mut self) -> Noun {
         self.read(|shell| shell.nav().noun())

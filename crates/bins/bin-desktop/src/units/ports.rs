@@ -88,6 +88,23 @@ impl UnitsPorts for LedgerBackedPorts {
     }
 }
 
+/// Prices every Unit in itself, so none is quoted in another and any can be deleted; for a UI test
+/// that deletes a seeded Unit.
+#[doc(hidden)]
+pub fn unquote_for_test(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+    {
+        let mut ports = ports.borrow_mut();
+        let units = ports.units().units();
+        for mut unit in units {
+            if unit.link.quote != unit.id {
+                unit.link.quote = unit.id;
+                ports.split_mut().units.upsert_unit(unit);
+            }
+        }
+    }
+    sync(ports, ledger, cx);
+}
+
 /// Copies what names each Unit from `ledger` into `ports`, for a view model drawn outside an
 /// event.
 pub fn copy_usage(ports: &DesktopPorts, ledger: &Ledger) {
