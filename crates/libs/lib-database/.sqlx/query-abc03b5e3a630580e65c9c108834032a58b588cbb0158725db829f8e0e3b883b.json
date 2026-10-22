@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id             AS \"id!: BillPlanId\",\n               name,\n               category_id    AS \"category_id!: CategoryId\",\n               unit_id        AS \"unit_id!: UnitId\",\n               account_id     AS \"account_id!: AccountId\",\n               payee_id       AS \"payee_id?: PayeeId\",\n               planned_amount AS \"planned_amount!: Money\",\n               amount_kind,\n               recurrence,\n               first_due      AS \"first_due!: NaiveDate\",\n               ends_on        AS \"ends_on?: NaiveDate\",\n               attention_lead,\n               is_active,\n               generate_from  AS \"generate_from!: NaiveDate\"\n           FROM bill_plans\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: BillPlanId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id!: CategoryId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "unit_id!: UnitId",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "account_id!: AccountId",
+        "ordinal": 4,
+        "type_info": "Null"
+      },
+      {
+        "name": "payee_id?: PayeeId",
+        "ordinal": 5,
+        "type_info": "Null"
+      },
+      {
+        "name": "planned_amount!: Money",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "amount_kind",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "recurrence",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "first_due!: NaiveDate",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "ends_on?: NaiveDate",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "attention_lead",
+        "ordinal": 11,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 12,
+        "type_info": "Bool"
+      },
+      {
+        "name": "generate_from!: NaiveDate",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "abc03b5e3a630580e65c9c108834032a58b588cbb0158725db829f8e0e3b883b"
+}

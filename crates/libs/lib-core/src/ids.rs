@@ -173,6 +173,12 @@ ledger_id!(
     13
 );
 ledger_id!(
+    /// A Bill Schedule entry's id, a UUIDv7 like every other row's (ADR-0019 as amended). The
+    /// entry is still looked up by its Bill Plan and due date, which the schema keeps unique.
+    BillScheduleEntryId,
+    14
+);
+ledger_id!(
     /// A Unit's id. Addresses the Unit across edits, so a Unit's code (which a person can change)
     /// is never the key an Account or a command holds.
     UnitId,

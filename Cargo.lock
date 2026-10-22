@@ -4757,6 +4757,7 @@ dependencies = [
  "chrono",
  "csv",
  "fake",
+ "lib_bills",
  "lib_config",
  "lib_core",
  "lib_ledger",

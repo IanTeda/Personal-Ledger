@@ -758,6 +758,7 @@ mod tests {
 
     fn open(due: NaiveDate) -> BillScheduleEntry {
         BillScheduleEntry {
+            row_id: BillScheduleEntryId::new(),
             plan_id: BillPlanId::seed(1),
             due,
             resolution: Resolution::Unresolved,

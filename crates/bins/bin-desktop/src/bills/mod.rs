@@ -1,6 +1,6 @@
 //! Pure Bills-surface domain types and the stub dataset behind them (`docs/ux/desktop-mockups/12-bills/`,
 //! `docs/bills.md`, ADR-0019 and its amendments) -- `gpui`-free and in-memory, the same "pure
-//! state, chrome renders it" split `tags/mod.rs` uses. Nothing here reads `lib_database`.
+//! state, chrome renders it" split `tags/mod.rs` uses. Only `ports` reads `lib_database`.
 //!
 //! The rules are the Desktop Bills Surface map's settled decisions (#365–#368):
 //!
@@ -8,8 +8,8 @@
 //!   and for Monthly, Quarterly and Annually its day of the month, clamped to a shorter month's last
 //!   day but always computed from the anchor (31 Jan gives 28 Feb, then 31 Mar). Ends On is
 //!   inclusive.
-//! - A [`BillScheduleEntry`] is identified by its Bill Plan and due date ([`EntryId`]), the stub's
-//!   stand-in for ADR-0019's deterministic UUIDv5, so regenerating a date finds the same row.
+//! - A [`BillScheduleEntry`] is looked up by its Bill Plan and due date ([`EntryId`]), so
+//!   regenerating a date finds the same row; its stored id is a UUIDv7 (ADR-0019 as amended).
 //! - Generation ([`populate`]) runs through the end of next calendar month and always keeps at
 //!   least one unresolved entry due today or later per active Bill Plan. It skips a due date whose
 //!   Recurrence period already holds a Paid or Skipped entry, and clears `superseded` on a row an
@@ -18,9 +18,9 @@
 //!   unresolved entries due today or later; Overdue, Paid and Skipped entries are never touched.
 //! - Upcoming, Due and Overdue are derived from `today` by calendar month; Needs Attention is a date
 //!   rule (unresolved and due on or before today plus the Attention Lead).
-//! - Settlement is a Match to one Split, one-to-one. The stub records the Match on the entry as a
-//!   [`SplitRef`] rather than as a `bill_schedule_id` on the Split, so the shared Transactions stub
-//!   keeps its shape; a Transaction "carries a Bill" when any entry points at one of its Splits.
+//! - Settlement is a Match to one Split, one-to-one. The entry holds the Match as a [`SplitRef`];
+//!   `lib-database` stores it as the Split's `bill_schedule_entry_id`. A Transaction "carries a
+//!   Bill" when any entry points at one of its Splits.
 //!
 //! Plan and Transaction ids are the Ledger's `lib_core` id newtypes (ADR-0040).
 
@@ -28,6 +28,7 @@ pub(crate) mod apply;
 pub(crate) mod form;
 pub(crate) mod history;
 pub(crate) mod pay_form;
+pub(crate) mod ports;
 
 use crate::{
     bills::form::BillPlanForm,

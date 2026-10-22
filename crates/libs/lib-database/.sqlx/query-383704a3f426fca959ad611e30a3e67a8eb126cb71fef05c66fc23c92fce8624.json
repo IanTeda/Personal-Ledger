@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: BillScheduleEntryId\" FROM bill_schedule_entries\n           WHERE bill_plan_id = ? AND due = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: BillScheduleEntryId",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "383704a3f426fca959ad611e30a3e67a8eb126cb71fef05c66fc23c92fce8624"
+}

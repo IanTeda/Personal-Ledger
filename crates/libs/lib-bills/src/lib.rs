@@ -7,8 +7,9 @@
 //!   and for Monthly, Quarterly and Annually its day of the month, clamped to a shorter month's last
 //!   day but always computed from the anchor (31 Jan gives 28 Feb, then 31 Mar). Ends On is
 //!   inclusive.
-//! - A [`BillScheduleEntry`] is identified by its Bill Plan and due date ([`EntryId`]), the stand-in
-//!   for ADR-0019's deterministic UUIDv5, so regenerating a date finds the same row.
+//! - A [`BillScheduleEntry`] is looked up by its Bill Plan and due date ([`EntryId`]), so
+//!   regenerating a date finds the same row; its stored id is a UUIDv7 like every other row's
+//!   (ADR-0019 as amended).
 //! - Generation ([`populate`]) runs through the end of next calendar month and always keeps at
 //!   least one unresolved entry due today or later per active Bill Plan. It skips a due date whose
 //!   Recurrence period already holds a Paid or Skipped entry, and clears `superseded` on a row an
@@ -20,8 +21,24 @@
 //!
 //! Matching an entry to a Transaction Split, and everything that reads Accounts, Categories or
 //! Payees, stays with the Client that owns those records.
+//!
+//! Becoming a VIPER module (`docs/development/viper-architecture.md`, #774): the repository and
+//! read ports in `protocols`, which `lib-database` implements, their in-memory twins in `fake`,
+//! and the contract both keep in `contract`. No Interactors or Presenters yet.
 
 pub mod bills;
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
+pub mod fake;
+pub mod protocols;
+pub use protocols::{
+    BillAccounts, BillCategories, BillPayees, BillPlanRepository, BillScheduleRepository,
+    BillTransactions,
+};
 
 pub use bills::*;
 pub mod history;
@@ -30,7 +47,9 @@ pub mod seed;
 pub use seed::*;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
-use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
+use lib_core::{
+    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, TransactionId, UnitId,
+};
 
 /// How often a Bill Plan falls due.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +167,9 @@ pub enum Resolution {
 /// One dated instance of a Bill Plan (glossary: Bill Schedule).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillScheduleEntry {
+    /// The stored row's id. Never the lookup key: that is [`BillScheduleEntry::id`], its Bill Plan
+    /// and due date, which a store keeps unique and keeps this id under.
+    pub row_id: BillScheduleEntryId,
     pub plan_id: BillPlanId,
     pub due: NaiveDate,
     pub resolution: Resolution,
@@ -299,6 +321,7 @@ fn place(plan: &BillPlan, entries: &mut Vec<BillScheduleEntry>, due: NaiveDate) 
             }
         }
         None if !settled => entries.push(BillScheduleEntry {
+            row_id: BillScheduleEntryId::new(),
             plan_id: plan.id,
             due,
             resolution: Resolution::Unresolved,
@@ -315,6 +338,41 @@ pub fn populate(plans: &[BillPlan], entries: &mut Vec<BillScheduleEntry>, today:
         populate_plan(plan, entries, today);
     }
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
+}
+
+/// Runs generation over a store's Bill Plans and entries and writes back each entry it added or
+/// revived: on Client start, once the stored rows have loaded. Returns how many it wrote.
+pub fn populate_stored<P>(ports: &mut P, today: NaiveDate) -> usize
+where
+    P: BillPlanRepository + BillScheduleRepository + ?Sized,
+{
+    let plans = ports.bill_plans();
+    let before = ports.entries();
+    let mut entries = before.clone();
+    populate(&plans, &mut entries, today);
+    let changed: Vec<BillScheduleEntry> = entries
+        .into_iter()
+        .filter(|entry| !before.contains(entry))
+        .collect();
+    let written = changed.len();
+    for entry in changed {
+        ports.upsert_entry(entry);
+    }
+    written
+}
+
+/// The Transactions in `transactions` dated from `from` to `to`, both included: the one window
+/// rule every [`BillTransactions`] answers by.
+pub fn transactions_between(
+    transactions: &[lib_transactions::Transaction],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Vec<lib_transactions::Transaction> {
+    transactions
+        .iter()
+        .filter(|t| (from..=to).contains(&t.date))
+        .cloned()
+        .collect()
 }
 
 /// Marks `plan_id`'s unresolved entries due today or later as superseded.
@@ -373,6 +431,7 @@ mod tests {
 
     fn open(due: NaiveDate) -> BillScheduleEntry {
         BillScheduleEntry {
+            row_id: BillScheduleEntryId::new(),
             plan_id: BillPlanId::seed(1),
             due,
             resolution: Resolution::Unresolved,
@@ -390,6 +449,43 @@ mod tests {
         assert_eq!(superseded, 1);
         assert!(service.plans().is_empty());
         assert!(service.entries()[0].superseded);
+    }
+
+    #[test]
+    fn populating_a_store_writes_only_the_entries_it_adds() {
+        let plan = BillPlan {
+            id: BillPlanId::seed(1),
+            name: "Rent".into(),
+            category_id: CategoryId::seed(1),
+            unit: UnitId::SEED_AUD,
+            account_id: AccountId::seed(1),
+            payee_id: None,
+            planned_amount: Money(bigdecimal::BigDecimal::from(100)),
+            amount_kind: AmountKind::Fixed,
+            recurrence: Recurrence::Monthly,
+            first_due: date(2026, 9, 20),
+            ends_on: None,
+            attention_lead: None,
+            is_active: true,
+            generate_from: date(2026, 9, 20),
+        };
+        let stored = open(date(2026, 9, 20));
+        let mut ports = fake::InMemoryBills {
+            plans: vec![plan],
+            entries: vec![stored.clone()],
+        };
+
+        assert_eq!(populate_stored(&mut ports, today()), 1, "October's entry");
+        assert_eq!(
+            populate_stored(&mut ports, today()),
+            0,
+            "nothing more to add"
+        );
+        assert_eq!(
+            ports.entries[0], stored,
+            "the stored entry is left as it was"
+        );
+        assert_eq!(ports.entries[1].due, date(2026, 10, 20));
     }
 
     #[test]

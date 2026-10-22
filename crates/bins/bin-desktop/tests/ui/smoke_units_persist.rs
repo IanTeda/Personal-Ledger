@@ -6,7 +6,7 @@
 use super::common;
 
 use bin_desktop::navigation::nav::Noun;
-use common::Harness;
+use common::{Harness, config_for};
 use gpui::TestAppContext;
 
 /// Opens the Units page and adds `code`, a Currency, through its Add Dialog.
@@ -25,17 +25,6 @@ fn add_unit(ui: &mut Harness<'_>, code: &str, name: &str) {
 fn type_word(ui: &mut Harness<'_>, word: &str) {
     let keys: Vec<String> = word.chars().map(|ch| ch.to_string()).collect();
     ui.press(&keys.join(" "));
-}
-
-/// The configuration `main` would hold, pointed at the Ledger file `path`.
-fn config_for(path: &std::path::Path) -> lib_config::Config {
-    let mut config = lib_config::Config::default();
-    lib_config::ConfigArgs {
-        file: Some(path.to_path_buf()),
-        ..Default::default()
-    }
-    .apply_overrides(&mut config);
-    config
 }
 
 #[gpui::test]

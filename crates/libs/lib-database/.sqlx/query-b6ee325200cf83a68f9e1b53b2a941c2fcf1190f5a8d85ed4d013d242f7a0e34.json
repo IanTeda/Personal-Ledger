@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT position, bill_schedule_entry_id AS \"entry_id!: BillScheduleEntryId\"\n           FROM splits\n           WHERE transaction_id = ? AND bill_schedule_entry_id IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "position",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "entry_id!: BillScheduleEntryId",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "b6ee325200cf83a68f9e1b53b2a941c2fcf1190f5a8d85ed4d013d242f7a0e34"
+}

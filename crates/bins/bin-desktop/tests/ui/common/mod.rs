@@ -30,10 +30,14 @@ use gpui::{
     App, Bounds, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
+use lib_bills::fake::InMemoryBills;
+use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{PriceSourceId, UnitId};
-use lib_database::{Commit, Domain, InMemoryCommit, TransactionsStore, UnitsStore, WriteFailure};
+use lib_database::{
+    BillsStore, Commit, Domain, InMemoryCommit, TransactionsStore, UnitsStore, WriteFailure,
+};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
@@ -45,6 +49,18 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
+
+/// The configuration `main` would hold, pointed at the Ledger file `path`, for a smoke test on
+/// the real start-up.
+pub fn config_for(path: &std::path::Path) -> lib_config::Config {
+    let mut config = lib_config::Config::default();
+    lib_config::ConfigArgs {
+        file: Some(path.to_path_buf()),
+        ..Default::default()
+    }
+    .apply_overrides(&mut config);
+    config
+}
 
 /// A failure channel nothing will report on: the in-memory ports have no writer.
 fn no_failures() -> mpsc::Receiver<WriteFailure> {
@@ -135,6 +151,68 @@ impl TransactionsStore for FailingTransactions {
     fn reload(&mut self) -> lib_database::Result<()> {
         self.transactions.inner = self.stored.clone();
         Ok(())
+    }
+}
+
+impl<T: BillPlanRepository> BillPlanRepository for Marked<T> {
+    fn bill_plans(&self) -> Vec<BillPlan> {
+        self.inner.bill_plans()
+    }
+
+    fn upsert_bill_plan(&mut self, plan: BillPlan) {
+        self.written.set(true);
+        self.inner.upsert_bill_plan(plan);
+    }
+}
+
+impl<T: BillScheduleRepository> BillScheduleRepository for Marked<T> {
+    fn entries(&self) -> Vec<BillScheduleEntry> {
+        self.inner.entries()
+    }
+
+    fn upsert_entry(&mut self, entry: BillScheduleEntry) {
+        self.written.set(true);
+        self.inner.upsert_entry(entry);
+    }
+}
+
+/// Bills ports whose writes never reach `stored`, the rows as they are on disk: a reload puts
+/// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingBills {
+    bills: Marked<InMemoryBills>,
+    stored: InMemoryBills,
+}
+
+impl BillsStore for FailingBills {
+    fn plans(&self) -> &dyn BillPlanRepository {
+        &self.bills
+    }
+
+    fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
+        &mut self.bills
+    }
+
+    fn entries(&self) -> &dyn BillScheduleRepository {
+        &self.bills
+    }
+
+    fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
+        &mut self.bills
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.bills.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
+/// The stub Ledger's Bill Plans and Bill Schedule as of the test date, as the in-memory ports
+/// hold them.
+fn stub_bills() -> InMemoryBills {
+    let ledger = lib_ledger::Ledger::stub_on(today());
+    InMemoryBills {
+        plans: ledger.bill_plans().to_vec(),
+        entries: ledger.bill_entries().to_vec(),
     }
 }
 
@@ -284,6 +362,7 @@ impl<'a> Harness<'a> {
             configured_level,
             Box::new(InMemoryPorts::stub(chrono::Utc::now())),
             Box::new(stub_transactions()),
+            Box::new(stub_bills()),
             Rc::new(InMemoryCommit),
             no_failures(),
         )
@@ -298,6 +377,7 @@ impl<'a> Harness<'a> {
             None,
             Box::new(storage.units),
             Box::new(storage.transactions),
+            Box::new(storage.bills),
             Rc::new(storage.pending),
             storage.failures,
         )
@@ -319,6 +399,7 @@ impl<'a> Harness<'a> {
                 reload_fails,
             )),
             Box::new(stub_transactions()),
+            Box::new(stub_bills()),
             Rc::new(FailingCommit {
                 domain: Domain::Units,
                 written,
@@ -347,6 +428,7 @@ impl<'a> Harness<'a> {
                 },
                 stored,
             }),
+            Box::new(stub_bills()),
             Rc::new(FailingCommit {
                 domain: Domain::Transactions,
                 written,
@@ -356,12 +438,46 @@ impl<'a> Harness<'a> {
         )
     }
 
+    /// As [`Harness::new`], on Bills ports whose every write fails, as SQLite refusing it would;
+    /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
+    /// hear of the failure.
+    pub fn with_failing_bills(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_bills();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+            Box::new(stub_transactions()),
+            Box::new(FailingBills {
+                bills: Marked {
+                    inner: stored.clone(),
+                    written: written.clone(),
+                },
+                stored,
+            }),
+            Rc::new(FailingCommit {
+                domain: Domain::Bills,
+                written,
+                report,
+            }),
+            failures,
+        )
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one per store build_shell takes, which each constructor varies"
+    )]
     fn build(
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         units: Box<dyn UnitsStore>,
         transactions: Box<dyn TransactionsStore>,
+        bills: Box<dyn BillsStore>,
         commit: Rc<dyn Commit>,
         failures: mpsc::Receiver<WriteFailure>,
     ) -> Self {
@@ -388,6 +504,7 @@ impl<'a> Harness<'a> {
                 },
                 units,
                 transactions,
+                bills,
                 commit,
                 failures,
                 today(),

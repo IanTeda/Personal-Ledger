@@ -6,7 +6,7 @@ use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{BillPlanId, Money, Period, TransactionId, TransactionStatus};
+use lib_core::{BillPlanId, BillScheduleEntryId, Money, Period, TransactionId, TransactionStatus};
 use lib_payees::{self as payees, Payee};
 use lib_transactions::{Split, Transaction};
 
@@ -24,6 +24,14 @@ use crate::{
 pub struct BillsSeed {
     pub plans: Vec<BillPlan>,
     pub entries: Vec<BillScheduleEntry>,
+}
+
+/// A seeded entry's id, fixed by its Bill Plan's seed number and its due date rather than by its
+/// place in the seed, so the same due date gets the same id whatever day the seed is built on and a
+/// re-seed upserts over it. Meaningful only for a Plan with a [`BillPlanId::seed`] id below 4096.
+pub fn seed_entry_id(plan_id: BillPlanId, due: NaiveDate) -> BillScheduleEntryId {
+    let day = u32::try_from(due.num_days_from_ce()).unwrap_or_default() & 0x000F_FFFF;
+    BillScheduleEntryId::seed(plan_id.seed_number() << 20 | day)
 }
 
 /// Builds an exact `Money` from a count of cents.
@@ -375,6 +383,9 @@ pub fn default_bills(
         );
     }
 
+    for entry in &mut entries {
+        entry.row_id = seed_entry_id(entry.plan_id, entry.due);
+    }
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
     BillsSeed { plans, entries }
 }

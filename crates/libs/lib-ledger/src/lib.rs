@@ -2,6 +2,7 @@
 
 mod account_commands;
 mod bill_commands;
+mod bill_reads;
 mod budget_commands;
 #[cfg(test)]
 mod budgets_seed_tests;

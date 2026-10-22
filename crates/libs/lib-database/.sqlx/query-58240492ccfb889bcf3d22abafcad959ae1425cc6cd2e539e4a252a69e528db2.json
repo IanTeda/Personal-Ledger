@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO splits\n                 (transaction_id, position, amount, category_id, payee_id, bill_schedule_entry_id)\n             VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "58240492ccfb889bcf3d22abafcad959ae1425cc6cd2e539e4a252a69e528db2"
+}

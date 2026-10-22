@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO bill_plans (id, name, category_id, unit_id, account_id, payee_id,\n             planned_amount, amount_kind, recurrence, first_due, ends_on, attention_lead,\n             is_active, generate_from)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             category_id = excluded.category_id,\n             unit_id = excluded.unit_id,\n             account_id = excluded.account_id,\n             payee_id = excluded.payee_id,\n             planned_amount = excluded.planned_amount,\n             amount_kind = excluded.amount_kind,\n             recurrence = excluded.recurrence,\n             first_due = excluded.first_due,\n             ends_on = excluded.ends_on,\n             attention_lead = excluded.attention_lead,\n             is_active = excluded.is_active,\n             generate_from = excluded.generate_from",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "a775458c7e184ed8ae80be093038c6c22451c4a55bae6368e0534680995d521f"
+}

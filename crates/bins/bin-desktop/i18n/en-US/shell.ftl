@@ -108,3 +108,5 @@ desktop-toast-write-failed-units = Couldn't save the change to units, so they ar
 desktop-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved
 desktop-toast-write-failed-transactions = Couldn't save the change to transactions, so they are back as last saved
 desktop-toast-write-failed-transactions-unsaved = Couldn't save the change to transactions or reload them, so what you see isn't saved
+desktop-toast-write-failed-bills = Couldn't save the change to bills, so they are back as last saved
+desktop-toast-write-failed-bills-unsaved = Couldn't save the change to bills or reload them, so what you see isn't saved

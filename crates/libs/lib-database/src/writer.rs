@@ -40,6 +40,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub enum Domain {
     Units,
     Transactions,
+    Bills,
     /// The test-only second adapter, which proves one commit spans domains.
     #[cfg(test)]
     Test,

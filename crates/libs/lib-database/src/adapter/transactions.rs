@@ -6,13 +6,18 @@
 //! after each call, so a Transaction and the rows another domain writes with it land together.
 //!
 //! A Transaction is saved whole: its row, then its Splits and their Tags written afresh, so an
-//! edit that drops a Split leaves none behind. Rows load in the order first written, which keeps
+//! edit that drops a Split leaves none behind. A Split's Match to a Bill Schedule entry is the
+//! Bills adapter's to write, so a rewrite keeps it on the Split at the same position. Rows load in the order first written, which keeps
 //! the stub's newest-first order and puts an import after it, as the Ledger read copy has them.
 
 use std::collections::HashMap;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionId, TransactionStatus};
+use lib_bills::BillTransactions;
+use lib_core::{
+    AccountId, BillScheduleEntryId, CategoryId, Money, PayeeId, TagId, TransactionId,
+    TransactionStatus,
+};
 use lib_transactions::{Split, Transaction, TransactionRepository};
 use sqlx::SqliteConnection;
 
@@ -99,6 +104,17 @@ impl TransactionRepository for TransactionsAdapter {
     }
 }
 
+/// Bills' read port, answered from the rows in memory.
+impl BillTransactions for TransactionsAdapter {
+    fn transactions_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<Transaction> {
+        lib_bills::transactions_between(&self.rows, from, to)
+    }
+
+    fn paid_transaction(&self, id: TransactionId) -> Option<Transaction> {
+        self.transaction(id)
+    }
+}
+
 impl Change for TransactionsChange {
     fn domain(&self) -> Domain {
         Domain::Transactions
@@ -139,7 +155,19 @@ async fn upsert(conn: &mut SqliteConnection, transaction: &Transaction) -> Resul
     )
     .execute(&mut *conn)
     .await?;
-    // The Splits are written afresh, and their Tags go with the old ones by the cascade.
+    // The Splits are written afresh, and their Tags go with the old ones by the cascade. Their
+    // Matches are kept by position.
+    let matches: HashMap<i64, BillScheduleEntryId> = sqlx::query!(
+        r#"SELECT position, bill_schedule_entry_id AS "entry_id!: BillScheduleEntryId"
+           FROM splits
+           WHERE transaction_id = ? AND bill_schedule_entry_id IS NOT NULL"#,
+        transaction.id
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| (row.position, row.entry_id))
+    .collect();
     sqlx::query!(
         "DELETE FROM splits WHERE transaction_id = ?",
         transaction.id
@@ -147,14 +175,17 @@ async fn upsert(conn: &mut SqliteConnection, transaction: &Transaction) -> Resul
     .execute(&mut *conn)
     .await?;
     for (position, split) in (0_i64..).zip(&transaction.splits) {
+        let entry_id = matches.get(&position);
         sqlx::query!(
-            "INSERT INTO splits (transaction_id, position, amount, category_id, payee_id)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO splits
+                 (transaction_id, position, amount, category_id, payee_id, bill_schedule_entry_id)
+             VALUES (?, ?, ?, ?, ?, ?)",
             transaction.id,
             position,
             split.amount,
             split.category_id,
             split.payee_id,
+            entry_id,
         )
         .execute(&mut *conn)
         .await?;

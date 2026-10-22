@@ -1,7 +1,7 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
-//! the Client migrations, then the Units and Transactions adapters on the pending batch every
-//! adapter shares. The
-//! Desktop and the TUI both open it here, so they read and write the same rows (ADR-0046).
+//! the Client migrations, then the Units, Transactions and Bills adapters on the pending batch
+//! every adapter shares. The Desktop and the TUI both open it here, so they read and write the
+//! same rows (ADR-0046).
 
 use std::path::Path;
 use std::sync::mpsc;
@@ -10,7 +10,8 @@ use chrono::{NaiveDate, Utc};
 use lib_units::fake::InMemoryPorts;
 
 use crate::{
-    Error, PendingWrites, Result, TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, seed,
+    BillsAdapter, Error, PendingWrites, Result, TransactionsAdapter, UnitsAdapter, WriteFailure,
+    Writer, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -18,6 +19,7 @@ use crate::{
 pub struct Storage {
     pub units: UnitsAdapter,
     pub transactions: TransactionsAdapter,
+    pub bills: BillsAdapter,
     pub pending: PendingWrites,
     /// Flushed when the Client quits, so the last writes land before the thread dies.
     pub writer: Writer,
@@ -27,8 +29,8 @@ pub struct Storage {
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,
 /// blocking. A Ledger with no base Unit is new, so it is seeded first with the stub's Units, Price
 /// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), and
-/// the stub Ledger's Transactions as of `today`, which the stub Bill Schedule and Documents still
-/// name (#774). The first-launch seed is removed once every domain persists.
+/// the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and Documents name
+/// those Transactions (#774). The first-launch seed is removed once every domain persists.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the file.
@@ -40,15 +42,19 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
         Err(Error::NotFound(_)) => {
             UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))?;
             TransactionsAdapter::seed(&writer, seed::stub_ledger_transactions(today))?;
+            let bills = seed::stub_ledger_bills(today);
+            BillsAdapter::seed(&writer, bills.plans, bills.entries)?;
             tracing::info!(path = %path.display(), "Seeded a new Ledger with the stub");
             UnitsAdapter::load(pending.clone())?
         }
         loaded => loaded?,
     };
     let transactions = TransactionsAdapter::load(pending.clone())?;
+    let bills = BillsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
         transactions,
+        bills,
         pending,
         writer,
         failures,
@@ -57,6 +63,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
 
 #[cfg(test)]
 mod tests {
+    use lib_bills::{BillScheduleRepository, Resolution};
     use lib_transactions::TransactionRepository;
 
     use super::*;
@@ -88,5 +95,38 @@ mod tests {
         expected.remove(0);
         assert_eq!(reopened.transactions.transactions(), expected);
         assert!(reopened.transactions.transaction(gone).is_none());
+    }
+
+    #[test]
+    fn a_new_ledger_opens_with_the_stub_bills_and_their_paid_entries() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+
+        let storage =
+            open_storage(&dir.path().join("ledger.pldb"), today()).expect("a new Ledger opens");
+
+        let expected = seed::stub_ledger_bills(today());
+        assert_eq!(
+            lib_bills::contract::snapshot(&storage.bills),
+            (
+                {
+                    let mut plans = expected.plans.clone();
+                    plans.sort_by_key(|plan| plan.id);
+                    plans
+                },
+                {
+                    let mut entries = expected.entries.clone();
+                    entries.sort_by_key(lib_bills::BillScheduleEntry::id);
+                    entries
+                }
+            )
+        );
+        assert!(
+            storage
+                .bills
+                .entries()
+                .iter()
+                .any(|entry| matches!(entry.resolution, Resolution::Paid(_))),
+            "the stub's Paid entries keep their Transactions"
+        );
     }
 }

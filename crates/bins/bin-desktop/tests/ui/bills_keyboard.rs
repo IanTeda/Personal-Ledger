@@ -286,3 +286,25 @@ fn enter_on_a_planner_row_edits_it(app: &mut TestAppContext) {
     assert_eq!(ui.bills().dialog.as_deref(), Some("Edit"));
     assert_eq!(ui.bills().plan_name.as_deref(), Some("Car Wash Membership"));
 }
+
+#[gpui::test]
+fn a_failed_bills_write_puts_the_schedule_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_bills(app);
+    ui.press("g w");
+    let stored = ui.bills().rows;
+
+    ui.press("s enter");
+    assert_ne!(
+        ui.bills().rows,
+        stored,
+        "memory runs ahead of the file until the failure is heard"
+    );
+
+    ui.settle_writes();
+
+    assert_eq!(ui.bills().rows, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to bills, so they are back as last saved"
+    }));
+}

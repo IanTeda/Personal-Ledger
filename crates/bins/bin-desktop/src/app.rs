@@ -168,11 +168,12 @@ impl Shell {
         focus_handle: FocusHandle,
         today: chrono::NaiveDate,
         units: crate::units::UnitsSetup,
-        transactions: crate::transactions::ports::TransactionsSetup,
+        storage: crate::ledger_store::LedgerSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        // The Transactions port is the truth; the Ledger keeps a read copy of it (#774).
-        let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), transactions));
+        // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
+        // (#774).
+        let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
         crate::units::ports::sync(&units.ports, &ledger, cx);
         let units_ports = units.ports.clone();

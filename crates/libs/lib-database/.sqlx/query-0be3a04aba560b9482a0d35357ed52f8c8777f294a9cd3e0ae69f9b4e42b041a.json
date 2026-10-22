@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO bill_schedule_entries\n             (id, bill_plan_id, due, resolution, skipped_planned, superseded)\n         VALUES (?, ?, ?, ?, ?, ?)\n         ON CONFLICT (bill_plan_id, due) DO UPDATE SET\n             resolution = excluded.resolution,\n             skipped_planned = excluded.skipped_planned,\n             superseded = excluded.superseded",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "0be3a04aba560b9482a0d35357ed52f8c8777f294a9cd3e0ae69f9b4e42b041a"
+}

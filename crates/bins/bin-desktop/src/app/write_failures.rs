@@ -72,6 +72,17 @@ impl Shell {
             };
             self.raise_toast(ToastKind::Error, text);
         }
+        if failure.domains.contains(&Domain::Bills) {
+            let reloaded = self.ledger.update(cx, |store, cx| store.reload_bills(cx));
+            let text = match reloaded {
+                Ok(()) => crate::msg::desktop_toast_write_failed_bills(),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to reload the Bills after a failed write");
+                    crate::msg::desktop_toast_write_failed_bills_unsaved()
+                }
+            };
+            self.raise_toast(ToastKind::Error, text);
+        }
         cx.notify();
     }
 }

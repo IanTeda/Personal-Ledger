@@ -42,8 +42,8 @@ pub use row_id::{RowID, RowIDError};
 /// passed where another's is wanted.
 mod ids;
 pub use ids::{
-    AccountId, AreaId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, ItemId,
-    LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
+    AccountId, AreaId, BillPlanId, BillScheduleEntryId, BudgetId, CategoryId, DocumentId,
+    DocumentTypeId, ItemId, LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
 };
 
 /// Category types used for classifying financial transactions.

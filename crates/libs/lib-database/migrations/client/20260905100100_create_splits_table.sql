@@ -4,6 +4,10 @@
 -- Deleting a Transaction deletes its Splits. amount is a decimal string so no precision is lost
 -- to a float; expenses are negative and income positive.
 --
+-- bill_schedule_entry_id is the Bill Schedule entry this Split pays, if any: the Match (ADR-0019,
+-- settlement by Match, at the Split). It is unique, so a Split pays at most one entry and an entry
+-- is paid by at most one Split.
+--
 -- category_id and payee_id have no foreign keys yet: Categories and Payees aren't persisted, so
 -- no row would back them (#774). Each becomes a REFERENCES when its domain persists.
 
@@ -13,6 +17,7 @@ CREATE TABLE IF NOT EXISTS splits (
     amount TEXT NOT NULL,
     category_id UUID NOT NULL,
     payee_id UUID,
+    bill_schedule_entry_id UUID UNIQUE REFERENCES bill_schedule_entries(id),
     PRIMARY KEY (transaction_id, position)
 );
 

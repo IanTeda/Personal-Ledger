@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               entry.id              AS \"id!: BillScheduleEntryId\",\n               entry.bill_plan_id    AS \"plan_id!: BillPlanId\",\n               entry.due             AS \"due!: NaiveDate\",\n               entry.resolution,\n               entry.skipped_planned AS \"skipped_planned?: Money\",\n               entry.superseded,\n               split.transaction_id  AS \"transaction_id?: TransactionId\",\n               split.position        AS \"position?: i64\"\n           FROM bill_schedule_entries AS entry\n           LEFT JOIN splits AS split ON split.bill_schedule_entry_id = entry.id\n           ORDER BY entry.due, entry.bill_plan_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: BillScheduleEntryId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "plan_id!: BillPlanId",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "due!: NaiveDate",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "resolution",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "skipped_planned?: Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "superseded",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "transaction_id?: TransactionId",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "position?: i64",
+        "ordinal": 7,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "1676be86f37215c5e374ed7506ae4a3094b597d778edf628739eabcb3c363940"
+}

@@ -65,10 +65,12 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    // The TUI's Transactions View still draws its fixture (#774), so it leaves the adapter unread.
+    // The TUI's Transactions View still draws its fixture and it has no Bills View (#774), so it
+    // leaves those adapters unread.
     let lib_database::Storage {
         units,
         transactions: _,
+        bills: _,
         pending,
         writer,
         failures,
