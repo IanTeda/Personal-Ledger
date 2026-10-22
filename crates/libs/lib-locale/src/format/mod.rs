@@ -28,7 +28,7 @@ pub use input::{
     parse_date_with,
 };
 pub use number::format_number;
-pub use time::format_time;
+pub use time::{format_time, format_time_minutes};
 
 use std::cell::RefCell;
 use std::collections::HashMap;

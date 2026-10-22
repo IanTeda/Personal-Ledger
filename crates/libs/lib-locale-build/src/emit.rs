@@ -306,6 +306,14 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_feature_crate_prefix_in_the_shared_layer() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "en-US", "a.ftl", "units-title = Units\n");
+        assert!(failure(&options(dir.path(), None)).contains("feature-crate prefix"));
+        assert!(generate(&options(dir.path(), Some("units-"))).is_ok());
+    }
+
+    #[test]
     fn rejects_pseudo_locale_files_and_missing_source() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "en-XA", "a.ftl", "one = One\n");

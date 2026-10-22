@@ -14,7 +14,7 @@ use chrono::{NaiveDate, NaiveTime};
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
     Amount, AmountStyle, Unit, format_amount, format_date, format_money, format_month,
-    format_month_day, format_number, format_time, format_year_month, upper,
+    format_month_day, format_number, format_time, format_time_minutes, format_year_month, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -315,4 +315,15 @@ fn a_time_shows_seconds_in_the_locale_clock() {
         assert_eq!(format_time(time), "3:04:05\u{202f}PM")
     });
     with_locale(Locale::EnGb, || assert_eq!(format_time(time), "15:04:05"));
+}
+
+#[test]
+fn a_time_in_minutes_drops_the_seconds_in_the_locale_clock() {
+    let time = NaiveTime::from_hms_opt(15, 4, 5).expect("test time is valid");
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_time_minutes(time), "3:04\u{202f}pm")
+    });
+    with_locale(Locale::EnGb, || {
+        assert_eq!(format_time_minutes(time), "15:04")
+    });
 }

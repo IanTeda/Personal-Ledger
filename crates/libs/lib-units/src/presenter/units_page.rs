@@ -6,6 +6,7 @@ use chrono::Local;
 use lib_core::{PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
+use lib_locale::format::format_time_minutes;
 use lib_toast::ToastKind;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
@@ -626,10 +627,7 @@ impl UnitsPagePresenter {
     /// newest first, instead of raising a Toast (DESKTOP-125).
     fn land(&mut self, outcome: UnitsOutcome, router: &mut dyn UnitsRouter) {
         if self.docked {
-            let time = (self.clock)()
-                .with_timezone(&Local)
-                .format("%H:%M")
-                .to_string();
+            let time = format_time_minutes((self.clock)().with_timezone(&Local).time());
             self.activity.insert(
                 0,
                 ActivityLine {

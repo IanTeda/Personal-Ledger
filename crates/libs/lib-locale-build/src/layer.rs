@@ -14,6 +14,10 @@ use crate::extract::{self, Kind, Params};
 /// Prefixes reserved for a bin's own layer, which the shared layer must not use.
 const BIN_PREFIXES: [&str; 2] = ["desktop-", "tui-"];
 
+/// Prefixes a feature crate's own layer claims, which the shared layer must not use. Add a
+/// feature crate's prefix here when it gets a catalogue.
+const FEATURE_PREFIXES: [&str; 1] = ["units-"];
+
 /// One Message value or attribute, as an accessor sees it.
 #[derive(Debug, Clone)]
 pub(crate) struct Item {
@@ -129,6 +133,15 @@ impl Layer {
                     {
                         problems.push(format!(
                             "{locale}: id `{}` uses a bin-only prefix in the shared layer",
+                            item.id
+                        ))
+                    }
+                    None if FEATURE_PREFIXES
+                        .iter()
+                        .any(|prefix| item.id.starts_with(prefix)) =>
+                    {
+                        problems.push(format!(
+                            "{locale}: id `{}` uses a feature-crate prefix in the shared layer",
                             item.id
                         ))
                     }

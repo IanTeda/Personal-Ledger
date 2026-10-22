@@ -1,5 +1,7 @@
 //! Locale-aware time-of-day formatting.
 
+use std::thread::LocalKey;
+
 use chrono::{NaiveTime, Timelike};
 use icu_datetime::NoCalendarFormatter;
 use icu_datetime::fieldsets::T;
@@ -11,12 +13,17 @@ use crate::locale::Locale;
 
 thread_local! {
     static SECONDS: Cache<Locale, NoCalendarFormatter<T>> = Cache::default();
+    static MINUTES: Cache<Locale, NoCalendarFormatter<T>> = Cache::default();
 }
 
-fn try_format(time: NaiveTime) -> Result<String> {
+fn try_format(
+    time: NaiveTime,
+    cache: &'static LocalKey<Cache<Locale, NoCalendarFormatter<T>>>,
+    fields: fn() -> T,
+) -> Result<String> {
     let locale = crate::locale();
-    let formatter = cached(&SECONDS, locale, || {
-        NoCalendarFormatter::try_new(icu_locale(locale)?.into(), T::hms())
+    let formatter = cached(cache, locale, || {
+        NoCalendarFormatter::try_new(icu_locale(locale)?.into(), fields())
             .map_err(|error| Error::Format(format!("time formatter for {locale}: {error}")))
     })?;
     // chrono's leap second (second 59, nanosecond >= 1e9) has no ICU equivalent, and the
@@ -37,8 +44,17 @@ fn try_format(time: NaiveTime) -> Result<String> {
 /// A time of day to the second in the Locale's own clock (`3:04:05 pm` in `en-AU`, `15:04:05` in
 /// `en-GB`), e.g. when a Toast was last raised. Falls back to 24-hour `HH:MM:SS`.
 pub fn format_time(time: NaiveTime) -> String {
-    try_format(time).unwrap_or_else(|error| {
+    try_format(time, &SECONDS, T::hms).unwrap_or_else(|error| {
         tracing::warn!(%error, "time formatting failed; using 24-hour");
         time.format("%H:%M:%S").to_string()
+    })
+}
+
+/// A time of day to the minute in the Locale's own clock (`3:04 pm` in `en-AU`, `15:04` in
+/// `en-GB`), e.g. an ACTIVITY line. Falls back to 24-hour `HH:MM`.
+pub fn format_time_minutes(time: NaiveTime) -> String {
+    try_format(time, &MINUTES, T::hm).unwrap_or_else(|error| {
+        tracing::warn!(%error, "time formatting failed; using 24-hour");
+        time.format("%H:%M").to_string()
     })
 }
