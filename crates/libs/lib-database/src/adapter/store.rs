@@ -1,14 +1,17 @@
-//! What a Client holds its Units by: the SQLite adapter start-up opens ([`crate::open_storage`]),
-//! or the in-memory ports a test builds the Client on. Both bins' `build_shell` take a
-//! [`UnitsStore`], so either can stand behind the Units module. A store only holds its rows: the
+//! What a Client holds each module's ports by: the SQLite adapter start-up opens
+//! ([`crate::open_storage`]), or the in-memory ports a test builds the Client on. The bins'
+//! `build_shell` take a [`UnitsStore`] (both bins) and a [`TransactionsStore`] (the Desktop), so
+//! either can stand behind the module. A store only holds its rows: the
 //! bin commits every store's writes at once, through [`Commit`](crate::Commit).
 
+use lib_transactions::TransactionRepository;
+use lib_transactions::fake::InMemoryTransactions;
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
 };
 
-use crate::{Result, UnitsAdapter};
+use crate::{Result, TransactionsAdapter, UnitsAdapter};
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
 /// other domains', so each Client answers them itself (its `units/ports.rs`).
@@ -72,6 +75,48 @@ impl UnitsStore for InMemoryPorts {
             base_unit: &mut self.base_unit,
             usage,
         }
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// The Transactions port, wherever it is kept.
+pub trait TransactionsStore {
+    fn transactions(&self) -> &dyn TransactionRepository;
+
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository;
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl TransactionsStore for TransactionsAdapter {
+    fn transactions(&self) -> &dyn TransactionRepository {
+        self
+    }
+
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        TransactionsAdapter::reload(self)
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl TransactionsStore for InMemoryTransactions {
+    fn transactions(&self) -> &dyn TransactionRepository {
+        self
+    }
+
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
+        self
     }
 
     fn reload(&mut self) -> Result<()> {

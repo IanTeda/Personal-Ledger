@@ -75,10 +75,11 @@ impl crate::Budgets {
 
         let amounts = sqlx::query_scalar!(
             r#"
-                SELECT t.amount AS "amount!: domain::Money"
-                FROM transactions t
+                SELECT s.amount AS "amount!: domain::Money"
+                FROM splits s
+                JOIN transactions t ON s.transaction_id = t.id
                 JOIN accounts a ON t.account_id = a.id
-                WHERE t.category_id = ?
+                WHERE s.category_id = ?
                   AND a.unit_id = ?
                   AND t.date >= ?
                   AND t.date <= ?
@@ -139,11 +140,9 @@ mod tests {
 
         let today = chrono::Utc::now().date_naive();
         for amount in ["-20", "-30"] {
-            let mut transaction = crate::Transactions::mock(category_id, account_id);
-            transaction.status = lib_core::TransactionStatus::Open;
-            transaction.date = today;
-            transaction.amount = amount.parse().unwrap();
-            transaction.insert(&pool).await.unwrap();
+            crate::test_support::OneSplit::new(account_id, category_id, amount, today)
+                .insert(&pool)
+                .await;
         }
 
         let progress = budget.current_progress(&pool).await.unwrap();
@@ -161,11 +160,14 @@ mod tests {
         budget.period = lib_core::BudgetPeriod::Monthly;
         let budget = budget.insert(&pool).await.unwrap();
 
-        let mut transaction = crate::Transactions::mock(category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = chrono::Utc::now().date_naive() - chrono::Duration::days(400);
-        transaction.amount = "-999".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(
+            account_id,
+            category_id,
+            "-999",
+            chrono::Utc::now().date_naive() - chrono::Duration::days(400),
+        )
+        .insert(&pool)
+        .await;
 
         let progress = budget.current_progress(&pool).await.unwrap();
 
@@ -184,11 +186,14 @@ mod tests {
             .await
             .unwrap();
 
-        let mut transaction = crate::Transactions::mock(other_category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = chrono::Utc::now().date_naive();
-        transaction.amount = "-50".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(
+            account_id,
+            other_category_id,
+            "-50",
+            chrono::Utc::now().date_naive(),
+        )
+        .insert(&pool)
+        .await;
 
         let progress = budget.current_progress(&pool).await.unwrap();
 

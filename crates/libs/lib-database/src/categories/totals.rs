@@ -1,6 +1,6 @@
 //! # Category Totals
 //!
-//! FR.35: the sum of Transaction amounts per Category over a date range, scoped to a single
+//! FR.35: the sum of Split amounts per Category over a date range, scoped to a single
 //! Unit (aggregating every Account denominated in it) or a single Account, at a time. Shows
 //! the raw signed sum per Category — unlike `Budgets::current_progress`'s Expense-only
 //! negation, a Category here can be Income/Asset/Liability/Equity/Expense, so negating would
@@ -31,10 +31,11 @@ impl crate::Categories {
                 crate::TransactionScope::Unit(unit_id) => {
                     sqlx::query_scalar!(
                         r#"
-                            SELECT t.amount AS "amount!: lib_core::Money"
-                            FROM transactions t
+                            SELECT s.amount AS "amount!: lib_core::Money"
+                            FROM splits s
+                            JOIN transactions t ON s.transaction_id = t.id
                             JOIN accounts a ON t.account_id = a.id
-                            WHERE t.category_id = ?
+                            WHERE s.category_id = ?
                               AND a.unit_id = ?
                               AND t.date >= ?
                               AND t.date <= ?
@@ -50,12 +51,13 @@ impl crate::Categories {
                 crate::TransactionScope::Account(account_id) => {
                     sqlx::query_scalar!(
                         r#"
-                            SELECT amount AS "amount!: lib_core::Money"
-                            FROM transactions
-                            WHERE category_id = ?
-                              AND account_id = ?
-                              AND date >= ?
-                              AND date <= ?
+                            SELECT s.amount AS "amount!: lib_core::Money"
+                            FROM splits s
+                            JOIN transactions t ON s.transaction_id = t.id
+                            WHERE s.category_id = ?
+                              AND t.account_id = ?
+                              AND t.date >= ?
+                              AND t.date <= ?
                         "#,
                         category.id,
                         account_id,
@@ -129,11 +131,9 @@ mod tests {
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
 
         for amount in ["-20", "-30", "5"] {
-            let mut transaction = crate::Transactions::mock(category_id, account_id);
-            transaction.status = lib_core::TransactionStatus::Open;
-            transaction.date = date(2026, 1, 15);
-            transaction.amount = amount.parse().unwrap();
-            transaction.insert(&pool).await.unwrap();
+            crate::test_support::OneSplit::new(account_id, category_id, amount, date(2026, 1, 15))
+                .insert(&pool)
+                .await;
         }
 
         let totals = crate::Categories::totals(
@@ -159,11 +159,9 @@ mod tests {
         let category_id = seed_category(&pool).await;
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 2, 1);
-        transaction.amount = "-999".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(account_id, category_id, "-999", date(2026, 2, 1))
+            .insert(&pool)
+            .await;
 
         let totals = crate::Categories::totals(
             crate::TransactionScope::Unit(unit_id),
@@ -189,11 +187,14 @@ mod tests {
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
         let other_account = crate::Accounts::mock(unit_id).insert(&pool).await.unwrap();
 
-        let mut transaction = crate::Transactions::mock(category_id, other_account.id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 1, 15);
-        transaction.amount = "-100".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(
+            other_account.id,
+            category_id,
+            "-100",
+            date(2026, 1, 15),
+        )
+        .insert(&pool)
+        .await;
 
         let totals = crate::Categories::totals(
             crate::TransactionScope::Account(account_id),

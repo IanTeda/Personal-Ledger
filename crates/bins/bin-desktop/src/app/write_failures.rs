@@ -45,22 +45,33 @@ impl Shell {
         .detach();
     }
 
-    /// Puts the Units back as stored if `failure` names them, refreshing the Ledger read copy so
-    /// every Units view model is rebuilt, and raises an error Toast. If they can't be read back
-    /// either, the rows in memory stand and the Toast says they aren't saved.
+    /// Puts each domain `failure` names back as stored, refreshing the Ledger read copy so every
+    /// view model reading it is rebuilt, and raises an error Toast for each. If a domain can't be
+    /// read back either, its rows in memory stand and the Toast says they aren't saved.
     fn roll_back(&mut self, failure: &WriteFailure, cx: &mut Context<'_, Self>) {
-        // Units is the only domain an adapter saves so far; later ones join here.
-        if !failure.domains.contains(&Domain::Units) {
-            return;
+        if failure.domains.contains(&Domain::Units) {
+            let text = match crate::units::ports::reload(&self.units, &self.ledger, cx) {
+                Ok(()) => crate::msg::desktop_toast_write_failed_units(),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to reload the Units after a failed write");
+                    crate::msg::desktop_toast_write_failed_units_unsaved()
+                }
+            };
+            self.raise_toast(ToastKind::Error, text);
         }
-        let text = match crate::units::ports::reload(&self.units, &self.ledger, cx) {
-            Ok(()) => crate::msg::desktop_toast_write_failed_units(),
-            Err(error) => {
-                tracing::error!(%error, "Failed to reload the Units after a failed write");
-                crate::msg::desktop_toast_write_failed_units_unsaved()
-            }
-        };
-        self.raise_toast(ToastKind::Error, text);
+        if failure.domains.contains(&Domain::Transactions) {
+            let reloaded = self
+                .ledger
+                .update(cx, |store, cx| store.reload_transactions(cx));
+            let text = match reloaded {
+                Ok(()) => crate::msg::desktop_toast_write_failed_transactions(),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to reload the Transactions after a failed write");
+                    crate::msg::desktop_toast_write_failed_transactions_unsaved()
+                }
+            };
+            self.raise_toast(ToastKind::Error, text);
+        }
         cx.notify();
     }
 }

@@ -43,7 +43,7 @@ use gpui::{
 use app::Shell;
 pub use chrome::window_size::WindowSize;
 pub use error::Error;
-use lib_database::{Commit, Storage, UnitsStore, open_storage};
+use lib_database::{Commit, Storage, TransactionsStore, UnitsStore, open_storage};
 use persistence::{PersistedState, WindowGeometry};
 
 /// Crate Result type alias used across the Desktop binary.
@@ -74,8 +74,8 @@ pub struct ShellLogs {
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
-/// `units` is where the Units are kept: the app's SQLite adapter, or a test's in-memory ports.
-/// `commit` ends each Interactor call's writes, every adapter's at once. `failures` is the
+/// `units` and `transactions` are where the Units and the Transactions are kept: the app's SQLite
+/// adapters, or a test's in-memory ports. `commit` ends each call's writes, every adapter's at once. `failures` is the
 /// writer's failure channel, on which a failed write rolls back.
 #[expect(
     clippy::too_many_arguments,
@@ -86,6 +86,7 @@ pub fn build_shell(
     bindings: ShellBindings,
     logs: ShellLogs,
     units: Box<dyn UnitsStore>,
+    transactions: Box<dyn TransactionsStore>,
     commit: Rc<dyn Commit>,
     failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
     today: chrono::NaiveDate,
@@ -108,8 +109,12 @@ pub fn build_shell(
         .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
+    let transactions = transactions::ports::TransactionsSetup {
+        store: transactions,
+        commit: commit.clone(),
+    };
     let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
-    let mut shell = Shell::with_today(nav, focus_handle, today, units, cx);
+    let mut shell = Shell::with_today(nav, focus_handle, today, units, transactions, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
@@ -127,14 +132,14 @@ pub fn build_shell(
 }
 
 /// The Desktop's start-up before any window: opens the Ledger file the configuration names,
-/// creating and seeding it when new. The app never runs on a file it can't save to, so a failure
+/// creating and seeding it when new, with the stub dated from today. The app never runs on a file it can't save to, so a failure
 /// is the caller's to report and stop on. `main` and the smoke test both start here.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the Ledger file.
 pub fn start(config: &lib_config::Config) -> lib_database::Result<Storage> {
     let path = config.personal_ledger_config().file();
-    open_storage(path).inspect_err(|error| {
+    open_storage(path, chrono::Local::now().date_naive()).inspect_err(|error| {
         tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
     })
 }
@@ -153,6 +158,7 @@ pub fn quit(writer: &lib_database::Writer) {
 pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: Storage) {
     let Storage {
         units,
+        transactions,
         pending,
         writer,
         failures,
@@ -257,6 +263,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                                 configured_level,
                             },
                             Box::new(units),
+                            Box::new(transactions),
                             Rc::new(pending),
                             failures,
                             chrono::Local::now().date_naive(),

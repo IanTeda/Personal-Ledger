@@ -114,8 +114,7 @@ impl Ledger {
                 .push(LedgerChange::UpsertTransaction(transaction.clone()));
             self.transactions.push(transaction);
         }
-        self.transactions
-            .sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+        crate::sort_newest_first(&mut self.transactions);
 
         Ok(ImportCommitted {
             transactions: count,

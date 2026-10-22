@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT amount AS \"amount!: lib_core::Money\" FROM transactions WHERE account_id = ?",
+  "query": "SELECT s.amount AS \"amount!: lib_core::Money\"\n               FROM splits s JOIN transactions t ON s.transaction_id = t.id\n               WHERE t.account_id = ?",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "4b8e56a74db900dbd3adfa69a84e633ca55f216571319500330c07932a4c4d1b"
+  "hash": "83eea77080a2ba1d0ed4be39396eafb1fc6ec73c3829940dc92bb21525f469b7"
 }

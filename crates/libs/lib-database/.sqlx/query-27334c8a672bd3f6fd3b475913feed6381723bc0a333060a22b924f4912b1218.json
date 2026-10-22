@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id          AS \"id!: TransactionId\",\n               date        AS \"date!: NaiveDate\",\n               account_id  AS \"account_id!: AccountId\",\n               description,\n               status      AS \"status!: TransactionStatus\",\n               is_flagged\n           FROM transactions\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: TransactionId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "date!: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!: AccountId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "description",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: TransactionStatus",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_flagged",
+        "ordinal": 5,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "27334c8a672bd3f6fd3b475913feed6381723bc0a333060a22b924f4912b1218"
+}

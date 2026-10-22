@@ -38,9 +38,9 @@ pub use units::Units;
 pub mod accounts;
 pub use accounts::Accounts;
 
-/// Single-entry Transactions against exactly one Account and one Category (CC-TUI-009).
-pub mod transactions;
-pub use transactions::{TransactionScope, Transactions};
+/// What a per-entity totals report scopes its Transactions to: a Unit or an Account.
+mod transaction_scope;
+pub use transaction_scope::TransactionScope;
 
 /// Who a Transaction's money moved to or from (CC-TUI-007), a first-class entity as of
 /// ADR-0012.
@@ -76,7 +76,8 @@ pub use change_sets::ChangeSet;
 
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
-pub use adapter::store::UnitsStore;
+pub use adapter::store::{TransactionsStore, UnitsStore};
+pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;
 
 /// A Client's Ledger file, opened at start-up with its adapters and the writer.
@@ -93,6 +94,10 @@ pub use commit::{Commit, InMemoryCommit, PendingWrites};
 /// The one writer thread every adapter saves through (ADR-0046).
 pub mod writer;
 pub use writer::{Domain, WriteFailure, Writer};
+
+/// Test-only rows for the readers that total Transactions.
+#[cfg(test)]
+mod test_support;
 
 /// Crate error type for all database operations.
 mod error;

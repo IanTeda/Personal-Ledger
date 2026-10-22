@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                            SELECT s.amount AS \"amount!: lib_core::Money\"\n                            FROM splits s\n                            JOIN transactions t ON s.transaction_id = t.id\n                            JOIN accounts a ON t.account_id = a.id\n                            WHERE s.category_id = ?\n                              AND a.unit_id = ?\n                              AND t.date >= ?\n                              AND t.date <= ?\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "amount!: lib_core::Money",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b3f13a696a82958b5638d1e56c64fd3cc17f82290ecd63654f683703ba0bb34c"
+}

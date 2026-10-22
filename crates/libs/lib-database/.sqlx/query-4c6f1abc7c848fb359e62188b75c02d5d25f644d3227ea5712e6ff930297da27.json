@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               transaction_id AS \"transaction_id!: TransactionId\",\n               position,\n               tag_id         AS \"tag_id!: TagId\"\n           FROM split_tags\n           ORDER BY transaction_id, position, tag_position",
+  "describe": {
+    "columns": [
+      {
+        "name": "transaction_id!: TransactionId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "position",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tag_id!: TagId",
+        "ordinal": 2,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4c6f1abc7c848fb359e62188b75c02d5d25f644d3227ea5712e6ff930297da27"
+}

@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     // The Ledger opens before the terminal does: the TUI never runs on a file it can't save to.
     let path = config.personal_ledger_config().file();
-    let storage = match lib_database::open_storage(path) {
+    let storage = match lib_database::open_storage(path, chrono::Local::now().date_naive()) {
         Ok(storage) => storage,
         Err(error) => {
             tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
@@ -65,8 +65,10 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
+    // The TUI's Transactions View still draws its fixture (#774), so it leaves the adapter unread.
     let lib_database::Storage {
         units,
+        transactions: _,
         pending,
         writer,
         failures,

@@ -74,13 +74,6 @@ pub enum Error {
     #[error("Error building Account: {0}")]
     AccountsBuilder(String),
 
-    /// Transactions Builder Error
-    ///
-    /// Occurs when constructing a Transaction fails due to invalid input or missing
-    /// required fields.
-    #[error("Error building Transaction: {0}")]
-    TransactionsBuilder(String),
-
     /// Payees Builder Error
     ///
     /// Occurs when constructing a Payee fails due to invalid input or missing required
@@ -115,23 +108,6 @@ pub enum Error {
     /// the whole import is aborted, never partially applied.
     #[error("CSV import failed: {0}")]
     CsvImport(String),
-
-    /// Transaction Reconciled-Lock Error
-    ///
-    /// Occurs when `Transactions::update` is called against a Transaction whose current
-    /// status is Reconciled — its other fields cannot change until the status is first
-    /// moved back to Open or Cleared (see `GLOSSARY.md`'s Transaction Status entry).
-    #[error(
-        "Transaction {0} is Reconciled; move it back to Open or Cleared before editing its other fields"
-    )]
-    TransactionReconciled(String),
-
-    /// Transaction Cross-Unit Move Error
-    ///
-    /// Occurs when `Transactions::update` would move a Transaction to an Account
-    /// denominated in a different Unit than its current Account.
-    #[error("Cannot move Transaction {0} to Account {1}: it is denominated in a different Unit")]
-    TransactionCrossUnitMove(String, String),
 
     /// Connection error
     ///

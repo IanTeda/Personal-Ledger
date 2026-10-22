@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT s.amount AS \"amount!: domain::Money\"\n                FROM splits s\n                JOIN transactions t ON s.transaction_id = t.id\n                JOIN accounts a ON t.account_id = a.id\n                WHERE s.category_id = ?\n                  AND a.unit_id = ?\n                  AND t.date >= ?\n                  AND t.date <= ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "amount!: domain::Money",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "67dab206ba8f0e4044a5240631ce4228d375226e246d97c781be2144ba9f3497"
+}

@@ -105,6 +105,7 @@ mod tests {
                 cx.focus_handle(),
                 today,
                 crate::units::UnitsSetup::stub(),
+                crate::transactions::ports::TransactionsSetup::stub(today),
                 cx,
             )
         });
@@ -162,6 +163,7 @@ mod tests {
                 cx.focus_handle(),
                 today,
                 crate::units::UnitsSetup::stub(),
+                crate::transactions::ports::TransactionsSetup::stub(today),
                 cx,
             )
         });

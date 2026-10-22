@@ -1,28 +1,23 @@
 -- Migration: create transactions table -- single-entry Transactions against exactly one
--- Account and one Category, with an optional Payee (FR.16-21, CC-TUI-009, ADR-0012). No created_on column: FR.21 says the
--- UUIDv7 id itself determines creation date, the same convention Units already uses.
+-- Account on a date (FR.16-21, CC-TUI-009). Its amounts, Categories and Payees are its Splits'
+-- (the splits table); a Transaction's total is their sum, never stored. No created_on column:
+-- FR.21 says the UUIDv7 id itself determines creation date, the same convention Units already
+-- uses.
 --
--- All foreign keys are enforced by SQLite's foreign_keys pragma (see DatabaseConnection::
--- new). Moving a Transaction to a different-Unit Account (rejected by FR.19) can't be
--- expressed as a schema constraint -- it's an application-level check in
--- Transactions::update, since SQLite FKs can't compare two rows' Unit columns to each other.
+-- account_id has no foreign key yet: Accounts aren't persisted, so no accounts row would back it
+-- (#774). It becomes REFERENCES accounts(id) when the Accounts domain persists.
 
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY,
     date TEXT NOT NULL,
-    amount TEXT NOT NULL,
-    category_id UUID NOT NULL REFERENCES categories(id),
-    account_id UUID NOT NULL REFERENCES accounts(id),
-    payee_id UUID REFERENCES payees(id),
+    account_id UUID NOT NULL,
     description TEXT,
-    status TEXT NOT NULL DEFAULT 'open',
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'cleared', 'reconciled')),
     is_flagged BOOLEAN NOT NULL DEFAULT FALSE,
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON transactions(category_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_payee_id ON transactions(payee_id);
 
 -- Trigger to update updated_on on every transaction row change
 CREATE TRIGGER IF NOT EXISTS trg_transactions_set_updated_on

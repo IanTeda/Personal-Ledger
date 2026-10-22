@@ -1,6 +1,6 @@
 //! # Payee Totals
 //!
-//! FR.36: the sum of Transaction amounts per Payee over a date range, scoped to a single
+//! FR.36: the sum of Split amounts per Payee over a date range, scoped to a single
 //! Unit (aggregating every Account denominated in it) or a single Account, at a time.
 //! Unlike [`crate::Categories::totals`], which iterates every active Category first (a
 //! small, curated set), this is driven by the matching Transactions themselves: Payees can
@@ -8,7 +8,7 @@
 //! only a Payee with at least one matching Transaction in range appears — no zero-sum rows.
 //! An inactive Payee still appears if it has a matching Transaction: `is_active` governs
 //! whether a Payee is offered for *new* Transactions, not whether its past activity counts.
-//! Transactions with no Payee (`payee_id IS NULL`, FR.16's optional Payee) are excluded.
+//! Splits with no Payee (`payee_id IS NULL`, FR.16's optional Payee) are excluded.
 //! Shows the raw signed sum per Payee, same reasoning as Category-total: a Payee can receive
 //! both outgoing and incoming Transactions (e.g. an employer), so negating would be wrong.
 //! Grouped and summed in Rust via `BigDecimal`, not SQL `SUM()`/`GROUP BY`, since `Money` is
@@ -30,10 +30,11 @@ impl crate::Payees {
         let rows: Vec<(lib_core::RowID, lib_core::Money)> = match scope {
             crate::TransactionScope::Unit(unit_id) => sqlx::query!(
                 r#"
-                    SELECT t.payee_id AS "payee_id!: lib_core::RowID", t.amount AS "amount!: lib_core::Money"
-                    FROM transactions t
+                    SELECT s.payee_id AS "payee_id!: lib_core::RowID", s.amount AS "amount!: lib_core::Money"
+                    FROM splits s
+                    JOIN transactions t ON s.transaction_id = t.id
                     JOIN accounts a ON t.account_id = a.id
-                    WHERE t.payee_id IS NOT NULL
+                    WHERE s.payee_id IS NOT NULL
                       AND a.unit_id = ?
                       AND t.date >= ?
                       AND t.date <= ?
@@ -49,12 +50,13 @@ impl crate::Payees {
             .collect(),
             crate::TransactionScope::Account(account_id) => sqlx::query!(
                 r#"
-                    SELECT payee_id AS "payee_id!: lib_core::RowID", amount AS "amount!: lib_core::Money"
-                    FROM transactions
-                    WHERE payee_id IS NOT NULL
-                      AND account_id = ?
-                      AND date >= ?
-                      AND date <= ?
+                    SELECT s.payee_id AS "payee_id!: lib_core::RowID", s.amount AS "amount!: lib_core::Money"
+                    FROM splits s
+                    JOIN transactions t ON s.transaction_id = t.id
+                    WHERE s.payee_id IS NOT NULL
+                      AND t.account_id = ?
+                      AND t.date >= ?
+                      AND t.date <= ?
                 "#,
                 account_id,
                 start,
@@ -115,12 +117,17 @@ mod tests {
         let payee_id = seed_payee(&pool, true).await;
 
         for amount in ["-20", "-30", "5"] {
-            let mut transaction = crate::Transactions::mock(category_id, account_id);
-            transaction.status = lib_core::TransactionStatus::Open;
-            transaction.date = date(2026, 1, 15);
-            transaction.amount = amount.parse().unwrap();
-            transaction.payee_id = Some(payee_id);
-            transaction.insert(&pool).await.unwrap();
+            crate::test_support::OneSplit {
+                payee_id: Some(payee_id),
+                ..crate::test_support::OneSplit::new(
+                    account_id,
+                    category_id,
+                    amount,
+                    date(2026, 1, 15),
+                )
+            }
+            .insert(&pool)
+            .await;
         }
 
         let totals = crate::Payees::totals(
@@ -162,12 +169,12 @@ mod tests {
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
         let payee_id = seed_payee(&pool, false).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 1, 15);
-        transaction.amount = "-10".parse().unwrap();
-        transaction.payee_id = Some(payee_id);
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit {
+            payee_id: Some(payee_id),
+            ..crate::test_support::OneSplit::new(account_id, category_id, "-10", date(2026, 1, 15))
+        }
+        .insert(&pool)
+        .await;
 
         let totals = crate::Payees::totals(
             crate::TransactionScope::Unit(unit_id),
@@ -187,12 +194,9 @@ mod tests {
         let category_id = seed_category(&pool).await;
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 1, 15);
-        transaction.amount = "-10".parse().unwrap();
-        transaction.payee_id = None;
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(account_id, category_id, "-10", date(2026, 1, 15))
+            .insert(&pool)
+            .await;
 
         let totals = crate::Payees::totals(
             crate::TransactionScope::Unit(unit_id),
@@ -212,12 +216,12 @@ mod tests {
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
         let payee_id = seed_payee(&pool, true).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, account_id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 2, 1);
-        transaction.amount = "-999".parse().unwrap();
-        transaction.payee_id = Some(payee_id);
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit {
+            payee_id: Some(payee_id),
+            ..crate::test_support::OneSplit::new(account_id, category_id, "-999", date(2026, 2, 1))
+        }
+        .insert(&pool)
+        .await;
 
         let totals = crate::Payees::totals(
             crate::TransactionScope::Unit(unit_id),
@@ -238,12 +242,17 @@ mod tests {
         let other_account = crate::Accounts::mock(unit_id).insert(&pool).await.unwrap();
         let payee_id = seed_payee(&pool, true).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, other_account.id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 1, 15);
-        transaction.amount = "-100".parse().unwrap();
-        transaction.payee_id = Some(payee_id);
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit {
+            payee_id: Some(payee_id),
+            ..crate::test_support::OneSplit::new(
+                other_account.id,
+                category_id,
+                "-100",
+                date(2026, 1, 15),
+            )
+        }
+        .insert(&pool)
+        .await;
 
         let totals = crate::Payees::totals(
             crate::TransactionScope::Account(account_id),

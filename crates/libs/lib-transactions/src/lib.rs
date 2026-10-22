@@ -1,9 +1,24 @@
 //! The Transaction record and its Splits (`docs/transactions.md`, the glossary's Transaction and
-//! Split), `gpui`-free and I/O-free, shared by the Desktop and the TUI. Seeding, filtering and
-//! rendering stay with the Client.
+//! Split), `gpui`-free and I/O-free, shared by the Desktop and the TUI. Filtering and rendering
+//! stay with the Client.
+//!
+//! A ports-only VIPER module so far (`docs/development/viper-architecture.md`, #774): the
+//! repository port in `protocols`, which `lib-database` implements, its in-memory twin and the
+//! stub seed in `fake`, and the contract both keep in `contract`.
 //!
 //! A Transaction is a single-entry record of an amount against one Account on a date; its
 //! Splits carry the amounts and Categories, and the Unit is its Account's.
+
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
+pub mod fake;
+pub mod protocols;
+
+pub use protocols::TransactionRepository;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;

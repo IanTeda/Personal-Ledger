@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               transaction_id AS \"transaction_id!: TransactionId\",\n               position,\n               amount         AS \"amount!: Money\",\n               category_id    AS \"category_id!: CategoryId\",\n               payee_id       AS \"payee_id?: PayeeId\"\n           FROM splits\n           ORDER BY transaction_id, position",
+  "describe": {
+    "columns": [
+      {
+        "name": "transaction_id!: TransactionId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "position",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "amount!: Money",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id!: CategoryId",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "payee_id?: PayeeId",
+        "ordinal": 4,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1c58afc3c2658431eac6a50c7faab5f5143c330021b477aa668173e92a585b5a"
+}

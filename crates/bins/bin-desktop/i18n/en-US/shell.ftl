@@ -106,3 +106,5 @@ desktop-toast-more = +{ $count } more
 
 desktop-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
 desktop-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved
+desktop-toast-write-failed-transactions = Couldn't save the change to transactions, so they are back as last saved
+desktop-toast-write-failed-transactions-unsaved = Couldn't save the change to transactions or reload them, so what you see isn't saved

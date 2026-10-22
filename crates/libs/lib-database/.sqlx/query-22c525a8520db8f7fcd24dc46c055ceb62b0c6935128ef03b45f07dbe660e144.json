@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO split_tags (transaction_id, position, tag_position, tag_id)\n                 VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "22c525a8520db8f7fcd24dc46c055ceb62b0c6935128ef03b45f07dbe660e144"
+}

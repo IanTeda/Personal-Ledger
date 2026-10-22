@@ -19,6 +19,10 @@ doctest = false
 lib_config = { path = "../../../crates/libs/lib-config" }
 lib_core = { path = "../../../crates/libs/lib-core", features = ["sqlx"] }
 lib_units = { path = "../../../crates/libs/lib-units" }
+lib_transactions = { path = "../../../crates/libs/lib-transactions" }
+## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
+## Documents stubs add to, so they take them from the joined stub (#774, removed with the seed).
+lib_ledger = { path = "../../../crates/libs/lib-ledger" }
 
 ## -- Workspace Shared Dependencies --
 bigdecimal = { workspace = true }
@@ -40,6 +44,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 lib_units = { path = "../../../crates/libs/lib-units", features = ["contract-tests"] }
+lib_transactions = { path = "../../../crates/libs/lib-transactions", features = ["contract-tests"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 

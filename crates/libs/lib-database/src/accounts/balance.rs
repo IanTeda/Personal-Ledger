@@ -23,7 +23,9 @@ impl crate::Accounts {
     )]
     pub async fn balance(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<lib_core::Money> {
         let amounts = sqlx::query_scalar!(
-            r#"SELECT amount AS "amount!: lib_core::Money" FROM transactions WHERE account_id = ?"#,
+            r#"SELECT s.amount AS "amount!: lib_core::Money"
+               FROM splits s JOIN transactions t ON s.transaction_id = t.id
+               WHERE t.account_id = ?"#,
             self.id
         )
         .fetch_all(pool)
@@ -56,9 +58,10 @@ impl crate::Accounts {
     ) -> crate::Result<lib_core::Money> {
         let amounts = sqlx::query_scalar!(
             r#"
-                SELECT amount AS "amount!: lib_core::Money"
-                FROM transactions
-                WHERE account_id = ? AND date <= ?
+                SELECT s.amount AS "amount!: lib_core::Money"
+                FROM splits s
+                JOIN transactions t ON s.transaction_id = t.id
+                WHERE t.account_id = ? AND t.date <= ?
             "#,
             self.id,
             as_of
@@ -106,10 +109,14 @@ mod tests {
         let category_id = seed_category(&pool).await;
 
         for amount in ["-20", "-30", "5"] {
-            let mut transaction = crate::Transactions::mock(category_id, account.id);
-            transaction.status = lib_core::TransactionStatus::Open;
-            transaction.amount = amount.parse().unwrap();
-            transaction.insert(&pool).await.unwrap();
+            crate::test_support::OneSplit::new(
+                account.id,
+                category_id,
+                amount,
+                chrono::Utc::now().date_naive(),
+            )
+            .insert(&pool)
+            .await;
         }
 
         let balance = account.balance(&pool).await.unwrap();
@@ -123,10 +130,14 @@ mod tests {
         let other_account = seed_account(&pool, "0").await;
         let category_id = seed_category(&pool).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, other_account.id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.amount = "-999".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(
+            other_account.id,
+            category_id,
+            "-999",
+            chrono::Utc::now().date_naive(),
+        )
+        .insert(&pool)
+        .await;
 
         let balance = account.balance(&pool).await.unwrap();
 
@@ -155,11 +166,9 @@ mod tests {
         let category_id = seed_category(&pool).await;
 
         for (amount, when) in [("-20", date(2026, 1, 10)), ("-30", date(2026, 1, 15))] {
-            let mut transaction = crate::Transactions::mock(category_id, account.id);
-            transaction.status = lib_core::TransactionStatus::Open;
-            transaction.date = when;
-            transaction.amount = amount.parse().unwrap();
-            transaction.insert(&pool).await.unwrap();
+            crate::test_support::OneSplit::new(account.id, category_id, amount, when)
+                .insert(&pool)
+                .await;
         }
 
         let balance = account
@@ -175,11 +184,9 @@ mod tests {
         let account = seed_account(&pool, "100").await;
         let category_id = seed_category(&pool).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, account.id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 2, 1);
-        transaction.amount = "-999".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(account.id, category_id, "-999", date(2026, 2, 1))
+            .insert(&pool)
+            .await;
 
         let balance = account
             .balance_as_of(date(2026, 1, 31), &pool)
@@ -195,11 +202,9 @@ mod tests {
         let other_account = seed_account(&pool, "0").await;
         let category_id = seed_category(&pool).await;
 
-        let mut transaction = crate::Transactions::mock(category_id, other_account.id);
-        transaction.status = lib_core::TransactionStatus::Open;
-        transaction.date = date(2026, 1, 1);
-        transaction.amount = "-999".parse().unwrap();
-        transaction.insert(&pool).await.unwrap();
+        crate::test_support::OneSplit::new(other_account.id, category_id, "-999", date(2026, 1, 1))
+            .insert(&pool)
+            .await;
 
         let balance = account
             .balance_as_of(date(2026, 1, 31), &pool)

@@ -31,8 +31,11 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
+use lib_core::TransactionId;
 use lib_core::{PriceSourceId, UnitId};
-use lib_database::{Commit, Domain, InMemoryCommit, UnitsStore, WriteFailure};
+use lib_database::{Commit, Domain, InMemoryCommit, TransactionsStore, UnitsStore, WriteFailure};
+use lib_transactions::fake::InMemoryTransactions;
+use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRecord, PriceSourceRepository, UnitRepository,
@@ -94,6 +97,51 @@ impl<T: BaseUnitRepository> BaseUnitRepository for Marked<T> {
     fn set_base_unit(&mut self, id: UnitId) {
         self.written.set(true);
         self.inner.set_base_unit(id);
+    }
+}
+
+impl<T: TransactionRepository> TransactionRepository for Marked<T> {
+    fn transactions(&self) -> Vec<Transaction> {
+        self.inner.transactions()
+    }
+
+    fn upsert_transaction(&mut self, transaction: Transaction) {
+        self.written.set(true);
+        self.inner.upsert_transaction(transaction);
+    }
+
+    fn delete_transaction(&mut self, id: TransactionId) {
+        self.written.set(true);
+        self.inner.delete_transaction(id);
+    }
+}
+
+/// A Transactions port whose writes never reach `stored`, the rows as they are on disk: a reload
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingTransactions {
+    transactions: Marked<InMemoryTransactions>,
+    stored: InMemoryTransactions,
+}
+
+impl TransactionsStore for FailingTransactions {
+    fn transactions(&self) -> &dyn TransactionRepository {
+        &self.transactions
+    }
+
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
+        &mut self.transactions
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.transactions.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
+/// The stub Ledger's Transactions as of the test date, as the in-memory port holds them.
+fn stub_transactions() -> InMemoryTransactions {
+    InMemoryTransactions {
+        transactions: lib_ledger::Ledger::stub_on(today()).transactions().to_vec(),
     }
 }
 
@@ -163,9 +211,10 @@ impl UnitsStore for FailingUnits {
     }
 }
 
-/// A commit with writes since the last reports a failure naming the Units, as the writer would
+/// A commit with writes since the last reports a failure naming `domain`, as the writer would
 /// when SQLite refuses them; a commit with nothing new reports nothing.
 struct FailingCommit {
+    domain: Domain,
     written: Rc<Cell<bool>>,
     report: mpsc::Sender<WriteFailure>,
 }
@@ -174,7 +223,7 @@ impl Commit for FailingCommit {
     fn commit(&self) {
         if self.written.replace(false) {
             let _ = self.report.send(WriteFailure {
-                domains: vec![Domain::Units],
+                domains: vec![self.domain],
                 error: lib_database::Error::Generic("the test's write fails".into()),
             });
         }
@@ -234,6 +283,7 @@ impl<'a> Harness<'a> {
             logs,
             configured_level,
             Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+            Box::new(stub_transactions()),
             Rc::new(InMemoryCommit),
             no_failures(),
         )
@@ -247,6 +297,7 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             Box::new(storage.units),
+            Box::new(storage.transactions),
             Rc::new(storage.pending),
             storage.failures,
         )
@@ -267,7 +318,40 @@ impl<'a> Harness<'a> {
                 &written,
                 reload_fails,
             )),
-            Rc::new(FailingCommit { written, report }),
+            Box::new(stub_transactions()),
+            Rc::new(FailingCommit {
+                domain: Domain::Units,
+                written,
+                report,
+            }),
+            failures,
+        )
+    }
+
+    /// As [`Harness::new`], on a Transactions port whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_transactions(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_transactions();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+            Box::new(FailingTransactions {
+                transactions: Marked {
+                    inner: stored.clone(),
+                    written: written.clone(),
+                },
+                stored,
+            }),
+            Rc::new(FailingCommit {
+                domain: Domain::Transactions,
+                written,
+                report,
+            }),
             failures,
         )
     }
@@ -277,6 +361,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         units: Box<dyn UnitsStore>,
+        transactions: Box<dyn TransactionsStore>,
         commit: Rc<dyn Commit>,
         failures: mpsc::Receiver<WriteFailure>,
     ) -> Self {
@@ -302,6 +387,7 @@ impl<'a> Harness<'a> {
                     configured_level,
                 },
                 units,
+                transactions,
                 commit,
                 failures,
                 today(),

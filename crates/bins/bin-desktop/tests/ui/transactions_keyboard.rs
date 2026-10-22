@@ -332,3 +332,52 @@ fn a_bills_paid_row_reveal_clears_the_search(app: &mut TestAppContext) {
     assert_eq!(page.search, "");
     assert!(page.visible > 0, "the revealed Transaction is visible");
 }
+
+/// Deletes the Account selected first on the Settings Accounts page, typing its name back, and
+/// returns to the Transactions page.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a stub with no Accounts should fail the test loudly"
+)]
+fn delete_the_first_account(ui: &mut Harness<'_>) {
+    ui.press("g s j j j j l");
+    assert_eq!(ui.settings().page, "Accounts");
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
+    ui.press("d");
+    for ch in name.chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None, "the Account is deleted");
+    ui.press("g l");
+}
+
+#[gpui::test]
+fn a_failed_forwarded_write_puts_the_transactions_back_with_an_error_toast(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::with_failing_transactions(app);
+    ui.press("g l");
+    let stored = ui.transactions().visible;
+    delete_the_first_account(&mut ui);
+    assert!(
+        ui.transactions().visible < stored,
+        "memory runs ahead of the file until the failure is heard"
+    );
+
+    ui.settle_writes();
+
+    assert_eq!(ui.transactions().visible, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text
+                == "Couldn't save the change to transactions, so they are back as last saved"
+    }));
+}

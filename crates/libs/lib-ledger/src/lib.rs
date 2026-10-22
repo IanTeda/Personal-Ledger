@@ -254,6 +254,19 @@ impl Ledger {
         &self.transactions
     }
 
+    /// Replaces the read copy of the Transactions with what the Transactions port holds (#774's
+    /// halfway shim, removed once every reader goes through that port), newest first as every
+    /// reader takes them, since a port lists in no particular order. Returns whether anything
+    /// changed, so a Client announces only a real change.
+    pub fn refresh_transactions(&mut self, mut transactions: Vec<Transaction>) -> bool {
+        sort_newest_first(&mut transactions);
+        if self.transactions == transactions {
+            return false;
+        }
+        self.transactions = transactions;
+        true
+    }
+
     pub fn bill_plans(&self) -> &[BillPlan] {
         &self.bill_plans
     }
@@ -352,6 +365,12 @@ impl Ledger {
     }
 }
 
+/// Newest first, the later id first on one day: the order the Transactions readers take, which an
+/// Import's commit keeps too.
+fn sort_newest_first(transactions: &mut [Transaction]) {
+    transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +401,29 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn refreshing_the_transactions_read_copy_reports_only_a_real_change() {
+        let mut ledger = Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).unwrap());
+        let mut transactions = ledger.transactions().to_vec();
+        transactions.reverse();
+        ledger.refresh_transactions(transactions.clone());
+
+        assert!(
+            !ledger.refresh_transactions(transactions.clone()),
+            "the same rows in another order are no change"
+        );
+        assert!(
+            ledger
+                .transactions()
+                .windows(2)
+                .all(|pair| (pair[0].date, pair[0].id) > (pair[1].date, pair[1].id)),
+            "newest first"
+        );
+
+        let removed = transactions.remove(0);
+        assert!(ledger.refresh_transactions(transactions));
+        assert!(ledger.transactions().iter().all(|t| t.id != removed.id));
     }
 }
