@@ -168,7 +168,7 @@ Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-ad
 
 What that means for a module, as slice 1 built it (`lib-database`'s `adapter/units.rs` and `writer.rs`):
 
-- **The bin ends each Interactor call.** A port write is one row (`upsert_unit`, `set_base_unit`), so a port can't tell where an Interactor call ends. The adapter keeps a call's writes pending, shared by the module's ports, and the bin calls `commit()` after each Presenter `handle`, which sends them to the writer as one transaction. Deleting a Price Source (N Unit moves and the delete) and deleting the base Unit (the move and the delete) each land whole.
+- **The bin ends each Interactor call.** A port write is one row (`upsert_unit`, `set_base_unit`), so a port can't tell where an Interactor call ends. Every adapter adds its writes to one pending batch on the writer, and the bin calls `commit()` after each Presenter `handle`, which sends the batch to the writer as one transaction. Deleting a Price Source (N Unit moves and the delete) and deleting the base Unit (the move and the delete) each land whole, and so does a call that writes through two domains' adapters. Slice 1 kept the batch per adapter; slice 2 shares it ([#757](https://github.com/IanTeda/Personal-Ledger/issues/757)).
 - **The bin reloads.** Ports know nothing about the failure channel, so on a `WriteFailure` the bin calls `reload()` on each adapter the failure names. A failure also names the domains of the writes dropped behind it, since their adapters are stale too. If the reload fails, the rows in memory stand and the Toast says they aren't saved.
 - **Loads go through the writer**, queued behind the writes, so a reload sees every earlier write and one runtime owns the pool.
 - **A row may name a row defined in code.** A Unit's Price Source can be Manual entry (never stored) or a built-in with no override row (ADR-0043), so `units.price_source_id` has no foreign key. The schema says why, and the Interactor guards the link.
@@ -180,11 +180,15 @@ An operation that writes more than one domain belongs to a cross-domain module, 
 
 | Module | Operations | Domains written |
 |---|---|---|
-| `lib-bill-payments` | Pay and match a Bill Schedule entry | Bills, Transactions |
+| `lib-bill-payments` | Pay a Bill Schedule entry directly | Bills, Transactions |
 | `lib-document-filing` | Accept a Document, accept all | Documents, Transactions, Payees |
 | `lib-transaction-import` | Commit an Import | Transactions, Payees |
 | `lib-reassign` | Delete or merge a Category, Tag or Location, re-pointing the rows that use it | Categories, Tags, Inventory, Transactions, Bill Plans, Budgets, Documents |
-`lib-reassign` may split per domain if it grows. Units and Price Sources are one domain, `lib-units`, since they only change together, so deleting a Price Source and setting the base Unit are single-domain Interactors. The transition tickets confirm the list against the code.
+`lib-reassign` may split per domain if it grows. An operation that writes one domain and only reads another is not cross-domain: Match writes only the Bill Schedule entry and reads Transactions through a read port, so it is a `lib-bills` Interactor.
+
+A cross-domain module may own the Dialog whose confirm calls its Interactor. `lib-bill-payments` holds the Pay Dialog's Presenter, both panels, because Pay it directly is its Interactor; the Match panel calls `lib-bills`' Match Interactor, which the module may depend on. It has its own `i18n/`, and each bin gives it a folder like a domain's (`bill_payments/view/dialog/`, `bill_payments/router.rs`). The Bills Router opens it through that folder's entry point (`bill_payments::router::open_pay(cx, entry)`), as it would another module's View.
+
+Units and Price Sources are one domain, `lib-units`, since they only change together, so deleting a Price Source and setting the base Unit are single-domain Interactors. The transition tickets confirm the list against the code.
 
 ## During the transition
 

@@ -39,3 +39,13 @@ Settled in [#368](https://github.com/IanTeda/Personal-Ledger/issues/368), on the
 **Skip.** Any unresolved entry may be Skipped, a One-shot Bill Plan's included, where Skipping means the bill is cancelled.
 
 **Reversal.** Paid is undone by **Unmatch**, which clears the link, leaves the Transaction in place (one created by Pay it directly too) and returns the entry to its derived Upcoming, Due or Overdue status. Skipped is undone by **Unskip**. Deleting a Matched Split or its Transaction Unmatches the entry the same way, so it returns to Needs Attention. Editing a Matched Transaction's amount, date or Payee needs no handling: a Paid entry reads them live, and nothing re-checks that the Payee still matches.
+
+## Amendment: entry ids are UUIDv7, looked up by Bill Plan and due date
+
+Settled in [#757](https://github.com/IanTeda/Personal-Ledger/issues/757), slice 2 of the [VIPER transition](https://github.com/IanTeda/Personal-Ledger/issues/747), which first persists the Bill Schedule.
+
+**Identity.** A Bill Schedule entry's `RowID` is a UUIDv7 like every other row ([ADR-0040](0040-ledger-ids-are-uuidv7-rowid-newtypes.md)), replacing the UUIDv5 of "Identity across Clients" above. The unique `(bill_plan_id, due_date)` constraint stays, and generation looks an entry up by its Bill Plan and due date before inserting one, so a Client never creates a second row for the same due date. We chose one id scheme over a deterministic exception kept only for sync, which isn't built.
+
+**Consequence for sync.** Two Clients that generate the same due date offline now create two rows with different ids and the same `(bill_plan_id, due_date)`. The Change Set merge ([ADR-0009](0009-lww-sqlite-change-set-log.md)) can't fold them field by field, and the unique constraint refuses the second. How the Sync Server merges them is an open question for the Sync Server work, not decided here.
+
+**Where the Match lives.** Unchanged: the link is the Split's optional, unique `bill_schedule_entry_id`, as "settlement by Match, at the Split" says. The Bills domain still reads it as the entry's Paid resolution.
