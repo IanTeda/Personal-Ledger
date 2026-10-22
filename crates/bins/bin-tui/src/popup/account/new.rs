@@ -496,6 +496,7 @@ mod tests {
     use crate::account::AccountFixture;
 
     fn render(popup: &NewAccountPopup, store: &dyn AccountStore, c: &Colours) -> String {
+        crate::locale::init_for_tests();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal

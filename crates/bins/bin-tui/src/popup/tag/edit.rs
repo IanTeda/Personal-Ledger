@@ -384,6 +384,7 @@ mod tests {
     }
 
     fn render(popup: &EditTagPopup, store: &dyn TagStore, c: &Colours) -> String {
+        crate::locale::init_for_tests();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
