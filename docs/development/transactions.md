@@ -21,32 +21,32 @@ Each Split carries:
 - Zero or more Tags
 - Shared transaction date and account from its Transaction
 
-## Database schema
+## The module
 
-Transactions live in `lib-database` under a (placeholder names until schema is finalised):
+`lib-transactions` is a ports-only VIPER module so far (`docs/development/viper-architecture.md`, [#776](https://github.com/IanTeda/Personal-Ledger/issues/776)): the `Transaction` and `Split` types, the repository port, its in-memory twin and the stub seed. It has no Interactors, Presenters or Router trait until the Transactions View migrates; the View and every writer of Transactions are still today's code.
 
-- `transactions` table: id (RowID), account_id, date, status, flagged, created_at, updated_at
-- `transaction_splits` table: id (RowID), transaction_id, category_id, amount, payee_id (nullable), created_at, updated_at
-- `split_tags` table: id (RowID), split_id, tag_id, created_at, updated_at
+- **`protocols.rs`** — `TransactionRepository`: every Transaction, one by id, `upsert_transaction` (the Transaction with its Splits, whole) and `delete_transaction`.
+- **`fake.rs`** — `InMemoryTransactions`, and the stub seed (`fake::stub_transactions`, behind a `SeedNames` lookup, since `lib-categories`, `lib-payees` and `lib-tags` depend on `lib-transactions`). `lib_ledger::default_transactions` joins it to the other stubs.
+- **`contract.rs`** (behind `contract-tests`) — the suite the fake and the adapter both pass: Splits and Tags round-trip, delete, a failed write.
 
-The Balance of a Transaction Account or Credit Card Account is derived from all its Transactions' Splits' amounts summing to the account total, not stored directly — see `lib-database`'s `find.rs` / balance-calculation modules for how that's computed.
+## Persistence
 
-## CRUD structure
+- **Schema** — `transactions` (id, date, account, description, status, flagged), `splits` keyed `(transaction_id, position)` with ADR-0019's optional, unique `bill_schedule_entry_id`, and `split_tags` keyed `(transaction_id, position, tag_position)`. None has a foreign key to `accounts`, `categories`, `payees` or `tags`, which nothing persists yet; each table says why.
+- **Adapter** — `lib-database`'s `adapter/transactions.rs`, `TransactionsAdapter`: rows in memory, writes through the shared batch, reload on failure (ADR-0046). A Transaction is saved whole, its Splits and Tags written afresh, and a rewrite keeps a Split's Match to a Bill Schedule entry, which is the Bills adapter's to write. It also answers `lib-bills`' `BillTransactions` read port (Match candidates, a Paid entry's figures).
+- **Store** — `adapter/store.rs`' `TransactionsStore`, which the bins take, and `SharedTransactionsStore`, the handle `LedgerStore` and `lib-database`'s `BillPaymentsAdapter` both hold, so Pay it directly's Transaction joins the same commit as its entry.
+- **Seeds** — the first launch and `mise run db-seed` write the stub Ledger's Transactions (`seed::stub_ledger_transactions`, the Bills' and Documents' history included), then `db-seed` adds generated ones (`seed::fake_transactions`).
+- **Balances** — an Account's Balance is its starting balance plus its Splits, computed on read and never stored (`lib-database`'s `accounts/balance.rs`, summed in Rust since `Money` is stored as text).
 
-Following the workspace convention, transaction CRUD is split per-file in `lib-database/src/transactions/`:
+## Desktop
 
-- `model.rs` — Transaction and Split domain types
-- `find.rs` — queries to retrieve transactions
-- `insert.rs` — queries to create transactions and splits
-- `update.rs` — queries to modify transactions (status, flagged, move to another account)
-- `delete.rs` — queries to remove transactions
-- `builder.rs` — helper for constructing transactions programmatically in tests
-
-Splits are treated as part of the Transaction's internal shape, not exposed as a separate CRUD surface — a Transaction and its Splits are a logical unit, and updates to one Imply updates to the related Splits.
+- `src/view/transactions/` — today's Transactions View, reading the `Ledger` read copy of the Transactions, refreshed from the port after each commit and on rollback, newest first.
+- `src/transactions/ports.rs` — the forwarding shim, `forward`: each `LedgerCommand`'s `UpsertTransaction` and `DeleteTransaction` go to the port in the same commit as the command. Writers carried: Account delete, Import commit, Tag delete and merge, Category reassign.
+- `src/transactions/router.rs` — `show(cx, id)`, the entry point other modules' Routers call (the Bills Router's `show_transaction`). It emits today's `Reveal::Transaction(id)` until the View migrates.
+- Each of these is a stand-in with its removal condition in the VIPER doc's [During the transition](viper-architecture.md#during-the-transition).
 
 ## Status workflow
 
-Transaction Status (Open → Cleared → Reconciled) is a simple field, not a state machine enforced at the database level. The key constraint is in `update.rs`: a Reconciled transaction's other fields (amount, category, payee, date, account) cannot be modified until its Status is moved back to Open or Cleared first. This is enforced at the query level, not at the application boundary.
+Transaction Status (Open → Cleared → Reconciled) is a simple field, not a state machine enforced at the database level. The intended rule, that a Reconciled transaction's other fields (amount, category, payee, date, account) cannot change until its Status moves back to Open or Cleared, is not enforced yet: it becomes a Transactions Interactor rule when the View migrates.
 
 The Status change is always an explicit user action — the system never infers or auto-applies status changes (e.g. no automatic Cleared just because a Balance Check matched it).
 
@@ -66,7 +66,7 @@ Cross-Unit transfers are not possible in V1 (see `GLOSSARY.md` — Unit, and `pr
 
 ## Moving a transaction to another account
 
-The `update.rs` module includes logic to move a Transaction from one Account to another, but only if both Accounts share the same Unit. The move reverses the transaction's effect on the old Account's balance and reapplies it to the new one — both Balance calculations flow through the account's aggregate `find.rs` function, so no explicit balance-update step is needed.
+Moving a Transaction to another Account is allowed only when both Accounts share the same Unit. Balances are derived from the Splits, so a move needs no balance update. No Client offers the move yet.
 
 ## What's not yet built
 
@@ -76,7 +76,9 @@ The `update.rs` module includes logic to move a Transaction from one Account to 
 
 ## Related codebase areas
 
-- `lib-core` — `RowID`, domain types like `CategoryTypes`
-- `lib-database` — Transaction and Split CRUD, Balance calculation
-- `bin-tui` — TUI screens for recording and reviewing transactions
-- `bin-desktop` — desktop app screens (under development)
+- `lib-core` — `TransactionId`, `TransactionStatus`, `Money`
+- `lib-transactions` — the types, port, fake and contract suite
+- `lib-database` — `adapter/transactions.rs` and the shared writer
+- `lib-bill-payments` — Pay it directly, which writes a Transaction and the Bill Schedule entry it settles in one commit
+- `bin-tui` — the Transactions View, on its fixture
+- `bin-desktop` — the Transactions View on the read copy, and `src/transactions/`

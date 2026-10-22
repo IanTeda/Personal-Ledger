@@ -93,6 +93,7 @@ fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut Tes
     let mut ui = on_settings(app);
     ui.resize_to(WindowSize::Large);
     ui.drop_unit_users();
+    ui.unquote_units();
     ui.click("settings-index-Units");
     let before = ui.unit_codes();
 

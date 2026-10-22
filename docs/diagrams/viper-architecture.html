@@ -5256,8 +5256,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-edge-from="database" data-edge-to="ports" data-edge-label="implements" data-edge-key="10" data-edge-id="database-ports" data-composition-points="1055,540;1055,334" data-composition-crossover="halo" data-composition-independent="true" d="M 1055 540 L 1055 334" class="a-dashed" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:11">
-          <path data-graph-role="automatic-crossover-underlay" d="M 890 572 L 980 572" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="crossdomain" data-edge-to="database" data-edge-label="one transaction" data-edge-key="11" data-edge-id="crossdomain-database" data-composition-points="890,572;980,572" data-composition-crossover="halo" data-composition-independent="true" d="M 890 572 L 980 572" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1041 540 L 1041 524 Q 1041 516 1033 516 L 823 516 Q 815 516 815 524 L 815 540" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="database" data-edge-to="crossdomain" data-edge-label="implements, one transaction" data-edge-key="11" data-edge-id="database-crossdomain" data-composition-points="1041,540;1041,516;815,516;815,540" data-composition-crossover="halo" data-composition-independent="true" d="M 1041 540 L 1041 524 Q 1041 516 1033 516 L 823 516 Q 815 516 815 524 L 815 540" class="a-dashed" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:12">
           <path data-graph-role="automatic-crossover-underlay" d="M 1055 604 L 1055 660" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5391,7 +5391,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-crossdomain" data-node-id="crossdomain" data-node-label="Cross-domain module" tabindex="0" role="button" aria-label="Focus Cross-domain module, one per workflow, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="one per workflow" data-node-tag="atomic port" data-node-context="Architecture component">
           <title>Cross-domain module · one per workflow · Architecture component · atomic port</title>
           <rect x="740" y="540" width="150" height="64" rx="8" class="c-mask"/>
-          <rect x="740" y="540" width="150" height="64" rx="8" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <rect x="740" y="540" width="150" height="64" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(746 546) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
@@ -5466,12 +5466,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="935" y="292" class="t-edge-emphasis" font-size="8" text-anchor="middle">read/write</text>
         </g>
         <g data-detail="context" data-edge-from="database" data-edge-to="ports" data-edge-label="implements" data-edge-key="10" data-edge-id="database-ports">
-          <rect x="1026" y="520" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1055" y="530" class="t-edge-dashed" font-size="8" text-anchor="middle">implements</text>
+          <rect x="991" y="430" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="1020" y="440" class="t-edge-dashed" font-size="8" text-anchor="middle">implements</text>
         </g>
-        <g data-detail="context" data-edge-from="crossdomain" data-edge-to="database" data-edge-label="one transaction" data-edge-key="11" data-edge-id="crossdomain-database">
-          <rect x="894" y="552" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="935" y="562" class="t-edge-default" font-size="8" text-anchor="middle">one transaction</text>
+        <g data-detail="context" data-edge-from="database" data-edge-to="crossdomain" data-edge-label="implements, one transaction" data-edge-key="11" data-edge-id="database-crossdomain">
+          <rect x="858.2" y="496" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="928" y="506" class="t-edge-dashed" font-size="8" text-anchor="middle">implements, one transaction</text>
         </g>
         <g data-detail="context" data-edge-from="database" data-edge-to="sqlite" data-edge-label="SQL" data-edge-key="12" data-edge-id="database-sqlite">
           <rect x="1019" y="625" width="30" height="14" rx="3" class="c-mask"/>
@@ -5697,7 +5697,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>View draws the view model; no logic, no formatting</li>
-          <li>Router impl builds its module and calls other modules&#39; public entry points</li>
+          <li>Router impl builds its module and calls other modules&#39; public entry points (Bills opens bill_payments::router::open_pay)</li>
           <li>Desktop wraps each Presenter in a gpui Entity; the TUI holds it directly</li>
         </ul>
       </div>
@@ -5733,7 +5733,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>Each module owns its ports; reads of another domain are read ports</li>
-          <li>Writes across domains go through a cross-domain module, one per workflow</li>
+          <li>Writes across domains go through a cross-domain module, one per workflow; lib-database answers its atomic port in one transaction</li>
           <li>The bin commits each Interactor call; a write failure comes back on a channel and the bin reloads</li>
           <li>Shared value types (RowID, Money) live in lib-core</li>
         </ul>

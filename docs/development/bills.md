@@ -37,7 +37,8 @@ The module, as `docs/development/viper-architecture.md` lays one out:
 - **Schema** — `bill_plans` (a foreign key to `units` only), `bill_schedule_entries` (UUIDv7 `id`, `UNIQUE (bill_plan_id, due)`, the resolution, the Skipped snapshot amount and `superseded`), and `splits.bill_schedule_entry_id`.
 - **Adapter** — `lib-database`'s `adapter/bills.rs`: rows in memory, writes through the shared batch, reload on failure. A Paid entry whose Split has gone with its Transaction loads as Unresolved. The Transactions adapter keeps a Split's Match when it rewrites the Transaction, and answers `BillTransactions`.
 - **Generation** — `bin_desktop::start_on`, which `start` calls, runs `PopulateSchedule` over the loaded rows and commits the new entries before the Shell is built; the Bills page runs it again on its next event once a running Desktop crosses into a new calendar month.
-- **Seeds** — the first launch and `mise run db-seed` write the stub Ledger's Bill Plans and entries (`lib_bills::default_bills`, with `seed_entry_id`'s fixed ids), after the Transactions their Paid entries name; `db-seed` then adds generated Bill Plans (`seed::fake_bills`).
+- **Seeds** — the first launch and `mise run db-seed` write the stub Ledger's Bill Plans and entries (`lib_bills::default_bills`, with `seed_entry_id`'s fixed ids), after the Transactions their Paid entries name; `db-seed` then adds generated Bill Plans (`seed::fake_bills`). The stub books its Paid entries' Transactions through `lib_bills::pay_as`, a seed-only copy of `lib_bill_payments::PayBill`'s Transaction, since `lib-bills` can't depend on the module above it.
+- **Stand-ins** — the `Ledger` read copy of Bills, the Bills forwarding shim, the Ledger-backed Accounts, Categories and Payees reads, the shared Bills store, `pay_as` and the missing foreign keys are halfway shims, each with its removal condition in the VIPER doc's [During the transition](viper-architecture.md#during-the-transition).
 
 ## UI
 
@@ -77,9 +78,9 @@ Desktop locations for the ticked requirements.
 
 - **Unmatch and Unskip have no UI.** The `UnmatchBill` and `UnskipBill` Interactors exist and are tested, but the handoff gives them no key or control, so no Presenter sends them yet.
 - **Deleting a Matched Split Unmatches only through Account delete**, the one Desktop path that deletes a Transaction: the forwarding shim applies `bills::unmatch_transaction` in the same commit.
+- **The Pay Dialog's Match list doesn't scroll the chosen row into view** ([#791](https://github.com/IanTeda/Personal-Ledger/issues/791)): its body scrolls, but `j`/`k` past the fold choose a row the person can't see.
 - **No "carries a Bill" marker on the Transactions list.** `bills::carries_bill` exists; nothing draws it.
 - **BIL-002 and BIL-010 are partial.** The Planner has no active/recurrence filter, and the Schedule has no Payee filter.
 - **The financial year is a constant** (`bills::history::FINANCIAL_YEAR_START_MONTH`, July) until Settings' "Financial year starts" is a real Preference.
 - **The Schedule's period nav is unbounded**; months past the generation horizon show computed previews.
-- **Generation doesn't run when the month turns** while the Desktop is open; it runs on start and on a Bill Plan add or edit.
 - **Anticipated Bills (BIL-008)** is a later map. Known Costs (BIL-009) is built on the Budgets surface.

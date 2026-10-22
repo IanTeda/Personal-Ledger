@@ -38,13 +38,13 @@
     { "id": "interactor-entity", "from": "interactor", "to": "entity", "label": "rules" },
     { "id": "interactor-ports", "from": "interactor", "to": "ports", "label": "read/write", "variant": "emphasis" },
     { "id": "database-ports", "from": "database", "to": "ports", "label": "implements", "variant": "dashed" },
-    { "id": "crossdomain-database", "from": "crossdomain", "to": "database", "label": "one transaction" },
+    { "id": "database-crossdomain", "from": "database", "to": "crossdomain", "label": "implements, one transaction", "variant": "dashed" },
     { "id": "database-sqlite", "from": "database", "to": "sqlite", "label": "SQL" }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Bin (per Client)", "items": ["View draws the view model; no logic, no formatting", "Router impl builds its module and calls other modules' public entry points", "Desktop wraps each Presenter in a gpui Entity; the TUI holds it directly"] },
+    { "dot": "cyan", "title": "Bin (per Client)", "items": ["View draws the view model; no logic, no formatting", "Router impl builds its module and calls other modules' public entry points (Bills opens bill_payments::router::open_pay)", "Desktop wraps each Presenter in a gpui Entity; the TUI holds it directly"] },
     { "dot": "emerald", "title": "Feature crate (shared)", "items": ["No UI toolkit, no lib-database, no other feature crate", "Presenter localises through its crate's i18n/ Messages", "fake.rs holds in-memory ports for unit tests"] },
     { "dot": "violet", "title": "Shell and input", "items": ["An open Dialog takes every key first", "Then lib-shell's global keys, then the focused module's keymap", "main calls shell::router::build"] },
-    { "dot": "amber", "title": "Persistence", "items": ["Each module owns its ports; reads of another domain are read ports", "Writes across domains go through a cross-domain module, one per workflow", "The bin commits each Interactor call; a write failure comes back on a channel and the bin reloads", "Shared value types (RowID, Money) live in lib-core"] }
+    { "dot": "amber", "title": "Persistence", "items": ["Each module owns its ports; reads of another domain are read ports", "Writes across domains go through a cross-domain module, one per workflow; lib-database answers its atomic port in one transaction", "The bin commits each Interactor call; a write failure comes back on a channel and the bin reloads", "Shared value types (RowID, Money) live in lib-core"] }
   ]
 }
