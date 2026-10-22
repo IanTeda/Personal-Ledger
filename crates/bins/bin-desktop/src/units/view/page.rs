@@ -24,8 +24,7 @@ use crate::units::router::PageRouter;
 use crate::{
     chrome::{statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::{KeyOutcome, Movement, route_key},
-    navigation::nav::InputMode,
+    navigation::key_router::{Movement, is_global_key},
     settings::{
         SettingsPage,
         page::PageRowClicked,
@@ -145,27 +144,10 @@ fn chord(keystroke: &Keystroke) -> Option<String> {
     Some(chord)
 }
 
-/// Whether today's dispatch keeps `keystroke` for the whole Shell (`?`, `:`, `/`, `a`, `b`, the
-/// `g` prefix, `Shift-Tab`), so the Units keymap never shadows it.
+/// Whether the Shell keeps `keystroke` ([`is_global_key`]), so the Units keymap never shadows it.
 fn is_global(keystroke: &Keystroke) -> bool {
     let modifiers = &keystroke.modifiers;
-    matches!(
-        route_key(
-            InputMode::Normal,
-            false,
-            &keystroke.key,
-            modifiers.control,
-            modifiers.shift
-        ),
-        KeyOutcome::EnterHelp
-            | KeyOutcome::EnterCommand
-            | KeyOutcome::EnterSearch
-            | KeyOutcome::EnterInsert
-            | KeyOutcome::ToggleRail
-            | KeyOutcome::ArmPendingG
-            | KeyOutcome::CycleFocusBackward
-            | KeyOutcome::EscapeNoOp
-    )
+    is_global_key(&keystroke.key, modifiers.control, modifiers.shift)
 }
 
 thread_local! {

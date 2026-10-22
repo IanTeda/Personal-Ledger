@@ -16,7 +16,8 @@ pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
 
 /// The Units page's commands, with today's keys. `units.set_base` is new: setting the base Unit
-/// was only the General page's select.
+/// was only the General page's select. Its `B` is capital because `b` is the Desktop's rail toggle,
+/// and a module's default must not be a Client's global key (each bin's clash test checks).
 pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
     Binding {
         command: MOVE_DOWN,
@@ -80,7 +81,7 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
     },
     Binding {
         command: SET_BASE,
-        chord: "b",
+        chord: "B",
         event: UnitsPageEvent::SetBase,
     },
 ];
@@ -107,7 +108,7 @@ mod tests {
         let keymap = units_page_keymap(&KeyBindingConfig::default());
 
         assert_eq!(keymap.event("d"), Some(UnitsPageEvent::Delete));
-        assert_eq!(keymap.event("b"), Some(UnitsPageEvent::SetBase));
+        assert_eq!(keymap.event("B"), Some(UnitsPageEvent::SetBase));
         assert_eq!(keymap.event("g g"), Some(UnitsPageEvent::Move(Step::First)));
         assert_eq!(keymap.event("q"), None);
     }
@@ -123,12 +124,12 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_of_a_namespaced_name_moves_only_that_command() {
-        let keymap = units_page_keymap(&overriding("units.set_base", "B"));
+        let keymap = units_page_keymap(&overriding("units.set_base", "S"));
 
-        assert_eq!(keymap.event("B"), Some(UnitsPageEvent::SetBase));
-        assert_eq!(keymap.event("b"), None);
+        assert_eq!(keymap.event("S"), Some(UnitsPageEvent::SetBase));
+        assert_eq!(keymap.event("B"), None);
         // `set_base` alone names no Units command, so it can't move this one.
         let flat = units_page_keymap(&overriding("set_base", "x"));
-        assert_eq!(flat.event("b"), Some(UnitsPageEvent::SetBase));
+        assert_eq!(flat.event("B"), Some(UnitsPageEvent::SetBase));
     }
 }

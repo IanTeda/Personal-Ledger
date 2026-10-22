@@ -6,6 +6,7 @@ mod common;
 
 use bin_tui::event::Event;
 use common::{press, screen, shell, shell_with_failures, type_text};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_database::{Domain, WriteFailure};
 
 #[test]
@@ -78,6 +79,37 @@ fn deleting_a_unit_in_use_opens_offering_deactivate_with_its_usage() {
 }
 
 #[test]
+fn capital_b_opens_set_base_unit() {
+    let mut shell = shell();
+
+    press(&mut shell, "g u B");
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains(&lib_units::msg::units_set_base_title()),
+        "{frame}"
+    );
+}
+
+#[test]
+fn ctrl_u_moves_the_selection_up_half_a_page() {
+    let mut shell = shell();
+    press(&mut shell, "g u G");
+    assert!(!screen(&mut shell).contains("Bitcoin"));
+
+    shell.handle_event(Event::Key(KeyEvent::new(
+        KeyCode::Char('u'),
+        KeyModifiers::CONTROL,
+    )));
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains("Bitcoin"),
+        "from the last Price Source back into the Units, not to the Units View again:\n{frame}"
+    );
+}
+
+#[test]
 fn editing_a_unit_shows_what_uses_it() {
     let mut shell = shell();
     press(&mut shell, "g u e");
@@ -96,7 +128,7 @@ fn deleting_the_base_unit_moves_the_base_first() {
     type_text(&mut shell, "xau");
     press(&mut shell, "Tab Tab");
     type_text(&mut shell, "Gold");
-    press(&mut shell, "Enter b Right Right Right Enter");
+    press(&mut shell, "Enter B Right Right Right Enter");
     // xau is the fourth Unit, under aud, which is still selected.
     press(&mut shell, "j j j d");
     let dialog = screen(&mut shell);

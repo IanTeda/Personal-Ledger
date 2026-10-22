@@ -325,7 +325,7 @@ impl Shell {
     /// completion (or aborts
     /// silently if it doesn't complete one); otherwise the configured `open_command_popup`
     /// binding (`self.keybindings`, `:` by default per `docs/navigation-design.md`) opens the command
-    /// popup, `Ctrl+U` opens the placeholder Units view directly, the configured `help`
+    /// popup, the configured `help`
     /// binding (`?` by default) opens the placeholder Help view, the configured `back` binding
     /// (`Esc` by default) pops the view-navigation stack ([`Action::PopView`]), `Q` (shift)
     /// quits, `q` (lowercase) also quits via its own [`Action::GracefulQuit`], a lone `g` arms
@@ -424,45 +424,50 @@ impl Shell {
                         _ => None,
                     };
                 }
-                // NORMAL mode only: every popup returned above, so a sticky Error can't vanish
-                // on a key meant for a form. Not `Esc`, which pops the view stack.
-                if self.matches_binding(key, "dismiss_toasts", "ctrl+l") {
-                    return Some(Action::DismissAllToasts);
+                match self.global_key(key) {
+                    Some(GlobalKey::Action(action)) => Some(action),
+                    Some(GlobalKey::ArmLeader) => {
+                        self.pending_leader = true;
+                        None
+                    }
+                    None => self.view.handle_key(key),
                 }
-                // Unbound by default: the `toasts` command opens the history.
-                if self
-                    .keybindings
-                    .key_for("toast_history")
-                    .is_some_and(|spec| key_binding_matches(key, spec))
-                {
-                    return Some(Action::OpenToastHistory);
-                }
-                if self.is_open_command_popup(key) {
-                    return Some(Action::OpenCommandPopup);
-                }
-                if is_open_units(key) {
-                    return Some(Action::OpenUnits);
-                }
-                if self.is_open_help(key) {
-                    return Some(Action::OpenHelp);
-                }
-                if self.is_back(key) {
-                    return Some(Action::PopView);
-                }
-                if is_quit(key) {
-                    return Some(Action::Quit);
-                }
-                if is_graceful_quit(key) {
-                    return Some(Action::GracefulQuit);
-                }
-                if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::NONE {
-                    self.pending_leader = true;
-                    return None;
-                }
-                self.view.handle_key(key)
             }
             Event::Resize => None,
         }
+    }
+
+    /// What the Shell's global keys make of `key` in NORMAL mode, ahead of the active view, or
+    /// `None` to leave it to the view. NORMAL mode only: every popup returned earlier, so a sticky
+    /// Error can't vanish on a key meant for a form, and `dismiss_toasts` isn't `Esc`, which pops
+    /// the view stack. A VIPER module's default chord must not be one of these
+    /// (`docs/development/viper-architecture.md`, Input).
+    fn global_key(&self, key: KeyEvent) -> Option<GlobalKey> {
+        let action = if self.matches_binding(key, "dismiss_toasts", "ctrl+l") {
+            Action::DismissAllToasts
+        } else if self
+            .keybindings
+            .key_for("toast_history")
+            .is_some_and(|spec| key_binding_matches(key, spec))
+        {
+            // Unbound by default: the `toasts` command opens the history.
+            Action::OpenToastHistory
+        } else if self.is_open_command_popup(key) {
+            Action::OpenCommandPopup
+        } else if self.is_open_help(key) {
+            Action::OpenHelp
+        } else if self.is_back(key) {
+            Action::PopView
+        } else if is_quit(key) {
+            Action::Quit
+        } else if is_graceful_quit(key) {
+            Action::GracefulQuit
+        } else if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::NONE {
+            return Some(GlobalKey::ArmLeader);
+        } else {
+            return None;
+        };
+        Some(GlobalKey::Action(action))
     }
 
     /// Routes a key while the command popup is open. `Esc` closes it (the configured
@@ -2057,15 +2062,17 @@ fn map_toast_history_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// A key the Shell keeps in NORMAL mode ([`Shell::global_key`]).
+#[derive(Debug, Clone, PartialEq)]
+enum GlobalKey {
+    Action(Action),
+    /// A lone `g` arms the View-jump leader.
+    ArmLeader,
+}
+
 /// `Ctrl+C` — the one key that always quits immediately, regardless of the active view.
 fn is_hard_quit(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c'))
-}
-
-/// `Ctrl+U` — opens the placeholder Units view directly, alongside the command popup's own
-/// `unit` / `g u` route (`docs/ux/tui-mockups/07-units/README.md`).
-fn is_open_units(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('u'))
 }
 
 /// Parses the base-key token of a `KeyBindingConfig` key spec (case-insensitive). A single
@@ -3081,29 +3088,93 @@ mod tests {
         assert!(shell.should_quit);
     }
 
-    #[test]
-    fn ctrl_u_is_recognised_as_open_units() {
-        let ctrl_u = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
-        assert!(is_open_units(ctrl_u));
+    // Module default keys
 
-        let plain_u = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE);
-        assert!(!is_open_units(plain_u));
+    /// Every migrated module's default bindings, as `(command, chord)`. A new VIPER module adds
+    /// its keymap here.
+    fn module_defaults() -> Vec<(&'static str, &'static str)> {
+        lib_units::keymap::UNITS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord))
+            .collect()
+    }
+
+    /// A default kept on a global key on purpose: `g` is the View-jump leader, so `g g` opens Tags
+    /// rather than `move_first`, which the Units View reaches by `Home`.
+    const KEPT_CLASHES: &[(&str, &str)] = &[(lib_viper::keymap::MOVE_FIRST, "g g")];
+
+    /// A `[keybindings]` chord's keystrokes as crossterm reports them: a capital letter with
+    /// Shift, `shift+tab` as `BackTab`.
+    fn keystrokes(chord: &str) -> Vec<KeyEvent> {
+        chord
+            .split_whitespace()
+            .map(|stroke| {
+                let mut parts: Vec<&str> = stroke.split('+').collect();
+                let key = parts.pop().expect("split always yields one part");
+                let mut modifiers = KeyModifiers::NONE;
+                for part in parts {
+                    modifiers |= key_modifier_for_token(part)
+                        .unwrap_or_else(|| panic!("unknown modifier `{part}` in `{chord}`"));
+                }
+                let code = match key {
+                    "tab" if modifiers.contains(KeyModifiers::SHIFT) => KeyCode::BackTab,
+                    other => key_code_for_token(other)
+                        .unwrap_or_else(|| panic!("unknown key `{other}` in `{chord}`")),
+                };
+                if matches!(code, KeyCode::Char(ch) if ch.is_ascii_uppercase()) {
+                    modifiers |= KeyModifiers::SHIFT;
+                }
+                KeyEvent::new(code, modifiers)
+            })
+            .collect()
+    }
+
+    /// Whether the Shell takes any keystroke of `chord` before the active view sees it.
+    fn shell_takes(shell: &Shell, chord: &str) -> bool {
+        keystrokes(chord)
+            .into_iter()
+            .any(|key| is_hard_quit(key) || shell.global_key(key).is_some())
+    }
+
+    /// The defaults among `bindings` the Shell's global keys take, less the kept ones.
+    fn clashes(bindings: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
+        let shell = Shell::new();
+        bindings
+            .iter()
+            .copied()
+            .filter(|binding| !KEPT_CLASHES.contains(binding) && shell_takes(&shell, binding.1))
+            .collect()
     }
 
     #[test]
-    fn ctrl_u_opens_the_units_view() {
-        let mut shell = Shell::new();
-        assert_eq!(shell.view.id(), ViewId::Dashboard);
+    fn no_module_default_chord_is_a_global_key() {
+        assert_eq!(clashes(&module_defaults()), []);
+    }
 
-        let action = shell
-            .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Char('u'),
-                KeyModifiers::CONTROL,
-            )))
-            .expect("ctrl+u always maps to an action while no popup is open");
-        shell.update(action);
-
-        assert_eq!(shell.view.id(), ViewId::Units);
+    #[test]
+    fn a_default_on_a_global_key_is_a_clash() {
+        let defaults = [
+            ("demo.quit", "q"),
+            ("demo.hard_quit", "ctrl+c"),
+            ("demo.dismiss", "ctrl+l"),
+            ("demo.command", ":"),
+            ("demo.back", "esc"),
+            ("demo.jump", "g x"),
+            ("demo.free", "B"),
+            ("demo.page", "ctrl+u"),
+            (lib_viper::keymap::MOVE_FIRST, "g g"),
+        ];
+        assert_eq!(
+            clashes(&defaults),
+            [
+                ("demo.quit", "q"),
+                ("demo.hard_quit", "ctrl+c"),
+                ("demo.dismiss", "ctrl+l"),
+                ("demo.command", ":"),
+                ("demo.back", "esc"),
+                ("demo.jump", "g x"),
+            ]
+        );
     }
 
     #[test]

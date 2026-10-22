@@ -66,10 +66,11 @@ See [#158](https://github.com/IanTeda/Personal-Ledger/issues/158)'s own resoluti
 
 When one page draws several tables, they share one selection, and the keys treat them as one list (`bin-desktop`'s Settings › Units, #714, following the Categories and Inventory pages, whose rows of two kinds already walk as one list):
 
-- **`j`/`k` walk the tables as one list, in drawn order.** `g g`, `G` and `Ctrl-d`/`Ctrl-u` move over the same list, so `j` on the first table's last row selects the second table's first row. One row is selected at a time, in whichever table it is in.
+- **`j`/`k` walk the tables as one list, in drawn order.** `g g`, `G` and `Ctrl-d`/`Ctrl-u` move over the same list, so `j` on the first table's last row selects the second table's first row. One row is selected at a time, in whichever table it is in. In the TUI `g g` is the Tags jump, so `Home` moves to the first row there.
 - **`Tab` jumps between the tables.** It moves to the other table's last-selected row, or its first row if none has been selected yet. The page claims `Tab` ahead of the router while it has focus, as Bills claims it for its tabs; `Shift-Tab` is untouched and still cycles the focus zones.
 - **The row keys follow the selected row's table.** `n`, `e`, `d` and the like act on the table the selection is in, and a row that offers no such action ignores the key. The status line switches with the table, and its `tab` hint names the table it jumps to.
 - **A click on any table's row selects it**, at every Window Size, and the keys carry on from there.
+- **A page's own keys never take a global key.** The Shell's global keys win in both Clients, so a module's default chord is one neither Client takes: Set base unit is `B`, since `b` toggles the Desktop's rail. The TUI has no `Ctrl+U` shortcut to Units (`g u` and `:unit` open it), so `Ctrl-u` moves up half a page in both. A test in each Client checks every module's defaults against its global keys (#764).
 
 ## What's actually configurable
 

@@ -93,6 +93,15 @@ fn the_movement_keys_reach_the_presenter_and_walk_both_tables(app: &mut TestAppC
 }
 
 #[gpui::test]
+fn capital_b_opens_set_base_unit(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.press("B");
+
+    assert_eq!(ui.dialog(), Some("SetBaseUnit"));
+}
+
+#[gpui::test]
 fn shift_tab_and_b_stay_the_shells(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("b");

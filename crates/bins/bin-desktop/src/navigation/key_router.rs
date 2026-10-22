@@ -237,6 +237,23 @@ pub fn route_key(
     }
 }
 
+/// Whether a `Normal`-mode keystroke is one the whole Shell keeps (`?`, `:`, `/`, `a`, `b`, the `g`
+/// prefix, `Shift-Tab`, `Esc`), so a View that reads keys ahead of the router never shadows it.
+/// `Tab` and the movements aren't: a View may take those for its own tables.
+pub fn is_global_key(key: &str, ctrl: bool, shift: bool) -> bool {
+    matches!(
+        route_key(InputMode::Normal, false, key, ctrl, shift),
+        KeyOutcome::EnterHelp
+            | KeyOutcome::EnterCommand
+            | KeyOutcome::EnterSearch
+            | KeyOutcome::EnterInsert
+            | KeyOutcome::ToggleRail
+            | KeyOutcome::ArmPendingG
+            | KeyOutcome::CycleFocusBackward
+            | KeyOutcome::EscapeNoOp
+    )
+}
+
 /// The `dismiss_toasts` binding's default, used when `[keybindings]` doesn't set it.
 pub const DEFAULT_DISMISS_TOASTS: &str = "ctrl+l";
 
@@ -681,6 +698,98 @@ mod tests {
         assert_eq!(
             route_key(InputMode::Normal, false, "u", true, false),
             KeyOutcome::Movement(Movement::HalfPageUp)
+        );
+    }
+
+    // Module default keys
+
+    /// Every migrated module's default bindings, as `(command, chord)`. A new VIPER module adds
+    /// its keymap here.
+    fn module_defaults() -> Vec<(&'static str, &'static str)> {
+        lib_units::keymap::UNITS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord))
+            .collect()
+    }
+
+    /// A default kept on a global key on purpose: `g g` is the router's own `move_first`, which
+    /// every list View receives as a movement.
+    const KEPT_CLASHES: &[(&str, &str)] = &[(lib_viper::keymap::MOVE_FIRST, "g g")];
+
+    /// A `[keybindings]` chord's keystrokes as the router reads them: `(key, modifiers)`, with a
+    /// capital letter its lower case and Shift, as gpui reports it.
+    fn keystrokes(chord: &str) -> Vec<(String, Modifiers)> {
+        chord
+            .split_whitespace()
+            .map(|stroke| {
+                let mut parts: Vec<&str> = stroke.split('+').collect();
+                let key = parts.pop().expect("split always yields one part");
+                let mut modifiers = Modifiers::default();
+                for part in parts {
+                    match part {
+                        "ctrl" => modifiers.ctrl = true,
+                        "alt" => modifiers.alt = true,
+                        "shift" => modifiers.shift = true,
+                        other => panic!("unknown modifier `{other}` in `{chord}`"),
+                    }
+                }
+                if key.len() == 1 && key.chars().all(|ch| ch.is_ascii_uppercase()) {
+                    modifiers.shift = true;
+                    return (key.to_ascii_lowercase(), modifiers);
+                }
+                (key.to_string(), modifiers)
+            })
+            .collect()
+    }
+
+    /// Whether the Shell takes any keystroke of `chord` before a View's keymap sees it.
+    fn shell_takes(chord: &str) -> bool {
+        keystrokes(chord).iter().any(|(key, modifiers)| {
+            dismisses_toasts(
+                InputMode::Normal,
+                false,
+                DEFAULT_DISMISS_TOASTS,
+                key,
+                *modifiers,
+            ) || is_global_key(key, modifiers.ctrl, modifiers.shift)
+        })
+    }
+
+    /// The defaults among `bindings` the Shell's global keys take, less the kept ones.
+    fn clashes(bindings: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
+        bindings
+            .iter()
+            .copied()
+            .filter(|binding| !KEPT_CLASHES.contains(binding) && shell_takes(binding.1))
+            .collect()
+    }
+
+    #[test]
+    fn no_module_default_chord_is_a_global_key() {
+        assert_eq!(clashes(&module_defaults()), []);
+    }
+
+    #[test]
+    fn a_default_on_a_global_key_is_a_clash() {
+        let defaults = [
+            ("demo.rail", "b"),
+            ("demo.insert", "a"),
+            ("demo.dismiss", "ctrl+l"),
+            ("demo.back", "shift+tab"),
+            ("demo.jump", "g x"),
+            ("demo.free", "B"),
+            ("demo.page", "ctrl+u"),
+            (lib_viper::keymap::MOVE_FIRST, "g g"),
+        ];
+        assert_eq!(
+            clashes(&defaults),
+            [
+                ("demo.rail", "b"),
+                ("demo.insert", "a"),
+                ("demo.dismiss", "ctrl+l"),
+                ("demo.back", "shift+tab"),
+                ("demo.jump", "g x"),
+            ]
         );
     }
 

@@ -90,7 +90,7 @@ pub enum Action {
     /// `crate::popup::command::CommandPopup::recall_history`'s doc for the cursor's own
     /// behaviour). A no-op against an empty history.
     CommandPopupHistoryRecall,
-    /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the Units view
+    /// `g u`, or `Enter` on the command popup's `unit` command — opens the Units view
     /// (`docs/ux/tui-mockups/07-units/README.md`), drawn from the `lib-units` page Presenter.
     OpenUnits,
     /// `Enter` on the command popup's `unit new` command — opens the Units view if need be, then
