@@ -366,7 +366,6 @@ impl Render for Shell {
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
-            .children(self.render_bills_dialog(&entity, cx))
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))

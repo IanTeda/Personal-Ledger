@@ -6,6 +6,7 @@
 
 pub mod app;
 mod assets;
+mod bill_payments;
 mod bills;
 mod budgets;
 mod chrome;
@@ -111,13 +112,18 @@ pub fn build_shell(
         .map(settings::SettingsPage::from_id)
         .unwrap_or_default();
 
-    let bills = bills::LedgerBackedPorts::shared(bills, commit.clone());
+    // The Transactions and Bills stores are shared: Pay it directly writes both (#779).
+    let transactions: lib_database::SharedTransactionsStore =
+        Rc::new(std::cell::RefCell::new(transactions));
+    let bills =
+        bills::LedgerBackedPorts::shared(Rc::new(std::cell::RefCell::new(bills)), commit.clone());
+    let payments = bill_payments::payments(transactions.clone(), &bills);
     let storage = ledger_store::LedgerSetup {
         transactions,
         bills: bills.clone(),
         commit: commit.clone(),
     };
-    let bills = bills::BillsSetup::new(bills, &bindings.keybindings);
+    let bills = bills::BillsSetup::new(bills, payments, &bindings.keybindings);
     let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
     let mut shell = Shell::with_today(nav, focus_handle, today, units, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);

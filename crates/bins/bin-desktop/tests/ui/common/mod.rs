@@ -289,10 +289,10 @@ impl UnitsStore for FailingUnits {
     }
 }
 
-/// A commit with writes since the last reports a failure naming `domain`, as the writer would
+/// A commit with writes since the last reports a failure naming `domains`, as the writer would
 /// when SQLite refuses them; a commit with nothing new reports nothing.
 struct FailingCommit {
-    domain: Domain,
+    domains: Vec<Domain>,
     written: Rc<Cell<bool>>,
     report: mpsc::Sender<WriteFailure>,
 }
@@ -301,7 +301,7 @@ impl Commit for FailingCommit {
     fn commit(&self) {
         if self.written.replace(false) {
             let _ = self.report.send(WriteFailure {
-                domains: vec![self.domain],
+                domains: self.domains.clone(),
                 error: lib_database::Error::Generic("the test's write fails".into()),
             });
         }
@@ -401,7 +401,7 @@ impl<'a> Harness<'a> {
             Box::new(stub_transactions()),
             Box::new(stub_bills()),
             Rc::new(FailingCommit {
-                domain: Domain::Units,
+                domains: vec![Domain::Units],
                 written,
                 report,
             }),
@@ -430,7 +430,7 @@ impl<'a> Harness<'a> {
             }),
             Box::new(stub_bills()),
             Rc::new(FailingCommit {
-                domain: Domain::Transactions,
+                domains: vec![Domain::Transactions],
                 written,
                 report,
             }),
@@ -459,7 +459,42 @@ impl<'a> Harness<'a> {
                 stored,
             }),
             Rc::new(FailingCommit {
-                domain: Domain::Bills,
+                domains: vec![Domain::Bills],
+                written,
+                report,
+            }),
+            failures,
+        )
+    }
+
+    /// As [`Harness::new`], on Transactions and Bills ports whose every write fails, the one
+    /// commit naming both, as SQLite refusing a payment would; the reloads after it put the stored
+    /// rows back. [`Harness::settle_writes`] lets the Shell hear of the failure.
+    pub fn with_failing_payments(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let (transactions, bills) = (stub_transactions(), stub_bills());
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+            Box::new(FailingTransactions {
+                transactions: Marked {
+                    inner: transactions.clone(),
+                    written: written.clone(),
+                },
+                stored: transactions,
+            }),
+            Box::new(FailingBills {
+                bills: Marked {
+                    inner: bills.clone(),
+                    written: written.clone(),
+                },
+                stored: bills,
+            }),
+            Rc::new(FailingCommit {
+                domains: vec![Domain::Transactions, Domain::Bills],
                 written,
                 report,
             }),

@@ -1,7 +1,6 @@
 //! The Ledger aggregate: every domain collection, joined into one stub dataset.
 
 mod account_commands;
-mod bill_commands;
 mod bill_reads;
 mod budget_commands;
 #[cfg(test)]
@@ -22,7 +21,6 @@ mod unit_usage;
 pub use account_commands::{
     AccountDeleted, AddAccount, CountImportedTransactions, DeleteAccount, EditAccount,
 };
-pub use bill_commands::PayBill;
 pub use budget_commands::{
     AddBudget, ArchiveBudget, CycleBudgetRollover, DuplicateBudget, EditBudget, FillBudget,
     RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,

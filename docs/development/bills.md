@@ -6,7 +6,7 @@ End-user documentation: [Bills](../bills.md).
 
 The Bills domain has two entities: a **Bill Plan**, the recurring definition, and a **Bill Schedule** entry, one dated instance of it that is Matched to a Split once paid. [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) and its amendments settled the design, and the [Desktop Bills Surface](https://github.com/IanTeda/Personal-Ledger/issues/364) map settled the details (#365 recurrence anchor, #366 statuses, #367 generation and edits, #368 settlement, #369 History figures, #381 History merged into the Schedule).
 
-The desktop app builds the whole Bills surface (handoff `docs/ux/desktop-mockups/12-bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule). Bill Plans and the Bill Schedule persist to SQLite through `lib-bills`' ports ([#777](https://github.com/IanTeda/Personal-Ledger/issues/777)), and the Bills View runs on the `lib-bills` VIPER module ([#778](https://github.com/IanTeda/Personal-Ledger/issues/778)): its Interactors, Presenters, keymap and Messages are the lib's, its Views and Router the Desktop's. Pay it directly still writes through `lib-ledger`'s `pay_bill` and the Desktop's forwarding shim until `lib-bill-payments` ([#779](https://github.com/IanTeda/Personal-Ledger/issues/779)). The TUI has no Bills screen.
+The desktop app builds the whole Bills surface (handoff `docs/ux/desktop-mockups/12-bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule). Bill Plans and the Bill Schedule persist to SQLite through `lib-bills`' ports ([#777](https://github.com/IanTeda/Personal-Ledger/issues/777)), and the Bills View runs on the `lib-bills` VIPER module ([#778](https://github.com/IanTeda/Personal-Ledger/issues/778)): its Interactors, Presenters, keymap and Messages are the lib's, its Views and Router the Desktop's. The Pay Dialog is `lib-bill-payments`', the first cross-domain module ([#779](https://github.com/IanTeda/Personal-Ledger/issues/779)): Pay it directly writes the Transaction and the entry it settles through one atomic port, `BillPayments`, in one commit, and its Match panel runs `lib-bills`' `MatchBill`. The TUI has no Bills screen.
 
 ## Data model
 
@@ -46,9 +46,9 @@ The module, as `docs/development/viper-architecture.md` lays one out:
   - `view/dialog.rs` — the Plan form (`view/dialog/plan_form.rs`, 8c) and Skip (`view/dialog/skip.rs`, 8e) in the Dialog host.
   - `router.rs` — `impl BillsRouter` and the entry point, `bills_page`. `show_transaction` calls `transactions::router::show`.
   - `ports.rs` — `LedgerBackedPorts`: the store shared with `LedgerStore`, the reads copied from the Ledger, the forwarding shim (`forward`) and `sync`, which commits and refreshes the Ledger read copy after each event.
-  - `pay_form.rs`, `apply.rs` and `view/pay_dialog.rs` — today's Pay Dialog (8d), which the Router opens and `app/bills_ui.rs` draws and confirms.
+  - The Pay Dialog (8d) is the Bill Payments module's: `src/bill_payments/view/dialog/pay.rs` draws `lib-bill-payments`' Presenter in the Dialog host, and `src/bill_payments/router.rs`' `open_pay` is what the Bills Router's `open_pay` calls. Its writes go through `lib-database`'s `BillPaymentsAdapter`, over the Transactions store `LedgerStore` holds and the Bills store the Bills ports hold.
   - `src/chrome/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard/` — real Bill rows in Needs Attention from `bills::attention_entries`.
-  - Messages in `lib-bills`' `i18n/en-US/bills.ftl`; the Pay Dialog's in the Desktop's `i18n/en-US/bills.ftl`.
+  - Messages in `lib-bills`' `i18n/en-US/bills.ftl`; the Pay Dialog's in `lib-bill-payments`' `i18n/en-US/bill-payments.ftl`.
 - **TUI** — nothing.
 
 ## Traceability
@@ -61,7 +61,7 @@ Desktop locations for the ticked requirements.
 | BIL-003 | `interactor::EditBillPlan`, `bills/view/dialog/plan_form.rs` |
 | BIL-004 | `interactor::EditBillPlan`, `presenter::PlannerPresenter`, `bills/view/planner.rs` |
 | BIL-005 | `interactor::PopulateSchedule`, `presenter::SchedulePresenter`, `bills/view/schedule.rs` |
-| BIL-006 | `bills::pay`, `interactor::MatchBill`, `bills/pay_form.rs`, `bills/view/pay_dialog.rs` |
+| BIL-006 | `lib_bill_payments::interactor::PayBill`, `lib_bill_payments::presenter::PayPresenter`, `interactor::MatchBill`, `bill_payments/view/dialog/pay.rs` |
 | BIL-007 | `interactor::SkipBill`, `presenter::SkipPresenter`, `bills/view/dialog/skip.rs` |
 | BIL-009 | `budgets::period_figures` (Known Costs), `view/budgets/progress.rs` |
 | BIL-011 | `bills::history::plan_stats`, `presenter::SchedulePresenter`, `bills/view/filters.rs` |

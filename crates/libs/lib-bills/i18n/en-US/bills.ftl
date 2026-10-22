@@ -1,6 +1,5 @@
 ## The Bills module's Messages, read by its Presenters. Each Client composes this layer into its
-## Locale; no Client catalogue keeps a copy. The Pay Dialog's stay in the Desktop's catalogue until
-## it moves to `lib-bill-payments`.
+## Locale; no Client catalogue keeps a copy. The Pay Dialog's are `lib-bill-payments`'.
 
 ## The Bills page (8a–8e): the header and the tab row. `$glyph` is the Add button's leading plus
 ## sign.

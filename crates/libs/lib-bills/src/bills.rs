@@ -236,30 +236,10 @@ fn open_entry<'a>(
     get(plans, id.plan_id).ok_or(BillError::PlanNotFound)
 }
 
-/// Pay it directly: creates an Open Transaction on `date` in the Plan's Account, with one Split of
-/// `-amount` carrying the Plan's Category and Payee, and Matches the entry to it. Returns the new
-/// Transaction's id. (ADR-0019 says Pending; the Transactions stub's least-confirmed status is
-/// Open.)
-pub fn pay(
-    plans: &[BillPlan],
-    entries: &mut [BillScheduleEntry],
-    transactions: &mut Vec<Transaction>,
-    id: EntryId,
-    amount: &Money,
-    date: NaiveDate,
-) -> Result<TransactionId, BillError> {
-    pay_as(
-        TransactionId::new(),
-        plans,
-        entries,
-        transactions,
-        id,
-        amount,
-        date,
-    )
-}
-
-/// [`pay`] under a given Transaction id, for the stub seed, whose ids are fixed.
+/// Pays entry `id` directly under a given Transaction id, for the stub seed, whose ids are fixed:
+/// an Open Transaction on `date` in the Plan's Account, with one Split of `-amount` carrying the
+/// Plan's Category and Payee, Matched to the entry. It books what `lib-bill-payments`' `PayBill`
+/// books, which a Client pays through.
 pub(crate) fn pay_as(
     transaction_id: TransactionId,
     plans: &[BillPlan],
@@ -300,6 +280,12 @@ pub(crate) fn pay_as(
         });
     }
     Ok(transaction_id)
+}
+
+/// Category `id`'s full path, as a View names a Bill Plan's Category: for a module that reads the
+/// Categories through Bills' port and so can't reach the Categories crate.
+pub fn category_path(categories: &[Category], id: CategoryId) -> Option<String> {
+    categories::path(categories, id)
 }
 
 /// Whether any entry is Matched to `split`.

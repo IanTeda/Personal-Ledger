@@ -401,7 +401,7 @@ async fn read_entries(conn: &mut SqliteConnection) -> Result<Vec<BillScheduleEnt
 mod tests {
     use std::sync::mpsc;
 
-    use lib_bills::contract::{self, PortsFactory, snapshot};
+    use lib_bills::contract::{self, PortsFactory};
     use lib_bills::fake::InMemoryBills;
     use lib_transactions::{Transaction, TransactionRepository};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -548,54 +548,6 @@ mod tests {
             Resolution::Paid(split) => split.transaction_id,
             _ => panic!("the entry is Paid"),
         }
-    }
-
-    /// Pay's two writes, a Transaction and the entry it settles, go in one commit: when the entry's
-    /// write is refused, the Transaction is not stored either, and the failure names both domains.
-    #[sqlx::test(migrations = "migrations/client")]
-    async fn a_payment_whose_entry_is_refused_lands_neither_row(
-        _: SqlitePoolOptions,
-        options: SqliteConnectOptions,
-    ) {
-        let mut factory = AdapterFactory::new(options);
-        let (transactions, seed) = stub();
-        let mut bills = factory.create(seed, transactions);
-        let mut ledger_transactions = factory.transactions();
-        let open = bills
-            .entries()
-            .into_iter()
-            .find(BillScheduleEntry::is_open)
-            .expect("the stub leaves an entry open");
-        let before = (
-            snapshot(&bills),
-            lib_transactions::contract::snapshot(&ledger_transactions),
-        );
-        let mut paying = ledger_transactions.transactions()[0].clone();
-        paying.id = TransactionId::new();
-
-        factory.refuse("bill_schedule_entries");
-        ledger_transactions.upsert_transaction(paying.clone());
-        bills.upsert_entry(BillScheduleEntry {
-            resolution: Resolution::Paid(SplitRef {
-                transaction_id: paying.id,
-                split_index: 0,
-            }),
-            ..open
-        });
-        factory.pending.commit();
-        factory.writer.flush().expect("the writer is running");
-
-        let failure = factory.failures.try_recv().expect("the payment failed");
-        assert_eq!(failure.domains, [Domain::Transactions, Domain::Bills]);
-        ledger_transactions.reload().expect("the Transactions load");
-        bills.reload().expect("the Bills load");
-        assert_eq!(
-            (
-                snapshot(&bills),
-                lib_transactions::contract::snapshot(&ledger_transactions)
-            ),
-            before
-        );
     }
 
     /// The Match is the Split's, so a Paid entry whose Split isn't stored is refused.

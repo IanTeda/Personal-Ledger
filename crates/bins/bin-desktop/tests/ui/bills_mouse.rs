@@ -76,8 +76,8 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
     assert_eq!(ui.bills().dialog, None);
 }
 
-// The Pay dialog is taller than the 1080px test window, so its mode switch and buttons have no
-// bounds to click; the keyboard tests cover confirm and cancel, and a click here stops at opening.
+// The Pay Dialog's own clicks are its tests' (`bill_payments_pay_mouse.rs`); a click here stops at
+// opening it.
 #[gpui::test]
 fn a_row_pay_button_selects_the_row_and_opens_the_pay_dialog(app: &mut TestAppContext) {
     let mut ui = on_bills(app);

@@ -1,10 +1,10 @@
 //! What the integration tests read back of the Bills page. The Bills Entity builds the page's
-//! part from its view model; the open Dialog is the Dialog host's, so it is filled in here: a
-//! hosted Bills Dialog through its readback, today's Pay Dialog from its form.
+//! part from its view model; the open Dialog is the Dialog host's, so it is filled in here through
+//! its readback: a Bills Dialog's, or the Pay Dialog's the page opened.
 
 use crate::app::Shell;
+use crate::bill_payments::PayDialog;
 use crate::bills::BillsDialog;
-use crate::bills::pay_form::PayForm;
 #[doc(hidden)]
 pub use crate::bills::{BillRowSnapshot, BillsSnapshot};
 use crate::chrome::dialog_host::Dialog as _;
@@ -23,10 +23,12 @@ impl Shell {
                 snapshot.plan_unit = readback.value("unit").map(str::to_string);
             }
         }
-        if let Some(form) = self.dialog::<PayForm>() {
-            snapshot.dialog = Some("Pay".to_string());
-            snapshot.pay_mode = Some(format!("{:?}", form.mode));
-            snapshot.pay_candidates = Some(form.candidates.len());
+        if let Some(dialog) = self.dialog::<PayDialog>()
+            && let Some(readback) = dialog.readback(&self.dialog_scope(), cx)
+        {
+            snapshot.dialog = Some(readback.kind.to_string());
+            snapshot.pay_mode = readback.value("mode").map(str::to_string);
+            snapshot.pay_candidates = readback.value("candidates").and_then(|n| n.parse().ok());
         }
         snapshot
     }

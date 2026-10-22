@@ -123,43 +123,6 @@ fn escape_closes_an_open_filter_list_then_leaves_the_filter_row(app: &mut TestAp
 }
 
 #[gpui::test]
-fn pay_opens_the_dialog_and_enter_marks_the_row_paid(app: &mut TestAppContext) {
-    let mut ui = on_bills(app);
-
-    ui.press("p");
-    let page = ui.bills();
-    assert_eq!(page.dialog.as_deref(), Some("Pay"));
-    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Dialog);
-    assert!(page.pay_mode.is_some());
-
-    // Leave Match for the Pay panel, whose amount and date default from the Plan.
-    ui.press("right");
-    assert_eq!(ui.bills().pay_mode.as_deref(), Some("Direct"));
-    ui.press("enter");
-
-    let page = ui.bills();
-    assert_eq!(page.dialog, None);
-    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Normal);
-    assert_eq!(
-        page.rows.iter().filter(|row| row.status == "Paid").count(),
-        2
-    );
-}
-
-#[gpui::test]
-fn escape_cancels_the_pay_dialog_without_paying(app: &mut TestAppContext) {
-    let mut ui = on_bills(app);
-    let before = ui.bills().rows;
-
-    ui.press("p");
-    ui.press("escape");
-
-    let page = ui.bills();
-    assert_eq!(page.dialog, None);
-    assert_eq!(page.rows, before);
-}
-
-#[gpui::test]
 fn skip_confirms_with_enter(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
 
@@ -230,33 +193,6 @@ fn the_status_line_draws_each_tabs_legend_and_count(app: &mut TestAppContext) {
     let keys: Vec<&str> = status.hints.iter().map(|(key, _)| key.as_str()).collect();
     assert_eq!(keys, ["j/k", "e", "n", "tab"]);
     assert_eq!(status.right, "10 bill plans");
-}
-
-#[gpui::test]
-fn the_pay_dialogs_match_panel_matches_through_the_bills_module(app: &mut TestAppContext) {
-    let mut ui = on_bills(app);
-    let row = ui
-        .bills()
-        .rows
-        .iter()
-        .position(|row| row.plan == "Telstra Internet")
-        .expect("Telstra Internet is due this month");
-    for _ in 0..row {
-        ui.press("j");
-    }
-
-    ui.press("p");
-    let page = ui.bills();
-    assert_eq!(page.pay_mode.as_deref(), Some("Match"));
-    assert!(page.pay_candidates.unwrap_or(0) > 0);
-    ui.press("enter");
-
-    let page = ui.bills();
-    assert_eq!(page.dialog, None);
-    assert_eq!(
-        page.rows.iter().filter(|row| row.status == "Paid").count(),
-        2
-    );
 }
 
 #[gpui::test]

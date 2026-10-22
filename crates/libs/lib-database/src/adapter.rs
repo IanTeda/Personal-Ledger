@@ -2,6 +2,7 @@
 //! holding the rows in memory and saving through the shared [`Writer`](crate::writer::Writer)
 //! (ADR-0046).
 
+pub mod bill_payments;
 pub mod bills;
 pub mod transactions;
 pub mod units;

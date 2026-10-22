@@ -2,8 +2,7 @@
 //! Each reads the Plans and entries, applies `bills`' rules to a copy, and writes back only the
 //! rows that changed, so a refusal leaves the ports untouched. Refusals are [`BillError`]s.
 //!
-//! Pay it directly isn't here: it writes a Transaction too, so it waits for `lib-bill-payments`
-//! (#779), and today's Pay Dialog still pays through `lib-ledger`'s `pay_bill`.
+//! Pay it directly isn't here: it writes a Transaction too, so it is `lib-bill-payments`' `PayBill`.
 
 mod add_bill_plan;
 mod edit_bill_plan;

@@ -64,13 +64,16 @@ allow-wildcard-paths = true
 # toolkit-free and I/O-free. A crate listed in `deny` may only be a direct dependency of its
 # `wrappers`, so a new lib such as `lib_viper` is banned by not being listed; the third-party
 # wrappers are the toolkits' own companion crates. `lib_rpc` is the Sync Server's service layer
-# and predates the rule, so it keeps `lib_database` for now.
+# and predates the rule, so it keeps `lib_database` for now. A cross-domain module is reached only
+# by the bins and the adapter that implements its port, so no feature crate depends on it (the
+# `cargo metadata` test in `lib-ledger` checks the same, and what the module itself depends on).
 deny = [
   { crate = "gpui", wrappers = ["bin_desktop", "gpui-component"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "gpui-component", wrappers = ["bin_desktop"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "ratatui", wrappers = ["bin_tui", "tui-piechart"], reason = "UI toolkit: only bin-tui may depend on it (VIPER Dependencies rule)" },
   { crate = "crossterm", wrappers = ["bin_tui", "ratatui-crossterm"], reason = "UI toolkit: only bin-tui may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_database", wrappers = ["bin_desktop", "bin_tui", "bin_sync_server", "lib_rpc"], reason = "persistence adapter: only bins may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
 ]
 
 # Only crates.io, plus any git dependency listed in `allow-git`.

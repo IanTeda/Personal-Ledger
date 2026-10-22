@@ -27,8 +27,8 @@
 //! (`presenter`), the ports and the `BillsRouter` (`protocols`), the page's default keys
 //! (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub seed and a
 //! recording Router; `contract` the checks both they and `lib-database`'s adapter keep. The
-//! Desktop draws the view models (`bin-desktop/src/bills/`); today's Pay Dialog still pays through
-//! `lib-ledger` until `lib-bill-payments` (#779).
+//! Desktop draws the view models (`bin-desktop/src/bills/`). The Pay Dialog the page opens is
+//! `lib-bill-payments`', since Pay it directly writes a Transaction too.
 
 pub mod bills;
 #[cfg(feature = "contract-tests")]

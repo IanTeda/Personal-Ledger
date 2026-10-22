@@ -3,6 +3,13 @@
 //! `build_shell` take a [`UnitsStore`] (both bins), and a [`TransactionsStore`] and a
 //! [`BillsStore`] (the Desktop), so either can stand behind the module. A store only holds its
 //! rows: the bin commits every store's writes at once, through [`Commit`](crate::Commit).
+//!
+//! A cross-domain module writes two stores another module also holds, so the Transactions and
+//! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
+//! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them.
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlanRepository, BillScheduleRepository};
@@ -84,6 +91,12 @@ impl UnitsStore for InMemoryPorts {
     }
 }
 
+/// A Transactions store shared by the modules that write it. Single-threaded, as the ports are.
+pub type SharedTransactionsStore = Rc<RefCell<dyn TransactionsStore>>;
+
+/// A Bills store shared by the modules that write it. Single-threaded, as the ports are.
+pub type SharedBillsStore = Rc<RefCell<dyn BillsStore>>;
+
 /// The Transactions port, wherever it is kept.
 pub trait TransactionsStore {
     fn transactions(&self) -> &dyn TransactionRepository;
@@ -108,6 +121,21 @@ impl TransactionsStore for TransactionsAdapter {
 
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedTransactionsStore`]).
+impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
+    fn transactions(&self) -> &dyn TransactionRepository {
+        (**self).transactions()
+    }
+
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
+        (**self).transactions_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
     }
 }
 
@@ -162,6 +190,29 @@ impl BillsStore for BillsAdapter {
 
     fn reload(&mut self) -> Result<()> {
         BillsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedBillsStore`]).
+impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
+    fn plans(&self) -> &dyn BillPlanRepository {
+        (**self).plans()
+    }
+
+    fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
+        (**self).plans_mut()
+    }
+
+    fn entries(&self) -> &dyn BillScheduleRepository {
+        (**self).entries()
+    }
+
+    fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
+        (**self).entries_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
     }
 }
 

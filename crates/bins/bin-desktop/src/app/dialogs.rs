@@ -95,7 +95,6 @@ impl Shell {
         }
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`confirm_ledger`, ADR-0037).
         match self.chrome.dialog {
-            Some(OpenDialog::PayBill(_)) => self.confirm_pay_dialog(cx),
             Some(OpenDialog::Budgets(_)) => self.confirm_budgets_dialog(cx),
             Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
             // Read-only: it has nothing to apply.
@@ -104,6 +103,7 @@ impl Shell {
             Some(
                 OpenDialog::Tracing(_)
                 | OpenDialog::Bills(_)
+                | OpenDialog::Pay(_)
                 | OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
                 | OpenDialog::Units(_)

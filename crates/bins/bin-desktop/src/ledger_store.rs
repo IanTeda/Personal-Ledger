@@ -7,21 +7,22 @@
 //! the copies from them. The Bills ports are shared with the Bills module, which writes them
 //! through its Interactors and refreshes the copy after each event ([`LedgerStore::refresh_bills`]).
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_bills::BillsPorts as _;
-use lib_database::{Commit, TransactionsStore};
+use lib_database::{Commit, SharedTransactionsStore};
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 
-/// What `build_shell` hands the Ledger: where its Transactions are kept, the Bills ports it
-/// shares with the Bills module, and the commit that ends each call's writes, every adapter's at
-/// once.
+/// What `build_shell` hands the Ledger: where its Transactions are kept, shared with the Bill
+/// Payments module, the Bills ports it shares with the Bills module, and the commit that ends each
+/// call's writes, every adapter's at once.
 pub struct LedgerSetup {
-    pub transactions: Box<dyn TransactionsStore>,
+    pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
     pub commit: Rc<dyn Commit>,
 }
@@ -33,9 +34,9 @@ impl LedgerSetup {
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
         Self {
-            transactions: Box::new(lib_transactions::fake::InMemoryTransactions {
+            transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
-            }),
+            })),
             bills: LedgerBackedPorts::in_memory(&ledger),
             commit: Rc::new(lib_database::InMemoryCommit),
         }
@@ -50,7 +51,7 @@ pub struct LedgerChanged {
 
 pub struct LedgerStore {
     ledger: Ledger,
-    transactions: Box<dyn TransactionsStore>,
+    transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
     commit: Rc<dyn Commit>,
 }
@@ -67,7 +68,7 @@ impl LedgerStore {
         let bills = LedgerBackedPorts::in_memory(&ledger);
         Self {
             ledger,
-            transactions: Box::new(transactions),
+            transactions: Rc::new(RefCell::new(transactions)),
             bills,
             commit: Rc::new(lib_database::InMemoryCommit),
         }
@@ -133,7 +134,7 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
-            crate::transactions::ports::forward(self.transactions.as_mut(), &changes);
+            crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
             self.commit.commit();
             let mut what = domains(&changes);
@@ -154,7 +155,7 @@ impl LedgerStore {
     /// # Errors
     /// Returns the error reading them back; the port and the read copy are left as they were.
     pub fn reload_transactions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.transactions.reload()?;
+        self.transactions.borrow_mut().reload()?;
         self.refresh_transactions();
         self.announce(cx, BTreeSet::from([Domain::Transactions]));
         Ok(())
@@ -181,10 +182,18 @@ impl LedgerStore {
         }
     }
 
-    /// Brings the read copy in line with the port.
-    fn refresh_transactions(&mut self) {
-        self.ledger
-            .refresh_transactions(self.transactions.transactions().transactions());
+    /// Brings the Transactions read copy in line with the port after the Bill Payments module
+    /// wrote it, announcing `Domain::Transactions` only when it changed.
+    pub fn refresh_transactions_from_port(&mut self, cx: &mut Context<'_, Self>) {
+        if self.refresh_transactions() {
+            self.announce(cx, BTreeSet::from([Domain::Transactions]));
+        }
+    }
+
+    /// Brings the read copy in line with the port, returning whether it changed.
+    fn refresh_transactions(&mut self) -> bool {
+        let transactions = self.transactions.borrow().transactions().transactions();
+        self.ledger.refresh_transactions(transactions)
     }
 
     /// Brings the Bills read copy in line with the ports, returning whether it changed.
@@ -299,25 +308,32 @@ mod tests {
         on_storage_with_bills(cx, storage).0
     }
 
-    /// [`on_storage`] with the Bills ports the store shares, which the Bills module writes.
+    /// [`on_storage`] with the Bills ports the store shares, which the Bills module writes, and
+    /// the payments port over both stores, which the Bill Payments module writes.
     fn on_storage_with_bills(
         cx: &mut TestAppContext,
         storage: lib_database::Storage,
-    ) -> (Entity<LedgerStore>, DesktopBillsPorts) {
+    ) -> (
+        Entity<LedgerStore>,
+        DesktopBillsPorts,
+        lib_bill_payments::SharedPayments,
+    ) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let commit: Rc<dyn Commit> = Rc::new(storage.pending);
-        let bills = LedgerBackedPorts::shared(Box::new(storage.bills), commit.clone());
+        let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), commit.clone());
+        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
+        let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let store = cx.new(|_| {
             LedgerStore::with_storage(
                 Ledger::stub_on(today),
                 LedgerSetup {
-                    transactions: Box::new(storage.transactions),
+                    transactions,
                     bills: bills.clone(),
                     commit,
                 },
             )
         });
-        (store, bills)
+        (store, bills, payments)
     }
 
     #[gpui::test]
@@ -422,15 +438,15 @@ mod tests {
 
     #[gpui::test]
     fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAppContext) {
+        use lib_bill_payments::interactor::PayBill;
         use lib_bills::interactor::{EditBillPlan, MatchBill, SkipBill};
         use lib_bills::{BillPlanDraft, Resolution};
-        use lib_ledger::PayBill;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, bills) = on_storage_with_bills(cx, storage);
+        let (store, bills, payments) = on_storage_with_bills(cx, storage);
         let (plans, entries) = bills_of(cx, &store);
         let (matched, split) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
@@ -461,19 +477,15 @@ mod tests {
             .expect("a third open entry");
         let plan = plans[0].clone();
 
-        store.update(cx, |store, cx| {
-            store
-                .apply(
-                    cx,
-                    PayBill {
-                        entry: paid,
-                        amount: "42.50".parse().expect("a decimal"),
-                        date: today,
-                    },
-                )
-                .expect("the entry is paid");
-        });
-        // Match, Skip and the edit are the Bills module's, through its Interactors.
+        // Pay is the Bill Payments module's, through its port; Match, Skip and the edit are the
+        // Bills module's, through its Interactors. One commit lands them all.
+        PayBill {
+            entry: paid,
+            amount: "42.50".parse().expect("a decimal"),
+            date: today,
+        }
+        .run(&mut *payments.borrow_mut())
+        .expect("the entry is paid");
         cx.update(|cx| crate::bills::ports::copy_reads(&bills, store.read(cx).ledger()));
         {
             let mut ports = bills.borrow_mut();
@@ -513,7 +525,7 @@ mod tests {
             .run(ports.bills, ports.accounts, ports.categories)
             .expect("the plan is edited");
         }
-        cx.update(|cx| crate::bills::ports::sync(&bills, &store, cx));
+        cx.update(|cx| crate::bill_payments::sync(&bills, &store, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
 

@@ -1,13 +1,16 @@
 //! Enforces the VIPER Dependencies rule over `cargo metadata`: a migrated feature crate never
-//! depends on another feature crate, a UI toolkit or `lib_database`
+//! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
+//! depends on the feature crates it writes and nothing else does on it
 //! (docs/development/viper-architecture.md, Rules > Dependencies).
 //!
-//! `deny.toml` already bans the toolkits and `lib_database` outside the bins, but cargo-deny can't
-//! express "no feature crate depends on another", so this test carries that half. It lives here
-//! because `lib_ledger` is the one crate that already sees every feature crate.
+//! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
+//! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
+//! crate depends on another", so this test carries that half. It lives here because `lib_ledger`
+//! is the one crate that already sees every feature crate.
 //!
-//! Only crates in `MIGRATED` are checked. Today's domain crates still lean on each other, so each
-//! VIPER transition slice adds its crate here once it complies.
+//! Only crates in `MIGRATED` are checked for feature crates. Today's domain crates still lean on
+//! each other, so each VIPER transition slice adds its crate here once it complies. Every feature
+//! crate, migrated or not, is checked for a cross-domain module.
 
 use std::process::Command;
 
@@ -32,6 +35,11 @@ const FEATURE_CRATES: &[&str] = &[
     "lib_units",
 ];
 
+/// Each cross-domain module and the feature crates it writes, the only feature crates it may
+/// depend on. No feature crate may depend on a cross-domain module.
+const CROSS_DOMAIN: &[(&str, &[&str])] =
+    &[("lib_bill_payments", &["lib_bills", "lib_transactions"])];
+
 /// Crates no feature crate may depend on besides the other feature crates.
 const FORBIDDEN: &[&str] = &[
     "gpui",
@@ -41,8 +49,25 @@ const FORBIDDEN: &[&str] = &[
     "lib_database",
 ];
 
-/// Each forbidden direct dependency (normal, dev or build) of a migrated crate, as
-/// `"<crate> -> <dependency>"`.
+/// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
+/// cross-domain module that writes it), a toolkit, `lib_database`, or a cross-domain module.
+fn forbidden(name: &str, dependency: &str, migrated: &[&str]) -> bool {
+    if dependency == name {
+        return false;
+    }
+    if CROSS_DOMAIN.iter().any(|(module, _)| *module == dependency) {
+        return FEATURE_CRATES.contains(&name) || CROSS_DOMAIN.iter().any(|(m, _)| *m == name);
+    }
+    if let Some((_, writes)) = CROSS_DOMAIN.iter().find(|(module, _)| *module == name) {
+        return (FEATURE_CRATES.contains(&dependency) && !writes.contains(&dependency))
+            || FORBIDDEN.contains(&dependency);
+    }
+    migrated.contains(&name)
+        && (FEATURE_CRATES.contains(&dependency) || FORBIDDEN.contains(&dependency))
+}
+
+/// Each forbidden direct dependency (normal, dev or build) of a migrated crate, a cross-domain
+/// module or any feature crate, as `"<crate> -> <dependency>"`.
 fn violations(metadata: &Value, migrated: &[&str]) -> Vec<String> {
     let packages = metadata["packages"]
         .as_array()
@@ -56,15 +81,11 @@ fn violations(metadata: &Value, migrated: &[&str]) -> Vec<String> {
                 package["dependencies"].as_array()?,
             ))
         })
-        .filter(|(name, _)| migrated.contains(name))
         .flat_map(|(name, dependencies)| {
             dependencies
                 .iter()
                 .filter_map(|dependency| dependency["name"].as_str())
-                .filter(move |dependency| {
-                    *dependency != name
-                        && (FEATURE_CRATES.contains(dependency) || FORBIDDEN.contains(dependency))
-                })
+                .filter(move |dependency| forbidden(name, dependency, migrated))
                 .map(move |dependency| format!("{name} -> {dependency}"))
         })
         .collect()
@@ -98,10 +119,13 @@ fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         .iter()
         .filter_map(|package| package["name"].as_str())
         .collect();
-    for crate_name in MIGRATED {
+    for crate_name in MIGRATED
+        .iter()
+        .chain(CROSS_DOMAIN.iter().map(|(module, _)| module))
+    {
         assert!(
             names.contains(crate_name),
-            "{crate_name} is in MIGRATED but not in the workspace; was it renamed?"
+            "{crate_name} is checked here but not in the workspace; was it renamed?"
         );
     }
 
@@ -109,7 +133,8 @@ fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
     assert!(
         found.is_empty(),
         "VIPER Dependencies rule broken: a feature crate never depends on another feature crate, \
-         a UI toolkit (gpui, gpui-component, ratatui, crossterm) or lib_database. See \
+         a UI toolkit (gpui, gpui-component, ratatui, crossterm), lib_database or a cross-domain \
+         module, and a cross-domain module depends only on the feature crates it writes. See \
          docs/development/viper-architecture.md, Rules > Dependencies. Move shared value types to \
          lib_core, declare a read port in protocols.rs, or put a multi-domain write in a \
          cross-domain module.\nOffending dependencies:\n  {}",
@@ -143,6 +168,41 @@ fn violations_flags_feature_toolkit_and_database_dependencies_of_migrated_crates
             "lib_units -> lib_bills",
             "lib_units -> gpui",
             "lib_units -> lib_database"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_a_feature_crate_on_a_cross_domain_module_and_what_the_module_doesnt_write() {
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_bills",
+                "dependencies": [{ "name": "lib_payees" }, { "name": "lib_bill_payments" }]
+            },
+            {
+                "name": "lib_bill_payments",
+                "dependencies": [
+                    { "name": "lib_bills" },
+                    { "name": "lib_transactions" },
+                    { "name": "lib_core" },
+                    { "name": "lib_units" },
+                    { "name": "lib_database" },
+                ]
+            },
+            {
+                "name": "bin_desktop",
+                "dependencies": [{ "name": "lib_bill_payments" }]
+            }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata, &[]),
+        vec![
+            "lib_bills -> lib_bill_payments",
+            "lib_bill_payments -> lib_units",
+            "lib_bill_payments -> lib_database"
         ]
     );
 }

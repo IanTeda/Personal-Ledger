@@ -76,8 +76,11 @@ pub use change_sets::ChangeSet;
 
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
+pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
-pub use adapter::store::{BillsStore, TransactionsStore, UnitsStore};
+pub use adapter::store::{
+    BillsStore, SharedBillsStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
+};
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;
 

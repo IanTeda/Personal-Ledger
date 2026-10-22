@@ -1,26 +1,28 @@
 //! `impl BillsRouter` for the Desktop: where the Bills page's Presenter asks to go. The Plan form
-//! and Skip open in today's Dialog host, Pay opens today's Pay Dialog, a Transaction is shown
-//! through the Transactions module's entry point, and a Toast and the status line reach the Shell
-//! as [`ViewEvent`]s, all through the page's gpui context, which is why the Router is built for
-//! each `handle` call.
+//! and Skip open in today's Dialog host, Pay opens through the Bill Payments module's entry point,
+//! a Transaction is shown through the Transactions module's, and a Toast and the status line reach
+//! the Shell as [`ViewEvent`]s, all through the page's gpui context, which is why the Router is
+//! built for each `handle` call.
 
 use chrono::NaiveDate;
 use gpui::{Context, Entity};
+use lib_bill_payments::SharedPayments;
 use lib_bills::presenter::{BillsPageEvent, PlanFormPresenter, SkipPresenter};
-use lib_bills::{BillsOutcome, BillsPorts as _, BillsRouter, EntryId, PayRequest};
+use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, DateStyle, TransactionId};
 use lib_toast::ToastKind;
 
-use super::pay_form::PayForm;
 use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
-use crate::chrome::dialog_host::{OpenDialog, open_dialog};
+use crate::chrome::dialog_host::open_dialog;
 use crate::ledger_store::LedgerStore;
 use crate::view::event::ViewEvent;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
+    /// What the Pay Dialog writes Pay it directly through.
+    pub payments: SharedPayments,
     /// The day and date style the page's Dialogs are opened on.
     pub today: NaiveDate,
     pub date_style: Option<DateStyle>,
@@ -56,24 +58,17 @@ impl BillsRouter for PageRouter<'_, '_> {
         self.host(dialog)
     }
 
-    /// Today's Pay Dialog, drawn and confirmed by the Shell until `lib-bill-payments` (#779).
+    /// The Bill Payments module's Pay Dialog; the page redraws from its ports once it lands.
     fn open_pay(&mut self, request: PayRequest) -> bool {
-        let Some(plan) = self.ports.borrow().bills().bill_plan(request.entry.plan_id) else {
-            return false;
-        };
-        let form = PayForm::new(
-            request.entry,
-            &plan,
-            request.candidates,
-            request.preselected,
+        crate::bill_payments::router::open_pay(
+            self.cx,
+            &self.ports,
+            &self.payments,
+            request,
             self.today,
             self.date_style,
-        );
-        self.cx
-            .emit(ViewEvent::OpenDialog(Box::new(OpenDialog::PayBill(
-                Box::new(form),
-            ))));
-        true
+            BillsPage::pay_landed,
+        )
     }
 
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
@@ -93,14 +88,16 @@ impl BillsRouter for PageRouter<'_, '_> {
 }
 
 /// The Bills module's entry point: its page, built on `ports`, which the Shell hosts as the Bills
-/// destination. `today` reads the calendar day the page dates its rows by.
+/// destination. `payments` is what the Pay Dialog it opens writes through, and `today` reads the
+/// calendar day the page dates its rows by.
 pub fn bills_page(
     ports: DesktopPorts,
+    payments: SharedPayments,
     ledger: Entity<LedgerStore>,
     keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
     today: lib_bills::presenter::Clock,
     cx: &mut gpui::App,
 ) -> Entity<BillsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| BillsPage::new(ports, ledger, keymap, today, cx))
+    cx.new(|cx| BillsPage::new(ports, payments, ledger, keymap, today, cx))
 }

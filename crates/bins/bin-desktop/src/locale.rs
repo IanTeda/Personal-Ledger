@@ -29,6 +29,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             crate::msg::LAYER,
             lib_units::msg::LAYER,
             lib_bills::msg::LAYER,
+            lib_bill_payments::msg::LAYER,
         ],
     );
     let _ = INFO.set(LocaleInfo {
@@ -50,6 +51,7 @@ pub fn init_for_tests() {
             crate::msg::LAYER,
             lib_units::msg::LAYER,
             lib_bills::msg::LAYER,
+            lib_bill_payments::msg::LAYER,
         ],
     );
 }

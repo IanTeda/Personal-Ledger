@@ -1,10 +1,9 @@
-//! The Bills module's Views: the page and its tabs, its Dialogs, and today's Pay Dialog, which the
-//! Shell still draws.
+//! The Bills module's Views: the page and its tabs, and its Dialogs. The Pay Dialog the page opens
+//! is the Bill Payments module's (`crate::bill_payments`).
 
 pub mod dialog;
 mod filters;
 pub mod page;
-pub(crate) mod pay_dialog;
 mod planner;
 mod schedule;
 pub mod snapshot;

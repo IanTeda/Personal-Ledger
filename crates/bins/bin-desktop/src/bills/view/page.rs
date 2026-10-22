@@ -12,6 +12,7 @@ use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
 };
+use lib_bill_payments::{PayOutcome, SharedPayments};
 use lib_bills::BillsOutcome;
 use lib_bills::presenter::{
     BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, Clock, FilterField,
@@ -43,6 +44,8 @@ impl EventEmitter<ViewEvent> for BillsPage {}
 pub struct BillsPage {
     presenter: BillsPagePresenter,
     ports: DesktopPorts,
+    /// What the Pay Dialog the page opens writes Pay it directly through.
+    payments: SharedPayments,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<BillsPageEvent>,
     /// The status glyphs Display Preference, which flags a row in Needs Attention.
@@ -57,6 +60,7 @@ pub struct BillsPage {
 impl BillsPage {
     pub fn new(
         ports: DesktopPorts,
+        payments: SharedPayments,
         ledger: Entity<LedgerStore>,
         keymap: Keymap<BillsPageEvent>,
         today: Clock,
@@ -66,7 +70,7 @@ impl BillsPage {
         let presenter = BillsPagePresenter::new(ports.clone(), today, keymap.clone());
         // The rows name Accounts, Categories, Payees, Transactions and Units, which the Ledger
         // still holds: a change to any is copied into the ports and redrawn, as is a Bills write
-        // `LedgerStore` made (Pay).
+        // `LedgerStore` made (Account delete's Unmatch).
         let _ledger_changed = cx.subscribe(&ledger, |page, ledger, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
@@ -85,6 +89,7 @@ impl BillsPage {
         Self {
             presenter,
             ports,
+            payments,
             ledger,
             keymap,
             glyphs: StatusGlyphs::default(),
@@ -100,6 +105,7 @@ impl BillsPage {
         let tab = self.presenter.tab();
         let mut router = PageRouter {
             ports: self.ports.clone(),
+            payments: self.payments.clone(),
             today: self.presenter.today(),
             date_style: self.presenter.date_style(),
             cx,
@@ -119,6 +125,16 @@ impl BillsPage {
         cx: &mut Context<'_, Self>,
     ) {
         self.send(BillsPageEvent::DialogClosed(Some(outcome)), cx);
+    }
+
+    /// A landed Pay Dialog, handed back by the Dialog host: the page redraws from its ports, the
+    /// entry Paid. A Pay raises no Toast, since the row turning Paid is the feedback.
+    pub(in crate::bills) fn pay_landed(
+        &mut self,
+        _outcome: PayOutcome,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.send(BillsPageEvent::DialogClosed(None), cx);
     }
 
     /// The page as drawn.

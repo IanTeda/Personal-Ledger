@@ -6,7 +6,8 @@
 //! The reads are copied before each Bills event, since a port can't reach the `LedgerStore`
 //! Entity without a gpui context; each goes when its domain answers through its own port.
 //! `LedgerStore` writes the store too, through [`forward`]: the Bills writers not yet migrated
-//! (Pay, Category reassign and Account delete's Unmatch) still run as `LedgerCommand`s.
+//! (Category reassign and Account delete's Unmatch) still run as `LedgerCommand`s. The store is
+//! shared with the Bill Payments module too, whose Pay it directly writes an entry.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,7 +20,7 @@ use lib_bills::{
     BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
     unmatch_transaction,
 };
-use lib_database::{BillsStore, Commit};
+use lib_database::{Commit, SharedBillsStore};
 use lib_ledger::{Ledger, LedgerChange};
 
 use crate::ledger_store::LedgerStore;
@@ -28,25 +29,25 @@ use crate::ledger_store::LedgerStore;
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// The store's two repositories as the one a Bills Interactor writes through.
-struct Store(Box<dyn BillsStore>);
+struct Store(SharedBillsStore);
 
 impl BillPlanRepository for Store {
     fn bill_plans(&self) -> Vec<BillPlan> {
-        self.0.plans().bill_plans()
+        self.0.borrow().plans().bill_plans()
     }
 
     fn upsert_bill_plan(&mut self, plan: BillPlan) {
-        self.0.plans_mut().upsert_bill_plan(plan);
+        self.0.borrow_mut().plans_mut().upsert_bill_plan(plan);
     }
 }
 
 impl BillScheduleRepository for Store {
     fn entries(&self) -> Vec<BillScheduleEntry> {
-        self.0.entries().entries()
+        self.0.borrow().entries().entries()
     }
 
     fn upsert_entry(&mut self, entry: BillScheduleEntry) {
-        self.0.entries_mut().upsert_entry(entry);
+        self.0.borrow_mut().entries_mut().upsert_entry(entry);
     }
 }
 
@@ -60,7 +61,7 @@ pub struct LedgerBackedPorts {
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn BillsStore>, commit: Rc<dyn Commit>) -> DesktopPorts {
+    pub fn shared(store: SharedBillsStore, commit: Rc<dyn Commit>) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store: Store(store),
             commit,
@@ -72,10 +73,10 @@ impl LedgerBackedPorts {
     /// `ledger`'s own Bill Plans and Bill Schedule in memory, for a test that needs no storage.
     pub fn in_memory(ledger: &Ledger) -> DesktopPorts {
         let ports = Self::shared(
-            Box::new(lib_bills::fake::InMemoryBills {
+            Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
                 plans: ledger.bill_plans().to_vec(),
                 entries: ledger.bill_entries().to_vec(),
-            }),
+            })),
             Rc::new(lib_database::InMemoryCommit),
         );
         ports.borrow_mut().copy_reads(ledger);
@@ -87,7 +88,12 @@ impl LedgerBackedPorts {
     /// # Errors
     /// Returns the error reading them back; the rows in memory are left as they were.
     pub fn reload(&mut self) -> lib_database::Result<()> {
-        self.store.0.reload()
+        self.store.0.borrow_mut().reload()
+    }
+
+    /// The Bills store the ports write, which the Bill Payments module writes too.
+    pub fn store(&self) -> SharedBillsStore {
+        self.store.0.clone()
     }
 
     /// Copies what Bills reads of the other domains from `ledger`, so the next Interactor and view
@@ -147,7 +153,7 @@ impl BillsPorts for LedgerBackedPorts {
 
 /// Sends each Bill Plan and entry in `changes` to the store, in the order recorded, and Unmatches
 /// the entries a deleted Transaction paid, since deleting it deletes the Splits their Matches are
-/// on (ADR-0019). The writers it carries: Pay, Category reassign, and Account delete's Unmatch.
+/// on (ADR-0019). The writers it carries: Category reassign, and Account delete's Unmatch.
 /// Returns whether it wrote anything, so the caller refreshes the read copy.
 pub fn forward(ports: &DesktopPorts, changes: &[LedgerChange]) -> bool {
     let mut ports = ports.borrow_mut();

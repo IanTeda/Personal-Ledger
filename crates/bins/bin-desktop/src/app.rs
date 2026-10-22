@@ -18,7 +18,7 @@
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
 //! `log_feed`, `rail`, `render`, `status`, `toasts`) under `app/` that is an `impl Shell` block,
-//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `bills_ui`, ...)
+//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `budgets_ui`, ...)
 //! marks per-domain wiring.
 //!
 //! `Shell` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
@@ -26,7 +26,6 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
-mod bills_ui;
 mod budgets_ui;
 
 mod commands;
@@ -139,9 +138,6 @@ pub struct Shell {
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
     units: crate::units::DesktopPorts,
-    /// The Bills ports the Bills page, its Dialogs and `LedgerStore` share, which today's Pay
-    /// Dialog matches through.
-    bills: crate::bills::DesktopPorts,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -235,9 +231,9 @@ impl Shell {
         });
         let dashboard_subscription = Self::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
-        let bills_ports = bills.ports.clone();
         let bills_view = crate::bills::bills_page(
             bills.ports,
+            bills.payments,
             ledger.clone(),
             bills.keymap,
             crate::bills::clock(today),
@@ -286,7 +282,6 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             ledger,
             units: units_ports,
-            bills: bills_ports,
             today,
             views: ViewEntities {
                 dashboard: dashboard_view,
@@ -323,6 +318,16 @@ impl Shell {
     /// The Categories tree, read straight from the Ledger (ADR-0038).
     fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
         self.ledger.read(cx).ledger().categories()
+    }
+
+    /// The Bill Plans, from the Ledger's read copy of the Bills ports.
+    fn bill_plans<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillPlan] {
+        self.ledger.read(cx).ledger().bill_plans()
+    }
+
+    /// The Bill Schedule entries, from the Ledger's read copy of the Bills ports.
+    fn bill_entries<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillScheduleEntry] {
+        self.ledger.read(cx).ledger().bill_entries()
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.

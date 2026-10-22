@@ -6,7 +6,7 @@ use chrono::{Datelike, NaiveDate};
 use lib_accounts::Account;
 use lib_categories::Category;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
-use lib_core::{Money, Total, TransactionStatus};
+use lib_core::{Money, Total};
 use lib_transactions::Transaction;
 
 use crate::*;
@@ -88,60 +88,6 @@ fn populate_is_idempotent() {
 }
 
 // --- settlement ---
-
-#[test]
-fn pay_writes_an_open_transaction_and_matches_its_split() {
-    let mut w = world();
-    let telstra = plan_id(&w, "Telstra Internet");
-    let due = id(telstra, date(2026, 9, 22));
-    let before = w.transactions.len();
-    let tid = pay(
-        &w.plans,
-        &mut w.entries,
-        &mut w.transactions,
-        due,
-        &cents_money(8_900),
-        today(),
-    )
-    .unwrap();
-    assert_eq!(w.transactions.len(), before + 1);
-    let t = w.transactions.iter().find(|t| t.id == tid).unwrap();
-    assert_eq!(t.status, TransactionStatus::Open);
-    assert_eq!(t.total(), cents_money(-8_900));
-    assert_eq!(t.account_id, AccountId::seed(2));
-    assert!(carries_bill(&w.entries, tid));
-    let e = entry(&w.entries, due).unwrap();
-    assert_eq!(status(e, today()), BillStatus::Paid);
-    assert_eq!(paid_on(e, &w.transactions), Some(today()));
-    // Still newest first.
-    assert!(w.transactions.windows(2).all(|p| p[0].date >= p[1].date));
-}
-
-#[test]
-fn pay_refuses_a_non_positive_amount_and_a_resolved_entry() {
-    let mut w = world();
-    let telstra = plan_id(&w, "Telstra Internet");
-    let due = id(telstra, date(2026, 9, 22));
-    let zero = pay(
-        &w.plans,
-        &mut w.entries,
-        &mut w.transactions,
-        due,
-        &cents_money(0),
-        today(),
-    );
-    assert_eq!(zero, Err(BillError::AmountNotPositive));
-    skip(&w.plans, &mut w.entries, due).unwrap();
-    let again = pay(
-        &w.plans,
-        &mut w.entries,
-        &mut w.transactions,
-        due,
-        &cents_money(1),
-        today(),
-    );
-    assert_eq!(again, Err(BillError::EntryNotOpen));
-}
 
 #[test]
 fn match_candidates_put_the_payee_match_first_and_preselect_it() {

@@ -43,8 +43,9 @@ fn count(n: usize) -> i64 {
 }
 
 /// An amount as the Bills tables show it: its own places, and its Unit's code after it unless it
-/// is the base Unit.
-fn money(ports: &dyn BillsPorts, amount: &Money, unit: UnitId) -> String {
+/// is the base Unit. Public for `lib-bill-payments`' Pay Dialog, which words a Plan's amount the
+/// same way.
+pub fn money(ports: &dyn BillsPorts, amount: &Money, unit: UnitId) -> String {
     let text = format_amount(amount, AmountStyle::own()).text;
     let units = ports.units();
     if units.base_unit() == Some(unit) {

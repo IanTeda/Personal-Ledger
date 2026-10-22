@@ -717,6 +717,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "lib_accounts",
+ "lib_bill_payments",
  "lib_bills",
  "lib_budgets",
  "lib_categories",
@@ -4668,6 +4669,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_bill_payments"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_bills",
+ "lib_core",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_transactions",
+ "lib_viper",
+]
+
+[[package]]
 name = "lib_bills"
 version = "0.1.0"
 dependencies = [
@@ -4764,6 +4779,7 @@ dependencies = [
  "chrono",
  "csv",
  "fake",
+ "lib_bill_payments",
  "lib_bills",
  "lib_config",
  "lib_core",

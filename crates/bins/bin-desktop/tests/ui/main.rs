@@ -5,6 +5,8 @@ mod common;
 
 mod accounts_keyboard;
 mod accounts_mouse;
+mod bill_payments_pay_keyboard;
+mod bill_payments_pay_mouse;
 mod bills_keyboard;
 mod bills_mouse;
 mod budgets_keyboard;
