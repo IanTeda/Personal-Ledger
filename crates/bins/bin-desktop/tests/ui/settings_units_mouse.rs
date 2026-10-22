@@ -193,12 +193,30 @@ fn choosing_a_source_by_click_shows_the_symbol_and_quote_fields(app: &mut TestAp
 }
 
 #[gpui::test]
-fn the_delete_confirm_button_shows_the_refusal_then_deactivates(app: &mut TestAppContext) {
+fn the_base_units_disabled_deactivate_button_leaves_the_dialog_open(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
+    assert!(ui.is_drawn("delete-unit-base-note"));
+
+    ui.click("delete-unit-confirm");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.inactive_unit_codes(), Vec::<String>::new());
+}
+
+#[gpui::test]
+fn the_edit_dialog_draws_the_usage_line(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-edit-unit");
+    assert!(ui.is_drawn("unit-form-usage"));
+}
+
+#[gpui::test]
+fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
-    ui.press("b t c");
-    ui.click("delete-unit-confirm");
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
 
     ui.click("delete-unit-confirm");

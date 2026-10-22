@@ -1,13 +1,14 @@
 //! The Delete unit Dialog, and the Deactivate unit Dialog it turns into.
 //!
-//! It never checks usage itself: confirming runs the delete, and only the Interactor's unit-in-use
-//! refusal turns the Dialog into Deactivate, with the counts that refused it. Deleting the base
-//! Unit also asks for the Unit that takes over as base, since the Ledger always has one.
+//! It reads the Unit's usage when it opens: a Unit in use opens as Deactivate with the counts up
+//! front, and the base Unit's Deactivate is disabled with its reason. The Interactors keep their
+//! refusals for a Unit that came into use, or became the base, under the open Dialog. Deleting the
+//! base Unit also asks for the Unit that takes over as base, since the Ledger always has one.
 
 use lib_core::UnitId;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
-use super::{UnitChange, UnitsOutcome, count};
+use super::{UnitChange, UnitsOutcome, count, uses_text};
 use crate::interactor::{DeactivateUnit, DeactivateUnitRefusal, DeleteUnit, DeleteUnitRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{UnitUse, msg, units_by_code};
@@ -28,7 +29,7 @@ pub struct DeleteUnitViewModel {
     pub confirm: Option<TextFieldView>,
     /// The New base unit select, for the base Unit while it can still be deleted.
     pub new_base: Option<NewBaseView>,
-    /// Why it can't be deleted, once the delete was refused for a Unit in use.
+    /// Why it can't be deleted, for a Unit in use.
     pub in_use: Option<InUseView>,
     /// Why the last confirm was refused, for any other refusal.
     pub refusal: Option<String>,
@@ -46,6 +47,8 @@ pub struct InUseView {
     /// `btc is used by 2 accounts and 1 budget, so it can't be deleted.`
     pub text: String,
     pub help: String,
+    /// Why Deactivate is disabled: `It is also the base unit, so it stays active until ...`.
+    pub base: Option<String>,
 }
 
 pub struct DeleteUnitPresenter {
@@ -57,20 +60,24 @@ pub struct DeleteUnitPresenter {
     /// when the Dialog opened.
     candidates: Vec<Choice<UnitId>>,
     new_base: Option<UnitId>,
-    /// Set by the Interactor's unit-in-use refusal: confirming then deactivates.
+    /// Read when the Dialog opens, or set by the Interactor's unit-in-use refusal if the Unit came
+    /// into use under it: confirming then deactivates.
     in_use: Option<UnitUse>,
+    /// Whether the Unit was the base when the Dialog opened, which Deactivate can't touch.
+    is_base: bool,
     refusal: Option<String>,
 }
 
 impl DeleteUnitPresenter {
     /// The Dialog for Unit `id`, or `None` when it is gone.
     pub fn new(ports: SharedPorts, id: UnitId) -> Option<Self> {
-        let (code, candidates) = {
+        let (code, candidates, in_use, is_base) = {
             let ports = ports.borrow();
             let units = ports.units().units();
             let unit = units.iter().find(|unit| unit.id == id)?;
             // The pickers offer only active Units, as deactivating one hides it from them.
-            let candidates = if ports.base_unit().base_unit() == id {
+            let is_base = ports.base_unit().base_unit() == id;
+            let candidates = if is_base {
                 units_by_code(&units)
                     .into_iter()
                     .filter(|other| other.id != id && other.is_active)
@@ -82,7 +89,13 @@ impl DeleteUnitPresenter {
             } else {
                 Vec::new()
             };
-            (unit.code.clone(), candidates)
+            let uses = ports.usage().unit_usage(id);
+            (
+                unit.code.clone(),
+                candidates,
+                uses.is_used().then_some(uses),
+                is_base,
+            )
         };
         let new_base = candidates
             .first()
@@ -94,7 +107,8 @@ impl DeleteUnitPresenter {
             confirm_text: String::new(),
             candidates,
             new_base,
-            in_use: None,
+            in_use,
+            is_base,
             refusal: None,
         })
     }
@@ -107,7 +121,11 @@ impl DeleteUnitPresenter {
                     self.new_base = Some(id);
                 }
             }
-            DeleteUnitEvent::Confirm if self.in_use.is_some() => self.deactivate(router),
+            DeleteUnitEvent::Confirm if self.in_use.is_some() => {
+                if !self.is_base {
+                    self.deactivate(router);
+                }
+            }
             DeleteUnitEvent::Confirm => self.delete(router),
             DeleteUnitEvent::Cancel => router.close_dialog(None),
         }
@@ -120,7 +138,7 @@ impl DeleteUnitPresenter {
                 frame: DialogFrame {
                     title: msg::units_deactivate_title(code),
                     submit: msg::units_deactivate_submit(),
-                    can_confirm: true,
+                    can_confirm: !self.is_base,
                     destructive: false,
                 },
                 confirm: None,
@@ -128,6 +146,7 @@ impl DeleteUnitPresenter {
                 in_use: Some(InUseView {
                     text: msg::units_in_use(code, &uses_text(uses)),
                     help: msg::units_in_use_help(),
+                    base: self.is_base.then(msg::units_in_use_base),
                 }),
                 refusal: self.refusal.clone(),
             },
@@ -217,23 +236,6 @@ impl DeleteUnitPresenter {
             Err(DeactivateUnitRefusal::BaseUnit) => Some(msg::units_in_use_base()),
         };
     }
-}
-
-/// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets`.
-fn uses_text(uses: UnitUse) -> String {
-    let parts: Vec<String> = [
-        (
-            uses.accounts,
-            msg::units_in_use_accounts as fn(i64) -> String,
-        ),
-        (uses.bill_plans, msg::units_in_use_bill_plans),
-        (uses.budgets, msg::units_in_use_budgets),
-    ]
-    .into_iter()
-    .filter(|(n, _)| *n > 0)
-    .map(|(n, text)| text(count(n)))
-    .collect();
-    parts.join(", ")
 }
 
 #[cfg(test)]
@@ -371,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_in_use_reaches_deactivate_through_the_refusal_alone() {
+    fn a_unit_in_use_opens_offering_deactivate_with_its_counts() {
         let (ports, shared) = stub();
         ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_BTC,
@@ -382,29 +384,18 @@ mod tests {
             },
         );
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
-        assert!(
-            dialog.view_model().in_use.is_none(),
-            "usage isn't checked before confirm"
-        );
 
-        let calls = send(
-            &mut dialog,
-            vec![
-                DeleteUnitEvent::ConfirmText("btc".into()),
-                DeleteUnitEvent::Confirm,
-            ],
-        );
-
-        assert_eq!(calls, [], "the refused delete keeps the Dialog open");
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Deactivate unit — btc");
         assert_eq!(view.frame.submit, "Deactivate unit");
         assert!(view.frame.can_confirm && !view.frame.destructive);
         assert_eq!(view.confirm, None);
+        let in_use = view.in_use.unwrap();
         assert_eq!(
-            view.in_use.unwrap().text,
+            in_use.text,
             "btc is used by 2 accounts, 1 budget, so it can't be deleted."
         );
+        assert_eq!(in_use.base, None);
 
         let calls = send(&mut dialog, vec![DeleteUnitEvent::Confirm]);
         assert_eq!(
@@ -419,7 +410,32 @@ mod tests {
     }
 
     #[test]
-    fn the_base_unit_in_use_is_refused_deactivate_as_text() {
+    fn a_unit_unused_when_opened_but_used_by_confirm_still_turns_into_deactivate() {
+        let (ports, shared) = stub();
+        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
+        assert!(dialog.view_model().in_use.is_none());
+        ports.borrow_mut().usage.uses.insert(
+            UnitId::SEED_BTC,
+            UnitUse {
+                accounts: 1,
+                ..UnitUse::default()
+            },
+        );
+
+        let calls = send(
+            &mut dialog,
+            vec![
+                DeleteUnitEvent::ConfirmText("btc".into()),
+                DeleteUnitEvent::Confirm,
+            ],
+        );
+
+        assert_eq!(calls, [], "the refused delete keeps the Dialog open");
+        assert_eq!(dialog.view_model().frame.title, "Deactivate unit — btc");
+    }
+
+    #[test]
+    fn the_base_unit_in_use_opens_with_deactivate_disabled_and_its_reason() {
         let (ports, shared) = stub();
         ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_AUD,
@@ -429,27 +445,26 @@ mod tests {
             },
         );
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
-        send(
-            &mut dialog,
-            vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
-                DeleteUnitEvent::Confirm,
-                DeleteUnitEvent::Confirm,
-            ],
-        );
 
         let view = dialog.view_model();
+        assert_eq!(view.frame.submit, "Deactivate unit");
+        assert!(
+            !view.frame.can_confirm,
+            "the base Unit can't be deactivated"
+        );
         assert_eq!(
             view.new_base, None,
             "a Unit in use isn't deleted, so needs no new base"
         );
         assert_eq!(
-            view.refusal.as_deref(),
+            view.in_use.unwrap().base.as_deref(),
             Some(
                 "It is also the base unit, so it stays active until another unit takes over as \
                  base."
             )
         );
+
+        assert_eq!(send(&mut dialog, vec![DeleteUnitEvent::Confirm]), []);
         assert!(
             ports
                 .borrow()

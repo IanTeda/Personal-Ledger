@@ -57,9 +57,9 @@ The Units screen lists all units you've created with their names, types, precisi
 
 ## Rules to know
 
-- A unit that an account, a bill plan or a budget uses cannot be deleted. The Delete unit dialog says what uses it and offers *Deactivate unit* instead. A deactivated unit stays on the Units page, dimmed and tagged *inactive*, and stays on whatever uses it, but it is hidden from the Unit picker when you add an account and from the *Base unit* field on the General page. Reactivate it from its row menu, the detail pane or by pressing `r` on the row.
+- A unit that an account, a bill plan or a budget uses cannot be deleted. The Delete unit dialog opens as *Deactivate unit*, saying what uses it, without asking you to type the code first. Edit unit shows the same counts (*Used by 2 accounts, 1 budget*). A deactivated unit stays on the Units page, dimmed and tagged *inactive*, and stays on whatever uses it, but it is hidden from the Unit picker when you add an account and from the *Base unit* field on the General page. Reactivate it from its row menu, the detail pane or by pressing `r` on the row.
 - A unit that other units are quoted in cannot be deleted, and *Deactivate unit* is not offered for it. The Delete unit dialog says how many units are quoted in it, for example *aud is the quote unit of 2 other units*. Change those units' *Quoted in* field first (Edit unit), then delete it. That includes the base unit: delete it only once no other unit is quoted in it.
-- The base unit cannot be deactivated. Pick another base unit on the General page first. An unused base unit that no other unit is quoted in can still be deleted by choosing the unit that takes over.
+- The base unit cannot be deactivated: its *Deactivate unit* button is disabled, with the reason beside the counts. Pick another base unit on the General page first. An unused base unit that no other unit is quoted in can still be deleted by choosing the unit that takes over.
 - A unit, once created and assigned to an account, cannot be changed.
 - Cross-unit transactions (moving money between accounts in different units) require manual exchange-rate tracking in a transaction split — they are not supported directly.
 - Precision (decimal places) is set when creating a unit and controls value entry and display.

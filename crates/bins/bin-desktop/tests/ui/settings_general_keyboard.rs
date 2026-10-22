@@ -102,8 +102,7 @@ fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) 
     ui.press("l");
     ui.press("j");
     ui.press("d");
-    // Delete is refused for a Unit in use, which turns the Dialog into Deactivate.
-    ui.press("b t c enter");
+    // A Unit in use opens its Delete dialog as Deactivate.
     ui.press("enter");
     ui.press("escape");
     ui.press("g g");

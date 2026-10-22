@@ -57,11 +57,9 @@ fn a_unit_added_through_its_dialog_shows_in_the_table() {
 }
 
 #[test]
-fn deleting_a_unit_in_use_is_refused_and_offers_deactivate() {
+fn deleting_a_unit_in_use_opens_offering_deactivate_with_its_usage() {
     let mut shell = shell();
     press(&mut shell, "g u d");
-    type_text(&mut shell, "aud");
-    press(&mut shell, "Enter");
 
     let frame = screen(&mut shell);
 
@@ -71,8 +69,22 @@ fn deleting_a_unit_in_use_is_refused_and_offers_deactivate() {
     );
     assert!(
         frame.contains("can't be deleted"),
-        "the refusal says why:\n{frame}"
+        "the usage says why:\n{frame}"
     );
+    assert!(
+        frame.contains("It is also the base unit"),
+        "the base Unit's Deactivate says why it is disabled:\n{frame}"
+    );
+}
+
+#[test]
+fn editing_a_unit_shows_what_uses_it() {
+    let mut shell = shell();
+    press(&mut shell, "g u e");
+
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("Used by "), "{frame}");
 }
 
 #[test]

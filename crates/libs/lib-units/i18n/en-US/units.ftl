@@ -169,6 +169,8 @@ units-in-use-budgets = { $count ->
 }
 units-in-use-help = Deactivating it keeps it on those and hides it from the unit pickers. You can reactivate it later.
 units-in-use-base = It is also the base unit, so it stays active until another unit takes over as base.
+units-edit-usage = Used by { $uses }.
+units-edit-usage-none = Nothing uses this unit yet.
 units-base-unit-option = { $code } — { $name }
 
 ## The Set base unit Dialog.

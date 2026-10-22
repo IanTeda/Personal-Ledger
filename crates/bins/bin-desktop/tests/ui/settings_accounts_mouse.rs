@@ -126,9 +126,7 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     ui.click("settings-index-Units");
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
-    // Delete is refused for a Unit in use, which turns the Dialog into Deactivate.
-    ui.press("b t c");
-    ui.click("delete-unit-confirm");
+    // A Unit in use opens its Delete dialog as Deactivate.
     ui.click("delete-unit-confirm");
 
     ui.click("settings-index-Accounts");
@@ -144,9 +142,7 @@ fn an_account_on_a_deactivated_unit_still_edits_with_its_unit(app: &mut TestAppC
     ui.click("settings-index-Units");
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
-    // Delete is refused for a Unit in use, which turns the Dialog into Deactivate.
-    ui.press("b t c");
-    ui.click("delete-unit-confirm");
+    // A Unit in use opens its Delete dialog as Deactivate.
     ui.click("delete-unit-confirm");
     assert_eq!(ui.inactive_unit_codes(), vec!["btc".to_string()]);
 

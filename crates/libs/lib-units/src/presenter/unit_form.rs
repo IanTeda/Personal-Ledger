@@ -9,10 +9,10 @@ use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_locale::Label as _;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
-use super::{UnitChange, UnitsOutcome, cycle, unique_label};
+use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
 use crate::interactor::{AddUnit, EditUnit, EditUnitRefusal, PriceSourceGone};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceLink, msg};
+use crate::{MANUAL_ENTRY, PriceLink, UnitUse, msg};
 
 /// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name, then the
 /// PRICE SOURCE group.
@@ -75,6 +75,8 @@ pub struct UnitFormViewModel {
     pub test_price: Option<String>,
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<UnitField>,
+    /// What names the Unit, for Edit: `Used by 2 accounts, 1 budget.`; `None` for Add.
+    pub usage: Option<String>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
 }
@@ -100,6 +102,8 @@ pub struct UnitFormPresenter {
     focused: UnitField,
     sources: Vec<SourceOption>,
     quotes: Vec<Choice<UnitId>>,
+    /// What names the Unit being edited, read when the Dialog opens.
+    usage: Option<UnitUse>,
     refusal: Option<String>,
 }
 
@@ -129,6 +133,7 @@ impl UnitFormPresenter {
         form.kind = unit.kind;
         form.source = unit.link.source_id;
         form.symbol = unit.link.symbol;
+        form.usage = Some(form.ports.borrow().usage().unit_usage(id));
         Some(form)
     }
 
@@ -188,6 +193,7 @@ impl UnitFormPresenter {
             focused: UnitField::default(),
             sources,
             quotes,
+            usage: None,
             refusal: None,
         }
     }
@@ -315,6 +321,13 @@ impl UnitFormPresenter {
                 .into_iter()
                 .filter(|field| self.shows(*field))
                 .collect(),
+            usage: self.usage.map(|uses| {
+                if uses.is_used() {
+                    msg::units_edit_usage(&uses_text(uses))
+                } else {
+                    msg::units_edit_usage_none()
+                }
+            }),
             refusal: self.refusal.clone(),
         }
     }
@@ -593,6 +606,31 @@ mod tests {
 
         assert_eq!(calls, []);
         assert_eq!(ports.borrow().units.units.len(), 3);
+    }
+
+    #[test]
+    fn editing_shows_the_real_usage_counts_and_adding_shows_none() {
+        let (ports, shared) = stub();
+        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC).unwrap();
+        assert_eq!(
+            form.view_model().usage.as_deref(),
+            Some("Nothing uses this unit yet.")
+        );
+
+        ports.borrow_mut().usage.uses.insert(
+            UnitId::SEED_BTC,
+            UnitUse {
+                accounts: 2,
+                budgets: 1,
+                ..UnitUse::default()
+            },
+        );
+        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC).unwrap();
+        assert_eq!(
+            form.view_model().usage.as_deref(),
+            Some("Used by 2 accounts, 1 budget.")
+        );
+        assert_eq!(UnitFormPresenter::add(shared).view_model().usage, None);
     }
 
     #[test]

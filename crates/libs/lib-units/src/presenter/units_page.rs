@@ -909,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_in_use_still_opens_its_delete_dialog_since_the_refusal_decides_deactivate() {
+    fn a_unit_in_use_still_opens_its_delete_dialog_which_offers_deactivate() {
         let mut page = Page::new();
         page.ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_BTC,

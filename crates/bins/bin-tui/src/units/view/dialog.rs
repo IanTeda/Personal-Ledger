@@ -190,6 +190,7 @@ impl Dialog {
                 items.extend(view.symbol.map(Item::Text));
                 items.extend(view.symbol_help.map(Item::Note));
                 items.extend(view.quote.as_ref().map(select));
+                items.extend(view.usage.map(Item::Note));
                 (view.frame, view.refusal)
             }
             Self::DeleteUnit(presenter) => {
@@ -197,6 +198,7 @@ impl Dialog {
                 if let Some(in_use) = view.in_use {
                     items.push(Item::Note(in_use.text));
                     items.push(Item::Note(in_use.help));
+                    items.extend(in_use.base.map(Item::Note));
                 }
                 items.extend(view.confirm.map(Item::Text));
                 if let Some(new_base) = view.new_base {

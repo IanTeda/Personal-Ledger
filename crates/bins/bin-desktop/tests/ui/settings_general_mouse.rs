@@ -63,9 +63,7 @@ fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext)
     ui.click("settings-index-Units");
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
-    // Delete is refused for a Unit in use, which turns the Dialog into Deactivate.
-    ui.press("b t c");
-    ui.click("delete-unit-confirm");
+    // A Unit in use opens its Delete dialog as Deactivate.
     ui.click("delete-unit-confirm");
     ui.click("settings-index-General");
 

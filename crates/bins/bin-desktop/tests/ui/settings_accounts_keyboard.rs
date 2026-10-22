@@ -268,15 +268,13 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     assert!(offered.split('|').any(|code| code == "btc"));
     ui.press("escape");
 
-    // Deactivate btc from the Units page: it is in use by an Account, so Delete is refused and
-    // offers it.
+    // Deactivate btc from the Units page: it is in use by an Account, so Delete offers it.
     ui.press("escape");
     ui.press("k k");
     assert_eq!(ui.settings().page, "Units");
     ui.press("l");
     ui.press("j");
     ui.press("d");
-    ui.press("b t c enter");
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
     ui.press("enter");
     ui.press("escape");

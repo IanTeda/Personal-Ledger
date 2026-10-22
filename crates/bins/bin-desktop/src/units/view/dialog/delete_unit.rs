@@ -1,5 +1,5 @@
 //! The Delete unit Dialog (16d) in the red treatment, and the Deactivate unit Dialog it turns into
-//! once the delete is refused for a Unit in use. The typed-back code always holds the typing, so
+//! for a Unit in use, as it opens. The typed-back code always holds the typing, so
 //! the base Unit's New base unit select is driven by `Up`/`Down` and the mouse.
 
 use std::rc::Rc;
@@ -107,6 +107,14 @@ pub(super) fn render(
                 .into_any_element(),
         );
         fields.push(note(in_use.help.clone()));
+        fields.extend(in_use.base.clone().map(|base| {
+            div()
+                .debug_selector(|| "delete-unit-base-note".to_string())
+                .text_size(px(11.5))
+                .text_color(color::muted(cx))
+                .child(base)
+                .into_any_element()
+        }));
     }
     if let Some(new_base) = &view.new_base {
         let options = super::labels(&new_base.select);
@@ -184,6 +192,13 @@ pub(super) fn readback(
                 .unwrap_or_default(),
         ),
         ("in_use", view.in_use.is_some().to_string()),
+        (
+            "in_use_text",
+            view.in_use
+                .as_ref()
+                .map(|in_use| in_use.text.clone())
+                .unwrap_or_default(),
+        ),
         (
             "new_base",
             view.new_base

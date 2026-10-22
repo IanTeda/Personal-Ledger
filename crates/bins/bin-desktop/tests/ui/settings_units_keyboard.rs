@@ -203,20 +203,51 @@ fn a_select_opens_on_enter_moves_on_down_and_commits_on_enter(app: &mut TestAppC
 }
 
 #[gpui::test]
-fn a_refused_delete_shows_the_presenters_deactivate_and_enter_deactivates(
+fn a_unit_in_use_opens_delete_as_deactivate_with_its_counts_and_enter_deactivates(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_units(app);
     ui.press("j d");
-    type_word(&mut ui, "btc");
-    ui.press("enter");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
     assert!(ui.is_drawn("delete-unit-in-use"));
+    assert!(
+        ui.dialog_value("in_use_text")
+            .unwrap_or_default()
+            .starts_with("btc is used by "),
+    );
+    assert!(!ui.is_drawn("delete-unit-base-note"));
 
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+}
+
+#[gpui::test]
+fn the_base_unit_in_use_opens_delete_with_deactivate_disabled_and_enter_keeps_it_open(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.press("d");
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    assert!(ui.is_drawn("delete-unit-base-note"));
+
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.inactive_unit_codes(), Vec::<String>::new());
+}
+
+#[gpui::test]
+fn edit_unit_draws_the_real_usage_line(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("j e");
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert!(ui.is_drawn("unit-form-usage"));
+    assert!(
+        ui.dialog_value("usage")
+            .unwrap_or_default()
+            .starts_with("Used by "),
+    );
 }
 
 #[gpui::test]

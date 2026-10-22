@@ -337,6 +337,14 @@ pub(super) fn render(
             ),
         ]));
     }
+    if let Some(usage) = &view.usage {
+        fields.push(
+            div()
+                .debug_selector(|| "unit-form-usage".to_string())
+                .child(help(usage.clone(), cx))
+                .into_any_element(),
+        );
+    }
     if let Some(test) = &view.test_price {
         fields.push(test_not_built(
             ids.test,
@@ -502,6 +510,7 @@ pub(super) fn readback(
                 .join("|"),
         ),
         ("select_open", selects.any_open().to_string()),
+        ("usage", view.usage.clone().unwrap_or_default()),
         ("refusal", view.refusal.clone().unwrap_or_default()),
     ]
 }

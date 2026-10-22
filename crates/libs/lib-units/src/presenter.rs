@@ -45,7 +45,7 @@ pub use units_pane::{
 
 use crate::protocols::UnitsPorts;
 pub use crate::protocols::{UnitChange, UnitsOutcome};
-use crate::{Updates, msg};
+use crate::{UnitUse, Updates, msg};
 
 /// Where a Presenter reads the time from: `Utc::now` in a Client, a fixed instant in a test.
 pub type Clock = Rc<dyn Fn() -> DateTime<Utc>>;
@@ -97,6 +97,23 @@ fn linked_codes(ports: &dyn UnitsPorts, id: PriceSourceId) -> Vec<String> {
 /// A count as a Message's plural argument.
 fn count(n: usize) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets`.
+pub(super) fn uses_text(uses: UnitUse) -> String {
+    let parts: Vec<String> = [
+        (
+            uses.accounts,
+            msg::units_in_use_accounts as fn(i64) -> String,
+        ),
+        (uses.bill_plans, msg::units_in_use_bill_plans),
+        (uses.budgets, msg::units_in_use_budgets),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, text)| text(count(n)))
+    .collect();
+    parts.join(", ")
 }
 
 fn updates_label(updates: Updates) -> String {
