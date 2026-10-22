@@ -3,24 +3,25 @@
 //! the keymap are `lib-units`'; this folder turns gpui keys and clicks into Presenter events and
 //! draws the view models.
 //!
-//! - `page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
-//! - `dialogs.rs` hosts each Dialog's Presenter in today's Dialog host.
+//! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
+//! - `view/dialog.rs` hosts each Dialog's Presenter in today's Dialog host, one View per Dialog
+//!   in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
 //! - `ports.rs` holds the halfway shims: usage and holdings answered from the Ledger, and the
 //!   Ledger read copy refreshed after each write (#746).
-//! - `store.rs` is where the Units are kept: the SQLite adapter opened at start, or memory.
+//!
+//! Where the Units are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
+//! `UnitsStore`.
 
-mod dialogs;
-mod page;
 pub mod ports;
 mod router;
-mod store;
+mod view;
 
-pub use dialogs::UnitsDialog;
-pub use page::UnitsPage;
+use lib_database::UnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
-pub use store::{Storage, UnitsStore, open_storage};
+pub use view::dialog::UnitsDialog;
+pub use view::page::UnitsPage;
 
 /// The Units page as the UI tests read it: its view model.
 #[doc(hidden)]

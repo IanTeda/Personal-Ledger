@@ -6,7 +6,7 @@ use lib_toast::ToastKind;
 use lib_units::presenter::UnitsOutcome;
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
 
-use super::dialog::Dialog;
+use super::view::dialog::Dialog;
 
 pub struct Router<'a> {
     ports: SharedPorts,

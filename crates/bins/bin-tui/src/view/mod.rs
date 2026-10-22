@@ -16,7 +16,6 @@ pub mod reports;
 pub mod settings;
 pub mod tags;
 pub mod transactions;
-pub mod units;
 
 use crossterm::event::KeyEvent;
 use lib_core::{HexColor, Money, RowID};

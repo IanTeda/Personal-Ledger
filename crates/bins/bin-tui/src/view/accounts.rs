@@ -457,7 +457,7 @@ impl View for AccountsView {
             .constraints([Constraint::Length(1), Constraint::Min(0)])
             .split(area);
         // rows[0] is left blank — breathing space between the shell's title bar and the list/
-        // summary and ledger boxes, matching `view::units`/`view::categories`'s own leading
+        // summary and ledger boxes, matching `units::view::units`/`view::categories`'s own leading
         // spacer row.
 
         let columns = Layout::default()

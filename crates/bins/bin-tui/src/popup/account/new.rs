@@ -6,7 +6,7 @@
 //! instruction.
 //!
 //! **`unit` only ever completes against a Unit a real account already uses**
-//! (`crate::account::known_units`) — `view::units` has no store of its own yet, so there is no
+//! (`crate::account::known_units`) — `units::view::units` has no store of its own yet, so there is no
 //! live Unit registry to complete against beyond "whatever's already in use". A brand-new Unit
 //! can't be created through this popup at this map's fidelity.
 //!

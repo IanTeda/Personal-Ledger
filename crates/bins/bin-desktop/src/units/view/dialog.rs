@@ -30,7 +30,7 @@ use lib_units::{UnitsDialog as Which, UnitsRouter};
 
 use self::price_source_form::ApiKeyInput;
 use self::unit_form::UnitSelects;
-use super::ports::{self, DesktopPorts};
+use crate::units::ports::{self, DesktopPorts};
 use crate::{
     chrome::dialog_host::{
         ConfirmDialog, Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback,

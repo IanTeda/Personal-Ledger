@@ -1,15 +1,16 @@
-//! Where the TUI's Units live: the SQLite adapter `main` opens ([`crate::db::open_storage`]), or
-//! the in-memory ports the tests build `Shell` on. [`UnitsStore`] is what `build_shell` takes, so
-//! either can stand behind the Units View. The same trait as the Desktop's `units/store.rs`.
+//! What a Client holds its Units by: the SQLite adapter start-up opens ([`crate::open_storage`]),
+//! or the in-memory ports a test builds the Client on. Both bins' `build_shell` take a
+//! [`UnitsStore`], so either can stand behind the Units module.
 
-use lib_database::UnitsAdapter;
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
 };
 
+use crate::{Result, UnitsAdapter};
+
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
-/// other domains', so the TUI answers them itself (see `ports.rs`).
+/// other domains', so each Client answers them itself (its `units/ports.rs`).
 pub trait UnitsStore {
     fn units(&self) -> &dyn UnitRepository;
 
@@ -27,7 +28,7 @@ pub trait UnitsStore {
     ///
     /// # Errors
     /// Returns the error reading them back; the rows in memory are left as they were.
-    fn reload(&mut self) -> lib_database::Result<()>;
+    fn reload(&mut self) -> Result<()>;
 }
 
 impl UnitsStore for UnitsAdapter {
@@ -51,7 +52,7 @@ impl UnitsStore for UnitsAdapter {
         UnitsAdapter::commit(self);
     }
 
-    fn reload(&mut self) -> lib_database::Result<()> {
+    fn reload(&mut self) -> Result<()> {
         UnitsAdapter::reload(self)
     }
 }
@@ -81,7 +82,7 @@ impl UnitsStore for InMemoryPorts {
 
     fn commit(&mut self) {}
 
-    fn reload(&mut self) -> lib_database::Result<()> {
+    fn reload(&mut self) -> Result<()> {
         Ok(())
     }
 }

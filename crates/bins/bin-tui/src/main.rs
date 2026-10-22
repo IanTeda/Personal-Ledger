@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     // The Ledger opens before the terminal does: the TUI never runs on a file it can't save to.
     let path = config.personal_ledger_config().file();
-    let storage = match bin_tui::db::open_storage(path) {
+    let storage = match lib_database::open_storage(path) {
         Ok(storage) => storage,
         Err(error) => {
             tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    let bin_tui::db::Storage {
+    let lib_database::Storage {
         units,
         writer,
         failures,

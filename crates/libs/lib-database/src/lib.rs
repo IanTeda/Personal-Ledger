@@ -76,7 +76,12 @@ pub use change_sets::ChangeSet;
 
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
+pub use adapter::store::UnitsStore;
 pub use adapter::units::UnitsAdapter;
+
+/// A Client's Ledger file, opened at start-up with its adapters and the writer.
+pub mod storage;
+pub use storage::{Storage, open_storage};
 
 /// The dev seed: each persisted domain's stub seed, written through its adapter.
 pub mod seed;

@@ -42,8 +42,8 @@ use gpui::{
 use app::Shell;
 pub use chrome::window_size::WindowSize;
 pub use error::Error;
+use lib_database::{Storage, UnitsStore, open_storage};
 use persistence::{PersistedState, WindowGeometry};
-pub use units::{Storage, UnitsStore, open_storage};
 
 /// Crate Result type alias used across the Desktop binary.
 ///

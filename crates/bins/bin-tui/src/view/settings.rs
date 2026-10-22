@@ -3,7 +3,7 @@
 //! list, "where values live" box, reset block) beside a `Min(0)` right pane (settings list,
 //! selected explainer, settings table, command hint row) — so the overall pane structure and
 //! proportions can be checked before the database-backed registry behind it is built out. The
-//! left pane is widened to `view::units`'s own `LEFT_COLUMN_WIDTH` past §4a's own "28 cols
+//! left pane is widened to `units::view::units`'s own `LEFT_COLUMN_WIDTH` past §4a's own "28 cols
 //! fixed", so the two views' left columns line up when switching between them.
 //!
 //! `e` and `enter` reach `crate::popup::settings`'s two popups — §4b's in-place editor and
@@ -13,7 +13,7 @@
 //! §4b, and only committing `general.base_unit` specifically detours through §4c — each popup
 //! here gets its own fixed key and always shows its own worked example (`e` → §4b's
 //! `general.negatives`, `enter` → §4c's `general.base_unit`, matching the one row this view's
-//! fake data actually marks selected). This mirrors `view::units`'s own `n`/`e`/`d` opening
+//! fake data actually marks selected). This mirrors `units::view::units`'s own `n`/`e`/`d` opening
 //! fixed forms regardless of "real" selection.
 //!
 //! The `display` group is the exception (#331): `Tab` focuses it, `j`/`k` pick between its real
@@ -38,7 +38,7 @@ use crate::msg;
 use crate::view::{Action, View, ViewId};
 
 /// Width of the left pane — widened past §4a's own "left 28 cols fixed" terminal geometry to
-/// match `view::units`'s `LEFT_COLUMN_WIDTH`, so the two views' left columns share the same
+/// match `units::view::units`'s `LEFT_COLUMN_WIDTH`, so the two views' left columns share the same
 /// width.
 const LEFT_COLUMN_WIDTH: u16 = 46;
 
@@ -82,7 +82,7 @@ const SETTING_VALUE_WIDTH: u16 = 14;
 
 /// Label column width inside the "where values live" box, wide enough for its longest label
 /// (`"last commit"`) plus a run of spaces before the value starts — the same fixed-column
-/// technique as `view::units`'s `SUMMARY_LABEL_WIDTH`.
+/// technique as `units::view::units`'s `SUMMARY_LABEL_WIDTH`.
 const WHERE_VALUES_LABEL_WIDTH: usize = 14;
 
 /// Label column width inside the "selected" box's facts, wide enough for its longest label
@@ -185,7 +185,7 @@ impl View for SettingsView {
 /// block — §4a's own order. The gap above "where values live" is `Min(1)` rather than a fixed
 /// spacer, so any extra terminal height collects there instead of as dead space below the
 /// reset block — pinning "where values live" and reset to the bottom of the pane, the same
-/// "extra height grows the element above, not a fixed-height one" technique `view::units` uses
+/// "extra height grows the element above, not a fixed-height one" technique `units::view::units` uses
 /// for its own summary box.
 fn render_left_pane(frame: &mut Frame<'_>, area: Rect, display: bool, c: &Colours) {
     let rows = Layout::default()
@@ -316,7 +316,7 @@ struct WhereValuesFact {
 
 /// The "where values live" box: heading, rule, then a bordered `Block` holding §4a's own
 /// worked example verbatim — the model stated on screen, because a user cannot otherwise tell
-/// where a value came from. The border echoes `view::units`'s summary box, so both left-column
+/// where a value came from. The border echoes `units::view::units`'s summary box, so both left-column
 /// boxes read as the same kind of element.
 fn render_where_values_live(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
@@ -421,7 +421,7 @@ fn render_reset(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     render_hint_row(frame, sections[3], "R", &big_r_hint, c);
 }
 
-/// One bold-key / dim-label line, matching `view::units`'s own `KEY_HINTS` convention.
+/// One bold-key / dim-label line, matching `units::view::units`'s own `KEY_HINTS` convention.
 fn key_hint_line(key: &'static str, label: &'static str, c: &Colours) -> Paragraph<'static> {
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let dim = c.muted();
@@ -446,7 +446,7 @@ fn render_hint_row(frame: &mut Frame<'_>, area: Rect, key: &str, label: &str, c:
     );
 }
 
-/// A dim label / dim tag heading row, matching `view::units`'s own heading convention —
+/// A dim label / dim tag heading row, matching `units::view::units`'s own heading convention —
 /// shared by every box in this view. `tag` need not be `'static` — the settings table
 /// heading's own tag is computed fresh each render from `TABLE_ROWS.len()`.
 fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str, c: &Colours) {
@@ -709,7 +709,7 @@ fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours)
 }
 
 /// One row per `general` setting, capped to however many rows actually fit `area` — the same
-/// defensive cap `view::units`'s own row renderers use.
+/// defensive cap `units::view::units`'s own row renderers use.
 fn render_setting_rows(frame: &mut Frame<'_>, area: Rect, settings: &[SettingRow], c: &Colours) {
     let visible = settings.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
@@ -780,13 +780,13 @@ struct SelectedFact {
 /// The "selected" box's `explain` prose for `general.base_unit`, matching the registry
 /// entry's own `explain` field — the line that names what the setting does before its facts
 /// do. Kept short enough to fit the right pane's width at the view's 96-col minimum now that
-/// the left pane matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
+/// the left pane matches `units::view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const SELECTED_EXPLAIN: &str = "which unit every total and report converts into";
 
 /// The "selected" box's facts for `general.base_unit`, resolved against live data in the real
 /// build (`accepts` is a query, not static text) — here, §4a's own worked example, `accepts`
 /// trimmed to fit the right pane's width at the view's 96-col minimum now that the left pane
-/// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
+/// matches `units::view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const SELECTED_FACTS: &[SelectedFact] = &[
     SelectedFact {
         label: "default",
@@ -960,7 +960,7 @@ fn table_row_columns(area: Rect) -> [Rect; 3] {
 /// The command hint row: dim, bottom of the pane — every setting must be settable both ways,
 /// and this is how the user learns the `:set` form. Trimmed from §4a's own three-example
 /// version to fit the right pane's width at the view's 96-col minimum now that the left pane
-/// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
+/// matches `units::view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const COMMAND_HINT: &str = ":set base <unit> · :settings log";
 
 fn render_command_hint(frame: &mut Frame<'_>, area: Rect, c: &Colours) {

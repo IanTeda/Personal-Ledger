@@ -19,8 +19,8 @@ use lib_ledger::Domain;
 use lib_units::keymap::Keymap;
 use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
 
-use super::ports::{self, DesktopPorts};
-use super::router::PageRouter;
+use crate::units::ports::{self, DesktopPorts};
+use crate::units::router::PageRouter;
 use crate::{
     chrome::{statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
@@ -73,7 +73,7 @@ impl UnitsPage {
 
     /// Sends `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
     /// in line with whatever it wrote.
-    pub(super) fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+    pub(in crate::units) fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
         ports::sync(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
@@ -85,7 +85,7 @@ impl UnitsPage {
     }
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host.
-    pub(super) fn dialog_landed(
+    pub(in crate::units) fn dialog_landed(
         &mut self,
         outcome: lib_units::presenter::UnitsOutcome,
         cx: &mut Context<'_, Self>,

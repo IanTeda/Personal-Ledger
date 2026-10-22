@@ -64,7 +64,7 @@ fn chart_end_month() -> NaiveDate {
     crate::fixture::date(2026, 9, 1)
 }
 
-/// Width of the left pane (tree + summary) — matches `view::units`'s own `LEFT_COLUMN_WIDTH`,
+/// Width of the left pane (tree + summary) — matches `units::view::units`'s own `LEFT_COLUMN_WIDTH`,
 /// so the two screens' left columns line up rather than each picking their own width.
 const LEFT_PANE_WIDTH: u16 = 46;
 
@@ -78,7 +78,7 @@ const TREE_ROLLUP_WIDTH: u16 = 8;
 const SUMMARY_LABEL_WIDTH: usize = 22;
 
 /// Height of the right pane's spend-chart section: heading, rule, the plot itself, then the
-/// first/avg/last labels beneath it — matches `view::units`'s own `WEEKLY_CLOSE_HEIGHT`, the
+/// first/avg/last labels beneath it — matches `units::view::units`'s own `WEEKLY_CLOSE_HEIGHT`, the
 /// closest existing chart section, so the two screens' charts read at the same scale.
 const SPEND_CHART_HEIGHT: u16 = 12;
 
@@ -555,7 +555,7 @@ impl View for CategoriesView {
             .constraints([Constraint::Length(1), Constraint::Min(0)])
             .split(area);
         // rows[0] is left blank — breathing space between the shell's title bar and the tree/
-        // summary and spend-chart/transactions boxes, matching `view::units`/`view::dashboard`'s
+        // summary and spend-chart/transactions boxes, matching `units::view::units`/`view::dashboard`'s
         // own leading spacer row.
 
         let columns = Layout::default()
@@ -1145,7 +1145,7 @@ fn tree_row_columns(area: Rect) -> [Rect; 3] {
 }
 
 /// One `label   value` summary row, the label padded to [`SUMMARY_LABEL_WIDTH`] and dimmed —
-/// mirrors `view::units`'s own `summary_field_line`.
+/// mirrors `units::view::units`'s own `summary_field_line`.
 fn summary_field_line<'a>(c: &Colours, label: &'a str, value: &'a str) -> Paragraph<'a> {
     let dim = c.muted();
     Paragraph::new(Line::from(vec![
@@ -1561,7 +1561,7 @@ mod tests {
         };
         assert!(
             row_is_blank(0),
-            "row 0 should be a blank spacer, matching view::units/view::dashboard's own \
+            "row 0 should be a blank spacer, matching units::view::units/view::dashboard's own \
              leading breathing-space row"
         );
         assert!(

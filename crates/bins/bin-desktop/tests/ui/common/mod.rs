@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs, UnitsStore, WindowSize,
+    ShellBindings, ShellLogs, WindowSize,
     app::{
         BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
         SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
@@ -31,7 +31,7 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
-use lib_database::{Domain, WriteFailure};
+use lib_database::{Domain, UnitsStore, WriteFailure};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
@@ -166,7 +166,7 @@ impl<'a> Harness<'a> {
 
     /// As [`Harness::new`], on the `storage` the Desktop's real start-up opened, its failure
     /// channel included.
-    pub fn with_storage(app: &'a mut TestAppContext, storage: bin_desktop::Storage) -> Self {
+    pub fn with_storage(app: &'a mut TestAppContext, storage: lib_database::Storage) -> Self {
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),

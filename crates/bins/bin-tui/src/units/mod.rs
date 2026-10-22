@@ -1,25 +1,27 @@
-//! The Units module's TUI half (`docs/development/viper-architecture.md`): the Dialogs' View and
-//! `impl UnitsRouter`, with the ports and store behind them. Every rule, every piece of text and
-//! the keymap are `lib-units`'; the Units View (`view/units.rs`) and this folder turn crossterm
-//! keys into Presenter events and draw the view models, as the Desktop's `units/` does in gpui.
+//! The Units module's TUI half (`docs/development/viper-architecture.md`): the Units View, its
+//! Dialogs and `impl UnitsRouter`, with the ports behind them. Every rule, every piece of text and
+//! the keymap are `lib-units`'; this folder turns crossterm keys into Presenter events and draws
+//! the view models, as the Desktop's `units/` does in gpui.
 //!
-//! - `dialog.rs` hosts each Dialog's Presenter and draws it as a floating window.
+//! - `view/units.rs` is the Units View, hosted by `Shell`.
+//! - `view/dialog.rs` hosts each Dialog's Presenter and draws it as a floating window.
 //! - `router.rs` is the Router, which collects what a Presenter asked for.
 //! - `ports.rs` holds the halfway shims: usage and holdings answered by the stub Ledger (#746).
-//! - `store.rs` is where the Units are kept: the SQLite adapter `main` opens, or memory.
+//!
+//! Where the Units are kept, the SQLite adapter `main` opens or memory, is `lib-database`'s
+//! `UnitsStore`.
 
-pub mod dialog;
 pub mod ports;
 pub mod router;
-pub mod store;
+pub mod view;
 
 use lib_config::KeyBindingConfig;
+use lib_database::UnitsStore;
 use lib_ledger::Ledger;
 use lib_units::keymap::{Keymap, units_page_keymap};
 use lib_units::presenter::UnitsPageEvent;
 
 pub use ports::{LedgerBackedPorts, TuiPorts};
-pub use store::UnitsStore;
 
 /// What `Shell` builds each Units View from: the shared ports and the keymap under
 /// `[keybindings]`.

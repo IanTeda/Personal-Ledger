@@ -3,3 +3,6 @@
 //! (ADR-0046).
 
 pub mod units;
+
+/// What the Clients hold each module's ports by: an adapter, or the module's in-memory fakes.
+pub mod store;

@@ -7,9 +7,9 @@ use lib_toast::ToastKind;
 use lib_units::presenter::UnitsOutcome;
 use lib_units::{UnitsDialog as Which, UnitsRouter};
 
-use super::dialogs::UnitsDialog;
-use super::page::UnitsPage;
 use super::ports::DesktopPorts;
+use super::view::dialog::UnitsDialog;
+use super::view::page::UnitsPage;
 use crate::{chrome::dialog_host::open_dialog, view::event::ViewEvent};
 
 pub(super) struct PageRouter<'a, 'b> {

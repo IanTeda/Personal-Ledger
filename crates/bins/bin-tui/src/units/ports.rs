@@ -11,7 +11,7 @@ use lib_units::{
     UnitsPorts,
 };
 
-use super::store::UnitsStore;
+use lib_database::UnitsStore;
 
 /// The Units ports the Units View and its Dialogs share.
 pub type TuiPorts = Rc<RefCell<LedgerBackedPorts>>;

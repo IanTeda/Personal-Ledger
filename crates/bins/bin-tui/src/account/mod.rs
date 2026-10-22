@@ -30,7 +30,7 @@ use lib_core::{AccountType, Money, RowID};
 /// A Unit's two facts an Account needs: its code (for the "same unit"/"mixed units" rules and
 /// transfer-target filtering) and its display precision (`decimal_places`, e.g. `2` for AUD,
 /// `4` for a fund, `8` for BTC). Denormalised directly onto [`Account`] rather than a separate
-/// Units store/join — `crate::view::units` has no fixture/store of its own yet (still a
+/// Units store/join — `crate::units::view::units` has no fixture/store of its own yet (still a
 /// wireframe, see issue #115's Notes), so there is nothing real to join against, and no
 /// account-side rule here ever needs a Unit's own name or kind, only these two facts.
 #[derive(Debug, Clone, PartialEq)]
@@ -196,11 +196,11 @@ pub trait AccountStore {
 }
 
 /// Every distinct Unit currently used by at least one account, sorted by code. The
-/// placeholder source `popup::account::new`'s `unit` field completes against: `view::units`
+/// placeholder source `popup::account::new`'s `unit` field completes against: `units::view::units`
 /// has no real store of its own yet (see this module's own doc on why `AccountUnit` is
 /// denormalised rather than joined), so "every Unit a real account already uses" is the only
 /// honest candidate list available at this map's fidelity — a brand-new Unit no account has
-/// used yet can't be picked here until `view::units` is real.
+/// used yet can't be picked here until `units::view::units` is real.
 pub fn known_units(accounts: &[Account]) -> Vec<AccountUnit> {
     let mut units: Vec<AccountUnit> = Vec::new();
     for account in accounts {

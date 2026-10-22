@@ -9,7 +9,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{Domain, WriteFailure};
+use lib_database::{Domain, UnitsStore, WriteFailure};
 use lib_locale::format::upper;
 use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
@@ -48,12 +48,12 @@ use crate::{
         toast_history::ToastHistoryPopup,
     },
     tui::Tui,
-    units::{UnitsSetup, UnitsStore},
+    units::{UnitsSetup, view::units::UnitsView},
     view::{
         Action, View, ViewId, accounts::AccountsView, balance_checks::BalanceChecksView,
         budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
         payees::PayeesView, reports::ReportsView, settings::SettingsView, tags::TagsView,
-        transactions::TransactionsView, units::UnitsView,
+        transactions::TransactionsView,
     },
 };
 

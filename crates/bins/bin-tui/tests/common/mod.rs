@@ -11,10 +11,10 @@
 
 use std::sync::mpsc;
 
-use bin_tui::{Shell, UnitsStore, build_shell, colours::Colours, event::Event, locale};
+use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::WriteFailure;
+use lib_database::{UnitsStore, WriteFailure};
 use lib_units::fake::InMemoryPorts;
 use ratatui::{Terminal, backend::TestBackend};
 

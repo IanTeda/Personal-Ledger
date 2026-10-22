@@ -11,7 +11,7 @@ fn a_unit_added_in_the_tui_is_there_after_a_restart() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("ledger.pldb");
 
-    let storage = bin_tui::db::open_storage(&path).expect("a new Ledger opens and is seeded");
+    let storage = lib_database::open_storage(&path).expect("a new Ledger opens and is seeded");
     let (mut shell, _report) = shell_on(Box::new(storage.units));
     press(&mut shell, "g u n");
     type_text(&mut shell, "xau");
@@ -22,7 +22,7 @@ fn a_unit_added_in_the_tui_is_there_after_a_restart() {
     storage.writer.flush().expect("the write lands");
     drop(storage.writer);
 
-    let storage = bin_tui::db::open_storage(&path).expect("the Ledger opens again");
+    let storage = lib_database::open_storage(&path).expect("the Ledger opens again");
     let (mut shell, _report) = shell_on(Box::new(storage.units));
     press(&mut shell, "g u");
     let frame = screen(&mut shell);

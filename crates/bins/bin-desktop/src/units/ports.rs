@@ -19,8 +19,8 @@ use lib_units::{
     UnitsPorts,
 };
 
-use super::store::UnitsStore;
 use crate::ledger_store::LedgerStore;
+use lib_database::UnitsStore;
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;

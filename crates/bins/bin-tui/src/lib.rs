@@ -5,7 +5,6 @@
 mod account;
 mod category;
 pub mod colours;
-pub mod db;
 pub mod error;
 pub mod event;
 mod fixture;
@@ -26,8 +25,8 @@ mod msg {
 }
 
 pub use error::Error;
+use lib_database::UnitsStore;
 pub use shell::Shell;
-pub use units::UnitsStore;
 
 use lib_config::KeyBindingConfig;
 

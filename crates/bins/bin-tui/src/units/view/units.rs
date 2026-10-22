@@ -30,8 +30,8 @@ use ratatui::{
 
 use crate::colours::Colours;
 use crate::msg;
-use crate::units::dialog::Dialog;
 use crate::units::router::Router;
+use crate::units::view::dialog::Dialog;
 use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
