@@ -62,10 +62,10 @@ docker run -e PUID=1000 -e PGID=1000 ...
 
 ## Quick start
 
-The example deployment lives at [`example/compose.sync-server.yaml`](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/example/compose.sync-server.yaml) — it's an example, not the only way to run this, but it's the recommended starting point. It's standalone: it pulls the pre-built multi-arch image from GHCR, so you don't need to clone the repo or run it from any particular directory — just download the one file and start it:
+The example deployment lives at [`docker/compose.sync-server.yaml`](https://github.com/IanTeda/Personal-Ledger/blob/main/docker/compose.sync-server.yaml) — it's an example, not the only way to run this, but it's the recommended starting point. It's standalone: it pulls the pre-built multi-arch image from GHCR, so you don't need to clone the repo or run it from any particular directory — just download the one file and start it:
 
 ```sh
-curl -O https://raw.githubusercontent.com/IanTeda/Personal-Ledger/feasibility/example/compose.sync-server.yaml
+curl -O https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docker/compose.sync-server.yaml
 docker compose -f compose.sync-server.yaml up -d
 ```
 

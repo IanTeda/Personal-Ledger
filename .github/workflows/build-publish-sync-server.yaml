@@ -207,12 +207,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    # example/compose.sync-server.yaml lives in example/, not the repo root (it reads
-    # as a deployment example, not the canonical way to run the workspace) --
+    # docker/compose.sync-server.yaml lives in docker/, not the repo root --
     # COMPOSE_FILE lets every bare `docker compose ...` call below find it without
     # repeating `-f` on each step.
     env:
-      COMPOSE_FILE: example/compose.sync-server.yaml
+      COMPOSE_FILE: docker/compose.sync-server.yaml
     steps:
       # https://github.com/actions/checkout
       - name: Checkout repository
