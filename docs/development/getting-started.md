@@ -58,7 +58,7 @@ docker run -e PUID=1000 -e PGID=1000 ...
 ### Ports and storage
 
 - **`50051`** — the gRPC (and, for the `/authorize`/`/token` OAuth2 endpoints, HTTP) listener. One port serves both; see ADR-0010.
-- **`/data`** — where the durable Change Set log (and the account store) lives, as a single SQLite file. Mount a volume here if you want it to survive anything more than a container restart on its own filesystem layer.
+- **`/data`** — where the durable Change Set log (and the account store) lives, as a single SQLite file, `sync-server.sqlite`. Mount a volume here if you want it to survive anything more than a container restart on its own filesystem layer.
 
 ## Quick start
 
@@ -69,7 +69,7 @@ curl -O https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docker/co
 docker compose -f compose.sync-server.yaml up -d
 ```
 
-This pulls `ghcr.io/ianteda/personal-ledger-sync-server:latest`, starts the Sync Server on port `50051`, and creates a named volume (`sync-server-data`) for its durable store — seeded from the image's own pre-created (empty) database file on first run, so there's no separate init step.
+This pulls `ghcr.io/ianteda/personal-ledger-sync-server:latest`, starts the Sync Server on port `50051`, and creates a named volume (`sync-server-data`) for its durable store. The Sync Server creates its database file, `/data/sync-server.sqlite`, on first start, so there's no separate init step.
 
 Confirm it's actually serving requests (matches how this repo's own CI verifies it):
 

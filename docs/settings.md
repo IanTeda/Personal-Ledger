@@ -420,7 +420,7 @@ The socket address the Sync Server’s gRPC/HTTP listener binds to.
 
 database_uri
 
-The URI of the Sync Server’s own database (its durable Change Set log, per ADR-0009) — not a Client’s local `[Personal-Ledger] file`; the Sync Server’s database is server-side storage, unrelated to any Client’s local Ledger file. Connection-pool settings (max/min connections, timeouts) are fixed in code, not configurable.
+The URI of the Sync Server’s own database (its durable Change Set log, per ADR-0009) — not a Client’s local `[Personal-Ledger] file`; the Sync Server’s database is server-side storage, unrelated to any Client’s local Ledger file. Connection-pool settings (max/min connections, timeouts) are fixed in code, not configurable. A relative path resolves against the Sync Server's working directory (`/data` in the Docker image), and a missing database file is created on start.
 
 * Type: String
 * Default: "sqlite:./sync-server.sqlite"

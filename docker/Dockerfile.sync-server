@@ -67,19 +67,16 @@ FROM debian:bookworm-slim AS runtime
 RUN groupadd --system --gid 10001 syncserver \
     && useradd --system --uid 10001 --gid syncserver --no-create-home --shell /usr/sbin/nologin syncserver
 
-# The Sync Server's own durable Change Set log lives here. lib-database's default
-# DatabaseConfig::url is the literal relative path "sqlite:./personal-ledger.sqlite"
-# (see crates/libs/lib-database/src/config.rs's DEFAULT_URL), resolved against this
-# WORKDIR -- pre-creating the (empty) file means the container starts with zero
-# required config/env, since SQLite's driver needs the file to already exist unless
-# the URL carries "?mode=rwc" (which the built-in default does not). This also sets up
-# the mount point #49's persistent volume will use later; this ticket doesn't wire that
-# up itself. Ownership is (re)applied by docker-entrypoint.sync-server.sh on every start, since a
+# The Sync Server's own durable Change Set log lives here. Its default `[sync-server]
+# database_uri` is the relative "sqlite:./sync-server.sqlite" (lib-config's
+# sync_server.rs), resolved against this WORKDIR. lib-database's DatabaseConnection
+# creates a missing SQLite file, so nothing is pre-created: the server makes
+# /data/sync-server.sqlite on first start, inside the volume mounted here (#626).
+# Ownership is (re)applied by docker-entrypoint.sync-server.sh on every start, since a
 # bind-mounted host directory here would otherwise keep whatever ownership it already
 # has, not what's set at build time.
 WORKDIR /data
-RUN touch /data/personal-ledger.sqlite \
-    && chown -R syncserver:syncserver /data
+RUN chown -R syncserver:syncserver /data
 
 COPY --from=builder /workspace/target/release/sync-server /usr/local/bin/sync-server
 

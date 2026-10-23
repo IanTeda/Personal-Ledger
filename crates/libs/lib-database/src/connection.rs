@@ -26,7 +26,12 @@
 //! - Async-first design for non-blocking database operations
 //! - Thread-safe pool access for concurrent operations
 
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use std::str::FromStr;
+
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 use crate::{Error, Result};
 
@@ -93,6 +98,12 @@ impl DatabaseConnection {
     /// - The database URI is invalid or unreachable
     /// - The database file cannot be created or accessed
     pub async fn new(database_uri: impl AsRef<str>) -> Result<Self> {
+        // A missing file is created rather than refused, so the Sync Server starts on a fresh
+        // volume with no pre-created file and no `?mode=rwc` in its default URI (#626).
+        let connect_options = SqliteConnectOptions::from_str(database_uri.as_ref())
+            .map_err(|e| Error::Connection(format!("Invalid database URI: {}", e)))?
+            .create_if_missing(true);
+
         let pool_options = SqlitePoolOptions::new()
             .max_connections(MAX_CONNECTIONS)
             .min_connections(MIN_CONNECTIONS)
@@ -113,7 +124,7 @@ impl DatabaseConnection {
             });
 
         let pool = pool_options
-            .connect(database_uri.as_ref())
+            .connect_with(connect_options)
             .await
             .map_err(|e| Error::Connection(format!("Failed to connect to database pool: {}", e)))?;
 
@@ -167,6 +178,19 @@ mod tests {
         // Use in-memory database for testing since file-based might not work in test environment
         let result = DatabaseConnection::new("sqlite::memory:").await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn new_creates_a_missing_database_file() {
+        let dir = tempfile::tempdir().expect("a temporary directory for the database file");
+        let db_path = dir.path().join("sync-server.sqlite");
+
+        let connection = DatabaseConnection::new(format!("sqlite:{}", db_path.display()))
+            .await
+            .expect("a missing database file to be created");
+
+        assert!(connection.health_check().await.is_ok());
+        assert!(db_path.exists());
     }
 
     #[tokio::test]

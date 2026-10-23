@@ -37,7 +37,6 @@ services:
       - sync-server-data:/data
 
 volumes:
-  # Named (not bind-mounted): on first run, Docker seeds it from the image's own
-  # /data contents -- including the pre-created empty SQLite file docker/docker-entrypoint.sync-server.sh
-  # and the Dockerfile already rely on -- so no extra init step is needed here.
+  # Named (not bind-mounted): the Sync Server creates /data/sync-server.sqlite on
+  # first start, so no extra init step is needed here, and it persists across restarts.
   sync-server-data:
