@@ -28,7 +28,7 @@ Who logs what is decided in ADR-0047 (`docs/adr/0047-interactors-log-ledger-chan
 Explicit events, not `#[instrument]` (span events are off, so a span alone prints nothing):
 
 ```rust
-pub fn run(self, units: &mut dyn UnitRepository, /* … */) -> Result<UnitRow, DeleteUnitRefusal> {
+pub fn run(self, units: &mut dyn UnitRepository, /* … */) -> Result<UnitRow> {
     let outcome = self.apply(units, /* … */);
     match &outcome {
         Ok(_) => tracing::info!(unit_id = %self.id, "Deleted a Unit"),
