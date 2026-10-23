@@ -2,6 +2,9 @@
 
 mod account_commands;
 mod bill_reads;
+mod bills_seed;
+#[cfg(test)]
+mod bills_seed_tests;
 mod budget_commands;
 #[cfg(test)]
 mod budgets_seed_tests;
@@ -200,7 +203,15 @@ impl Ledger {
         let payees = default_payees();
         let tags = default_tags();
         let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
-        let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        let bills = bills_seed::book_stub_bills(
+            default_bills(
+                &bill_reads::bill_accounts(&accounts),
+                &bill_reads::bill_categories(&categories),
+                &bill_reads::bill_payees(&payees),
+                today,
+            ),
+            &mut transactions,
+        );
         let inventory = default_inventory(today);
         let documents = default_documents(
             &accounts,

@@ -440,7 +440,7 @@ mod tests {
     fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAppContext) {
         use lib_bill_payments::interactor::PayBill;
         use lib_bills::interactor::{EditBillPlan, MatchBill, SkipBill};
-        use lib_bills::{BillPlanDraft, Resolution};
+        use lib_bills::{BillAccounts as _, BillCategories as _, BillPlanDraft, Resolution};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
@@ -458,8 +458,8 @@ mod tests {
                         ledger.bill_plans(),
                         ledger.bill_entries(),
                         ledger.transactions(),
-                        ledger.accounts(),
-                        ledger.categories(),
+                        &ledger.bill_accounts(),
+                        &ledger.bill_categories(),
                         entry.id(),
                     )
                     .first()

@@ -622,15 +622,7 @@ pub fn inbox_detail(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        bills::default_bills,
-        documents::{self, DocumentsSeed, default_documents},
-        transactions::default_transactions,
-    };
-    use lib_accounts::default_accounts;
-    use lib_categories::default_categories;
-    use lib_payees::default_payees;
-    use lib_tags::default_tags;
+    use crate::documents::{self, DocumentsSeed};
 
     struct World {
         types: Vec<DocumentTypeRow>,
@@ -646,30 +638,17 @@ mod tests {
     fn world() -> World {
         crate::locale::init_for_tests();
         let today = NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid test date");
-        let accounts = default_accounts();
-        let categories = default_categories();
-        let payees = default_payees();
-        let tags = default_tags();
-        let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
-        let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
-        let inventory = crate::inventory::default_inventory(today);
-        let seed = default_documents(
-            &accounts,
-            &categories,
-            &payees,
-            &bills.plans,
-            &inventory,
-            &mut transactions,
-            today,
-        );
+        let ledger = lib_ledger::Ledger::stub_on(today);
         World {
             types: documents::types::default_types(),
-            accounts,
-            payees,
-            plans: bills.plans,
-            transactions,
-            seed,
-            inventory,
+            accounts: ledger.accounts().to_vec(),
+            payees: ledger.payees().to_vec(),
+            plans: ledger.bill_plans().to_vec(),
+            transactions: ledger.transactions().to_vec(),
+            seed: DocumentsSeed {
+                documents: ledger.documents().to_vec(),
+            },
+            inventory: ledger.inventory().clone(),
             today,
         }
     }

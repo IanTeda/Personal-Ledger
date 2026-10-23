@@ -1,26 +1,25 @@
 //! The in-memory Bills ports, for tests and UI-first work. Each holds its rows in plain fields so a
 //! test can set up or read state directly. The stub seed is `seed`'s [`default_bills`](crate::default_bills),
-//! joined in [`InMemoryPorts::stub`] with the stub Accounts, Categories and Payees it names.
-//! [`RecordingRouter`] records what a Presenter asked for.
+//! joined in [`InMemoryPorts::stub`] with fixed Accounts, Categories and Payees ([`stub_accounts`],
+//! [`stub_categories`], [`stub_payees`]) that carry the stub's ids and names, so this crate needs
+//! none of those domains. [`RecordingRouter`] records what a Presenter asked for.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_accounts::Account;
-use lib_categories::Category;
-use lib_core::{BillPlanId, TransactionId, UnitId};
-use lib_payees::Payee;
+use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, TransactionId, UnitId};
 use lib_toast::ToastKind;
-use lib_transactions::Transaction;
+use lib_transactions::{Split, Transaction};
 
 use crate::protocols::{
     BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
     SharedPorts,
 };
 use crate::{
-    BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
-    BillScheduleRepository, BillTransactions, BillsSeed, EntryId,
+    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
+    BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillTransactions, BillsSeed,
+    EntryId, Resolution, SplitRef, StubBills,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -73,9 +72,9 @@ impl BillScheduleRepository for InMemoryBills {
 /// The other domains' rows Bills reads, held in memory.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InMemoryBillReads {
-    pub accounts: Vec<Account>,
-    pub categories: Vec<Category>,
-    pub payees: Vec<Payee>,
+    pub accounts: Vec<BillAccount>,
+    pub categories: Vec<BillCategory>,
+    pub payees: Vec<BillPayee>,
     pub transactions: Vec<Transaction>,
 }
 
@@ -90,19 +89,19 @@ impl BillTransactions for InMemoryBillReads {
 }
 
 impl BillAccounts for InMemoryBillReads {
-    fn bill_accounts(&self) -> Vec<Account> {
+    fn bill_accounts(&self) -> Vec<BillAccount> {
         self.accounts.clone()
     }
 }
 
 impl BillCategories for InMemoryBillReads {
-    fn bill_categories(&self) -> Vec<Category> {
+    fn bill_categories(&self) -> Vec<BillCategory> {
         self.categories.clone()
     }
 }
 
 impl BillPayees for InMemoryBillReads {
-    fn bill_payees(&self) -> Vec<Payee> {
+    fn bill_payees(&self) -> Vec<BillPayee> {
         self.payees.clone()
     }
 }
@@ -150,14 +149,18 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Bill Plans and their Schedule as of `today`, with the stub Accounts, Categories
-    /// and Payees they name and the Transactions their Paid entries were paid by.
+    /// The stub Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
+    /// and Payees they name and the Transactions their Paid entries were paid by: the stub
+    /// Ledger's Bills, with the Transactions numbered from 1 rather than after the other stubs'.
     pub fn stub(today: NaiveDate) -> Self {
-        let accounts = lib_accounts::default_accounts();
-        let categories = lib_categories::default_categories();
-        let payees = lib_payees::default_payees();
+        let accounts = stub_accounts();
+        let categories = stub_categories();
+        let payees = stub_payees();
         let mut transactions = Vec::new();
-        let seed = crate::default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        let seed = book(
+            crate::default_bills(&accounts, &categories, &payees, today),
+            &mut transactions,
+        );
         Self {
             bills: seed.into(),
             reads: InMemoryBillReads {
@@ -211,6 +214,142 @@ impl BillsPorts for InMemoryPorts {
             categories: &self.reads,
         }
     }
+}
+
+/// Books `stub`'s payments and Match candidate into `transactions`, as the stub Ledger does
+/// through `lib-bill-payments`' `PayBill`, which this crate can't reach: each payment an Open
+/// Transaction in its Plan's Account with one Split of `-amount` carrying the Plan's Category and
+/// Payee, left at its status, newest first. `lib-ledger` checks the two agree.
+fn book(stub: StubBills, transactions: &mut Vec<Transaction>) -> BillsSeed {
+    let StubBills {
+        seed: BillsSeed { plans, mut entries },
+        payments,
+        match_candidate,
+    } = stub;
+    let next_id = |transactions: &Vec<Transaction>| {
+        TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default())
+    };
+    for payment in payments {
+        let Some(plan) = crate::get(&plans, payment.entry.plan_id) else {
+            continue;
+        };
+        let Some(found) = crate::entry_mut(&mut entries, payment.entry) else {
+            continue;
+        };
+        let id = next_id(transactions);
+        found.resolution = Resolution::Paid(SplitRef {
+            transaction_id: id,
+            split_index: 0,
+        });
+        insert_newest_first(
+            transactions,
+            Transaction {
+                id,
+                date: payment.date,
+                account_id: plan.account_id,
+                status: payment.status,
+                is_flagged: false,
+                description: Some(plan.name.clone()),
+                splits: vec![Split {
+                    amount: lib_core::Money(-payment.amount.0),
+                    category_id: plan.category_id,
+                    payee_id: plan.payee_id,
+                    tag_ids: Vec::new(),
+                }],
+            },
+        );
+    }
+    if let Some(debit) = match_candidate {
+        let transaction = debit.transaction(next_id(transactions));
+        insert_newest_first(transactions, transaction);
+    }
+    BillsSeed { plans, entries }
+}
+
+fn insert_newest_first(transactions: &mut Vec<Transaction>, transaction: Transaction) {
+    let at = transactions
+        .iter()
+        .position(|t| t.date <= transaction.date)
+        .unwrap_or(transactions.len());
+    transactions.insert(at, transaction);
+}
+
+/// The stub Accounts as Bills reads them: the Accounts stub's ids, names, Units and whether each
+/// takes Transactions.
+pub fn stub_accounts() -> Vec<BillAccount> {
+    let account = |n, name: &str, unit, takes_transactions| BillAccount {
+        id: AccountId::seed(n),
+        name: name.to_string(),
+        unit,
+        takes_transactions,
+    };
+    vec![
+        account(1, "Wallet", UnitId::SEED_AUD, true),
+        account(2, "ANZ Everyday", UnitId::SEED_AUD, true),
+        account(3, "ANZ Offset", UnitId::SEED_AUD, true),
+        account(4, "Amex Platinum", UnitId::SEED_AUD, true),
+        account(5, "Home Loan", UnitId::SEED_AUD, false),
+        account(6, "Vanguard VAS", UnitId::SEED_VAS, false),
+        account(7, "Bitcoin", UnitId::SEED_BTC, false),
+    ]
+}
+
+/// The stub Categories as Bills reads them, the Categories stub's tree flattened to paths.
+pub fn stub_categories() -> Vec<BillCategory> {
+    let category = |n, name: &str, path: &str, is_expense, is_leaf| BillCategory {
+        id: CategoryId::seed(n),
+        name: name.to_string(),
+        path: path.to_string(),
+        is_expense,
+        is_leaf,
+    };
+    vec![
+        category(1, "Housing", "Housing", true, false),
+        category(2, "Rent", "Housing \u{203a} Rent", true, true),
+        category(3, "Utilities", "Housing \u{203a} Utilities", true, false),
+        category(
+            4,
+            "Electricity",
+            "Housing \u{203a} Utilities \u{203a} Electricity",
+            true,
+            true,
+        ),
+        category(
+            5,
+            "Water",
+            "Housing \u{203a} Utilities \u{203a} Water",
+            true,
+            true,
+        ),
+        category(6, "Food", "Food", true, false),
+        category(7, "Groceries", "Food \u{203a} Groceries", true, true),
+        category(8, "Dining", "Food \u{203a} Dining", true, true),
+        category(9, "Transport", "Transport", true, true),
+        category(10, "Household", "Household", true, true),
+        category(11, "Salary", "Salary", false, true),
+        category(12, "Interest", "Interest", false, true),
+    ]
+}
+
+/// The stub Payees Bills' seed and tests name, with the Payees stub's ids, and its one inactive
+/// Payee.
+pub fn stub_payees() -> Vec<BillPayee> {
+    let payee = |n, name: &str, is_active| BillPayee {
+        id: PayeeId::seed(n),
+        name: name.to_string(),
+        is_active,
+    };
+    vec![
+        payee(3, "Netflix", true),
+        payee(5, "Origin Energy", true),
+        payee(15, "Sydney Water", true),
+        payee(18, "Don Quijote", false),
+        payee(19, "Ray White Rentals", true),
+        payee(20, "Telstra", true),
+        payee(21, "Fitness First", true),
+        payee(22, "AAMI", true),
+        payee(23, "Brisbane City Council", true),
+    ]
 }
 
 /// What a Presenter asked its Router for, in order.

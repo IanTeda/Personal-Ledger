@@ -289,7 +289,7 @@ mod tests {
     fn the_reads_are_the_ledgers() {
         let (ledger, ports) = stub();
         let ports = ports.borrow();
-        assert_eq!(ports.accounts().bill_accounts(), ledger.accounts());
+        assert_eq!(ports.accounts().bill_accounts(), ledger.bill_accounts());
         let base = ledger.base_unit_row().map(|unit| unit.id);
         assert_eq!(ports.units().base_unit(), base);
         assert_eq!(

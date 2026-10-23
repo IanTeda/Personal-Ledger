@@ -118,8 +118,9 @@ impl World {
             &mut self.plans,
             &mut self.entries,
             &draft,
-            &self.categories,
-            &self.accounts,
+            // The stub Categories and Accounts as Bills reads them; the World's are the same stubs.
+            &lib_bills::fake::stub_categories(),
+            &lib_bills::fake::stub_accounts(),
             today(),
         );
         assert!(inserted.is_ok(), "{inserted:?}");

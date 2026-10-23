@@ -9,10 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_accounts::Account;
-use lib_categories::Category;
-use lib_core::{BillPlanId, TransactionId, UnitId};
-use lib_payees::Payee;
+use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, TransactionId, UnitId};
 use lib_toast::ToastKind;
 use lib_transactions::Transaction;
 
@@ -65,19 +62,48 @@ pub trait BillTransactions {
     fn paid_transaction(&self, id: TransactionId) -> Option<Transaction>;
 }
 
-/// The Accounts a Bill Plan may be paid from.
+/// An Account as Bills reads it. `takes_transactions` is the Accounts' rule, filled by the side
+/// that answers [`BillAccounts`], so Bills checks the flag rather than knowing Account types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillAccount {
+    pub id: AccountId,
+    pub name: String,
+    pub unit: UnitId,
+    pub takes_transactions: bool,
+}
+
+/// A Category as Bills reads it. `path` (ancestors then `name`) and `is_leaf` are the
+/// Categories' rules, filled by the side that answers [`BillCategories`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillCategory {
+    pub id: CategoryId,
+    pub name: String,
+    pub path: String,
+    pub is_expense: bool,
+    pub is_leaf: bool,
+}
+
+/// A Payee as Bills reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillPayee {
+    pub id: PayeeId,
+    pub name: String,
+    pub is_active: bool,
+}
+
+/// The Accounts a Bill Plan may be paid from: every Account, flagged, not a filtered list.
 pub trait BillAccounts {
-    fn bill_accounts(&self) -> Vec<Account>;
+    fn bill_accounts(&self) -> Vec<BillAccount>;
 }
 
-/// The Categories a Bill Plan may be filed under.
+/// The Categories a Bill Plan may be filed under: every Category, flagged.
 pub trait BillCategories {
-    fn bill_categories(&self) -> Vec<Category>;
+    fn bill_categories(&self) -> Vec<BillCategory>;
 }
 
-/// The Payees a Bill Plan may be paid to.
+/// The Payees a Bill Plan may be paid to: every Payee, inactive ones included.
 pub trait BillPayees {
-    fn bill_payees(&self) -> Vec<Payee>;
+    fn bill_payees(&self) -> Vec<BillPayee>;
 }
 
 /// The Units Bills names its amounts in. A read port, so `lib-bills` needn't depend on the Units

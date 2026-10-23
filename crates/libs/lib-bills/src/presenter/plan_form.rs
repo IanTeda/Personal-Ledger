@@ -14,9 +14,7 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
-use lib_core::{
-    AccountId, BillPlanId, CategoryId, CategoryTypes, DateStyle, Money, PayeeId, UnitId,
-};
+use lib_core::{AccountId, BillPlanId, CategoryId, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::{
     DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
 };
@@ -248,10 +246,7 @@ impl PlanFormPresenter {
         let all_categories = ports.categories().bill_categories();
         let mut categories: Vec<Choice<CategoryId>> = all_categories
             .iter()
-            .filter(|c| {
-                c.category_type == CategoryTypes::Expense
-                    && lib_categories::is_leaf(&all_categories, c.id)
-            })
+            .filter(|c| c.is_expense && c.is_leaf)
             .map(|c| Choice {
                 value: c.id,
                 label: c.name.clone(),
@@ -264,7 +259,7 @@ impl PlanFormPresenter {
             .accounts()
             .bill_accounts()
             .into_iter()
-            .filter(|a| lib_transactions::takes_transactions(&a.account_type))
+            .filter(|a| a.takes_transactions)
             .map(|a| {
                 (
                     a.unit,
@@ -783,8 +778,7 @@ mod tests {
                 .iter()
                 .find(|c| c.id == choice.value)
                 .expect("listed");
-            assert_eq!(category.category_type, CategoryTypes::Expense);
-            assert!(lib_categories::is_leaf(&categories, choice.value));
+            assert!(category.is_expense && category.is_leaf);
         }
     }
 

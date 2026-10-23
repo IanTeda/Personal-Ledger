@@ -1,29 +1,84 @@
-//! The stub Bills seed: the handoff's Bill Plans laid out against the shared stubs, with their
-//! earlier cycles settled by Transactions. Deterministic (no randomness; `today` is injected) and
-//! `gpui`-free, so both Clients can build the same Ledger.
+//! The stub Bills seed: the handoff's Bill Plans laid out against the Accounts, Categories and
+//! Payees Bills reads, with the payments that settle their earlier cycles. Deterministic (no
+//! randomness; `today` is injected) and `gpui`-free, so both Clients can build the same Ledger.
+//!
+//! A payment writes a Transaction too, so the seed only lists them ([`StubBills::payments`]): the
+//! stub Ledger books them through `lib-bill-payments`' `PayBill`, and `fake`'s stub stands in for
+//! it.
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
-use lib_accounts::Account;
-use lib_categories::{self as categories, Category};
-use lib_core::{BillPlanId, BillScheduleEntryId, Money, Period, TransactionId, TransactionStatus};
-use lib_payees::{self as payees, Payee};
+use lib_core::{
+    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, Period, TransactionId,
+    TransactionStatus,
+};
 use lib_transactions::{Split, Transaction};
 
 use crate::{
-    AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, Recurrence, insert_plan_as,
-    pay_as, set_active, skip,
+    AmountKind, BillAccount, BillCategory, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry,
+    EntryId, Recurrence, insert_plan_as, set_active, skip,
 };
 
 // ---------------------------------------------------------------------------------------------
 // The stub dataset
 // ---------------------------------------------------------------------------------------------
 
-/// The seeded Bills: Plans, their Schedule, and the Transactions settling it.
+/// The seeded Bills: Plans and their Schedule.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillsSeed {
     pub plans: Vec<BillPlan>,
     pub entries: Vec<BillScheduleEntry>,
+}
+
+/// The stub Bills before their history is booked: the entries [`Self::payments`] settles are
+/// still open, and the Match candidate is not yet a Transaction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StubBills {
+    pub seed: BillsSeed,
+    /// In the order they are booked, each Transaction taking the next seed id.
+    pub payments: Vec<SeedPayment>,
+    pub match_candidate: Option<SeedDebit>,
+}
+
+/// One earlier cycle paid directly: what `PayBill` is given, and the status its Transaction is
+/// left at once booked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeedPayment {
+    pub entry: EntryId,
+    pub amount: Money,
+    pub date: NaiveDate,
+    pub status: TransactionStatus,
+}
+
+/// The unmatched Telstra payment yesterday, the handoff's 8d Match candidate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeedDebit {
+    pub date: NaiveDate,
+    pub account_id: AccountId,
+    pub category_id: CategoryId,
+    pub payee_id: PayeeId,
+    /// A positive magnitude; the Split is the negative.
+    pub amount: Money,
+}
+
+impl SeedDebit {
+    /// The Transaction it is, under the seed id the booking side gives it.
+    pub fn transaction(&self, id: TransactionId) -> Transaction {
+        Transaction {
+            id,
+            date: self.date,
+            account_id: self.account_id,
+            status: TransactionStatus::Cleared,
+            is_flagged: false,
+            description: Some("TELSTRA DIRECT DEBIT".to_string()),
+            splits: vec![Split {
+                amount: Money(-self.amount.0.clone()),
+                category_id: self.category_id,
+                payee_id: Some(self.payee_id),
+                tag_ids: Vec::new(),
+            }],
+        }
+    }
 }
 
 /// A seeded entry's id, fixed by its Bill Plan's seed number and its due date rather than by its
@@ -246,31 +301,33 @@ fn paid_cents(seed: &PlanSeed, index: u32, cycles: u32) -> i64 {
     }
 }
 
-/// Seeds the handoff's Bill Plans against the shared stubs and settles their history: every
-/// earlier-month cycle is Paid (a Reconciled Transaction written to `transactions`, dated a day or
-/// two either side of the due date) unless its Plan skipped it, and this month's is left as the
-/// handoff shows it. Also adds one unmatched Telstra payment yesterday, the 8d Match candidate.
-/// A Plan whose Account, Category or Payee the stubs lack is left out.
+/// Seeds the handoff's Bill Plans against `accounts`, `categories` and `payees` and lays out their
+/// history: every earlier-month cycle is a [`SeedPayment`] (Reconciled, dated a day or two either
+/// side of the due date) unless its Plan skipped it, and this month's is left as the handoff
+/// shows it. Also names one unmatched Telstra payment yesterday, the 8d Match candidate. A Plan
+/// whose Account, Category or Payee is missing is left out.
 pub fn default_bills(
-    accounts: &[Account],
-    categories: &[Category],
-    payees: &[Payee],
-    transactions: &mut Vec<Transaction>,
+    accounts: &[BillAccount],
+    categories: &[BillCategory],
+    payees: &[BillPayee],
     today: NaiveDate,
-) -> BillsSeed {
+) -> StubBills {
     let mut plans: Vec<BillPlan> = Vec::new();
     let mut entries: Vec<BillScheduleEntry> = Vec::new();
+    let mut payments: Vec<SeedPayment> = Vec::new();
     let this_month = Period::of(today);
+    let category_named = |name: &str| categories.iter().find(|c| c.name == name).map(|c| c.id);
+    let payee_named = |name: &str| payees.iter().find(|p| p.name == name).map(|p| p.id);
 
     for seed in PLAN_SEEDS {
         let Some(account) = accounts.iter().find(|a| a.name == seed.account) else {
             continue;
         };
-        let Some(category_id) = categories::find_by_name(categories, seed.category) else {
+        let Some(category_id) = category_named(seed.category) else {
             continue;
         };
         let payee_id = match seed.payee {
-            Some(name) => match payees::find_by_name(payees, name) {
+            Some(name) => match payee_named(name) {
                 Some(id) => Some(id),
                 None => continue,
             },
@@ -326,25 +383,16 @@ pub fn default_bills(
                 ThisMonth::Paid => {
                     let shift = i64::from(index % 3) - 1;
                     let date = (entry_id.due + Duration::days(shift)).min(today);
-                    let cents = paid_cents(seed, index, cycles);
-                    if let Ok(transaction_id) = pay_as(
-                        TransactionId::seed(
-                            u32::try_from(transactions.len() + 1).unwrap_or_default(),
-                        ),
-                        &plans,
-                        &mut entries,
-                        transactions,
-                        entry_id,
-                        &cents_money(cents),
+                    payments.push(SeedPayment {
+                        entry: entry_id,
+                        amount: cents_money(paid_cents(seed, index, cycles)),
                         date,
-                    ) && let Some(t) = transactions.iter_mut().find(|t| t.id == transaction_id)
-                    {
-                        t.status = if Period::of(date) < this_month {
+                        status: if Period::of(date) < this_month {
                             TransactionStatus::Reconciled
                         } else {
                             TransactionStatus::Cleared
-                        };
-                    }
+                        },
+                    });
                 }
             }
         }
@@ -353,39 +401,28 @@ pub fn default_bills(
         }
     }
 
-    if let (Some(account), Some(category_id), Some(payee_id)) = (
+    let match_candidate = match (
         accounts.iter().find(|a| a.name == "ANZ Everyday"),
-        categories::find_by_name(categories, "Household"),
-        payees::find_by_name(payees, "Telstra"),
+        category_named("Household"),
+        payee_named("Telstra"),
     ) {
-        let date = today - Duration::days(1);
-        let id = TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default());
-        let at = transactions
-            .iter()
-            .position(|t| t.date <= date)
-            .unwrap_or(transactions.len());
-        transactions.insert(
-            at,
-            Transaction {
-                id,
-                date,
-                account_id: account.id,
-                status: TransactionStatus::Cleared,
-                is_flagged: false,
-                description: Some("TELSTRA DIRECT DEBIT".to_string()),
-                splits: vec![Split {
-                    amount: cents_money(-7_999),
-                    category_id,
-                    payee_id: Some(payee_id),
-                    tag_ids: Vec::new(),
-                }],
-            },
-        );
-    }
+        (Some(account), Some(category_id), Some(payee_id)) => Some(SeedDebit {
+            date: today - Duration::days(1),
+            account_id: account.id,
+            category_id,
+            payee_id,
+            amount: cents_money(7_999),
+        }),
+        _ => None,
+    };
 
     for entry in &mut entries {
         entry.row_id = seed_entry_id(entry.plan_id, entry.due);
     }
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
-    BillsSeed { plans, entries }
+    StubBills {
+        seed: BillsSeed { plans, entries },
+        payments,
+        match_candidate,
+    }
 }

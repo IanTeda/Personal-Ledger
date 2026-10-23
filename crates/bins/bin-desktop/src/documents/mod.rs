@@ -19,7 +19,6 @@ mod tests {
     use lib_core::Money;
     use lib_core::{DocumentId, TransactionId};
     use lib_payees::Payee;
-    use lib_payees::default_payees;
     use lib_transactions::Transaction;
     use std::path::PathBuf;
     use types::DocumentTypeRow;
@@ -45,10 +44,6 @@ mod tests {
     fn types() -> Vec<DocumentTypeRow> {
         types::default_types()
     }
-    use crate::{bills::default_bills, transactions::default_transactions};
-    use lib_accounts::default_accounts;
-    use lib_categories::default_categories;
-    use lib_tags::default_tags;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -65,33 +60,19 @@ mod tests {
         inventory: Inventory,
     }
 
-    /// Seeded as the app does: Transactions, then Bills' payments, then Documents' purchases.
+    /// The stub Ledger's, seeded as the app does: Transactions, then Bills' payments, then
+    /// Documents' purchases.
     fn world() -> World {
         world_on(today())
     }
 
     fn world_on(today: NaiveDate) -> World {
-        let accounts = default_accounts();
-        let categories = default_categories();
-        let payees = default_payees();
-        let tags = default_tags();
-        let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
-        let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
-        let inventory = crate::inventory::default_inventory(today);
-        let seed = default_documents(
-            &accounts,
-            &categories,
-            &payees,
-            &bills.plans,
-            &inventory,
-            &mut transactions,
-            today,
-        );
+        let ledger = lib_ledger::Ledger::stub_on(today);
         World {
-            payees,
-            transactions,
-            documents: seed.documents,
-            inventory,
+            payees: ledger.payees().to_vec(),
+            transactions: ledger.transactions().to_vec(),
+            documents: ledger.documents().to_vec(),
+            inventory: ledger.inventory().clone(),
         }
     }
 
@@ -260,7 +241,9 @@ mod tests {
                     DocumentLink::Transaction(id) => world.transactions.iter().any(|t| t.id == id),
                     DocumentLink::InventoryItem(id) => world.inventory.item(id).is_some(),
                     DocumentLink::Payee(id) => lib_payees::get(&world.payees, id).is_some(),
-                    DocumentLink::Account(id) => default_accounts().iter().any(|a| a.id == id),
+                    DocumentLink::Account(id) => {
+                        lib_accounts::default_accounts().iter().any(|a| a.id == id)
+                    }
                     DocumentLink::BillPlan(_) => true,
                 };
                 assert!(resolves, "{}: {link:?}", document.title);

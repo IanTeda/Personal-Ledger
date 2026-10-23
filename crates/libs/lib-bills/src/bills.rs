@@ -4,13 +4,10 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
-use lib_accounts::Account;
-use lib_categories::{self as categories, Category};
 use lib_core::{
-    AccountId, BillPlanId, CategoryId, CategoryTypes, Money, PayeeId, Period, Total, TransactionId,
-    TransactionStatus, UnitId,
+    AccountId, BillPlanId, CategoryId, Money, PayeeId, Period, Total, TransactionId, UnitId,
 };
-use lib_transactions::{self as transactions, Split, Transaction};
+use lib_transactions::{Split, Transaction};
 
 use super::*;
 
@@ -73,24 +70,22 @@ pub struct BillPlanDraft {
 /// Checks everything a draft must satisfy; returns the trimmed name.
 fn validate(
     draft: &BillPlanDraft,
-    categories: &[Category],
-    accounts: &[Account],
+    categories: &[BillCategory],
+    accounts: &[BillAccount],
 ) -> Result<String, BillError> {
     let name = draft.name.trim();
     if name.is_empty() {
         return Err(BillError::NameRequired);
     }
-    let is_expense_leaf = categories.iter().any(|c| {
-        c.id == draft.category_id
-            && c.category_type == CategoryTypes::Expense
-            && categories::is_leaf(categories, c.id)
-    });
+    let is_expense_leaf = categories
+        .iter()
+        .any(|c| c.id == draft.category_id && c.is_expense && c.is_leaf);
     if !is_expense_leaf {
         return Err(BillError::CategoryNotExpenseLeaf);
     }
     let account = accounts
         .iter()
-        .find(|a| a.id == draft.account_id && transactions::takes_transactions(&a.account_type))
+        .find(|a| a.id == draft.account_id && a.takes_transactions)
         .ok_or(BillError::AccountRequired)?;
     if account.unit != draft.unit {
         return Err(BillError::UnitMismatch);
@@ -110,8 +105,8 @@ pub fn insert_plan(
     plans: &mut Vec<BillPlan>,
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
-    categories: &[Category],
-    accounts: &[Account],
+    categories: &[BillCategory],
+    accounts: &[BillAccount],
     today: NaiveDate,
 ) -> Result<BillPlanId, BillError> {
     insert_plan_as(
@@ -131,8 +126,8 @@ pub(crate) fn insert_plan_as(
     plans: &mut Vec<BillPlan>,
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
-    categories: &[Category],
-    accounts: &[Account],
+    categories: &[BillCategory],
+    accounts: &[BillAccount],
     today: NaiveDate,
 ) -> Result<BillPlanId, BillError> {
     let name = validate(draft, categories, accounts)?;
@@ -165,8 +160,8 @@ pub fn edit_plan(
     entries: &mut Vec<BillScheduleEntry>,
     id: BillPlanId,
     draft: &BillPlanDraft,
-    categories: &[Category],
-    accounts: &[Account],
+    categories: &[BillCategory],
+    accounts: &[BillAccount],
     today: NaiveDate,
 ) -> Result<(), BillError> {
     let plan = plans
@@ -236,56 +231,13 @@ fn open_entry<'a>(
     get(plans, id.plan_id).ok_or(BillError::PlanNotFound)
 }
 
-/// Pays entry `id` directly under a given Transaction id, for the stub seed, whose ids are fixed:
-/// an Open Transaction on `date` in the Plan's Account, with one Split of `-amount` carrying the
-/// Plan's Category and Payee, Matched to the entry. It books what `lib-bill-payments`' `PayBill`
-/// books, which a Client pays through.
-pub(crate) fn pay_as(
-    transaction_id: TransactionId,
-    plans: &[BillPlan],
-    entries: &mut [BillScheduleEntry],
-    transactions: &mut Vec<Transaction>,
-    id: EntryId,
-    amount: &Money,
-    date: NaiveDate,
-) -> Result<TransactionId, BillError> {
-    let plan = open_entry(plans, entries, id)?;
-    if !amount.0.is_positive() {
-        return Err(BillError::AmountNotPositive);
-    }
-    let transaction = Transaction {
-        id: transaction_id,
-        date,
-        account_id: plan.account_id,
-        status: TransactionStatus::Open,
-        is_flagged: false,
-        description: Some(plan.name.clone()),
-        splits: vec![Split {
-            amount: Money(-amount.0.clone()),
-            category_id: plan.category_id,
-            payee_id: plan.payee_id,
-            tag_ids: Vec::new(),
-        }],
-    };
-    // Newest first, as the Transactions stub keeps them.
-    let at = transactions
-        .iter()
-        .position(|t| t.date <= date)
-        .unwrap_or(transactions.len());
-    transactions.insert(at, transaction);
-    if let Some(found) = entry_mut(entries, id) {
-        found.resolution = Resolution::Paid(SplitRef {
-            transaction_id,
-            split_index: 0,
-        });
-    }
-    Ok(transaction_id)
-}
-
 /// Category `id`'s full path, as a View names a Bill Plan's Category: for a module that reads the
 /// Categories through Bills' port and so can't reach the Categories crate.
-pub fn category_path(categories: &[Category], id: CategoryId) -> Option<String> {
-    categories::path(categories, id)
+pub fn category_path(categories: &[BillCategory], id: CategoryId) -> Option<String> {
+    categories
+        .iter()
+        .find(|category| category.id == id)
+        .map(|category| category.path.clone())
 }
 
 /// Whether any entry is Matched to `split`.
@@ -312,8 +264,8 @@ pub fn match_candidates(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
     transactions: &[Transaction],
-    accounts: &[Account],
-    categories: &[Category],
+    accounts: &[BillAccount],
+    categories: &[BillCategory],
     id: EntryId,
 ) -> Vec<SplitRef> {
     let Ok(plan) = open_entry(plans, entries, id) else {
@@ -324,7 +276,7 @@ pub fn match_candidates(
     let is_expense = |category_id: CategoryId| {
         categories
             .iter()
-            .any(|c| c.id == category_id && c.category_type == CategoryTypes::Expense)
+            .any(|c| c.id == category_id && c.is_expense)
     };
     let mut found: Vec<(bool, bool, BigDecimal, i64, SplitRef)> = Vec::new();
     for transaction in transactions {
@@ -383,8 +335,8 @@ pub fn match_split(
     plans: &[BillPlan],
     entries: &mut [BillScheduleEntry],
     transactions: &[Transaction],
-    accounts: &[Account],
-    categories: &[Category],
+    accounts: &[BillAccount],
+    categories: &[BillCategory],
     id: EntryId,
     split: SplitRef,
 ) -> Result<(), BillError> {
@@ -648,8 +600,7 @@ pub fn period_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_accounts::default_accounts;
-    use lib_categories::default_categories;
+    use crate::fake::{stub_accounts, stub_categories};
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -660,8 +611,8 @@ mod tests {
     }
 
     struct World {
-        accounts: Vec<Account>,
-        categories: Vec<Category>,
+        accounts: Vec<BillAccount>,
+        categories: Vec<BillCategory>,
         transactions: Vec<Transaction>,
         plans: Vec<BillPlan>,
         entries: Vec<BillScheduleEntry>,
@@ -669,8 +620,8 @@ mod tests {
 
     fn empty() -> World {
         World {
-            accounts: default_accounts(),
-            categories: default_categories(),
+            accounts: stub_accounts(),
+            categories: stub_categories(),
             transactions: Vec::new(),
             plans: Vec::new(),
             entries: Vec::new(),

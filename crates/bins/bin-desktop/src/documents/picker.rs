@@ -497,16 +497,10 @@ pub fn visible_window(selected: usize, len: usize, cap: usize) -> Range<usize> {
 mod tests {
     use super::*;
     use crate::inventory::Inventory;
-    use crate::{
-        bills::{BillPlan, default_bills},
-        documents::{DocumentsSeed, default_documents},
-        transactions::default_transactions,
-    };
-    use lib_accounts::{Account, default_accounts};
-    use lib_categories::default_categories;
+    use crate::{bills::BillPlan, documents::DocumentsSeed};
+    use lib_accounts::Account;
     use lib_core::DateStyle;
-    use lib_payees::{Payee, default_payees};
-    use lib_tags::default_tags;
+    use lib_payees::Payee;
 
     struct World {
         types: Vec<crate::documents::types::DocumentTypeRow>,
@@ -522,30 +516,17 @@ mod tests {
     fn world() -> World {
         crate::locale::init_for_tests();
         let today = NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid test date");
-        let accounts = default_accounts();
-        let categories = default_categories();
-        let payees = default_payees();
-        let tags = default_tags();
-        let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
-        let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
-        let inventory = crate::inventory::default_inventory(today);
-        let seed = default_documents(
-            &accounts,
-            &categories,
-            &payees,
-            &bills.plans,
-            &inventory,
-            &mut transactions,
-            today,
-        );
+        let ledger = lib_ledger::Ledger::stub_on(today);
         World {
             types: crate::documents::types::default_types(),
-            accounts,
-            payees,
-            plans: bills.plans,
-            transactions,
-            seed,
-            inventory,
+            accounts: ledger.accounts().to_vec(),
+            payees: ledger.payees().to_vec(),
+            plans: ledger.bill_plans().to_vec(),
+            transactions: ledger.transactions().to_vec(),
+            seed: DocumentsSeed {
+                documents: ledger.documents().to_vec(),
+            },
+            inventory: ledger.inventory().clone(),
             today,
         }
     }

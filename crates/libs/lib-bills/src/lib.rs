@@ -44,9 +44,9 @@ pub mod msg;
 pub mod presenter;
 pub mod protocols;
 pub use protocols::{
-    BillAccounts, BillCategories, BillPayees, BillPlanRepository, BillScheduleRepository,
-    BillTransactions, BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter,
-    PayRequest, PortsMut, SharedPorts,
+    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
+    BillPlanRepository, BillScheduleRepository, BillTransactions, BillUnits, BillsOutcome,
+    BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut, SharedPorts,
 };
 
 pub use bills::*;
@@ -54,8 +54,6 @@ pub mod history;
 pub use history::*;
 pub mod seed;
 pub use seed::*;
-#[cfg(test)]
-mod seed_tests;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::{

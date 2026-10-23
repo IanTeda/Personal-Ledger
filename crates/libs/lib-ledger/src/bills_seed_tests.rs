@@ -1,15 +1,16 @@
-//! The rules over the stub seed, against the handoff's 8a: generation, settlement, the Schedule's
-//! rows and figures.
+//! `lib-bills`' rules over the stub Ledger's Bills, against the handoff's 8a: generation,
+//! settlement, the Schedule's rows and figures. Here rather than in `lib-bills`, since the stub
+//! joins the Bills seed to the other domains' stubs and books its payments through
+//! `lib-bill-payments`.
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::{Datelike, NaiveDate};
-use lib_accounts::Account;
-use lib_categories::Category;
+use lib_bills::*;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
-use lib_core::{Money, Total};
+use lib_core::{Money, Total, UnitId};
 use lib_transactions::Transaction;
 
-use crate::*;
+use crate::Ledger;
 
 fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
@@ -24,21 +25,21 @@ fn today() -> NaiveDate {
 }
 
 struct World {
-    accounts: Vec<Account>,
-    categories: Vec<Category>,
+    accounts: Vec<BillAccount>,
+    categories: Vec<BillCategory>,
     transactions: Vec<Transaction>,
     plans: Vec<BillPlan>,
     entries: Vec<BillScheduleEntry>,
 }
 
 fn world() -> World {
-    let ports = fake::InMemoryPorts::stub(today());
+    let ledger = Ledger::stub_on(today());
     World {
-        accounts: ports.reads.accounts,
-        categories: ports.reads.categories,
-        transactions: ports.reads.transactions,
-        plans: ports.bills.plans,
-        entries: ports.bills.entries,
+        accounts: ledger.bill_accounts(),
+        categories: ledger.bill_categories(),
+        transactions: ledger.transactions().to_vec(),
+        plans: ledger.bill_plans().to_vec(),
+        entries: ledger.bill_entries().to_vec(),
     }
 }
 

@@ -27,6 +27,18 @@ impl PayBill {
     /// `EntryNotFound` or `EntryNotOpen` for an entry that is gone or settled, `PlanNotFound` for
     /// a Plan that is gone, and `AmountNotPositive` for an amount of zero or less.
     pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId, BillError> {
+        self.run_as(TransactionId::new(), payments)
+    }
+
+    /// [`Self::run`] under a given Transaction id, for the stub seed, whose ids are fixed.
+    ///
+    /// # Errors
+    /// As [`Self::run`].
+    pub fn run_as(
+        self,
+        transaction_id: TransactionId,
+        payments: &mut dyn BillPayments,
+    ) -> Result<TransactionId, BillError> {
         let entry = payments.entry(self.entry).ok_or(BillError::EntryNotFound)?;
         if !entry.is_open() {
             return Err(BillError::EntryNotOpen);
@@ -37,7 +49,6 @@ impl PayBill {
         if !self.amount.0.is_positive() {
             return Err(BillError::AmountNotPositive);
         }
-        let transaction_id = TransactionId::new();
         let transaction = Transaction {
             id: transaction_id,
             date: self.date,

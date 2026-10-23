@@ -20,6 +20,8 @@ lib_tags = { path = "../lib-tags" }
 lib_transactions = { path = "../lib-transactions" }
 lib_budgets = { path = "../lib-budgets" }
 lib_bills = { path = "../lib-bills" }
+## Books the Bills stub's payments (`bills_seed.rs`); the Ledger isn't a feature crate.
+lib_bill_payments = { path = "../lib-bill-payments" }
 lib_documents = { path = "../lib-documents" }
 lib_inventory = { path = "../lib-inventory" }
 lib_institutions = { path = "../lib-institutions" }
