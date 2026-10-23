@@ -43,7 +43,7 @@ This is feasibility-cycle work (see the [Sync Server feasibility map](https://gi
 
 ## The Docker image
 
-`Dockerfile.sync-server` (repo root) builds a multi-arch (`linux/amd64`, `linux/arm64`) image: a `rust:1.98.0-bookworm` build stage, and a `debian:bookworm-slim` runtime stage that never runs the Sync Server process as root. See `.github/workflows/build-publish-sync-server.yaml` for how it's built, verified (a real container run plus a `grpcurl` call, on both architectures, on every change), and — on a GitHub Release — published to `ghcr.io/ianteda/personal-ledger-sync-server`.
+`docker/Dockerfile.sync-server` builds a multi-arch (`linux/amd64`, `linux/arm64`) image: a `rust:1.98.0-bookworm` build stage, and a `debian:bookworm-slim` runtime stage that never runs the Sync Server process as root. See `.github/workflows/build-publish-sync-server.yaml` for how it's built, verified (a real container run plus a `grpcurl` call, on both architectures, on every change), and — on a GitHub Release — published to `ghcr.io/ianteda/personal-ledger-sync-server`.
 
 ### Non-root and `PUID`/`PGID`
 
@@ -53,7 +53,7 @@ The container always runs the Sync Server process as a non-root user. By default
 docker run -e PUID=1000 -e PGID=1000 ...
 ```
 
-`docker-entrypoint.sync-server.sh` does the actual work: it starts as root just long enough to reshape the baked-in account to the requested `PUID`/`PGID` and fix up ownership of the durable store, then drops privileges via `setpriv` before ever executing the Sync Server binary itself.
+`docker/docker-entrypoint.sync-server.sh` does the actual work: it starts as root just long enough to reshape the baked-in account to the requested `PUID`/`PGID` and fix up ownership of the durable store, then drops privileges via `setpriv` before ever executing the Sync Server binary itself.
 
 ### Ports and storage
 
@@ -96,7 +96,7 @@ PUID=1000 PGID=1000 docker compose -f compose.sync-server.yaml up -d
 If you'd rather not wait for a published `ghcr.io` tag, build directly from the Dockerfile:
 
 ```sh
-docker buildx build --file Dockerfile.sync-server --tag personal-ledger-sync-server:local .
+docker buildx build --file docker/Dockerfile.sync-server --tag personal-ledger-sync-server:local .
 ```
 
 Build context is the repo root (see the Dockerfile's own header comment) — Cargo needs every workspace member's `Cargo.toml` present to resolve the workspace, even though only `bin-sync-server` actually gets compiled.

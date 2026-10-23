@@ -87,7 +87,7 @@ jobs:
       - name: Build image (${{ matrix.platform }})
         run: |
           docker buildx build \
-            --file Dockerfile.sync-server \
+            --file docker/Dockerfile.sync-server \
             --platform ${{ matrix.platform }} \
             --tag sync-server:test \
             --load \
@@ -168,7 +168,7 @@ jobs:
         if: github.event_name == 'release'
         run: |
           docker buildx build \
-            --file Dockerfile.sync-server \
+            --file docker/Dockerfile.sync-server \
             --platform ${{ matrix.platform }} \
             --tag "$IMAGE_NAME:${{ github.event.release.tag_name }}-${{ matrix.arch }}" \
             --push \
@@ -232,7 +232,7 @@ jobs:
       - name: Build image, tagged to match the compose file's image reference
         run: |
           docker buildx build \
-            --file Dockerfile.sync-server \
+            --file docker/Dockerfile.sync-server \
             --tag "$IMAGE_NAME:latest" \
             --load \
             .

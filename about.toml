@@ -1,6 +1,6 @@
 # cargo-about configuration for the third-party notices shipped in every package (#611,
 # docs/research/package-licence-notices.md). Run per bin with `--fail --locked`, see the
-# packaging workflows and Dockerfile.sync-server.
+# packaging workflows and docker/Dockerfile.sync-server.
 #
 # `accepted` must hold the same licences as deny.toml's `[licenses] allow`, so anything
 # cargo-deny lets in can also be rendered here. It is a priority list, not a set: MIT comes

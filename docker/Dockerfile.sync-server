@@ -1,11 +1,11 @@
 # Dockerfile for the Personal Ledger Sync Server (FC-SYNC-005, NFR.6b).
 #
 # Multi-arch (linux/amd64, linux/arm64) via `docker buildx build --platform ...` --
-# see .github/workflows/build-verify-sync-server-docker.yaml, which builds each
+# see .github/workflows/build-publish-sync-server.yaml, which builds each
 # architecture natively on its own GitHub-hosted runner rather than cross-compiling or
 # emulating under QEMU.
 #
-# Build context is the repo root (not crates/bins/bin-sync-server), because
+# Build context is the repo root (not docker/ or crates/bins/bin-sync-server), because
 # bin-sync-server depends on sibling crates via relative `path = "../../libs/..."`
 # entries, and Cargo needs every workspace member's Cargo.toml present to resolve the
 # workspace at all, even though only bin_sync_server actually gets built here.
@@ -89,7 +89,7 @@ COPY --from=builder /workspace/target/release/sync-server /usr/local/bin/sync-se
 COPY --from=builder /workspace/LICENSE /usr/share/doc/personal-ledger/LICENSE
 COPY --from=builder /workspace/THIRD-PARTY-NOTICES.txt /usr/share/doc/personal-ledger/THIRD-PARTY-NOTICES.txt
 LABEL org.opencontainers.image.licenses="MIT"
-COPY docker-entrypoint.sync-server.sh /usr/local/bin/docker-entrypoint.sh
+COPY docker/docker-entrypoint.sync-server.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # PUID/PGID: the runtime-configurable UID/GID docker-entrypoint.sync-server.sh applies to the
