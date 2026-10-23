@@ -95,9 +95,17 @@ _Avoid_: notification (reserved for anything operating-system level), snackbar, 
 The severity a Toast carries, one of Info, Success, Warning or Error. Each Toast Kind is drawn in its own calculated colours.
 _Avoid_: level, type, severity (alone).
 
+**Notice**:
+A Toast or a status-line message that a View asks the Shell to show. The Shell decides how and where it appears; the View only says what to tell the person.
+_Avoid_: notification (reserved for anything operating-system level), alert, message (a Message is translatable interface text).
+
 **Dialog**:
 A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
 _Avoid_: modal (as a noun), popup, window.
+
+**Refusal**:
+The Ledger declining a request because a rule forbids it, such as deleting the only Unit or deactivating the base Unit. The person is told why in the Dialog and nothing changes. Distinct from a failure the person didn't cause, such as a write that didn't save, which always raises an Error Toast.
+_Avoid_: validation error, rejection.
 
 **Shell**:
 The always-present frame a Client draws around the current View: the top bar, the rails, the status line, the command palette, Toasts and the host that opens Dialogs. It stays the same whichever View is showing; the View's own content is never the Shell. On the Desktop it is the `lib-shell` module, whose Router is the root Router ([ADR-0045](docs/adr/0045-the-frame-is-the-shell-not-the-chrome.md)).
@@ -226,6 +234,10 @@ as computed from its Transactions.
 _Avoid_: Balance — a Transaction Account's or Credit Card Account's Balance is the
 computed total from its Transactions; a Balance Check is a separate assertion compared
 against that total, not the total itself.
+
+**Event**:
+A notable moment on the Ledger's timeline, one of four kinds: a Milestone (a single day that changes the money, such as a pay rise), an Occasion (a dated span with an optional spend target, such as a trip), an Incident (a single day with consequences, such as a car accident) or a Balance Check. It links the Transactions and Documents that belong to it, by Tag or by hand, as a second way to total them.
+_Avoid_: event for a key, click or other input a Client handles, or for a signal one part of a Client sends another.
 
 **Category**:
 A user-defined label (e.g. "Groceries", "Salary") used to classify a Split (see below) — the unit a Transaction is actually broken into — carrying exactly one Category Type. Categories nest up to three levels deep (e.g. Housing › Utilities › Electricity): a sub-category always carries its parent's Category Type, only a leaf (a Category with nothing nested under it) is assigned to a Split, and a parent's totals roll up its descendants'.
