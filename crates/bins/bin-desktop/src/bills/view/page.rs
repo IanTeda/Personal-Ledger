@@ -15,9 +15,9 @@ use gpui::{
 use lib_bill_payments::{PayOutcome, SharedPayments};
 use lib_bills::BillsOutcome;
 use lib_bills::presenter::{
-    BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, Clock, FilterField,
-    ScheduleEvent,
+    BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, FilterField, ScheduleEvent,
 };
+use lib_core::Clock;
 use lib_ledger::Domain;
 use lib_list_cursor::Step;
 use lib_viper::keymap::Keymap;
@@ -43,6 +43,8 @@ impl EventEmitter<ViewEvent> for BillsPage {}
 
 pub struct BillsPage {
     presenter: BillsPagePresenter,
+    /// The day the page's Dialogs are opened on.
+    clock: Clock,
     ports: DesktopPorts,
     /// What the Pay Dialog the page opens writes Pay it directly through.
     payments: SharedPayments,
@@ -63,11 +65,11 @@ impl BillsPage {
         payments: SharedPayments,
         ledger: Entity<LedgerStore>,
         keymap: Keymap<BillsPageEvent>,
-        today: Clock,
+        clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         ports::copy_reads(&ports, ledger.read(cx).ledger());
-        let presenter = BillsPagePresenter::new(ports.clone(), today, keymap.clone());
+        let presenter = BillsPagePresenter::new(ports.clone(), clock.clone(), keymap.clone());
         // The rows name Accounts, Categories, Payees, Transactions and Units, which the Ledger
         // still holds: a change to any is copied into the ports and redrawn, as is a Bills write
         // `LedgerStore` made (Account delete's Unmatch).
@@ -88,6 +90,7 @@ impl BillsPage {
         });
         Self {
             presenter,
+            clock,
             ports,
             payments,
             ledger,
@@ -106,7 +109,7 @@ impl BillsPage {
         let mut router = PageRouter {
             ports: self.ports.clone(),
             payments: self.payments.clone(),
-            today: self.presenter.today(),
+            clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
             cx,
         };

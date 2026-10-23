@@ -58,7 +58,12 @@ pub struct CategoriesPage {
 }
 
 impl CategoriesPage {
-    pub fn new(ledger: Entity<LedgerStore>, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        ledger: Entity<LedgerStore>,
+        clock: &lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let today = clock.today();
         let _categories_changed = notify_on(&ledger, Domain::Categories, cx);
         Self {
             ledger,

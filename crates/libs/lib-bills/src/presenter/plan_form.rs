@@ -13,7 +13,7 @@
 //! The choices are read when the Dialog opens, as it is modal and nothing changes them under it.
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, DateStyle, Money, PayeeId, UnitId};
+use lib_core::{AccountId, BillPlanId, CategoryId, Clock, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::{format_date_input, parse_optional_date, parse_positive_amount};
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
@@ -140,7 +140,8 @@ pub struct PlanFormPresenter {
     ports: SharedPorts,
     /// The Plan an Edit saves, and its stored name, which the title keeps while Name is retyped.
     editing: Option<(BillPlanId, String)>,
-    today: NaiveDate,
+    /// What the dates are judged on: `today`, and the day a save supersedes from.
+    clock: Clock,
     date_style: Option<DateStyle>,
     choices: Choices,
     name: String,
@@ -161,15 +162,15 @@ pub struct PlanFormPresenter {
 
 impl PlanFormPresenter {
     /// A fresh Add form: the first Unit and its first Account, Monthly, Fixed, First Due today
-    /// (the word `today`), everything else empty. Dates are judged on `today` and typed in
-    /// `date_style`.
-    pub fn add(ports: SharedPorts, today: NaiveDate, date_style: Option<DateStyle>) -> Self {
+    /// (the word `today`), everything else empty. Dates are judged on the day `clock` reads and
+    /// typed in `date_style`.
+    pub fn add(ports: SharedPorts, clock: Clock, date_style: Option<DateStyle>) -> Self {
         let choices = Self::choices(&ports, None);
         let unit = choices.units.first().map(|choice| choice.value);
         let mut form = Self {
             ports,
             editing: None,
-            today,
+            clock,
             date_style,
             category: choices.categories.first().map(|choice| choice.value),
             unit,
@@ -196,7 +197,7 @@ impl PlanFormPresenter {
     pub fn edit(
         ports: SharedPorts,
         id: BillPlanId,
-        today: NaiveDate,
+        clock: Clock,
         date_style: Option<DateStyle>,
     ) -> Option<Self> {
         let plan = ports.borrow().bills().bill_plan(id)?;
@@ -204,7 +205,7 @@ impl PlanFormPresenter {
         Some(Self {
             ports,
             editing: Some((id, plan.name.clone())),
-            today,
+            clock,
             date_style,
             category: choices
                 .categories
@@ -399,7 +400,7 @@ impl PlanFormPresenter {
     }
 
     fn parse(&self, text: &str) -> Result<Option<NaiveDate>, String> {
-        parse_optional_date(text, self.today, self.date_style)
+        parse_optional_date(text, self.clock.today(), self.date_style)
     }
 
     fn amount_money(&self) -> Option<Money> {
@@ -472,14 +473,14 @@ impl PlanFormPresenter {
             match self.editing {
                 None => AddBillPlan {
                     draft,
-                    today: self.today,
+                    today: self.clock.today(),
                 }
                 .run(ports.bills, ports.accounts, ports.categories),
                 Some((id, _)) => EditBillPlan {
                     id,
                     draft,
                     is_active: self.is_active,
-                    today: self.today,
+                    today: self.clock.today(),
                 }
                 .run(ports.bills, ports.accounts, ports.categories)
                 .map(|()| id),
@@ -707,7 +708,7 @@ mod tests {
             let (ports, shared) = stub();
             Self {
                 ports,
-                presenter: PlanFormPresenter::add(shared, today(), None),
+                presenter: PlanFormPresenter::add(shared, Clock::fixed(today()), None),
                 router: RecordingRouter::default(),
             }
         }
@@ -724,7 +725,7 @@ mod tests {
                 .expect("a stub Plan");
             Self {
                 ports,
-                presenter: PlanFormPresenter::edit(shared, id, today(), None)
+                presenter: PlanFormPresenter::edit(shared, id, Clock::fixed(today()), None)
                     .expect("the Plan is there"),
                 router: RecordingRouter::default(),
             }

@@ -17,7 +17,7 @@ use chrono::{Duration, NaiveDate};
 use lib_bills::interactor::MatchBill;
 use lib_bills::presenter::money;
 use lib_bills::{BillError, EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
-use lib_core::{DateStyle, Money};
+use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
     parse_positive_amount, upper,
@@ -131,7 +131,8 @@ pub struct PayPresenter {
     amount: String,
     date: String,
     refusal: Option<String>,
-    today: NaiveDate,
+    /// What the Date field defaults to and is judged on.
+    clock: Clock,
     date_style: Option<DateStyle>,
 }
 
@@ -141,7 +142,7 @@ impl PayPresenter {
         bills: SharedPorts,
         payments: SharedPayments,
         request: PayRequest,
-        today: NaiveDate,
+        clock: Clock,
         date_style: Option<DateStyle>,
     ) -> Option<Self> {
         let PayRequest {
@@ -229,9 +230,9 @@ impl PayPresenter {
             choice,
             focused: PayField::Amount,
             amount: planned_amount.0.to_string(),
-            date: format_date_input(today, date_style),
+            date: format_date_input(clock.today(), date_style),
             refusal: None,
-            today,
+            clock,
             date_style,
         })
     }
@@ -339,7 +340,7 @@ impl PayPresenter {
     }
 
     fn parse_date(&self) -> Result<Option<NaiveDate>, String> {
-        parse_optional_date(&self.date, self.today, self.date_style)
+        parse_optional_date(&self.date, self.clock.today(), self.date_style)
     }
 
     /// Whether confirm would pay or match from the active panel: Pay it directly needs a positive
@@ -485,7 +486,7 @@ mod tests {
                 shared,
                 PortsPayments::shared(&ports),
                 request,
-                today(),
+                Clock::fixed(today()),
                 None,
             )
             .expect("the Plan is there");
@@ -774,7 +775,7 @@ mod tests {
                 shared,
                 PortsPayments::shared(&ports),
                 request,
-                today(),
+                Clock::fixed(today()),
                 None
             )
             .is_none()

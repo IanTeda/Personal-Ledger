@@ -733,6 +733,7 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
+ "lib_shell",
  "lib_tags",
  "lib_toast",
  "lib_tracing",
@@ -4912,6 +4913,14 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "tracing",
+]
+
+[[package]]
+name = "lib_shell"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lib_core",
 ]
 
 [[package]]

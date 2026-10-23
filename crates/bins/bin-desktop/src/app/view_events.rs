@@ -107,7 +107,7 @@ mod tests {
             Shell::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
-                std::rc::Rc::new(move || today),
+                lib_core::Clock::fixed(today),
                 crate::units::UnitsSetup::stub(),
                 crate::bills::BillsSetup::stub(&storage),
                 storage,
@@ -167,7 +167,7 @@ mod tests {
             Shell::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
-                std::rc::Rc::new(move || today),
+                lib_core::Clock::fixed(today),
                 crate::units::UnitsSetup::stub(),
                 crate::bills::BillsSetup::stub(&storage),
                 storage,

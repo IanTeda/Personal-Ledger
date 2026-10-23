@@ -529,8 +529,7 @@ impl<'a> Harness<'a> {
             gpui_component::init(cx);
             theme::colours::init(ThemeOverrides::default(), cx);
         });
-        let date = Rc::new(Cell::new(today()));
-        let read = date.clone();
+        let (clock, date) = lib_core::Clock::settable(today());
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
@@ -550,7 +549,7 @@ impl<'a> Harness<'a> {
                 bills,
                 commit,
                 failures,
-                Rc::new(move || read.get()),
+                clock,
                 focus_handle,
                 cx,
             )

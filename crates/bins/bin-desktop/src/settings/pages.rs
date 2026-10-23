@@ -3,7 +3,6 @@
 //! the rest; [`PageHandle`] is the same surface over its `Entity`, so [`SettingsPages::get`] hands
 //! the Settings View the open page as one `dyn` handle and `get` is the only match on the page.
 
-use chrono::NaiveDate;
 use gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, EventEmitter, IntoElement,
     Keystroke, ListAlignment, ListState, Render, Subscription,
@@ -253,7 +252,7 @@ pub struct SettingsPages {
 impl SettingsPages {
     pub fn new(
         ledger: &Entity<LedgerStore>,
-        today: NaiveDate,
+        clock: &lib_core::Clock,
         units: UnitsSetup,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
@@ -263,7 +262,7 @@ impl SettingsPages {
             units: units_page(units.ports, ledger.clone(), units.keymap, cx),
             institutions: cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx)),
             accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), cx)),
-            categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), today, cx)),
+            categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), clock, cx)),
             tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),
             payees: cx.new(|cx| {
                 PayeesPage::new(

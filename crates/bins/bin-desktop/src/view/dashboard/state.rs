@@ -59,7 +59,12 @@ pub struct DashboardView {
 }
 
 impl DashboardView {
-    pub fn new(sources: DashboardSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        sources: DashboardSources,
+        clock: &lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let today = clock.today();
         Self {
             today,
             scroll: ScrollHandle::new(),

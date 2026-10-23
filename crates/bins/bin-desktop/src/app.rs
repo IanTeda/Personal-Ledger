@@ -141,12 +141,12 @@ pub struct Shell {
     /// them fails.
     units: crate::units::DesktopPorts,
     /// "Today" for the seed data and, later, the `this year` filter -- read at construction and
-    /// moved on only when [`Self::clock`] crosses into a new calendar month, so everything derived
-    /// from it (the seeded dates, the default range) agrees within a month.
+    /// moved on only when [`Self::presenter`] sees the Clock cross into a new calendar month, so
+    /// everything derived from it (the seeded dates, the default range) agrees within a month.
     today: chrono::NaiveDate,
-    /// The calendar day as the Desktop reads it: the local date, or a test's pinned day. The Bills
-    /// page dates its rows by it too.
-    clock: crate::bills::presenter::Clock,
+    /// The Shell as a `lib-shell` module, which so far holds the Clock (the local date, or a
+    /// test's pinned day; every View is built with it) and notices a month turn.
+    presenter: lib_shell::ShellPresenter,
     /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
     /// Schedule is generated through.
     bills: crate::bills::DesktopPorts,
@@ -174,13 +174,13 @@ impl Shell {
     pub fn with_clock(
         nav: NavState,
         focus_handle: FocusHandle,
-        clock: crate::bills::presenter::Clock,
+        clock: lib_core::Clock,
         units: crate::units::UnitsSetup,
         bills: crate::bills::BillsSetup,
         storage: crate::ledger_store::LedgerSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let today = clock();
+        let today = clock.today();
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -196,7 +196,7 @@ impl Shell {
         let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let settings_view = cx.new(|cx| SettingsView::new(&ledger, today, units, cx));
+        let settings_view = cx.new(|cx| SettingsView::new(&ledger, &clock, units, cx));
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
@@ -205,7 +205,7 @@ impl Shell {
                 TransactionsSources {
                     ledger: ledger.clone(),
                 },
-                today,
+                &clock,
                 cx,
             )
         });
@@ -224,7 +224,7 @@ impl Shell {
                     ledger: ledger.clone(),
                 },
                 budgets_current,
-                today,
+                &clock,
                 cx,
             )
         });
@@ -236,7 +236,7 @@ impl Shell {
                 DashboardSources {
                     ledger: ledger.clone(),
                 },
-                today,
+                &clock,
                 cx,
             )
         });
@@ -259,7 +259,7 @@ impl Shell {
                 DocumentsSources {
                     ledger: ledger.clone(),
                 },
-                today,
+                &clock,
                 cx,
             )
         });
@@ -295,7 +295,7 @@ impl Shell {
             ledger,
             units: units_ports,
             today,
-            clock,
+            presenter: lib_shell::ShellPresenter::new(clock),
             bills: bills_ports,
             views: ViewEntities {
                 dashboard: dashboard_view,

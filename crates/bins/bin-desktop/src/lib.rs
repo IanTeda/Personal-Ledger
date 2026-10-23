@@ -95,11 +95,11 @@ pub fn build_shell(
     bills: Box<dyn BillsStore>,
     commit: Rc<dyn Commit>,
     failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
-    clock: bills::presenter::Clock,
+    clock: lib_core::Clock,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
-    let today = clock();
+    let today = clock.today();
     let nav = navigation::nav::NavState::starting_at(persisted.noun);
     let documents_state = (
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),

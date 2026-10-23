@@ -90,13 +90,14 @@ pub struct BudgetsView {
 }
 
 impl BudgetsView {
-    /// The page on `current`, as of `today`.
+    /// The page on `current`, as of the day `clock` reads.
     pub fn new(
         sources: BudgetsSources,
         current: BudgetId,
-        today: NaiveDate,
+        clock: &lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        let today = clock.today();
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _categories_changed = notify_on(&sources.ledger, Domain::Categories, cx);
         Self {
@@ -1122,7 +1123,8 @@ mod tests {
         let sources = BudgetsSources {
             ledger: ledger.clone(),
         };
-        let view = cx.new(|cx| BudgetsView::new(sources, current, today(), cx));
+        let view =
+            cx.new(|cx| BudgetsView::new(sources, current, &lib_core::Clock::fixed(today()), cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
         cx.update(|cx| {

@@ -5,15 +5,13 @@
 //! The page keeps the Bill Schedule generated for itself: when a running Client crosses into a new
 //! calendar month, the next event the page handles runs [`PopulateSchedule`] first, so the new
 //! month's entries are there before it reads them. A Client whose Shell generates the new month
-//! wherever the person is (the Desktop's month tick) leaves this a guard that finds nothing to add.
+//! wherever the person is (`lib-shell`'s month turn) leaves this a guard that finds nothing to add.
 
-use chrono::NaiveDate;
-use lib_core::{BillPlanId, DateStyle, Period};
+use lib_core::{BillPlanId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
-use super::Clock;
 use super::planner::{PlannerEvent, PlannerPresenter, PlannerViewModel};
 use super::schedule::{FilterField, ScheduleEvent, SchedulePresenter, ScheduleViewModel};
 use crate::interactor::PopulateSchedule;
@@ -114,9 +112,9 @@ impl BillsPagePresenter {
     /// started, so the page generates again only once the month turns. `keymap` is the one the
     /// Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<BillsPageEvent>) -> Self {
-        let today = clock();
+        let today = clock.today();
         Self {
-            schedule: SchedulePresenter::new(ports.clone(), today),
+            schedule: SchedulePresenter::new(ports.clone(), clock.clone()),
             planner: PlannerPresenter::new(ports.clone()),
             ports,
             clock,
@@ -125,11 +123,6 @@ impl BillsPagePresenter {
             generated: Period::of(today),
             date_style: None,
         }
-    }
-
-    /// Today, as the page dates its rows and its Dialogs.
-    pub fn today(&self) -> NaiveDate {
-        (self.clock)()
     }
 
     /// The date style the Plan form's dates are typed in.
@@ -151,17 +144,15 @@ impl BillsPagePresenter {
 
     pub fn handle(&mut self, event: BillsPageEvent, router: &mut dyn BillsRouter) {
         self.catch_up();
-        let today = self.today();
         match event {
             BillsPageEvent::Move(step) => match self.tab {
                 BillsTab::Schedule => {
-                    self.schedule
-                        .handle(ScheduleEvent::Move(step), today, router);
+                    self.schedule.handle(ScheduleEvent::Move(step), router);
                 }
                 BillsTab::Planner => self.planner.handle(PlannerEvent::Move(step), router),
             },
             BillsPageEvent::Open => match self.tab {
-                BillsTab::Schedule => self.schedule.handle(ScheduleEvent::Open, today, router),
+                BillsTab::Schedule => self.schedule.handle(ScheduleEvent::Open, router),
                 BillsTab::Planner => self.planner.handle(PlannerEvent::Edit, router),
             },
             BillsPageEvent::NextTab => self.show_tab(self.tab.next()),
@@ -171,7 +162,7 @@ impl BillsPagePresenter {
             }
             BillsPageEvent::Schedule(event) => {
                 if self.tab == BillsTab::Schedule {
-                    self.schedule.handle(event, today, router);
+                    self.schedule.handle(event, router);
                 }
             }
             BillsPageEvent::Planner(event) => {
@@ -185,7 +176,7 @@ impl BillsPagePresenter {
             BillsPageEvent::RevealEntry(id) => {
                 if self.ports.borrow().bills().entry(id).is_some() {
                     self.show_tab(BillsTab::Schedule);
-                    self.schedule.reveal(id, today);
+                    self.schedule.reveal(id);
                 }
             }
             BillsPageEvent::RevealPlan(id) => {
@@ -212,7 +203,7 @@ impl BillsPagePresenter {
 
     /// Generates the Schedule for a month the Client has crossed into since it last did.
     fn catch_up(&mut self) {
-        let today = self.today();
+        let today = self.clock.today();
         if Period::of(today) == self.generated {
             return;
         }
@@ -229,7 +220,6 @@ impl BillsPagePresenter {
     }
 
     pub fn view_model(&self) -> BillsPageViewModel {
-        let today = self.today();
         BillsPageViewModel {
             add_button: msg::bills_add_button("+"),
             tabs: BillsTab::ALL
@@ -244,11 +234,11 @@ impl BillsPagePresenter {
                 })
                 .collect(),
             tab: self.tab,
-            schedule: self.schedule.view_model(today),
+            schedule: self.schedule.view_model(),
             planner: self.planner.view_model(),
             hints: self.hints(),
             status: match self.tab {
-                BillsTab::Schedule => self.schedule.status(today),
+                BillsTab::Schedule => self.schedule.status(),
                 BillsTab::Planner => self.planner.status(),
             },
         }
@@ -293,6 +283,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use chrono::NaiveDate;
     use lib_config::KeyBindingConfig;
     use lib_core::TransactionId;
 
@@ -753,6 +744,5 @@ mod tests {
         page.send(BillsPageEvent::Entered);
 
         assert!(stored(&page));
-        assert_eq!(page.presenter.today(), date(2026, 10, 1));
     }
 }

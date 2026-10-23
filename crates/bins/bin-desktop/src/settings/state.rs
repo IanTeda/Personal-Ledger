@@ -62,11 +62,11 @@ impl SettingsView {
     /// `Shell::set_log_capture`.
     pub fn new(
         ledger: &Entity<LedgerStore>,
-        today: chrono::NaiveDate,
+        clock: &lib_core::Clock,
         units: UnitsSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let pages = SettingsPages::new(ledger, today, units, cx);
+        let pages = SettingsPages::new(ledger, clock, units, cx);
         let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
         Self {
             pages,

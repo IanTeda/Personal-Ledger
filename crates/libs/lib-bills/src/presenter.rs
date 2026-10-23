@@ -11,9 +11,6 @@ mod planner;
 mod schedule;
 mod skip;
 
-use std::rc::Rc;
-
-use chrono::NaiveDate;
 use lib_core::{Money, UnitId};
 use lib_locale::format::{AmountStyle, format_amount};
 
@@ -31,10 +28,6 @@ pub use skip::{SkipEvent, SkipPresenter, SkipViewModel};
 
 use crate::protocols::BillsPorts;
 use crate::{BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, msg};
-
-/// Where a Presenter reads today from: the local date in a Client, a fixed day in a test. Bills is
-/// dated by the calendar day, so it reads no time.
-pub type Clock = Rc<dyn Fn() -> NaiveDate>;
 
 /// A count as a Message's plural argument.
 fn count(n: usize) -> i64 {
@@ -136,7 +129,8 @@ pub(crate) mod test_support {
 
     use chrono::NaiveDate;
 
-    use super::Clock;
+    use lib_core::Clock;
+
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
 
@@ -157,9 +151,8 @@ pub(crate) mod test_support {
 
     /// A clock a test can move on, starting at [`today`].
     pub fn clock() -> (Rc<Cell<NaiveDate>>, Clock) {
-        let day = Rc::new(Cell::new(today()));
-        let read = day.clone();
-        (day, Rc::new(move || read.get()))
+        let (clock, day) = Clock::settable(today());
+        (day, clock)
     }
 
     /// The stub seed, shared, with the handle the test reads it back through.

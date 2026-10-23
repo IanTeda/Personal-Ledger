@@ -2,12 +2,11 @@
 //! `impl BillPaymentsRouter` for the Pay Dialog. Its Router records a close for the host's confirm
 //! to read, and puts a Notice onto the bin's queue (`crate::notices`).
 
-use chrono::NaiveDate;
 use gpui::{Context, EventEmitter};
 use lib_bill_payments::presenter::PayPresenter;
 use lib_bill_payments::{BillPaymentsRouter, PayOutcome, SharedPayments};
 use lib_bills::PayRequest;
-use lib_core::DateStyle;
+use lib_core::{Clock, DateStyle};
 use lib_toast::{Notice, Notify};
 
 use super::PayDialog;
@@ -38,19 +37,19 @@ impl Notify for DialogRouter {
 /// Opens the Pay Dialog on `request`'s entry over page `P`, whose `landed` runs with the outcome
 /// once a confirm lands, so the page redraws from its ports. `bills` are the Bills ports the
 /// Dialog's Match panel and wording read, `payments` the port Pay it directly writes through, and
-/// `today` and `date_style` what its Date field defaults to and parses by. Returns whether it
+/// `clock` and `date_style` what its Date field defaults to and parses by. Returns whether it
 /// opened: an entry whose Plan has gone has no Dialog.
 pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
     cx: &mut Context<'_, P>,
     bills: &DesktopPorts,
     payments: &SharedPayments,
     request: PayRequest,
-    today: NaiveDate,
+    clock: Clock,
     date_style: Option<DateStyle>,
     landed: impl Fn(&mut P, PayOutcome, &mut Context<'_, P>) + 'static,
 ) -> bool {
     let Some(presenter) =
-        PayPresenter::new(bills.clone(), payments.clone(), request, today, date_style)
+        PayPresenter::new(bills.clone(), payments.clone(), request, clock, date_style)
     else {
         return false;
     };

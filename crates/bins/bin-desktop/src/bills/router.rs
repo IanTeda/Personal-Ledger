@@ -4,12 +4,11 @@
 //! context, which is why the Router is built for each `handle` call. A Notice goes onto the bin's
 //! queue (`crate::notices`).
 
-use chrono::NaiveDate;
 use gpui::{Context, Entity};
 use lib_bill_payments::SharedPayments;
 use lib_bills::presenter::{BillsPageEvent, PlanFormPresenter, SkipPresenter};
 use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
-use lib_core::{BillPlanId, DateStyle, TransactionId};
+use lib_core::{BillPlanId, Clock, DateStyle, TransactionId};
 use lib_toast::{Notice, Notify};
 
 use super::ports::DesktopPorts;
@@ -25,7 +24,7 @@ pub(super) struct PageRouter<'a, 'b> {
     /// What the Pay Dialog writes Pay it directly through.
     pub payments: SharedPayments,
     /// The day and date style the page's Dialogs are opened on.
-    pub today: NaiveDate,
+    pub clock: Clock,
     pub date_style: Option<DateStyle>,
     pub cx: &'a mut Context<'b, BillsPage>,
 }
@@ -46,8 +45,12 @@ impl BillsRouter for PageRouter<'_, '_> {
     fn open_plan_form(&mut self, plan: Option<BillPlanId>) -> bool {
         let ports = self.ports.clone();
         let presenter = match plan {
-            None => Some(PlanFormPresenter::add(ports, self.today, self.date_style)),
-            Some(id) => PlanFormPresenter::edit(ports, id, self.today, self.date_style),
+            None => Some(PlanFormPresenter::add(
+                ports,
+                self.clock.clone(),
+                self.date_style,
+            )),
+            Some(id) => PlanFormPresenter::edit(ports, id, self.clock.clone(), self.date_style),
         };
         let dialog = presenter.map(|presenter| BillsDialog::plan_form(presenter, &self.ports));
         self.host(dialog)
@@ -66,7 +69,7 @@ impl BillsRouter for PageRouter<'_, '_> {
             &self.ports,
             &self.payments,
             request,
-            self.today,
+            self.clock.clone(),
             self.date_style,
             BillsPage::pay_landed,
         )
@@ -89,16 +92,16 @@ impl Notify for PageRouter<'_, '_> {
 }
 
 /// The Bills module's entry point: its page, built on `ports`, which the Shell hosts as the Bills
-/// destination. `payments` is what the Pay Dialog it opens writes through, and `today` reads the
+/// destination. `payments` is what the Pay Dialog it opens writes through, and `clock` reads the
 /// calendar day the page dates its rows by.
 pub fn bills_page(
     ports: DesktopPorts,
     payments: SharedPayments,
     ledger: Entity<LedgerStore>,
     keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
-    today: lib_bills::presenter::Clock,
+    clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<BillsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| BillsPage::new(ports, payments, ledger, keymap, today, cx))
+    cx.new(|cx| BillsPage::new(ports, payments, ledger, keymap, clock, cx))
 }

@@ -110,7 +110,12 @@ pub struct TransactionsView {
 }
 
 impl TransactionsView {
-    pub fn new(sources: TransactionsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        sources: TransactionsSources,
+        clock: &lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let today = clock.today();
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
         let _categories_changed = notify_on(&sources.ledger, Domain::Categories, cx);

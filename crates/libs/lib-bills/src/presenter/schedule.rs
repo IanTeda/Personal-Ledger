@@ -7,8 +7,7 @@
 //! Pay and Skip act on an actionable row (Due or Overdue, and stored); on any other they say so on
 //! the status line. A Paid row hands off to its Transaction.
 
-use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, Period, Total};
+use lib_core::{AccountId, BillPlanId, CategoryId, Clock, Period, Total};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_locale::format::{format_month_day, format_year_month, upper};
@@ -227,6 +226,8 @@ pub enum LineActions {
 /// The tab's state; the rows are read from the ports each time.
 pub struct SchedulePresenter {
     ports: SharedPorts,
+    /// Dates the rows: their status and which month an Overdue or Due entry is carried into.
+    clock: Clock,
     /// A position in the rows shown, clamped wherever it is read.
     selected: usize,
     /// Kept while `all` shows every entry, so leaving All returns to it.
@@ -237,39 +238,40 @@ pub struct SchedulePresenter {
 }
 
 impl SchedulePresenter {
-    /// The tab on `today`'s month, every status on and no scope.
-    pub fn new(ports: SharedPorts, today: NaiveDate) -> Self {
+    /// The tab on the month `clock` reads, every status on and no scope.
+    pub fn new(ports: SharedPorts, clock: Clock) -> Self {
         Self {
             ports,
             selected: 0,
-            period: Period::of(today),
+            period: Period::of(clock.today()),
+            clock,
             all: false,
             filters: BillFilters::default(),
             filter_focus: None,
         }
     }
 
-    pub fn handle(&mut self, event: ScheduleEvent, today: NaiveDate, router: &mut dyn BillsRouter) {
+    pub fn handle(&mut self, event: ScheduleEvent, router: &mut dyn BillsRouter) {
         match event {
             ScheduleEvent::Move(step) => {
-                let len = self.rows(today).len();
+                let len = self.rows().len();
                 self.selected = lib_list_cursor::step(self.clamped(len), len, step);
             }
             ScheduleEvent::Select(index) => self.selected = index,
-            ScheduleEvent::Open => self.view_transaction(today, router),
-            ScheduleEvent::Pay => self.pay(today, router),
-            ScheduleEvent::Skip => self.skip(today, router),
+            ScheduleEvent::Open => self.view_transaction(router),
+            ScheduleEvent::Pay => self.pay(router),
+            ScheduleEvent::Skip => self.skip(router),
             ScheduleEvent::PayRow(index) => {
                 self.selected = index;
-                self.pay(today, router);
+                self.pay(router);
             }
             ScheduleEvent::SkipRow(index) => {
                 self.selected = index;
-                self.skip(today, router);
+                self.skip(router);
             }
             ScheduleEvent::ViewTransaction(index) => {
                 self.selected = index;
-                self.view_transaction(today, router);
+                self.view_transaction(router);
             }
             ScheduleEvent::PrevPeriod | ScheduleEvent::NextPeriod => {
                 if !std::mem::take(&mut self.all) {
@@ -315,16 +317,12 @@ impl SchedulePresenter {
     }
 
     /// Entry `id`, in the month that shows it and selected; nothing for an entry that is gone.
-    pub(super) fn reveal(&mut self, id: crate::EntryId, today: NaiveDate) {
+    pub(super) fn reveal(&mut self, id: crate::EntryId) {
         let Some(found) = self.ports.borrow().bills().entry(id) else {
             return;
         };
-        self.show_period(schedule_period(&found, today));
-        self.selected = self
-            .rows(today)
-            .iter()
-            .position(|row| row.id == id)
-            .unwrap_or(0);
+        self.show_period(schedule_period(&found, self.clock.today()));
+        self.selected = self.rows().iter().position(|row| row.id == id).unwrap_or(0);
     }
 
     /// The scope select `f` has focused.
@@ -343,31 +341,31 @@ impl SchedulePresenter {
     }
 
     /// The rows before the filters.
-    fn unfiltered(&self, today: NaiveDate) -> Vec<ScheduleRow> {
+    fn unfiltered(&self) -> Vec<ScheduleRow> {
         let ports = self.ports.borrow();
         let bills = ports.bills();
         schedule_rows(
             &bills.bill_plans(),
             &bills.entries(),
             (!self.all).then_some(self.period),
-            today,
+            self.clock.today(),
         )
     }
 
     /// The rows shown.
-    fn rows(&self, today: NaiveDate) -> Vec<ScheduleRow> {
+    fn rows(&self) -> Vec<ScheduleRow> {
         let plans = self.ports.borrow().bills().bill_plans();
-        self.filters.apply(&self.unfiltered(today), &plans)
+        self.filters.apply(&self.unfiltered(), &plans)
     }
 
-    fn selected_row(&self, today: NaiveDate) -> Option<ScheduleRow> {
-        let rows = self.rows(today);
+    fn selected_row(&self) -> Option<ScheduleRow> {
+        let rows = self.rows();
         rows.get(self.clamped(rows.len())).copied()
     }
 
     /// The selected row when Pay and Skip may act on it: actionable, with its Plan still there.
-    fn actionable(&self, today: NaiveDate, router: &mut dyn BillsRouter) -> Option<ScheduleRow> {
-        let row = self.selected_row(today).filter(|row| {
+    fn actionable(&self, router: &mut dyn BillsRouter) -> Option<ScheduleRow> {
+        let row = self.selected_row().filter(|row| {
             row.is_actionable()
                 && self
                     .ports
@@ -382,8 +380,8 @@ impl SchedulePresenter {
         row
     }
 
-    fn pay(&mut self, today: NaiveDate, router: &mut dyn BillsRouter) {
-        let Some(row) = self.actionable(today, router) else {
+    fn pay(&mut self, router: &mut dyn BillsRouter) {
+        let Some(row) = self.actionable(router) else {
             return;
         };
         let (candidates, preselected) = {
@@ -402,15 +400,15 @@ impl SchedulePresenter {
         });
     }
 
-    fn skip(&mut self, today: NaiveDate, router: &mut dyn BillsRouter) {
-        if let Some(row) = self.actionable(today, router) {
+    fn skip(&mut self, router: &mut dyn BillsRouter) {
+        if let Some(row) = self.actionable(router) {
             router.open_skip(row.id);
         }
     }
 
     /// A Paid row's Matched Transaction; nothing for any other row.
-    fn view_transaction(&mut self, today: NaiveDate, router: &mut dyn BillsRouter) {
-        let Some(row) = self.selected_row(today) else {
+    fn view_transaction(&mut self, router: &mut dyn BillsRouter) {
+        let Some(row) = self.selected_row() else {
             return;
         };
         let resolution = self
@@ -450,7 +448,7 @@ impl SchedulePresenter {
 
     /// The status line's right-hand text: the period (or All) and the rows shown of the rows
     /// before the filters.
-    pub fn status(&self, today: NaiveDate) -> String {
+    pub fn status(&self) -> String {
         let period = if self.all {
             msg::bills_period_all()
         } else {
@@ -458,12 +456,13 @@ impl SchedulePresenter {
         };
         msg::bills_status_period(
             &period,
-            &self.rows(today).len().to_string(),
-            count(self.unfiltered(today).len()),
+            &self.rows().len().to_string(),
+            count(self.unfiltered().len()),
         )
     }
 
-    pub fn view_model(&self, today: NaiveDate) -> ScheduleViewModel {
+    pub fn view_model(&self) -> ScheduleViewModel {
+        let today = self.clock.today();
         let ports = self.ports.borrow();
         let ports = &*ports;
         let (plans, entries) = (ports.bills().bill_plans(), ports.bills().entries());

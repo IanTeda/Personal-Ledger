@@ -1,7 +1,7 @@
 //! Enforces the VIPER Dependencies rule over `cargo metadata`: a migrated feature crate never
 //! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
-//! depends on the feature crates it writes and nothing else does on it
-//! (docs/development/viper-architecture.md, Rules > Dependencies).
+//! depends on the feature crates it writes and nothing else does on it, and no module depends on
+//! `lib_shell`, which hosts them (docs/development/viper-architecture.md, Rules > Dependencies).
 //!
 //! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
 //! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
@@ -10,7 +10,7 @@
 //!
 //! Only crates in `MIGRATED` are checked for feature crates. Today's domain crates still lean on
 //! each other, so each VIPER transition slice adds its crate here once it complies. Every feature
-//! crate, migrated or not, is checked for a cross-domain module.
+//! crate, migrated or not, is checked for a cross-domain module and for `lib_shell`.
 
 use std::process::Command;
 
@@ -19,8 +19,10 @@ use serde_json::Value;
 /// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and the
 /// shared crates every module may depend on, which no feature crate may reach another through:
 /// `lib_viper`, the generic types they share, and `lib_toast`, the Notices they send the Shell.
+/// `lib_shell`, the Shell module, keeps the rule too.
 const MIGRATED: &[&str] = &[
     "lib_bills",
+    "lib_shell",
     "lib_toast",
     "lib_transactions",
     "lib_units",
@@ -47,6 +49,10 @@ const FEATURE_CRATES: &[&str] = &[
 const CROSS_DOMAIN: &[(&str, &[&str])] =
     &[("lib_bill_payments", &["lib_bills", "lib_transactions"])];
 
+/// The Shell module, which hosts every other module: only the bins may depend on it, so no
+/// module, cross-domain module or shared crate may.
+const SHELL: &str = "lib_shell";
+
 /// Crates no feature crate may depend on besides the other feature crates.
 const FORBIDDEN: &[&str] = &[
     "gpui",
@@ -57,10 +63,16 @@ const FORBIDDEN: &[&str] = &[
 ];
 
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
-/// cross-domain module that writes it), a toolkit, `lib_database`, or a cross-domain module.
+/// cross-domain module that writes it), a toolkit, `lib_database`, a cross-domain module, or the
+/// Shell.
 fn forbidden(name: &str, dependency: &str, migrated: &[&str]) -> bool {
     if dependency == name {
         return false;
+    }
+    if dependency == SHELL {
+        return FEATURE_CRATES.contains(&name)
+            || CROSS_DOMAIN.iter().any(|(m, _)| *m == name)
+            || migrated.contains(&name);
     }
     if CROSS_DOMAIN.iter().any(|(module, _)| *module == dependency) {
         return FEATURE_CRATES.contains(&name) || CROSS_DOMAIN.iter().any(|(m, _)| *m == name);
@@ -237,6 +249,42 @@ fn violations_flags_a_feature_crate_on_a_cross_domain_module_and_what_the_module
             "lib_bills -> lib_bill_payments",
             "lib_bill_payments -> lib_units",
             "lib_bill_payments -> lib_database"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_any_module_depending_on_lib_shell_and_lib_shell_reaching_a_module() {
+    let metadata = serde_json::json!({
+        "packages": [
+            { "name": "lib_payees", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_units", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_bill_payments", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_toast", "dependencies": [{ "name": "lib_shell" }] },
+            {
+                "name": "lib_shell",
+                "dependencies": [
+                    { "name": "lib_core" },
+                    { "name": "lib_toast" },
+                    { "name": "lib_bills" },
+                    { "name": "gpui" },
+                    { "name": "lib_database" },
+                ]
+            },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_shell" }] }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata, MIGRATED),
+        vec![
+            "lib_payees -> lib_shell",
+            "lib_units -> lib_shell",
+            "lib_bill_payments -> lib_shell",
+            "lib_toast -> lib_shell",
+            "lib_shell -> lib_bills",
+            "lib_shell -> gpui",
+            "lib_shell -> lib_database"
         ]
     );
 }

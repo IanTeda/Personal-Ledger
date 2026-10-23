@@ -119,7 +119,12 @@ fn key_label_for_options(kind: Option<KeyDateKind>) -> String {
 }
 
 impl DocumentsView {
-    pub fn new(sources: DocumentsSources, today: NaiveDate, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        sources: DocumentsSources,
+        clock: &lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let today = clock.today();
         let _accounts_changed = notify_on(&sources.ledger, Domain::Accounts, cx);
         let _payees_changed = notify_on(&sources.ledger, Domain::Payees, cx);
         // `notify_on` only repaints, but a removed type must also move the scope, so this
