@@ -90,7 +90,6 @@ use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
-    navigation::key_router,
     navigation::nav::{NavState, RailMode},
     settings::{SettingsPage, display::DisplayPreferences},
     view::dashboard::state::{DashboardSources, DashboardView},
@@ -110,14 +109,14 @@ pub struct Shell {
     /// The View area's sideways scroll, for a View wider than the space the Chrome leaves it
     /// (ADR-0042). The Chrome itself never scrolls sideways.
     view_x_scroll_handle: ScrollHandle,
-    /// The timer of a pressed `g` -- `Some` while a completing chord (`gg`, or `g` + a jump
-    /// key) is still possible. Cleared by the next keypress regardless of outcome, so an
-    /// abandoned `g` never leaks into the one after it, or by the timer itself once
-    /// [`PENDING_G_TIMEOUT`] passes. The executor's clock, not the wall clock, so a loaded test
-    /// run can't lapse a `g` between two simulated keys.
-    pending_g: Option<Task<()>>,
+    /// The timer of a pressed prefix (`g`) -- `Some` while the Shell's Presenter waits for the
+    /// key that finishes the sequence (`g g`, or `g` and a jump key). Dropped by the next keypress
+    /// regardless of outcome, which cancels it, or run out once [`PENDING_G_TIMEOUT`] passes,
+    /// which sends the Presenter `PrefixExpired`. The executor's clock, not the wall clock, so a
+    /// loaded test run can't lapse a `g` between two simulated keys.
+    prefix_timer: Option<Task<()>>,
     /// The mode the active View entered itself (`ViewEvent::EnterMode`), so that mode's keys are
-    /// its to read. The router's own `a` enters an `Insert` no View asked for, which swallows every
+    /// its to read. The Shell's own `a` enters an `Insert` no View asked for, which swallows every
     /// key as before.
     view_mode: Option<ViewMode>,
     /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
@@ -275,14 +274,12 @@ impl Shell {
             nav,
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
-            pending_g: None,
+            prefix_timer: None,
             view_mode: None,
             chrome: ChromeState {
                 status_message: None,
                 toasts: Toasts::default(),
                 toasts_hovered: false,
-                dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
-                toast_history_binding: None,
                 #[cfg(debug_assertions)]
                 debug_toast_kind: 0,
                 palette: None,
@@ -412,17 +409,10 @@ impl Shell {
         self.views.settings.read(cx).display(cx)
     }
 
-    /// The keys every module Dialog shares, under `config`'s overrides.
-    pub fn set_dialog_keymap(&mut self, config: &lib_config::KeyBindingConfig) {
+    /// The global keys and the keys every module Dialog shares, under `config`'s overrides.
+    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
+        self.presenter.set_keymap(config);
         self.chrome.dialog_keymap = lib_shell::dialog_keymap(config);
-    }
-
-    pub fn set_dismiss_toasts_binding(&mut self, spec: String) {
-        self.chrome.dismiss_toasts_binding = spec;
-    }
-
-    pub fn set_toast_history_binding(&mut self, spec: Option<String>) {
-        self.chrome.toast_history_binding = spec;
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file

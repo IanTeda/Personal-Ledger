@@ -4,7 +4,7 @@
 use super::Shell;
 use crate::{
     chrome::rail as chrome_rail,
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     navigation::nav::FocusZone,
     view::active::{ActiveViewEntity, ShellView},
 };

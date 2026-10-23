@@ -10,7 +10,8 @@
 
 use lib_config::KeyBindingConfig;
 
-/// One command: its name in `[keybindings]`, its chord when nothing overrides it, and its event.
+/// One command: its name in `[keybindings]`, its chord when nothing overrides it, and its event. An
+/// empty chord leaves the command unbound until `[keybindings]` sets one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Binding<E> {
     pub command: &'static str,
@@ -39,10 +40,23 @@ impl<E: Clone> Keymap<E> {
 
     /// The event `chord` sends, if it is bound.
     pub fn event(&self, chord: &str) -> Option<E> {
+        if chord.is_empty() {
+            return None;
+        }
         self.bindings
             .iter()
             .find(|(bound, ..)| bound == chord)
             .map(|(.., event)| event.clone())
+    }
+
+    /// Whether `chord` begins a bound sequence (the `g` of `g g`), so the Client waits for the
+    /// next key before looking the whole sequence up.
+    pub fn is_prefix(&self, chord: &str) -> bool {
+        self.bindings.iter().any(|(bound, ..)| {
+            bound
+                .strip_prefix(chord)
+                .is_some_and(|rest| rest.starts_with(' '))
+        })
     }
 
     /// The chord `command` is bound to, for the legend.
@@ -60,6 +74,15 @@ pub const MOVE_FIRST: &str = "move_first";
 pub const MOVE_LAST: &str = "move_last";
 pub const HALF_PAGE_DOWN: &str = "half_page_down";
 pub const HALF_PAGE_UP: &str = "half_page_up";
+/// The arrow, Home/End and Page keys' commands: each moves as the `move_*` command beside it
+/// does, under a name of its own, since `[keybindings]` gives a command one chord and its defaults
+/// already bind `move_down` and `move_up` to `j` and `k`.
+pub const ARROW_DOWN: &str = "arrow_down";
+pub const ARROW_UP: &str = "arrow_up";
+pub const HOME: &str = "home";
+pub const END: &str = "end";
+pub const PAGE_DOWN: &str = "page_down";
+pub const PAGE_UP: &str = "page_up";
 pub const NEW: &str = "new";
 pub const EDIT: &str = "edit";
 pub const DELETE: &str = "delete";
@@ -108,6 +131,25 @@ mod tests {
         assert_eq!(keymap.event("q"), None);
         assert_eq!(keymap.chord(DELETE), Some("d"));
         assert_eq!(keymap.chord("unbound"), None);
+    }
+
+    #[test]
+    fn a_sequences_first_key_is_a_prefix_and_a_whole_chord_is_not() {
+        // `edit`, since the `[keybindings]` defaults bind `new` to `n`.
+        let bindings = [Binding {
+            command: EDIT,
+            chord: "g n",
+            event: Event::New,
+        }];
+        let keymap = Keymap::new(&bindings, &KeyBindingConfig::default());
+
+        assert!(keymap.is_prefix("g"));
+        assert!(!keymap.is_prefix("g n"), "a whole sequence is no prefix");
+        assert!(!keymap.is_prefix("n"));
+        assert!(
+            !Keymap::new(BINDINGS, &KeyBindingConfig::default()).is_prefix("d"),
+            "a single-key chord is no prefix"
+        );
     }
 
     #[test]

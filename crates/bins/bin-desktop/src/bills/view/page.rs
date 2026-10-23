@@ -1,12 +1,13 @@
 //! The Bills page's View: the `lib-bills` page Presenter in a gpui Entity, which the Shell hosts as
-//! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It turns keys into chord text for
-//! the Bills keymap and clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
+//! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It looks up each key the
+//! Shell passes on, as chord text, in the Bills keymap, turns clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
 //! `planner.rs`), and keeps the Ledger read copy in line after every event ([`ports::refresh`]).
 //! Each key and click is one input (`crate::input::send`), which commits what it wrote.
 //!
 //! A focused scope select's open list and highlight are gpui's widget state, so they are kept here:
 //! while one has focus, `j`/`k` and `Enter` drive it instead of the rows.
 
+use crate::navigation::nav::NounLabel;
 use std::rc::Rc;
 
 use gpui::{
@@ -31,8 +32,7 @@ use crate::chrome::dialog_host::DialogKey;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
 use crate::ledger_store::{LedgerChanged, LedgerStore};
-use crate::navigation::chord::{chord, is_global};
-use crate::navigation::{key_router::Movement, nav::Noun};
+use crate::navigation::{movement::Movement, nav::Noun};
 use crate::settings::display::StatusGlyphs;
 use crate::{
     chrome::statusline::PageStatus,
@@ -237,14 +237,11 @@ impl BillsPage {
         }
     }
 
-    /// Every chord the Bills keymap binds, looked up ahead of the router, except the Shell's own
-    /// global keys. `g g` stays the router's, since `g` is its jump prefix: it comes back as a
-    /// movement. While a scope select has focus, `j`/`k` drive it and the other movements wait.
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if is_global(keystroke) {
-            return false;
-        }
-        let Some(event) = chord(keystroke).and_then(|chord| self.keymap.event(&chord)) else {
+    /// Every chord the Bills keymap binds, the arrows, `g g` and `enter` among them. The Shell has
+    /// already taken its own keys. While a scope select has focus, the moves up and down and
+    /// `enter` drive it and the other movements wait.
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event(chord) else {
             return false;
         };
         match event {
@@ -253,33 +250,24 @@ impl BillsPage {
                 Step::Prev => self.filter_key(DialogKey::Up, cx),
                 _ => {}
             },
+            BillsPageEvent::Open if self.filter_focused() => self.filter_key(DialogKey::Enter, cx),
             event => self.send(event, cx),
         }
         true
     }
 
-    /// Every Bills key is the keymap's, taken ahead of the router.
+    /// Every Bills key is the keymap's.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// Every Bills key is the keymap's.
     pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }
 
-    /// The router's movements the keymap didn't take (`g g`, the arrows, `Enter`) walk the tab
-    /// shown, or drive a focused scope select.
-    pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
-        if self.filter_focused() {
-            match movement {
-                Movement::Next => self.filter_key(DialogKey::Down, cx),
-                Movement::Prev => self.filter_key(DialogKey::Up, cx),
-                Movement::Enter => self.filter_key(DialogKey::Enter, cx),
-                _ => {}
-            }
-            return;
-        }
-        match movement.step() {
-            Some(step) => self.send(BillsPageEvent::Move(step), cx),
-            None => self.send(BillsPageEvent::Open, cx),
-        }
-    }
+    /// A movement the keymap doesn't bind does nothing on the page.
+    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) {}
 
     /// The scope selects: the first `Esc` closes an open list, the next leaves the filter row.
     /// Returns whether it took the `Esc`.

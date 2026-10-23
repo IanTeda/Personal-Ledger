@@ -1,6 +1,7 @@
 //! Shell chrome driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
-//! zone cycling, the rail toggle and the modes the key router enters and leaves. Assertions read
-//! `NavState` back from `Shell`, never pixels.
+//! zone cycling, the rail toggle, the modes the global keys enter and leave, and the order a key
+//! is offered in (`bin_desktop`'s `input::route_key`), each step winning a key a later one also
+//! binds. Assertions read `NavState` back from `Shell`, never pixels.
 
 use std::time::Duration;
 
@@ -25,6 +26,16 @@ fn rail(ui: &mut Harness<'_>) -> RailMode {
     ui.rail()
 }
 
+/// Every `g` jump's default chord and the Noun it lands on.
+fn jumps() -> impl Iterator<Item = (&'static str, Noun)> {
+    lib_shell::keymap::GLOBAL_BINDINGS
+        .iter()
+        .filter_map(|binding| match binding.event {
+            lib_shell::ShellCommand::Jump(noun) => Some((binding.chord, noun)),
+            _ => None,
+        })
+}
+
 #[gpui::test]
 fn starts_on_dashboard_in_normal_mode_with_focus_in_the_view(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
@@ -39,9 +50,9 @@ fn starts_on_dashboard_in_normal_mode_with_focus_in_the_view(app: &mut TestAppCo
 fn every_g_jump_lands_on_its_noun(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
 
-    for (key, noun) in bin_desktop::navigation::key_router::JUMPS {
-        ui.press(&format!("g {key}"));
-        assert_eq!(ui.noun(), noun, "g {key}");
+    for (chord, noun) in jumps() {
+        ui.press(chord);
+        assert_eq!(ui.noun(), noun, "{chord}");
     }
 }
 
@@ -51,12 +62,12 @@ fn the_header_is_the_wordmark_alone_on_every_view(app: &mut TestAppContext) {
         let mut ui = Harness::new(app);
         ui.resize_to(window_size);
         let wordmark = ui.bounds("topbar-brand").size;
-        for (key, _) in bin_desktop::navigation::key_router::JUMPS {
-            ui.press(&format!("g {key}"));
+        for (chord, _) in jumps() {
+            ui.press(chord);
             assert_eq!(
                 ui.bounds("topbar-brand").size,
                 wordmark,
-                "g {key} at {window_size:?}: no View suffix"
+                "{chord} at {window_size:?}: no View suffix"
             );
         }
     }
@@ -301,4 +312,124 @@ fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
     assert!(!ui.read(|s| s.undo_menu_open()));
     assert_eq!(ui.noun(), Noun::Transactions);
     assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+// The key route: each step wins a key a later step also binds.
+
+/// Takes `ui` to the Settings Units page, a module's View, with keyboard focus on it.
+fn to_units(ui: &mut Harness<'_>) {
+    ui.press("g s j j l");
+    assert_eq!(ui.settings().page, "Units");
+    assert!(ui.settings().page_focused);
+}
+
+#[gpui::test]
+fn an_open_dialog_takes_a_key_the_shell_keeps(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    to_units(&mut ui);
+    ui.press("n");
+    let before = rail(&mut ui);
+
+    ui.press("b");
+
+    assert_eq!(
+        ui.dialog_value("code").as_deref(),
+        Some("b"),
+        "typed, not the rail toggle"
+    );
+    assert_eq!(rail(&mut ui), before);
+}
+
+#[gpui::test]
+fn the_palette_takes_a_key_the_shell_keeps(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let before = rail(&mut ui);
+
+    ui.press(": b");
+
+    let input = ui.read(|shell| shell.palette_snapshot().map(|palette| palette.input));
+    assert_eq!(input.as_deref(), Some("b"));
+    assert_eq!(rail(&mut ui), before);
+}
+
+#[gpui::test]
+fn a_key_the_shell_keeps_wins_over_a_module_binding_on_it(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("new", "b"));
+    to_units(&mut ui);
+    let before = rail(&mut ui);
+
+    ui.press("b");
+
+    assert_eq!(ui.dialog(), None, "the rail toggle, not New unit");
+    assert_ne!(rail(&mut ui), before);
+}
+
+#[gpui::test]
+fn a_module_binding_wins_over_its_hosts_own_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("new", "h"));
+    to_units(&mut ui);
+
+    ui.press("h");
+
+    assert_eq!(ui.dialog(), Some("AddUnit"));
+    ui.press("escape");
+    assert!(
+        ui.settings().page_focused,
+        "Settings' own `h` didn't step back to the index"
+    );
+}
+
+#[gpui::test]
+fn a_views_own_key_wins_over_the_shells_fallback(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g f");
+
+    ui.press("a");
+    assert_ne!(
+        mode(&mut ui),
+        InputMode::Insert,
+        "Documents' `a`, not Insert"
+    );
+
+    ui.press("escape g b tab");
+    assert_eq!(
+        focus(&mut ui),
+        FocusZone::View,
+        "Budgets' `tab` switches its tab"
+    );
+}
+
+#[gpui::test]
+fn the_shell_falls_back_on_a_key_no_view_takes(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press("a");
+    assert_eq!(mode(&mut ui), InputMode::Insert);
+
+    ui.press("escape g l tab");
+    assert_eq!(focus(&mut ui), FocusZone::PrimaryRail);
+    ui.press("end");
+    assert_eq!(
+        ui.read(|shell| shell.nav().primary_highlight()),
+        Noun::Settings,
+        "`end` moves the rail as it moves a list"
+    );
+}
+
+#[gpui::test]
+fn an_override_moves_a_global_key_and_frees_its_default(app: &mut TestAppContext) {
+    let mut config = common::overriding("toggle_rail", "ctrl+b");
+    config
+        .bindings
+        .insert("jump_settings".to_string(), "g z".to_string());
+    let mut ui = Harness::with_keybindings(app, config);
+    let before = rail(&mut ui);
+
+    ui.press("b");
+    assert_eq!(rail(&mut ui), before, "`b` is no longer bound");
+    ui.press("ctrl-b");
+    assert_ne!(rail(&mut ui), before);
+
+    ui.press("g z");
+    assert_eq!(ui.noun(), Noun::Settings);
 }

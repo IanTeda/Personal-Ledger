@@ -23,7 +23,7 @@ use crate::{
         statusline::{PageStatus, owned_hints},
     },
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     period::Period,
     view::event::{Reveal, ViewEvent, ViewMode},
 };
@@ -413,7 +413,7 @@ impl BudgetsView {
 
     // The interface `Shell` forwards to (ADR-0037).
 
-    /// Keys the page claims before the router: every key typed into a Plan cell (9b, Insert
+    /// Keys the page claims before the Shell's fallback: every key typed into a Plan cell (9b, Insert
     /// mode), bar `esc`, which comes back through [`Self::escape`]; and `tab`, which switches the
     /// tab (the handoff's `tab switch view`) rather than cycling focus. `shift-tab` still cycles
     /// focus, so the View zone can always be left.
@@ -763,7 +763,7 @@ impl BudgetsView {
     }
 
     /// Keys typed into a Plan cell (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9b,
-    /// Insert mode). `esc` is left to the router, which hands it back as [`Self::escape`].
+    /// Insert mode). `esc` is left to the Shell, which hands it back as [`Self::escape`].
     fn plan_edit_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let shift = keystroke.modifiers.shift;
         match keystroke.key.as_str() {

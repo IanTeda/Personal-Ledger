@@ -96,7 +96,7 @@ The Bills screen has two tabs. Press `tab` to move between them.
 - **Schedule:** One month of due dates (or, with `0`, all of them), with each bill's account, planned and actual amount, due date, paid date and status, and the due, overdue and paid counts and planned total. Overdue and due bills from other months always show too, so nothing unpaid is out of sight. Skipped bills show a dash for the actual amount and paid date. Press `p` to pay the selected bill and `s` to skip it, `[` and `]` to change month, `1` to `5` to toggle the Paid, Skipped, Overdue, Due and Upcoming chips, and `f` to move through the Bill, Category and Account filters. Press `enter` on a paid row to open its transaction.
 - **Planner:** Your Bill Plans, with category, account, planned amount, recurrence, Attention Lead and whether each is active. Press `n` to add one, and `e` or `enter` to edit the selected one.
 
-Use `j` and `k` to move between rows on every tab.
+Use `j` and `k`, or the arrow keys, to move between rows on every tab; `g g` or `Home` goes to the first row, `G` or `End` to the last, and `ctrl+d`, `ctrl+u` or the Page keys move half a page.
 
 ## Worked example
 

@@ -16,7 +16,7 @@ use lib_core::DateStyle;
 
 use crate::{
     chrome::statusline::{PageStatus, owned_hints},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::{
         SettingsPage,
         hints::{settings_colour_grid_hints, settings_display_hints},

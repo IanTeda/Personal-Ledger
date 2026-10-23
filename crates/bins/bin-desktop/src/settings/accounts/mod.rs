@@ -33,7 +33,7 @@ use crate::{
     },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
-    navigation::{command::AccountsVerb, key_router::Movement},
+    navigation::{command::AccountsVerb, movement::Movement},
     view::event::{Reveal, ViewEvent},
 };
 

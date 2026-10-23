@@ -40,7 +40,7 @@ use crate::{
     },
     inventory::{self, Inventory},
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::hints::settings_inventory_hints,
     view::event::ViewEvent,
 };
@@ -182,7 +182,7 @@ impl Page for InventoryPage {
     const PAGE: SettingsPage = SettingsPage::Inventory;
 
     /// `J`/`K` move the selected Area a place within its Location (inert on a Location row), `a`
-    /// adds an Area, and `left` closes an open Location or climbs from an Area to it. The router and Settings' focus
+    /// adds an Area, and `left` closes an open Location or climbs from an Area to it. The Shell and Settings' focus
     /// keys would otherwise take them, so the page claims them ahead of both; a `left` with
     /// nothing to close or climb is left to Settings, which steps back to the index.
     fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
@@ -202,7 +202,7 @@ impl Page for InventoryPage {
             }
             return true;
         }
-        // `a` is the router's Insert key everywhere else, so the page takes it first.
+        // `a` is the Shell's Insert key everywhere else, so the page takes it first.
         if keystroke.key == "a" {
             self.close_menu(cx);
             self.add_area_for_selection(cx);

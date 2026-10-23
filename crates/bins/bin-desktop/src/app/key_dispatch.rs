@@ -1,22 +1,22 @@
-//! Keystroke dispatch of `Shell`. An `impl Shell` block for the concern, not the keystroke
-//! routing decision itself (`navigation::key_router`).
+//! Keystroke dispatch of `Shell`: the steps of the one key route (`crate::input::route_key`) over
+//! the Shell's state, and the handlers they reach. An `impl Shell` block for the concern.
 
 use std::time::Duration;
 
 use gpui::{Context, KeyDownEvent, Keystroke};
+use lib_shell::{DialogCommand, ShellCommand, ShellInput, ShellKey};
 use lib_toast::ToastKind;
-
-use lib_shell::DialogCommand;
 
 use super::Shell;
 use crate::chrome::dialog_entity::DialogHandle;
+use crate::input::{self, KeyRoute, Offered};
 use crate::navigation::chord::chord;
 use crate::{
     chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
     chrome::window_size::WindowSize,
     navigation::{
         explorer::ExplorerMode,
-        key_router::{self, KeyOutcome, route_key},
+        movement::Movement,
         nav::{FocusZone, InputMode},
     },
     view::{
@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-/// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
+/// The handoff's own "Jumps" timeout: a `g` with no completing key within this window is
 /// abandoned rather than left waiting indefinitely.
 pub const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
 
@@ -54,14 +54,8 @@ impl Shell {
         }
     }
 
-    /// Routes a keystroke through the pure [`key_router::route_key`] decision function, then
-    /// applies whatever [`KeyOutcome`] it returns. The routing logic itself -- `Esc`'s
-    /// any-mode precedence, the `Command`-mode/other-non-`Normal` gates, a pending `g`'s
-    /// completion/abort, the global mode-entry keys, `Tab` cycling, arming a fresh `g`, and
-    /// [`Movement`] dispatch -- lives entirely in that `gpui`-free module now; this method is
-    /// just the impure shell that owns `Shell`'s own state (`pending_g`, `status_message`,
-    /// `palette`, `file_explorer`, `nav`) and applies the outcome to it. Returns `false` for a
-    /// keystroke that changed nothing (nothing to redraw).
+    /// Offers a keystroke to each step of the key route in turn (`crate::input`). Returns `false`
+    /// for a keystroke that changed nothing (nothing to redraw).
     pub(super) fn handle_key_down(
         &mut self,
         event: &KeyDownEvent,
@@ -69,219 +63,110 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let keystroke = &event.keystroke;
-        let ctrl = keystroke.modifiers.control;
-        let shift = keystroke.modifiers.shift;
-        let key = keystroke.key.as_str();
-
         // The top bar's recent-actions list is a mouse affordance; Esc closes it and nothing else.
-        if self.chrome.undo_menu_open && key == "escape" {
+        if self.chrome.undo_menu_open && keystroke.key == "escape" {
             self.chrome.undo_menu_open = false;
             return true;
         }
+        input::route_key(&mut Keys {
+            shell: self,
+            keystroke,
+            window_size,
+            cx,
+            had_status_message: false,
+        })
+    }
 
-        // An open Dialog takes every key; a module's Dialog reads them through the Dialog keymap.
-        if self.presenter.dialog_open()
-            && let Some(dialog) = self.hosted_dialog().cloned()
-        {
-            self.pending_g = None;
-            self.handle_hosted_dialog_key(&dialog, keystroke, cx);
-            return true;
-        }
-
-        // Dropping the taken timer cancels it, so it can't clear a `g` armed after this key.
-        let pending_g_active = self.pending_g.take().is_some();
-
-        let modifiers = key_router::Modifiers {
-            ctrl,
-            alt: keystroke.modifiers.alt,
-            shift,
-        };
-        if key_router::dismisses_toasts(
-            self.nav.mode(),
-            pending_g_active,
-            &self.chrome.dismiss_toasts_binding,
-            key,
-            modifiers,
-        ) {
-            self.chrome.toasts.dismiss_all();
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        if key_router::opens_toast_history(
-            self.nav.mode(),
-            pending_g_active,
-            self.chrome.toast_history_binding.as_deref(),
-            key,
-            modifiers,
-        ) {
-            self.open_toast_history();
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        // Debug builds only: F9 raises each Kind in turn, to eyeball the layer before real
-        // call sites exist (#346).
-        #[cfg(debug_assertions)]
-        if key == "f9" && self.nav.mode() == InputMode::Normal {
-            let kind = ToastKind::ALL[self.chrome.debug_toast_kind % ToastKind::ALL.len()];
-            self.chrome.debug_toast_kind += 1;
-            self.raise_toast(kind, format!("{kind:?} Toast raised from F9"));
-            return true;
-        }
-
-        // Keys a View claims ahead of the router (Bills' and Budgets' `tab`, Budgets' Plan cell
-        // edit, the Transactions filter popover and Import step, the Documents keys, `J`/`K`
-        // reorders); the router would otherwise read them as `tab`, `a` or `j`/`k`.
-        if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke, cx) {
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
-
-        // `Esc` asks the Dialog host's open select first, then the View, then falls back to the
-        // close-and-exit-mode below (ADR-0037). The View is asked even when the router has nothing
-        // for `Esc` to do, since only the View knows what of its own is open.
-        if matches!(
-            outcome,
-            KeyOutcome::ClosePopupsAndExitMode | KeyOutcome::EscapeNoOp
-        ) {
-            if self
-                .chrome
-                .dialog
-                .as_mut()
-                .is_some_and(Dialog::close_open_select)
-            {
-                return true;
+    /// Acts on a global command, one the Shell keeps or one it fell back on. Returns whether the
+    /// window needs redrawing.
+    fn run_global(
+        &mut self,
+        command: ShellCommand,
+        window_size: WindowSize,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        match command {
+            ShellCommand::Help => self.open_help(cx),
+            ShellCommand::Command => self.open_palette(),
+            ShellCommand::Search => self.start_search(cx),
+            // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`).
+            ShellCommand::ToggleRail => self.toggle_rail(window_size, cx),
+            ShellCommand::FocusPrevious => self.nav.cycle_focus_backward(),
+            ShellCommand::FocusNext => self.nav.cycle_focus_forward(),
+            // `Esc` asks the View, since only it knows what of its own is open. With nothing to
+            // close it is a true no-op, which leaves a showing status message alone.
+            ShellCommand::Back => {
+                return (self.view_owns_mode() || self.view_has_keys())
+                    && self.active_view_entity(cx).escape(cx);
             }
-            if self.chrome.dialog.is_none()
-                && (self.view_owns_mode() || self.view_takes_key(keystroke))
-                && self.active_view_entity(cx).escape(cx)
-            {
-                return true;
+            ShellCommand::DismissToasts => {
+                self.chrome.toasts.dismiss_all();
+                self.chrome.status_message = None;
             }
-        }
-
-        // `Esc`'s three shapes short-circuit before the hint-strip-clearing precedent below --
-        // mirrors the original tier order exactly, including the quirk that a bare `Esc` with
-        // nothing to do (`EscapeNoOp`) does *not* clear a stale status message.
-        match outcome {
-            KeyOutcome::ClearPendingG => return true,
-            KeyOutcome::ClosePopupsAndExitMode => {
-                self.chrome.palette = None;
-                self.file_explorer = None;
-                // The README's own Dialog lifecycle table: "`esc` closes any dialog without
-                // saving" -- discards whatever was typed, same as Cancel.
-                self.close_dialog();
-                self.nav.exit_mode();
-                self.view_mode = None;
-                return true;
+            ShellCommand::ToastHistory => {
+                self.open_toast_history();
+                self.chrome.status_message = None;
             }
-            KeyOutcome::EscapeNoOp => return false,
-            _ => {}
-        }
-
-        // The handoff's own precedent for hint-strip messages (`docs/ux/desktop-mockups/README.md`'s
-        // "Loading and error states"): any keypress clears one, not just a timer.
-        let had_status_message = self.chrome.status_message.take().is_some();
-
-        match outcome {
-            KeyOutcome::DelegateToPalette => {
-                self.handle_palette_key(keystroke, cx) || had_status_message
-            }
-            KeyOutcome::DelegateToSearch => {
-                self.handle_search_key(keystroke, cx) || had_status_message
-            }
-            KeyOutcome::DelegateToDialog => {
-                self.handle_dialog_key(keystroke, cx) || had_status_message
-            }
-            // Only a View opens a filter popover, and it reads the popover's keys ahead of the
-            // router; what it leaves is swallowed.
-            KeyOutcome::DelegateToFilter => had_status_message,
-            KeyOutcome::Swallowed => had_status_message,
-            KeyOutcome::JumpToNoun(noun) => {
+            ShellCommand::Jump(noun) => {
                 self.nav.set_noun(noun);
                 self.reset_view_scroll(cx);
-                true
             }
-            KeyOutcome::PendingGUnbound(message) => {
-                self.chrome.status_message = Some(message);
-                true
-            }
-            KeyOutcome::EnterCommand => {
-                self.open_palette();
-                true
-            }
-            KeyOutcome::EnterSearch => {
-                self.start_search(cx);
-                true
-            }
-            KeyOutcome::EnterHelp => {
-                self.open_help(cx);
-                true
-            }
-            KeyOutcome::EnterInsert => {
+            ShellCommand::Insert => {
                 self.nav.enter_mode(InputMode::Insert);
                 self.view_mode = None;
-                true
             }
-            // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`).
-            KeyOutcome::ToggleRail => {
-                self.toggle_rail(window_size, cx);
-                true
-            }
-            KeyOutcome::CycleFocusForward => {
-                self.nav.cycle_focus_forward();
-                true
-            }
-            KeyOutcome::CycleFocusBackward => {
-                self.nav.cycle_focus_backward();
-                true
-            }
-            KeyOutcome::ArmPendingG => {
-                // The executor's timer, not `Timer::after`, so headless tests can advance it.
-                self.pending_g = Some(cx.spawn(async move |this, cx| {
-                    cx.background_executor().timer(PENDING_G_TIMEOUT).await;
-                    // `Err` only once the window, and with it the Shell, has gone.
-                    this.update(cx, |shell, _| shell.pending_g = None).ok();
-                }));
-                had_status_message
-            }
-            KeyOutcome::Movement(movement) => {
-                self.apply_movement(movement, cx);
-                true
-            }
-            KeyOutcome::NoOp => {
-                let handled = match self.active_view_entity(cx) {
-                    ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
-                    view => self.view_takes_key(keystroke) && view.handle_key(keystroke, cx),
-                };
-                handled || had_status_message
-            }
-            KeyOutcome::ClearPendingG
-            | KeyOutcome::ClosePopupsAndExitMode
-            | KeyOutcome::EscapeNoOp => {
-                unreachable!("handled above")
+            ShellCommand::Move(_) | ShellCommand::Select => {
+                if let Some(movement) = Movement::of(command) {
+                    self.apply_movement(movement, cx);
+                }
             }
         }
+        true
     }
 
-    /// Whether a key reaches the active View: the View zone has focus, in `Normal` mode, with no
-    /// `Ctrl`, `Alt` or `Cmd` held (ADR-0037). A pending `g` is ruled out before this is asked.
-    /// `Shift` is the View's to read.
+    /// `Esc` in a mode, once the View has kept nothing open: closes the palette, the file explorer
+    /// and any Dialog without applying it, and leaves the mode.
+    fn close_popups_and_exit_mode(&mut self) {
+        self.chrome.palette = None;
+        self.file_explorer = None;
+        // The README's own Dialog lifecycle table: "`esc` closes any dialog without saving" --
+        // discards whatever was typed, same as Cancel.
+        self.close_dialog();
+        self.nav.exit_mode();
+        self.view_mode = None;
+    }
+
+    /// Starts the timer that ends a waiting prefix with [`ShellInput::PrefixExpired`]. The
+    /// executor's timer, not `Timer::after`, so headless tests can advance it.
+    fn start_prefix_timer(&mut self, cx: &mut Context<'_, Self>) {
+        self.prefix_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(PENDING_G_TIMEOUT).await;
+            // `Err` only once the window, and with it the Shell, has gone.
+            this.update(cx, |shell, cx| {
+                shell.prefix_timer = None;
+                shell.send_shell(ShellInput::PrefixExpired, cx);
+            })
+            .ok();
+        }));
+    }
+
+    /// Whether the View zone has keyboard focus in `Normal` mode, so the focused View reads keys.
+    fn view_has_keys(&self) -> bool {
+        self.nav.focus() == FocusZone::View && self.nav.mode() == InputMode::Normal
+    }
+
+    /// Whether a key reaches the active View's own handler: the View zone has focus, in `Normal`
+    /// mode, with no `Ctrl`, `Alt` or `Cmd` held (ADR-0037). `Shift` is the View's to read.
     fn view_takes_key(&self, keystroke: &Keystroke) -> bool {
         let modifiers = &keystroke.modifiers;
-        self.nav.focus() == FocusZone::View
-            && self.nav.mode() == InputMode::Normal
-            && !(modifiers.control || modifiers.alt || modifiers.platform)
+        self.view_has_keys() && !(modifiers.control || modifiers.alt || modifiers.platform)
     }
 
-    /// Whether a key reaches the active View ahead of the router: as [`Self::view_takes_key`], and
-    /// every key in an `Insert` or `Filter` mode the View entered for something it opened itself
-    /// (`ViewEvent::EnterMode`). The router swallows every key in those modes, so only the View can
-    /// use one; `Esc` comes back to the View as `escape`. A Search the View entered reads its keys
-    /// through `search_key` instead.
+    /// Whether a key reaches the active View's own handler ahead of the Shell's fallback: as
+    /// [`Self::view_takes_key`], and every key in an `Insert` or `Filter` mode the View entered for
+    /// something it opened itself (`ViewEvent::EnterMode`). The Shell swallows every key in those
+    /// modes, so only the View can use one; `Esc` comes back to the View as `escape`. A Search the
+    /// View entered reads its keys through `search_key` instead.
     fn view_takes_key_ahead(&self, keystroke: &Keystroke) -> bool {
         (self.view_owns_mode() && self.nav.mode() != InputMode::Search)
             || self.view_takes_key(keystroke)
@@ -301,12 +186,8 @@ impl Shell {
         self.nav.enter_mode(InputMode::Search);
     }
 
-    /// The active View's keys that sit ahead of the router.
-    fn handle_view_key_ahead_of_router(
-        &mut self,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
+    /// The active View's own keys, taken ahead of the Shell's fallback.
+    fn handle_view_key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         match self.active_view_entity(cx) {
             ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
             view => {
@@ -318,7 +199,7 @@ impl Shell {
         }
     }
 
-    /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
+    /// Routes a keystroke while the palette is open (step 2, "popup-owned keys" -- mirroring
     /// `docs/ux/tui-mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
     /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
     /// through previously run commands, `Enter` runs the selected command (see
@@ -374,7 +255,7 @@ impl Shell {
         }
     }
 
-    /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
+    /// Routes a keystroke while `InputMode::Search` is active (step 2, mirroring
     /// [`Self::handle_palette_key`]'s shape): to the active View's Search. A no-op everywhere
     /// else.
     fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
@@ -385,17 +266,15 @@ impl Shell {
         false
     }
 
-    /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
-    /// [`Self::handle_search_key`]'s shape). A Dialog in the Dialog host goes through
-    /// [`chrome::dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
-    /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
-    /// stay untouched while a dialog is up.
-    /// Each key the Dialog takes is one input, whose commit saves what its confirm wrote.
+    /// Routes a keystroke while a legacy Dialog is open (step 1). A Dialog in the legacy Dialog host
+    /// goes through [`chrome::dialog_host::handle_key`]. The step returns before the global keymap
+    /// is asked, so the shell-wide zones stay untouched while a Dialog is up. Each key the Dialog
+    /// takes is one input, whose commit saves what its confirm wrote.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if self.chrome.dialog.is_none() {
             return false;
         }
-        crate::input::send(cx, |cx| {
+        input::send(cx, |cx| {
             let Some(dialog) = self.chrome.dialog.as_mut() else {
                 return false;
             };
@@ -422,7 +301,7 @@ impl Shell {
     ) {
         self.chrome.status_message = None;
         let command = chord(keystroke).and_then(|chord| self.chrome.dialog_keymap.event(&chord));
-        crate::input::send(cx, |cx| match command {
+        input::send(cx, |cx| match command {
             Some(DialogCommand::Back) => {
                 if !dialog.close_open_select(cx) {
                     dialog.cancel(cx);
@@ -440,6 +319,147 @@ impl Shell {
         if let Some(change) = self.chrome.pending_colour_change.take() {
             change.apply(cx);
         }
+    }
+}
+
+/// One keystroke on its way through the key route, with the Shell it acts on.
+struct Keys<'a, 'b> {
+    shell: &'a mut Shell,
+    keystroke: &'a Keystroke,
+    window_size: WindowSize,
+    cx: &'a mut Context<'b, Shell>,
+    /// Whether the key cleared a status message, which asks for a redraw on its own.
+    had_status_message: bool,
+}
+
+impl KeyRoute for Keys<'_, '_> {
+    /// A module's Dialog reads its keys through the Dialog keymap; a legacy Dialog through its own
+    /// handler, with `Esc` closing its open select first, otherwise the Dialog unapplied.
+    fn dialog(&mut self) -> Option<bool> {
+        let shell = &mut *self.shell;
+        if !shell.presenter.dialog_open() {
+            return None;
+        }
+        if let Some(dialog) = shell.hosted_dialog().cloned() {
+            shell.handle_hosted_dialog_key(&dialog, self.keystroke, self.cx);
+            return Some(true);
+        }
+        if self.keystroke.key == "escape" {
+            if !shell
+                .chrome
+                .dialog
+                .as_mut()
+                .is_some_and(Dialog::close_open_select)
+            {
+                shell.close_popups_and_exit_mode();
+            }
+            return Some(true);
+        }
+        let had_status_message = shell.chrome.status_message.take().is_some();
+        Some(shell.handle_dialog_key(self.keystroke, self.cx) || had_status_message)
+    }
+
+    /// The palette, Search, a filter, the file explorer or Insert takes every key. A mode the View
+    /// entered for something of its own reads them first, `Esc` included.
+    fn mode(&mut self) -> Option<bool> {
+        let shell = &mut *self.shell;
+        let mode = shell.nav.mode();
+        if mode == InputMode::Normal {
+            return None;
+        }
+        if self.keystroke.key == "escape" {
+            if !(shell.view_owns_mode() && shell.active_view_entity(self.cx).escape(self.cx)) {
+                shell.close_popups_and_exit_mode();
+            }
+            return Some(true);
+        }
+        if shell.view_owns_mode()
+            && mode != InputMode::Search
+            && shell.handle_view_key_ahead(self.keystroke, self.cx)
+        {
+            shell.chrome.status_message = None;
+            return Some(true);
+        }
+        // The handoff's own precedent for hint-strip messages (`docs/ux/desktop-mockups/README.md`'s
+        // "Loading and error states"): any keypress clears one, not just a timer.
+        let had_status_message = shell.chrome.status_message.take().is_some();
+        let taken = match mode {
+            InputMode::Command => shell.handle_palette_key(self.keystroke, self.cx),
+            InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
+            // Only a View opens a filter popover, and it reads the popover's keys above; what it
+            // leaves is swallowed, as is every key in Insert, which has no input surface yet.
+            InputMode::Filter | InputMode::Insert | InputMode::Dialog | InputMode::Normal => false,
+        };
+        Some(taken || had_status_message)
+    }
+
+    /// The Shell's Presenter resolves the key through the global keymap, as one input; the root
+    /// Router hands back the commands it kept, which the Shell then acts on.
+    fn global(&mut self) -> Offered {
+        let shell = &mut *self.shell;
+        // Debug builds only: F9 raises each Kind in turn, to eyeball the layer before real call
+        // sites exist (#346).
+        #[cfg(debug_assertions)]
+        if self.keystroke.key == "f9" {
+            let kind = ToastKind::ALL[shell.chrome.debug_toast_kind % ToastKind::ALL.len()];
+            shell.chrome.debug_toast_kind += 1;
+            shell.raise_toast(kind, format!("{kind:?} Toast raised from F9"));
+            return Offered::Took(true);
+        }
+        let Some(chord) = chord(self.keystroke) else {
+            return Offered::Passed {
+                chord: String::new(),
+                fallback: None,
+            };
+        };
+        // Dropping the timer cancels it, so it can't end a prefix begun by this key.
+        shell.prefix_timer = None;
+        // Every key clears a status message but `back`, which leaves one showing when it has
+        // nothing to close.
+        if shell.presenter.keymap().event(&chord) != Some(ShellCommand::Back) {
+            self.had_status_message = shell.chrome.status_message.take().is_some();
+        }
+        let (answer, ran) = shell.resolve_key(&chord, self.cx);
+        match answer {
+            ShellKey::Taken => {
+                let mut redraw = true;
+                for command in ran {
+                    redraw = shell.run_global(command, self.window_size, self.cx);
+                }
+                Offered::Took(redraw)
+            }
+            ShellKey::Prefixed => {
+                shell.start_prefix_timer(self.cx);
+                Offered::Took(self.had_status_message)
+            }
+            ShellKey::Passed { chord, fallback } => Offered::Passed { chord, fallback },
+        }
+    }
+
+    fn module(&mut self, chord: &str) -> bool {
+        let shell = &mut *self.shell;
+        shell.view_has_keys() && shell.active_view_entity(self.cx).module_key(chord, self.cx)
+    }
+
+    /// The View's keys that sit ahead of the Shell's fallback (Budgets' `tab`, the Import step,
+    /// the Documents keys, the Settings pages' own keys).
+    fn view(&mut self) -> bool {
+        self.shell.handle_view_key_ahead(self.keystroke, self.cx)
+    }
+
+    fn fall_back(&mut self, fallback: Option<ShellCommand>, sequence: bool) -> bool {
+        let shell = &mut *self.shell;
+        if let Some(command) = fallback {
+            return shell.run_global(command, self.window_size, self.cx);
+        }
+        let handled = !sequence
+            && match shell.active_view_entity(self.cx) {
+                ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
+                view => {
+                    shell.view_takes_key(self.keystroke) && view.handle_key(self.keystroke, self.cx)
+                }
+            };
+        handled || self.had_status_message
     }
 }
 

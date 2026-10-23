@@ -5,8 +5,8 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    Binding, DELETE, EDIT, HALF_PAGE_DOWN, HALF_PAGE_UP, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST,
-    MOVE_UP, NEW, REACTIVATE,
+    ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
+    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, REACTIVATE,
 };
 
 use crate::presenter::UnitsPageEvent;
@@ -15,7 +15,8 @@ pub const TEST_SOURCE: &str = "units.test_source";
 pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
 
-/// The Units page's commands, with today's keys. `units.set_base` is new: setting the base Unit
+/// The Units page's commands, with today's keys. The arrow, Home/End and Page keys move as `j`/`k`,
+/// `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it. `units.set_base` is new: setting the base Unit
 /// was only the General page's select. Its `B` is capital because `b` is the Desktop's rail toggle,
 /// and a module's default must not be a Client's global key (each bin's clash test checks).
 pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
@@ -47,6 +48,36 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
     Binding {
         command: HALF_PAGE_UP,
         chord: "ctrl+u",
+        event: UnitsPageEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: ARROW_DOWN,
+        chord: "down",
+        event: UnitsPageEvent::Move(Step::Next),
+    },
+    Binding {
+        command: ARROW_UP,
+        chord: "up",
+        event: UnitsPageEvent::Move(Step::Prev),
+    },
+    Binding {
+        command: HOME,
+        chord: "home",
+        event: UnitsPageEvent::Move(Step::First),
+    },
+    Binding {
+        command: END,
+        chord: "end",
+        event: UnitsPageEvent::Move(Step::Last),
+    },
+    Binding {
+        command: PAGE_DOWN,
+        chord: "pagedown",
+        event: UnitsPageEvent::Move(Step::HalfPageDown),
+    },
+    Binding {
+        command: PAGE_UP,
+        chord: "pageup",
         event: UnitsPageEvent::Move(Step::HalfPageUp),
     },
     Binding {
@@ -110,6 +141,12 @@ mod tests {
         assert_eq!(keymap.event("d"), Some(UnitsPageEvent::Delete));
         assert_eq!(keymap.event("B"), Some(UnitsPageEvent::SetBase));
         assert_eq!(keymap.event("g g"), Some(UnitsPageEvent::Move(Step::First)));
+        assert_eq!(keymap.event("down"), Some(UnitsPageEvent::Move(Step::Next)));
+        assert_eq!(keymap.event("end"), Some(UnitsPageEvent::Move(Step::Last)));
+        assert_eq!(
+            keymap.event("pageup"),
+            Some(UnitsPageEvent::Move(Step::HalfPageUp))
+        );
         assert_eq!(keymap.event("q"), None);
     }
 

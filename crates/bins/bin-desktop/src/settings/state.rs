@@ -15,7 +15,7 @@ use crate::{
         window_size::WindowSize,
     },
     ledger_store::LedgerStore,
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::accounts::AccountsPage,
     settings::categories::CategoriesPage,
     settings::display::{DisplayPage, DisplayPreferences},
@@ -192,7 +192,23 @@ impl SettingsView {
     // The interface `Shell` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// Settings' keys ahead of the router, in order: the focused page's keys (the Display page's
+    /// The focused page's module keymap, by `chord`, ahead of every key of Settings' own. Not while
+    /// the page picker is open, which takes every key.
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        if self.picker.is_some() {
+            return false;
+        }
+        self.sync_frame(cx);
+        let taken = self
+            .focused_page()
+            .is_some_and(|page| page.module_key(chord, cx));
+        if taken {
+            cx.notify();
+        }
+        taken
+    }
+
+    /// Settings' own keys ahead of the Shell's fallback, in order: the focused page's keys (the Display page's
     /// controls and Colour Theme grid and Tracing's among them), then the index-and-page focus
     /// keys. The page goes first, since a page's `h`/`l` must win over the focus keys' `h`. `false`
     /// for any key none of them takes. `Esc` is left to [`Self::escape`].
@@ -222,8 +238,8 @@ impl SettingsView {
         taken
     }
 
-    /// A router leftover goes to the open page's own Entity; the static pages claim their keys
-    /// ahead of the router.
+    /// A key no other step took goes to the open page's own Entity; the static pages claim their
+    /// keys ahead of the Shell's fallback.
     pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         self.focused_page()
             .is_some_and(|page| page.handle_key(keystroke, cx))

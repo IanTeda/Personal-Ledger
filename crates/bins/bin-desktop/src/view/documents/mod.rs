@@ -13,6 +13,7 @@ mod inbox;
 pub mod snapshot;
 pub mod state;
 
+use crate::navigation::nav::NounLabel;
 use lib_core::TransactionId;
 use std::{ops::Range, rc::Rc};
 

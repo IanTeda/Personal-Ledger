@@ -64,9 +64,8 @@ const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraB
 
 /// Keybinding overrides from config that `Shell` needs at construction.
 pub struct ShellBindings {
-    pub dismiss_toasts: String,
-    pub toast_history: Option<String>,
-    /// The whole `[keybindings]` section, which a VIPER module's keymap reads its overrides from.
+    /// The whole `[keybindings]` section, which the Shell's global and Dialog keymaps and every
+    /// VIPER module's keymap read their overrides from.
     pub keybindings: lib_config::KeyBindingConfig,
 }
 
@@ -131,9 +130,7 @@ pub fn build_shell(
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
-    shell.set_dialog_keymap(&bindings.keybindings);
-    shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
-    shell.set_toast_history_binding(bindings.toast_history);
+    shell.set_keymaps(&bindings.keybindings);
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
     shell.listen_for_write_failures(failures, cx);
@@ -191,15 +188,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
     let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
-    let dismiss_toasts_binding = config
-        .keybindings_config()
-        .key_for("dismiss_toasts")
-        .unwrap_or(navigation::key_router::DEFAULT_DISMISS_TOASTS)
-        .to_string();
-    let toast_history_binding = config
-        .keybindings_config()
-        .key_for("toast_history")
-        .map(str::to_string);
     let keybindings = config.keybindings_config().clone();
 
     // Resolved once, before any window opens; the Locale never changes at runtime.
@@ -278,11 +266,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                     cx.new(|cx| {
                         build_shell(
                             persisted,
-                            ShellBindings {
-                                dismiss_toasts: dismiss_toasts_binding,
-                                toast_history: toast_history_binding,
-                                keybindings,
-                            },
+                            ShellBindings { keybindings },
                             ShellLogs {
                                 buffer: logs,
                                 configured_level,

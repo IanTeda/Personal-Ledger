@@ -4,6 +4,7 @@
 //! pattern -- that rail is a flat record list with no page-index mode, so this is a separate
 //! mechanism (see issue #173's own ticket body).
 
+use crate::navigation::nav::NounLabel;
 use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px};

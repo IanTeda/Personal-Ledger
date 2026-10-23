@@ -54,6 +54,35 @@ fn j_k_g_and_capital_g_move_the_selection(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_arrows_home_end_and_the_page_keys_move_through_the_bills_keymap(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    ui.press("down down");
+    assert_eq!(ui.bills().selected, 2);
+    ui.press("up");
+    assert_eq!(ui.bills().selected, 1);
+    ui.press("end");
+    assert_eq!(ui.bills().selected, 6);
+    ui.press("home");
+    assert_eq!(ui.bills().selected, 0);
+    ui.press("pagedown");
+    assert!(ui.bills().selected > 0);
+    ui.press("pageup");
+    assert_eq!(ui.bills().selected, 0);
+}
+
+#[gpui::test]
+fn an_override_of_home_moves_it_and_frees_home(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("home", "H"));
+    ui.press("g w j j");
+
+    ui.press("home");
+    assert_eq!(ui.bills().selected, 2, "home is no longer bound");
+    ui.press("H");
+    assert_eq!(ui.bills().selected, 0);
+}
+
+#[gpui::test]
 fn switching_tab_resets_the_selection(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
 

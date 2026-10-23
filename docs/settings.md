@@ -391,6 +391,41 @@ While a Dialog is open, its keys are the Dialog keymap, which takes `select` and
 
 `select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop today only the Units, Bills and Pay Dialogs read this keymap; the rest keep their fixed keys until they move.
 
+On the Desktop, the keys that work on every screen are the global keymap, which takes `back`, `help`, `open_command_popup`, `move_up`, `move_down`, `select`, `dismiss_toasts` and `toast_history` from the first table and adds these:
+
+| Command              | Default key |
+| -------------------- | ----------- |
+| `search`             | `/`         |
+| `toggle_rail`        | `b`         |
+| `focus_next`         | `tab`       |
+| `focus_previous`     | `shift+tab` |
+| `insert`             | `a`         |
+| `move_first`         | `g g`       |
+| `move_last`          | `G`         |
+| `half_page_down`     | `ctrl+d`    |
+| `half_page_up`       | `ctrl+u`    |
+| `arrow_down`         | `down`      |
+| `arrow_up`           | `up`        |
+| `home`               | `home`      |
+| `end`                | `end`       |
+| `page_down`          | `pagedown`  |
+| `page_up`            | `pageup`    |
+| `jump_dashboard`     | `g d`       |
+| `jump_transactions`  | `g l`       |
+| `jump_documents`     | `g f`       |
+| `jump_notifications` | `g a`       |
+| `jump_cash`          | `g c`       |
+| `jump_inventory`     | `g o`       |
+| `jump_loans`         | `g n`       |
+| `jump_credit_cards`  | `g k`       |
+| `jump_investments`   | `g i`       |
+| `jump_bills`         | `g w`       |
+| `jump_budgets`       | `g b`       |
+| `jump_reports`       | `g r`       |
+| `jump_settings`      | `g s`       |
+
+A key written with a space is a sequence: press `g`, let go, then the letter, within a second. The movement keys move whichever list or rail has focus, so an override of `move_down` or `home` moves the Units and Bills lists as well as the rails. `focus_next`, `insert`, the movement keys and `select` give way to a screen that uses the same key for something of its own, such as Bills' `tab`, which switches tab.
+
 `quit` is deliberately **not** configurable: `bin-tui` has three separate, hardcoded quit mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, and the `:quit` command), none of which read this section.
 
 `dismiss_toasts` dismisses every showing Toast, in `Normal` mode only; it is deliberately not `esc`, so a sticky Error Toast doesn't vanish on the key that backs out of a dialog. `toast_history` has no default key because the `toasts` command (alias `messages`) opens the Toast history; set it to bind one. See [Toasts design](toasts-design.md).

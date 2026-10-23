@@ -1,9 +1,7 @@
-//! A gpui keystroke as a VIPER module's keymap names it: the chord text `[keybindings]` writes,
-//! and whether the Shell keeps it.
+//! A gpui keystroke as a keymap names it: the chord text `[keybindings]` writes, which the Shell's
+//! global keymap, the Dialog keymap and every module's keymap look keys up by.
 
 use gpui::Keystroke;
-
-use super::key_router::is_global_key;
 
 /// `keystroke` as `[keybindings]` writes a chord (`ctrl+d`, `G`, `tab`), or `None` for one the
 /// keymap can't name.
@@ -26,18 +24,19 @@ pub(crate) fn chord(keystroke: &Keystroke) -> Option<String> {
         chord.push_str(&key.to_ascii_uppercase());
         return Some(chord);
     }
+    // A shifted symbol is written as the symbol it types (`?`, `:`), which already says Shift;
+    // some platforms report `?` as Shift and `/`, as a US layout types it.
+    let symbol = key.chars().count() == 1 && !letter && !key.chars().all(char::is_alphanumeric);
+    if modifiers.shift && symbol {
+        chord.push_str(if key == "/" { "?" } else { key });
+        return Some(chord);
+    }
     if modifiers.shift {
         chord.push_str("shift+");
     }
     // gpui names it `escape`; `[keybindings]` writes `esc`, as `back`'s default does.
     chord.push_str(if key == "escape" { "esc" } else { key });
     Some(chord)
-}
-
-/// Whether the Shell keeps `keystroke` ([`is_global_key`]), so a module keymap never shadows it.
-pub(crate) fn is_global(keystroke: &Keystroke) -> bool {
-    let modifiers = &keystroke.modifiers;
-    is_global_key(&keystroke.key, modifiers.control, modifiers.shift)
 }
 
 #[cfg(test)]
@@ -81,13 +80,18 @@ mod tests {
     }
 
     #[test]
-    fn the_shells_global_keys_stay_global() {
-        let none = Modifiers::default();
-        for key in ["b", "a", "g", ":", "/"] {
-            assert!(is_global(&keystroke(key, none)), "{key}");
-        }
-        for key in ["j", "d", "n", "tab", "t"] {
-            assert!(!is_global(&keystroke(key, none)), "{key}");
-        }
+    fn a_shifted_symbol_is_the_symbol_it_types() {
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        assert_eq!(chord(&keystroke("?", shift)).as_deref(), Some("?"));
+        assert_eq!(chord(&keystroke("/", shift)).as_deref(), Some("?"));
+        assert_eq!(chord(&keystroke(":", shift)).as_deref(), Some(":"));
+        assert_eq!(
+            chord(&keystroke("/", Modifiers::default())).as_deref(),
+            Some("/")
+        );
+        assert_eq!(chord(&keystroke("1", shift)).as_deref(), Some("shift+1"));
     }
 }

@@ -16,7 +16,7 @@ use crate::{
     bills, budgets,
     chrome::statusline::PageStatus,
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     period::Period,
     settings::display::StatusGlyphs,
     view::{
@@ -103,12 +103,12 @@ impl DashboardView {
         self.ledger_open = open;
     }
 
-    /// No key is the Dashboard's ahead of the router.
+    /// No key is the Dashboard's ahead of the Shell's fallback.
     pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }
 
-    /// No key is the Dashboard's once the router has left it.
+    /// No key is the Dashboard's once every other step has left it.
     pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }

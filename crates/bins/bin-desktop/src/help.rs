@@ -2,7 +2,10 @@
 //! window. An About-style card: project facts on the left, the shortcut cheat-sheet on the right
 //! (the shared grammar lives in `docs/navigation-design.md`).
 
-use crate::navigation::key_router::JUMPS;
+use lib_shell::ShellCommand;
+use lib_shell::keymap::GLOBAL_BINDINGS;
+
+use crate::navigation::nav::NounLabel;
 
 /// The tagline under the header.
 pub fn description() -> String {
@@ -53,12 +56,15 @@ pub fn copyright() -> String {
     crate::msg::desktop_help_copyright(AUTHOR)
 }
 
-/// The `g`-jump cheat-sheet, as `(noun label, "g x")`, in the router table's own order (the view
+/// The `g`-jump cheat-sheet, as `(noun label, "g x")`, in the global keymap's own order (the view
 /// lays it out row-major in two columns).
 pub fn jump_shortcuts() -> Vec<(String, String)> {
-    JUMPS
+    GLOBAL_BINDINGS
         .iter()
-        .map(|(key, noun)| (noun.label(), format!("g {key}")))
+        .filter_map(|binding| match binding.event {
+            ShellCommand::Jump(noun) => Some((noun.label(), binding.chord.to_string())),
+            _ => None,
+        })
         .collect()
 }
 
@@ -78,10 +84,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn jump_shortcuts_cover_every_router_jump_in_table_order() {
+    fn jump_shortcuts_cover_every_noun_in_the_keymaps_order() {
         crate::locale::init_for_tests();
         let shortcuts = jump_shortcuts();
-        assert_eq!(shortcuts.len(), JUMPS.len());
+        assert_eq!(shortcuts.len(), lib_shell::Noun::ALL.len());
         assert_eq!(shortcuts[0], ("Dashboard".to_string(), "g d".to_string()));
         assert!(shortcuts.contains(&("Transactions".to_string(), "g l".to_string())));
         assert!(shortcuts.contains(&("Notifications".to_string(), "g a".to_string())));

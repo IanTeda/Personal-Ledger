@@ -6,6 +6,7 @@
 //! Letter-spacing (`.11em` on the group headings) isn't rendered: `gpui` 0.2.2's `Styled`
 //! trait has no letter-spacing property to set. Everything else in this component is exact.
 
+use crate::navigation::nav::NounLabel;
 use std::rc::Rc;
 
 use gpui::{App, BoxShadow, Window, div, point, prelude::*, px};

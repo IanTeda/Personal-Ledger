@@ -27,7 +27,7 @@ use crate::{
         statusline::{PageStatus, owned_hints},
     },
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::hints::settings_payees_hints,
     view::event::{Reveal, ViewEvent},
 };

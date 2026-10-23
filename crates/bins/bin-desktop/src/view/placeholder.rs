@@ -1,6 +1,7 @@
 //! The placeholder a View shows in place of a page it can't build: a noun whose surface is a
 //! later map's work, or a page whose record has gone.
 
+use crate::navigation::nav::NounLabel;
 use gpui::{AnyElement, App, div, prelude::*, px};
 
 use crate::{navigation::nav::Noun, theme::color};

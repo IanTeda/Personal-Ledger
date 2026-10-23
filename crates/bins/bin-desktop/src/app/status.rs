@@ -33,7 +33,10 @@ impl Shell {
             return;
         }
         self.chrome.status_message = None;
-        self.pending_g = None;
+        // A click ends a waiting `g` as its timer would.
+        if self.prefix_timer.take().is_some() {
+            self.send_shell(lib_shell::ShellInput::PrefixExpired, cx);
+        }
         match action {
             HintAction::Command => self.open_palette(),
             HintAction::Search => self.start_search(cx),

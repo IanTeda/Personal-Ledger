@@ -2092,6 +2092,10 @@ fn key_code_for_token(token: &str) -> Option<KeyCode> {
         "down" => Some(KeyCode::Down),
         "left" => Some(KeyCode::Left),
         "right" => Some(KeyCode::Right),
+        "home" => Some(KeyCode::Home),
+        "end" => Some(KeyCode::End),
+        "pagedown" => Some(KeyCode::PageDown),
+        "pageup" => Some(KeyCode::PageUp),
         _ => None,
     }
 }

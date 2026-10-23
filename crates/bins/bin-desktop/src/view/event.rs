@@ -54,11 +54,11 @@ pub enum ViewEvent {
 /// back to the View rather than reading itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
-    /// An edit in place. `Shell` hands the View every key ahead of the router.
+    /// An edit in place. `Shell` hands the View every key first.
     Insert,
     /// The View's Search box. `Shell` hands the View every key through `search_key`.
     Search,
-    /// A filter popover. `Shell` hands the View every key ahead of the router.
+    /// A filter popover. `Shell` hands the View every key first.
     Filter,
 }
 

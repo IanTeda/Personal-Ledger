@@ -3,6 +3,7 @@
 use chrono::NaiveDate;
 use lib_toast::{Notice, Notify};
 
+use crate::keymap::ShellCommand;
 use crate::protocols::ShellRouter;
 
 /// One call the Presenter made on its Router, in order.
@@ -11,6 +12,8 @@ pub enum Routed {
     MonthTurned(NaiveDate),
     Notice(Notice),
     WriteFailed(String),
+    Ran(ShellCommand),
+    NotAJump(String),
 }
 
 #[derive(Debug, Default)]
@@ -34,5 +37,13 @@ impl ShellRouter for RecordingRouter {
 
     fn write_failed(&mut self, failure: String) {
         self.routed.push(Routed::WriteFailed(failure));
+    }
+
+    fn run(&mut self, command: ShellCommand) {
+        self.routed.push(Routed::Ran(command));
+    }
+
+    fn not_a_jump(&mut self, sequence: String) {
+        self.routed.push(Routed::NotAJump(sequence));
     }
 }

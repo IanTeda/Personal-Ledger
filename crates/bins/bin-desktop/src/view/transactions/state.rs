@@ -24,7 +24,7 @@ use crate::{
     chrome::statusline::{PageStatus, owned_hints},
     import::ImportState,
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::display::{RowDensity, StatusGlyphs},
     transactions::{
         self, Transaction,
@@ -216,7 +216,7 @@ impl TransactionsView {
         )
     }
 
-    /// Keys the page claims before the router: every key but `Esc` while the filter popover is
+    /// Keys the page claims before the Shell's fallback: every key but `Esc` while the filter popover is
     /// open (the View entered `InputMode::Filter` for it), and the Import step's keys while it
     /// shows.
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
@@ -253,7 +253,7 @@ impl TransactionsView {
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` move the table's row selection and keep it in view;
     /// `Enter` would open the transaction, which the bundle designs no screen for. The Import step
-    /// keeps this movement for the keys it leaves to the router.
+    /// keeps this movement for the keys it leaves to the Shell.
     ///
     /// The scroll strategy follows the research note: a non-strict `scroll_to_item` applies its
     /// strategy only when the row was off-screen, so stepping down uses `Bottom` and stepping up

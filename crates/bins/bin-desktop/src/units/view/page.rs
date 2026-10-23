@@ -1,5 +1,5 @@
-//! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It turns keys
-//! into chord text for the Units keymap and clicks into events, draws the view model
+//! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It looks up
+//! each key the Shell passes on, as chord text, in the Units keymap, turns clicks into events, draws the view model
 //! (`render.rs`, `pane.rs`), and keeps the Ledger read copy in line after every event
 //! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
 //! what it wrote. The Settings View hosts it as any other page.
@@ -11,11 +11,9 @@ use std::rc::Rc;
 
 use chrono::Utc;
 use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
-    Subscription,
+    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
 
-use crate::navigation::chord::{chord, is_global};
 use lib_ledger::Domain;
 use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
 use lib_viper::keymap::Keymap;
@@ -25,7 +23,7 @@ use crate::units::router::PageRouter;
 use crate::{
     chrome::{statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::{
         SettingsPage,
         page::PageRowClicked,
@@ -127,25 +125,19 @@ impl UnitsPage {
 impl Page for UnitsPage {
     const PAGE: SettingsPage = SettingsPage::Units;
 
-    /// Every chord the Units keymap binds, looked up ahead of the router, except the Shell's own
-    /// global keys. `g g` stays the router's, since `g` is its jump prefix: it comes back as a
-    /// movement.
-    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if is_global(keystroke) {
-            return false;
-        }
-        let Some(event) = chord(keystroke).and_then(|chord| self.keymap.event(&chord)) else {
+    /// Every chord the Units keymap binds, the arrows and `g g` among them. The Shell has already
+    /// taken its own keys.
+    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event(chord) else {
             return false;
         };
         self.send(event, cx);
         true
     }
 
-    /// The router's movements the keymap didn't take (`g g`, the arrows) walk both tables.
-    fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) -> bool {
-        if let Some(step) = movement.step() {
-            self.send(UnitsPageEvent::Move(step), cx);
-        }
+    /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
+    /// the page where it is.
+    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
         true
     }
 

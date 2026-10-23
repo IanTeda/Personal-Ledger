@@ -581,11 +581,7 @@ impl<'a> Harness<'a> {
             window.focus(&focus_handle);
             build_shell(
                 PersistedState::default(),
-                ShellBindings {
-                    dismiss_toasts: "ctrl+l".to_string(),
-                    toast_history: None,
-                    keybindings,
-                },
+                ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),
                     configured_level,

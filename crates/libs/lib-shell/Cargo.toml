@@ -14,11 +14,13 @@ doctest = false
 ## -- Internal Dependencies --
 lib_config = { path = "../lib-config" }
 lib_core = { path = "../lib-core" }
+lib_list_cursor = { path = "../lib-list-cursor" }
 lib_toast = { path = "../lib-toast" }
 lib_viper = { path = "../lib-viper" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
+serde = { workspace = true }
 
 [lints]
 workspace = true

@@ -14,7 +14,7 @@ use crate::{
         window_size::WindowSize,
     },
     ledger_store::LedgerStore,
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::{
         SettingsPage,
         about::AboutPage,
@@ -60,12 +60,18 @@ pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
     /// The page's place in the index; the defaults read its scope note.
     const PAGE: SettingsPage;
 
-    /// A key the page claims ahead of the router and Settings' focus keys.
+    /// A key the page's module keymap takes, by its `chord`, ahead of every key of Settings' own
+    /// (step 4 of `crate::input`'s route). Only a page that is a module's View has one.
+    fn module_key(&mut self, _chord: &str, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// A key the page claims ahead of the Shell's fallback and Settings' focus keys.
     fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }
 
-    /// A key the router left over.
+    /// A key no other step took.
     fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }
@@ -144,6 +150,7 @@ pub fn focus_on_row_click<T: Page + EventEmitter<PageRowClicked>>(
 
 /// [`Page`] over a page's `Entity`: what the Settings View calls, without knowing which page.
 pub trait PageHandle {
+    fn module_key(&self, chord: &str, cx: &mut App) -> bool;
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool;
@@ -164,6 +171,10 @@ pub trait PageHandle {
 }
 
 impl<T: Page> PageHandle for Entity<T> {
+    fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+        self.update(cx, |page, cx| page.module_key(chord, cx))
+    }
+
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.key_ahead(keystroke, cx))
     }

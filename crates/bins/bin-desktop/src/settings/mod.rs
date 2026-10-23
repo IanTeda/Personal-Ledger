@@ -23,6 +23,7 @@ pub mod sync_server;
 pub mod tags;
 pub mod tracing;
 
+use crate::navigation::nav::NounLabel;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Pixels, SharedString, Window, div, prelude::*, px};

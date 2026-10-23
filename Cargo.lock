@@ -4923,8 +4923,10 @@ dependencies = [
  "chrono",
  "lib_config",
  "lib_core",
+ "lib_list_cursor",
  "lib_toast",
  "lib_viper",
+ "serde",
 ]
 
 [[package]]

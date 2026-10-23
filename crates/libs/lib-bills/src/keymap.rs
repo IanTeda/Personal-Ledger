@@ -6,8 +6,8 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    Binding, EDIT, HALF_PAGE_DOWN, HALF_PAGE_UP, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP,
-    NEW,
+    ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
+    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
 use crate::BillStatus;
@@ -39,7 +39,9 @@ const fn schedule(
 }
 
 /// The Bills page's commands, with today's keys. A Schedule command does nothing on the Planner,
-/// and `edit` nothing on the Schedule.
+/// and `edit` nothing on the Schedule. The arrow, Home/End and Page keys move as `j`/`k`, `g g`/`G`
+/// and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it; `select` opens the
+/// row.
 pub const BILLS_PAGE_BINDINGS: &[Binding<BillsPageEvent>] = &[
     Binding {
         command: MOVE_DOWN,
@@ -70,6 +72,41 @@ pub const BILLS_PAGE_BINDINGS: &[Binding<BillsPageEvent>] = &[
         command: HALF_PAGE_UP,
         chord: "ctrl+u",
         event: BillsPageEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: ARROW_DOWN,
+        chord: "down",
+        event: BillsPageEvent::Move(Step::Next),
+    },
+    Binding {
+        command: ARROW_UP,
+        chord: "up",
+        event: BillsPageEvent::Move(Step::Prev),
+    },
+    Binding {
+        command: HOME,
+        chord: "home",
+        event: BillsPageEvent::Move(Step::First),
+    },
+    Binding {
+        command: END,
+        chord: "end",
+        event: BillsPageEvent::Move(Step::Last),
+    },
+    Binding {
+        command: PAGE_DOWN,
+        chord: "pagedown",
+        event: BillsPageEvent::Move(Step::HalfPageDown),
+    },
+    Binding {
+        command: PAGE_UP,
+        chord: "pageup",
+        event: BillsPageEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: SELECT,
+        chord: "enter",
+        event: BillsPageEvent::Open,
     },
     Binding {
         command: NEW,
@@ -144,6 +181,28 @@ mod tests {
             )))
         );
         assert_eq!(keymap.event("q"), None);
+    }
+
+    #[test]
+    fn the_arrows_move_and_enter_opens() {
+        let keymap = bills_page_keymap(&KeyBindingConfig::default());
+
+        assert_eq!(keymap.event("up"), Some(BillsPageEvent::Move(Step::Prev)));
+        assert_eq!(
+            keymap.event("home"),
+            Some(BillsPageEvent::Move(Step::First))
+        );
+        assert_eq!(
+            keymap.event("pagedown"),
+            Some(BillsPageEvent::Move(Step::HalfPageDown))
+        );
+        assert_eq!(keymap.event("enter"), Some(BillsPageEvent::Open));
+        let moved = bills_page_keymap(&overriding("arrow_up", "ctrl+p"));
+        assert_eq!(
+            moved.event("ctrl+p"),
+            Some(BillsPageEvent::Move(Step::Prev))
+        );
+        assert_eq!(moved.event("up"), None);
     }
 
     #[test]

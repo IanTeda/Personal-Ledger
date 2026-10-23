@@ -32,7 +32,7 @@ use crate::{
     },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::hints::settings_categories_hints,
     view::event::ViewEvent,
 };
@@ -101,9 +101,9 @@ impl CategoriesPage {
 impl Page for CategoriesPage {
     const PAGE: SettingsPage = SettingsPage::Categories;
 
-    /// `left` folds an open parent, or climbs from a nested row to its parent. The router would
-    /// otherwise read it as a move back to the index, so the page takes it ahead of the router
-    /// only when it has something to do.
+    /// `left` folds an open parent, or climbs from a nested row to its parent. Settings would
+    /// otherwise read it as a move back to the index, so the page takes it ahead of Settings'
+    /// own keys only when it has something to do.
     fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "left" && !keystroke.modifiers.shift && self.left_is_local(cx) {
             self.step_fold(false, cx);

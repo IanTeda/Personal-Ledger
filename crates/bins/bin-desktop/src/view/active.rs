@@ -17,7 +17,7 @@ use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
 use crate::{
     chrome::statusline::PageStatus,
-    navigation::{active_view::ActiveView, key_router::Movement, nav::Noun},
+    navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
 };
 
 /// The active View, holding its typed Entity once it renders and handles its own input.
@@ -103,7 +103,21 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the View claims before `route_key`. Returns whether it took the key.
+    /// A key the focused module's keymap takes, by `chord`: the Bills page's, or a Settings page
+    /// that is a module's View. Returns whether it took the key.
+    pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+        match self {
+            Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Dashboard(_)
+            | Self::Budgets(_)
+            | Self::Transactions(_)
+            | Self::Documents(_)
+            | Self::Shell(_) => false,
+        }
+    }
+
+    /// A key the View claims before the Shell's fallback. Returns whether it took the key.
     pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
@@ -116,7 +130,7 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the router left as `NoOp`. Returns whether the View took it.
+    /// A key no other step took. Returns whether the View took it.
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),

@@ -92,10 +92,36 @@ fn the_movement_keys_reach_the_presenter_and_walk_both_tables(app: &mut TestAppC
     assert_eq!(
         selected(&mut ui),
         "aud",
-        "g g comes back as the router's movement"
+        "g g passes the Shell's `g` on to the keymap's move_first"
     );
     ui.press("down");
     assert_eq!(selected(&mut ui), "btc", "the arrows too");
+}
+
+#[gpui::test]
+fn home_end_and_the_page_keys_move_through_the_units_keymap(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.press("end");
+    assert_eq!(selected(&mut ui), "Yahoo Finance");
+    ui.press("home");
+    assert_eq!(selected(&mut ui), "aud");
+    ui.press("pagedown");
+    assert_ne!(selected(&mut ui), "aud");
+    ui.press("pageup");
+    assert_eq!(selected(&mut ui), "aud");
+}
+
+#[gpui::test]
+fn an_override_of_arrow_down_moves_it_and_frees_down(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("arrow_down", "ctrl+n"));
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+
+    ui.press("ctrl-n");
+    assert_eq!(selected(&mut ui), "btc");
+    ui.press("down");
+    assert_eq!(selected(&mut ui), "btc", "down is no longer bound");
 }
 
 #[gpui::test]

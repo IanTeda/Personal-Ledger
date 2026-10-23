@@ -27,10 +27,6 @@ pub(crate) struct ChromeState {
     pub(crate) toasts: Toasts<DateTime<Local>>,
     /// The pointer is over the Toast stack, which pauses the timers.
     pub(crate) toasts_hovered: bool,
-    /// The `[keybindings] dismiss_toasts` spec, `ctrl+l` by default.
-    pub(crate) dismiss_toasts_binding: String,
-    /// The `[keybindings] toast_history` spec; unbound by default.
-    pub(crate) toast_history_binding: Option<String>,
     /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
     #[cfg(debug_assertions)]
     pub(crate) debug_toast_kind: usize,

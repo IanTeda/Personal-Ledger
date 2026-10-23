@@ -15,7 +15,7 @@ pub mod transactions;
 
 use gpui::{ScrollHandle, point, px};
 
-use crate::navigation::key_router::Movement;
+use crate::navigation::movement::Movement;
 
 /// A single `j`/`k`/`Down`/`Up` step in a scrolling page, in logical pixels -- there's no literal
 /// "row height" for a dashboard of charts and figures, so this is a plain reading-sized

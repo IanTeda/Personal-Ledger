@@ -31,7 +31,7 @@ use crate::{
         statusline::{PageStatus, owned_hints},
     },
     ledger_store::{LedgerStore, notify_on},
-    navigation::key_router::Movement,
+    navigation::movement::Movement,
     settings::hints::settings_tags_hints,
     view::event::ViewEvent,
 };

@@ -90,7 +90,7 @@ A new pure, I/O-free crate, `crates/libs/lib-toast` (package `lib_toast`), used 
 
 ### Desktop
 
-A custom Toast layer owned by `Shell`, drawn as the last absolute child in `Shell::render`, not gpui-component 0.5.1's `Notification` (which needs `gpui_component::Root` as the window root, hardcodes a 5 s timeout and top-right placement, colours glyphs from its own theme and has no hover pause or keyboard dismissal). Timers use `cx.spawn` + `Timer::after`, hover uses `on_hover`, keys go through `key_router`, colours read `crate::theme`.
+A custom Toast layer owned by `Shell`, drawn as the last absolute child in `Shell::render`, not gpui-component 0.5.1's `Notification` (which needs `gpui_component::Root` as the window root, hardcodes a 5 s timeout and top-right placement, colours glyphs from its own theme and has no hover pause or keyboard dismissal). Timers use `cx.spawn` + `Timer::after`, hover uses `on_hover`, keys go through the Shell's global keymap (`dismiss_toasts`, `toast_history`), colours read `crate::theme`.
 
 ### TUI
 

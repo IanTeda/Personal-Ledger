@@ -12,7 +12,7 @@
 //! [`DialogOutcome::Confirm`] and `Shell` applies the form (`Shell::confirm_open_dialog`), the
 //! same path the confirm button's click takes.
 //!
-//! `Esc` is not a key here: the router turns it into `ClosePopupsAndExitMode`, and `Shell` asks
+//! `Esc` is not a key here: step 1 of the key route (`crate::input`) asks
 //! [`Dialog::close_open_select`] first, closing the Dialog only when no select was open.
 //!
 //! A hosted Dialog (ADR-0037's 2026-10-18 amendment) also draws itself ([`Dialog::render`]),
@@ -262,7 +262,7 @@ pub fn open_dialog<D, P>(
     cx.emit(ViewEvent::OpenHostedDialog(Box::new(open)));
 }
 
-/// The session Toast history: read-only, so it takes no key but `Esc`, which the router turns
+/// The session Toast history: read-only, so it takes no key but `Esc`, which the key route turns
 /// into closing it. Showing Toasts hide behind it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToastHistoryDialog;

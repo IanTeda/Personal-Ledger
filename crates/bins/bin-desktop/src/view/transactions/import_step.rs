@@ -34,7 +34,7 @@ impl TransactionsView {
     /// 6e's keys: `j`/`k` move the row, `p` and `c` open its Payee and Category selects, `n`
     /// creates a new Payee from its cleaned name, `r` toggles "remember" and `enter` continues.
     /// While a select is open it owns `j`/`k`/arrows and `enter`/`space`. Any other key falls
-    /// through to the router; `esc` comes back as [`Self::escape`].
+    /// through to the Shell's fallback; `esc` comes back as [`Self::escape`].
     pub(super) fn import_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let categories = self.import_categories(cx);
         let payees = self.payees(cx).to_vec();

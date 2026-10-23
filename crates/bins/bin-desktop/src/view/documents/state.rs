@@ -35,7 +35,7 @@ use crate::{
         types::{self, DocumentTypeRow},
     },
     ledger_store::{LedgerChanged, LedgerStore, notify_on},
-    navigation::{key_router::Movement, nav::Noun},
+    navigation::{movement::Movement, nav::Noun},
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use lib_ledger::Domain;
@@ -273,7 +273,7 @@ impl DocumentsView {
     // The interface `Shell` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// The Documents keys, ahead of the router (`a` would otherwise enter Insert mode). `false`
+    /// The Documents keys, ahead of the Shell's fallback (`a` would otherwise enter Insert mode). `false`
     /// for any key the page does not own.
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let modifiers = &keystroke.modifiers;
@@ -308,7 +308,7 @@ impl DocumentsView {
             "l" if in_list && shift => self.follow_link(cx),
             "h" | "left" if in_list => self.state.focus = DocumentsFocus::Index,
             "o" if in_list => self.open_selected(true, cx),
-            // Inbox only; in the Library these fall through to the global router.
+            // Inbox only; in the Library these fall through to the Shell.
             "y" if !library && shift => self.open_accept_all(cx),
             "y" if !library && in_list => self.accept_focused(cx),
             "x" if !library && in_list && !shift => self.skip_focused(cx),
@@ -319,7 +319,7 @@ impl DocumentsView {
         true
     }
 
-    /// No Documents key waits for the router's leftovers: the page claims its keys ahead of it.
+    /// No Documents key waits for the leftovers: the page claims its keys ahead of the Shell's fallback.
     pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }

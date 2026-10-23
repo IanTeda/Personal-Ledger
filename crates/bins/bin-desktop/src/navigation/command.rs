@@ -24,6 +24,7 @@
 //! -- the same shape `bin-tui`'s own `Action` enum already uses (ADR-0013), just per-command
 //! rather than per-keypress.
 
+use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
 
 use crate::{

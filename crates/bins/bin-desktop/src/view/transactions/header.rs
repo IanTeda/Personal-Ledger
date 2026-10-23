@@ -7,6 +7,7 @@
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
 //! the chip itself opens the filter popover.
 
+use crate::navigation::nav::NounLabel;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};

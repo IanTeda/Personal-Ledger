@@ -6,52 +6,18 @@
 //! `Shell` (and the chrome tickets that follow) own the one live `NavState` and re-render
 //! from it; this module only knows how the state itself changes, never how it's drawn.
 
-use serde::{Deserialize, Serialize};
-
 use crate::settings::SettingsPage;
 
-/// The thirteen places the primary rail can select. `Noun::default()` is `Dashboard`, the app's
-/// one home noun. Serializable -- `noun` is one of the three fields that survive restart
-/// (see `crate::persistence`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum Noun {
-    #[default]
-    Dashboard,
-    Transactions,
-    Documents,
-    Notifications,
-    Cash,
-    Inventory,
-    Loans,
-    CreditCards,
-    Investments,
-    Bills,
-    Budgets,
-    Reports,
-    Settings,
+pub use lib_shell::Noun;
+
+/// A [`Noun`]'s name as the Desktop shows it, a Message: the Noun itself is `lib-shell`'s.
+pub trait NounLabel {
+    /// The noun's display name in the Locale in effect, in sentence case.
+    fn label(self) -> String;
 }
 
-impl Noun {
-    /// Every noun, in the primary rail's own row order (top to bottom, skipping group
-    /// headings and the divider, which aren't selectable rows).
-    pub const ALL: [Noun; 13] = [
-        Noun::Dashboard,
-        Noun::Transactions,
-        Noun::Documents,
-        Noun::Notifications,
-        Noun::Cash,
-        Noun::Inventory,
-        Noun::Loans,
-        Noun::CreditCards,
-        Noun::Investments,
-        Noun::Bills,
-        Noun::Budgets,
-        Noun::Reports,
-        Noun::Settings,
-    ];
-
-    /// The noun's display name in the Locale in effect, in sentence case.
-    pub fn label(self) -> String {
+impl NounLabel for Noun {
+    fn label(self) -> String {
         match self {
             Noun::Dashboard => lib_locale::msg::nav_dashboard(),
             Noun::Transactions => lib_locale::msg::nav_transactions(),
@@ -67,74 +33,6 @@ impl Noun {
             Noun::Reports => lib_locale::msg::nav_reports(),
             Noun::Settings => lib_locale::msg::nav_settings(),
         }
-    }
-
-    #[expect(
-        clippy::expect_used,
-        reason = "ALL is a fixed-length array of every Noun, and row_index_round_trips_every_noun checks each one is present exactly once"
-    )]
-    fn row_index(self) -> usize {
-        Self::ALL
-            .iter()
-            .position(|noun| *noun == self)
-            .expect("Noun::ALL must list every Noun")
-    }
-
-    /// The next row down. Clamps at the last row rather than wrapping -- `gg`/`G` are the
-    /// handoff's own way to jump straight to the first/last row, which would be redundant if
-    /// `j`/`k` also wrapped.
-    pub fn next_row(self) -> Noun {
-        Self::ALL[(self.row_index() + 1).min(Self::ALL.len() - 1)]
-    }
-
-    /// The next row up. See [`Self::next_row`] on why this clamps instead of wrapping.
-    pub fn prev_row(self) -> Noun {
-        Self::ALL[self.row_index().saturating_sub(1)]
-    }
-
-    pub fn first_row() -> Noun {
-        Self::ALL[0]
-    }
-
-    pub fn last_row() -> Noun {
-        Self::ALL[Self::ALL.len() - 1]
-    }
-
-    /// Whether this noun's context rail has any entities at all. Only `Dashboard`, `Bills`,
-    /// `Budgets` and `Reports` keep one.
-    ///
-    /// The handoff's own state-machine section (rule 1's parenthetical) lists `Dashboard`
-    /// alongside `Settings` as having none, but its "Context rail" component spec and its
-    /// own accepted mockup both show Dashboard's context rail populated with the account
-    /// roll-call ("On Dashboard it shows accounts") -- a real, visible, load-bearing context
-    /// rail, not an absent one. Built against the concrete mockup, not the inconsistent
-    /// prose: `Dashboard`'s "first entity" (rule 1) is the first account, same shape as any
-    /// other noun with entities. See `docs/ux/desktop-mockups/README.md`'s "Where this differs from
-    /// the handoff".
-    ///
-    /// `Transactions` has none (its table fills the pane, as its mockup shows), `Settings` has
-    /// its own index rail instead, and the "not yet built" placeholder nouns have nothing to
-    /// list. Accounts, Categories, Payees and Tags left the rail for Settings pages (#413), and
-    /// took their context rails with them.
-    pub fn has_context_entities(self) -> bool {
-        matches!(
-            self,
-            Noun::Dashboard | Noun::Bills | Noun::Budgets | Noun::Reports
-        )
-    }
-
-    /// Whether this noun is a "not yet built" placeholder view (#420): the rail row and its `g`
-    /// binding are live, but the surface itself is a later map's work.
-    pub fn is_placeholder(self) -> bool {
-        matches!(
-            self,
-            Noun::Notifications
-                | Noun::Cash
-                | Noun::Inventory
-                | Noun::Loans
-                | Noun::CreditCards
-                | Noun::Investments
-        )
     }
 }
 
@@ -503,13 +401,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn row_index_round_trips_every_noun() {
-        for (index, noun) in Noun::ALL.into_iter().enumerate() {
-            assert_eq!(noun.row_index(), index, "{noun:?} is listed more than once");
-        }
-    }
-
-    #[test]
     fn default_state_is_dashboard_normal_focus_in_view() {
         let nav = NavState::new();
         assert_eq!(nav.noun(), Noun::Dashboard);
@@ -666,18 +557,6 @@ mod tests {
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 
-    // Rule 4
-    #[test]
-    fn only_dashboard_bills_budgets_and_reports_have_context_entities() {
-        for noun in Noun::ALL {
-            let expected = matches!(
-                noun,
-                Noun::Dashboard | Noun::Bills | Noun::Budgets | Noun::Reports
-            );
-            assert_eq!(noun.has_context_entities(), expected, "{noun:?}");
-        }
-    }
-
     // Rule 6
     #[test]
     fn exit_mode_restores_the_focus_zone_from_before_entry() {
@@ -717,20 +596,6 @@ mod tests {
 
         assert_eq!(nav.mode(), InputMode::Normal);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
-    }
-
-    #[test]
-    fn noun_row_order_clamps_at_both_ends() {
-        assert_eq!(Noun::Dashboard.prev_row(), Noun::Dashboard);
-        assert_eq!(Noun::Settings.next_row(), Noun::Settings);
-        assert_eq!(Noun::Dashboard.next_row(), Noun::Transactions);
-        assert_eq!(Noun::Settings.prev_row(), Noun::Reports);
-    }
-
-    #[test]
-    fn noun_first_and_last_row() {
-        assert_eq!(Noun::first_row(), Noun::Dashboard);
-        assert_eq!(Noun::last_row(), Noun::Settings);
     }
 
     #[test]

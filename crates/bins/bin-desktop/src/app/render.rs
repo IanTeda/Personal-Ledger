@@ -337,8 +337,7 @@ impl Render for Shell {
                 )
                 .page(view_chrome.status)
                 .mode_label(
-                    active_view
-                        .mode_label()
+                    crate::navigation::active_view::mode_label(active_view)
                         .filter(|_| self.nav.mode() == InputMode::Normal),
                 )
                 .on_hint(on_hint),

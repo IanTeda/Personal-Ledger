@@ -5,6 +5,7 @@
 //! no entities renders no context rail at all; `Shell` is what skips calling this, not this
 //! module (rule 4 lives in `NavState::noun`, not here).
 
+use crate::navigation::nav::NounLabel;
 use gpui::{App, Window, div, prelude::*, px};
 
 use crate::{navigation::nav::Noun, theme::color};
