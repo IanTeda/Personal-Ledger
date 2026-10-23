@@ -1,6 +1,6 @@
 # Handoff: Bills — Bill Plan, Bill Schedule, Pay / Skip, History
 
-> **Package 12 of 20 · Bills** — frames 12a–12e (12a, 12b, 12c, 12d, 12e). Open `Bills.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 12 of 20 · Bills** — frames 12a–12e (12a, 12b, 12c, 12d, 12e), plus a Medium and an X-Large card for each tab (DESKTOP-167–170). Open `Bills.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package covers **Personal Ledger's Bills** surface, built to `docs/bills.md` (concept branch) and ADR-0019. Bills split into two concepts: a **Bill Plan** (the recurring definition — "Telstra Internet, ~$89, monthly") and its **Bill Schedule** (one persisted, dated row per due date, generated ahead of time, never deleted). The view is a three-tab surface — Schedule / Planner / History — plus three modals. Six variants (12a–12f).
@@ -109,6 +109,28 @@ Status bar right label: "4 of 42 rows shown" — this table paginates; 42 is the
 
 ---
 
+## Window Sizes
+
+The cards above are Large (1280 × 800). Four more draw the Schedule and the Planner in the Window Size Chrome from `../01-shell/README.md#window-sizes` ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md)). Each tab's cards run Medium, Large, X-Large in the deck. Dialogs 12c–12e keep their own widths at every Window Size.
+
+| Card | Window Size | Frame | Tab | What changes from Large |
+| --- | --- | --- | --- | --- |
+| **DESKTOP-167** | Medium | 960 × 1040 | Schedule | Icon rail (52px). **No ACTIONS column**: kept, it would leave BILL about 120px; without it BILL has about 270px and every other column stays. The filter row wraps, with the period on the right of a second line. Pay and skip move to the keys, double-click and the right-click menu (drawn open). The taller View shows the whole range without scrolling. |
+| **DESKTOP-168** | Medium | 960 × 1040 | Planner | Icon rail. No ACTIONS column, so both tabs work alike: double-click, `e` or `enter` opens Edit bill plan, and the right-click menu carries Edit bill plan… and All entries. CATEGORY widens to 120px. |
+| **DESKTOP-169** | X-Large | 1920 × 1080 | Schedule | Expanded rail (206px). The table gains CATEGORY and drops ACTIONS; a 400px detail pane follows the selected entry with SCHEDULE ENTRY (Pay…, Skip…), BILL PLAN (Edit plan…), HISTORY (the one-plan summary and latest entries, All entries) and ACTIVITY. |
+| **DESKTOP-170** | X-Large | 1920 × 1080 | Planner | Expanded rail. The table gains PAYEE and NEXT DUE and drops ACTIONS; the pane follows the selected plan with BILL PLAN (every 12c field, Edit…), SCHEDULE (entries to settle and the latest paid, All entries), HISTORY and ACTIVITY. |
+
+- **Row actions by Window Size:** Large keeps the row buttons as drawn in 12a and 12b. Medium has none: `p`, `s`, `e` and `enter` act on the selected row, double-click does the row's main action (Pay… on a Due or Overdue entry, its transaction on a Paid one, Edit on a plan), and the right-click menu carries every action. X-Large has none either: the pane carries them, and the menu still opens.
+- **Right-click menu (Schedule):** **Pay…** `p` · **Skip this cycle…** `s` · rule · **Edit bill plan…** · **View transaction** `enter`. Actions that don't apply to the row are disabled at 45%, not hidden: Pay and Skip on a Paid, Skipped or Upcoming entry, View transaction on an unpaid one.
+- **Detail pane:** the Settings list pages' treatment (DESKTOP-125): 400px, `border-left:2px solid rgba(32,30,29,.38); background:#eae9e9`, caps groups over 2px rules, fact rows, equal 112 × 34px buttons labelled with verbs. **Pay…** is filled, as the row's pay button is. A Paid entry shows its matched transaction and **View transaction** in place of Pay and Skip; an Upcoming entry shows no buttons.
+- **HISTORY in the pane** is the Schedule's one-plan summary (last paid, the last complete financial year's average, same month last year) for the selected row's plan, without filtering the table first. Skipped entries are listed but left out of the figures. **All entries** switches to the Schedule at All, filtered to that plan.
+- **NEXT DUE** (Planner, X-Large) is the plan's earliest unpaid, unskipped entry, in `#ae1800` 800 when it is Overdue, and a dash for an inactive plan.
+- **ACTIVITY instead of Toasts:** while the pane is docked, a Bills Success or Info outcome (paid, skipped, plan added or saved) lands in ACTIVITY and raises no Toast; errors still toast ([ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)). Below X-Large they toast as before.
+- **Status line:** the tab's hints at every Window Size, `j/k row · p pay · s skip · [/] period · 0 all · 1–5 status · f filters · tab switch view` on the Schedule and `j/k row · e edit · n new · tab switch view` on the Planner, with the tab's count on the right.
+- **Recurrence:** Origin Energy recurs Quarterly on every card. 12b used to say Bi-monthly, which isn't a Recurrence (`docs/bills.md`).
+
+---
+
 ## Components (shared with other handoff packages — see Desktop Shell & Navigation for header/rail/status-bar specs)
 
 | Part | Spec |
@@ -200,5 +222,5 @@ payModal
 9. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke, `fill: none`.
 
 ## Files
-- `Bills.dc.html` — the prototype (section `#t12`, frames 12a–12e)
+- `Bills.dc.html` — the prototype (section `#t12`, frames 12a–12e, each tab's Medium card before its frame and its X-Large card after it)
 - `README.md` — this document
