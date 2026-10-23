@@ -33,7 +33,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 | `13-budgets` | Budgets v1: Progress, Plan, History | 13a–13g | PLAN · `g b` |
 | `14-budgets-v2` | Budgets v2: multiple budgets, four methods | 14a–14f | PLAN · `g b` |
 | `15-reports` | Reports | 15a–15i | PLAN · `g r` |
-| `16-settings` | Settings, one page per section, with Window Size cards for General, Display and Units | 16a–16v, dialogs 16c–16e, 16r–16t · DESKTOP-123–133 | pinned · `g s` |
+| `16-settings` | Settings, one page per section, with Window Size cards for General, Display and Units, and a Medium and an X-Large card for every other page | 16a–16v, dialogs 16c–16e, 16r–16t · DESKTOP-123–166 | pinned · `g s` |
 | `17-accounts` | Account management & forms | 17a–17d | Settings › Accounts |
 | `18-categories` | Category dialogs | 18a–18d | Settings › Categories |
 | `19-tags` | Tag dialogs & merge | 19a–19e | Settings › Tags |
@@ -78,6 +78,6 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px. Ful
 - **Preferences vs configuration:** ledger data syncs; device configuration stays local. Settings pages say which on every page.
 
 ## Known gaps
-- **Payees** in Settings is indexed but not drawn. Build it from 16j's pattern and 20a.
+- **Payees** in Settings is drawn only at Medium (DESKTOP-158) and X-Large (DESKTOP-145). Its Large frame follows the Medium card.
 - **Documents Inbox** (formerly 4b) and the **Bills History tab** (12f) are specified but not drawn.
 - **Packages 03, 12–15 and 17–20** were written against older frame numbers. They've been renumbered to match the master, and frames cross-referenced in their prose may predate later shell changes (Events, Notifications, Settings pages). Where they conflict, follow the design file and this README.
