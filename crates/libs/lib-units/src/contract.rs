@@ -10,13 +10,13 @@ use lib_core::UnitId;
 
 use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
-    AddPriceSource, AddUnit, AddUnitRefusal, DeactivateUnit, DeletePriceSource, DeleteUnit,
-    DeleteUnitRefusal, EditPriceSource, EditUnit, EditUnitRefusal, SetBaseUnit,
+    AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, EditPriceSource,
+    EditUnit, SetBaseUnit,
 };
 use crate::protocols::PortsMut;
 use crate::{
-    COINGECKO, Endpoint, KeyPlacement, MANUAL_ENTRY, PriceLink, PriceSourceAuth, PriceSourceRecord,
-    UnitKind, UnitRow, UnitUsage, Updates,
+    COINGECKO, Endpoint, Error, KeyPlacement, MANUAL_ENTRY, PriceLink, PriceSourceAuth,
+    PriceSourceRecord, UnitKind, UnitRow, UnitUsage, Updates,
 };
 
 /// A stored set of the Units, Price Sources and base Unit ports, lent out together for one
@@ -253,7 +253,7 @@ pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(fac
     }
     .run(split.units, split.base_unit, split.usage)
     .expect_err("btc and vas are quoted in aud");
-    assert_eq!(refusal, DeleteUnitRefusal::QuotedBy(2));
+    assert_eq!(refusal, Error::QuotedBy(2));
     factory.commit(&mut ports);
 
     assert_eq!(
@@ -283,7 +283,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
     }
     .run(split.units, split.price_sources)
     .expect_err("the quote names no Unit");
-    assert_eq!(refusal, AddUnitRefusal::QuoteGone);
+    assert_eq!(refusal, Error::QuoteGone);
     factory.commit(&mut ports);
 
     let split = ports.split_mut(&usage);
@@ -296,7 +296,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
     }
     .run(split.units, split.price_sources)
     .expect_err("the quote names no Unit");
-    assert_eq!(refusal, EditUnitRefusal::QuoteGone);
+    assert_eq!(refusal, Error::QuoteGone);
     factory.commit(&mut ports);
 
     assert_eq!(

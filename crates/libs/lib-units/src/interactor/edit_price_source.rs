@@ -1,7 +1,9 @@
 use lib_core::PriceSourceId;
 
 use crate::protocols::PriceSourceRepository;
-use crate::{BuiltInOverride, Endpoint, MANUAL_ENTRY, PriceSourceRecord, Updates, built_in};
+use crate::{
+    BuiltInOverride, Endpoint, Error, MANUAL_ENTRY, PriceSourceRecord, Result, Updates, built_in,
+};
 
 /// Rename and retime a Price Source. A Custom source also takes a new endpoint when `endpoint` is
 /// given; a built-in stores only the name and Updates, since its endpoint is code (ADR-0043).
@@ -14,31 +16,15 @@ pub struct EditPriceSource {
     pub endpoint: Option<Endpoint>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum EditPriceSourceRefusal {
-    /// No source has the id, which only happens when it was deleted while its Dialog was open.
-    #[error("price source not found")]
-    Gone,
-    /// Manual entry has nothing to edit.
-    #[error("manual entry can't be edited")]
-    ManualEntry,
-    /// A built-in's address, request, price path and auth are fixed in code.
-    #[error("a built-in price source's endpoint can't be edited")]
-    BuiltInEndpoint,
-}
-
 impl EditPriceSource {
     /// Returns the record written.
-    pub fn run(
-        self,
-        price_sources: &mut dyn PriceSourceRepository,
-    ) -> Result<PriceSourceRecord, EditPriceSourceRefusal> {
+    pub fn run(self, price_sources: &mut dyn PriceSourceRepository) -> Result<PriceSourceRecord> {
         if self.id == MANUAL_ENTRY {
-            return Err(EditPriceSourceRefusal::ManualEntry);
+            return Err(Error::ChangeManualEntry);
         }
         let record = if built_in(self.id).is_some() {
             if self.endpoint.is_some() {
-                return Err(EditPriceSourceRefusal::BuiltInEndpoint);
+                return Err(Error::BuiltInEndpoint);
             }
             PriceSourceRecord::BuiltIn(BuiltInOverride {
                 id: self.id,
@@ -53,7 +39,7 @@ impl EditPriceSource {
                     PriceSourceRecord::Custom(source) if source.id == self.id => Some(source),
                     _ => None,
                 })
-                .ok_or(EditPriceSourceRefusal::Gone)?;
+                .ok_or(Error::PriceSourceGone)?;
             source.name = self.name;
             source.updates = self.updates;
             if let Some(endpoint) = self.endpoint {
@@ -165,16 +151,10 @@ mod tests {
         for (request, refusal) in [
             (
                 edit(COINGECKO, Some(endpoint("https://x.example"))),
-                EditPriceSourceRefusal::BuiltInEndpoint,
+                Error::BuiltInEndpoint,
             ),
-            (
-                edit(MANUAL_ENTRY, None),
-                EditPriceSourceRefusal::ManualEntry,
-            ),
-            (
-                edit(PriceSourceId::new(), None),
-                EditPriceSourceRefusal::Gone,
-            ),
+            (edit(MANUAL_ENTRY, None), Error::ChangeManualEntry),
+            (edit(PriceSourceId::new(), None), Error::PriceSourceGone),
         ] {
             assert_eq!(request.run(&mut ports.price_sources), Err(refusal));
         }

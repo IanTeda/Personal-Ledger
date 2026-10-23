@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
-use crate::UnitRow;
-use crate::protocols::{BaseUnitRepository, UnitRepository, UnitUsage, UnitUse};
+use crate::protocols::{BaseUnitRepository, UnitRepository, UnitUsage};
+use crate::{Error, Result, UnitRow};
 
 /// Delete a Unit. The base Unit can only go together with a move of the base to `new_base`, so
 /// the Ledger is never left without one; for any other Unit `new_base` is ignored.
@@ -16,31 +16,6 @@ pub struct DeleteUnit {
     pub new_base: Option<UnitId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeleteUnitRefusal {
-    #[error("unit not found")]
-    UnitGone,
-    /// The Ledger always has a base Unit, so its last Unit stays.
-    #[error("the only unit can't be deleted")]
-    OnlyUnit,
-    /// An Account, a Bill Plan or a Budget names the Unit, so it can only be deactivated.
-    #[error("a unit in use can only be deactivated")]
-    UnitInUse(UnitUse),
-    /// The Unit is the base Unit and no new base was given.
-    #[error("the base unit needs a new base unit before it can be deleted")]
-    BaseUnitNeeded,
-    /// The new base Unit is the Unit being deleted, or isn't on the Ledger.
-    #[error("new base unit not found")]
-    NewBaseGone,
-    /// The new base Unit is deactivated; the base Unit is always active.
-    #[error("a deactivated unit can't be the base unit")]
-    NewBaseInactive,
-    /// This many other Units are priced in the Unit, and a Unit's quote must stay on the Ledger.
-    /// Re-quoting them would drop their last prices, so the person edits them first.
-    #[error("{0} other units are quoted in this unit")]
-    QuotedBy(usize),
-}
-
 impl DeleteUnit {
     /// Returns the Unit removed.
     pub fn run(
@@ -48,28 +23,28 @@ impl DeleteUnit {
         units: &mut dyn UnitRepository,
         base_unit: &mut dyn BaseUnitRepository,
         usage: &dyn UnitUsage,
-    ) -> Result<UnitRow, DeleteUnitRefusal> {
+    ) -> Result<UnitRow> {
         let all = units.units();
         let unit = all
             .iter()
             .find(|unit| unit.id == self.id)
             .cloned()
-            .ok_or(DeleteUnitRefusal::UnitGone)?;
+            .ok_or(Error::UnitGone)?;
         if all.len() == 1 {
-            return Err(DeleteUnitRefusal::OnlyUnit);
+            return Err(Error::OnlyUnit);
         }
         let in_use = usage.unit_usage(self.id);
         if in_use.is_used() {
-            return Err(DeleteUnitRefusal::UnitInUse(in_use));
+            return Err(Error::UnitInUse(in_use));
         }
         let moves_base = if self.id == base_unit.base_unit() {
-            let new_base = self.new_base.ok_or(DeleteUnitRefusal::BaseUnitNeeded)?;
+            let new_base = self.new_base.ok_or(Error::BaseUnitNeeded)?;
             let new_base = all
                 .iter()
                 .find(|unit| unit.id == new_base && unit.id != self.id)
-                .ok_or(DeleteUnitRefusal::NewBaseGone)?;
+                .ok_or(Error::NewBaseGone)?;
             if !new_base.is_active {
-                return Err(DeleteUnitRefusal::NewBaseInactive);
+                return Err(Error::InactiveBase);
             }
             Some(new_base.id)
         } else {
@@ -80,7 +55,7 @@ impl DeleteUnit {
             .filter(|other| other.id != self.id && other.link.quote == self.id)
             .count();
         if quoted_by > 0 {
-            return Err(DeleteUnitRefusal::QuotedBy(quoted_by));
+            return Err(Error::QuotedBy(quoted_by));
         }
         if let Some(new_base) = moves_base {
             base_unit.set_base_unit(new_base);
@@ -97,21 +72,14 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, InMemoryUnits};
     use crate::presenter::test_support::unquote_aud;
+    use crate::protocols::UnitUse;
 
-    fn delete(
-        ports: &mut InMemoryPorts,
-        id: UnitId,
-        new_base: Option<UnitId>,
-    ) -> Result<UnitRow, DeleteUnitRefusal> {
+    fn delete(ports: &mut InMemoryPorts, id: UnitId, new_base: Option<UnitId>) -> Result<UnitRow> {
         DeleteUnit { id, new_base }.run(&mut ports.units, &mut ports.base_unit, &ports.usage)
     }
 
     /// Runs a delete that should be refused and checks it wrote nothing.
-    fn refused(
-        ports: &mut InMemoryPorts,
-        id: UnitId,
-        new_base: Option<UnitId>,
-    ) -> DeleteUnitRefusal {
+    fn refused(ports: &mut InMemoryPorts, id: UnitId, new_base: Option<UnitId>) -> Error {
         let before = ports.clone();
         let refusal = delete(ports, id, new_base).expect_err("the delete should be refused");
         assert_eq!(*ports, before, "a refused delete writes nothing");
@@ -154,10 +122,7 @@ mod tests {
     #[test]
     fn deleting_a_unit_that_is_gone_is_refused() {
         let mut ports = InMemoryPorts::stub(Utc::now());
-        assert_eq!(
-            refused(&mut ports, UnitId::new(), None),
-            DeleteUnitRefusal::UnitGone
-        );
+        assert_eq!(refused(&mut ports, UnitId::new(), None), Error::UnitGone);
     }
 
     #[test]
@@ -169,7 +134,7 @@ mod tests {
         for new_base in [None, Some(UnitId::SEED_AUD)] {
             assert_eq!(
                 refused(&mut ports, UnitId::SEED_AUD, new_base),
-                DeleteUnitRefusal::OnlyUnit
+                Error::OnlyUnit
             );
         }
     }
@@ -194,7 +159,7 @@ mod tests {
             ports.usage.uses.insert(UnitId::SEED_BTC, uses);
             assert_eq!(
                 refused(&mut ports, UnitId::SEED_BTC, None),
-                DeleteUnitRefusal::UnitInUse(uses)
+                Error::UnitInUse(uses)
             );
         }
     }
@@ -204,14 +169,14 @@ mod tests {
         let mut ports = InMemoryPorts::stub(Utc::now());
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),
-            DeleteUnitRefusal::QuotedBy(2),
+            Error::QuotedBy(2),
             "btc and vas are quoted in aud"
         );
 
         ports.units.units[2].link.quote = UnitId::SEED_BTC;
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_VAS)),
-            DeleteUnitRefusal::QuotedBy(1)
+            Error::QuotedBy(1)
         );
         assert_eq!(
             ports.base_unit.0,
@@ -233,7 +198,7 @@ mod tests {
         let mut ports = InMemoryPorts::stub(Utc::now());
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, None),
-            DeleteUnitRefusal::BaseUnitNeeded
+            Error::BaseUnitNeeded
         );
     }
 
@@ -243,7 +208,7 @@ mod tests {
         for new_base in [UnitId::SEED_AUD, UnitId::new()] {
             assert_eq!(
                 refused(&mut ports, UnitId::SEED_AUD, Some(new_base)),
-                DeleteUnitRefusal::NewBaseGone
+                Error::NewBaseGone
             );
         }
     }
@@ -254,7 +219,7 @@ mod tests {
         ports.units.units[1].is_active = false;
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),
-            DeleteUnitRefusal::NewBaseInactive
+            Error::InactiveBase
         );
     }
 }

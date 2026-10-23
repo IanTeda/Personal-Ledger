@@ -14,6 +14,7 @@
 )]
 pub mod contract;
 mod entity;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -29,6 +30,7 @@ pub use entity::{
     override_built_in, price_source, price_source_exists, price_sources, remove_custom_source,
     remove_unit, set_unit_active, sources_for_kind, units_by_code,
 };
+pub use error::{Error, Result};
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
     BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, SharedPorts, UnitHoldings,

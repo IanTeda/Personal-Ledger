@@ -1,24 +1,12 @@
 use lib_core::PriceSourceId;
 
 use crate::protocols::{PriceSourceRepository, UnitRepository};
-use crate::{CustomSource, MANUAL_ENTRY, PriceSourceRecord, built_in};
+use crate::{CustomSource, Error, MANUAL_ENTRY, PriceSourceRecord, Result, built_in};
 
 /// Delete a Custom Price Source, moving every Unit on it to Manual entry so none links to a source
 /// that doesn't exist. Each moved Unit keeps its symbol and last price.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeletePriceSource(pub PriceSourceId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeletePriceSourceRefusal {
-    #[error("price source not found")]
-    Gone,
-    /// A built-in is always listed.
-    #[error("a built-in price source can't be deleted")]
-    BuiltIn,
-    /// Manual entry is the fallback every Unit can sit on.
-    #[error("manual entry can't be deleted")]
-    ManualEntry,
-}
 
 /// What deleting a Custom source did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,13 +21,13 @@ impl DeletePriceSource {
         self,
         price_sources: &mut dyn PriceSourceRepository,
         units: &mut dyn UnitRepository,
-    ) -> Result<PriceSourceDeleted, DeletePriceSourceRefusal> {
+    ) -> Result<PriceSourceDeleted> {
         let id = self.0;
         if id == MANUAL_ENTRY {
-            return Err(DeletePriceSourceRefusal::ManualEntry);
+            return Err(Error::ChangeManualEntry);
         }
         if built_in(id).is_some() {
-            return Err(DeletePriceSourceRefusal::BuiltIn);
+            return Err(Error::DeleteBuiltIn);
         }
         let source = price_sources
             .price_source_records()
@@ -48,7 +36,7 @@ impl DeletePriceSource {
                 PriceSourceRecord::Custom(source) if source.id == id => Some(source),
                 _ => None,
             })
-            .ok_or(DeletePriceSourceRefusal::Gone)?;
+            .ok_or(Error::PriceSourceGone)?;
         let mut moved = 0;
         for mut unit in units.units() {
             if unit.link.source_id == id {
@@ -134,10 +122,10 @@ mod tests {
         let before = ports.clone();
 
         for (id, refusal) in [
-            (COINGECKO, DeletePriceSourceRefusal::BuiltIn),
-            (FRANKFURTER, DeletePriceSourceRefusal::BuiltIn),
-            (MANUAL_ENTRY, DeletePriceSourceRefusal::ManualEntry),
-            (PriceSourceId::new(), DeletePriceSourceRefusal::Gone),
+            (COINGECKO, Error::DeleteBuiltIn),
+            (FRANKFURTER, Error::DeleteBuiltIn),
+            (MANUAL_ENTRY, Error::ChangeManualEntry),
+            (PriceSourceId::new(), Error::PriceSourceGone),
         ] {
             assert_eq!(
                 DeletePriceSource(id).run(&mut ports.price_sources, &mut ports.units),

@@ -1,29 +1,21 @@
 use lib_core::UnitId;
 
 use crate::protocols::{BaseUnitRepository, UnitRepository};
+use crate::{Error, Result};
 
 /// Make a Unit the base Unit, which new Accounts default to and the net worth is figured in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetBaseUnit(pub UnitId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum SetBaseUnitRefusal {
-    #[error("unit not found")]
-    UnitGone,
-    /// The base Unit is always active, as deactivating it is refused too.
-    #[error("a deactivated unit can't be the base unit")]
-    Inactive,
-}
 
 impl SetBaseUnit {
     pub fn run(
         self,
         units: &dyn UnitRepository,
         base_unit: &mut dyn BaseUnitRepository,
-    ) -> Result<(), SetBaseUnitRefusal> {
-        let unit = units.unit(self.0).ok_or(SetBaseUnitRefusal::UnitGone)?;
+    ) -> Result<()> {
+        let unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         if !unit.is_active {
-            return Err(SetBaseUnitRefusal::Inactive);
+            return Err(Error::InactiveBase);
         }
         base_unit.set_base_unit(unit.id);
         Ok(())
@@ -56,7 +48,7 @@ mod tests {
 
         assert_eq!(
             SetBaseUnit(UnitId::new()).run(&ports.units, &mut ports.base_unit),
-            Err(SetBaseUnitRefusal::UnitGone)
+            Err(Error::UnitGone)
         );
         assert_eq!(ports.base_unit.0, UnitId::SEED_AUD);
     }
@@ -68,7 +60,7 @@ mod tests {
 
         assert_eq!(
             SetBaseUnit(UnitId::SEED_BTC).run(&ports.units, &mut ports.base_unit),
-            Err(SetBaseUnitRefusal::Inactive)
+            Err(Error::InactiveBase)
         );
         assert_eq!(ports.base_unit.0, UnitId::SEED_AUD);
     }

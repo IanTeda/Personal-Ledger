@@ -1,8 +1,7 @@
 use lib_core::UnitId;
 
-use crate::UnitRow;
-use crate::interactor::UnitGone;
 use crate::protocols::UnitRepository;
+use crate::{Error, Result, UnitRow};
 
 /// Reactivate a deactivated Unit, so it is offered to pick again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,8 +9,8 @@ pub struct ReactivateUnit(pub UnitId);
 
 impl ReactivateUnit {
     /// Returns the Unit as written.
-    pub fn run(self, units: &mut dyn UnitRepository) -> Result<UnitRow, UnitGone> {
-        let mut unit = units.unit(self.0).ok_or(UnitGone)?;
+    pub fn run(self, units: &mut dyn UnitRepository) -> Result<UnitRow> {
+        let mut unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         unit.is_active = true;
         units.upsert_unit(unit.clone());
         Ok(unit)
@@ -49,7 +48,7 @@ mod tests {
 
         assert_eq!(
             ReactivateUnit(UnitId::new()).run(&mut ports.units),
-            Err(UnitGone)
+            Err(Error::UnitGone)
         );
         assert_eq!(ports, before);
     }

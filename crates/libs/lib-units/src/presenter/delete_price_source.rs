@@ -5,9 +5,9 @@ use lib_core::PriceSourceId;
 use lib_viper::view::{DialogFrame, TextFieldView};
 
 use super::{UnitsOutcome, count, linked_codes};
-use crate::interactor::{DeletePriceSource, DeletePriceSourceRefusal};
-use crate::msg;
+use crate::interactor::DeletePriceSource;
 use crate::protocols::{SharedPorts, UnitsRouter};
+use crate::{Error, msg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeletePriceSourceEvent {
@@ -105,9 +105,13 @@ impl DeletePriceSourcePresenter {
                 }));
                 None
             }
-            Err(DeletePriceSourceRefusal::Gone) => Some(msg::units_refusal_price_source_gone()),
-            Err(DeletePriceSourceRefusal::BuiltIn) => Some(msg::units_refusal_built_in_delete()),
-            Err(DeletePriceSourceRefusal::ManualEntry) => Some(msg::units_refusal_manual_entry()),
+            Err(Error::DeleteBuiltIn) => Some(msg::units_refusal_built_in_delete()),
+            Err(Error::ChangeManualEntry) => Some(msg::units_refusal_manual_entry()),
+            Err(Error::PriceSourceGone) => Some(msg::units_refusal_price_source_gone()),
+            Err(refusal) => {
+                debug_assert!(false, "DeletePriceSource doesn't return {refusal:?}");
+                Some(msg::units_refusal_price_source_gone())
+            }
         };
     }
 }

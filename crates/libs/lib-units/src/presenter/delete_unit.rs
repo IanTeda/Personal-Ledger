@@ -9,9 +9,9 @@ use lib_core::UnitId;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use super::{UnitChange, UnitsOutcome, count, uses_text};
-use crate::interactor::{DeactivateUnit, DeactivateUnitRefusal, DeleteUnit, DeleteUnitRefusal};
+use crate::interactor::{DeactivateUnit, DeleteUnit};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{UnitUse, msg, units_by_code};
+use crate::{Error, UnitUse, msg, units_by_code};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteUnitEvent {
@@ -201,19 +201,19 @@ impl DeleteUnitPresenter {
                 }));
                 None
             }
-            Err(DeleteUnitRefusal::UnitInUse(uses)) => {
+            Err(Error::UnitInUse(uses)) => {
                 self.in_use = Some(uses);
                 None
             }
-            Err(DeleteUnitRefusal::UnitGone) => Some(msg::units_refusal_unit_gone()),
-            Err(DeleteUnitRefusal::OnlyUnit) => Some(msg::units_refusal_only_unit(code)),
-            Err(DeleteUnitRefusal::BaseUnitNeeded) => {
-                Some(msg::units_refusal_base_unit_needed(code))
-            }
-            Err(DeleteUnitRefusal::NewBaseGone) => Some(msg::units_refusal_new_base_gone()),
-            Err(DeleteUnitRefusal::NewBaseInactive) => Some(msg::units_refusal_inactive_base()),
-            Err(DeleteUnitRefusal::QuotedBy(quoting)) => {
-                Some(msg::units_refusal_quoted(count(quoting), code))
+            Err(Error::UnitGone) => Some(msg::units_refusal_unit_gone()),
+            Err(Error::OnlyUnit) => Some(msg::units_refusal_only_unit(code)),
+            Err(Error::BaseUnitNeeded) => Some(msg::units_refusal_base_unit_needed(code)),
+            Err(Error::NewBaseGone) => Some(msg::units_refusal_new_base_gone()),
+            Err(Error::InactiveBase) => Some(msg::units_refusal_inactive_base()),
+            Err(Error::QuotedBy(quoting)) => Some(msg::units_refusal_quoted(count(quoting), code)),
+            Err(refusal) => {
+                debug_assert!(false, "DeleteUnit doesn't return {refusal:?}");
+                Some(msg::units_refusal_unit_gone())
             }
         };
     }
@@ -232,8 +232,12 @@ impl DeleteUnitPresenter {
                 }));
                 None
             }
-            Err(DeactivateUnitRefusal::UnitGone) => Some(msg::units_refusal_unit_gone()),
-            Err(DeactivateUnitRefusal::BaseUnit) => Some(msg::units_in_use_base()),
+            Err(Error::DeactivateBase) => Some(msg::units_in_use_base()),
+            Err(Error::UnitGone) => Some(msg::units_refusal_unit_gone()),
+            Err(refusal) => {
+                debug_assert!(false, "DeactivateUnit doesn't return {refusal:?}");
+                Some(msg::units_refusal_unit_gone())
+            }
         };
     }
 }

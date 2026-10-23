@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
 use crate::protocols::{PriceSourceRepository, UnitRepository};
-use crate::{PriceLink, UnitKind, UnitRow, price_source_exists};
+use crate::{Error, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
 
 /// Edit a Unit's code, name, Kind and Price Source link. The id stays, so editing the code leaves
 /// whatever names the Unit on it.
@@ -14,30 +14,19 @@ pub struct EditUnit {
     pub link: PriceLink,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum EditUnitRefusal {
-    #[error("unit not found")]
-    UnitGone,
-    #[error("price source not found")]
-    PriceSourceGone,
-    /// The quote Unit isn't on the Ledger; storage keeps every quote on a Unit.
-    #[error("quote unit not found")]
-    QuoteGone,
-}
-
 impl EditUnit {
     /// Returns the Unit as written.
     pub fn run(
         self,
         units: &mut dyn UnitRepository,
         price_sources: &dyn PriceSourceRepository,
-    ) -> Result<UnitRow, EditUnitRefusal> {
-        let mut unit = units.unit(self.id).ok_or(EditUnitRefusal::UnitGone)?;
+    ) -> Result<UnitRow> {
+        let mut unit = units.unit(self.id).ok_or(Error::UnitGone)?;
         if !price_source_exists(&price_sources.price_source_records(), self.link.source_id) {
-            return Err(EditUnitRefusal::PriceSourceGone);
+            return Err(Error::PriceSourceGone);
         }
         if units.unit(self.link.quote).is_none() {
-            return Err(EditUnitRefusal::QuoteGone);
+            return Err(Error::QuoteGone);
         }
         unit.edit(self.code, self.name, self.kind, self.link);
         units.upsert_unit(unit.clone());
@@ -119,7 +108,7 @@ mod tests {
         assert_eq!(
             edit(UnitId::new(), PriceLink::manual(UnitId::SEED_AUD))
                 .run(&mut ports.units, &ports.price_sources),
-            Err(EditUnitRefusal::UnitGone)
+            Err(Error::UnitGone)
         );
         assert_eq!(ports, before);
     }
@@ -136,7 +125,7 @@ mod tests {
 
         assert_eq!(
             edit(UnitId::SEED_BTC, gone).run(&mut ports.units, &ports.price_sources),
-            Err(EditUnitRefusal::PriceSourceGone)
+            Err(Error::PriceSourceGone)
         );
         assert_eq!(ports, before);
     }
@@ -150,7 +139,7 @@ mod tests {
 
         assert_eq!(
             edit(UnitId::SEED_BTC, link).run(&mut ports.units, &ports.price_sources),
-            Err(EditUnitRefusal::QuoteGone)
+            Err(Error::QuoteGone)
         );
         assert_eq!(ports, before);
     }

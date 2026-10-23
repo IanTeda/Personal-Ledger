@@ -4,9 +4,9 @@ use lib_core::UnitId;
 use lib_viper::view::{Choice, DialogFrame, SelectView};
 
 use super::{UnitChange, UnitsOutcome};
-use crate::interactor::{SetBaseUnit, SetBaseUnitRefusal};
+use crate::interactor::SetBaseUnit;
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{msg, units_by_code};
+use crate::{Error, msg, units_by_code};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetBaseUnitEvent {
@@ -103,10 +103,13 @@ impl SetBaseUnitPresenter {
                 }));
                 None
             }
-            (Err(SetBaseUnitRefusal::UnitGone), _) | (Ok(()), None) => {
+            (Err(Error::InactiveBase), _) => Some(msg::units_refusal_inactive_base()),
+            (Err(Error::UnitGone), _) => Some(msg::units_refusal_unit_gone()),
+            (Err(refusal), _) => {
+                debug_assert!(false, "SetBaseUnit doesn't return {refusal:?}");
                 Some(msg::units_refusal_unit_gone())
             }
-            (Err(SetBaseUnitRefusal::Inactive), _) => Some(msg::units_refusal_inactive_base()),
+            (Ok(()), None) => Some(msg::units_refusal_unit_gone()),
         };
     }
 }

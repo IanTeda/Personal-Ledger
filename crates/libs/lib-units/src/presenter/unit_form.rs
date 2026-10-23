@@ -10,9 +10,9 @@ use lib_locale::Label as _;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
-use crate::interactor::{AddUnit, AddUnitRefusal, EditUnit, EditUnitRefusal};
+use crate::interactor::{AddUnit, EditUnit};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceLink, UnitUse, msg};
+use crate::{Error, MANUAL_ENTRY, PriceLink, UnitUse, msg};
 
 /// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name, then the
 /// PRICE SOURCE group.
@@ -414,10 +414,7 @@ impl UnitFormPresenter {
                     link,
                 }
                 .run(ports.units, ports.price_sources)
-                .map_err(|refusal| match refusal {
-                    AddUnitRefusal::PriceSourceGone => msg::units_refusal_price_source_gone(),
-                    AddUnitRefusal::QuoteGone => msg::units_refusal_quote_gone(),
-                }),
+                .map_err(refusal_text),
                 Some(_) => EditUnit {
                     id,
                     code,
@@ -426,11 +423,7 @@ impl UnitFormPresenter {
                     link,
                 }
                 .run(ports.units, ports.price_sources)
-                .map_err(|refusal| match refusal {
-                    EditUnitRefusal::UnitGone => msg::units_refusal_unit_gone(),
-                    EditUnitRefusal::PriceSourceGone => msg::units_refusal_price_source_gone(),
-                    EditUnitRefusal::QuoteGone => msg::units_refusal_quote_gone(),
-                }),
+                .map_err(refusal_text),
             }
         };
         match saved {
@@ -442,6 +435,20 @@ impl UnitFormPresenter {
                 }));
             }
             Err(text) => self.refusal = Some(text),
+        }
+    }
+}
+
+/// The Message for an Add or Edit unit refusal. Add never returns `UnitGone`, but the Message is the
+/// same either way, so both share this.
+fn refusal_text(refusal: Error) -> String {
+    match refusal {
+        Error::UnitGone => msg::units_refusal_unit_gone(),
+        Error::PriceSourceGone => msg::units_refusal_price_source_gone(),
+        Error::QuoteGone => msg::units_refusal_quote_gone(),
+        refusal => {
+            debug_assert!(false, "AddUnit and EditUnit don't return {refusal:?}");
+            msg::units_refusal_unit_gone()
         }
     }
 }

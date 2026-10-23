@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
 use crate::protocols::{PriceSourceRepository, UnitRepository};
-use crate::{PriceLink, UnitKind, UnitRow, price_source_exists};
+use crate::{Error, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
 
 /// Add a Unit. The form has already checked the fields, so only a link naming something gone
 /// refuses it. The caller picks the id, so a Unit can be quoted in itself, as the first one is.
@@ -14,28 +14,18 @@ pub struct AddUnit {
     pub link: PriceLink,
 }
 
-/// Both only happen when what the link names was removed while the Dialog was open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum AddUnitRefusal {
-    #[error("price source not found")]
-    PriceSourceGone,
-    /// The quote Unit isn't on the Ledger; storage keeps every quote on a Unit.
-    #[error("quote unit not found")]
-    QuoteGone,
-}
-
 impl AddUnit {
     /// Returns the Unit added.
     pub fn run(
         self,
         units: &mut dyn UnitRepository,
         price_sources: &dyn PriceSourceRepository,
-    ) -> Result<UnitRow, AddUnitRefusal> {
+    ) -> Result<UnitRow> {
         if !price_source_exists(&price_sources.price_source_records(), self.link.source_id) {
-            return Err(AddUnitRefusal::PriceSourceGone);
+            return Err(Error::PriceSourceGone);
         }
         if self.link.quote != self.id && units.unit(self.link.quote).is_none() {
-            return Err(AddUnitRefusal::QuoteGone);
+            return Err(Error::QuoteGone);
         }
         let unit = UnitRow {
             id: self.id,
@@ -101,7 +91,7 @@ mod tests {
 
         assert_eq!(
             add(gone).run(&mut ports.units, &ports.price_sources),
-            Err(AddUnitRefusal::PriceSourceGone)
+            Err(Error::PriceSourceGone)
         );
         assert_eq!(ports, before);
     }
@@ -113,7 +103,7 @@ mod tests {
 
         assert_eq!(
             add(PriceLink::manual(UnitId::new())).run(&mut ports.units, &ports.price_sources),
-            Err(AddUnitRefusal::QuoteGone)
+            Err(Error::QuoteGone)
         );
         assert_eq!(ports, before);
     }

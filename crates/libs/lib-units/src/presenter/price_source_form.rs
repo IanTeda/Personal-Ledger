@@ -10,9 +10,9 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use secrecy::{ExposeSecret as _, SecretString};
 
 use super::{UnitsOutcome, count, cycle, step, updates_choices};
-use crate::interactor::{AddPriceSource, EditPriceSource, EditPriceSourceRefusal};
+use crate::interactor::{AddPriceSource, EditPriceSource};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{Endpoint, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg};
+use crate::{Endpoint, Error, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg};
 
 /// The Authentication control's value: whether the source needs a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -499,10 +499,12 @@ impl PriceSourceFormPresenter {
                 router.close_dialog(Some(UnitsOutcome::SourceSaved { name }));
                 None
             }
-            Err(EditPriceSourceRefusal::Gone) => Some(msg::units_refusal_price_source_gone()),
-            Err(EditPriceSourceRefusal::ManualEntry) => Some(msg::units_refusal_manual_entry()),
-            Err(EditPriceSourceRefusal::BuiltInEndpoint) => {
-                Some(msg::units_refusal_built_in_endpoint())
+            Err(Error::ChangeManualEntry) => Some(msg::units_refusal_manual_entry()),
+            Err(Error::BuiltInEndpoint) => Some(msg::units_refusal_built_in_endpoint()),
+            Err(Error::PriceSourceGone) => Some(msg::units_refusal_price_source_gone()),
+            Err(refusal) => {
+                debug_assert!(false, "EditPriceSource doesn't return {refusal:?}");
+                Some(msg::units_refusal_price_source_gone())
             }
         };
     }

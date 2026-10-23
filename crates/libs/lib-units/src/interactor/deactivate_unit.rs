@@ -1,21 +1,11 @@
 use lib_core::UnitId;
 
-use crate::UnitRow;
 use crate::protocols::{BaseUnitRepository, UnitRepository};
+use crate::{Error, Result, UnitRow};
 
 /// Deactivate a Unit: it stays on whatever names it but is no longer offered to pick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeactivateUnit(pub UnitId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeactivateUnitRefusal {
-    #[error("unit not found")]
-    UnitGone,
-    /// The base Unit is what new Accounts default to and what the net worth is figured in, so it
-    /// stays active until another Unit takes over as base.
-    #[error("the base unit can't be deactivated")]
-    BaseUnit,
-}
 
 impl DeactivateUnit {
     /// Returns the Unit as written.
@@ -23,10 +13,10 @@ impl DeactivateUnit {
         self,
         units: &mut dyn UnitRepository,
         base_unit: &dyn BaseUnitRepository,
-    ) -> Result<UnitRow, DeactivateUnitRefusal> {
-        let mut unit = units.unit(self.0).ok_or(DeactivateUnitRefusal::UnitGone)?;
+    ) -> Result<UnitRow> {
+        let mut unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         if unit.id == base_unit.base_unit() {
-            return Err(DeactivateUnitRefusal::BaseUnit);
+            return Err(Error::DeactivateBase);
         }
         unit.is_active = false;
         units.upsert_unit(unit.clone());
@@ -62,7 +52,7 @@ mod tests {
 
         assert_eq!(
             DeactivateUnit(UnitId::SEED_AUD).run(&mut ports.units, &ports.base_unit),
-            Err(DeactivateUnitRefusal::BaseUnit)
+            Err(Error::DeactivateBase)
         );
         assert_eq!(ports, before);
     }
@@ -74,7 +64,7 @@ mod tests {
 
         assert_eq!(
             DeactivateUnit(UnitId::new()).run(&mut ports.units, &ports.base_unit),
-            Err(DeactivateUnitRefusal::UnitGone)
+            Err(Error::UnitGone)
         );
         assert_eq!(ports, before);
     }
