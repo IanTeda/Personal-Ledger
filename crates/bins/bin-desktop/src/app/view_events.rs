@@ -47,6 +47,9 @@ impl Shell {
                 }
             }
             ViewEvent::SetStatus(text) => self.chrome.status_message = text,
+            ViewEvent::NoticesQueued => {
+                self.drain_notices();
+            }
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
             ViewEvent::EnterMode(mode) => {
                 self.nav.enter_mode(mode.input_mode());

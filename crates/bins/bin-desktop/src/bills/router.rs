@@ -1,8 +1,8 @@
 //! `impl BillsRouter` for the Desktop: where the Bills page's Presenter asks to go. The Plan form
-//! and Skip open in today's Dialog host, Pay opens through the Bill Payments module's entry point,
-//! a Transaction is shown through the Transactions module's, and a Toast and the status line reach
-//! the Shell as [`ViewEvent`]s, all through the page's gpui context, which is why the Router is
-//! built for each `handle` call.
+//! and Skip open in today's Dialog host, Pay opens through the Bill Payments module's entry point
+//! and a Transaction is shown through the Transactions module's, all through the page's gpui
+//! context, which is why the Router is built for each `handle` call. A Notice goes onto the bin's
+//! queue (`crate::notices`).
 
 use chrono::NaiveDate;
 use gpui::{Context, Entity};
@@ -10,13 +10,14 @@ use lib_bill_payments::SharedPayments;
 use lib_bills::presenter::{BillsPageEvent, PlanFormPresenter, SkipPresenter};
 use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, DateStyle, TransactionId};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 
 use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
 use crate::chrome::dialog_host::open_dialog;
 use crate::ledger_store::LedgerStore;
+use crate::notices::Queue;
 use crate::view::event::ViewEvent;
 
 pub(super) struct PageRouter<'a, 'b> {
@@ -77,13 +78,13 @@ impl BillsRouter for PageRouter<'_, '_> {
     fn show_transaction(&mut self, id: TransactionId) {
         crate::transactions::router::show(self.cx, id);
     }
+}
 
-    fn raise_toast(&mut self, kind: ToastKind, text: String) {
-        self.cx.emit(ViewEvent::RaiseToast { kind, text });
-    }
-
-    fn set_status(&mut self, text: Option<String>) {
-        self.cx.emit(ViewEvent::SetStatus(text));
+impl Notify for PageRouter<'_, '_> {
+    /// Queues `notice` and asks `Shell` to drain the queue.
+    fn notify(&mut self, notice: Notice) {
+        Queue.notify(notice);
+        self.cx.emit(ViewEvent::NoticesQueued);
     }
 }
 

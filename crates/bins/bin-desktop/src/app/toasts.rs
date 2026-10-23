@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Local;
 use gpui::{Context, Timer};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, ToastKind};
 
 use super::Shell;
 use crate::{
@@ -33,6 +33,22 @@ impl Shell {
             .settings
             .update(cx, |view, cx| view.set_display(display, cx));
         self.push_display_preferences(display, cx);
+    }
+
+    /// Shows every Notice the module Routers queued since the last drain (`crate::notices`): a
+    /// Toast on the stack, a message on the status line. Runs after a page's `handle`, which
+    /// asks for it, and after each key and Dialog click, which a Dialog's Presenter handles.
+    /// Returns whether any came, so a key that changed nothing else still redraws.
+    pub(super) fn drain_notices(&mut self) -> bool {
+        let notices = crate::notices::drain();
+        let any = !notices.is_empty();
+        for notice in notices {
+            match notice {
+                Notice::Toast(kind, text) => self.raise_toast(kind, text),
+                Notice::Status(text) => self.chrome.status_message = Some(text),
+            }
+        }
+        any
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.

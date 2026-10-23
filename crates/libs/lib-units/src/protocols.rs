@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_core::{AccountType, Money, PriceSourceId, UnitId};
-use lib_toast::ToastKind;
+use lib_toast::Notify;
 
 use crate::{PriceSource, PriceSourceRecord, UnitRow, price_source, price_sources};
 
@@ -186,8 +186,9 @@ pub enum UnitsDialog {
 
 /// Navigation out of the Units Presenters, implemented by each Client. The Client passes it into
 /// each `handle` call rather than the Presenter holding it, since the Desktop can only open a
-/// Dialog with the gpui context that call runs in.
-pub trait UnitsRouter {
+/// Dialog with the gpui context that call runs in. A Toast or status-line message goes to the
+/// Shell through [`Notify`] (ADR-0048).
+pub trait UnitsRouter: Notify {
     /// Builds `dialog`'s Presenter on the shared ports and hosts its View. Returns whether it
     /// opened: a Dialog on a row removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: UnitsDialog) -> bool;
@@ -197,10 +198,4 @@ pub trait UnitsRouter {
     ///
     /// [`UnitsPageEvent::DialogClosed`]: crate::presenter::UnitsPageEvent::DialogClosed
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>);
-
-    /// Raises a Toast in the Shell.
-    fn raise_toast(&mut self, kind: ToastKind, text: String);
-
-    /// Puts `text` on the Shell's status line.
-    fn set_status(&mut self, text: String);
 }

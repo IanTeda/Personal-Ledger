@@ -17,6 +17,8 @@ doctest = false
 lib_bills = { path = "../lib-bills" }
 lib_core = { path = "../lib-core" }
 lib_locale = { path = "../lib-locale" }
+## `Notify`, which its Router declares (ADR-0048).
+lib_toast = { path = "../lib-toast" }
 lib_transactions = { path = "../lib-transactions" }
 lib_viper = { path = "../lib-viper" }
 

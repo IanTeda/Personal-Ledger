@@ -10,6 +10,7 @@
 use chrono::NaiveDate;
 use lib_core::{BillPlanId, DateStyle, Period};
 use lib_list_cursor::Step;
+use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
 use super::Clock;
@@ -163,8 +164,8 @@ impl BillsPagePresenter {
                 BillsTab::Schedule => self.schedule.handle(ScheduleEvent::Open, today, router),
                 BillsTab::Planner => self.planner.handle(PlannerEvent::Edit, router),
             },
-            BillsPageEvent::NextTab => self.show_tab(self.tab.next(), router),
-            BillsPageEvent::ShowTab(tab) => self.show_tab(tab, router),
+            BillsPageEvent::NextTab => self.show_tab(self.tab.next()),
+            BillsPageEvent::ShowTab(tab) => self.show_tab(tab),
             BillsPageEvent::New => {
                 router.open_plan_form(None);
             }
@@ -183,18 +184,18 @@ impl BillsPagePresenter {
             // A hand-off to a row that has gone leaves the page as it was.
             BillsPageEvent::RevealEntry(id) => {
                 if self.ports.borrow().bills().entry(id).is_some() {
-                    self.show_tab(BillsTab::Schedule, router);
+                    self.show_tab(BillsTab::Schedule);
                     self.schedule.reveal(id, today);
                 }
             }
             BillsPageEvent::RevealPlan(id) => {
                 if self.ports.borrow().bills().bill_plan(id).is_some() {
-                    self.show_tab(BillsTab::Planner, router);
+                    self.show_tab(BillsTab::Planner);
                     self.planner.select_plan(id);
                 }
             }
             BillsPageEvent::RevealPeriod(period) => {
-                self.show_tab(BillsTab::Schedule, router);
+                self.show_tab(BillsTab::Schedule);
                 self.schedule.show_period(period);
             }
             BillsPageEvent::DialogClosed(outcome) => match outcome {
@@ -202,7 +203,7 @@ impl BillsPagePresenter {
                     self.planner.select_plan(id);
                 }
                 Some(BillsOutcome::SkipRefused) => {
-                    router.set_status(Some(msg::bills_skip_error_gone()));
+                    router.notify(Notice::Status(msg::bills_skip_error_gone()));
                 }
                 Some(BillsOutcome::PlanSaved(_) | BillsOutcome::Skipped) | None => {}
             },
@@ -219,13 +220,12 @@ impl BillsPagePresenter {
         self.generated = Period::of(today);
     }
 
-    /// Switches the tab, dropping the selection and any filter focus. A new tab starts at the top
-    /// with no stale status message.
-    fn show_tab(&mut self, tab: BillsTab, router: &mut dyn BillsRouter) {
+    /// Switches the tab, dropping the selection and any filter focus. A new tab starts at the top;
+    /// the Shell clears a stale status message on the key that switched it (ADR-0048).
+    fn show_tab(&mut self, tab: BillsTab) {
         self.tab = tab;
         self.schedule.reset_selection();
         self.planner.reset_selection();
-        router.set_status(None);
     }
 
     pub fn view_model(&self) -> BillsPageViewModel {
@@ -484,7 +484,7 @@ mod tests {
         page.schedule(ScheduleEvent::Pay);
         page.schedule(ScheduleEvent::Skip);
 
-        let not_actionable = Routed::Status(Some("this bill isn't actionable".into()));
+        let not_actionable = Routed::Notice(Notice::Status("this bill isn't actionable".into()));
         assert_eq!(page.router.routed, [not_actionable.clone(), not_actionable]);
     }
 
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn switching_tab_resets_the_selection_clears_the_status_and_swaps_the_legend() {
+    fn switching_tab_resets_the_selection_and_swaps_the_legend() {
         let mut page = Page::new();
         page.send(BillsPageEvent::Move(Step::Next));
         let schedule_keys: Vec<String> = page
@@ -611,7 +611,11 @@ mod tests {
 
         let view = page.view();
         assert_eq!(view.tab, BillsTab::Planner);
-        assert_eq!(page.router.routed, [Routed::Status(None)]);
+        assert_eq!(
+            page.router.routed,
+            [],
+            "the Shell clears the status, not the page"
+        );
         let planner_keys: Vec<String> = view.hints.into_iter().map(|hint| hint.chord).collect();
         assert_eq!(planner_keys, ["j/k", "e", "n", "tab"]);
         assert_eq!(view.status, "10 bill plans");
@@ -652,7 +656,7 @@ mod tests {
         page.send(BillsPageEvent::New);
 
         assert_eq!(
-            page.router.routed[1..],
+            page.router.routed,
             [
                 Routed::PlanForm(Some(second)),
                 Routed::PlanForm(Some(second)),
@@ -688,7 +692,7 @@ mod tests {
         )));
         assert_eq!(
             page.router.status(),
-            Some(&Some("This bill can no longer be skipped.".to_string()))
+            Some("This bill can no longer be skipped.")
         );
     }
 

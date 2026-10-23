@@ -904,6 +904,22 @@ impl<'a> Harness<'a> {
         self.read_app(Shell::dashboard_bills_snapshot)
     }
 
+    /// Queues `notice` as a module Router does from inside a Presenter's `handle`. Nothing shows
+    /// until `Shell` drains the queue, after the next key or Dialog click.
+    pub fn queue_notice(&mut self, notice: lib_toast::Notice) {
+        use lib_toast::Notify as _;
+        bin_desktop::notices::Queue.notify(notice);
+    }
+
+    /// The visible Toasts' text, oldest first.
+    pub fn toast_texts(&mut self) -> Vec<String> {
+        self.toasts()
+            .visible
+            .into_iter()
+            .map(|toast| toast.text)
+            .collect()
+    }
+
     /// Raises a Toast the way a call site would, then settles.
     pub fn raise_toast(&mut self, kind: lib_toast::ToastKind, text: &str) {
         self.shell.update(self.cx, |shell, cx| {

@@ -20,6 +20,8 @@ mod inventory;
 mod ledger_store;
 pub mod locale;
 pub mod navigation;
+#[doc(hidden)]
+pub mod notices;
 mod period;
 pub mod persistence;
 mod settings;

@@ -13,6 +13,7 @@ use super::common;
 use bin_desktop::{WindowSize, navigation::nav::Noun};
 use common::Harness;
 use gpui::TestAppContext;
+use lib_toast::{Notice, ToastKind};
 
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
     let mut ui = Harness::new(app);
@@ -26,6 +27,21 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
 
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
     on_units_at(app, WindowSize::Large)
+}
+
+#[gpui::test]
+fn a_notice_queued_while_a_dialog_handles_a_click_shows_once_the_click_returns(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.click("settings-add-unit");
+    assert_eq!(ui.dialog(), Some("AddUnit"));
+
+    ui.queue_notice(Notice::Toast(ToastKind::Info, "Quote fetched".into()));
+    ui.click("add-unit-type");
+
+    assert_eq!(ui.dialog(), Some("AddUnit"), "the Dialog stays open");
+    assert_eq!(ui.toast_texts(), ["Quote fetched"]);
 }
 
 /// The selected row: a Unit's code or a Price Source's name.

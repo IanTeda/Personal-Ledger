@@ -11,6 +11,7 @@ use lib_bills::{
     SplitRef,
 };
 use lib_core::BillPlanId;
+use lib_toast::{Notice, Notify};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 
@@ -86,14 +87,21 @@ impl BillPayments for PortsPayments {
     }
 }
 
-/// A Router that records each close, in order.
+/// A Router that records each close and each Notice, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RecordingRouter {
     pub closed: Vec<Option<PayOutcome>>,
+    pub notices: Vec<Notice>,
 }
 
 impl BillPaymentsRouter for RecordingRouter {
     fn close_dialog(&mut self, outcome: Option<PayOutcome>) {
         self.closed.push(outcome);
+    }
+}
+
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.notices.push(notice);
     }
 }

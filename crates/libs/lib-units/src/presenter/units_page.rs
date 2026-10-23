@@ -7,7 +7,7 @@ use lib_core::{PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
-use lib_toast::ToastKind;
+use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
 use super::units_pane::{DetailPane, PaneInput, detail_pane};
@@ -569,7 +569,7 @@ impl UnitsPagePresenter {
             }
             (MenuAction::ReactivateUnit, UnitsRow::Unit(id)) => self.reactivate(id, router),
             (MenuAction::TestSource, _) => {
-                router.set_status(msg::units_status_test_not_yet_built())
+                router.notify(Notice::Status(msg::units_status_test_not_yet_built()))
             }
             (MenuAction::EditSource, UnitsRow::Source(id)) => {
                 self.open(UnitsDialog::EditPriceSource(id), router);
@@ -636,7 +636,7 @@ impl UnitsPagePresenter {
                 },
             );
         } else if let Some(text) = outcome.toast() {
-            router.raise_toast(ToastKind::Success, text);
+            router.notify(Notice::Toast(ToastKind::Success, text));
         }
     }
 
@@ -898,8 +898,9 @@ mod tests {
                 false
             }
             fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
-            fn raise_toast(&mut self, _kind: ToastKind, _text: String) {}
-            fn set_status(&mut self, _text: String) {}
+        }
+        impl lib_toast::Notify for Refusing {
+            fn notify(&mut self, _notice: Notice) {}
         }
         let mut page = Page::new();
 
@@ -1007,10 +1008,10 @@ mod tests {
 
         assert_eq!(
             calls,
-            vec![RouterCall::RaiseToast(
+            vec![RouterCall::Notice(Notice::Toast(
                 ToastKind::Success,
                 "Reactivated unit btc".into()
-            )]
+            ))]
         );
         assert!(page.ports.borrow().units.units[1].is_active);
         assert_eq!(
@@ -1023,9 +1024,9 @@ mod tests {
     #[test]
     fn test_says_on_the_status_line_that_it_is_not_built_unless_the_unit_is_priced_by_hand() {
         let mut page = Page::new();
-        let not_built = vec![RouterCall::SetStatus(
+        let not_built = vec![RouterCall::Notice(Notice::Status(
             "test price source — not yet built".to_string(),
-        )];
+        ))];
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
         assert_eq!(page.send(UnitsPageEvent::Test), not_built);
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
@@ -1042,10 +1043,10 @@ mod tests {
 
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
-            vec![RouterCall::RaiseToast(
+            vec![RouterCall::Notice(Notice::Toast(
                 ToastKind::Success,
                 "Deleted unit btc".into()
-            )]
+            ))]
         );
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {

@@ -201,6 +201,7 @@ impl Render for Shell {
                         if let Some((kind, message)) = toast {
                             shell.raise_toast(kind, message);
                         }
+                        shell.drain_notices();
                         cx.notify();
                     });
                 })
@@ -244,7 +245,10 @@ impl Render for Shell {
                 cx.notify();
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if this.handle_key_down(event, WindowSize::of(window), cx) {
+                let changed = this.handle_key_down(event, WindowSize::of(window), cx);
+                // What a Dialog's Presenter queued while handling the key.
+                let notified = this.drain_notices();
+                if changed || notified {
                     cx.notify();
                 }
                 this.run_pending_effects(cx);

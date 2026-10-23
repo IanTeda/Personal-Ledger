@@ -21,7 +21,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 use lib_units::presenter::{
     DeletePriceSourcePresenter, DeleteUnitPresenter, PriceSourceFormPresenter,
     SetBaseUnitPresenter, UnitFormPresenter, UnitsOutcome,
@@ -170,8 +170,8 @@ impl UnitsDialog {
     }
 }
 
-/// Where a Units Dialog's Presenter asks to go. Only closing reaches the Desktop from a Dialog;
-/// the page opens Dialogs and raises the Toasts.
+/// Where a Units Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
+/// queue for `Shell` to drain once the key or click returns. The page opens Dialogs.
 #[derive(Default)]
 struct DialogRouter {
     /// `Some` once the Presenter closed its Dialog, with what its confirm did.
@@ -186,10 +186,12 @@ impl UnitsRouter for DialogRouter {
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.closed = Some(outcome);
     }
+}
 
-    fn raise_toast(&mut self, _kind: ToastKind, _text: String) {}
-
-    fn set_status(&mut self, _text: String) {}
+impl Notify for DialogRouter {
+    fn notify(&mut self, notice: Notice) {
+        crate::notices::Queue.notify(notice);
+    }
 }
 
 /// Sends `event` to `presenter`, returning what its Router was asked.

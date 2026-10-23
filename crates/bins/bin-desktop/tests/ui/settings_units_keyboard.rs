@@ -11,6 +11,7 @@ use bin_desktop::{
 };
 use common::Harness;
 use gpui::TestAppContext;
+use lib_toast::{Notice, ToastKind};
 
 /// The page at Large with keyboard focus on it.
 fn on_units(app: &mut TestAppContext) -> Harness<'_> {
@@ -276,6 +277,29 @@ fn a_confirmed_delete_below_x_large_raises_the_presenters_toast(app: &mut TestAp
         .map(|toast| toast.text)
         .collect();
     assert_eq!(toasts, ["Deleted unit vas"]);
+}
+
+#[gpui::test]
+fn a_notice_queued_while_a_dialog_handles_a_key_shows_once_the_key_returns(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddUnit"));
+
+    ui.queue_notice(Notice::Toast(ToastKind::Warning, "Rate limited".into()));
+    assert!(
+        ui.toast_texts().is_empty(),
+        "nothing shows before the drain"
+    );
+    ui.press("x");
+
+    assert_eq!(ui.dialog(), Some("AddUnit"), "the Dialog stays open");
+    assert_eq!(ui.toast_texts(), ["Rate limited"]);
+
+    ui.queue_notice(Notice::Status("not yet built".into()));
+    ui.press("y");
+    assert_eq!(status_message(&mut ui).as_deref(), Some("not yet built"));
 }
 
 #[gpui::test]

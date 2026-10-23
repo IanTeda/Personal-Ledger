@@ -21,7 +21,7 @@ use gpui::{AnyElement, App, Window};
 use lib_bills::presenter::{PlanFormEvent, PlanFormPresenter, SkipEvent, SkipPresenter};
 use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, TransactionId};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 
 use self::plan_form::PlanSelects;
 use crate::bills::ports::{self, DesktopPorts};
@@ -132,8 +132,9 @@ impl BillsDialog {
     }
 }
 
-/// Where a Bills Dialog's Presenter asks to go. Only closing reaches the Desktop from a Dialog;
-/// the page opens Dialogs and reports outcomes.
+/// Where a Bills Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
+/// queue for `Shell` to drain once the key or click returns. The page opens Dialogs and reports
+/// outcomes.
 #[derive(Default)]
 struct DialogRouter {
     /// `Some` once the Presenter closed its Dialog, with what its confirm did.
@@ -158,10 +159,12 @@ impl BillsRouter for DialogRouter {
     }
 
     fn show_transaction(&mut self, _id: TransactionId) {}
+}
 
-    fn raise_toast(&mut self, _kind: ToastKind, _text: String) {}
-
-    fn set_status(&mut self, _text: Option<String>) {}
+impl Notify for DialogRouter {
+    fn notify(&mut self, notice: Notice) {
+        crate::notices::Queue.notify(notice);
+    }
 }
 
 /// Sends `event` to `presenter`, returning what its Router was asked.

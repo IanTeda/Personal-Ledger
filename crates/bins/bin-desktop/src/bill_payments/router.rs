@@ -1,6 +1,6 @@
 //! The Bill Payments module's entry point for other modules' Routers ([`open_pay`]), and
-//! `impl BillPaymentsRouter` for the Pay Dialog. The Dialog's Presenter only ever asks to close,
-//! so its Router records that for the host's confirm to read.
+//! `impl BillPaymentsRouter` for the Pay Dialog. Its Router records a close for the host's confirm
+//! to read, and puts a Notice onto the bin's queue (`crate::notices`).
 
 use chrono::NaiveDate;
 use gpui::{Context, EventEmitter};
@@ -8,13 +8,15 @@ use lib_bill_payments::presenter::PayPresenter;
 use lib_bill_payments::{BillPaymentsRouter, PayOutcome, SharedPayments};
 use lib_bills::PayRequest;
 use lib_core::DateStyle;
+use lib_toast::{Notice, Notify};
 
 use super::PayDialog;
 use crate::bills::DesktopPorts;
 use crate::chrome::dialog_host::open_dialog;
 use crate::view::event::ViewEvent;
 
-/// Where the Pay Dialog's Presenter asks to go: only closing, which the host does.
+/// Where the Pay Dialog's Presenter asks to go: closing, which the host does, and Notices, which
+/// `Shell` drains once the key or click returns.
 #[derive(Default)]
 pub(super) struct DialogRouter {
     /// `Some` once the Presenter closed the Dialog, with what its confirm did.
@@ -24,6 +26,12 @@ pub(super) struct DialogRouter {
 impl BillPaymentsRouter for DialogRouter {
     fn close_dialog(&mut self, outcome: Option<PayOutcome>) {
         self.closed = Some(outcome);
+    }
+}
+
+impl Notify for DialogRouter {
+    fn notify(&mut self, notice: Notice) {
+        crate::notices::Queue.notify(notice);
     }
 }
 

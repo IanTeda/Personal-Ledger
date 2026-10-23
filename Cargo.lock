@@ -4678,6 +4678,7 @@ dependencies = [
  "lib_core",
  "lib_locale",
  "lib_locale_build",
+ "lib_toast",
  "lib_transactions",
  "lib_viper",
 ]

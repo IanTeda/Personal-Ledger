@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
@@ -169,8 +169,7 @@ impl UnitsPorts for InMemoryPorts {
 pub enum RouterCall {
     OpenDialog(UnitsDialog),
     CloseDialog(Option<UnitsOutcome>),
-    RaiseToast(ToastKind, String),
-    SetStatus(String),
+    Notice(Notice),
 }
 
 /// A Router that does nothing but record each call, in order.
@@ -196,13 +195,11 @@ impl UnitsRouter for RecordingRouter {
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
+}
 
-    fn raise_toast(&mut self, kind: ToastKind, text: String) {
-        self.calls.push(RouterCall::RaiseToast(kind, text));
-    }
-
-    fn set_status(&mut self, text: String) {
-        self.calls.push(RouterCall::SetStatus(text));
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.calls.push(RouterCall::Notice(notice));
     }
 }
 

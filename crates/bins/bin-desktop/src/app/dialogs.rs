@@ -136,6 +136,7 @@ impl Shell {
     /// The confirm button, the click twin of `Enter`.
     pub(super) fn handle_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_open_dialog(cx);
+        self.drain_notices();
         cx.notify();
     }
 

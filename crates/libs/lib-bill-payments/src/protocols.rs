@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use lib_bills::{BillPlan, BillScheduleEntry, EntryId};
 use lib_core::{BillPlanId, TransactionId};
+use lib_toast::Notify;
 use lib_transactions::Transaction;
 
 /// The Bills a payment checks, and the one write that records it.
@@ -43,8 +44,9 @@ pub enum PayOutcome {
 }
 
 /// Navigation out of the Pay Dialog's Presenter, implemented by each Client and passed into each
-/// `handle` call, as `lib-bills`' Router is.
-pub trait BillPaymentsRouter {
+/// `handle` call, as `lib-bills`' Router is. A Toast or status-line message goes to the Shell
+/// through [`Notify`] (ADR-0048).
+pub trait BillPaymentsRouter: Notify {
     /// Closes the Pay Dialog. `outcome` is what its confirm did, `None` when it was cancelled.
     fn close_dialog(&mut self, outcome: Option<PayOutcome>);
 }

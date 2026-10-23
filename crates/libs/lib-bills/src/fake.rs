@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
     BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
@@ -361,8 +361,7 @@ pub enum Routed {
     Pay(PayRequest),
     Closed(Option<BillsOutcome>),
     Transaction(TransactionId),
-    Toast(ToastKind, String),
-    Status(Option<String>),
+    Notice(Notice),
 }
 
 /// A Router that records every request and opens every Dialog it is asked for, unless told not
@@ -375,10 +374,10 @@ pub struct RecordingRouter {
 }
 
 impl RecordingRouter {
-    /// The last status the Presenter set, if any.
-    pub fn status(&self) -> Option<&Option<String>> {
+    /// The last status-line message the Presenter set, if any.
+    pub fn status(&self) -> Option<&str> {
         self.routed.iter().rev().find_map(|routed| match routed {
-            Routed::Status(text) => Some(text),
+            Routed::Notice(Notice::Status(text)) => Some(text.as_str()),
             _ => None,
         })
     }
@@ -407,13 +406,11 @@ impl BillsRouter for RecordingRouter {
     fn show_transaction(&mut self, id: TransactionId) {
         self.routed.push(Routed::Transaction(id));
     }
+}
 
-    fn raise_toast(&mut self, kind: ToastKind, text: String) {
-        self.routed.push(Routed::Toast(kind, text));
-    }
-
-    fn set_status(&mut self, text: Option<String>) {
-        self.routed.push(Routed::Status(text));
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.routed.push(Routed::Notice(notice));
     }
 }
 

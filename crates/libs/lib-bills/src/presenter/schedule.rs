@@ -12,6 +12,7 @@ use lib_core::{AccountId, BillPlanId, CategoryId, Period, Total};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_locale::format::{format_month_day, format_year_month, upper};
+use lib_toast::Notice;
 use lib_viper::view::{Choice, SelectView};
 
 use super::{count, money, paid_splits, status_chip_label};
@@ -376,7 +377,7 @@ impl SchedulePresenter {
                     .is_some()
         });
         if row.is_none() {
-            router.set_status(Some(msg::bills_status_not_actionable()));
+            router.notify(Notice::Status(msg::bills_status_not_actionable()));
         }
         row
     }

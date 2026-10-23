@@ -1,15 +1,16 @@
 //! `impl UnitsRouter` for the Desktop: where the Units page's Presenter asks to go. A Dialog opens
-//! in today's Dialog host, a Toast and the status line reach the Shell as [`ViewEvent`]s, all
-//! through the page's gpui context, which is why the Router is built for each `handle` call.
+//! in today's Dialog host through the page's gpui context, which is why the Router is built for
+//! each `handle` call, and a Notice goes onto the bin's queue (`crate::notices`).
 
 use gpui::Context;
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify};
 use lib_units::presenter::UnitsOutcome;
 use lib_units::{UnitsDialog as Which, UnitsRouter};
 
 use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
 use super::view::page::UnitsPage;
+use crate::notices::Queue;
 use crate::{chrome::dialog_host::open_dialog, view::event::ViewEvent};
 
 pub(super) struct PageRouter<'a, 'b> {
@@ -30,13 +31,13 @@ impl UnitsRouter for PageRouter<'_, '_> {
 
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
     fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
+}
 
-    fn raise_toast(&mut self, kind: ToastKind, text: String) {
-        self.cx.emit(ViewEvent::RaiseToast { kind, text });
-    }
-
-    fn set_status(&mut self, text: String) {
-        self.cx.emit(ViewEvent::SetStatus(Some(text)));
+impl Notify for PageRouter<'_, '_> {
+    /// Queues `notice` and asks `Shell` to drain the queue.
+    fn notify(&mut self, notice: Notice) {
+        Queue.notify(notice);
+        self.cx.emit(ViewEvent::NoticesQueued);
     }
 }
 

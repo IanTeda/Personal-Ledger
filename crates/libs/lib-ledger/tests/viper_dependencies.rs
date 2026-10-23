@@ -16,9 +16,16 @@ use std::process::Command;
 
 use serde_json::Value;
 
-/// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and
-/// `lib_viper`, the generic types they share, which no feature crate may reach another through.
-const MIGRATED: &[&str] = &["lib_bills", "lib_transactions", "lib_units", "lib_viper"];
+/// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and the
+/// shared crates every module may depend on, which no feature crate may reach another through:
+/// `lib_viper`, the generic types they share, and `lib_toast`, the Notices they send the Shell.
+const MIGRATED: &[&str] = &[
+    "lib_bills",
+    "lib_toast",
+    "lib_transactions",
+    "lib_units",
+    "lib_viper",
+];
 
 /// Every feature crate, migrated or not: one per domain.
 const FEATURE_CRATES: &[&str] = &[
@@ -168,6 +175,33 @@ fn violations_flags_feature_toolkit_and_database_dependencies_of_migrated_crates
             "lib_units -> lib_bills",
             "lib_units -> gpui",
             "lib_units -> lib_database"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_a_feature_crate_toolkit_or_database_reaching_lib_toast() {
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_toast",
+                "dependencies": [
+                    { "name": "lib_units" },
+                    { "name": "gpui" },
+                    { "name": "ratatui" },
+                    { "name": "lib_database" },
+                ]
+            }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata, MIGRATED),
+        vec![
+            "lib_toast -> lib_units",
+            "lib_toast -> gpui",
+            "lib_toast -> ratatui",
+            "lib_toast -> lib_database"
         ]
     );
 }

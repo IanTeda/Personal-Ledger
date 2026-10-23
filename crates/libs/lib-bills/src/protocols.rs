@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
-use lib_toast::ToastKind;
+use lib_toast::Notify;
 
 use crate::{BillPlan, BillScheduleEntry, EntryId, SplitRef};
 
@@ -186,8 +186,9 @@ pub struct PayRequest {
 
 /// Navigation out of the Bills Presenters, implemented by each Client. The Client passes it into
 /// each `handle` call rather than the Presenter holding it, since the Desktop can only open a
-/// Dialog with the gpui context that call runs in.
-pub trait BillsRouter {
+/// Dialog with the gpui context that call runs in. A Toast or status-line message goes to the
+/// Shell through [`Notify`] (ADR-0048).
+pub trait BillsRouter: Notify {
     /// Builds the Add bill plan form (`None`) or Bill Plan `id`'s Edit form on the shared ports and
     /// hosts its View. Returns whether it opened: a Plan removed since has no form to build.
     fn open_plan_form(&mut self, plan: Option<BillPlanId>) -> bool;
@@ -206,10 +207,4 @@ pub trait BillsRouter {
 
     /// Shows Transaction `id` in the Transactions module.
     fn show_transaction(&mut self, id: TransactionId);
-
-    /// Raises a Toast in the Shell.
-    fn raise_toast(&mut self, kind: ToastKind, text: String);
-
-    /// Puts `text` on the Shell's status line, or clears it.
-    fn set_status(&mut self, text: Option<String>);
 }

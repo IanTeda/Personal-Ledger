@@ -2,7 +2,7 @@
 //! the Router collects what it asked for (a Dialog to open, the open one to close, Toasts) and the
 //! View applies them once `handle` returns. Built for each call, as on the Desktop.
 
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify, ToastKind};
 use lib_units::presenter::UnitsOutcome;
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
 
@@ -37,14 +37,15 @@ impl UnitsRouter for Router<'_> {
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.closed = Some(outcome);
     }
+}
 
-    fn raise_toast(&mut self, kind: ToastKind, text: String) {
-        self.toasts.push((kind, text));
-    }
-
+impl Notify for Router<'_> {
     /// The TUI's status line has no message slot, so a status reads as an Info Toast, whose echo
     /// lands in the footer.
-    fn set_status(&mut self, text: String) {
-        self.toasts.push((ToastKind::Info, text));
+    fn notify(&mut self, notice: Notice) {
+        self.toasts.push(match notice {
+            Notice::Toast(kind, text) => (kind, text),
+            Notice::Status(text) => (ToastKind::Info, text),
+        });
     }
 }

@@ -86,6 +86,7 @@ A new pure, I/O-free crate, `crates/libs/lib-toast` (package `lib_toast`), used 
 - **Clock:** `advance(elapsed: Duration)`, called from the TUI's `Event::Tick` and a Desktop timer; pausing means not advancing. It is deterministic in tests.
 - **Messages:** resolved to a `String` at raise time (the Locale is set once per run). The history's time raised is a wall-clock stamp the bin passes in.
 - **Bins own:** drawing, input and key bindings, the hover and modal signals that pause the timer, and reading the Toasts Preference, which they pass to the model.
+- **Notices:** the crate now covers everything the Shell tells the person, not only Toasts ([ADR-0048](adr/0048-modules-notify-the-shell-through-one-lib-toast-trait.md)). A `Notice` is a Toast (`ToastKind` and text) or a status-line message (text); every module Router declares the `Notify` trait, whose one method sends a Notice to the Shell. The Glossary still keeps a Toast and a status-line message apart: they share a crate so every feature crate and the Shell may depend on it. A module only sets the status-line message; the Shell clears it on the next keypress. The Desktop queues Notices and its Shell drains them after the Presenter's `handle`; the TUI, with no status slot, shows a status-line message as an Info Toast.
 
 ### Desktop
 
