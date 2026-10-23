@@ -10,9 +10,9 @@ desktop-tags-count = { $count ->
 ## The page summary's duplicates clause, the count in bold, before the "merge them" link; and the
 ## status line's plain version.
 
-desktop-tags-likely-duplicates = <strong>{ $count }</strong> likely { $count ->
-    [one] duplicate
-   *[other] duplicates
+desktop-tags-likely-duplicates = { $count ->
+    [one] <strong>{ $count }</strong> likely duplicate
+   *[other] <strong>{ $count }</strong> likely duplicates
 } —
 desktop-tags-status-duplicates = { $count ->
     [one] { $count } likely duplicate
@@ -53,8 +53,8 @@ desktop-tags-edit-submit = Save
 desktop-tags-field-active = Active
 desktop-tags-active-hint = inactive tags aren't offered when tagging a split
 desktop-tags-edit-callout = { $count ->
-    [one] { $count } transaction uses this tag.
-   *[other] { $count } transactions use this tag.
+    [one] Used by { $count } transaction.
+   *[other] Used by { $count } transactions.
 } Renaming or recolouring updates all of them immediately — nothing needs re-tagging.
 
 ## The Remove tag dialog (7d). Removing always deletes the Tag (#353). `$name` is the Tag's name,

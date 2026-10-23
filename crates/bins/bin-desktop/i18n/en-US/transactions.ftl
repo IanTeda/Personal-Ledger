@@ -52,10 +52,10 @@ desktop-transactions-split-summary = split · { $count }
 ## The footer. `$category` is the chosen Category's name followed by a space, or empty when no
 ## Category filter is set.
 
-desktop-transactions-footer = { $shown } of { $of } { $category }{ $of ->
-    [one] transaction
-   *[other] transactions
-} shown
+desktop-transactions-footer = { $of ->
+    [one] { $shown } of { $of } { $category }transaction shown
+   *[other] { $shown } of { $of } { $category }transactions shown
+}
 
 desktop-transactions-total-label = Running total
 desktop-transactions-total-mixed = mixed units

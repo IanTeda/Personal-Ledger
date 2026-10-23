@@ -115,7 +115,7 @@ tui-command-tag-delete-description = arms the lightweight delete confirm — { $
 
 tui-command-txn-recent-description =
     { $count ->
-        [one] last transaction, all accounts
+        [one] last { $count } transaction, all accounts
        *[other] last { $count } transactions, all accounts
     }
 tui-command-txn-new-description = add a transaction from anywhere

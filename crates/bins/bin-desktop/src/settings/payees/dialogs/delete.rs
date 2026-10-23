@@ -181,11 +181,11 @@ mod tests {
         crate::locale::init_for_tests();
         assert_eq!(
             callout_text(DeleteAction::Delete, 2),
-            "Its 2 match rules are also removed."
+            "Deleting also removes its 2 match rules."
         );
         assert_eq!(
             callout_text(DeleteAction::Delete, 1),
-            "Its 1 match rule is also removed."
+            "Deleting also removes its 1 match rule."
         );
         assert_eq!(
             callout_text(DeleteAction::Delete, 0),

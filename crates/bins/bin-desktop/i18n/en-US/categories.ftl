@@ -38,7 +38,7 @@ desktop-categories-delete-warning = This category has <strong>{ $count ->
 
 desktop-categories-delete-reference = Splits will be moved to Uncategorised · { $budgets ->
     [0] no budget attached
-    [one] 1 budget attached
+    [one] { $budgets } budget attached
    *[other] { $budgets } budgets attached
 }
 

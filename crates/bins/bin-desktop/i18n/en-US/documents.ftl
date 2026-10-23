@@ -44,7 +44,7 @@ desktop-documents-add-button = + Add
 desktop-documents-search-placeholder = / search names and text inside documents
 desktop-documents-sort-newest = Newest
 desktop-documents-sort-expiring = Expiring
-desktop-documents-count-line = { $shown } of { $total } · { $review } need review
+desktop-documents-count-line = { $shown } of { $total } · { $review } to review
 desktop-documents-empty-scope = Nothing is filed here yet.
 desktop-documents-empty-search = No documents match.
 
@@ -118,13 +118,16 @@ desktop-documents-source-watched = Watched folder · { $date }
 desktop-documents-source-dropped = Dropped { $date }
 desktop-documents-source-import = Imported { $date }
 
-## The Suggested Link column. `$days` is a text number.
+## The Suggested Link column. `$days` is a plural-selector number.
 
 desktop-documents-suggest-summary = { $kind } · { $who } · { $amount }
 desktop-documents-suggest-summary-bare = { $kind } · { $amount }
 desktop-documents-suggest-unreadable = Unreadable — no amount found
 desktop-documents-suggest-unreadable-hint = File it by hand, or skip
-desktop-documents-suggest-none = No suggestion — nothing within { $days } days
+desktop-documents-suggest-none = { $days ->
+    [one] No suggestion — nothing within { $days } day
+   *[other] No suggestion — nothing within { $days } days
+}
 desktop-documents-suggest-none-hint = File it by hand, or skip
 desktop-documents-signals-all = amount, date and payee match
 desktop-documents-signals-amount-date = amount and date match
@@ -147,7 +150,10 @@ desktop-documents-suggested-detail = { $account } · { $documents }
 desktop-documents-suggested-no-document = no document yet
 desktop-documents-suggested-has-document = already has a document
 desktop-documents-other-candidates = Other candidates
-desktop-documents-other-none = Other candidates: none within { $days } days
+desktop-documents-other-none = { $days ->
+    [one] Other candidates: none within { $days } day
+   *[other] Other candidates: none within { $days } days
+}
 
 ## Accepting, undoing and the confirm. `$title` is the Document's Title, `$count` a text count.
 

@@ -22,7 +22,7 @@ pub struct DeletePriceSourceViewModel {
     pub frame: DialogFrame,
     /// `This price source values 1 unit. Deleting it cannot be undone.`
     pub warning: String,
-    /// `btc falls back to Manual entry and keeps its last price.`; `None` while no Unit uses it.
+    /// `1 unit falls back to Manual entry and keeps its last price: btc.`; `None` while no Unit uses it.
     pub fallback: Option<String>,
     pub confirm: TextFieldView,
     pub refusal: Option<String>,
@@ -157,7 +157,7 @@ mod tests {
         );
         assert_eq!(
             view.fallback.as_deref(),
-            Some("btc falls back to Manual entry and keeps its last price.")
+            Some("1 unit falls back to Manual entry and keeps its last price: btc.")
         );
 
         assert_eq!(

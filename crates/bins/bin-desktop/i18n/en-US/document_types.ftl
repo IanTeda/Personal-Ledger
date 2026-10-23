@@ -8,7 +8,10 @@ desktop-document-types-count = { $count ->
    *[other] { $count } types
 }
 desktop-document-types-scope = { $types } · { $files }
-desktop-document-types-files-typed = { $typed } of { $all } files typed
+desktop-document-types-files-typed = { $all ->
+    [one] { $typed } of { $all } file typed
+   *[other] { $typed } of { $all } files typed
+}
 
 ## The kicker, Add button and column headings. `$glyph` is the Add button's leading plus sign.
 
@@ -65,7 +68,10 @@ desktop-document-types-dialog-close = Close
 
 desktop-document-types-field-name = Name
 desktop-document-types-field-name-placeholder = e.g. Leases
-desktop-document-types-field-name-hint = Up to 40 characters, and different from every other type.
+desktop-document-types-field-name-hint = { $max ->
+    [one] Up to { $max } character, and different from every other type.
+   *[other] Up to { $max } characters, and different from every other type.
+}
 desktop-document-types-field-tracks-date = Tracks date
 desktop-document-types-field-tracks-date-hint = The kind of Key Date every document of this type carries.
 desktop-document-types-field-remind = Remind
@@ -78,7 +84,10 @@ desktop-document-types-option-days = { $count } d
 desktop-document-types-option-months = { $count } mo
 
 desktop-document-types-error-name-empty = A name is required.
-desktop-document-types-error-name-too-long = Names are at most { $max } characters.
+desktop-document-types-error-name-too-long = { $max ->
+    [one] Names are at most { $max } character.
+   *[other] Names are at most { $max } characters.
+}
 desktop-document-types-error-name-taken = Another type already has that name.
 
 desktop-document-types-edit-usage = { $files ->

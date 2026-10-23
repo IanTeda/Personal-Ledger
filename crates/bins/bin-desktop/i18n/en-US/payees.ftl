@@ -53,8 +53,8 @@ desktop-payees-edit-title = Edit payee — { $name }
 desktop-payees-edit-submit = Save
 desktop-payees-edit-rule-placeholder = add another format…
 desktop-payees-edit-usage-callout = { $count ->
-    [one] { $count } transaction uses this payee.
-   *[other] { $count } transactions use this payee.
+    [one] Used by { $count } transaction.
+   *[other] Used by { $count } transactions.
 } Changing the default category only affects new transactions — existing ones keep whatever category they were assigned at the time.
 
 ## The Delete payee dialog (6d). A Payee no Split carries is deleted; one in use can only be
@@ -66,8 +66,8 @@ desktop-payees-delete-submit = Delete payee
 desktop-payees-delete-warning = This payee isn't used by any transaction. Deleting it <strong>cannot be undone.</strong>
 desktop-payees-delete-callout = { $rules ->
     [0] It has no match rules.
-    [one] Its { $rules } match rule is also removed.
-   *[other] Its { $rules } match rules are also removed.
+    [one] Deleting also removes its { $rules } match rule.
+   *[other] Deleting also removes its { $rules } match rules.
 }
 desktop-payees-deactivate-title = Deactivate payee — { $name }
 desktop-payees-deactivate-submit = Deactivate payee

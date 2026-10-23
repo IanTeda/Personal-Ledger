@@ -28,8 +28,8 @@ pub fn scope_text(types: &[DocumentTypeRow]) -> String {
     crate::msg::desktop_document_types_scope(
         &crate::msg::desktop_document_types_count(count(types.len())),
         &crate::msg::desktop_document_types_files_typed(
+            i64::from(types::all_files(types)),
             &types::typed_files(types).to_string(),
-            &types::all_files(types).to_string(),
         ),
     )
 }

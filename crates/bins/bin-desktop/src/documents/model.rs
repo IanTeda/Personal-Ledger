@@ -516,7 +516,7 @@ pub fn inbox_row(
         ),
         Suggestion::Nothing => (
             InboxState::NoSuggestion,
-            crate::msg::desktop_documents_suggest_none(&CANDIDATE_WINDOW_DAYS.to_string()),
+            crate::msg::desktop_documents_suggest_none(CANDIDATE_WINDOW_DAYS),
             crate::msg::desktop_documents_suggest_none_hint(),
             None,
             None,
@@ -615,7 +615,7 @@ pub fn inbox_detail(
         state,
         suggested,
         others,
-        others_none: crate::msg::desktop_documents_other_none(&CANDIDATE_WINDOW_DAYS.to_string()),
+        others_none: crate::msg::desktop_documents_other_none(CANDIDATE_WINDOW_DAYS),
     }
 }
 

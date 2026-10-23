@@ -39,8 +39,8 @@ desktop-import-summary-new = { $count ->
    *[other] { $count } new payees to create
 }
 desktop-import-summary-review = { $count ->
-    [one] { $count } needs review
-   *[other] { $count } need review
+    [one] { $count } to review
+   *[other] { $count } to review
 }
 desktop-import-remember = remember new payees' rules for next time
 desktop-import-back = back
@@ -55,8 +55,8 @@ desktop-hint-remember-rules = remember rules
 desktop-hint-continue = continue
 desktop-hint-back = back
 desktop-import-status-pending = { $count ->
-    [one] { $count } row needs review before continuing
-   *[other] { $count } rows need review before continuing
+    [one] Review { $count } row before continuing
+   *[other] Review { $count } rows before continuing
 }
 desktop-import-status-ready = ready to import
 

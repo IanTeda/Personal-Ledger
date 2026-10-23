@@ -247,8 +247,8 @@ impl Footer {
             .map(|name| format!("{name} "))
             .unwrap_or_default();
         crate::msg::desktop_transactions_footer(
-            &self.shown.to_string(),
             i64::try_from(self.of).unwrap_or(i64::MAX),
+            &self.shown.to_string(),
             &category,
         )
     }

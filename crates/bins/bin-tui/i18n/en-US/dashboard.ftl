@@ -7,7 +7,7 @@
 ## The headline trio beside the net position figure. `$days` is the window in days.
 
 tui-dashboard-stat-days = { $days ->
-    [one] 1 day
+    [one] { $days } day
     *[other] { $days } days
 }
 tui-dashboard-stat-assets = Assets

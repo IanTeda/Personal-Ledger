@@ -69,9 +69,9 @@ fn hint(text: String, cx: &App) -> impl IntoElement {
 fn error_text(error: NameError) -> String {
     match error {
         NameError::Empty => crate::msg::desktop_document_types_error_name_empty(),
-        NameError::TooLong => {
-            crate::msg::desktop_document_types_error_name_too_long(&NAME_MAX.to_string())
-        }
+        NameError::TooLong => crate::msg::desktop_document_types_error_name_too_long(
+            i64::try_from(NAME_MAX).unwrap_or(i64::MAX),
+        ),
         NameError::Taken => crate::msg::desktop_document_types_error_name_taken(),
     }
 }
@@ -141,8 +141,13 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
                     .text_color(color::accent_text(cx))
                     .child(error_text(error))
                     .into_any_element(),
-                None => hint(crate::msg::desktop_document_types_field_name_hint(), cx)
-                    .into_any_element(),
+                None => hint(
+                    crate::msg::desktop_document_types_field_name_hint(
+                        i64::try_from(NAME_MAX).unwrap_or(i64::MAX),
+                    ),
+                    cx,
+                )
+                .into_any_element(),
             })
             .into_any_element(),
     );

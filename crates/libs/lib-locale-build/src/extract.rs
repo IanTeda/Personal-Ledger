@@ -114,6 +114,63 @@ fn call_arguments(source: &CallArguments<&str>, out: &mut Params) {
     }
 }
 
+/// Plural branches that never show their count. In a selector on `$n`, each CLDR category
+/// branch must place `{ $n }`, because a category holds many numbers in other Locales (`one` is
+/// also 21 in Russian), so a typed digit or a bare noun reads wrong there. An exact-number
+/// branch (`[0] none`) matches one number only and may say it in words.
+pub(crate) fn uncounted_plural_branches(source: &Pattern<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    uncounted_in_pattern(source, &mut out);
+    out
+}
+
+fn uncounted_in_pattern(source: &Pattern<&str>, out: &mut Vec<String>) {
+    for element in &source.elements {
+        if let PatternElement::Placeable { expression } = element {
+            uncounted_in_expression(expression, out);
+        }
+    }
+}
+
+fn uncounted_in_expression(source: &Expression<&str>, out: &mut Vec<String>) {
+    match source {
+        Expression::Select { selector, variants } => {
+            // A keyword selector (`[card]`, `*[other]`) may name its default `other`, so only a
+            // selector keyed wholly by numbers and categories is taken as plural.
+            let plural = variants.iter().all(|variant| match &variant.key {
+                VariantKey::NumberLiteral { .. } => true,
+                VariantKey::Identifier { name } => PLURAL_CATEGORIES.contains(name),
+            });
+            if let InlineExpression::VariableReference { id } = selector
+                && plural
+            {
+                for variant in variants {
+                    if let VariantKey::Identifier { name } = &variant.key
+                        && PLURAL_CATEGORIES.contains(name)
+                        && !pattern_uses(&variant.value, id.name)
+                    {
+                        out.push(format!("`[{name}]` does not show `${}`", id.name));
+                    }
+                }
+            }
+            for variant in variants {
+                uncounted_in_pattern(&variant.value, out);
+            }
+        }
+        Expression::Inline(InlineExpression::Placeable { expression }) => {
+            uncounted_in_expression(expression, out);
+        }
+        Expression::Inline(_) => {}
+    }
+}
+
+/// Whether the pattern uses `$name` anywhere, a nested selector on it included.
+fn pattern_uses(source: &Pattern<&str>, name: &str) -> bool {
+    let mut params = Params::new();
+    pattern(source, &mut params);
+    params.contains_key(name)
+}
+
 /// Flattens a pattern (and each select variant, separately) to text, with a placeholder where a
 /// placeable sits, so tags can be balanced across placeables (`<b>{ $x }</b>`).
 fn flatten(source: &Pattern<&str>, out: &mut Vec<String>) {

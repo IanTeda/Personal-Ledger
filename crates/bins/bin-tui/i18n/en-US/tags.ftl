@@ -14,7 +14,7 @@ tui-tags-summary-active-value-off = [ ] not offered
 tui-tags-summary-tagged = tagged
 tui-tags-summary-tagged-count = { $count ->
     [0] none
-    [one] 1 transaction
+    [one] { $count } transaction
     *[other] { $count } transactions
 }
 tui-tags-summary-created = created
@@ -34,7 +34,7 @@ tui-tag-right-pane-spend-footer = first used { $first } · peak { $peak } { $pea
 
 tui-tag-right-pane-lands-heading = WHERE IT LANDS
 tui-tag-right-pane-lands-heading-tag = { $count ->
-    [one] 1 category
+    [one] { $count } category
     *[other] { $count } categories
 }
 tui-tag-right-pane-lands-empty = no categories yet
@@ -46,7 +46,7 @@ tui-tag-right-pane-lands-statement = a tag crosses the tree — that is what it 
 tui-tag-right-pane-txn-heading = TRANSACTIONS
 tui-tag-right-pane-txn-heading-tag = { $visible } of { $total } · newest first
 tui-tag-right-pane-txn-footer-overlap = { $overlap ->
-    [one] 1 of { $total } carries another tag — rows overlap
+    [one] { $overlap } of { $total } carries another tag — rows overlap
     *[other] { $overlap } of { $total } carry another tag — rows overlap
 }
 tui-tag-right-pane-txn-footer-empty = no transactions yet
@@ -64,7 +64,7 @@ tui-tag-txn-column-amount = AMOUNT
 
 tui-tag-delete-confirm = delete "{ $name }"{ $notice } — y confirms, any other key cancels
 tui-tag-delete-notice-transactions = , { $count ->
-    [one] 1 transaction will lose this tag
+    [one] { $count } transaction will lose this tag
     *[other] { $count } transactions will lose this tag
 }
 

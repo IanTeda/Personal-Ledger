@@ -98,7 +98,7 @@ desktop-budgets-history-pair = { $spent } / { $budget }
 desktop-budgets-history-to-date = to date
 desktop-budgets-history-over-mark = over
 desktop-budgets-history-caption = { $months ->
-    [one] over in { $over } of the last closed month
+    [one] over in { $over } of the last { $months } closed month
    *[other] over in { $over } of the last { $months } closed months
 }
 desktop-budgets-history-caption-none = no closed months in this range

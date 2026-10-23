@@ -290,6 +290,37 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_plural_branch_without_its_count() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "budgets-attached = { $budgets ->\n    [0] no budget attached\n    [one] 1 budget attached\n   *[other] { $budgets } budgets attached\n}\n",
+        );
+        let message = failure(&options(dir.path(), None));
+        assert!(message.contains("`budgets-attached`"), "{message}");
+        assert!(
+            message.contains("`[one]` does not show `$budgets`"),
+            "{message}"
+        );
+        assert!(!message.contains("`[0]`"), "{message}");
+    }
+
+    #[test]
+    fn accepts_plural_branches_that_each_show_the_count() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "budgets-attached = { $budgets ->\n    [0] no budget attached\n    [one] { $budgets } budget attached\n   *[other] { $budgets } budgets attached\n}\n\
+             kind = { $kind ->\n    [card] Card\n   *[other] Other\n}\n",
+        );
+        assert!(generate(&options(dir.path(), None)).is_ok());
+    }
+
+    #[test]
     fn rejects_uppercase_ids() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "en-US", "a.ftl", "hint-R = R whole group\n");

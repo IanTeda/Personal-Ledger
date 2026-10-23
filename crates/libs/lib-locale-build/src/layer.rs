@@ -278,6 +278,9 @@ fn load_locale(dir: &Path, problems: &mut Vec<String>) -> Result<LocaleFiles> {
                         BTreeSet::new()
                     }
                 };
+                for problem in extract::uncounted_plural_branches(pattern) {
+                    problems.push(format!("{}: `{id}`: {problem}", path.display()));
+                }
                 let rich = marked_rich || !tags.is_empty();
                 let item = Item {
                     id: id.clone(),
