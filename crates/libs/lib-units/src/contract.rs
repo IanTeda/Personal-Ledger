@@ -10,8 +10,8 @@ use lib_core::UnitId;
 
 use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
-    AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, DeleteUnitRefusal,
-    EditPriceSource, EditUnit, SetBaseUnit,
+    AddPriceSource, AddUnit, AddUnitRefusal, DeactivateUnit, DeletePriceSource, DeleteUnit,
+    DeleteUnitRefusal, EditPriceSource, EditUnit, EditUnitRefusal, SetBaseUnit,
 };
 use crate::protocols::PortsMut;
 use crate::{
@@ -140,6 +140,7 @@ fn custom_source(name: &str) -> AddPriceSource {
 
 fn add_unit(ports: PortsMut<'_>, code: &str, kind: UnitKind, link: PriceLink) -> UnitRow {
     AddUnit {
+        id: UnitId::new(),
         code: code.into(),
         name: code.to_uppercase(),
         kind,
@@ -264,6 +265,64 @@ pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(fac
     assert_eq!(snapshot(&mut ports), before);
 }
 
+/// Adding or editing a Unit quoted in a Unit that isn't on the Ledger is refused before any write
+/// reaches storage, whose foreign key would refuse it; a new Unit quoted in itself is added.
+pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
+    let usage = InMemoryUnitUsage::default();
+    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let before = snapshot(&mut ports);
+    let gone = PriceLink::manual(UnitId::new());
+
+    let split = ports.split_mut(&usage);
+    let refusal = AddUnit {
+        id: UnitId::new(),
+        code: "eth".into(),
+        name: "ETH".into(),
+        kind: UnitKind::Crypto,
+        link: gone.clone(),
+    }
+    .run(split.units, split.price_sources)
+    .expect_err("the quote names no Unit");
+    assert_eq!(refusal, AddUnitRefusal::QuoteGone);
+    factory.commit(&mut ports);
+
+    let split = ports.split_mut(&usage);
+    let refusal = EditUnit {
+        id: UnitId::SEED_BTC,
+        code: "btc".into(),
+        name: "BTC".into(),
+        kind: UnitKind::Crypto,
+        link: gone,
+    }
+    .run(split.units, split.price_sources)
+    .expect_err("the quote names no Unit");
+    assert_eq!(refusal, EditUnitRefusal::QuoteGone);
+    factory.commit(&mut ports);
+
+    assert_eq!(
+        snapshot(&mut ports),
+        before,
+        "the refused saves wrote nothing"
+    );
+    let mut ports = factory.reload(ports);
+    assert_eq!(snapshot(&mut ports), before);
+
+    let id = UnitId::new();
+    let split = ports.split_mut(&usage);
+    let eth = AddUnit {
+        id,
+        code: "eth".into(),
+        name: "ETH".into(),
+        kind: UnitKind::Crypto,
+        link: PriceLink::manual(id),
+    }
+    .run(split.units, split.price_sources)
+    .expect("a Unit may quote itself");
+    factory.commit(&mut ports);
+    let mut ports = factory.reload(ports);
+    assert!(snapshot(&mut ports).units.contains(&eth));
+}
+
 /// Deleting a Custom source moves its Units to Manual entry, and they stay there after a reload.
 pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
@@ -339,6 +398,11 @@ mod tests {
     #[test]
     fn in_memory_deleting_a_quoted_unit_is_refused_and_writes_nothing() {
         deleting_a_quoted_unit_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_gone_quote_unit_is_refused_and_writes_nothing() {
+        a_gone_quote_unit_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
     }
 
     #[test]

@@ -141,6 +141,7 @@ mod tests {
             let usage = InMemoryUnitUsage::default();
             let ports = self.units.split_mut(&usage);
             AddUnit {
+                id: UnitId::new(),
                 code: "nzd".into(),
                 name: "New Zealand dollar".into(),
                 kind: UnitKind::Currency,

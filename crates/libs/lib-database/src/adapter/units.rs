@@ -629,6 +629,16 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
+    async fn a_gone_quote_unit_is_refused_and_writes_nothing(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::a_gone_quote_unit_is_refused_and_writes_nothing(&mut AdapterFactory::new(
+            options,
+        ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
     async fn deleting_a_custom_source_moves_its_units_to_manual_entry(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
@@ -661,6 +671,7 @@ mod tests {
             let usage = lib_units::fake::InMemoryUnitUsage::default();
             let ports = adapter.split_mut(&usage);
             AddUnit {
+                id: UnitId::new(),
                 code: code.into(),
                 name: code.into(),
                 kind: UnitKind::Currency,

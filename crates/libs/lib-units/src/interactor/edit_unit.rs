@@ -20,6 +20,9 @@ pub enum EditUnitRefusal {
     UnitGone,
     #[error("price source not found")]
     PriceSourceGone,
+    /// The quote Unit isn't on the Ledger; storage keeps every quote on a Unit.
+    #[error("quote unit not found")]
+    QuoteGone,
 }
 
 impl EditUnit {
@@ -32,6 +35,9 @@ impl EditUnit {
         let mut unit = units.unit(self.id).ok_or(EditUnitRefusal::UnitGone)?;
         if !price_source_exists(&price_sources.price_source_records(), self.link.source_id) {
             return Err(EditUnitRefusal::PriceSourceGone);
+        }
+        if units.unit(self.link.quote).is_none() {
+            return Err(EditUnitRefusal::QuoteGone);
         }
         unit.edit(self.code, self.name, self.kind, self.link);
         units.upsert_unit(unit.clone());
@@ -133,5 +139,30 @@ mod tests {
             Err(EditUnitRefusal::PriceSourceGone)
         );
         assert_eq!(ports, before);
+    }
+
+    #[test]
+    fn a_quote_unit_that_is_gone_is_refused_and_nothing_is_written() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+        let before = ports.clone();
+        let mut link = ports.units.unit(UnitId::SEED_BTC).unwrap().link;
+        link.quote = UnitId::new();
+
+        assert_eq!(
+            edit(UnitId::SEED_BTC, link).run(&mut ports.units, &ports.price_sources),
+            Err(EditUnitRefusal::QuoteGone)
+        );
+        assert_eq!(ports, before);
+    }
+
+    #[test]
+    fn a_unit_can_be_quoted_in_itself() {
+        let mut ports = InMemoryPorts::stub(Utc::now());
+
+        let edited = edit(UnitId::SEED_BTC, PriceLink::manual(UnitId::SEED_BTC))
+            .run(&mut ports.units, &ports.price_sources)
+            .expect("a Unit may quote itself");
+
+        assert_eq!(edited.link.quote, UnitId::SEED_BTC);
     }
 }

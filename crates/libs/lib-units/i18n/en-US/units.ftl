@@ -184,6 +184,7 @@ units-set-base-label = Base unit
 
 units-refusal-unit-gone = This unit was removed while the dialog was open.
 units-refusal-price-source-gone = That price source was removed while the dialog was open.
+units-refusal-quote-gone = The unit it's quoted in was removed while the dialog was open.
 units-refusal-only-unit = { $code } is the only unit, so it can't be deleted.
 units-refusal-base-unit-needed = { $code } is the base unit, and no active unit can take over as base.
 units-refusal-new-base-gone = The unit chosen as the new base unit is gone.

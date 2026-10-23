@@ -13,7 +13,7 @@ mod reactivate_unit;
 mod set_base_unit;
 
 pub use add_price_source::AddPriceSource;
-pub use add_unit::AddUnit;
+pub use add_unit::{AddUnit, AddUnitRefusal};
 pub use deactivate_unit::{DeactivateUnit, DeactivateUnitRefusal};
 pub use delete_price_source::{DeletePriceSource, DeletePriceSourceRefusal, PriceSourceDeleted};
 pub use delete_unit::{DeleteUnit, DeleteUnitRefusal};
@@ -27,9 +27,3 @@ pub use set_base_unit::{SetBaseUnit, SetBaseUnitRefusal};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("unit not found")]
 pub struct UnitGone;
-
-/// A Unit's link names a Price Source that doesn't exist, which only happens when it was deleted
-/// while the Dialog was open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("price source not found")]
-pub struct PriceSourceGone;

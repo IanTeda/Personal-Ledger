@@ -10,7 +10,7 @@ use lib_locale::Label as _;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
-use crate::interactor::{AddUnit, EditUnit, EditUnitRefusal, PriceSourceGone};
+use crate::interactor::{AddUnit, AddUnitRefusal, EditUnit, EditUnitRefusal};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{MANUAL_ENTRY, PriceLink, UnitUse, msg};
 
@@ -376,10 +376,10 @@ impl UnitFormPresenter {
             && (self.is_manual() || self.quote.is_some())
     }
 
-    /// The link the form describes. A Manual entry link keeps no Symbol and never reads its
-    /// quote, so with no Units at all it gets an id naming none.
-    fn link(&self) -> PriceLink {
-        let quote = self.quote.unwrap_or_else(UnitId::new);
+    /// The link the form describes for Unit `id`. A Manual entry link keeps no Symbol and never
+    /// reads its quote, so with no Units at all the Unit is quoted in itself.
+    fn link(&self, id: UnitId) -> PriceLink {
+        let quote = self.quote.unwrap_or(id);
         if self.is_manual() {
             PriceLink::manual(quote)
         } else {
@@ -395,21 +395,30 @@ impl UnitFormPresenter {
         if !self.is_valid() {
             return;
         }
-        let (code, name, kind, link) =
-            (self.code.clone(), self.name.clone(), self.kind, self.link());
+        let id = self.editing.unwrap_or_else(UnitId::new);
+        let (code, name, kind, link) = (
+            self.code.clone(),
+            self.name.clone(),
+            self.kind,
+            self.link(id),
+        );
         let saved = {
             let mut ports = self.ports.borrow_mut();
             let ports = ports.split_mut();
             match self.editing {
                 None => AddUnit {
+                    id,
                     code,
                     name,
                     kind,
                     link,
                 }
                 .run(ports.units, ports.price_sources)
-                .map_err(|PriceSourceGone| msg::units_refusal_price_source_gone()),
-                Some(id) => EditUnit {
+                .map_err(|refusal| match refusal {
+                    AddUnitRefusal::PriceSourceGone => msg::units_refusal_price_source_gone(),
+                    AddUnitRefusal::QuoteGone => msg::units_refusal_quote_gone(),
+                }),
+                Some(_) => EditUnit {
                     id,
                     code,
                     name,
@@ -420,6 +429,7 @@ impl UnitFormPresenter {
                 .map_err(|refusal| match refusal {
                     EditUnitRefusal::UnitGone => msg::units_refusal_unit_gone(),
                     EditUnitRefusal::PriceSourceGone => msg::units_refusal_price_source_gone(),
+                    EditUnitRefusal::QuoteGone => msg::units_refusal_quote_gone(),
                 }),
             }
         };
@@ -720,6 +730,51 @@ mod tests {
 
         send(&mut form, vec![UnitFormEvent::Source(FRANKFURTER)]);
         assert!(!form.view_model().frame.can_confirm);
+    }
+
+    #[test]
+    fn a_quote_unit_removed_under_the_dialog_is_refused_as_text_and_nothing_is_written() {
+        let (ports, shared) = stub();
+        let mut add = UnitFormPresenter::add(shared.clone());
+        send(
+            &mut add,
+            vec![
+                UnitFormEvent::Code("x".into()),
+                UnitFormEvent::Name("x".into()),
+            ],
+        );
+        let mut edit = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).unwrap();
+        ports.borrow_mut().units.units.remove(0);
+        let before = ports.borrow().clone();
+
+        for form in [&mut add, &mut edit] {
+            assert_eq!(send(form, vec![UnitFormEvent::Confirm]), []);
+            assert_eq!(
+                form.view_model().refusal.as_deref(),
+                Some("The unit it's quoted in was removed while the dialog was open."),
+                "aud, the quote, is gone"
+            );
+        }
+        assert_eq!(*ports.borrow(), before, "a refused save writes nothing");
+    }
+
+    #[test]
+    fn the_first_unit_on_an_empty_ledger_is_quoted_in_itself() {
+        let (ports, shared) = stub();
+        ports.borrow_mut().units.units.clear();
+        let mut form = UnitFormPresenter::add(shared);
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Code("x".into()),
+                UnitFormEvent::Name("x".into()),
+                UnitFormEvent::Confirm,
+            ],
+        );
+
+        let added = ports.borrow().units.units.clone();
+        assert_eq!(added.len(), 1, "{:?}", form.view_model().refusal);
+        assert_eq!(added[0].link.quote, added[0].id);
     }
 
     #[test]
