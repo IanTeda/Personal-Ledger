@@ -4,11 +4,11 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 
 | ID | Old ID | File |
 | --- | --- | --- |
-| TUI-001 | 1a | `tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` |
-| TUI-002 | 1b | `tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` |
-| TUI-003 | 2a | `tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` |
-| TUI-004 | 2b | `tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` |
-| TUI-005 | 3a | `tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` |
+| TUI-001 | 1a | `tui-mockups/01-shell/Ledger TUI Shell.dc.html` |
+| TUI-002 | 1b | `tui-mockups/01-shell/Ledger TUI Shell.dc.html` |
+| TUI-003 | 2a | `tui-mockups/01-shell/Ledger TUI Shell.dc.html` |
+| TUI-004 | 2b | `tui-mockups/01-shell/Ledger TUI Shell.dc.html` |
+| TUI-005 | 3a | `tui-mockups/01-shell/Ledger TUI Shell.dc.html` |
 | TUI-006 | 7a | `tui-mockups/02-accounts/Ledger TUI Accounts.dc.html` |
 | TUI-007 | 7b | `tui-mockups/02-accounts/Ledger TUI Accounts.dc.html` |
 | TUI-008 | 7c | `tui-mockups/02-accounts/Ledger TUI Accounts.dc.html` |

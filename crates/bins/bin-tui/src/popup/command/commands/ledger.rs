@@ -1,4 +1,4 @@
-//! The Ledger domain — loading and closing a ledger (`docs/ux/tui-mockups/01-chrome/README.md`'s
+//! The Ledger domain — loading and closing a ledger (`docs/ux/tui-mockups/01-shell/README.md`'s
 //! 1a resting state). All three only flip `Shell`'s `ledger_open` for now, mirroring
 //! `bin-desktop`'s `NavState::open_ledger`/`close_ledger`: real file I/O is later work.
 

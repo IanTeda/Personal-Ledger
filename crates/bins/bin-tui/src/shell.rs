@@ -1,7 +1,7 @@
 //! `Shell` — owns terminal lifecycle, the async event loop, and hosts one active `View`
 //! (ADR-0013, `docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`). Replaces the
 //! now-deleted breadcrumb-stack `App` (see the ADR, and Git history for the old code) for the
-//! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-chrome/README.md`: a status line,
+//! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-shell/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
 use std::rc::Rc;
@@ -82,7 +82,7 @@ pub struct Shell {
     /// Kept so a view swap (e.g. [`Action::OpenUnits`]) can hand the freshly-hosted view its
     /// own clone, the same way `new()` hands one to the initial Dashboard view.
     action_tx: mpsc::UnboundedSender<Action>,
-    /// The command popup overlay (`docs/ux/tui-mockups/01-chrome/README.md` §3a) — `Some` while open. Owned
+    /// The command popup overlay (`docs/ux/tui-mockups/01-shell/README.md` §3a) — `Some` while open. Owned
     /// here rather than by the active `View`: it floats over whatever view is on screen and
     /// intercepts keys before the view sees them, per `view/mod.rs`'s "shell's own command
     /// window" note.
@@ -118,7 +118,7 @@ pub struct Shell {
     /// every other popup field.
     payee_popup: Option<PayeePopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
-    /// `g <letter>` jump chords in `docs/ux/tui-mockups/01-chrome/README.md`'s "Jumps" table (e.g. `g d`
+    /// `g <letter>` jump chords in `docs/ux/tui-mockups/01-shell/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
     /// chord, so an aborted chord never leaks into later keypresses.
     pending_leader: bool,
@@ -151,7 +151,7 @@ pub struct Shell {
     /// Showing Toasts hide and their timers pause behind it. Mutually exclusive with every
     /// other popup field.
     toast_history: Option<ToastHistoryPopup>,
-    /// Whether a ledger is loaded (`docs/ux/tui-mockups/01-chrome/README.md`'s 1a). `false` on cold
+    /// Whether a ledger is loaded (`docs/ux/tui-mockups/01-shell/README.md`'s 1a). `false` on cold
     /// start and after `:close`, when the Dashboard's place shows the "no ledger loaded" note
     /// instead; every other view still opens, as in `bin-desktop`'s `NavState::ledger_open`.
     ledger_open: bool,
@@ -1808,7 +1808,7 @@ impl Shell {
     }
 
     /// Draws the shell chrome — status line, full-bleed view region, a rule, then the keybind
-    /// hint bar — around the active view, per `docs/ux/tui-mockups/01-chrome/README.md`. `run`
+    /// hint bar — around the active view, per `docs/ux/tui-mockups/01-shell/README.md`. `run`
     /// calls this on every change, and tests call it to read the frame back.
     pub fn draw(&mut self, frame: &mut Frame<'_>) {
         // The frame size is only known here, so this is where a view shrinking under 40×8
@@ -1845,7 +1845,7 @@ impl Shell {
         let payee_popup_open = self.payee_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
-        // NORMAL state, per `docs/ux/tui-mockups/01-chrome/README.md`'s "show the mode ... whenever it is not
+        // NORMAL state, per `docs/ux/tui-mockups/01-shell/README.md`'s "show the mode ... whenever it is not
         // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form or the Category
         // popup (it has a text field too), per "Modal, vim-flavoured ... INSERT only inside
         // forms ... COMMAND while the palette is open". `EDIT`/`CONFIRM` for the settings popups
@@ -2136,7 +2136,7 @@ fn key_binding_matches(key: KeyEvent, spec: &str) -> bool {
 }
 
 /// `Q` — quits the app from anywhere the command popup/unit forms aren't intercepting keys,
-/// matching the footer's `docs/ux/tui-mockups/01-chrome/README.md` global keybind table (`Q` quit, distinct from
+/// matching the footer's `docs/ux/tui-mockups/01-shell/README.md` global keybind table (`Q` quit, distinct from
 /// its still-unbuilt lowercase `q` "close view" sibling) and the popup's own `quit` command.
 /// Unlike [`is_hard_quit`] (`Ctrl+C`), this doesn't fire mid-chord or while a popup is open —
 /// there, `Q` is ordinary filter/chord input instead.

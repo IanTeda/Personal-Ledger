@@ -50,7 +50,7 @@ Collapsing both into one mechanism also buys nothing mechanically: whichever key
 
 **Case for bare `:` (recommended):**
 
-- It's the standard: vim's ex-command line, k9s's resource-navigation line, and this app's *own original* `docs/ux/tui-mockups/01-chrome/README.md` handoff (which `bin-tui`'s implementation deviated from) all use it.
+- It's the standard: vim's ex-command line, k9s's resource-navigation line, and this app's *own original* `docs/ux/tui-mockups/01-shell/README.md` handoff (which `bin-tui`'s implementation deviated from) all use it.
 - It's one keystroke instead of two, for the single highest-frequency entry point in the entire app per its own "everything is reached through the popup" philosophy.
 - `bin-tui`'s `Ctrl+;` carries a real, documented fragility bare `:` doesn't: commit `6777461`'s own message states "`Ctrl+;` needed the Kitty keyboard protocol's `DISAMBIGUATE_ESCAPE_CODES` to be distinguishable at all on capable terminals (legacy encoding collapses it onto the same control code as `Esc`)" — i.e. on a terminal that doesn't support that Kitty extension, the shortcut degrades. Bare `:` has no such dependency.
 - `bin-desktop`'s `InputMode` state machine (`Normal`/`Insert`/`Command`/`Search`) already proves, in working code, that the precondition making bare `:` safe holds here: `handle_key_down` gates every zone/movement/mode-entry key (`:` included) behind `if self.nav.mode() != InputMode::Normal { return had_status_message; }`, so `:` can never fire while some other mode owns the keyboard.

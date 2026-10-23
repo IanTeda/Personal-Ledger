@@ -70,7 +70,7 @@ pub enum CommandEffect {
     Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
-    /// No real behaviour behind this command yet (`docs/ux/tui-mockups/01-chrome/README.md`'s commitment: "a
+    /// No real behaviour behind this command yet (`docs/ux/tui-mockups/01-shell/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
     NotYetBuilt,

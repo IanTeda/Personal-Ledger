@@ -7,7 +7,7 @@ Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in
 **Card IDs:** every card carries a `TUI-NNN` ID (the label on the card and its `#` anchor). Say "TUI-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
 
 ## How to use
-1. Build `01-chrome` first: the shell, command palette and help window that every other screen re-hosts inside.
+1. Build `01-shell` first: the shell, command palette and help window that every other screen re-hosts inside.
 2. Then the destinations in any order. Each README covers its frames, keyboard, state and ratatui notes.
 3. [`navigation.md`](navigation.md) is the TUI's own living navigation spec; the cross-client keyboard grammar is in `docs/getting-around.md`.
 
@@ -15,7 +15,7 @@ Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in
 
 | Folder | Destination | Design file |
 | --- | --- | --- |
-| `01-chrome` | Chrome: shell at rest (1a no ledger, 1b dashboard), `:help`, command palette | `Ledger TUI Chrome.dc.html` |
+| `01-shell` | Shell: at rest (1a no ledger, 1b dashboard), `:help`, command palette | `Ledger TUI Shell.dc.html` |
 | `02-accounts` | Accounts | `Ledger TUI Accounts.dc.html` |
 | `03-categories` | Categories | `Ledger TUI Categories.dc.html` |
 | `04-payees` | Payees | `Ledger TUI Payees.dc.html` |

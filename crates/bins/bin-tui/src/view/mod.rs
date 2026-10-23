@@ -102,7 +102,7 @@ pub enum Action {
     /// `Enter` on the command popup's `unit delete` command — the Units view's Delete on its
     /// selection, as `d` there does.
     OpenDeleteUnitPopup,
-    /// `g d` (the `docs/ux/tui-mockups/01-chrome/README.md` "Jumps" table's chord), or `Enter` on the command
+    /// `g d` (the `docs/ux/tui-mockups/01-shell/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
     /// `Enter` on the command popup's `open` or `new` command — loads a ledger, leaving the

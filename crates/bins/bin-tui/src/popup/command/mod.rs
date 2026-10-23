@@ -1,4 +1,4 @@
-//! The command popup — the shell's own floating command window (`docs/ux/tui-mockups/01-chrome/README.md` §3a,
+//! The command popup — the shell's own floating command window (`docs/ux/tui-mockups/01-shell/README.md` §3a,
 //! where it's specified as the "command palette"), opened with `Ctrl+;` from anywhere.
 //! `view/mod.rs` calls this out as later work over the `View` trait: the popup overlays
 //! whatever `View` is active rather than being one itself, so `Shell` owns it directly instead

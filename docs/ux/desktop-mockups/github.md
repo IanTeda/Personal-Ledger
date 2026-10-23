@@ -42,11 +42,11 @@ date: 2026-09-13T05:27:54Z
 
 | Screen / option | Built from |
 | --- | --- |
-| 1a Dashboard, two rails expanded | docs/ux/tui-mockups/01-chrome/README.md (dashboard priority order), docs/product-requirements.md FR.34–38 |
+| 1a Dashboard, two rails expanded | docs/ux/tui-mockups/01-shell/README.md (dashboard priority order), docs/product-requirements.md FR.34–38 |
 | 1b Account ledger, list–detail rail | GLOSSARY.md (Account, Transaction Status, Flagged), FR.16–20 |
 | 1c Settings, collapsed icon rail | GLOSSARY.md (Preference vs Configuration), CC-DESKTOP-001 |
-| 1d Command palette over the shell | docs/ux/tui-mockups/01-chrome/README.md §3a, action registry + command grammar |
-| docs/ux/desktop-mockups/README.md (handoff) | `Ledger Desktop Shell.dc.html` option 1a, ADR-0007, ADR-0013, docs/ux/tui-mockups/01-chrome/README.md |
+| 1d Command palette over the shell | docs/ux/tui-mockups/01-shell/README.md §3a, action registry + command grammar |
+| docs/ux/desktop-mockups/README.md (handoff) | `Ledger Desktop Shell.dc.html` option 1a, ADR-0007, ADR-0013, docs/ux/tui-mockups/01-shell/README.md |
 | docs/ux/desktop-mockups/ (folder shape) | docs/ux/tui-mockups/ — README + mockup + support.js, self-contained |
-| 10a–10i Reports | crates/bins/bin-tui/src/screen/reports.rs, docs/product-requirements.md FR.34–38, docs/ux/tui-mockups/01-chrome/README.md (`:report` grammar) |
+| 10a–10i Reports | crates/bins/bin-tui/src/screen/reports.rs, docs/product-requirements.md FR.34–38, docs/ux/tui-mockups/01-shell/README.md (`:report` grammar) |
 | 8a–8f Bills (Schedule/Planner/History) | docs/bills.md, ADR-0019 (Bill Schedule as persisted rows linked to a Transaction) |

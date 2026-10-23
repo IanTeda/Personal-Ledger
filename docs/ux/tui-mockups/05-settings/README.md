@@ -58,7 +58,7 @@ Cards appear in index order. The IDs are not consecutive because TUI-019–021 k
 | Row actions (edit · delete · test …) | Keys in the hint bar acting on the selected row (`e`, `d`, `t` …). |
 | Modal dialogs, 420–540px | Centred floating overlay (`Clear` + bordered `Block`, ~76% width, top third) over the dimmed page, the same treatment as the command palette. |
 | Status bar NORMAL chip + hints | Hint bar per focus. The status line shows the mode (`INSERT`, `CONFIRM`) when it isn't NORMAL, and `✓ Synced HH:MM` on the right. |
-| Header breadcrumb `settings › <page>` | Status line `Personal Ledger │ settings › <page>`. |
+| Header breadcrumb `settings › <page>` | Status line `Personal Ledger │ Settings › <Page>`, the page name in sentence case. |
 
 **List pages and the full views.** Units, Accounts, Categories, Tags and Payees already have their own full TUI views (`../02-accounts`, `../03-categories`, `../04-payees`, `../06-tags`, `../07-units`). Their Settings pages are the compact management lists Desktop shows, and they use **the same forms and keys** as those views (`n`/`e`/`d`, typed delete confirm). `o` opens the full view, and `esc` from it returns to the Settings page. Their existing `g` jumps stay as they are.
 
@@ -67,7 +67,7 @@ Cards appear in index order. The IDs are not consecutive because TUI-019–021 k
 Drawn at the shell's **96 × 30 cell** minimum.
 
 ```
-row 0        status line   Personal Ledger │ settings › <page>        [MODE ·] ✓ Synced HH:MM
+row 0        status line   Personal Ledger │ Settings › <Page>        [MODE ·] ✓ Synced HH:MM
 rows 1..n-2  two panes     index Length(20) │ page Min(0)
 row n-1      hint bar      contextual to the focused pane and page
 ```
