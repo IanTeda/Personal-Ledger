@@ -1,9 +1,10 @@
 //! The Settings Display page driven by clicks: each segmented control, the status glyph radios,
-//! the sidebar checkbox, the Toasts control and the Colour Theme cards. Only elements tagged
-//! with `debug_selector` are clicked.
+//! the sidebar checkbox, the Toasts control and the Colour Theme cards, and the preview stacking
+//! under the fields at the Medium floor. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
 
+use bin_desktop::WindowSize;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_colour_theme::ColourTheme;
@@ -85,4 +86,23 @@ fn clicking_a_colour_theme_card_chooses_it(app: &mut TestAppContext) {
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[3].id));
     ui.click("display-colour-theme-1");
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[1].id));
+}
+
+#[gpui::test]
+fn the_preview_stacks_under_the_fields_only_at_the_medium_floor(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+    ui.click("settings-index-page-Display");
+    assert_eq!(ui.settings().page, "Display");
+
+    let fields = ui.bounds("display-fields");
+    let preview = ui.bounds("display-preview");
+    assert!(preview.left() > fields.right(), "side by side at 960px");
+
+    ui.resize(gpui::size(gpui::px(720.0), gpui::px(480.0)));
+    let fields = ui.bounds("display-fields");
+    let preview = ui.bounds("display-preview");
+    assert!(preview.top() > fields.bottom(), "stacked at 720px");
+    assert_eq!(preview.left(), fields.left());
 }

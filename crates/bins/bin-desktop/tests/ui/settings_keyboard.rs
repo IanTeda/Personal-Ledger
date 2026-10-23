@@ -1,6 +1,6 @@
-//! The Settings pages driven by keys: the index rail's paged navigation, focus stepping into and
-//! out of a page, the Categories list with its add, edit and delete dialogs, the About page, and the
-//! Medium drill-down with its page picker. State is read back from `Shell`.
+//! The Settings View driven by keys, across its pages: the index rail's paged navigation, focus
+//! stepping into and out of a page, and the Medium drill-down with its page picker. Each page's own
+//! keys are in its `settings_<page>_keyboard.rs`. State is read back from `Shell`.
 
 use super::common;
 
@@ -67,16 +67,6 @@ fn l_steps_into_a_page_and_h_or_escape_steps_back_out(app: &mut TestAppContext) 
 }
 
 #[gpui::test]
-fn the_about_page_has_nothing_to_focus(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.press("shift-g");
-    assert_eq!(ui.settings().page, "About");
-    ui.press("l");
-    assert!(!ui.settings().page_focused);
-}
-
-#[gpui::test]
 fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
@@ -88,64 +78,6 @@ fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
     let page = ui.settings();
     assert_eq!(page.page, "Accounts");
     assert!(!page.page_focused);
-}
-
-#[gpui::test]
-fn categories_rows_move_and_the_dialogs_open(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 5, "Categories");
-
-    assert_eq!(ui.settings_categories().selected_category, None);
-    ui.press("j");
-    assert!(ui.settings_categories().selected_category.is_some());
-    ui.press("e");
-    assert_eq!(ui.dialog(), Some("EditCategory"));
-    ui.press("escape");
-    assert_eq!(ui.dialog(), None);
-    ui.press("shift-n");
-    assert_eq!(ui.dialog(), Some("AddCategory"));
-    ui.press("escape");
-    ui.press("n");
-    assert_eq!(ui.dialog(), Some("AddCategory"));
-    ui.press("escape");
-    assert_eq!(ui.dialog(), None);
-}
-
-#[gpui::test]
-fn a_new_category_is_added_by_typing_its_name(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 5, "Categories");
-    let before = ui.settings_categories().category_names.len();
-
-    ui.press("n");
-    ui.press("p e t s");
-    assert_eq!(ui.dialog_value("name").as_deref(), Some("pets"));
-    ui.press("enter");
-    let categories_page = ui.settings_categories();
-    assert_eq!(ui.dialog(), None);
-    assert_eq!(categories_page.category_names.len(), before + 1);
-    assert!(
-        categories_page
-            .category_names
-            .iter()
-            .any(|name| name == "pets")
-    );
-}
-
-#[gpui::test]
-fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 5, "Categories");
-
-    ui.press("j");
-    ui.press("d");
-    assert_eq!(ui.dialog(), None);
-    ui.press("right");
-    assert_eq!(
-        ui.settings_categories().selected_category.as_deref(),
-        Some("Rent")
-    );
-    ui.press("d");
-    assert_eq!(ui.dialog(), Some("DeleteCategory"));
-    ui.press("escape");
-    assert_eq!(ui.dialog(), None);
 }
 
 const PAGES: [&str; 14] = [

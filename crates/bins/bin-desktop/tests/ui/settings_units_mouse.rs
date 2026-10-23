@@ -129,6 +129,36 @@ fn a_press_outside_the_menu_closes_it(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_delete_dialogs_cancel_button_closes_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+
+    ui.click("delete-unit-cancel");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
+fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.unquote_units();
+    let before = ui.unit_codes();
+
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
+    for ch in before[0].chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.click("delete-unit-confirm");
+    let after = ui.unit_codes();
+    assert_eq!(after.len(), before.len() - 1);
+    assert!(!after.contains(&before[0]));
+}
+
+#[gpui::test]
 fn the_plus_buttons_open_their_tables_add_dialogs(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.click("settings-add-price-source");

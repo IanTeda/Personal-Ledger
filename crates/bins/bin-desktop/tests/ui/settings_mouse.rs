@@ -1,9 +1,8 @@
-//! The Settings pages driven by clicks: the index rail and its Medium index page and picker, the Categories and Units pages' add
-//! button and row actions, and the dialogs' buttons. Only elements tagged with
-//! `debug_selector` are clicked; state is read back from `Shell`.
+//! The Settings View driven by clicks, across its pages: the index rail and its Medium index page
+//! and picker. Each page's own clicks are in its `settings_<page>_mouse.rs`. Only elements tagged
+//! with `debug_selector` are clicked; state is read back from `Shell`.
 
 use super::common;
-use lib_core::CategoryId;
 
 use bin_desktop::{
     WindowSize,
@@ -33,89 +32,6 @@ fn clicking_an_index_entry_swaps_the_page(app: &mut TestAppContext) {
     assert_eq!(ui.settings().page, "About");
     ui.click("settings-index-General");
     assert_eq!(ui.settings().page, "General");
-}
-
-#[gpui::test]
-fn the_categories_add_button_and_row_actions_open_their_dialogs(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Categories");
-
-    ui.click("settings-categories-add");
-    assert_eq!(ui.dialog(), Some("AddCategory"));
-    ui.click("add-category-cancel");
-    assert_eq!(ui.dialog(), None);
-    assert_eq!(mode(&mut ui), InputMode::Normal);
-}
-
-#[gpui::test]
-fn a_categories_edit_action_selects_the_row_and_opens_its_dialog(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.click("settings-index-Categories");
-
-    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(1)));
-    let categories_page = ui.settings_categories();
-    assert_eq!(ui.dialog(), Some("EditCategory"));
-    assert_eq!(ui.dialog_value("name"), categories_page.selected_category);
-    ui.click("edit-category-cancel");
-    assert_eq!(ui.dialog(), None);
-}
-
-#[gpui::test]
-fn the_units_add_edit_and_delete_buttons_open_their_dialogs(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.resize_to(WindowSize::Large);
-    ui.click("settings-index-Units");
-
-    ui.click("settings-add-unit");
-    assert_eq!(ui.dialog(), Some("AddUnit"));
-    ui.click("add-unit-cancel");
-    assert_eq!(ui.dialog(), None);
-
-    let first = ui.unit_codes()[0].clone();
-    ui.right_click("unit-row-0");
-    ui.click("settings-units-menu-edit-unit");
-    assert_eq!(ui.dialog(), Some("EditUnit"));
-    assert_eq!(ui.dialog_value("code").as_deref(), Some(first.as_str()));
-    ui.click("edit-unit-cancel");
-    assert_eq!(ui.dialog(), None);
-
-    ui.right_click("unit-row-0");
-    ui.click("settings-units-menu-delete-unit");
-    assert_eq!(ui.dialog(), Some("DeleteUnit"));
-    ui.click("delete-unit-confirm");
-    assert_eq!(ui.dialog(), Some("DeleteUnit"));
-    ui.click("delete-unit-cancel");
-    assert_eq!(ui.dialog(), None);
-}
-
-#[gpui::test]
-fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    ui.resize_to(WindowSize::Large);
-    ui.drop_unit_users();
-    ui.unquote_units();
-    ui.click("settings-index-Units");
-    let before = ui.unit_codes();
-
-    ui.right_click("unit-row-0");
-    ui.click("settings-units-menu-delete-unit");
-    for ch in before[0].chars() {
-        ui.press(&ch.to_string());
-    }
-    ui.click("delete-unit-confirm");
-    let after = ui.unit_codes();
-    assert_eq!(after.len(), before.len() - 1);
-    assert!(!after.contains(&before[0]));
-}
-
-#[gpui::test]
-fn the_about_page_shows_without_a_focus_target(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.click("settings-index-About");
-    let page = ui.settings();
-    assert_eq!(page.page, "About");
-    assert!(!page.page_focused);
 }
 
 #[gpui::test]
@@ -231,23 +147,4 @@ fn at_medium_every_index_row_carries_its_icon(app: &mut TestAppContext) {
             "{page}'s icon leads its row"
         );
     }
-}
-
-#[gpui::test]
-fn display_stacks_the_preview_under_the_fields_only_at_the_medium_floor(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.resize_to(WindowSize::Medium);
-    ui.press("g s");
-    ui.click("settings-index-page-Display");
-    assert_eq!(ui.settings().page, "Display");
-
-    let fields = ui.bounds("display-fields");
-    let preview = ui.bounds("display-preview");
-    assert!(preview.left() > fields.right(), "side by side at 960px");
-
-    ui.resize(gpui::size(gpui::px(720.0), gpui::px(480.0)));
-    let fields = ui.bounds("display-fields");
-    let preview = ui.bounds("display-preview");
-    assert!(preview.top() > fields.bottom(), "stacked at 720px");
-    assert_eq!(preview.left(), fields.left());
 }
