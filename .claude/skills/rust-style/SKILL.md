@@ -9,9 +9,9 @@ This codebase follows Rust conventions and patterns enforced by clippy lints (se
 
 ## Error handling
 
-Every crate has an `error.rs` module exporting `Error` and `Result<T>`. Use it for all fallible functions (not `Option`, `Box<dyn Error>`, or `panic!`).
+Every crate has an `error.rs` module exporting `Error` and `Result<T>`. Use it for every fallible function rather than `Box<dyn Error>` or `panic!`. A lookup that may find nothing returns `Option`, since absence isn't a failure. Keep `mod error` private and re-export `Error` and `Result` from `lib.rs`.
 
-**Error enum shape:** Start with a single `Generic(String)` catch-all variant:
+**Infrastructure crates** (`lib-config`, `lib-database`, `lib-rpc`, …): start the enum with a single `Generic(String)` catch-all variant:
 
 ```rust
 #[derive(thiserror::Error, Debug)]
@@ -31,12 +31,28 @@ pub enum Error {
     Generic(String),
     #[error("date parsing failed: {0}")]
     DateParse(String),
-    #[from]
+    #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
 ```
 
 **External crate errors:** Map them with `#[from]` so `?` converts them automatically. Never flatten into `Generic` via `to_string()`.
+
+**Feature crates** (the VIPER domain crates: `lib-units`, `lib-bills`, …): `Error` is the crate's Refusals (`GLOSSARY.md`). It is one flat enum with a variant per rule, named for what the rule forbids, and each variant carries the data the Presenter needs for its Message (counts, ids). It never holds a pre-formatted string, which would be English the person can't have translated and would hide the counts that plural Messages need. The `#[error]` text is for logs and `Display`; the person sees the Presenter's `msg::` Message. Every fallible Interactor `run` returns `Result<T>`. A Presenter maps each variant it can receive to a Message, and its `_ =>` arm shows a generic Message with a `debug_assert!`, never `panic!` or `unreachable!`.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum Error {
+    #[error("unit not found")]
+    UnitGone,
+    #[error("a unit in use can only be deactivated")]
+    UnitInUse(UnitUse),
+    #[error("{0} other units are quoted in this unit")]
+    QuotedBy(usize),
+}
+```
+
+Feature crates never depend on `sqlx` or `lib-database`. Ports are infallible (ADR-0046): a failed write reaches the person as an error Toast through the writer channel, not through the Interactor. If a port ever has to fail, it returns a type the feature crate owns, and the `lib-database` adapter converts into it.
 
 **Invariants in expect:** Any remaining `expect` outside tests must state the invariant in the message:
 
@@ -89,16 +105,16 @@ let token: SecretString = api_response.token.into();
 ## Checklist before finishing
 
 - [ ] No `unwrap()`, `expect()`, or `panic!()` in non-test code (except documented invariant-checking `expect` with reason in the message).
-- [ ] All fallible functions return the crate's `Result` (or a compatible error type).
 - [ ] Secrets are wrapped in `secrecy::SecretString` or `SecretBox`.
 - [ ] Comments explain the WHY, not the WHAT.
 - [ ] No Rust code examples in doc comments; usage is covered by unit tests.
 - [ ] Australian English in comments and docs.
 - [ ] No `unsafe` code.
-- [ ] External crate errors map with `#[from]`.
+- [ ] All fallible functions return the crate's `Result` (or a compatible error type); a lookup that may find nothing returns `Option`.
+- [ ] Infrastructure crates map external errors with `#[from]`; feature crates hold typed Refusal variants, never strings, and don't depend on `sqlx`.
 
 ## Further reading
 
-- Error handling patterns: `crates/libs/lib-database/src/error.rs` (reference implementation).
+- Error handling patterns: `crates/libs/lib-database/src/error.rs` (infrastructure) and `crates/libs/lib-units/src/error.rs` (feature crate, once #818 lands).
 - Tracing conventions: `/tracing` skill (instrumentation, log levels).
 - Tests and mocking: `/unit-tests` skill (fixtures, fakes, sqlx::test).
