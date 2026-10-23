@@ -244,14 +244,14 @@ jobs:
           sleep 3
 
       # First start on a fresh named volume: the account doesn't exist yet, so
-      # main.rs's bootstrap_account logs its "No account provisioned yet" warning
+      # main.rs's bootstrap_account logs its "No sync user provisioned yet" warning
       # (see crates/bins/bin-sync-server/src/main.rs) -- captured here as the
       # baseline this ticket's actual persistence proof (below) needs to contrast
       # against.
       - name: Show initial logs
         run: |
           docker compose logs sync-server
-          docker compose logs sync-server | grep -q "No account provisioned yet"
+          docker compose logs sync-server | grep -q "No sync user provisioned yet"
           docker compose logs sync-server | grep -q "listening on"
 
       # Same `docker top` approach the build-verify job above uses (and the same
@@ -303,7 +303,7 @@ jobs:
           set -euo pipefail
           docker compose logs --since "$RESTART_TIME" sync-server
           docker compose logs --since "$RESTART_TIME" sync-server | grep -q "listening on"
-          if docker compose logs --since "$RESTART_TIME" sync-server | grep -q "No account provisioned yet"; then
+          if docker compose logs --since "$RESTART_TIME" sync-server | grep -q "No sync user provisioned yet"; then
             echo "::error::Account was re-bootstrapped after restart -- the persistent volume did not survive"
             exit 1
           fi
