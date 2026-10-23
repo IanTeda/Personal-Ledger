@@ -26,7 +26,10 @@ use lib_documents::types::{self as types, DocumentTypeRow};
 use lib_ledger::{Domain, MoveDocumentType};
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_documents_hints,
@@ -130,7 +133,7 @@ impl Page for DocumentsPage {
     /// The page's legend and its type and file counts.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: settings_documents_hints(),
+            hints: owned_hints(settings_documents_hints()),
             right: scope_text(self.types(cx)),
         })
     }

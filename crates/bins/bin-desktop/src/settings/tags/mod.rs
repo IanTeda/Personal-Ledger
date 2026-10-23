@@ -26,7 +26,10 @@ use lib_ledger::Domain;
 use lib_tags::{DuplicateGroup, Tag};
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_tags_hints,
@@ -132,7 +135,7 @@ impl Page for TagsPage {
     /// The page's legend and its Tag counts.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: settings_tags_hints(),
+            hints: owned_hints(settings_tags_hints()),
             right: scope_text(self.tags(cx), &self.duplicate_groups(cx)),
         })
     }

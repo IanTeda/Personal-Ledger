@@ -18,7 +18,10 @@ use crate::{
         self, BudgetsDialog, BudgetsTab, PlanEdit, default_plan_start,
         limit_form::{LimitForm, LimitOptions, StopForm},
     },
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::OpenDialog,
+        statusline::{PageStatus, owned_hints},
+    },
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     period::Period,
@@ -578,7 +581,7 @@ impl BudgetsView {
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(match self.state.tab {
             BudgetsTab::Progress => PageStatus {
-                hints: budgets_progress_hints(),
+                hints: owned_hints(budgets_progress_hints()),
                 right: crate::msg::desktop_budgets_status_period(
                     &super::period_label(self.state.period),
                     self.figures(cx).map_or(0, |(_, figures)| {
@@ -587,11 +590,11 @@ impl BudgetsView {
                 ),
             },
             BudgetsTab::Plan => PageStatus {
-                hints: if self.state.plan_edit.is_some() {
+                hints: owned_hints(if self.state.plan_edit.is_some() {
                     budgets_plan_insert_hints()
                 } else {
                     budgets_plan_hints()
-                },
+                }),
                 right: self.plan_data(cx).map_or_else(String::new, |plan| {
                     crate::msg::desktop_budgets_status_plan(
                         &super::plan::range_label(&plan),
@@ -600,7 +603,7 @@ impl BudgetsView {
                 }),
             },
             BudgetsTab::History => PageStatus {
-                hints: budgets_history_hints(),
+                hints: owned_hints(budgets_history_hints()),
                 right: self.history_data(cx).map_or_else(String::new, |history| {
                     crate::msg::desktop_budgets_status_history(
                         i64::try_from(history.leaves_ever_budgeted).unwrap_or(i64::MAX),
@@ -1234,10 +1237,10 @@ mod tests {
             })
         };
 
-        assert!(hint_keys(&view, cx).contains(&"e"));
+        assert!(hint_keys(&view, cx).contains(&"e".to_string()));
         press(&view, "2", cx);
-        assert!(hint_keys(&view, cx).contains(&"r"));
+        assert!(hint_keys(&view, cx).contains(&"r".to_string()));
         press(&view, "3", cx);
-        assert!(hint_keys(&view, cx).contains(&"x"));
+        assert!(hint_keys(&view, cx).contains(&"x".to_string()));
     }
 }

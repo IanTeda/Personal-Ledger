@@ -65,6 +65,18 @@ pub const EDIT: &str = "edit";
 pub const DELETE: &str = "delete";
 pub const REACTIVATE: &str = "reactivate";
 
+/// The Dialog keymap's commands (`lib_shell::dialog`), flat so one override applies in every
+/// Dialog. `select` and `back` are the names Views already back out and choose by. Not `confirm`
+/// and `cancel`: `[keybindings]` binds those to the TUI's `y` and `x`, so one override would change
+/// both meanings.
+pub const SELECT: &str = "select";
+pub const BACK: &str = "back";
+pub const NEXT_FIELD: &str = "next_field";
+pub const PREVIOUS_FIELD: &str = "previous_field";
+pub const SELECT_NEXT: &str = "select_next";
+pub const SELECT_PREVIOUS: &str = "select_previous";
+pub const SUBMIT: &str = "submit";
+
 #[cfg(test)]
 mod tests {
     use super::*;

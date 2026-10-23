@@ -9,7 +9,10 @@ use gpui::{
 };
 
 use crate::{
-    chrome::{statusline::PageStatus, window_size::WindowSize},
+    chrome::{
+        statusline::{PageStatus, owned_hints},
+        window_size::WindowSize,
+    },
     ledger_store::LedgerStore,
     navigation::key_router::Movement,
     settings::{
@@ -108,7 +111,7 @@ pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
     /// The status line while the page has focus.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: self.hints(cx),
+            hints: owned_hints(self.hints(cx)),
             right: Self::PAGE.scope_note(),
         })
     }

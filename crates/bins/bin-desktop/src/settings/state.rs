@@ -10,7 +10,10 @@
 
 use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
-    chrome::{statusline::PageStatus, window_size::WindowSize},
+    chrome::{
+        statusline::{PageStatus, owned_hints},
+        window_size::WindowSize,
+    },
     ledger_store::LedgerStore,
     navigation::key_router::Movement,
     settings::accounts::AccountsPage,
@@ -312,19 +315,21 @@ impl SettingsView {
         }
         if self.picker.is_some() {
             return Some(PageStatus {
-                hints: settings_picker_hints(),
+                hints: owned_hints(settings_picker_hints()),
                 right: self.selected_section.scope_note(),
             });
         }
         let mut status = match self.focused_page() {
             Some(page) => page.page_status(cx)?,
             None => PageStatus {
-                hints: settings_index_hints(),
+                hints: owned_hints(settings_index_hints()),
                 right: self.selected_section.scope_note(),
             },
         };
         if self.drill_down() && self.focus == SettingsFocus::Page {
-            status.hints.extend(settings_medium_page_hints());
+            status
+                .hints
+                .extend(owned_hints(settings_medium_page_hints()));
         }
         Some(status)
     }

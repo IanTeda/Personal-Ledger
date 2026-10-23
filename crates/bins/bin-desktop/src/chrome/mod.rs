@@ -4,6 +4,7 @@
 //! View interiors are not Chrome.
 
 pub(crate) mod dialog_apply;
+pub(crate) mod dialog_entity;
 pub(crate) mod dialog_host;
 pub(crate) mod palette;
 pub(crate) mod rail;

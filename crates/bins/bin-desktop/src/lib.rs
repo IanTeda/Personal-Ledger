@@ -131,6 +131,7 @@ pub fn build_shell(
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
+    shell.set_dialog_keymap(&bindings.keybindings);
     shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
     shell.set_toast_history_binding(bindings.toast_history);
     shell.start_toast_clock(cx);

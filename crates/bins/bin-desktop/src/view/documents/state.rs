@@ -22,7 +22,10 @@ use super::{
     hints::{inbox_hints, index_hints, library_hints},
 };
 use crate::{
-    chrome::{dialog_host::OpenDialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::OpenDialog,
+        statusline::{PageStatus, owned_hints},
+    },
     documents::{
         self, Document, DocumentLink, DocumentsMode, FilingUndo, KeyDateKind, LibraryScope,
         LibrarySort, RailEntry,
@@ -412,7 +415,7 @@ impl DocumentsView {
             library_hints()
         };
         Some(PageStatus {
-            hints,
+            hints: owned_hints(hints),
             right: self.stored_text(cx),
         })
     }

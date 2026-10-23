@@ -6,7 +6,11 @@ use std::time::Duration;
 use gpui::{Context, KeyDownEvent, Keystroke};
 use lib_toast::ToastKind;
 
+use lib_shell::DialogCommand;
+
 use super::Shell;
+use crate::chrome::dialog_entity::DialogHandle;
+use crate::navigation::chord::chord;
 use crate::{
     chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
     chrome::window_size::WindowSize,
@@ -72,6 +76,15 @@ impl Shell {
         // The top bar's recent-actions list is a mouse affordance; Esc closes it and nothing else.
         if self.chrome.undo_menu_open && key == "escape" {
             self.chrome.undo_menu_open = false;
+            return true;
+        }
+
+        // An open Dialog takes every key; a module's Dialog reads them through the Dialog keymap.
+        if self.presenter.dialog_open()
+            && let Some(dialog) = self.hosted_dialog().cloned()
+        {
+            self.pending_g = None;
+            self.handle_hosted_dialog_key(&dialog, keystroke, cx);
             return true;
         }
 
@@ -395,6 +408,30 @@ impl Shell {
                 }
             }
         })
+    }
+
+    /// A key while a module's Dialog is open, as one input: resolved through the Dialog keymap,
+    /// with `back` the host's own (an open select closes first, otherwise the Dialog cancels and
+    /// closes), and any key the keymap doesn't bind typed into the focused field. Like every key it
+    /// clears a status message.
+    fn handle_hosted_dialog_key(
+        &mut self,
+        dialog: &DialogHandle,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.chrome.status_message = None;
+        let command = chord(keystroke).and_then(|chord| self.chrome.dialog_keymap.event(&chord));
+        crate::input::send(cx, |cx| match command {
+            Some(DialogCommand::Back) => {
+                if !dialog.close_open_select(cx) {
+                    dialog.cancel(cx);
+                    self.close_dialog();
+                }
+            }
+            Some(command) => dialog.command(command, cx),
+            None => dialog.typed(dialog_key(keystroke), cx),
+        });
     }
 
     /// Runs what the key handlers left pending for after the `cx.notify()` -- effects that need

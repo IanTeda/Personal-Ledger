@@ -379,6 +379,18 @@ The built-in defaults are:
 | `dismiss_toasts`     | `ctrl+l`    |
 | `toast_history`      | unbound     |
 
+While a Dialog is open, its keys are the Dialog keymap, which takes `select` and `back` from the table above and adds these:
+
+| Command           | Default key  |
+| ----------------- | ------------ |
+| `next_field`      | `tab`        |
+| `previous_field`  | `shift+tab`  |
+| `select_next`     | `down`       |
+| `select_previous` | `up`         |
+| `submit`          | `ctrl+enter` |
+
+`select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop today only the Units, Bills and Pay Dialogs read this keymap; the rest keep their fixed keys until they move.
+
 `quit` is deliberately **not** configurable: `bin-tui` has three separate, hardcoded quit mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, and the `:quit` command), none of which read this section.
 
 `dismiss_toasts` dismisses every showing Toast, in `Normal` mode only; it is deliberately not `esc`, so a sticky Error Toast doesn't vanish on the key that backs out of a dialog. `toast_history` has no default key because the `toasts` command (alias `messages`) opens the Toast history; set it to bind one. See [Toasts design](toasts-design.md).

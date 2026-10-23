@@ -1,6 +1,5 @@
 //! The Bill Payments module's entry point for other modules' Routers ([`open_pay`]), and
-//! `impl BillPaymentsRouter` for the Pay Dialog. Its Router records a close for the host's confirm
-//! to read, and puts a Notice onto the bin's queue (`crate::notices`).
+//! `impl BillPaymentsRouter` for the Pay Dialog. Its Router records a close for the Dialog to read, and puts a Notice onto the bin's queue (`crate::notices`).
 
 use gpui::{Context, EventEmitter};
 use lib_bill_payments::presenter::PayPresenter;
@@ -11,10 +10,11 @@ use lib_toast::{Notice, Notify};
 
 use super::PayDialog;
 use crate::bills::DesktopPorts;
-use crate::chrome::dialog_host::open_dialog;
+use crate::chrome::dialog_entity::host_dialog;
+use crate::ledger_store::LedgerStore;
 use crate::view::event::ViewEvent;
 
-/// Where the Pay Dialog's Presenter asks to go: closing, which the host does, and Notices, which
+/// Where the Pay Dialog's Presenter asks to go: closing, which the Dialog reads, and Notices, which
 /// `Shell` drains once the key or click returns.
 #[derive(Default)]
 pub(super) struct DialogRouter {
@@ -34,25 +34,43 @@ impl Notify for DialogRouter {
     }
 }
 
+/// What the Pay Dialog reads and writes through: the Bills ports its Match panel and wording read,
+/// the port Pay it directly writes through, and the Ledger read copy a confirm reads and brings in
+/// line.
+pub struct PayStores<'a> {
+    pub bills: &'a DesktopPorts,
+    pub payments: &'a SharedPayments,
+    pub ledger: &'a gpui::Entity<LedgerStore>,
+}
+
 /// Opens the Pay Dialog on `request`'s entry over page `P`, whose `landed` runs with the outcome
-/// once a confirm lands, so the page redraws from its ports. `bills` are the Bills ports the
-/// Dialog's Match panel and wording read, `payments` the port Pay it directly writes through, and
-/// `clock` and `date_style` what its Date field defaults to and parses by. Returns whether it
-/// opened: an entry whose Plan has gone has no Dialog.
+/// once a confirm lands, so the page redraws from its ports. `clock` and `date_style` are what its
+/// Date field defaults to and parses by. Returns whether it opened: an entry whose Plan has gone
+/// has no Dialog.
 pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
     cx: &mut Context<'_, P>,
-    bills: &DesktopPorts,
-    payments: &SharedPayments,
+    stores: PayStores<'_>,
     request: PayRequest,
     clock: Clock,
     date_style: Option<DateStyle>,
     landed: impl Fn(&mut P, PayOutcome, &mut Context<'_, P>) + 'static,
 ) -> bool {
+    let PayStores {
+        bills,
+        payments,
+        ledger,
+    } = stores;
     let Some(presenter) =
         PayPresenter::new(bills.clone(), payments.clone(), request, clock, date_style)
     else {
         return false;
     };
-    open_dialog(PayDialog::new(presenter, bills), landed, cx);
+    let page = cx.weak_entity();
+    let landed = Box::new(move |outcome, cx: &mut gpui::App| {
+        // A page that has gone has nothing to land on.
+        let _ = page.update(cx, |page, cx| landed(page, outcome, cx));
+    });
+    let dialog = PayDialog::new(presenter, bills, ledger, landed);
+    host_dialog(cx, |_| dialog);
     true
 }

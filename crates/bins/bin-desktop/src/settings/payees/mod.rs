@@ -22,7 +22,10 @@ use lib_ledger::Domain;
 use lib_payees::Payee;
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
     settings::hints::settings_payees_hints,
@@ -130,7 +133,7 @@ impl Page for PayeesPage {
     /// The page's legend and its Payee counts.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: settings_payees_hints(),
+            hints: owned_hints(settings_payees_hints()),
             right: scope_text(self.payees(cx)),
         })
     }

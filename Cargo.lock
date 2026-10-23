@@ -4921,8 +4921,10 @@ name = "lib_shell"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "lib_config",
  "lib_core",
  "lib_toast",
+ "lib_viper",
 ]
 
 [[package]]

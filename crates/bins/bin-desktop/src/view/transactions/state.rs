@@ -21,7 +21,7 @@ use super::{
 use lib_payees::Payee;
 
 use crate::{
-    chrome::statusline::PageStatus,
+    chrome::statusline::{PageStatus, owned_hints},
     import::ImportState,
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
@@ -413,7 +413,7 @@ impl TransactionsView {
         if let Some(import) = self.state.import.as_ref() {
             let pending = crate::import::summary(&import.rows).needs_review;
             return Some(PageStatus {
-                hints: import_hints(),
+                hints: owned_hints(import_hints()),
                 right: if pending == 0 {
                     crate::msg::desktop_import_status_ready()
                 } else {
@@ -424,11 +424,11 @@ impl TransactionsView {
             });
         }
         Some(PageStatus {
-            hints: if self.state.filter_form.is_some() {
+            hints: owned_hints(if self.state.filter_form.is_some() {
                 filter_hints()
             } else {
                 transactions_hints()
-            },
+            }),
             right: format::status_legend(self.glyphs),
         })
     }

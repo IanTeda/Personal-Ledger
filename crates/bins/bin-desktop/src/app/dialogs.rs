@@ -14,19 +14,50 @@ use crate::{
     settings::accounts::AccountsPage,
 };
 use gpui::Context;
+use lib_shell::DialogInput;
+
+use crate::chrome::dialog_entity::DialogHandle;
 
 impl Shell {
-    /// Opens `dialog` in the Dialog host, entering `InputMode::Dialog` with it.
+    /// Opens `dialog` in the legacy Dialog host, entering `InputMode::Dialog` with it.
     pub(super) fn open_dialog(&mut self, dialog: OpenDialog) {
+        self.close_dialog();
         self.chrome.dialog = Some(dialog);
-        self.chrome.dialog_confirm = None;
         self.nav.enter_mode(InputMode::Dialog);
+        self.presenter.dialog(DialogInput::Opened);
     }
 
     /// Opens a hosted Dialog, keeping the confirm that hands its outcome back to its page.
     pub(super) fn open_hosted_dialog(&mut self, open: HostedOpen) {
         self.open_dialog(open.dialog);
         self.chrome.dialog_confirm = Some(open.confirm);
+    }
+
+    /// Opens a module's Dialog Entity, closing the host once its Presenter closes it.
+    pub(super) fn host_dialog(&mut self, dialog: DialogHandle, cx: &mut Context<'_, Self>) {
+        self.close_dialog();
+        let shell = cx.weak_entity();
+        let id = dialog.id();
+        let closed = dialog.on_closed(
+            move |cx| {
+                // A Shell gone with its window has no Dialog left to close.
+                let _ = shell.update(cx, |shell, cx| {
+                    if shell.hosted_dialog().is_some_and(|open| open.id() == id) {
+                        shell.close_dialog();
+                        cx.notify();
+                    }
+                });
+            },
+            cx,
+        );
+        self.chrome.hosted = Some((dialog, closed));
+        self.nav.enter_mode(InputMode::Dialog);
+        self.presenter.dialog(DialogInput::Opened);
+    }
+
+    /// The open module Dialog, if one is.
+    pub(crate) fn hosted_dialog(&self) -> Option<&DialogHandle> {
+        self.chrome.hosted.as_ref().map(|(dialog, _)| dialog)
     }
 
     /// What a hosted Dialog reads and writes through.
@@ -41,6 +72,9 @@ impl Shell {
     /// one not yet hosted is open.
     #[doc(hidden)]
     pub fn dialog_readback(&self, cx: &gpui::App) -> Option<DialogReadback> {
+        if let Some(dialog) = self.hosted_dialog() {
+            return Some(dialog.readback(cx));
+        }
         self.chrome
             .dialog
             .as_ref()?
@@ -65,11 +99,13 @@ impl Shell {
         matches!(self.chrome.dialog, Some(OpenDialog::Help(_)))
     }
 
-    /// Closes the Dialog host's Dialog, if one is open, without applying it.
+    /// Closes the open Dialog, in either host, without applying it.
     pub(super) fn close_dialog(&mut self) {
         self.chrome.dialog_confirm = None;
-        if self.chrome.dialog.take().is_some() {
+        let legacy = self.chrome.dialog.take().is_some();
+        if legacy || self.chrome.hosted.take().is_some() {
             self.nav.exit_mode();
+            self.presenter.dialog(DialogInput::Closed);
         }
     }
 
@@ -102,11 +138,8 @@ impl Shell {
             // Hosted: confirmed above through the opener's confirm.
             Some(
                 OpenDialog::Tracing(_)
-                | OpenDialog::Bills(_)
-                | OpenDialog::Pay(_)
                 | OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
-                | OpenDialog::Units(_)
                 | OpenDialog::Institutions(_)
                 | OpenDialog::Accounts(_)
                 | OpenDialog::Payees(_)

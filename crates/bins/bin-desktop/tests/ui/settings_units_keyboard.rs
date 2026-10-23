@@ -21,13 +21,18 @@ fn on_units(app: &mut TestAppContext) -> Harness<'_> {
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.resize_to(size);
+    to_units(&mut ui);
+    ui
+}
+
+/// Takes `ui` to the Units page, with keyboard focus on it.
+fn to_units(ui: &mut Harness<'_>) {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("j j");
     assert_eq!(ui.settings().page, "Units");
     ui.press("l");
     assert!(ui.settings().page_focused);
-    ui
 }
 
 /// The selected row: a Unit's code or a Price Source's name.
@@ -631,4 +636,72 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
         "the refusal says how many units quote it"
     );
     assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
+fn escape_closes_an_open_select_then_the_next_escape_cancels_the_dialog(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = ui.unit_rows();
+    ui.press("n tab enter");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+
+    ui.press("escape");
+    assert_eq!(ui.dialog(), Some("AddUnit"));
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("false"));
+
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert_eq!(ui.unit_rows(), before, "a cancelled Dialog writes nothing");
+}
+
+#[gpui::test]
+fn enter_confirms_only_a_valid_form_and_on_a_select_opens_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("n enter");
+    assert_eq!(ui.dialog(), Some("AddUnit"), "an empty Code can't confirm");
+
+    type_word(&mut ui, "eth");
+    ui.press("tab tab");
+    type_word(&mut ui, "Ether");
+    ui.press("shift-tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Type"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("AddUnit"), "Enter on a select opens it");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+}
+
+#[gpui::test]
+fn ctrl_enter_confirms_a_valid_form_from_a_select(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("n");
+    type_word(&mut ui, "eth");
+    ui.press("tab tab");
+    type_word(&mut ui, "Ether");
+    ui.press("shift-tab enter");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+
+    ui.press("ctrl-enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert!(ui.unit_codes().contains(&"eth".to_string()));
+}
+
+#[gpui::test]
+fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
+
+    ui.press("ctrl-n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Type"));
+    ui.press("tab");
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("Type"),
+        "tab is no longer bound"
+    );
 }

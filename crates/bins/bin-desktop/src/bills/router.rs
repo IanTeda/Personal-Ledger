@@ -1,5 +1,5 @@
 //! `impl BillsRouter` for the Desktop: where the Bills page's Presenter asks to go. The Plan form
-//! and Skip open in today's Dialog host, Pay opens through the Bill Payments module's entry point
+//! and Skip open as Entities in the Dialog host, Pay opens through the Bill Payments module's entry point
 //! and a Transaction is shown through the Transactions module's, all through the page's gpui
 //! context, which is why the Router is built for each `handle` call. A Notice goes onto the bin's
 //! queue (`crate::notices`), which the input's `send` drains.
@@ -14,7 +14,7 @@ use lib_toast::{Notice, Notify};
 use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
-use crate::chrome::dialog_host::open_dialog;
+use crate::chrome::dialog_entity::host_dialog;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 
@@ -25,17 +25,27 @@ pub(super) struct PageRouter<'a, 'b> {
     /// The day and date style the page's Dialogs are opened on.
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
+    /// The Ledger read copy the page's Dialogs read from and bring in line.
+    pub ledger: Entity<LedgerStore>,
     pub cx: &'a mut Context<'b, BillsPage>,
 }
 
 impl PageRouter<'_, '_> {
-    /// Hosts `dialog`; its confirmed outcome comes back to the page through
-    /// [`BillsPage::dialog_landed`].
+    /// What a confirmed Bills Dialog hands back: its outcome, to [`BillsPage::dialog_landed`].
+    fn landed(&self) -> super::view::dialog::Landed {
+        let page = self.cx.weak_entity();
+        Box::new(move |outcome, cx: &mut gpui::App| {
+            // A page that has gone has nothing to land on.
+            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
+        })
+    }
+
+    /// Hosts `dialog`.
     fn host(&mut self, dialog: Option<BillsDialog>) -> bool {
         let Some(dialog) = dialog else {
             return false;
         };
-        open_dialog(dialog, BillsPage::dialog_landed, self.cx);
+        host_dialog(self.cx, |_| dialog);
         true
     }
 }
@@ -51,13 +61,16 @@ impl BillsRouter for PageRouter<'_, '_> {
             )),
             Some(id) => PlanFormPresenter::edit(ports, id, self.clock.clone(), self.date_style),
         };
-        let dialog = presenter.map(|presenter| BillsDialog::plan_form(presenter, &self.ports));
+        let dialog = presenter.map(|presenter| {
+            BillsDialog::plan_form(presenter, &self.ports, &self.ledger, self.landed())
+        });
         self.host(dialog)
     }
 
     fn open_skip(&mut self, entry: EntryId) -> bool {
-        let dialog = SkipPresenter::new(self.ports.clone(), entry)
-            .map(|presenter| BillsDialog::skip(presenter, &self.ports));
+        let dialog = SkipPresenter::new(self.ports.clone(), entry).map(|presenter| {
+            BillsDialog::skip(presenter, &self.ports, &self.ledger, self.landed())
+        });
         self.host(dialog)
     }
 
@@ -65,8 +78,11 @@ impl BillsRouter for PageRouter<'_, '_> {
     fn open_pay(&mut self, request: PayRequest) -> bool {
         crate::bill_payments::router::open_pay(
             self.cx,
-            &self.ports,
-            &self.payments,
+            crate::bill_payments::router::PayStores {
+                bills: &self.ports,
+                payments: &self.payments,
+                ledger: &self.ledger,
+            },
             request,
             self.clock.clone(),
             self.date_style,

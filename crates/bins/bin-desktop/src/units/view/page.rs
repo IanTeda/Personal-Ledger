@@ -15,7 +15,7 @@ use gpui::{
     Subscription,
 };
 
-use crate::navigation::chord::{chord, interned, is_global};
+use crate::navigation::chord::{chord, is_global};
 use lib_ledger::Domain;
 use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
 use lib_viper::keymap::Keymap;
@@ -83,6 +83,7 @@ impl UnitsPage {
         ports::refresh(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
+            ledger: self.ledger.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
@@ -164,7 +165,7 @@ impl Page for UnitsPage {
                 .view_model()
                 .hints
                 .into_iter()
-                .map(|hint| (interned(&hint.chord), hint.action))
+                .map(|hint| (hint.chord, hint.action))
                 .collect(),
             right: SettingsPage::Units.scope_note(),
         })

@@ -33,8 +33,19 @@ pub const HEIGHT: Pixels = px(28.0);
 /// page is showing: its key legend (`(key, action)` pairs) and its right-aligned text.
 #[derive(Debug, Clone)]
 pub struct PageStatus {
-    pub hints: Vec<(&'static str, String)>,
+    pub hints: Vec<Hint>,
     pub right: String,
+}
+
+/// One hint: its key, as the keymap binds it, and its action.
+pub type Hint = (String, String);
+
+/// `hints` written with fixed keys, as the status line takes them.
+pub fn owned_hints(hints: Vec<(&'static str, String)>) -> Vec<Hint> {
+    hints
+        .into_iter()
+        .map(|(key, action)| (key.to_string(), action))
+        .collect()
 }
 
 /// The shell-wide hint strip's clickable entries -- each does what its key does in `Normal` mode.
@@ -138,7 +149,7 @@ impl RenderOnce for StatusLine {
             - text_width(window, &badge_label, BADGE_SIZE, FontWeight::EXTRA_BOLD)
             - BADGE_PADDING_X * 2.0
             - text_width(window, &right, TEXT_SIZE, FontWeight::NORMAL);
-        let fit = |hints: &[(&str, String)]| -> usize {
+        let fit = |hints: &[Hint]| -> usize {
             let widths: Vec<Pixels> = hints
                 .iter()
                 .map(|(key, action)| {
@@ -206,7 +217,7 @@ enum Left<'a> {
     CommandEcho(&'a str),
     StatusMessage(String),
     ToastEcho(ToastKind, String),
-    PageHints(&'a [(&'static str, String)]),
+    PageHints(&'a [Hint]),
     HintStrip,
 }
 
@@ -305,10 +316,10 @@ fn shell_hint_entries() -> [(&'static str, HintAction, &'static str, String); 4]
 }
 
 /// The shell-wide hints as `(key, label)`, for measuring.
-fn shell_hints() -> Vec<(&'static str, String)> {
+fn shell_hints() -> Vec<Hint> {
     shell_hint_entries()
         .into_iter()
-        .map(|(_, _, key, label)| (key, label))
+        .map(|(_, _, key, label)| (key.to_string(), label))
         .collect()
 }
 
@@ -360,7 +371,7 @@ fn hint_strip(on_hint: Option<OnHint>, shown: usize, cx: &App) -> impl IntoEleme
 
 /// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the
 /// shell-wide hint strip's own. Tagged with how many hints it shows, as [`hint_strip`] is.
-fn page_hint_strip(hints: &[(&'static str, String)], cx: &App) -> impl IntoElement {
+fn page_hint_strip(hints: &[Hint], cx: &App) -> impl IntoElement {
     let shown = hints.len();
     div()
         .debug_selector(move || format!("status-page-hints-shown-{shown}"))
@@ -378,7 +389,7 @@ fn page_hint_strip(hints: &[(&'static str, String)], cx: &App) -> impl IntoEleme
                     div()
                         .font_weight(FontWeight::EXTRA_BOLD)
                         .text_color(color::foreground(cx))
-                        .child(*key),
+                        .child(key.clone()),
                 )
                 .child(action.clone())
                 .into_any_element()])
@@ -426,7 +437,7 @@ mod tests {
     #[test]
     fn the_toast_echo_replaces_the_hint_strip_and_the_page_legend() {
         let page = PageStatus {
-            hints: vec![("j/k", "row".to_string())],
+            hints: vec![("j/k".to_string(), "row".to_string())],
             right: String::new(),
         };
         assert_eq!(left(None, None, None, None), Left::HintStrip);

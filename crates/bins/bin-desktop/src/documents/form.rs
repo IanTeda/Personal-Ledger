@@ -835,15 +835,15 @@ impl Dialog for DocumentsDialog {
         }
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
         use crate::view::documents::hints::{dialog_hints, picker_hints};
-        Some(match self {
+        Some(crate::chrome::statusline::owned_hints(match self {
             Self::Import(..) => dialog_hints(true),
             Self::Picker(_) => picker_hints(),
             Self::Add(_) | Self::Edit(..) | Self::Facts(..) | Self::AcceptAll(_) => {
                 dialog_hints(false)
             }
-        })
+        }))
     }
 
     fn focused_text(&mut self) -> Option<&mut TextField> {

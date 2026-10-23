@@ -23,10 +23,21 @@ pub enum ShellInput<F> {
     WriteFailed(F),
 }
 
+/// A Dialog opening or closing over the View. Neither asks the Router anything, so the Client
+/// delivers them through [`ShellPresenter::dialog`] wherever a Dialog opens, with no Router to hand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogInput {
+    /// A Dialog opened: until it closes it takes every key.
+    Opened,
+    /// The open Dialog closed.
+    Closed,
+}
+
 pub struct ShellPresenter {
     clock: Clock,
     /// The calendar month the Shell last saw the Clock read.
     month: Period,
+    dialog_open: bool,
 }
 
 impl ShellPresenter {
@@ -34,7 +45,20 @@ impl ShellPresenter {
     /// it started.
     pub fn new(clock: Clock) -> Self {
         let month = Period::of(clock.today());
-        Self { clock, month }
+        Self {
+            clock,
+            month,
+            dialog_open: false,
+        }
+    }
+
+    /// Whether a Dialog is open, so the Client hands it every key.
+    pub fn dialog_open(&self) -> bool {
+        self.dialog_open
+    }
+
+    pub fn dialog(&mut self, input: DialogInput) {
+        self.dialog_open = input == DialogInput::Opened;
     }
 
     pub fn handle<R: ShellRouter + ?Sized>(
@@ -113,6 +137,18 @@ mod tests {
                 Routed::WriteFailed("disk full".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn a_dialog_is_open_from_its_opening_to_its_closing() {
+        let mut shell = ShellPresenter::new(Clock::fixed(date(2026, 9, 19)));
+        assert!(!shell.dialog_open());
+
+        shell.dialog(DialogInput::Opened);
+        assert!(shell.dialog_open());
+
+        shell.dialog(DialogInput::Closed);
+        assert!(!shell.dialog_open());
     }
 
     #[test]

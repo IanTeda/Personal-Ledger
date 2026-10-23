@@ -8,11 +8,11 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_units::presenter::{DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel};
 
 use super::{
-    Shared, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,
+    Clicks, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,
     toggle_select, typed,
 };
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         fields::text_field,
@@ -22,16 +22,16 @@ use crate::{
     theme::color,
 };
 
-fn handle(presenter: &Shared<DeleteUnitPresenter>, event: DeleteUnitEvent) {
+fn handle(presenter: &mut DeleteUnitPresenter, event: DeleteUnitEvent) {
     send(presenter, event, DeleteUnitPresenter::handle);
 }
 
 pub(super) fn key(
-    presenter: &Shared<DeleteUnitPresenter>,
+    presenter: &mut DeleteUnitPresenter,
     select: &mut SelectState,
     key: DialogKey,
 ) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     if let Some(new_base) = &view.new_base {
         let select_key_now = match key {
             DialogKey::Up | DialogKey::Down => true,
@@ -47,7 +47,7 @@ pub(super) fn key(
         }
     }
     match key {
-        DialogKey::Enter | DialogKey::CtrlEnter => enter(view.frame.can_confirm),
+        DialogKey::Enter => enter(view.frame.can_confirm),
         DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
         _ => match view
             .confirm
@@ -65,7 +65,7 @@ pub(super) fn key(
 
 fn click_new_base(dialog: &mut UnitsDialog) {
     if let View::DeleteUnit(presenter, select) = &mut dialog.view
-        && let Some(new_base) = presenter.borrow().view_model().new_base
+        && let Some(new_base) = presenter.view_model().new_base
     {
         toggle_select(select, &new_base.select);
     }
@@ -74,7 +74,6 @@ fn click_new_base(dialog: &mut UnitsDialog) {
 fn click_new_base_option(dialog: &mut UnitsDialog, index: usize) {
     if let View::DeleteUnit(presenter, select) = &mut dialog.view {
         let chosen = presenter
-            .borrow()
             .view_model()
             .new_base
             .and_then(|new_base| choose_option(select, &new_base.select, index));
@@ -87,7 +86,7 @@ fn click_new_base_option(dialog: &mut UnitsDialog, index: usize) {
 pub(super) fn render(
     view: &DeleteUnitViewModel,
     select: &SelectState,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let note = |text: String| {

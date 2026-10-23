@@ -245,13 +245,13 @@ impl Dialog for TagsDialog {
         self.inner_mut().close_open_select()
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(match self {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+        Some(crate::chrome::statusline::owned_hints(match self {
             Self::Add(_) => tag_dialog_hints(false),
             Self::Edit(..) => tag_dialog_hints(true),
             Self::Remove(..) => confirm_dialog_hints(),
             Self::Merge(_) => merge_tags_dialog_hints(),
-        })
+        }))
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {

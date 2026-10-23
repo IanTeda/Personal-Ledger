@@ -15,7 +15,7 @@ use lib_colour_theme::ColourTheme;
 use lib_core::DateStyle;
 
 use crate::{
-    chrome::statusline::PageStatus,
+    chrome::statusline::{PageStatus, owned_hints},
     navigation::key_router::Movement,
     settings::{
         SettingsPage,
@@ -83,11 +83,11 @@ impl Page for DisplayPage {
 
     fn page_status(&self, _cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: if self.colour_theme_focus.is_some() {
+            hints: owned_hints(if self.colour_theme_focus.is_some() {
                 settings_colour_grid_hints()
             } else {
                 settings_display_hints()
-            },
+            }),
             right: Self::PAGE.scope_note(),
         })
     }

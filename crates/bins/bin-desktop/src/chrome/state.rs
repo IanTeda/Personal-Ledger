@@ -8,6 +8,7 @@ use lib_toast::Toasts;
 
 use crate::{
     chrome::{
+        dialog_entity::DialogHandle,
         dialog_host::{HostConfirm, OpenDialog},
         palette::Palette,
         rail::RailOverride,
@@ -56,6 +57,12 @@ pub(crate) struct ChromeState {
     /// The open Dialog's confirm, opener bound, while it is a hosted one
     /// (`dialog_host::open_dialog`). Set and cleared with `dialog`.
     pub(crate) dialog_confirm: Option<HostConfirm>,
+    /// The open module Dialog, an Entity holding its Presenter (`crate::chrome::dialog_entity`),
+    /// and the subscription that closes it once its Presenter does. Opened and closed with
+    /// `dialog` by the same two methods, so at most one of the two is ever `Some`.
+    pub(crate) hosted: Option<(DialogHandle, gpui::Subscription)>,
+    /// The keys every module Dialog shares, under `[keybindings]` (`lib_shell::dialog`).
+    pub(crate) dialog_keymap: lib_viper::keymap::Keymap<lib_shell::DialogCommand>,
     /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
     /// the caller once it has an `App` (the key handling runs without one).
     pub(crate) pending_colour_change: Option<ColourChange>,

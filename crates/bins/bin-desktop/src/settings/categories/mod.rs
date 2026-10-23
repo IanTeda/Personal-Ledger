@@ -26,7 +26,10 @@ use lib_list_cursor::step_id;
 
 use crate::{
     budgets::PERSONAL_SPENDING_ID,
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
@@ -177,7 +180,7 @@ impl Page for CategoriesPage {
     /// The fixed legend, and the heading's meta.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: settings_categories_hints(),
+            hints: owned_hints(settings_categories_hints()),
             right: self.scope_note(cx),
         })
     }

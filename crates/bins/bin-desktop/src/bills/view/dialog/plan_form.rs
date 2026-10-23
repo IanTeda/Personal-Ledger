@@ -11,9 +11,9 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_bills::presenter::{PlanField, PlanFormEvent, PlanFormPresenter, PlanFormViewModel};
 use lib_viper::view::{SelectView, TextFieldView};
 
-use super::{BillsDialog, Shared, View, send};
+use super::{BillsDialog, Clicks, View, send};
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         dialog_fields::{label, suffixed_label, text_field, two_up},
@@ -75,7 +75,7 @@ impl PlanSelects {
     }
 }
 
-fn handle(presenter: &Shared<PlanFormPresenter>, event: PlanFormEvent) {
+fn handle(presenter: &mut PlanFormPresenter, event: PlanFormEvent) {
     send(presenter, event, PlanFormPresenter::handle);
 }
 
@@ -99,7 +99,7 @@ fn focused(view: &PlanFormViewModel) -> Option<PlanField> {
 
 /// A select key on `field`'s select: steps or opens its list, and sends a new choice.
 fn select(
-    presenter: &Shared<PlanFormPresenter>,
+    presenter: &mut PlanFormPresenter,
     view: &PlanFormViewModel,
     selects: &mut PlanSelects,
     field: PlanField,
@@ -146,7 +146,7 @@ fn select(
 }
 
 fn pick<T: Copy + PartialEq>(
-    presenter: &Shared<PlanFormPresenter>,
+    presenter: &mut PlanFormPresenter,
     state: &mut SelectState,
     view: &SelectView<T>,
     key: DialogKey,
@@ -193,11 +193,11 @@ fn text_event(field: PlanField, text: String) -> Option<PlanFormEvent> {
 }
 
 pub(super) fn key(
-    presenter: &Shared<PlanFormPresenter>,
+    presenter: &mut PlanFormPresenter,
     selects: &mut PlanSelects,
     key: DialogKey,
 ) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let field = focused(&view);
     match key {
         // `Tab` commits an open list's highlight before moving on.
@@ -218,7 +218,7 @@ pub(super) fn key(
             );
             return DialogOutcome::Handled;
         }
-        DialogKey::Enter | DialogKey::CtrlEnter if !is_select(&view, field) => {
+        DialogKey::Enter if !is_select(&view, field) => {
             return enter(view.frame.can_confirm);
         }
         _ => {}
@@ -268,7 +268,7 @@ fn click_field(dialog: &mut BillsDialog, field: PlanField) {
         return;
     }
     handle(presenter, PlanFormEvent::Focus(field));
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let state = match field {
         PlanField::Category => &selects.category,
         PlanField::Unit if view.unit_locked.is_none() => &selects.unit,
@@ -301,7 +301,7 @@ fn click_option(dialog: &mut BillsDialog, field: PlanField, index: usize) {
     let View::PlanForm(presenter, selects) = &mut dialog.view else {
         return;
     };
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let event = match field {
         PlanField::Category => {
             choose_option(&mut selects.category, &view.category, index).map(PlanFormEvent::Category)
@@ -327,7 +327,7 @@ fn click_option(dialog: &mut BillsDialog, field: PlanField, index: usize) {
 pub(super) fn render(
     view: &PlanFormViewModel,
     selects: &PlanSelects,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let editing = view.active.is_some();
@@ -469,17 +469,11 @@ pub(super) fn render(
                                 view.amount_kind
                                     .chosen
                                     .unwrap_or(lib_bills::AmountKind::Fixed),
-                                {
-                                    let actions = actions.clone();
-                                    std::rc::Rc::new(move |kind, _window, cx| {
-                                        actions.edit(cx, move |dialog: &mut BillsDialog, _| {
-                                            if let View::PlanForm(presenter, _) = &dialog.view {
-                                                handle(presenter, PlanFormEvent::AmountKind(kind));
-                                            }
-                                            None
-                                        });
-                                    })
-                                },
+                                actions.choose(|dialog: &mut BillsDialog, kind| {
+                                    if let View::PlanForm(presenter, _) = &mut dialog.view {
+                                        handle(presenter, PlanFormEvent::AmountKind(kind));
+                                    }
+                                }),
                                 None,
                                 cx,
                             )),
@@ -640,9 +634,19 @@ fn error_line(text: String, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn readback(view: &PlanFormViewModel) -> Vec<(&'static str, String)> {
+pub(super) fn readback(
+    view: &PlanFormViewModel,
+    selects: &PlanSelects,
+) -> Vec<(&'static str, String)> {
     vec![
         ("name", view.name.text.clone()),
+        (
+            "field",
+            focused(view)
+                .map(|field| format!("{field:?}"))
+                .unwrap_or_default(),
+        ),
+        ("select_open", selects.any_open().to_string()),
         ("unit", chosen_label(&view.unit).unwrap_or_default()),
         ("account", chosen_label(&view.account).unwrap_or_default()),
         ("amount", view.amount.text.clone()),

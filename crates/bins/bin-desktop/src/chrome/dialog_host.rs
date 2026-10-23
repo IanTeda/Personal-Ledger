@@ -1,5 +1,6 @@
-//! The Dialog host: the one slot a Dialog lives in while it is open, and the keyboard handling
-//! every Dialog shares. The key handling needs no window, so a Dialog's keys are unit-tested
+//! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while open,
+//! and the keyboard handling they share. A module's Dialog (Units, Bills, Pay) is an Entity in
+//! `chrome::dialog_entity` instead; these twelve move there with their slices (#820). The key handling needs no window, so a Dialog's keys are unit-tested
 //! without one.
 //!
 //! `Shell` holds `Option<OpenDialog>` and opens and closes it only through `Shell::open_dialog`
@@ -30,9 +31,9 @@ use lib_toast::ToastKind;
 
 use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
-    bill_payments::PayDialog, bills::BillsDialog, budgets::BudgetsDialog, dialog::OnClick,
-    documents::form::DocumentsDialog, form::field::TextField, ledger_store::LedgerStore,
-    settings::accounts::dialogs::AccountsDialog, settings::documents::dialogs::DocumentTypesDialog,
+    budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
+    form::field::TextField, ledger_store::LedgerStore, settings::accounts::dialogs::AccountsDialog,
+    settings::documents::dialogs::DocumentTypesDialog,
     settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
     settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
@@ -98,7 +99,7 @@ pub trait Dialog {
 
     /// The status line's hints while this Dialog is open, in place of the View's (ADR-0037).
     /// `None` leaves them to the View, as for a Dialog whose View still words its hints itself.
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
         None
     }
 
@@ -273,11 +274,10 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open Dialog, one variant per feature.
+/// The open legacy Dialog, one variant per feature: the twelve not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    Units(crate::units::UnitsDialog),
     Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
@@ -285,8 +285,6 @@ pub enum OpenDialog {
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
     Tags(TagsDialog),
-    Bills(BillsDialog),
-    Pay(PayDialog),
     /// Boxed: its forms carry their select choices.
     Budgets(Box<BudgetsDialog>),
     Documents(DocumentsDialog),
@@ -298,7 +296,6 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Units(dialog) => dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -306,8 +303,6 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
-            Self::Bills(dialog) => dialog,
-            Self::Pay(dialog) => dialog,
             Self::Budgets(dialog) => &**dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
@@ -318,7 +313,6 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Units(dialog) => dialog,
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
@@ -326,8 +320,6 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
-            Self::Bills(dialog) => dialog,
-            Self::Pay(dialog) => dialog,
             Self::Budgets(dialog) => &mut **dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
@@ -371,7 +363,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Units, crate::units::UnitsDialog);
 dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
@@ -379,8 +370,6 @@ dialog_variant!(Payees, PayeesDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Inventory, InventoryDialog);
 dialog_variant!(Tags, TagsDialog);
-dialog_variant!(Bills, BillsDialog);
-dialog_variant!(Pay, PayDialog);
 dialog_variant!(Budgets, BudgetsDialog);
 dialog_variant!(Documents, DocumentsDialog);
 dialog_variant!(Help, HelpDialog);
@@ -406,7 +395,7 @@ impl Dialog for OpenDialog {
         self.inner_mut().close_open_select()
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
         self.inner().hints()
     }
 

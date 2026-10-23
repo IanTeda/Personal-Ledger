@@ -5,7 +5,7 @@
 //!
 //! - `view/page.rs` wraps the page Presenter in an Entity, which the Shell hosts as the Bills
 //!   destination; `view/schedule.rs`, `view/filters.rs` and `view/planner.rs` draw its tabs.
-//! - `view/dialog.rs` hosts the Plan form's and Skip's Presenters in today's Dialog host, one View
+//! - `view/dialog.rs` holds the Plan form's and Skip's Presenters in Entities in the Dialog host, one View
 //!   per Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).

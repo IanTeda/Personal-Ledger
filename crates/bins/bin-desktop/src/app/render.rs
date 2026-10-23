@@ -13,6 +13,7 @@ use gpui::{
 use crate::{
     bills::{self},
     budgets,
+    chrome::dialog_entity::DialogHandle,
     chrome::dialog_host::{Dialog, DialogActions},
     chrome::rail::{self as chrome_rail, context::ContextRail, primary::PrimaryRail},
     chrome::statusline::{self, StatusLine},
@@ -379,6 +380,7 @@ impl Render for Shell {
                     .as_ref()
                     .and_then(|dialog| dialog.render(&self.dialog_scope(), &dialog_actions, cx)),
             )
+            .children(self.hosted_dialog().map(DialogHandle::view))
             // Last: above every dialog, the palette and their scrim, never over the status line.
             .children(toast_layer)
     }

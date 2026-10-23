@@ -88,7 +88,7 @@ impl Dialog for InventoryDialog {
     }
 
     /// The legend: only Add location has several fields (name and Unit) to `tab` through.
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
         let mut hints = vec![
             ("esc", crate::msg::desktop_hint_cancel()),
             ("enter", crate::msg::desktop_hint_confirm()),
@@ -96,7 +96,7 @@ impl Dialog for InventoryDialog {
         if matches!(self, Self::Add(_)) {
             hints.push(("tab", crate::msg::desktop_hint_next_field()));
         }
-        Some(hints)
+        Some(crate::chrome::statusline::owned_hints(hints))
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {

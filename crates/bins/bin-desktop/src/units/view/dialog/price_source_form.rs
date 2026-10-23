@@ -6,7 +6,6 @@
 //! The typed API key is kept here only to append to; the Presenter takes it as a secret and the
 //! form draws it masked. It is never stored (ADR-0043).
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -18,9 +17,9 @@ use lib_units::presenter::{
 use lib_viper::view::{Choice, SelectView, TextFieldView};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::{Shared, UnitsDialog, View, enter, help, refusal, send, test_not_built, typed};
+use super::{Clicks, UnitsDialog, View, enter, help, refusal, send, test_not_built, typed};
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::fields::{field_label, segmented_labelled, text_field},
     theme::color,
@@ -37,10 +36,10 @@ const MONOSPACE: &str = "monospace";
 pub(super) struct ApiKeyInput(SecretString);
 
 pub(super) fn open(presenter: PriceSourceFormPresenter) -> View {
-    View::PriceSourceForm(Rc::new(RefCell::new(presenter)), ApiKeyInput::default())
+    View::PriceSourceForm(presenter, ApiKeyInput::default())
 }
 
-fn handle(presenter: &Shared<PriceSourceFormPresenter>, event: PriceSourceFormEvent) {
+fn handle(presenter: &mut PriceSourceFormPresenter, event: PriceSourceFormEvent) {
     send(presenter, event, PriceSourceFormPresenter::handle);
 }
 
@@ -91,15 +90,15 @@ fn text_of(view: &PriceSourceFormViewModel, field: PriceSourceField) -> Option<S
 }
 
 pub(super) fn key(
-    presenter: &Shared<PriceSourceFormPresenter>,
+    presenter: &mut PriceSourceFormPresenter,
     api_key: &mut ApiKeyInput,
     key: DialogKey,
 ) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let event = match (key, focused(&view)) {
         (DialogKey::Tab, _) => PriceSourceFormEvent::NextField,
         (DialogKey::BackTab, _) => PriceSourceFormEvent::PrevField,
-        (DialogKey::Enter | DialogKey::CtrlEnter, _) => return enter(view.frame.can_confirm),
+        (DialogKey::Enter, _) => return enter(view.frame.can_confirm),
         (
             DialogKey::Left | DialogKey::Right,
             Some(PriceSourceField::Updates | PriceSourceField::Auth),
@@ -127,9 +126,9 @@ pub(super) fn key(
 }
 
 /// A click that sends `event` to the open form.
-fn click(actions: &DialogActions, event: PriceSourceFormEvent) -> dialog::OnClick {
+fn click(actions: &Clicks, event: PriceSourceFormEvent) -> dialog::OnClick {
     UnitsDialog::on_click(actions, move |dialog| {
-        if let View::PriceSourceForm(presenter, _) = &dialog.view {
+        if let View::PriceSourceForm(presenter, _) = &mut dialog.view {
             handle(presenter, event.clone());
         }
     })
@@ -139,7 +138,7 @@ fn click(actions: &DialogActions, event: PriceSourceFormEvent) -> dialog::OnClic
 fn segmented<T: Copy + PartialEq + 'static>(
     id_prefix: &'static str,
     select: &SelectView<T>,
-    actions: &DialogActions,
+    actions: &Clicks,
     event: fn(T) -> PriceSourceFormEvent,
     cx: &App,
 ) -> AnyElement {
@@ -175,7 +174,7 @@ fn text_box(
     field: &TextFieldView,
     which: PriceSourceField,
     mono: bool,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let caret = if field.focused { "\u{2502}" } else { "" };
@@ -213,18 +212,14 @@ fn text_box(
         .into_any_element()
 }
 
-pub(super) fn render(
-    view: &PriceSourceFormViewModel,
-    actions: &DialogActions,
-    cx: &App,
-) -> AnyElement {
+pub(super) fn render(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     match &view.endpoint {
         Some(_) => render_custom(view, actions, cx),
         None => render_built_in(view, actions, cx),
     }
 }
 
-fn render_custom(view: &PriceSourceFormViewModel, actions: &DialogActions, cx: &App) -> AnyElement {
+fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let prefix = if view.usage.is_some() {
         "edit-price-source"
     } else {
@@ -339,11 +334,7 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &DialogActions, cx: &
     frame(view, prefix, CUSTOM_WIDTH, fields, actions, cx)
 }
 
-fn render_built_in(
-    view: &PriceSourceFormViewModel,
-    actions: &DialogActions,
-    cx: &App,
-) -> AnyElement {
+fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         div()
             .child(text_field(
@@ -395,7 +386,7 @@ fn frame(
     prefix: &'static str,
     width: gpui::Pixels,
     fields: Vec<AnyElement>,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let card = div()

@@ -34,7 +34,10 @@ use lib_ledger::{Domain, MoveArea};
 use lib_toast::ToastKind;
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     inventory::{self, Inventory},
     ledger_store::{LedgerStore, notify_on},
     navigation::key_router::Movement,
@@ -265,7 +268,7 @@ impl Page for InventoryPage {
     /// The page's legend for the selected row, and its Location, Area and Item counts.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: settings_inventory_hints(self.selected_row(cx)),
+            hints: owned_hints(settings_inventory_hints(self.selected_row(cx))),
             right: scope_text(self.inventory(cx)),
         })
     }

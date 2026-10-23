@@ -51,7 +51,11 @@ impl Shell {
             ActiveViewEntity::Shell(_) => None,
             view => view.page_status(cx),
         };
-        match self.chrome.dialog.as_ref().and_then(Dialog::hints) {
+        let hints = match self.hosted_dialog() {
+            Some(dialog) => dialog.hints(&self.chrome.dialog_keymap, cx),
+            None => self.chrome.dialog.as_ref().and_then(Dialog::hints),
+        };
+        match hints {
             Some(hints) => Some(PageStatus {
                 hints,
                 right: status.map(|status| status.right).unwrap_or_default(),

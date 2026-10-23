@@ -1,134 +1,143 @@
-//! The Bills Dialogs' Views, hosted by today's Dialog host. [`BillsDialog`] is the value the host
-//! holds while one is open (`OpenDialog::Bills`): a `lib-bills` Presenter and the widget state that
-//! is gpui's to keep (which select's list is open and its highlight). Every key and click becomes a
-//! Presenter event; each View draws the Presenter's view model and nothing else.
+//! The Bills Dialogs' Views, each open one an Entity in the Dialog host (`chrome::dialog_entity`).
+//! [`BillsDialog`] holds a `lib-bills` Presenter and the widget state that is gpui's to keep (which
+//! select's list is open and its highlight). Every key and click becomes a Presenter event; each
+//! View draws the Presenter's view model and nothing else.
 //!
-//! The Presenter sits in an `Rc<RefCell<_>>`, not an Entity: the host's `Dialog` methods take no
-//! gpui context to update one through, and the host repaints after every key and click.
-//!
-//! Confirm sends the Presenter its Confirm event ([`ConfirmDialog::confirm`]); a Dialog that closed
-//! through its Router hands the outcome to the page. `Esc` and Cancel close through the host, which
-//! tells the Presenter nothing, since a cancelled Bills Dialog wrote nothing.
+//! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
+//! outcome is handed to the page, and the host closes on [`DialogClosed`].
 
 mod plan_form;
 mod skip;
 
-use std::cell::RefCell;
-use std::fmt;
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, Window};
+use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_bills::presenter::{PlanFormEvent, PlanFormPresenter, SkipEvent, SkipPresenter};
 use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, TransactionId};
+use lib_shell::DialogCommand;
 use lib_toast::{Notice, Notify};
+use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
 use self::plan_form::PlanSelects;
 use crate::bills::ports::{self, DesktopPorts};
-use crate::chrome::dialog_host::{
-    ConfirmDialog, Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    Landed,
-};
+use crate::chrome::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
+use crate::chrome::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::chrome::statusline::Hint;
 use crate::dialog;
+use crate::ledger_store::LedgerStore;
 
-type Shared<P> = Rc<RefCell<P>>;
+/// The open Bills Dialog's clicks.
+type Clicks = DialogClicks<BillsDialog>;
+
+/// What a confirmed Bills Dialog hands the page that opened it.
+pub(crate) type Landed = Box<dyn Fn(BillsOutcome, &mut App)>;
 
 /// The open Bills Dialog: its Presenter and its widget state.
-#[derive(Clone)]
 pub struct BillsDialog {
     ports: DesktopPorts,
+    /// The Ledger read copy a confirm reads from and brings in line with what it wrote.
+    ledger: Entity<LedgerStore>,
     view: View,
+    landed: Landed,
 }
 
-#[derive(Clone)]
 enum View {
-    /// Boxed: five selects' widget state would swell the Skip variant.
-    PlanForm(Shared<PlanFormPresenter>, Box<PlanSelects>),
-    Skip(Shared<SkipPresenter>),
+    /// Boxed: the form and its five selects' widget state would swell the Skip variant.
+    PlanForm(Box<PlanFormPresenter>, Box<PlanSelects>),
+    Skip(SkipPresenter),
 }
 
 impl View {
-    /// The Presenter's address, which tells two open Dialogs apart.
-    fn presenter(&self) -> *const () {
-        match self {
-            Self::PlanForm(presenter, _) => Rc::as_ptr(presenter).cast(),
-            Self::Skip(presenter) => Rc::as_ptr(presenter).cast(),
-        }
-    }
-
     /// Which Dialog is open, as the UI tests name it.
     fn kind(&self) -> &'static str {
         match self {
-            Self::PlanForm(presenter, _) if presenter.borrow().view_model().active.is_some() => {
-                "Edit"
-            }
+            Self::PlanForm(presenter, _) if presenter.view_model().active.is_some() => "Edit",
             Self::PlanForm(..) => "Add",
             Self::Skip(_) => "Skip",
         }
     }
 }
 
-impl fmt::Debug for BillsDialog {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("BillsDialog")
-            .field(&self.view.kind())
-            .finish()
-    }
-}
-
-/// Two values are the same Dialog when they hold the same Presenter.
-impl PartialEq for BillsDialog {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.view.presenter(), other.view.presenter())
-    }
-}
-
-impl Eq for BillsDialog {}
-
 impl BillsDialog {
-    /// The Add or Edit bill plan Dialog on `presenter`.
-    pub fn plan_form(presenter: PlanFormPresenter, ports: &DesktopPorts) -> Self {
-        Self {
-            ports: ports.clone(),
-            view: View::PlanForm(Rc::new(RefCell::new(presenter)), Box::default()),
-        }
+    /// The Add or Edit bill plan Dialog on `presenter`. A confirm reads and refreshes `ledger` and
+    /// hands its outcome to `landed`.
+    pub(crate) fn plan_form(
+        presenter: PlanFormPresenter,
+        ports: &DesktopPorts,
+        ledger: &Entity<LedgerStore>,
+        landed: Landed,
+    ) -> Self {
+        Self::new(
+            View::PlanForm(Box::new(presenter), Box::default()),
+            ports,
+            ledger,
+            landed,
+        )
     }
 
     /// The Skip this cycle Dialog on `presenter`.
-    pub fn skip(presenter: SkipPresenter, ports: &DesktopPorts) -> Self {
+    pub(crate) fn skip(
+        presenter: SkipPresenter,
+        ports: &DesktopPorts,
+        ledger: &Entity<LedgerStore>,
+        landed: Landed,
+    ) -> Self {
+        Self::new(View::Skip(presenter), ports, ledger, landed)
+    }
+
+    fn new(view: View, ports: &DesktopPorts, ledger: &Entity<LedgerStore>, landed: Landed) -> Self {
         Self {
             ports: ports.clone(),
-            view: View::Skip(Rc::new(RefCell::new(presenter))),
+            ledger: ledger.clone(),
+            view,
+            landed,
         }
     }
 
-    /// A click's change, sent through the host's edit callback so the Dialog repaints.
-    fn on_click(actions: &DialogActions, change: impl Fn(&mut Self) + 'static) -> dialog::OnClick {
-        let actions = actions.clone();
-        let change = Rc::new(change);
-        Rc::new(move |_window: &mut Window, cx: &mut App| {
-            let change = change.clone();
-            actions.edit(cx, move |dialog: &mut Self, _| {
-                change(dialog);
-                None
-            });
-        })
+    /// A click's change to the Dialog, as one input.
+    fn on_click(actions: &Clicks, change: impl Fn(&mut Self) + 'static) -> dialog::OnClick {
+        actions.click(change)
     }
 
     /// As [`Self::on_click`], for a click on row `index` of an open list.
     fn on_option(
-        actions: &DialogActions,
+        actions: &Clicks,
         change: impl Fn(&mut Self, usize) + 'static,
     ) -> crate::form::select_field::OnOptionClick {
-        let actions = actions.clone();
-        let change = Rc::new(change);
-        Rc::new(move |index, _window: &mut Window, cx: &mut App| {
-            let change = change.clone();
-            actions.edit(cx, move |dialog: &mut Self, _| {
-                change(dialog, index);
-                None
-            });
-        })
+        actions.option(change)
+    }
+
+    /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
+    fn close_event(&mut self, confirm: bool) -> DialogRouter {
+        match &mut self.view {
+            View::PlanForm(presenter, _) => {
+                let event = if confirm {
+                    PlanFormEvent::Confirm
+                } else {
+                    PlanFormEvent::Cancel
+                };
+                send(&mut **presenter, event, PlanFormPresenter::handle)
+            }
+            View::Skip(presenter) => {
+                let event = if confirm {
+                    SkipEvent::Confirm
+                } else {
+                    SkipEvent::Cancel
+                };
+                send(presenter, event, SkipPresenter::handle)
+            }
+        }
+    }
+
+    /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
+    /// the Dialog.
+    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed else {
+            return;
+        };
+        if let Some(outcome) = outcome {
+            (self.landed)(outcome, cx);
+        }
+        cx.emit(DialogClosed);
     }
 }
 
@@ -169,33 +178,49 @@ impl Notify for DialogRouter {
 
 /// Sends `event` to `presenter`, returning what its Router was asked.
 fn send<P, E>(
-    presenter: &Shared<P>,
+    presenter: &mut P,
     event: E,
     handle: fn(&mut P, E, &mut dyn BillsRouter),
 ) -> DialogRouter {
     let mut router = DialogRouter::default();
-    handle(&mut presenter.borrow_mut(), event, &mut router);
+    handle(presenter, event, &mut router);
     router
 }
 
-impl Dialog for BillsDialog {
-    /// Every key is the Bills Dialog's own: the host's typing and `Tab` would edit a `TextField`
-    /// the Presenter doesn't hold.
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        Some(match &mut self.view {
+impl EventEmitter<DialogClosed> for BillsDialog {}
+
+impl HostedDialog for BillsDialog {
+    /// Every key is the Bills Dialog's own: the Presenter holds every field.
+    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
+        match &mut self.view {
             View::PlanForm(presenter, selects) => plan_form::key(presenter, selects, key),
             View::Skip(_) => match key {
-                DialogKey::Enter | DialogKey::CtrlEnter => DialogOutcome::Confirm,
+                DialogKey::Enter => DialogOutcome::Confirm,
                 _ => DialogOutcome::Handled,
             },
-        })
+        }
     }
 
-    fn is_valid(&self) -> bool {
+    fn can_confirm(&self) -> bool {
         match &self.view {
-            View::PlanForm(presenter, _) => presenter.borrow().view_model().frame.can_confirm,
-            View::Skip(presenter) => presenter.borrow().view_model().frame.can_confirm,
+            View::PlanForm(presenter, _) => presenter.view_model().frame.can_confirm,
+            View::Skip(presenter) => presenter.view_model().frame.can_confirm,
         }
+    }
+
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the
+    /// Presenter's view model and keeps the Dialog open.
+    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
+        ports::copy_reads(&self.ports, self.ledger.read(cx).ledger());
+        let router = self.close_event(true);
+        ports::refresh(&self.ports, &self.ledger, cx);
+        self.closed(router, cx);
+    }
+
+    /// A cancelled Bills Dialog has written nothing.
+    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
+        let router = self.close_event(false);
+        self.closed(router, cx);
     }
 
     fn close_open_select(&mut self) -> bool {
@@ -205,69 +230,47 @@ impl Dialog for BillsDialog {
         }
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(match &self.view {
-            View::PlanForm(..) => crate::settings::hints::payee_dialog_hints(),
-            View::Skip(_) => vec![
-                ("esc", crate::msg::desktop_hint_cancel()),
-                ("enter", crate::msg::desktop_hint_confirm()),
-            ],
-        })
-    }
-
-    fn render(
-        &self,
-        _scope: &DialogScope,
-        actions: &DialogActions,
-        cx: &App,
-    ) -> Option<AnyElement> {
-        Some(match &self.view {
-            View::PlanForm(presenter, selects) => {
-                plan_form::render(&presenter.borrow().view_model(), selects, actions, cx)
-            }
-            View::Skip(presenter) => skip::render(&presenter.borrow().view_model(), actions, cx),
-        })
+    fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
+        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
+        let mut hints = vec![
+            (key(BACK), crate::msg::desktop_hint_cancel()),
+            (key(SELECT), crate::msg::desktop_hint_confirm()),
+        ];
+        if matches!(self.view, View::PlanForm(..)) {
+            hints.push((key(NEXT_FIELD), crate::msg::desktop_hint_next_field()));
+        }
+        Some(hints)
     }
 
     /// The open Dialog's title, the fields it draws and whether it would confirm, for a test.
-    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+    fn readback(&self, _cx: &App) -> DialogReadback {
         let (frame, mut values) = match &self.view {
-            View::PlanForm(presenter, _) => {
-                let view = presenter.borrow().view_model();
-                (view.frame.clone(), plan_form::readback(&view))
+            View::PlanForm(presenter, selects) => {
+                let view = presenter.view_model();
+                (view.frame.clone(), plan_form::readback(&view, selects))
             }
             View::Skip(presenter) => {
-                let view = presenter.borrow().view_model();
+                let view = presenter.view_model();
                 (view.frame.clone(), vec![("body", view.body.clone())])
             }
         };
         values.insert(0, ("title", frame.title));
         values.push(("can_confirm", frame.can_confirm.to_string()));
-        Some(DialogReadback {
+        DialogReadback {
             kind: self.view.kind(),
             values,
-        })
+        }
     }
 }
 
-impl ConfirmDialog for BillsDialog {
-    type Outcome = BillsOutcome;
-
-    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the
-    /// Presenter's view model and keeps the Dialog open.
-    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<BillsOutcome>> {
-        ports::copy_reads(&self.ports, scope.ledger.read(cx).ledger());
-        let router = match &self.view {
-            View::PlanForm(presenter, _) => {
-                send(presenter, PlanFormEvent::Confirm, PlanFormPresenter::handle)
+impl Render for BillsDialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let actions = Clicks::new(cx);
+        match &self.view {
+            View::PlanForm(presenter, selects) => {
+                plan_form::render(&presenter.view_model(), selects, &actions, cx)
             }
-            View::Skip(presenter) => send(presenter, SkipEvent::Confirm, SkipPresenter::handle),
-        };
-        ports::refresh(&self.ports, &scope.ledger, cx);
-        let outcome = router.closed.flatten()?;
-        Some(Landed {
-            toast: None,
-            outcome,
-        })
+            View::Skip(presenter) => skip::render(&presenter.view_model(), &actions, cx),
+        }
     }
 }

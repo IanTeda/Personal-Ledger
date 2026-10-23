@@ -70,11 +70,11 @@ impl Dialog for PayeesDialog {
         self.form_mut().is_some_and(PayeeForm::close_open_select)
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(match self {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+        Some(crate::chrome::statusline::owned_hints(match self {
             Self::Delete(..) => crate::settings::hints::confirm_dialog_hints(),
             Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
-        })
+        }))
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {

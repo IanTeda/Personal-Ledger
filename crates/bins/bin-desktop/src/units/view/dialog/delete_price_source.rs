@@ -8,17 +8,17 @@ use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
 };
 
-use super::{Shared, enter, refusal, send, typed};
+use super::{Clicks, enter, refusal, send, typed};
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::fields::text_field,
 };
 
-pub(super) fn key(presenter: &Shared<DeletePriceSourcePresenter>, key: DialogKey) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+pub(super) fn key(presenter: &mut DeletePriceSourcePresenter, key: DialogKey) -> DialogOutcome {
+    let view = presenter.view_model();
     match key {
-        DialogKey::Enter | DialogKey::CtrlEnter => enter(view.frame.can_confirm),
+        DialogKey::Enter => enter(view.frame.can_confirm),
         DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
         _ => match typed(&view.confirm.text, key) {
             Some(text) => {
@@ -34,11 +34,7 @@ pub(super) fn key(presenter: &Shared<DeletePriceSourcePresenter>, key: DialogKey
     }
 }
 
-pub(super) fn render(
-    view: &DeletePriceSourceViewModel,
-    actions: &DialogActions,
-    cx: &App,
-) -> AnyElement {
+pub(super) fn render(view: &DeletePriceSourceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         div()
             .text_size(px(13.0))

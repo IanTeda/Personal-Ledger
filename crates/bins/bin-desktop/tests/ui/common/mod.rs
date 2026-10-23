@@ -312,6 +312,15 @@ impl Commit for FailingCommit {
 }
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
+/// The default `[keybindings]` with `command` bound to `chord`.
+pub fn overriding(command: &str, chord: &str) -> lib_config::KeyBindingConfig {
+    let mut config = lib_config::KeyBindingConfig::default();
+    config
+        .bindings
+        .insert(command.to_string(), chord.to_string());
+    config
+}
+
 pub fn today() -> NaiveDate {
     date(2026, 6, 15)
 }
@@ -376,6 +385,24 @@ impl<'a> Harness<'a> {
                 stub_transactions(),
                 stub_bills(),
             ),
+        )
+    }
+
+    /// As [`Harness::new`], under `[keybindings]` overrides.
+    pub fn with_keybindings(
+        app: &'a mut TestAppContext,
+        keybindings: lib_config::KeyBindingConfig,
+    ) -> Self {
+        Self::build_with(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Stores::fake(
+                InMemoryPorts::stub(chrono::Utc::now()),
+                stub_transactions(),
+                stub_bills(),
+            ),
+            keybindings,
         )
     }
 
@@ -522,7 +549,24 @@ impl<'a> Harness<'a> {
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
+        stores: (Stores, Rc<Cell<usize>>),
+    ) -> Self {
+        Self::build_with(
+            app,
+            logs,
+            configured_level,
+            stores,
+            lib_config::KeyBindingConfig::default(),
+        )
+    }
+
+    /// As [`Harness::build`], under `keybindings`.
+    fn build_with(
+        app: &'a mut TestAppContext,
+        logs: lib_tracing::LogBuffer,
+        configured_level: Option<lib_tracing::Levels>,
         (stores, commits): (Stores, Rc<Cell<usize>>),
+        keybindings: lib_config::KeyBindingConfig,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
@@ -540,7 +584,7 @@ impl<'a> Harness<'a> {
                 ShellBindings {
                     dismiss_toasts: "ctrl+l".to_string(),
                     toast_history: None,
-                    keybindings: lib_config::KeyBindingConfig::default(),
+                    keybindings,
                 },
                 ShellLogs {
                     buffer: logs.clone(),

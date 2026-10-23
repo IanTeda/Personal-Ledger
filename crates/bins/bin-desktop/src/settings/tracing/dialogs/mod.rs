@@ -29,8 +29,10 @@ impl Dialog for TracingDialog {
     }
 
     /// Clear logs is a confirm.
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
-        Some(hints::confirm_dialog_hints())
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+        Some(crate::chrome::statusline::owned_hints(
+            hints::confirm_dialog_hints(),
+        ))
     }
 
     fn render(

@@ -1,24 +1,23 @@
 //! The Pay Dialog (`docs/ux/desktop-mockups/12-bills/README.md`'s 8d) on the shared
-//! `crate::dialog` chrome, hosted by today's Dialog host: the segmented switch under the title bar,
+//! `crate::dialog` chrome, an Entity in the Dialog host (`chrome::dialog_entity`): the segmented switch under the title bar,
 //! then either the Match list or the Pay it directly fields. Every key and click becomes a
 //! `lib-bill-payments` Presenter event, and this draws the view model and nothing else.
 //!
 //! The body scrolls past [`BODY_MAX_HEIGHT`], so the switch and the buttons stay on screen however
 //! many candidates the Match list holds.
 //!
-//! Keys: `←`/`→` switch panel. On Match `j`/`k` (and `↓`/`↑`) choose a row, and `Enter` on "None
-//! of these" switches to Pay it directly instead of confirming. On Pay it directly typing edits the
-//! focused field and `Tab` moves to the other. `Enter` confirms once the panel would.
+//! Keys: `←`/`→` switch panel. On Match `j`/`k` (and `select_next`/`select_previous`) choose a
+//! row, and `select` on "None of these" switches to Pay it directly instead of confirming. On Pay
+//! it directly typing edits the focused field and `next_field` moves to the other. `select`
+//! confirms once the panel would.
 //!
-//! The Presenter sits in an `Rc<RefCell<_>>`, not an Entity, as the Bills Dialogs' do: the host's
-//! `Dialog` methods take no gpui context to update one through. `Esc` and Cancel close through the
-//! host, which tells the Presenter nothing, since a cancelled Pay wrote nothing.
+//! Confirm and Cancel go to the Presenter, which closes the Dialog through its Router; a confirmed
+//! outcome is handed to the page, and the host closes on [`DialogClosed`].
 
-use std::cell::RefCell;
-use std::fmt;
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window, div, prelude::*,
+    px,
+};
 use lib_bill_payments::PayOutcome;
 use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
@@ -27,14 +26,16 @@ use lib_bill_payments::presenter::{
 use crate::bill_payments::router::DialogRouter;
 use crate::bills::DesktopPorts;
 use crate::bills::ports::copy_reads;
-use crate::chrome::dialog_host::{
-    ConfirmDialog, Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    Landed,
-};
+use crate::chrome::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
+use crate::chrome::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::chrome::statusline::Hint;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::viper::typed;
+use crate::ledger_store::LedgerStore;
 use crate::theme::color;
+use lib_shell::DialogCommand;
+use lib_viper::keymap::{BACK, Keymap, SELECT};
 
 /// The Dialog's width: 8d's.
 const WIDTH: gpui::Pixels = px(460.0);
@@ -42,73 +43,79 @@ const WIDTH: gpui::Pixels = px(460.0);
 /// 1080px window.
 const BODY_MAX_HEIGHT: gpui::Pixels = px(480.0);
 
-/// The open Pay Dialog: its Presenter, and the Bills ports its confirm copies the reads into.
-#[derive(Clone)]
+/// The open Pay Dialog's clicks.
+type Clicks = DialogClicks<PayDialog>;
+
+/// What a landed Pay hands the page that opened it.
+pub(crate) type Landed = Box<dyn Fn(PayOutcome, &mut App)>;
+
+/// The open Pay Dialog: its Presenter, the Bills ports its confirm copies the reads into, and the
+/// Ledger read copy it reads from and brings in line.
 pub struct PayDialog {
-    presenter: Rc<RefCell<PayPresenter>>,
+    presenter: PayPresenter,
     ports: DesktopPorts,
+    ledger: Entity<LedgerStore>,
+    landed: Landed,
 }
-
-impl fmt::Debug for PayDialog {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("PayDialog").finish()
-    }
-}
-
-/// Two values are the same Dialog when they hold the same Presenter.
-impl PartialEq for PayDialog {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.presenter, &other.presenter)
-    }
-}
-
-impl Eq for PayDialog {}
 
 impl PayDialog {
-    pub fn new(presenter: PayPresenter, ports: &DesktopPorts) -> Self {
+    pub(crate) fn new(
+        presenter: PayPresenter,
+        ports: &DesktopPorts,
+        ledger: &Entity<LedgerStore>,
+        landed: Landed,
+    ) -> Self {
         Self {
-            presenter: Rc::new(RefCell::new(presenter)),
+            presenter,
             ports: ports.clone(),
+            ledger: ledger.clone(),
+            landed,
         }
     }
 
     fn view(&self) -> PayViewModel {
-        self.presenter.borrow().view_model()
+        self.presenter.view_model()
     }
 
     /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&self, event: PayEvent) -> DialogRouter {
+    fn send(&mut self, event: PayEvent) -> DialogRouter {
         let mut router = DialogRouter::default();
-        self.presenter.borrow_mut().handle(event, &mut router);
+        self.presenter.handle(event, &mut router);
         router
     }
 
-    /// A click's event, sent through the host's edit callback so the Dialog repaints.
-    fn on_click(actions: &DialogActions, event: PayEvent) -> dialog::OnClick {
-        let actions = actions.clone();
-        Rc::new(move |_window: &mut Window, cx: &mut App| {
-            let event = event.clone();
-            actions.edit(cx, move |dialog: &mut Self, _| {
-                dialog.send(event);
-                None
-            });
+    /// A click's event, as one input.
+    fn on_click(actions: &Clicks, event: PayEvent) -> dialog::OnClick {
+        actions.click(move |dialog| {
+            dialog.send(event.clone());
         })
+    }
+
+    /// Hands a landed payment to the page and tells the host, once the Presenter has closed the
+    /// Dialog.
+    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed else {
+            return;
+        };
+        if let Some(outcome) = outcome {
+            (self.landed)(outcome, cx);
+        }
+        cx.emit(DialogClosed);
     }
 }
 
-impl Dialog for PayDialog {
-    /// Every key is the Dialog's own: the host's typing and `Tab` would edit a `TextField` the
-    /// Presenter doesn't hold.
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+impl EventEmitter<DialogClosed> for PayDialog {}
+
+impl HostedDialog for PayDialog {
+    /// Every key is the Dialog's own: the Presenter holds every field.
+    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
         let view = self.view();
         let event = match (view.mode, key) {
             (_, DialogKey::Left | DialogKey::Right) => PayEvent::ToggleMode,
             // Enter confirms through the host while the panel would; otherwise the Presenter
             // decides, which on "None of these" switches panel.
-            (_, DialogKey::Enter | DialogKey::CtrlEnter) if view.frame.can_confirm => {
-                return Some(DialogOutcome::Confirm);
-            }
-            (_, DialogKey::Enter | DialogKey::CtrlEnter) => PayEvent::Confirm,
+            (_, DialogKey::Enter) if view.frame.can_confirm => return DialogOutcome::Confirm,
+            (_, DialogKey::Enter) => PayEvent::Confirm,
             (PayMode::Match, DialogKey::Char('j') | DialogKey::Down) => PayEvent::NextChoice,
             (PayMode::Match, DialogKey::Char('k') | DialogKey::Up) => PayEvent::PrevChoice,
             (PayMode::Direct, DialogKey::Tab | DialogKey::BackTab) => PayEvent::NextField,
@@ -120,50 +127,65 @@ impl Dialog for PayDialog {
                 };
                 match typed(&field.text, key) {
                     Some(text) => event(text),
-                    None => return Some(DialogOutcome::Handled),
+                    None => return DialogOutcome::Handled,
                 }
             }
             // Match takes no typing.
             (PayMode::Match, DialogKey::Char(_) | DialogKey::Backspace) => {
-                return Some(DialogOutcome::Handled);
+                return DialogOutcome::Handled;
             }
-            _ => return Some(DialogOutcome::Ignored),
+            _ => return DialogOutcome::Ignored,
         };
         self.send(event);
-        Some(DialogOutcome::Handled)
+        DialogOutcome::Handled
     }
 
-    fn is_valid(&self) -> bool {
+    fn can_confirm(&self) -> bool {
         self.view().frame.can_confirm
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    /// Sends Confirm to the Presenter, which pays or matches, then brings the Ledger's read copies
+    /// in line. A refusal stays on the view model and keeps the Dialog open.
+    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
+        copy_reads(&self.ports, self.ledger.read(cx).ledger());
+        let router = self.send(PayEvent::Confirm);
+        crate::bill_payments::refresh(&self.ports, &self.ledger, cx);
+        self.closed(router, cx);
+    }
+
+    /// A cancelled Pay has written nothing.
+    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
+        let router = self.send(PayEvent::Cancel);
+        self.closed(router, cx);
+    }
+
+    /// Pay has no select.
+    fn close_open_select(&mut self) -> bool {
+        false
+    }
+
+    fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
+        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
-            ("esc", crate::msg::desktop_hint_cancel()),
-            ("enter", crate::msg::desktop_hint_confirm()),
-            ("j/k", crate::msg::desktop_hint_choose()),
-            ("\u{2190}/\u{2192}", crate::msg::desktop_hint_switch_panel()),
+            (key(BACK), crate::msg::desktop_hint_cancel()),
+            (key(SELECT), crate::msg::desktop_hint_confirm()),
+            ("j/k".to_string(), crate::msg::desktop_hint_choose()),
+            (
+                "\u{2190}/\u{2192}".to_string(),
+                crate::msg::desktop_hint_switch_panel(),
+            ),
         ])
     }
 
-    fn render(
-        &self,
-        _scope: &DialogScope,
-        actions: &DialogActions,
-        cx: &App,
-    ) -> Option<AnyElement> {
-        Some(render(&self.view(), actions, cx))
-    }
-
     /// The open Dialog's panel, what it shows and whether it would confirm, for a test.
-    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
+    fn readback(&self, _cx: &App) -> DialogReadback {
         let view = self.view();
         let choice = match view.choice {
             Some(MatchChoice::Candidate(index)) => index.to_string(),
             Some(MatchChoice::NoneOfThese) => "none".to_string(),
             None => String::new(),
         };
-        Some(DialogReadback {
+        DialogReadback {
             kind: "Pay",
             values: vec![
                 ("title", view.frame.title),
@@ -175,28 +197,17 @@ impl Dialog for PayDialog {
                 ("refusal", view.refusal.unwrap_or_default()),
                 ("can_confirm", view.frame.can_confirm.to_string()),
             ],
-        })
+        }
     }
 }
 
-impl ConfirmDialog for PayDialog {
-    type Outcome = PayOutcome;
-
-    /// Sends Confirm to the Presenter, which pays or matches, then commits and brings the Ledger's
-    /// read copies in line. A refusal stays on the view model and keeps the Dialog open.
-    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<PayOutcome>> {
-        copy_reads(&self.ports, scope.ledger.read(cx).ledger());
-        let router = self.send(PayEvent::Confirm);
-        crate::bill_payments::refresh(&self.ports, &scope.ledger, cx);
-        let outcome = router.closed.flatten()?;
-        Some(Landed {
-            toast: None,
-            outcome,
-        })
+impl Render for PayDialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        render(&self.view(), &Clicks::new(cx), cx)
     }
 }
 
-fn render(view: &PayViewModel, actions: &DialogActions, cx: &App) -> AnyElement {
+fn render(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = match view.mode {
         PayMode::Match => match_panel(view, actions, cx),
         PayMode::Direct => direct_panel(view, actions, cx),
@@ -242,7 +253,7 @@ fn render(view: &PayViewModel, actions: &DialogActions, cx: &App) -> AnyElement 
 
 /// The two-cell switch: the chosen cell filled dark (8d's `.seg-opt`), not the accent the Settings
 /// segmented control uses.
-fn switch(view: &PayViewModel, actions: &DialogActions, cx: &App) -> AnyElement {
+fn switch(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     div()
         .flex()
         .border_1()
@@ -268,7 +279,7 @@ fn switch(view: &PayViewModel, actions: &DialogActions, cx: &App) -> AnyElement 
         .into_any_element()
 }
 
-fn match_panel(view: &PayViewModel, actions: &DialogActions, cx: &App) -> Vec<AnyElement> {
+fn match_panel(view: &PayViewModel, actions: &Clicks, cx: &App) -> Vec<AnyElement> {
     let mut rows = vec![
         div()
             .text_size(px(11.0))
@@ -315,7 +326,7 @@ fn radio_row(
     selected: bool,
     text: String,
     trailing: Option<String>,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let on_click = PayDialog::on_click(actions, PayEvent::Choose(choice));
@@ -372,7 +383,7 @@ fn radio_row(
         .into_any_element()
 }
 
-fn direct_panel(view: &PayViewModel, actions: &DialogActions, cx: &App) -> Vec<AnyElement> {
+fn direct_panel(view: &PayViewModel, actions: &Clicks, cx: &App) -> Vec<AnyElement> {
     let with_error = |field: AnyElement, error: Option<String>| -> AnyElement {
         div()
             .flex_1()

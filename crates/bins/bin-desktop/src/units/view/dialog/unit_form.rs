@@ -1,19 +1,16 @@
 //! The Add unit and Edit unit Dialogs (16c·src): Code and Type, Name, then the PRICE SOURCE
 //! group, whose Symbol, Quoted in and Test price hide on Manual entry.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_units::presenter::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
 use lib_viper::view::{SelectView, TextFieldView};
 
 use super::{
-    Shared, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,
+    Clicks, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,
     test_not_built, toggle_select, typed,
 };
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         dialog_fields::{label, text_field, two_up},
@@ -56,7 +53,7 @@ impl UnitSelects {
 
 pub(super) fn open(presenter: UnitFormPresenter, editing: bool) -> View {
     View::UnitForm(
-        Rc::new(RefCell::new(presenter)),
+        presenter,
         UnitSelects {
             editing,
             ..UnitSelects::default()
@@ -64,16 +61,16 @@ pub(super) fn open(presenter: UnitFormPresenter, editing: bool) -> View {
     )
 }
 
-fn handle(presenter: &Shared<UnitFormPresenter>, event: UnitFormEvent) {
+fn handle(presenter: &mut UnitFormPresenter, event: UnitFormEvent) {
     send(presenter, event, UnitFormPresenter::handle);
 }
 
 pub(super) fn key(
-    presenter: &Shared<UnitFormPresenter>,
+    presenter: &mut UnitFormPresenter,
     selects: &mut UnitSelects,
     key: DialogKey,
 ) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let focused = view
         .fields
         .iter()
@@ -90,7 +87,7 @@ pub(super) fn key(
             handle(presenter, event);
             return DialogOutcome::Handled;
         }
-        DialogKey::Enter | DialogKey::CtrlEnter if !selects.any_open() && !is_select(focused) => {
+        DialogKey::Enter if !selects.any_open() && !is_select(focused) => {
             return enter(view.frame.can_confirm);
         }
         _ => {}
@@ -230,7 +227,7 @@ fn click_select(dialog: &mut UnitsDialog, which: Which, field: UnitField) {
         return;
     };
     handle(presenter, UnitFormEvent::Focus(field));
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let state = select_mut(selects, which).clone();
     selects.close();
     *select_mut(selects, which) = state;
@@ -250,7 +247,7 @@ fn click_option(dialog: &mut UnitsDialog, which: Which, index: usize) {
     let View::UnitForm(presenter, selects) = &mut dialog.view else {
         return;
     };
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     let event = match which {
         Which::Kind => choose_option(&mut selects.kind, &view.kind, index).map(UnitFormEvent::Kind),
         Which::Source => {
@@ -277,7 +274,7 @@ fn click_text(dialog: &mut UnitsDialog, field: UnitField) {
 pub(super) fn render(
     view: &UnitFormViewModel,
     selects: &UnitSelects,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let ids = if selects.editing { EDIT } else { ADD };
@@ -388,7 +385,7 @@ fn select_field_of<T: PartialEq>(
     select: &SelectView<T>,
     state: &SelectState,
     (which, field): (Which, UnitField),
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let options = super::labels(select);
@@ -425,12 +422,7 @@ fn group_label(text: String, cx: &App) -> AnyElement {
 }
 
 /// The Symbol text box, in monospace: it holds the source's own id for the Unit.
-fn symbol_field(
-    id: &'static str,
-    field: &TextFieldView,
-    actions: &DialogActions,
-    cx: &App,
-) -> AnyElement {
+fn symbol_field(id: &'static str, field: &TextFieldView, actions: &Clicks, cx: &App) -> AnyElement {
     let caret = if field.focused { "\u{2502}" } else { "" };
     let (text, text_color) = if field.text.is_empty() {
         (

@@ -404,15 +404,15 @@ impl Dialog for BudgetsDialog {
         self.inner_mut().is_some_and(Dialog::close_open_select)
     }
 
-    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
         use crate::view::budgets::hints;
-        Some(match self {
+        Some(crate::chrome::statusline::owned_hints(match self {
             Self::Switcher(_) => hints::budgets_switcher_hints(),
             Self::Budget(_) | Self::EditLimit(_) => hints::budgets_limit_hints(),
             Self::Stop(_) => hints::budgets_stop_hints(),
             Self::Manage(_) => hints::budgets_manage_hints(),
             Self::Fill { .. } => hints::budgets_fill_hints(),
             Self::CategoryDetail(_) => hints::budgets_detail_hints(),
-        })
+        }))
     }
 }

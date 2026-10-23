@@ -294,3 +294,66 @@ fn a_failed_bills_write_puts_the_schedule_back_with_an_error_toast(app: &mut Tes
             && toast.text == "Couldn't save the change to bills, so they are back as last saved"
     }));
 }
+
+#[gpui::test]
+fn escape_closes_an_open_select_in_the_plan_form_then_cancels_it(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.press("n tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Category"));
+    ui.press("enter");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+
+    ui.press("escape");
+    assert_eq!(ui.bills().dialog.as_deref(), Some("Add"));
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("false"));
+
+    ui.press("escape");
+    assert_eq!(ui.bills().dialog, None);
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+}
+
+#[gpui::test]
+fn enter_confirms_only_a_valid_plan_form(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.press("n enter");
+    assert_eq!(
+        ui.bills().dialog.as_deref(),
+        Some("Add"),
+        "an unnamed plan can't confirm"
+    );
+}
+
+#[gpui::test]
+fn ctrl_enter_saves_the_plan_form_from_a_select(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.press("tab e");
+    ui.press("space x tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Category"));
+    ui.press("enter");
+    assert_eq!(
+        ui.bills().dialog.as_deref(),
+        Some("Edit"),
+        "Enter on a select opens it"
+    );
+
+    ui.press("ctrl-enter");
+
+    let page = ui.bills();
+    assert_eq!(page.dialog, None);
+    assert!(
+        page.plans
+            .contains(&"Car Insurance \u{2014} AAMI x".to_string())
+    );
+}
+
+#[gpui::test]
+fn an_override_of_next_field_moves_the_plan_forms_field(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
+    ui.press("g w n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
+
+    ui.press("ctrl-n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Category"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Category"));
+}

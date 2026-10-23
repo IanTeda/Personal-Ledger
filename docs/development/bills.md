@@ -44,10 +44,10 @@ The module, as `docs/development/viper-architecture.md` lays one out:
 
 - **Desktop** — `src/bills/`, the module's Desktop half:
   - `view/page.rs` — `BillsPage`, the page Presenter in an Entity: keys to the keymap, clicks to events, and the focused scope select's open list; `view/schedule.rs` (8a), `view/filters.rs` (the filter row and stat callout), `view/planner.rs` (8b) draw the view model.
-  - `view/dialog.rs` — the Plan form (`view/dialog/plan_form.rs`, 8c) and Skip (`view/dialog/skip.rs`, 8e) in the Dialog host.
+  - `view/dialog.rs` — the Plan form (`view/dialog/plan_form.rs`, 8c) and Skip (`view/dialog/skip.rs`, 8e) as Entities in the Dialog host, their keys through `lib-shell`'s Dialog keymap.
   - `router.rs` — `impl BillsRouter` and the entry point, `bills_page`. `show_transaction` calls `transactions::router::show`.
   - `ports.rs` — `LedgerBackedPorts`: the store shared with `LedgerStore`, the reads copied from the Ledger, the forwarding shim (`forward`) and `refresh`, which brings the Ledger read copy in line after each event; the input's `send` (`input.rs`) commits it.
-  - The Pay Dialog (8d) is the Bill Payments module's: `src/bill_payments/view/dialog/pay.rs` draws `lib-bill-payments`' Presenter in the Dialog host, and `src/bill_payments/router.rs`' `open_pay` is what the Bills Router's `open_pay` calls. Its writes go through `lib-database`'s `BillPaymentsAdapter`, over the Transactions store `LedgerStore` holds and the Bills store the Bills ports hold.
+  - The Pay Dialog (8d) is the Bill Payments module's: `src/bill_payments/view/dialog/pay.rs` holds `lib-bill-payments`' Presenter in an Entity in the Dialog host, and `src/bill_payments/router.rs`' `open_pay` is what the Bills Router's `open_pay` calls. Its writes go through `lib-database`'s `BillPaymentsAdapter`, over the Transactions store `LedgerStore` holds and the Bills store the Bills ports hold.
   - `src/chrome/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard/` — real Bill rows in Needs Attention from `bills::attention_entries`.
   - Messages in `lib-bills`' `i18n/en-US/bills.ftl`; the Pay Dialog's in `lib-bill-payments`' `i18n/en-US/bill-payments.ftl`.
 - **TUI** — nothing.

@@ -231,3 +231,34 @@ fn a_failed_payment_puts_both_back_with_an_error_toast(app: &mut TestAppContext)
         "{errors:?}"
     );
 }
+
+#[gpui::test]
+fn ctrl_enter_confirms_a_valid_pay_as_enter_does(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    on_telstra(&mut ui);
+    ui.press("p");
+
+    ui.press("ctrl-enter");
+
+    assert_eq!(ui.bills().dialog, None);
+    assert_eq!(telstra_status(&mut ui), "Paid");
+}
+
+#[gpui::test]
+fn an_override_of_next_field_moves_pay_it_directly_to_the_date(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
+    on_telstra(&mut ui);
+    ui.press("p right");
+    let mut amount = ui.dialog_value("amount").unwrap_or_default();
+    let date = ui.dialog_value("date").unwrap_or_default();
+
+    // `tab` is free, so the Amount keeps focus and the backspace edits it.
+    ui.press("tab backspace");
+    amount.pop();
+    assert_eq!(ui.dialog_value("amount"), Some(amount.clone()));
+    assert_eq!(ui.dialog_value("date"), Some(date.clone()));
+
+    ui.press("ctrl-n x");
+    assert_eq!(ui.dialog_value("date"), Some(format!("{date}x")));
+    assert_eq!(ui.dialog_value("amount"), Some(amount));
+}

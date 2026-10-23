@@ -5,11 +5,11 @@ use gpui::{AnyElement, App, div, prelude::*};
 use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 
 use super::{
-    Shared, UnitsDialog, View, choose_option, enter, refusal, select_key, send, synced,
+    Clicks, UnitsDialog, View, choose_option, enter, refusal, select_key, send, synced,
     toggle_select,
 };
 use crate::{
-    chrome::dialog_host::{DialogActions, DialogKey, DialogOutcome},
+    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         select::SelectState,
@@ -17,20 +17,18 @@ use crate::{
     },
 };
 
-fn handle(presenter: &Shared<SetBaseUnitPresenter>, event: SetBaseUnitEvent) {
+fn handle(presenter: &mut SetBaseUnitPresenter, event: SetBaseUnitEvent) {
     send(presenter, event, SetBaseUnitPresenter::handle);
 }
 
 pub(super) fn key(
-    presenter: &Shared<SetBaseUnitPresenter>,
+    presenter: &mut SetBaseUnitPresenter,
     select: &mut SelectState,
     key: DialogKey,
 ) -> DialogOutcome {
-    let view = presenter.borrow().view_model();
+    let view = presenter.view_model();
     match key {
-        DialogKey::Enter | DialogKey::CtrlEnter if !select.is_open() => {
-            enter(view.frame.can_confirm)
-        }
+        DialogKey::Enter if !select.is_open() => enter(view.frame.can_confirm),
         DialogKey::Up | DialogKey::Down | DialogKey::Enter | DialogKey::Char(' ') => {
             let (_, value) = select_key(select, &view.base, key);
             if let Some(id) = value {
@@ -45,13 +43,13 @@ pub(super) fn key(
 
 fn click_field(dialog: &mut UnitsDialog) {
     if let View::SetBaseUnit(presenter, select) = &mut dialog.view {
-        toggle_select(select, &presenter.borrow().view_model().base);
+        toggle_select(select, &presenter.view_model().base);
     }
 }
 
 fn click_option(dialog: &mut UnitsDialog, index: usize) {
     if let View::SetBaseUnit(presenter, select) = &mut dialog.view {
-        let chosen = choose_option(select, &presenter.borrow().view_model().base, index);
+        let chosen = choose_option(select, &presenter.view_model().base, index);
         if let Some(id) = chosen {
             handle(presenter, SetBaseUnitEvent::Choose(id));
         }
@@ -61,7 +59,7 @@ fn click_option(dialog: &mut UnitsDialog, index: usize) {
 pub(super) fn render(
     view: &SetBaseUnitViewModel,
     select: &SelectState,
-    actions: &DialogActions,
+    actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let options = super::labels(&view.base);

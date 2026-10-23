@@ -291,6 +291,8 @@ impl Shell {
                 hover_generation: 0,
                 dialog: None,
                 dialog_confirm: None,
+                hosted: None,
+                dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
                 pending_colour_change: None,
                 undo_menu_open: false,
             },
@@ -408,6 +410,11 @@ impl Shell {
     /// The Display Preferences, which the Settings View owns (ADR-0037).
     fn display(&self, cx: &App) -> DisplayPreferences {
         self.views.settings.read(cx).display(cx)
+    }
+
+    /// The keys every module Dialog shares, under `config`'s overrides.
+    pub fn set_dialog_keymap(&mut self, config: &lib_config::KeyBindingConfig) {
+        self.chrome.dialog_keymap = lib_shell::dialog_keymap(config);
     }
 
     pub fn set_dismiss_toasts_binding(&mut self, spec: String) {

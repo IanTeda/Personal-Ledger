@@ -1,5 +1,5 @@
 //! `impl UnitsRouter` for the Desktop: where the Units page's Presenter asks to go. A Dialog opens
-//! in today's Dialog host through the page's gpui context, which is why the Router is built for
+//! as an Entity in the Dialog host through the page's gpui context, which is why the Router is built for
 //! each `handle` call, and a Notice goes onto the bin's queue (`crate::notices`), which the
 //! input's `send` drains.
 
@@ -11,11 +11,13 @@ use lib_units::{UnitsDialog as Which, UnitsRouter};
 use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
 use super::view::page::UnitsPage;
-use crate::chrome::dialog_host::open_dialog;
+use crate::chrome::dialog_entity::host_dialog;
+use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
+    pub ledger: gpui::Entity<LedgerStore>,
     pub cx: &'a mut Context<'b, UnitsPage>,
 }
 
@@ -23,10 +25,15 @@ impl UnitsRouter for PageRouter<'_, '_> {
     /// Builds `dialog`'s Presenter on the shared ports and hosts its View; its confirmed outcome
     /// comes back to the page through [`UnitsPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let Some(dialog) = UnitsDialog::open(dialog, &self.ports) else {
+        let page = self.cx.weak_entity();
+        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
+            // A page that has gone has nothing to land on.
+            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
+        });
+        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.ledger, landed) else {
             return false;
         };
-        open_dialog(dialog, UnitsPage::dialog_landed, self.cx);
+        host_dialog(self.cx, |_| dialog);
         true
     }
 
@@ -45,7 +52,7 @@ impl Notify for PageRouter<'_, '_> {
 /// hosts as any other page.
 pub fn units_page(
     ports: DesktopPorts,
-    ledger: gpui::Entity<crate::ledger_store::LedgerStore>,
+    ledger: gpui::Entity<LedgerStore>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {

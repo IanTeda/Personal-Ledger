@@ -1,8 +1,5 @@
 //! A gpui keystroke as a VIPER module's keymap names it: the chord text `[keybindings]` writes,
-//! whether the Shell keeps it, and the `&'static str` the status line's hints take.
-
-use std::cell::RefCell;
-use std::collections::HashSet;
+//! and whether the Shell keeps it.
 
 use gpui::Keystroke;
 
@@ -32,7 +29,8 @@ pub(crate) fn chord(keystroke: &Keystroke) -> Option<String> {
     if modifiers.shift {
         chord.push_str("shift+");
     }
-    chord.push_str(key);
+    // gpui names it `escape`; `[keybindings]` writes `esc`, as `back`'s default does.
+    chord.push_str(if key == "escape" { "esc" } else { key });
     Some(chord)
 }
 
@@ -40,24 +38,6 @@ pub(crate) fn chord(keystroke: &Keystroke) -> Option<String> {
 pub(crate) fn is_global(keystroke: &Keystroke) -> bool {
     let modifiers = &keystroke.modifiers;
     is_global_key(&keystroke.key, modifiers.control, modifiers.shift)
-}
-
-thread_local! {
-    static CHORDS: RefCell<HashSet<&'static str>> = RefCell::new(HashSet::new());
-}
-
-/// `chord` as the `&'static str` the status line's hints take. Each distinct chord is leaked
-/// once: the keymap has a fixed set, so this stays a handful of strings for the process's life.
-pub(crate) fn interned(chord: &str) -> &'static str {
-    CHORDS.with(|chords| {
-        let mut chords = chords.borrow_mut();
-        if let Some(found) = chords.get(chord) {
-            return *found;
-        }
-        let leaked: &'static str = Box::leak(chord.to_string().into_boxed_str());
-        chords.insert(leaked);
-        leaked
-    })
 }
 
 #[cfg(test)]
@@ -93,6 +73,11 @@ mod tests {
             chord(&keystroke("tab", shift)).as_deref(),
             Some("shift+tab")
         );
+        assert_eq!(chord(&keystroke("escape", none)).as_deref(), Some("esc"));
+        assert_eq!(
+            chord(&keystroke("enter", ctrl)).as_deref(),
+            Some("ctrl+enter")
+        );
     }
 
     #[test]
@@ -104,10 +89,5 @@ mod tests {
         for key in ["j", "d", "n", "tab", "t"] {
             assert!(!is_global(&keystroke(key, none)), "{key}");
         }
-    }
-
-    #[test]
-    fn a_chord_is_interned_once() {
-        assert!(std::ptr::eq(interned("ctrl+x"), interned("ctrl+x")));
     }
 }

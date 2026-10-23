@@ -31,7 +31,7 @@ use crate::chrome::dialog_host::DialogKey;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
 use crate::ledger_store::{LedgerChanged, LedgerStore};
-use crate::navigation::chord::{chord, interned, is_global};
+use crate::navigation::chord::{chord, is_global};
 use crate::navigation::{key_router::Movement, nav::Noun};
 use crate::settings::display::StatusGlyphs;
 use crate::{
@@ -119,6 +119,7 @@ impl BillsPage {
             payments: self.payments.clone(),
             clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
+            ledger: self.ledger.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
@@ -347,7 +348,7 @@ impl BillsPage {
             hints: view
                 .hints
                 .into_iter()
-                .map(|hint| (interned(&hint.chord), hint.action))
+                .map(|hint| (hint.chord, hint.action))
                 .collect(),
             right: view.status,
         })

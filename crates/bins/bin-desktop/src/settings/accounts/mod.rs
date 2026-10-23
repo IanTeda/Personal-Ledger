@@ -27,7 +27,10 @@ use form::{AccountForm, AccountOptions, DeleteAccountForm};
 use hints::accounts_hints;
 
 use crate::{
-    chrome::{dialog_host::open_dialog, statusline::PageStatus},
+    chrome::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::{command::AccountsVerb, key_router::Movement},
@@ -198,7 +201,7 @@ impl Page for AccountsPage {
     /// The page's legend and its account count.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: accounts_hints(),
+            hints: owned_hints(accounts_hints()),
             right: crate::msg::desktop_accounts_count(
                 i64::try_from(self.accounts(cx).len()).unwrap_or(i64::MAX),
             ),

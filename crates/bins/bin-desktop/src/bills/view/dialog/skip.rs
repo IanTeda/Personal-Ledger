@@ -5,13 +5,13 @@
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_bills::presenter::SkipViewModel;
 
-use crate::chrome::dialog_host::DialogActions;
+use super::Clicks;
 use crate::dialog;
 
 /// The Dialog's width: the handoff's 8e.
 const WIDTH: gpui::Pixels = px(400.0);
 
-pub(super) fn render(view: &SkipViewModel, actions: &DialogActions, cx: &App) -> AnyElement {
+pub(super) fn render(view: &SkipViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()
         .flex()
         .flex_col()
