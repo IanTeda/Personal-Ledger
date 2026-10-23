@@ -193,6 +193,21 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
     tracing::debug!(written, "Generated the Bill Schedule on start");
 }
 
+/// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
+/// wherever it is (ADR-0019), then commits and refreshes the read copy as after a Bills event, so
+/// the Dashboard, the rail badge and Budgets see the new entries. A failed save rolls back like
+/// any Bills write.
+pub fn new_month(
+    ports: &DesktopPorts,
+    ledger: &Entity<LedgerStore>,
+    today: chrono::NaiveDate,
+    cx: &mut App,
+) {
+    let written = PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
+    tracing::info!(written, %today, "Generated the Bill Schedule for a new month");
+    sync(ports, ledger, cx);
+}
+
 /// Copies what Bills reads of the other domains from `ledger` into `ports`, before an event or
 /// for a view model drawn outside one.
 pub fn copy_reads(ports: &DesktopPorts, ledger: &Ledger) {

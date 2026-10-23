@@ -101,10 +101,10 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
         let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
-            Shell::with_today(
+            Shell::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
-                today,
+                std::rc::Rc::new(move || today),
                 crate::units::UnitsSetup::stub(),
                 crate::bills::BillsSetup::stub(&storage),
                 storage,
@@ -161,10 +161,10 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
         let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
-            Shell::with_today(
+            Shell::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
-                today,
+                std::rc::Rc::new(move || today),
                 crate::units::UnitsSetup::stub(),
                 crate::bills::BillsSetup::stub(&storage),
                 storage,

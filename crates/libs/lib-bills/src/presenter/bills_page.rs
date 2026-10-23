@@ -2,9 +2,10 @@
 //! line's legend and right-hand text. It holds the two tab Presenters and sends each event to the
 //! tab it belongs to, ignoring one for the tab not shown.
 //!
-//! The page keeps the Bill Schedule generated: when a running Client crosses into a new calendar
-//! month, the next event the page handles runs [`PopulateSchedule`] first, so the new month's
-//! entries are there before anything reads them.
+//! The page keeps the Bill Schedule generated for itself: when a running Client crosses into a new
+//! calendar month, the next event the page handles runs [`PopulateSchedule`] first, so the new
+//! month's entries are there before it reads them. A Client whose Shell generates the new month
+//! wherever the person is (the Desktop's month tick) leaves this a guard that finds nothing to add.
 
 use chrono::NaiveDate;
 use lib_core::{BillPlanId, DateStyle, Period};

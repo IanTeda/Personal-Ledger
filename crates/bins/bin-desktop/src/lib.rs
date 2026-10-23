@@ -74,7 +74,8 @@ pub struct ShellLogs {
 }
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
-/// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
+/// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes
+/// hang off.
 /// `units`, `transactions` and `bills` are where the Units, the Transactions and the Bills are kept:
 /// the app's SQLite adapters, or a test's in-memory ports. `commit` ends each call's writes, every
 /// adapter's at once. `failures` is the writer's failure channel, on which a failed write rolls
@@ -92,10 +93,11 @@ pub fn build_shell(
     bills: Box<dyn BillsStore>,
     commit: Rc<dyn Commit>,
     failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
-    today: chrono::NaiveDate,
+    clock: bills::presenter::Clock,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
+    let today = clock();
     let nav = navigation::nav::NavState::starting_at(persisted.noun);
     let documents_state = (
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
@@ -125,7 +127,7 @@ pub fn build_shell(
     };
     let bills = bills::BillsSetup::new(bills, payments, &bindings.keybindings);
     let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
-    let mut shell = Shell::with_today(nav, focus_handle, today, units, bills, storage, cx);
+    let mut shell = Shell::with_clock(nav, focus_handle, clock, units, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
@@ -133,6 +135,7 @@ pub fn build_shell(
     shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
     shell.set_toast_history_binding(bindings.toast_history);
     shell.start_toast_clock(cx);
+    shell.start_date_clock(cx);
     shell.listen_for_write_failures(failures, cx);
     shell.set_log_capture(
         logs.buffer,
@@ -295,7 +298,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                             Box::new(bills),
                             Rc::new(pending),
                             failures,
-                            chrono::Local::now().date_naive(),
+                            app::wall_clock(chrono::Local::now().date_naive()),
                             focus_handle,
                             cx,
                         )

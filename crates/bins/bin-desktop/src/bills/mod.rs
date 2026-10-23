@@ -57,10 +57,3 @@ impl BillsSetup {
         )
     }
 }
-
-/// The calendar day the Bills page dates its rows by: `today` moving on with the local clock, so
-/// a Desktop left running crosses into a new month, while a test pinned to a day stays on it.
-pub fn clock(today: chrono::NaiveDate) -> presenter::Clock {
-    let started = chrono::Local::now().date_naive();
-    std::rc::Rc::new(move || today + (chrono::Local::now().date_naive() - started))
-}

@@ -310,7 +310,11 @@ impl Commit for FailingCommit {
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
 pub fn today() -> NaiveDate {
-    NaiveDate::from_ymd_opt(2026, 6, 15).expect("fixed test date is valid")
+    date(2026, 6, 15)
+}
+
+pub fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).expect("fixed test date is valid")
 }
 
 /// A `Shell` in a headless window, with helpers to drive and read it.
@@ -319,6 +323,8 @@ pub struct Harness<'a> {
     pub cx: &'a mut VisualTestContext,
     /// The Shell's live log capture: push entries here, then [`Harness::settle_logs`].
     pub logs: lib_tracing::LogBuffer,
+    /// The day the Shell's clock reads, [`today`] until [`Harness::turn_date_to`] moves it.
+    date: Rc<Cell<NaiveDate>>,
 }
 
 /// The open Add or Edit account dialog's form: plain values, as `Harness::account_form` reads
@@ -523,6 +529,8 @@ impl<'a> Harness<'a> {
             gpui_component::init(cx);
             theme::colours::init(ThemeOverrides::default(), cx);
         });
+        let date = Rc::new(Cell::new(today()));
+        let read = date.clone();
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
@@ -542,12 +550,23 @@ impl<'a> Harness<'a> {
                 bills,
                 commit,
                 failures,
-                today(),
+                Rc::new(move || read.get()),
                 focus_handle,
                 cx,
             )
         });
-        Self { shell, cx, logs }
+        Self {
+            shell,
+            cx,
+            logs,
+            date,
+        }
+    }
+
+    /// Moves the Shell's clock to `day`, then lets the Shell notice: past one poll of its clock.
+    pub fn turn_date_to(&mut self, day: NaiveDate) {
+        self.date.set(day);
+        self.advance_clock(bin_desktop::app::DATE_POLL);
     }
 
     /// Lets the Shell hear of a failed write: past one poll of the writer's failure channel.

@@ -29,6 +29,7 @@
 mod budgets_ui;
 
 mod commands;
+mod date_clock;
 mod dialogs;
 mod documents_ui;
 mod explorer;
@@ -47,6 +48,7 @@ mod write_failures;
 
 #[cfg(test)]
 use commands::record_history;
+pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
@@ -138,9 +140,16 @@ pub struct Shell {
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
     units: crate::units::DesktopPorts,
-    /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
-    /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
+    /// "Today" for the seed data and, later, the `this year` filter -- read at construction and
+    /// moved on only when [`Self::clock`] crosses into a new calendar month, so everything derived
+    /// from it (the seeded dates, the default range) agrees within a month.
     today: chrono::NaiveDate,
+    /// The calendar day as the Desktop reads it: the local date, or a test's pinned day. The Bills
+    /// page dates its rows by it too.
+    clock: crate::bills::presenter::Clock,
+    /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
+    /// Schedule is generated through.
+    bills: crate::bills::DesktopPorts,
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
@@ -159,17 +168,19 @@ pub struct Shell {
 }
 
 impl Shell {
-    /// Builds the Shell with the date the seeded stub data is anchored to supplied, so tests are
-    /// not at the mercy of the wall clock. Creates the Accounts Entities, so it takes a `Context`.
-    pub fn with_today(
+    /// Builds the Shell on `clock`, which dates the seeded stub data from the day it reads now, so
+    /// tests pin it rather than live at the mercy of the wall clock. Creates the Accounts Entities,
+    /// so it takes a `Context`.
+    pub fn with_clock(
         nav: NavState,
         focus_handle: FocusHandle,
-        today: chrono::NaiveDate,
+        clock: crate::bills::presenter::Clock,
         units: crate::units::UnitsSetup,
         bills: crate::bills::BillsSetup,
         storage: crate::ledger_store::LedgerSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        let today = clock();
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -231,12 +242,13 @@ impl Shell {
         });
         let dashboard_subscription = Self::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
+        let bills_ports = bills.ports.clone();
         let bills_view = crate::bills::bills_page(
             bills.ports,
             bills.payments,
             ledger.clone(),
             bills.keymap,
-            crate::bills::clock(today),
+            clock.clone(),
             cx,
         );
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
@@ -283,6 +295,8 @@ impl Shell {
             ledger,
             units: units_ports,
             today,
+            clock,
+            bills: bills_ports,
             views: ViewEntities {
                 dashboard: dashboard_view,
                 bills: bills_view,

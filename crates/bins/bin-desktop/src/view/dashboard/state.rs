@@ -75,6 +75,12 @@ impl DashboardView {
         }
     }
 
+    /// Moves the day Needs Attention and the budget list are dated by.
+    pub fn set_today(&mut self, today: NaiveDate, cx: &mut Context<'_, Self>) {
+        self.today = today;
+        cx.notify();
+    }
+
     /// Follows a change to the Display Preferences.
     pub fn set_display(
         &mut self,
