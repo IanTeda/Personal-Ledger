@@ -1,57 +1,57 @@
 ---
 name: tracing
-description: Add or review tracing::instrument spans and log statements in this repo. Use when instrumenting a new function or deciding what level/fields a trace event should have.
+description: Add or review tracing::instrument spans and log statements in this repo. Use when instrumenting a new function, writing an Interactor or adapter, or deciding what level/fields a trace event should have.
 ---
 
 # Tracing
 
-Add consistent, useful `tracing` tracing using the levels and patterns this codebase follows (`lib_tracing`'s `Levels`, consumed by `server`'s `tracing::init`).
+Who logs what is decided in ADR-0047 (`docs/adr/0047-interactors-log-ledger-changes-and-presenters-never-log.md`). A log exists to rebuild what happened to the Ledger before a failure, for the maintainer and for a user attaching it to a bug report. It is not for monitoring.
 
-## Levels, highest to lowest priority
+## By VIPER layer
 
-- **ERROR** — requires immediate attention: DB connection failures, external service unavailability, data corruption, security violations, resource exhaustion.
-- **WARN** — potentially harmful but recovered: rate-limit triggers, repeated failures, deprecated API usage, config issues, degraded performance.
-- **INFO** — normal but noteworthy: successful create/update/delete, auth events, state changes, startup/shutdown.
-- **DEBUG** (default for `#[instrument]`) — troubleshooting detail: function entry/exit, query execution, cache hits/misses, timings.
-- **TRACE** — reserve for high-frequency or expensive-to-compute detail.
+- **Interactor:** one `info!` per intent that changes the Ledger, with its outcome: done, or refused with the refusal. A refusal is `info`, not `warn`. Reads (filters, searches, actuals) never log.
+- **Presenter, View, Router:** never log.
+- **Adapter and writer (`lib-database`):** `#[tracing::instrument(level = "debug", skip_all, err)]` on functions returning `Result` (load, reload, seed, open), `debug!` for how a change reached storage, `error!` for a failed or lost write.
+- **Bin:** startup and wiring (Ledger opened, window opened), `error!` for what fails there.
+- The Sync Server and `lib-database`'s per-entity modules (`categories/`, `payees/`, …) are outside this; don't copy their style into a feature crate.
 
-## Instrumenting a function
+## Levels
+
+- **ERROR** — work lost or not done: a failed write, a Ledger that won't open, a window that won't open.
+- **WARN** — system trouble that recovered: a Colour Theme pair below contrast, a Configuration fallback, a retry. Never a refusal.
+- **INFO** — a change to the Ledger and its outcome, startup and shutdown.
+- **DEBUG** — how storage was reached: loads, reloads, row counts, writer jobs.
+- **TRACE** — not used in the Clients; the Tracing page never records it.
+
+## An Interactor
+
+Explicit events, not `#[instrument]` (span events are off, so a span alone prints nothing):
 
 ```rust
-#[tracing::instrument(
-    name = "Descriptive operation name",
-    level = "debug",           // "info" for entry points/handlers, "trace" for hot/internal detail
-    skip(pool),                 // skip large or sensitive parameters
-    fields(
-        category_id = %id,      // %  = Display
-        query_params = ?params, // ?  = Debug
-    ),
-    err                          // record error results in the span
-)]
-pub async fn find_category_by_id(
-    pool: &sqlx::Pool<sqlx::Sqlite>,
-    id: i64,
-) -> Result<Option<Category>, DatabaseError> {
-    // ...
+pub fn run(self, units: &mut dyn UnitRepository, /* … */) -> Result<UnitRow, DeleteUnitRefusal> {
+    let outcome = self.apply(units, /* … */);
+    match &outcome {
+        Ok(_) => tracing::info!(unit_id = %self.id, "Deleted a Unit"),
+        Err(refusal) => tracing::info!(unit_id = %self.id, %refusal, "Refused to delete a Unit"),
+    }
+    outcome
 }
 ```
 
-- `skip(...)` anything large or sensitive (passwords, tokens, PII, full request bodies) — never let it reach a span field.
-- Prefer `%` for user-facing values, `?` for structured/debug detail.
-- Emit `tracing::debug!`/`info!`/`warn!`/`error!` inside the body for interesting sub-steps, not just the span itself.
+## What a field may hold
 
-## What to instrument
-
-Functions doing database operations, business logic, external calls, or user input handling — not trivial getters/pure helpers.
+- Ids, domain and kind names, counts, dates, the Ledger file path, a refusal's own text.
+- Never a Money amount, a name (Payee, Account, Bill, …), notes or any user-entered text, a token, password or Configuration secret. This holds at every level, `debug` included: the Tracing page records `debug` and its contents may be shared.
+- `skip_all` on `#[instrument]`, then add back only fields that meet this rule.
 
 ## Avoid
 
-- DEBUG/TRACE logging inside tight loops or hot paths.
-- Logging secrets, tokens, or PII in any field, at any level.
-- Bloating spans with fields that don't aid debugging.
+- Logging per key press, per render or per read.
+- `#[instrument]` in a feature crate.
+- Turning on span events (`FmtSpan`).
 
 ## Before finishing
 
-- Instrumented functions use `err` so failures show up in the span.
-- No sensitive data appears in any field or log message.
-- Level matches the guidance above (don't default everything to `info`).
+- Each Interactor that writes logs one `info!` for done and for refused; no read logs.
+- Adapter functions returning `Result` carry `err`.
+- No field holds an amount, a name or user-entered text.

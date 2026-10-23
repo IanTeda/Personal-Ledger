@@ -63,6 +63,12 @@ verbose to least verbose:
 
 The `log` level and `log_file_path` live in the `[Personal-Ledger]` section; see [Settings](settings.md).
 
+## What the Clients log
+
+A log exists to rebuild what happened to the Ledger before a failure (ADR-0047). At the default `info`, the Desktop and TUI log startup and one line per change to the Ledger, done or refused: "Deleted Unit 4", "Refused to delete Payee 7: has Transactions". Selection, focus, navigation and searches are never logged. `debug` adds how each change reached the Ledger file.
+
+A log line names records by id and holds counts and dates, never an amount, a name or anything you typed, so a log is safe to attach to a bug report.
+
 ## Live capture for the Desktop
 
 The Desktop's Settings › Tracing page shows this run's own events as they happen, without reading the log file back. `lib_tracing::init` takes an optional `LogBuffer`: when one is passed, a capture layer also records events into it, a ring of the last 1000 (`LOG_CAPACITY`). The Desktop passes one; the TUI and Sync Server pass `None`, so they never capture.

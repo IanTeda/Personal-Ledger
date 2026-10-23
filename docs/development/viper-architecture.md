@@ -82,7 +82,7 @@ These are the rules Claude follows and a review checks against.
 ### Dependencies
 
 - A feature crate never depends on a UI toolkit (gpui, gpui-component, ratatui, crossterm), on `lib-database`, or on another feature crate. `deny.toml`'s bans and the `cargo metadata` test (`lib-ledger/tests/viper_dependencies.rs`) check this for each migrated crate.
-- A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor`, `lib-toast` (a Router asks for a Toast by `ToastKind`) and `lib-viper`.
+- A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor`, `lib-toast` (a Router asks for a Toast by `ToastKind`) and `lib-viper`, and on `tracing` for its Interactors' events (ADR-0047).
 - Value types shared across domains, like `RowID` and `Money`, live in `lib-core`. Generic types every module's Presenters and keymap use live in `lib-viper`, not in the first feature crate that needed them ([#760](https://github.com/IanTeda/Personal-Ledger/issues/760)): `keymap` holds `Keymap`, `Binding` and the flat command names modules share, and `view` a form's `TextFieldView`, `SelectView` and `Choice` and a Dialog's `DialogFrame`. It is not a feature crate and holds no domain; it keeps the feature crates' bans.
 - An Interactor or Presenter that only reads another domain ("is this Payee used by a Split?", "which Accounts hold this Unit?") declares a read port in its own crate's `protocols.rs`, and `lib-database` answers it. It doesn't add a crate. `lib-units`' `UnitUsage` and `UnitHoldings` are the first.
 - A read port returns types its own crate declares, never another feature crate's Entity: `UnitHoldings` returns a `Holding`, not an `Account`, and `lib-bills` reads a `BillAccount`, a `BillCategory` and a `BillSplit` ([#792](https://github.com/IanTeda/Personal-Ledger/issues/792)). The type names only the fields its crate reads, so a change to the other domain's Entity recompiles nobody. A fact the reading crate's rules need, such as whether an Account takes Transactions or a Category is a leaf, is a field the answering side fills by calling the owning domain's rule, so each rule lives once, in its own domain, and the reading crate checks it against the field rather than receiving a list filtered for it.
@@ -137,6 +137,11 @@ These are the rules Claude follows and a review checks against.
 - The Shell's global keys win, so a module's default chord must not be a global key in either Client. Slice 1 found three clashes: `units.set_base`'s `b` is the Desktop's rail toggle, and `ctrl+u` and `g g` are TUI View jumps. `units.set_base` moved to `B` and the TUI dropped its `ctrl+u` shortcut to Units; `g g` stays the TUI's Tags jump. A test per Client checks every module's defaults against its global keys (`no_module_default_chord_is_a_global_key` in the Desktop's `navigation/key_router.rs` and the TUI's `shell.rs`), with an allow-list for a clash kept on purpose; a new module adds its bindings to each test's `module_defaults` ([#764](https://github.com/IanTeda/Personal-Ledger/issues/764)).
 - A Dialog's keys (confirm, cancel, next field, select stepping) are the Dialog host's keymap in `lib-shell`, under the same flat names (`confirm`, `cancel`), so a `[keybindings]` override reaches every module's Dialogs. The host sends the Dialog's Presenter its `Cancel` event when `Esc` closes it.
 - A Presenter receives events (`Pay`), never keys (`p`).
+
+### Tracing
+
+- An Interactor logs each intent that changes the Ledger at `info`, done or refused; reads never log. Presenters, Views and Routers never log. Adapters and the writer log at `debug`, a failed write at `error` (ADR-0047, `/tracing`).
+- A log field holds ids, kinds, counts and dates only, never an amount, a name or user-entered text.
 
 ### Localisation
 
