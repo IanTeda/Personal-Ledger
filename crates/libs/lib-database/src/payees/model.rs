@@ -28,6 +28,9 @@ pub struct Payees {
 
 impl Payees {
     /// Generates a mock `Payees` instance with randomised test data.
+    ///
+    /// The name carries a `RowID` suffix because `payees.name` is UNIQUE COLLATE NOCASE:
+    /// a bare company name collides often enough to flake multi-insert tests.
     #[cfg(test)]
     pub fn mock() -> Self {
         use crate::payees::PayeesBuilder;
@@ -37,7 +40,11 @@ impl Payees {
         let now = chrono::Utc::now();
         PayeesBuilder::new()
             .with_id(lib_core::RowID::mock())
-            .with_name(CompanyName().fake::<String>())
+            .with_name(format!(
+                "{}-{}",
+                CompanyName().fake::<String>(),
+                lib_core::RowID::new()
+            ))
             .with_is_active_opt(Some(true))
             .with_created_on_opt(Some(now))
             .with_updated_on_opt(Some(now))
@@ -55,6 +62,16 @@ mod tests {
         let payee = Payees::mock();
         assert!(!payee.name.is_empty());
         assert!(payee.is_active);
+    }
+
+    /// `payees.name` is UNIQUE COLLATE NOCASE, so a bare company name would make
+    /// multi-insert tests flake on the constraint (the same class as #604).
+    #[test]
+    fn mock_names_are_unique_ignoring_case() {
+        let payees: Vec<Payees> = (0..200).map(|_| Payees::mock()).collect();
+        let names: std::collections::HashSet<_> =
+            payees.iter().map(|p| p.name.to_lowercase()).collect();
+        assert_eq!(names.len(), payees.len());
     }
 
     #[test]
