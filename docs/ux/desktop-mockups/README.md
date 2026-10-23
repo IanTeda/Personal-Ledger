@@ -30,7 +30,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 | `10-credit-cards` | Credit cards | 10a–10b | NET WORTH · `g k` |
 | `11-investments` | Investments | 11a–11b | NET WORTH · `g i` |
 | `12-bills` | Bills: Schedule, Planner, Pay, Skip, with a Medium and an X-Large card for each tab | 12a–12e · DESKTOP-167–170 | PLAN · `g w` |
-| `13-budgets` | Budgets v1: Progress, Plan, History | 13a–13g | PLAN · `g b` |
+| `13-budgets` | Budgets v1: Progress, Plan, History, each tab drawn at Medium, Large and X-Large | 13a–13g · DESKTOP-171–176 | PLAN · `g b` |
 | `14-budgets-v2` | Budgets v2: multiple budgets, four methods | 14a–14f | PLAN · `g b` |
 | `15-reports` | Reports | 15a–15i | PLAN · `g r` |
 | `16-settings` | Settings, one page per section, with Window Size cards for General, Display and Units, and a Medium and an X-Large card for every other page | 16a–16v, dialogs 16c–16e, 16r–16t · DESKTOP-123–166 | pinned · `g s` |

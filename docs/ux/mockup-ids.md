@@ -213,3 +213,9 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-168 | — | `desktop-mockups/12-bills/Bills.dc.html` |
 | DESKTOP-169 | — | `desktop-mockups/12-bills/Bills.dc.html` |
 | DESKTOP-170 | — | `desktop-mockups/12-bills/Bills.dc.html` |
+| DESKTOP-171 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |
+| DESKTOP-172 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |
+| DESKTOP-173 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |
+| DESKTOP-174 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |
+| DESKTOP-175 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |
+| DESKTOP-176 | — | `desktop-mockups/13-budgets/Budgets.dc.html` |

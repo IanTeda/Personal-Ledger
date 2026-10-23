@@ -1,6 +1,6 @@
 # Handoff: Budgets — Progress, Plan, History, Detail, Edit, Fill, Stop
 
-> **Package 13 of 20 · Budgets** — frames 13a–13g (13a, 13b, 13c, 13d, 13e, 13f, 13g). Open `Budgets.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 13 of 20 · Budgets** — frames 13a–13g (13a, 13b, 13c, 13d, 13e, 13f, 13g), with each tab drawn at Medium, Large and X-Large (DESKTOP-171–176, and 13a–13c as the Large cards). Open `Budgets.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 This package covers **Personal Ledger's Budgets** view. It has three tabs: **Progress** (the current period), **Plan** (a month grid for setting amounts ahead) and **History** (budget against spend per month). It also has four modals. There are seven variants, 13a–13g.
@@ -14,7 +14,9 @@ A budget is a monthly amount per category. It is the **same value** as the categ
 **High fidelity.** Colours, typography, spacing and states are final.
 
 ## Frame
-Every variant is drawn at **1280 × 800**. The shell is the same as in the other packages: header (48px), primary rail (206px), body, and a 28px status bar. Budgets is the active nav item. Its badge shows the number of categories over budget (**1**).
+Every variant is drawn at **1280 × 800**, the Large reference window, except the Window Size cards below. The shell is the same as in the other packages: header (48px), primary rail (206px), body, and a 28px status bar. Budgets is the active nav item. Its badge shows the number of categories over budget (**1**).
+
+13a–13c are redrawn in today's Chrome (back and forward, the wordmark alone, undo; `../01-shell/README.md`) and with the switcher title from Budgets v2 (14c): **Personal spending ▾ LIMITS**, which `B` or a click opens as the Switcher (14b). Their status lines carry the built keys: `j/k row · enter open · e edit budget · c budget category · s stop budgeting · B switch budget · [/] period · tab switch view` on Progress, `h/j/k/l cell · enter edit · r rollover · x clear · f fill · c budget category · [/] range · tab switch view` on Plan (Insert mode's own legend while a cell is typed into), and `j/k row · h/l month · enter open · x export · [/] range · tab switch view` on History.
 
 ---
 
@@ -32,7 +34,7 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 ## Screens
 
 ### 13a — Progress (default tab)
-- Header: "Budgets", with the meta line "September 2026 · day 21 of 30 · **1** over budget · 58.00 unbudgeted". The `Edit plan` button jumps to the Plan tab.
+- Header: the switcher title **Personal spending ▾ LIMITS**, with the meta line "September 2026 · day 21 of 30 · **1** over budget · 58.00 unbudgeted". The `Edit plan` button jumps to the Plan tab.
 - Tab row: `Progress` (active, dark fill) / `Plan` / `History`. A legend (spent · known costs · elapsed · over) sits beside the tabs, and the period nav `‹ September 2026 ›` sits on the right.
 - **Stat strip**, a 4-column grid with equal cells and 2px rules:
   - BUDGETED 4,130.00 (10 categories · 90.00 carried in)
@@ -44,10 +46,10 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 - Parent rows (`▾ Utilities`, `▾ Food`) carry a "rollup" label and have no edit action. Child rows are indented. Electricity shows "incl. 90.00 carried".
 - An unbudgeted row (Household, spent 58.00) reads "unbudgeted" and its action is `set`.
 - Sample rows: Rent, Utilities (Electricity, Water, Internet), Food (Groceries, Dining — over), Transport, Subscriptions, Health & Fitness, Insurance, Household.
-- Status bar: `NORMAL` · `j/k row · enter detail · e edit budget · [ ] period · tab switch view` · right: "September 2026 · 14 categories".
+- Status bar: `NORMAL` · `j/k row · enter open · e edit budget · c budget category · s stop budgeting · B switch budget · [/] period · tab switch view` · right: "September 2026 · 14 categories".
 
 ### 13b — Plan tab
-- Meta: "Monthly amounts per category · past months are read-only · bold = differs from the category default". Actions: `Fill October from…` (opens 13f) and `+ Budget a category`.
+- Meta: "Monthly amounts per category · past months are read-only · bold = amount set this month". Actions: `Fill October from…` (opens 13f) and `+ Budget a category`.
 - Range nav `‹ Jul – Dec 2026 ›`.
 - Grid columns: CATEGORY / JUL / AUG / SEP · NOW / OCT / NOV / DEC / ROLLOVER. Rows are grouped under uppercase section labels (HOUSING, UTILITIES, FOOD, OTHER).
 - **Past months** (Jul, Aug) are muted and read-only. The current month has a highlighted header.
@@ -62,7 +64,7 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 - **Chart**: a 6-column grid with one pair of bars per month (budget and spent), labelled "3,512.40 / 3,620.00". Over-budget months are marked. The current month (September) is labelled "to date" and hatched. Caption: "over in 3 of the last 5 closed months".
 - Table: CATEGORY / BUDGET / APR…SEP / AVG / OVER (e.g. `3/5`). Over-budget cells have a `▲` prefix and accent text. SEP is excluded from AVG and OVER.
 - Each past month shows the budget that applied at the time. Plan edits never rewrite history.
-- Status bar: "8 of 14 categories shown".
+- Status bar: `NORMAL` · `j/k row · h/l month · enter open · x export · [/] range · tab switch view` · right: "8 of 14 categories shown".
 
 ### 13d — Category detail (modal, 600px)
 Opened with `enter` on a Progress row.
@@ -98,6 +100,34 @@ Opened with `enter` on a Progress row.
 - Field: From (September 2026 current / October 2026).
 - Body: the category keeps its transactions. From that month its spending appears on Progress as **unbudgeted**, and its Bill Plans (Netflix, Streaming Bundle) still count as known costs. Past months keep their budget in History. Nothing is deleted.
 - Footer: `Cancel` + `Stop budgeting` (solid dark, not accent).
+
+---
+
+## Window Sizes
+
+Each tab is drawn in the Window Size Chrome from `../01-shell/README.md#window-sizes` ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md)), in the deck as Medium, Large, X-Large. The Large cards are 13a–13c. Dialogs 13d–13g keep their own widths at every Window Size.
+
+| Card | Window Size | Frame | Tab | What changes from Large |
+| --- | --- | --- | --- | --- |
+| **DESKTOP-171** | Medium | 960 × 1040 | Progress | Icon rail (52px). **No ACTIONS column**: kept, it would leave CATEGORY about 170px; without it CATEGORY has about 225px and every figure column and the 190px bar stay. Edit and set move to the keys, double-click and the right-click menu (drawn open). The taller View shows every row without scrolling. |
+| **DESKTOP-172** | Medium | 960 × 1040 | Plan | Icon rail. Six months and ROLLOVER still fit, so the range stays six months. A click selects a cell, double-click or `enter` types into it, and the right-click menu (drawn open) carries the cell's actions. |
+| **DESKTOP-173** | Medium | 960 × 1040 | History | Icon rail. Month, AVG and OVER columns narrow (76px, 50px) so every column stays; Electricity's rollover note drops. The right-click menu (drawn open) carries the row's actions. |
+| **DESKTOP-041** | Large | 1280 × 800 | Progress | — (13a, today's Chrome) |
+| **DESKTOP-042** | Large | 1280 × 800 | Plan | — (13b, today's Chrome) |
+| **DESKTOP-043** | Large | 1280 × 800 | History | — (13c, today's Chrome) |
+| **DESKTOP-174** | X-Large | 1920 × 1080 | Progress | Expanded rail. The table gains ROLLOVER, the bar widens to 280px, and ACTIONS goes; a 400px detail pane follows the selected row with CATEGORY LIMIT (Edit budget…, Stop…), TRANSACTIONS (the largest four, Transactions), TRACK RECORD and ACTIVITY. |
+| **DESKTOP-175** | X-Large | 1920 × 1080 | Plan | Expanded rail. The range widens to nine months (two closed, the current, six ahead) at 100px a month. The pane follows the selected cell with BUDGET AMOUNT (Edit…, Clear), CATEGORY LIMIT (every amount set, Rollover…, Stop…), SPENDING and ACTIVITY. |
+| **DESKTOP-176** | X-Large | 1920 × 1080 | History | Expanded rail. Wider chart bars and month columns, and a TREND column of six small bars against a dashed budget line. The pane follows the selected row and month with MONTH (Open…, Transactions), CATEGORY (Edit budget…, Plan) and ACTIVITY. |
+
+- **Row actions by Window Size:** Large keeps Progress's row buttons, **edit** on a budgeted row and **set** on an unbudgeted one. Medium has none: `e`, `c`, `s` and `enter` act on the selected row, double-click opens the Category detail (13d), and the right-click menu carries every action. X-Large has none either: the pane carries them, and the menu still opens.
+- **Right-click menu (Progress):** **Open…** `enter` · **Edit budget…** `e` · **Stop budgeting…** `s` · rule · **Budget a category…** `c` · **Open in Transactions**. On a parent row Edit and Stop are disabled at 45%, not hidden. On an unbudgeted row Edit budget reads **Budget this category…** and Stop is disabled.
+- **Right-click menu (Plan cell):** **Edit amount…** `enter` · **Clear this month** `x` · **Rollover** `r` · rule · **Fill October from…** `f` · **Stop budgeting <category>…**. Clear is disabled on a cell whose amount carries forward from an earlier month; on a closed month every entry but Fill is disabled.
+- **Right-click menu (History):** **Open…** `enter` · **Edit budget…** · **Open in Transactions** · rule · **Export CSV…** `x`.
+- **Detail pane:** the Settings list pages' treatment (DESKTOP-125), as the Bills X-Large cards use it: 400px, `border-left:2px solid rgba(32,30,29,.38); background:#eae9e9`, caps groups over 2px rules, fact rows, equal 112 × 34px buttons labelled with verbs. The primary action is filled. A parent row on Progress shows its sums and no buttons; an unbudgeted row shows **Budget…** alone.
+- **Plan range by Window Size:** six months at Medium and Large (`‹ Jul – Dec 2026 ›`), nine at X-Large (`‹ Jul 2026 – Mar 2027 ›`). `[` and `]` move it a month at a time at every size.
+- **`enter` at X-Large** still opens the Category detail dialog (13d) with the full transaction list; the pane shows its summary.
+- **ACTIVITY instead of Toasts:** while the pane is docked, a Budgets Success or Info outcome (budget saved, budgeting stopped, month filled, history exported) lands in ACTIVITY and raises no Toast; errors still toast ([ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)). Below X-Large they toast as before.
+- **Status line:** the tab's hints at every Window Size, dropped from the end where they don't fit (DESKTOP-116).
 
 ---
 
@@ -158,5 +188,5 @@ fillModal
 6. Use tabular numerals, radius 0, 2px section rules and 1px row rules. Icons are Lucide at 14px with a 1.5px stroke.
 
 ## Files
-- `Budgets.dc.html` — the prototype (Turn 9, options 13a–13g)
+- `Budgets.dc.html` — the prototype (section `#t13`: each tab's Medium card, its Large frame 13a–13c and its X-Large card, then dialogs 13d–13g)
 - `README.md` — this document
