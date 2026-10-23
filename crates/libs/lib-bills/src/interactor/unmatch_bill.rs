@@ -37,7 +37,7 @@ mod tests {
         else {
             panic!("the stub pays Streaming Bundle this month");
         };
-        let transactions = ports.reads.transactions.clone();
+        let splits = ports.reads.splits.clone();
 
         UnmatchBill { entry: streaming }
             .run(&mut ports.bills)
@@ -45,8 +45,8 @@ mod tests {
 
         let found = entry(&ports.bills.entries, streaming).expect("still stored");
         assert_eq!(status(found, today()), BillStatus::Overdue);
-        assert_eq!(ports.reads.transactions, transactions);
-        assert!(transactions.iter().any(|t| t.id == split.transaction_id));
+        assert_eq!(ports.reads.splits, splits);
+        assert!(splits.iter().any(|s| s.split == split));
     }
 
     #[test]

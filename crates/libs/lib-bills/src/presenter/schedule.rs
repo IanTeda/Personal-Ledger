@@ -14,13 +14,13 @@ use lib_locale::Segment;
 use lib_locale::format::{format_month_day, format_year_month, upper};
 use lib_viper::view::{Choice, SelectView};
 
-use super::{count, money, paid_transactions, status_chip_label};
+use super::{count, money, paid_splits, status_chip_label};
 use crate::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod, plan_stats};
 use crate::interactor::MatchCandidates;
 use crate::protocols::{BillsPorts, BillsRouter, PayRequest, SharedPorts};
 use crate::{
-    AmountKind, BillPlan, BillScheduleEntry, BillStatus, Recurrence, Resolution, ScheduleRow,
-    amount, entry, get, msg, paid_on, period_summary, planner_order, schedule_period,
+    AmountKind, BillPlan, BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution,
+    ScheduleRow, amount, entry, get, msg, paid_on, period_summary, planner_order, schedule_period,
     schedule_rows,
 };
 
@@ -468,7 +468,7 @@ impl SchedulePresenter {
         let (plans, entries) = (ports.bills().bill_plans(), ports.bills().entries());
         let unfiltered = schedule_rows(&plans, &entries, (!self.all).then_some(self.period), today);
         let rows = self.filters.apply(&unfiltered, &plans);
-        let transactions = paid_transactions(ports, &entries);
+        let splits = paid_splits(ports, &entries);
         let selected = (!rows.is_empty()).then(|| self.clamped(rows.len()));
         let accounts = ports.accounts().bill_accounts();
         let lines = rows
@@ -483,7 +483,7 @@ impl SchedulePresenter {
                     plan,
                     stored,
                     plans: &plans,
-                    transactions: &transactions,
+                    splits: &splits,
                     account: accounts
                         .iter()
                         .find(|account| account.id == plan.account_id)
@@ -497,7 +497,7 @@ impl SchedulePresenter {
             .plan_id
             .and_then(|id| get(&plans, id))
             .map(|plan| {
-                let stats = plan_stats(plan, &plans, &entries, &transactions, today);
+                let stats = plan_stats(plan, &plans, &entries, &splits, today);
                 stats_view(ports, plan, &stats)
             });
         ScheduleViewModel {
@@ -505,7 +505,7 @@ impl SchedulePresenter {
             period_label: format_year_month(self.period.year, self.period.month),
             all: self.all,
             all_label: msg::bills_period_all(),
-            meta: self.meta(ports, &rows, &plans, &entries, &transactions),
+            meta: self.meta(ports, &rows, &plans, &entries, &splits),
             filters: self.filters_view(ports, &plans),
             history_footnote: stats.is_some().then(msg::bills_history_footnote),
             stats,
@@ -540,10 +540,10 @@ impl SchedulePresenter {
         rows: &[ScheduleRow],
         plans: &[BillPlan],
         entries: &[BillScheduleEntry],
-        transactions: &[lib_transactions::Transaction],
+        splits: &[BillSplit],
     ) -> Vec<MetaClause> {
         let units = ports.units();
-        let summary = period_summary(rows, plans, entries, transactions, |id| {
+        let summary = period_summary(rows, plans, entries, splits, |id| {
             units.unit_code(id).unwrap_or_default()
         });
         let entries_clause = if self.all {
@@ -699,7 +699,7 @@ struct LineInput<'a> {
     plan: &'a BillPlan,
     stored: Option<&'a BillScheduleEntry>,
     plans: &'a [BillPlan],
-    transactions: &'a [lib_transactions::Transaction],
+    splits: &'a [BillSplit],
     account: Option<String>,
     selected: bool,
 }
@@ -711,7 +711,7 @@ fn line(input: LineInput<'_>) -> ScheduleLine {
         plan,
         stored,
         plans,
-        transactions,
+        splits,
         account,
         selected,
     } = input;
@@ -723,7 +723,7 @@ fn line(input: LineInput<'_>) -> ScheduleLine {
     let planned = money(ports, &planned, plan.unit);
     let actual = stored
         .filter(|_| paid)
-        .and_then(|found| amount(found, plans, transactions))
+        .and_then(|found| amount(found, plans, splits))
         .map_or_else(msg::bills_none, |figure| money(ports, &figure, plan.unit));
     let status_label = match row.status {
         BillStatus::Overdue => upper(&msg::bills_status_overdue()),
@@ -755,7 +755,7 @@ fn line(input: LineInput<'_>) -> ScheduleLine {
         actual,
         due: format_month_day(row.id.due),
         paid: stored
-            .and_then(|found| paid_on(found, transactions))
+            .and_then(|found| paid_on(found, splits))
             .map_or_else(msg::bills_none, format_month_day),
         status: row.status,
         status_label,

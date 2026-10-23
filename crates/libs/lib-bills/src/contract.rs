@@ -3,29 +3,33 @@
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
-//! the ports, reloads as a restart would, and expects the same rows back.
+//! the ports, reloads as a restart would, and expects the same rows back. The Splits Bills reads
+//! are written by the Transactions, so the suite only seeds them and reads them back.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{
-    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, TransactionId,
-    TransactionStatus, UnitId,
+    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, TransactionId, UnitId,
 };
-use lib_transactions::{Split, Transaction};
 
-use crate::fake::InMemoryBills;
+use crate::fake::{InMemoryBillReads, InMemoryBills};
 use crate::{
-    AmountKind, BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository, EntryId,
-    Recurrence, Resolution, SplitRef,
+    AmountKind, BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit,
+    BillTransactions, EntryId, Recurrence, Resolution, SplitRef,
 };
 
 /// Builds the ports a contract check runs on.
 pub trait PortsFactory {
     type Ports: BillPlanRepository + BillScheduleRepository;
+    type Reads: BillTransactions;
 
-    /// Ports holding `seed`'s Bill Plans and entries, as if stored and loaded, beside
-    /// `transactions`, whose Splits a Paid entry may name. Every Plan's Unit is the stub's aud.
-    fn create(&mut self, seed: InMemoryBills, transactions: Vec<Transaction>) -> Self::Ports;
+    /// Ports holding `seed`'s Bill Plans and entries, as if stored and loaded, beside `splits`,
+    /// which a Paid entry may name. Every Plan's Unit is the stub's aud, and the Splits of one
+    /// Transaction share its date, Account and memo.
+    fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> Self::Ports;
+
+    /// The Splits [`Self::create`] stored, read as Bills reads them.
+    fn reads(&mut self) -> Self::Reads;
 
     /// Ends the writes made on `ports`, then loads fresh ports from wherever they were stored, as
     /// a restart would.
@@ -47,16 +51,26 @@ pub trait PortsFactory {
 #[derive(Debug, Default)]
 pub struct InMemoryFactory {
     committed: Option<InMemoryBills>,
+    splits: Vec<BillSplit>,
     broken: bool,
     failures: usize,
 }
 
 impl PortsFactory for InMemoryFactory {
     type Ports = InMemoryBills;
+    type Reads = InMemoryBillReads;
 
-    fn create(&mut self, seed: InMemoryBills, _transactions: Vec<Transaction>) -> InMemoryBills {
+    fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> InMemoryBills {
         self.committed = Some(seed.clone());
+        self.splits = splits;
         seed
+    }
+
+    fn reads(&mut self) -> InMemoryBillReads {
+        InMemoryBillReads {
+            splits: self.splits.clone(),
+            ..InMemoryBillReads::default()
+        }
     }
 
     fn reload(&mut self, mut ports: InMemoryBills) -> InMemoryBills {
@@ -138,23 +152,31 @@ fn paid(transaction: u32, split_index: usize) -> Resolution {
     })
 }
 
-/// One stored Transaction of two Splits, which the Paid checks Match.
-fn receipt() -> Vec<Transaction> {
-    let split = |amount| Split {
-        amount: cents(amount),
-        category_id: CategoryId::seed(7),
-        payee_id: Some(PayeeId::seed(3)),
-        tag_ids: Vec::new(),
-    };
-    vec![Transaction {
-        id: TransactionId::seed(1),
+/// The two Splits of one stored Transaction, which the Paid checks Match: one with a Payee, one
+/// without.
+fn receipt() -> Vec<BillSplit> {
+    let split = |split_index, amount, payee_id| BillSplit {
+        split: SplitRef {
+            transaction_id: TransactionId::seed(1),
+            split_index,
+        },
         date: date(2),
         account_id: AccountId::seed(1),
-        status: TransactionStatus::Open,
-        is_flagged: false,
-        description: None,
-        splits: vec![split(-8_999), split(-4_500)],
-    }]
+        description: Some("Receipt".into()),
+        amount: cents(amount),
+        category_id: CategoryId::seed(7),
+        payee_id,
+    };
+    vec![
+        split(0, -8_999, Some(PayeeId::seed(3))),
+        split(1, -4_500, None),
+    ]
+}
+
+/// `splits` in Transaction and Split order, so two reads compare whatever order they list in.
+fn sorted(mut splits: Vec<BillSplit>) -> Vec<BillSplit> {
+    splits.sort_by_key(|s| (s.split.transaction_id, s.split.split_index));
+    splits
 }
 
 /// Two Plans, one with an open entry.
@@ -259,6 +281,26 @@ pub fn the_paid_link_round_trips<F: PortsFactory>(factory: &mut F) {
     );
 }
 
+/// The Splits come back as they were stored: every field, by a window that includes both ends,
+/// and one by one as a Paid entry names it.
+pub fn the_splits_read_back_as_they_were_stored<F: PortsFactory>(factory: &mut F) {
+    factory.create(seed(), receipt());
+    let reads = factory.reads();
+
+    assert_eq!(sorted(reads.splits_between(date(2), date(2))), receipt());
+    assert_eq!(reads.splits_between(date(3), date(30)), Vec::new());
+    for split in receipt() {
+        assert_eq!(reads.paid_split(split.split), Some(split));
+    }
+    assert_eq!(
+        reads.paid_split(SplitRef {
+            transaction_id: TransactionId::seed(1),
+            split_index: 2,
+        }),
+        None
+    );
+}
+
 /// A write that fails is reported once, naming the Bills domain, and the ports go back to the last
 /// committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
@@ -292,6 +334,11 @@ mod tests {
     #[test]
     fn in_memory_the_paid_link_round_trips() {
         the_paid_link_round_trips(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_the_splits_read_back_as_they_were_stored() {
+        the_splits_read_back_as_they_were_stored(&mut InMemoryFactory::default());
     }
 
     #[test]

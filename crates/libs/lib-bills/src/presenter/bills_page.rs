@@ -442,14 +442,16 @@ mod tests {
             .iter()
             .find(|plan| plan.id == telstra.plan_id)
             .and_then(|plan| plan.payee_id);
-        let mut spend = page.ports.borrow().reads.transactions[0].clone();
-        spend.id = TransactionId::seed(90_001);
+        let mut spend = page.ports.borrow().reads.splits[0].clone();
+        spend.split = SplitRef {
+            transaction_id: TransactionId::seed(90_001),
+            split_index: 0,
+        };
         spend.date = date(2026, 9, 21);
         spend.account_id = lib_core::AccountId::seed(2);
-        spend.splits.truncate(1);
-        spend.splits[0].payee_id = payee;
-        spend.splits[0].category_id = lib_core::CategoryId::seed(5);
-        page.ports.borrow_mut().reads.transactions.push(spend);
+        spend.payee_id = payee;
+        spend.category_id = lib_core::CategoryId::seed(5);
+        page.ports.borrow_mut().reads.splits.push(spend);
 
         page.schedule(ScheduleEvent::Select(2));
         page.schedule(ScheduleEvent::Pay);

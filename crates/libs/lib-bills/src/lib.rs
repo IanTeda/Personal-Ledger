@@ -45,8 +45,8 @@ pub mod presenter;
 pub mod protocols;
 pub use protocols::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
-    BillPlanRepository, BillScheduleRepository, BillTransactions, BillUnits, BillsOutcome,
-    BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut, SharedPorts,
+    BillPlanRepository, BillScheduleRepository, BillSplit, BillTransactions, BillUnits,
+    BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut, SharedPorts,
 };
 
 pub use bills::*;
@@ -349,16 +349,12 @@ pub fn populate(plans: &[BillPlan], entries: &mut Vec<BillScheduleEntry>, today:
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
 }
 
-/// The Transactions in `transactions` dated from `from` to `to`, both included: the one window
-/// rule every [`BillTransactions`] answers by.
-pub fn transactions_between(
-    transactions: &[lib_transactions::Transaction],
-    from: NaiveDate,
-    to: NaiveDate,
-) -> Vec<lib_transactions::Transaction> {
-    transactions
+/// The Splits in `splits` dated from `from` to `to`, both included: the one window rule every
+/// [`BillTransactions`] answers by.
+pub fn splits_between(splits: &[BillSplit], from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+    splits
         .iter()
-        .filter(|t| (from..=to).contains(&t.date))
+        .filter(|s| (from..=to).contains(&s.date))
         .cloned()
         .collect()
 }

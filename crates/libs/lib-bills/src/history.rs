@@ -18,9 +18,10 @@
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::{Datelike, Months, NaiveDate};
 use lib_core::{AccountId, BillPlanId, CategoryId, Money, Period};
-use lib_transactions::Transaction;
 
-use crate::{BillPlan, BillScheduleEntry, BillStatus, Recurrence, Resolution, ScheduleRow, bills};
+use crate::{
+    BillPlan, BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, ScheduleRow, bills,
+};
 
 /// The month the financial year starts in: July, the Australian year, until Settings' "Financial
 /// year starts" becomes a real Preference.
@@ -153,7 +154,7 @@ pub fn plan_stats(
     plan: &BillPlan,
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
     today: NaiveDate,
 ) -> PlanStats {
     let payments: Vec<Payment> = entries
@@ -163,8 +164,8 @@ pub fn plan_stats(
         .filter_map(|e| {
             Some(Payment {
                 due: e.due,
-                paid_on: bills::paid_on(e, transactions)?,
-                amount: bills::amount(e, plans, transactions)?,
+                paid_on: bills::paid_on(e, splits)?,
+                amount: bills::amount(e, plans, splits)?,
             })
         })
         .collect();

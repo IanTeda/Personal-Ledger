@@ -8,9 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, TransactionId, UnitId};
+use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
 use lib_toast::ToastKind;
-use lib_transactions::{Split, Transaction};
 
 use crate::protocols::{
     BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
@@ -18,8 +17,8 @@ use crate::protocols::{
 };
 use crate::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
-    BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillTransactions, BillsSeed,
-    EntryId, Resolution, SplitRef, StubBills,
+    BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions,
+    BillsSeed, EntryId, Resolution, SplitRef, StubBills,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -75,16 +74,16 @@ pub struct InMemoryBillReads {
     pub accounts: Vec<BillAccount>,
     pub categories: Vec<BillCategory>,
     pub payees: Vec<BillPayee>,
-    pub transactions: Vec<Transaction>,
+    pub splits: Vec<BillSplit>,
 }
 
 impl BillTransactions for InMemoryBillReads {
-    fn transactions_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<Transaction> {
-        crate::transactions_between(&self.transactions, from, to)
+    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        crate::splits_between(&self.splits, from, to)
     }
 
-    fn paid_transaction(&self, id: TransactionId) -> Option<Transaction> {
-        self.transactions.iter().find(|t| t.id == id).cloned()
+    fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        crate::split_of(&self.splits, split).cloned()
     }
 }
 
@@ -150,16 +149,16 @@ pub struct InMemoryPorts {
 
 impl InMemoryPorts {
     /// The stub Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
-    /// and Payees they name and the Transactions their Paid entries were paid by: the stub
-    /// Ledger's Bills, with the Transactions numbered from 1 rather than after the other stubs'.
+    /// and Payees they name and the Splits their Paid entries were paid by: the stub Ledger's
+    /// Bills, with the Transactions numbered from 1 rather than after the other stubs'.
     pub fn stub(today: NaiveDate) -> Self {
         let accounts = stub_accounts();
         let categories = stub_categories();
         let payees = stub_payees();
-        let mut transactions = Vec::new();
+        let mut splits = Vec::new();
         let seed = book(
             crate::default_bills(&accounts, &categories, &payees, today),
-            &mut transactions,
+            &mut splits,
         );
         Self {
             bills: seed.into(),
@@ -167,7 +166,7 @@ impl InMemoryPorts {
                 accounts,
                 categories,
                 payees,
-                transactions,
+                splits,
             },
             units: InMemoryBillUnits::stub(),
         }
@@ -216,18 +215,20 @@ impl BillsPorts for InMemoryPorts {
     }
 }
 
-/// Books `stub`'s payments and Match candidate into `transactions`, as the stub Ledger does
-/// through `lib-bill-payments`' `PayBill`, which this crate can't reach: each payment an Open
-/// Transaction in its Plan's Account with one Split of `-amount` carrying the Plan's Category and
-/// Payee, left at its status, newest first. `lib-ledger` checks the two agree.
-fn book(stub: StubBills, transactions: &mut Vec<Transaction>) -> BillsSeed {
+/// Books `stub`'s payments and Match candidate into `splits`, as the stub Ledger does through
+/// `lib-bill-payments`' `PayBill`, which this crate can't reach: each payment a Transaction in its
+/// Plan's Account of one Split of `-amount` carrying the Plan's Category and Payee, newest first.
+/// `lib-ledger` checks the two agree.
+fn book(stub: StubBills, splits: &mut Vec<BillSplit>) -> BillsSeed {
     let StubBills {
         seed: BillsSeed { plans, mut entries },
         payments,
         match_candidate,
     } = stub;
-    let next_id = |transactions: &Vec<Transaction>| {
-        TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default())
+    // Every booked Transaction has one Split, so the next seed id follows the Split count.
+    let next = |splits: &Vec<BillSplit>| SplitRef {
+        transaction_id: TransactionId::seed(u32::try_from(splits.len() + 1).unwrap_or_default()),
+        split_index: 0,
     };
     for payment in payments {
         let Some(plan) = crate::get(&plans, payment.entry.plan_id) else {
@@ -236,42 +237,42 @@ fn book(stub: StubBills, transactions: &mut Vec<Transaction>) -> BillsSeed {
         let Some(found) = crate::entry_mut(&mut entries, payment.entry) else {
             continue;
         };
-        let id = next_id(transactions);
-        found.resolution = Resolution::Paid(SplitRef {
-            transaction_id: id,
-            split_index: 0,
-        });
+        let split = next(splits);
+        found.resolution = Resolution::Paid(split);
         insert_newest_first(
-            transactions,
-            Transaction {
-                id,
+            splits,
+            BillSplit {
+                split,
                 date: payment.date,
                 account_id: plan.account_id,
-                status: payment.status,
-                is_flagged: false,
                 description: Some(plan.name.clone()),
-                splits: vec![Split {
-                    amount: lib_core::Money(-payment.amount.0),
-                    category_id: plan.category_id,
-                    payee_id: plan.payee_id,
-                    tag_ids: Vec::new(),
-                }],
+                amount: Money(-payment.amount.0),
+                category_id: plan.category_id,
+                payee_id: plan.payee_id,
             },
         );
     }
     if let Some(debit) = match_candidate {
-        let transaction = debit.transaction(next_id(transactions));
-        insert_newest_first(transactions, transaction);
+        let split = BillSplit {
+            split: next(splits),
+            date: debit.date,
+            account_id: debit.account_id,
+            description: Some(debit.description),
+            amount: Money(-debit.amount.0),
+            category_id: debit.category_id,
+            payee_id: Some(debit.payee_id),
+        };
+        insert_newest_first(splits, split);
     }
     BillsSeed { plans, entries }
 }
 
-fn insert_newest_first(transactions: &mut Vec<Transaction>, transaction: Transaction) {
-    let at = transactions
+fn insert_newest_first(splits: &mut Vec<BillSplit>, split: BillSplit) {
+    let at = splits
         .iter()
-        .position(|t| t.date <= transaction.date)
-        .unwrap_or(transactions.len());
-    transactions.insert(at, transaction);
+        .position(|s| s.date <= split.date)
+        .unwrap_or(splits.len());
+    splits.insert(at, split);
 }
 
 /// The stub Accounts as Bills reads them: the Accounts stub's ids, names, Units and whether each
@@ -418,7 +419,7 @@ impl BillsRouter for RecordingRouter {
 
 #[cfg(test)]
 mod tests {
-    use lib_core::{AccountId, BillPlanId, BillScheduleEntryId, TransactionStatus};
+    use lib_core::{AccountId, BillPlanId, BillScheduleEntryId};
 
     use super::*;
     use crate::Resolution;
@@ -458,28 +459,31 @@ mod tests {
 
     #[test]
     fn the_window_includes_both_ends() {
-        let on = |day| Transaction {
-            id: TransactionId::seed(day),
+        let on = |day| BillSplit {
+            split: SplitRef {
+                transaction_id: TransactionId::seed(day),
+                split_index: 0,
+            },
             date: date(day),
             account_id: AccountId::seed(1),
-            status: TransactionStatus::Open,
-            is_flagged: false,
             description: None,
-            splits: Vec::new(),
+            amount: Money(bigdecimal::BigDecimal::from(-1)),
+            category_id: CategoryId::seed(7),
+            payee_id: None,
         };
         let reads = InMemoryBillReads {
-            transactions: (1..=5).map(on).collect(),
+            splits: (1..=5).map(on).collect(),
             ..InMemoryBillReads::default()
         };
 
         let mut days: Vec<u32> = reads
-            .transactions_between(date(2), date(4))
+            .splits_between(date(2), date(4))
             .iter()
-            .map(|t| t.id.seed_number())
+            .map(|s| s.split.transaction_id.seed_number())
             .collect();
         days.sort_unstable();
 
         assert_eq!(days, [2, 3, 4]);
-        assert_eq!(reads.paid_transaction(TransactionId::seed(5)), Some(on(5)));
+        assert_eq!(reads.paid_split(on(5).split), Some(on(5)));
     }
 }

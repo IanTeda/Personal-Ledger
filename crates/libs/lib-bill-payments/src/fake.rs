@@ -6,7 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_bills::fake::{InMemoryBills, InMemoryPorts};
-use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository, EntryId};
+use lib_bills::{
+    BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, EntryId,
+    SplitRef,
+};
 use lib_core::BillPlanId;
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
@@ -36,8 +39,8 @@ impl BillPayments for InMemoryPayments {
 }
 
 /// The payments port over `lib-bills`' in-memory ports, as the Pay Dialog's Presenter tests share
-/// them: the entry goes to their Bill Schedule and the Transaction to the Transactions they read,
-/// so the Bills page and a Match see the payment at once.
+/// them: the entry goes to their Bill Schedule and the Transaction's Splits to the Splits they
+/// read, so the Bills page and a Match see the payment at once.
 #[derive(Debug, Clone)]
 pub struct PortsPayments(pub Rc<RefCell<InMemoryPorts>>);
 
@@ -59,11 +62,26 @@ impl BillPayments for PortsPayments {
 
     fn record_payment(&mut self, transaction: Transaction, entry: BillScheduleEntry) {
         let mut ports = self.0.borrow_mut();
-        let transactions = &mut ports.reads.transactions;
-        match transactions.iter_mut().find(|row| row.id == transaction.id) {
-            Some(row) => *row = transaction,
-            None => transactions.push(transaction),
-        }
+        let splits = &mut ports.reads.splits;
+        splits.retain(|row| row.split.transaction_id != transaction.id);
+        splits.extend(
+            transaction
+                .splits
+                .into_iter()
+                .enumerate()
+                .map(|(split_index, split)| BillSplit {
+                    split: SplitRef {
+                        transaction_id: transaction.id,
+                        split_index,
+                    },
+                    date: transaction.date,
+                    account_id: transaction.account_id,
+                    description: transaction.description.clone(),
+                    amount: split.amount,
+                    category_id: split.category_id,
+                    payee_id: split.payee_id,
+                }),
+        );
         ports.bills.upsert_entry(entry);
     }
 }

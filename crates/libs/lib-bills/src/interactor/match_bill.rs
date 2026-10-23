@@ -1,21 +1,20 @@
 //! Match existing transaction: ties an open entry to an unmatched Expense Split dated near its due
-//! date. Writes only the entry and reads the Transactions through their port, so it is a Bills
+//! date. Writes only the entry and reads the Splits through their port, so it is a Bills
 //! Interactor rather than a cross-domain one.
 
 use chrono::Duration;
-use lib_transactions::Transaction;
 
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillTransactions, BillsRepository};
 use crate::{
-    BillError, EntryId, MATCH_WINDOW_DAYS, SplitRef, match_candidates, match_split,
+    BillError, BillSplit, EntryId, MATCH_WINDOW_DAYS, SplitRef, match_candidates, match_split,
     preselected_candidate,
 };
 
-/// The Transactions a Match on `entry` may name: those dated within the window of its due date.
-fn window(transactions: &dyn BillTransactions, entry: EntryId) -> Vec<Transaction> {
+/// The Splits a Match on `entry` may name: those dated within the window of its due date.
+fn window(transactions: &dyn BillTransactions, entry: EntryId) -> Vec<BillSplit> {
     let reach = Duration::days(MATCH_WINDOW_DAYS);
-    transactions.transactions_between(entry.due - reach, entry.due + reach)
+    transactions.splits_between(entry.due - reach, entry.due + reach)
 }
 
 /// The Splits an entry may be Matched to, read when Pay is pressed.
@@ -87,29 +86,26 @@ impl MatchBill {
 
 #[cfg(test)]
 mod tests {
-    use lib_core::{AccountId, CategoryId, PayeeId, TransactionId, TransactionStatus};
-    use lib_transactions::Split;
+    use lib_core::{AccountId, CategoryId, PayeeId, TransactionId};
 
     use super::*;
     use crate::fake::InMemoryPorts;
     use crate::interactor::test_support::{cents, date, entry_of, stub};
     use crate::{Resolution, entry};
 
-    /// A one-Split expense on `day` of September in ANZ Everyday.
-    fn spend(id: u32, day: u32, payee: Option<PayeeId>, amount: i64) -> Transaction {
-        Transaction {
-            id: TransactionId::seed(90_000 + id),
+    /// The one Split of an expense on `day` of September in ANZ Everyday.
+    fn spend(id: u32, day: u32, payee: Option<PayeeId>, amount: i64) -> BillSplit {
+        BillSplit {
+            split: SplitRef {
+                transaction_id: TransactionId::seed(90_000 + id),
+                split_index: 0,
+            },
             date: date(2026, 9, day),
             account_id: AccountId::seed(2),
-            status: TransactionStatus::Cleared,
-            is_flagged: false,
             description: None,
-            splits: vec![Split {
-                amount: cents(-amount),
-                category_id: CategoryId::seed(5),
-                payee_id: payee,
-                tag_ids: Vec::new(),
-            }],
+            amount: cents(-amount),
+            category_id: CategoryId::seed(5),
+            payee_id: payee,
         }
     }
 
@@ -124,13 +120,10 @@ mod tests {
             .find(|p| p.id == telstra.plan_id)
             .and_then(|p| p.payee_id)
             .expect("Telstra Internet has a Payee");
-        ports.reads.transactions.push(spend(1, 20, None, 8_000));
-        ports
-            .reads
-            .transactions
-            .push(spend(2, 21, Some(payee), 7_999));
+        ports.reads.splits.push(spend(1, 20, None, 8_000));
+        ports.reads.splits.push(spend(2, 21, Some(payee), 7_999));
         // Outside the window.
-        ports.reads.transactions.push(Transaction {
+        ports.reads.splits.push(BillSplit {
             date: date(2026, 7, 1),
             ..spend(3, 1, Some(payee), 7_999)
         });
@@ -162,7 +155,7 @@ mod tests {
         let mut ports = stub();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
         let before = candidates(&ports, origin).0.len();
-        ports.reads.transactions.push(spend(1, 20, None, 15_000));
+        ports.reads.splits.push(spend(1, 20, None, 15_000));
 
         let (found, preselected) = candidates(&ports, origin);
 

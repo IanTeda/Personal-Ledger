@@ -18,7 +18,7 @@ use serde_json::Value;
 
 /// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and
 /// `lib_viper`, the generic types they share, which no feature crate may reach another through.
-const MIGRATED: &[&str] = &["lib_transactions", "lib_units", "lib_viper"];
+const MIGRATED: &[&str] = &["lib_bills", "lib_transactions", "lib_units", "lib_viper"];
 
 /// Every feature crate, migrated or not: one per domain.
 const FEATURE_CRATES: &[&str] = &[

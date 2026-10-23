@@ -8,7 +8,6 @@ use chrono::{Datelike, NaiveDate};
 use lib_bills::*;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
 use lib_core::{Money, Total, UnitId};
-use lib_transactions::Transaction;
 
 use crate::Ledger;
 
@@ -27,7 +26,7 @@ fn today() -> NaiveDate {
 struct World {
     accounts: Vec<BillAccount>,
     categories: Vec<BillCategory>,
-    transactions: Vec<Transaction>,
+    splits: Vec<BillSplit>,
     plans: Vec<BillPlan>,
     entries: Vec<BillScheduleEntry>,
 }
@@ -37,7 +36,7 @@ fn world() -> World {
     World {
         accounts: ledger.bill_accounts(),
         categories: ledger.bill_categories(),
-        transactions: ledger.transactions().to_vec(),
+        splits: ledger.bill_splits(),
         plans: ledger.bill_plans().to_vec(),
         entries: ledger.bill_entries().to_vec(),
     }
@@ -98,27 +97,23 @@ fn match_candidates_put_the_payee_match_first_and_preselect_it() {
     let candidates = match_candidates(
         &w.plans,
         &w.entries,
-        &w.transactions,
+        &w.splits,
         &w.accounts,
         &w.categories,
         due,
     );
     assert!(!candidates.is_empty());
     let plan = get(&w.plans, telstra).unwrap();
-    let first = preselected_candidate(plan, &candidates, &w.transactions).unwrap();
-    let split = split_of(&w.transactions, first).unwrap();
+    let first = preselected_candidate(plan, &candidates, &w.splits).unwrap();
+    let split = split_of(&w.splits, first).unwrap();
     assert_eq!(split.payee_id, plan.payee_id);
     assert_eq!(split.amount, cents_money(-7_999));
     // Nothing already Matched, nothing income, nothing outside the window.
     for c in &candidates {
         assert!(!is_matched(&w.entries, *c));
-        let t = w
-            .transactions
-            .iter()
-            .find(|t| t.id == c.transaction_id)
-            .unwrap();
-        assert!((t.date - due.due).num_days().abs() <= MATCH_WINDOW_DAYS);
-        assert!(t.splits[c.split_index].amount.0.is_negative());
+        let s = split_of(&w.splits, *c).unwrap();
+        assert!((s.date - due.due).num_days().abs() <= MATCH_WINDOW_DAYS);
+        assert!(s.amount.0.is_negative());
     }
 }
 
@@ -130,17 +125,17 @@ fn match_split_pays_and_unmatch_reverses_leaving_the_transaction() {
     let candidates = match_candidates(
         &w.plans,
         &w.entries,
-        &w.transactions,
+        &w.splits,
         &w.accounts,
         &w.categories,
         due,
     );
     let chosen = candidates[0];
-    let before = w.transactions.len();
+    let before = w.splits.len();
     match_split(
         &w.plans,
         &mut w.entries,
-        &w.transactions,
+        &w.splits,
         &w.accounts,
         &w.categories,
         due,
@@ -148,16 +143,13 @@ fn match_split_pays_and_unmatch_reverses_leaving_the_transaction() {
     )
     .unwrap();
     let e = entry(&w.entries, due).unwrap();
-    assert_eq!(
-        amount(e, &w.plans, &w.transactions),
-        Some(cents_money(7_999))
-    );
+    assert_eq!(amount(e, &w.plans, &w.splits), Some(cents_money(7_999)));
     // A Matched Split is no longer anyone's candidate.
     let netflix = plan_id(&w, "Netflix");
     let other = match_candidates(
         &w.plans,
         &w.entries,
-        &w.transactions,
+        &w.splits,
         &w.accounts,
         &w.categories,
         id(netflix, date(2026, 9, 18)),
@@ -168,7 +160,7 @@ fn match_split_pays_and_unmatch_reverses_leaving_the_transaction() {
         status(entry(&w.entries, due).unwrap(), today()),
         BillStatus::Due
     );
-    assert_eq!(w.transactions.len(), before);
+    assert_eq!(w.splits.len(), before);
 }
 
 #[test]
@@ -177,13 +169,13 @@ fn match_split_refuses_a_non_candidate() {
     let telstra = plan_id(&w, "Telstra Internet");
     let due = id(telstra, date(2026, 9, 22));
     let far = SplitRef {
-        transaction_id: w.transactions.last().unwrap().id,
+        transaction_id: w.splits.last().unwrap().split.transaction_id,
         split_index: 0,
     };
     let result = match_split(
         &w.plans,
         &mut w.entries,
-        &w.transactions,
+        &w.splits,
         &w.accounts,
         &w.categories,
         due,
@@ -207,10 +199,7 @@ fn skip_snapshots_the_planned_amount_and_unskip_reverses() {
     edit.planned_amount = cents_money(99_999);
     edit_plan(&mut w.plans, &mut w.entries, origin, &edit, &c, &a, today()).unwrap();
     let e = entry(&w.entries, due).unwrap();
-    assert_eq!(
-        amount(e, &w.plans, &w.transactions),
-        Some(cents_money(15_000))
-    );
+    assert_eq!(amount(e, &w.plans, &w.splits), Some(cents_money(15_000)));
     unskip(&mut w.entries, due).unwrap();
     assert_eq!(unskip(&mut w.entries, due), Err(BillError::NotSkipped));
 }
@@ -319,7 +308,7 @@ fn an_earlier_overdue_row_carries_into_the_current_month() {
         today(),
     );
     assert!(own.iter().any(|r| r.id == august && !r.carried));
-    let summary = period_summary(&september, &w.plans, &w.entries, &w.transactions, |_| {
+    let summary = period_summary(&september, &w.plans, &w.entries, &w.splits, |_| {
         "aud".to_string()
     });
     assert_eq!(summary.overdue, 3);
@@ -408,7 +397,7 @@ fn periods_past_the_horizon_show_previews() {
 fn the_period_summary_counts_and_totals_its_own_rows() {
     let w = world();
     let rows = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
-    let summary = period_summary(&rows, &w.plans, &w.entries, &w.transactions, |_| {
+    let summary = period_summary(&rows, &w.plans, &w.entries, &w.splits, |_| {
         "aud".to_string()
     });
     assert_eq!((summary.due, summary.overdue, summary.paid), (3, 2, 1));
@@ -454,7 +443,7 @@ fn the_seed_is_deterministic() {
     let first = world();
     let second = world();
     assert_eq!(first.entries, second.entries);
-    assert_eq!(first.transactions, second.transactions);
+    assert_eq!(first.splits, second.splits);
 }
 
 // --- the Schedule's filters and stat callout ---
@@ -509,13 +498,7 @@ fn category_and_account_scope_by_plan() {
 fn telstra_stats_read_last_paid_average_and_last_year() {
     let world = world();
     let plan = plan_named(&world, "Telstra Internet");
-    let stats = plan_stats(
-        plan,
-        &world.plans,
-        &world.entries,
-        &world.transactions,
-        today(),
-    );
+    let stats = plan_stats(plan, &world.plans, &world.entries, &world.splits, today());
     let (amount, _) = stats.last_paid.clone().unwrap();
     assert_eq!(amount, cents(8_900));
     assert_eq!(stats.average_year, 2025);
@@ -528,13 +511,7 @@ fn telstra_stats_read_last_paid_average_and_last_year() {
 fn skipped_rows_are_left_out_of_the_average() {
     let mut world = world();
     let plan = plan_named(&world, "Gym \u{2014} Fitness First").clone();
-    let before = plan_stats(
-        &plan,
-        &world.plans,
-        &world.entries,
-        &world.transactions,
-        today(),
-    );
+    let before = plan_stats(&plan, &world.plans, &world.entries, &world.splits, today());
     // Every Gym payment was 64.00, so a zero from a Skip would drag the mean down.
     assert_eq!(before.average, Some(cents(6_400)));
     for entry in world.entries.iter_mut().filter(|e| e.plan_id == plan.id) {
@@ -544,13 +521,7 @@ fn skipped_rows_are_left_out_of_the_average() {
             };
         }
     }
-    let after = plan_stats(
-        &plan,
-        &world.plans,
-        &world.entries,
-        &world.transactions,
-        today(),
-    );
+    let after = plan_stats(&plan, &world.plans, &world.entries, &world.splits, today());
     assert_eq!(after.average, Some(cents(6_400)));
 }
 
@@ -558,13 +529,7 @@ fn skipped_rows_are_left_out_of_the_average() {
 fn a_plan_never_paid_shows_dashes() {
     let world = world();
     let plan = plan_named(&world, "Rent");
-    let stats = plan_stats(
-        plan,
-        &world.plans,
-        &world.entries,
-        &world.transactions,
-        today(),
-    );
+    let stats = plan_stats(plan, &world.plans, &world.entries, &world.splits, today());
     assert!(stats.never_paid);
     assert_eq!(stats.last_paid, None);
     assert_eq!(stats.average, None);

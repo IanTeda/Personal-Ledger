@@ -171,30 +171,26 @@ impl PayPresenter {
             let reach = Duration::days(MATCH_WINDOW_DAYS);
             let nearby = ports
                 .transactions()
-                .transactions_between(entry.due - reach, entry.due + reach);
+                .splits_between(entry.due - reach, entry.due + reach);
             let lines = candidates
                 .iter()
                 .map(|split_ref| {
-                    let found = nearby
-                        .iter()
-                        .find(|t| t.id == split_ref.transaction_id)
-                        .and_then(|t| Some((t, t.splits.get(split_ref.split_index)?)));
-                    let Some((transaction, split)) = found else {
+                    let Some(split) = lib_bills::split_of(&nearby, *split_ref) else {
                         return CandidateLine {
                             summary: String::new(),
                             account: String::new(),
                         };
                     };
                     let payee = payee_name(split.payee_id)
-                        .or_else(|| transaction.description.clone())
+                        .or_else(|| split.description.clone())
                         .unwrap_or_default();
                     CandidateLine {
                         summary: msg::bill_payments_pay_candidate(
                             &payee,
-                            &format_month_day(transaction.date),
+                            &format_month_day(split.date),
                             &format_amount(&split.amount, AmountStyle::own().with_plus()).text,
                         ),
-                        account: account_name(transaction.account_id),
+                        account: account_name(split.account_id),
                     }
                 })
                 .collect();
@@ -708,27 +704,30 @@ mod tests {
             }))
         );
         let ports = dialog.ports.borrow();
-        let paid = ports
+        let paid: Vec<_> = ports
             .reads
-            .transactions
+            .splits
             .iter()
-            .find(|t| t.id == id)
-            .expect("the Transaction is booked");
-        assert_eq!(paid.total(), Money("-42.50".parse().expect("a decimal")));
+            .filter(|s| s.split.transaction_id == id)
+            .collect();
+        let [paid] = paid.as_slice() else {
+            panic!("the Transaction is booked with one Split: {paid:?}");
+        };
+        assert_eq!(paid.amount, Money("-42.50".parse().expect("a decimal")));
     }
 
     #[test]
     fn confirming_match_matches_the_chosen_candidate_and_closes() {
         let mut dialog = Dialog::open();
-        let transactions = dialog.ports.borrow().reads.transactions.len();
+        let splits = dialog.ports.borrow().reads.splits.len();
 
         dialog.send(PayEvent::Confirm);
 
         assert_eq!(dialog.router.closed, [Some(PayOutcome::Matched)]);
         assert!(matches!(dialog.resolution(), Some(Resolution::Paid(_))));
         assert_eq!(
-            dialog.ports.borrow().reads.transactions.len(),
-            transactions,
+            dialog.ports.borrow().reads.splits.len(),
+            splits,
             "a Match books no Transaction"
         );
     }

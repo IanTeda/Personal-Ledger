@@ -7,7 +7,6 @@ use chrono::NaiveDate;
 use lib_core::{
     AccountId, BillPlanId, CategoryId, Money, PayeeId, Period, Total, TransactionId, UnitId,
 };
-use lib_transactions::{Split, Transaction};
 
 use super::*;
 
@@ -263,7 +262,7 @@ pub const MATCH_WINDOW_DAYS: i64 = 14;
 pub fn match_candidates(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
     accounts: &[BillAccount],
     categories: &[BillCategory],
     id: EntryId,
@@ -279,28 +278,23 @@ pub fn match_candidates(
             .any(|c| c.id == category_id && c.is_expense)
     };
     let mut found: Vec<(bool, bool, BigDecimal, i64, SplitRef)> = Vec::new();
-    for transaction in transactions {
-        let days = (transaction.date - id.due).num_days().abs();
-        if days > MATCH_WINDOW_DAYS || unit_of(transaction.account_id) != Some(plan.unit) {
+    for split in splits {
+        let days = (split.date - id.due).num_days().abs();
+        if days > MATCH_WINDOW_DAYS
+            || unit_of(split.account_id) != Some(plan.unit)
+            || !is_expense(split.category_id)
+            || is_matched(entries, split.split)
+        {
             continue;
         }
-        for (split_index, split) in transaction.splits.iter().enumerate() {
-            let split_ref = SplitRef {
-                transaction_id: transaction.id,
-                split_index,
-            };
-            if !is_expense(split.category_id) || is_matched(entries, split_ref) {
-                continue;
-            }
-            let gap = (split.amount.0.abs() - &plan.planned_amount.0).abs();
-            found.push((
-                split.payee_id.is_some() && split.payee_id == plan.payee_id,
-                transaction.account_id == plan.account_id,
-                gap,
-                days,
-                split_ref,
-            ));
-        }
+        let gap = (split.amount.0.abs() - &plan.planned_amount.0).abs();
+        found.push((
+            split.payee_id.is_some() && split.payee_id == plan.payee_id,
+            split.account_id == plan.account_id,
+            gap,
+            days,
+            split.split,
+        ));
     }
     found.sort_by(|a, b| {
         b.0.cmp(&a.0)
@@ -315,33 +309,29 @@ pub fn match_candidates(
 pub fn preselected_candidate(
     plan: &BillPlan,
     candidates: &[SplitRef],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
 ) -> Option<SplitRef> {
     let first = *candidates.first()?;
-    let split = split_of(transactions, first)?;
+    let split = split_of(splits, first)?;
     (plan.payee_id.is_some() && split.payee_id == plan.payee_id).then_some(first)
 }
 
-pub fn split_of(transactions: &[Transaction], split: SplitRef) -> Option<&Split> {
-    transactions
-        .iter()
-        .find(|t| t.id == split.transaction_id)?
-        .splits
-        .get(split.split_index)
+pub fn split_of(splits: &[BillSplit], split: SplitRef) -> Option<&BillSplit> {
+    splits.iter().find(|s| s.split == split)
 }
 
 /// Match existing transaction: ties entry `id` to one of its [`match_candidates`].
 pub fn match_split(
     plans: &[BillPlan],
     entries: &mut [BillScheduleEntry],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
     accounts: &[BillAccount],
     categories: &[BillCategory],
     id: EntryId,
     split: SplitRef,
 ) -> Result<(), BillError> {
     open_entry(plans, entries, id)?;
-    if !match_candidates(plans, entries, transactions, accounts, categories, id).contains(&split) {
+    if !match_candidates(plans, entries, splits, accounts, categories, id).contains(&split) {
         return Err(BillError::NotACandidate);
     }
     if let Some(found) = entry_mut(entries, id) {
@@ -399,24 +389,21 @@ pub fn unmatch_transaction(entries: &mut [BillScheduleEntry], transaction_id: Tr
 pub fn amount(
     entry: &BillScheduleEntry,
     plans: &[BillPlan],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
 ) -> Option<Money> {
     match &entry.resolution {
-        Resolution::Paid(split) => split_of(transactions, *split).map(|s| Money(s.amount.0.abs())),
+        Resolution::Paid(split) => split_of(splits, *split).map(|s| Money(s.amount.0.abs())),
         Resolution::Skipped { planned } => Some(planned.clone()),
         Resolution::Unresolved => get(plans, entry.plan_id).map(|p| p.planned_amount.clone()),
     }
 }
 
 /// The date an entry was paid: its Matched Split's Transaction date.
-pub fn paid_on(entry: &BillScheduleEntry, transactions: &[Transaction]) -> Option<NaiveDate> {
+pub fn paid_on(entry: &BillScheduleEntry, splits: &[BillSplit]) -> Option<NaiveDate> {
     let Resolution::Paid(split) = entry.resolution else {
         return None;
     };
-    transactions
-        .iter()
-        .find(|t| t.id == split.transaction_id)
-        .map(|t| t.date)
+    split_of(splits, split).map(|s| s.date)
 }
 
 /// The Planner tab's rows: active Plans by name, then inactive ones.
@@ -557,7 +544,7 @@ pub fn period_summary(
     rows: &[ScheduleRow],
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
-    transactions: &[Transaction],
+    splits: &[BillSplit],
     unit_code: impl Fn(UnitId) -> String,
 ) -> PeriodSummary {
     let count = |status| rows.iter().filter(|r| r.status == status).count();
@@ -568,7 +555,7 @@ pub fn period_summary(
             continue;
         };
         let figure = match entry(entries, row.id) {
-            Some(found) => amount(found, plans, transactions),
+            Some(found) => amount(found, plans, splits),
             None => Some(plan.planned_amount.clone()),
         };
         let Some(figure) = figure else {
@@ -613,7 +600,7 @@ mod tests {
     struct World {
         accounts: Vec<BillAccount>,
         categories: Vec<BillCategory>,
-        transactions: Vec<Transaction>,
+        splits: Vec<BillSplit>,
         plans: Vec<BillPlan>,
         entries: Vec<BillScheduleEntry>,
     }
@@ -622,7 +609,7 @@ mod tests {
         World {
             accounts: stub_accounts(),
             categories: stub_categories(),
-            transactions: Vec::new(),
+            splits: Vec::new(),
             plans: Vec::new(),
             entries: Vec::new(),
         }
@@ -856,10 +843,7 @@ mod tests {
         edit_plan(&mut w.plans, &mut w.entries, pid, &edit, &c, &a, today()).unwrap();
         assert!(w.entries.iter().all(|e| !e.superseded));
         let e = entry(&w.entries, id(pid, date(2026, 9, 25))).unwrap();
-        assert_eq!(
-            amount(e, &w.plans, &w.transactions),
-            Some(cents_money(12_345))
-        );
+        assert_eq!(amount(e, &w.plans, &w.splits), Some(cents_money(12_345)));
     }
 
     // --- validation ---

@@ -9,10 +9,9 @@
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_core::{
-    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, Period, TransactionId,
+    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, Period,
     TransactionStatus,
 };
-use lib_transactions::{Split, Transaction};
 
 use crate::{
     AmountKind, BillAccount, BillCategory, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry,
@@ -50,35 +49,18 @@ pub struct SeedPayment {
     pub status: TransactionStatus,
 }
 
-/// The unmatched Telstra payment yesterday, the handoff's 8d Match candidate.
+/// The unmatched Telstra payment yesterday, the handoff's 8d Match candidate: a Transaction of one
+/// Split, which the booking side writes under the next seed id.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeedDebit {
     pub date: NaiveDate,
     pub account_id: AccountId,
+    pub status: TransactionStatus,
+    pub description: String,
     pub category_id: CategoryId,
     pub payee_id: PayeeId,
     /// A positive magnitude; the Split is the negative.
     pub amount: Money,
-}
-
-impl SeedDebit {
-    /// The Transaction it is, under the seed id the booking side gives it.
-    pub fn transaction(&self, id: TransactionId) -> Transaction {
-        Transaction {
-            id,
-            date: self.date,
-            account_id: self.account_id,
-            status: TransactionStatus::Cleared,
-            is_flagged: false,
-            description: Some("TELSTRA DIRECT DEBIT".to_string()),
-            splits: vec![Split {
-                amount: Money(-self.amount.0.clone()),
-                category_id: self.category_id,
-                payee_id: Some(self.payee_id),
-                tag_ids: Vec::new(),
-            }],
-        }
-    }
 }
 
 /// A seeded entry's id, fixed by its Bill Plan's seed number and its due date rather than by its
@@ -409,6 +391,8 @@ pub fn default_bills(
         (Some(account), Some(category_id), Some(payee_id)) => Some(SeedDebit {
             date: today - Duration::days(1),
             account_id: account.id,
+            status: TransactionStatus::Cleared,
+            description: "TELSTRA DIRECT DEBIT".to_string(),
             category_id,
             payee_id,
             amount: cents_money(7_999),

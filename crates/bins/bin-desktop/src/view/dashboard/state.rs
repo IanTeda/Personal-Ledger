@@ -148,12 +148,13 @@ impl DashboardView {
         let (plans, entries) = (ledger.bill_plans(), ledger.bill_entries());
         let units = ledger.units();
         let base_unit = ledger.base_unit_row().map(|unit| unit.code.as_str());
+        let splits = ledger.bill_splits();
         bills::attention_entries(plans, entries, self.today)
             .into_iter()
             .filter_map(|id| {
                 let entry = bills::entry(entries, id)?;
                 let plan = bills::get(plans, id.plan_id)?;
-                let amount = bills::amount(entry, plans, ledger.transactions())?;
+                let amount = bills::amount(entry, plans, &splits)?;
                 Some(AttentionBill {
                     id,
                     plan: plan.name.clone(),

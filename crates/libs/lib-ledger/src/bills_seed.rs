@@ -6,7 +6,7 @@ use lib_bill_payments::BillPayments;
 use lib_bill_payments::interactor::PayBill;
 use lib_bills::{BillPlan, BillScheduleEntry, BillsSeed, EntryId, StubBills};
 use lib_core::{BillPlanId, TransactionId};
-use lib_transactions::Transaction;
+use lib_transactions::{Split, Transaction};
 
 /// The seed's Bills and the Ledger's Transactions as the payments port, so `PayBill` books into
 /// them.
@@ -74,7 +74,20 @@ pub(crate) fn book_stub_bills(stub: StubBills, transactions: &mut Vec<Transactio
         }
     }
     if let Some(debit) = match_candidate {
-        let transaction = debit.transaction(next_id(transactions));
+        let transaction = Transaction {
+            id: next_id(transactions),
+            date: debit.date,
+            account_id: debit.account_id,
+            status: debit.status,
+            is_flagged: false,
+            description: Some(debit.description),
+            splits: vec![Split {
+                amount: lib_core::Money(-debit.amount.0),
+                category_id: debit.category_id,
+                payee_id: Some(debit.payee_id),
+                tag_ids: Vec::new(),
+            }],
+        };
         let at = transactions
             .iter()
             .position(|t| t.date <= transaction.date)

@@ -9,9 +9,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, TransactionId, UnitId};
+use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
 use lib_toast::ToastKind;
-use lib_transactions::Transaction;
 
 use crate::{BillPlan, BillScheduleEntry, EntryId, SplitRef};
 
@@ -53,13 +52,32 @@ pub trait BillsRepository: BillPlanRepository + BillScheduleRepository {}
 
 impl<T: BillPlanRepository + BillScheduleRepository + ?Sized> BillsRepository for T {}
 
-/// The Transactions Bills reads: Match candidates, and a Paid entry's amount and date.
-pub trait BillTransactions {
-    /// The Transactions dated from `from` to `to`, both included, in no particular order.
-    fn transactions_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<Transaction>;
+/// One Split of a Transaction as Bills reads it, flattened with the Transaction fields Bills needs
+/// (its date, Account and memo), so Bills names a Split without knowing a Transaction's shape.
+/// Filled by the side that answers [`BillTransactions`], one per Split.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BillSplit {
+    pub split: SplitRef,
+    /// The Transaction's date.
+    pub date: NaiveDate,
+    /// The Account the Transaction is posted against.
+    pub account_id: AccountId,
+    /// The Transaction's memo.
+    pub description: Option<String>,
+    /// Expenses are negative.
+    pub amount: Money,
+    pub category_id: CategoryId,
+    pub payee_id: Option<PayeeId>,
+}
 
-    /// The Transaction a Paid entry's Split belongs to.
-    fn paid_transaction(&self, id: TransactionId) -> Option<Transaction>;
+/// The Splits Bills reads: Match candidates, and a Paid entry's amount and date.
+pub trait BillTransactions {
+    /// The Splits of the Transactions dated from `from` to `to`, both included, in no particular
+    /// order.
+    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit>;
+
+    /// The Split a Paid entry is Matched to, or `None` when it is gone.
+    fn paid_split(&self, split: SplitRef) -> Option<BillSplit>;
 }
 
 /// An Account as Bills reads it. `takes_transactions` is the Accounts' rule, filled by the side

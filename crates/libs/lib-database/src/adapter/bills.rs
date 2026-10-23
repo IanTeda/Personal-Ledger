@@ -401,9 +401,11 @@ async fn read_entries(conn: &mut SqliteConnection) -> Result<Vec<BillScheduleEnt
 mod tests {
     use std::sync::mpsc;
 
+    use lib_bills::BillSplit;
     use lib_bills::contract::{self, PortsFactory};
     use lib_bills::fake::InMemoryBills;
-    use lib_transactions::{Transaction, TransactionRepository};
+    use lib_core::TransactionStatus;
+    use lib_transactions::{Split, Transaction, TransactionRepository};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
@@ -455,15 +457,48 @@ mod tests {
         }
     }
 
+    /// `splits` grouped by Transaction into the Transactions they are Splits of, Open, unflagged
+    /// and untagged, each Split at its index: what the Transactions store holds for Bills to read.
+    fn transactions_of(mut splits: Vec<BillSplit>) -> Vec<Transaction> {
+        splits.sort_by_key(|s| (s.split.transaction_id, s.split.split_index));
+        let mut transactions: Vec<Transaction> = Vec::new();
+        for s in splits {
+            let split = Split {
+                amount: s.amount,
+                category_id: s.category_id,
+                payee_id: s.payee_id,
+                tag_ids: Vec::new(),
+            };
+            match transactions.last_mut() {
+                Some(t) if t.id == s.split.transaction_id => t.splits.push(split),
+                _ => transactions.push(Transaction {
+                    id: s.split.transaction_id,
+                    date: s.date,
+                    account_id: s.account_id,
+                    status: TransactionStatus::Open,
+                    is_flagged: false,
+                    description: s.description,
+                    splits: vec![split],
+                }),
+            }
+        }
+        transactions
+    }
+
     impl PortsFactory for AdapterFactory {
         type Ports = BillsAdapter;
+        type Reads = TransactionsAdapter;
 
-        fn create(&mut self, seed: InMemoryBills, transactions: Vec<Transaction>) -> BillsAdapter {
-            TransactionsAdapter::seed(&self.writer, transactions)
+        fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> BillsAdapter {
+            TransactionsAdapter::seed(&self.writer, transactions_of(splits))
                 .expect("the Transactions are written");
             BillsAdapter::seed(&self.writer, seed.plans, seed.entries)
                 .expect("the seed is written");
             BillsAdapter::load(self.pending.clone()).expect("the seed loads")
+        }
+
+        fn reads(&mut self) -> TransactionsAdapter {
+            self.transactions()
         }
 
         fn reload(&mut self, _ports: BillsAdapter) -> BillsAdapter {
@@ -515,6 +550,14 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
+    async fn the_splits_read_back_as_they_were_stored(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::the_splits_read_back_as_they_were_stored(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
     async fn a_failed_write_reloads_and_reports(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
@@ -522,12 +565,12 @@ mod tests {
         contract::a_failed_write_reloads_and_reports(&mut AdapterFactory::new(options));
     }
 
-    /// The stub Ledger's Bills and the Transactions their Paid entries name, as of a fixed day.
-    fn stub() -> (Vec<Transaction>, InMemoryBills) {
+    /// The stub Ledger's Bills and the Splits their Paid entries name, as of a fixed day.
+    fn stub() -> (Vec<BillSplit>, InMemoryBills) {
         let ledger =
             lib_ledger::Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         (
-            ledger.transactions().to_vec(),
+            ledger.bill_splits(),
             InMemoryBills {
                 plans: ledger.bill_plans().to_vec(),
                 entries: ledger.bill_entries().to_vec(),
@@ -557,8 +600,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let (transactions, seed) = stub();
-        let mut bills = factory.create(seed, transactions);
+        let (splits, seed) = stub();
+        let mut bills = factory.create(seed, splits);
         let open = bills
             .entries()
             .into_iter()
@@ -588,8 +631,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let (transactions, seed) = stub();
-        let bills = factory.create(seed, transactions);
+        let (splits, seed) = stub();
+        let bills = factory.create(seed, splits);
         let mut ledger_transactions = factory.transactions();
         let rewritten = paid_entry(&bills);
         let mut transaction = ledger_transactions

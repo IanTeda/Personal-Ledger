@@ -17,7 +17,6 @@ lib_core = { path = "../lib-core" }
 lib_list_cursor = { path = "../lib-list-cursor" }
 lib_locale = { path = "../lib-locale" }
 lib_toast = { path = "../lib-toast" }
-lib_transactions = { path = "../lib-transactions" }
 lib_viper = { path = "../lib-viper" }
 
 ## -- Workspace Dependencies --

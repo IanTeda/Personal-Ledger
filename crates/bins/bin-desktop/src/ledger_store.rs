@@ -457,7 +457,7 @@ mod tests {
                     lib_bills::match_candidates(
                         ledger.bill_plans(),
                         ledger.bill_entries(),
-                        ledger.transactions(),
+                        &ledger.bill_splits(),
                         &ledger.bill_accounts(),
                         &ledger.bill_categories(),
                         entry.id(),

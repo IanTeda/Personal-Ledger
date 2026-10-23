@@ -122,20 +122,61 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use lib_bills::{BillPlanRepository as _, BillStatus, carries_bill, entry, paid_on, status};
+    use lib_bills::{
+        BillPlanRepository as _, BillStatus, amount, carries_bill, entry, paid_on, status,
+    };
     use lib_core::{AccountId, BillPlanId};
 
     use super::test_support::{cents, date, entry_of, stub, today};
     use super::*;
-    use crate::fake::PortsPayments;
+    use crate::fake::{InMemoryPayments, PortsPayments};
 
     #[test]
     fn paying_books_an_open_transaction_and_matches_its_split() {
         let ports = stub();
         let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
-        let before = ports.borrow().reads.transactions.len();
+        let mut payments = InMemoryPayments {
+            bills: ports.borrow().bills.clone(),
+            ..InMemoryPayments::default()
+        };
 
         let tid = PayBill {
+            entry: due,
+            amount: cents(8_900),
+            date: today(),
+        }
+        .run(&mut payments)
+        .expect("an open entry");
+
+        let [t] = payments.transactions.transactions.as_slice() else {
+            panic!("one Transaction is booked");
+        };
+        assert_eq!(t.id, tid);
+        assert_eq!(t.status, TransactionStatus::Open);
+        assert_eq!(t.total(), cents(-8_900));
+        assert_eq!(t.account_id, AccountId::seed(2));
+        assert_eq!(t.description.as_deref(), Some("Telstra Internet"));
+        let plan = payments
+            .bills
+            .bill_plan(due.plan_id)
+            .expect("the Plan is there");
+        assert_eq!(t.splits.len(), 1);
+        assert_eq!(t.splits[0].category_id, plan.category_id);
+        assert_eq!(t.splits[0].payee_id, plan.payee_id);
+        let entries = &payments.bills.entries;
+        assert!(carries_bill(entries, tid));
+        let paid = entry(entries, due).expect("the entry is there");
+        assert_eq!(status(paid, today()), BillStatus::Paid);
+    }
+
+    /// The Bills page reads the payment at once, through the Splits it reads.
+    #[test]
+    fn a_payment_is_read_back_as_its_split() {
+        let ports = stub();
+        let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
+        let before = ports.borrow().reads.splits.len();
+
+        PayBill {
             entry: due,
             amount: cents(8_900),
             date: today(),
@@ -144,24 +185,11 @@ mod tests {
         .expect("an open entry");
 
         let ports = ports.borrow();
-        let transactions = &ports.reads.transactions;
-        assert_eq!(transactions.len(), before + 1);
-        let t = transactions.iter().find(|t| t.id == tid).expect("booked");
-        assert_eq!(t.status, TransactionStatus::Open);
-        assert_eq!(t.total(), cents(-8_900));
-        assert_eq!(t.account_id, AccountId::seed(2));
-        assert_eq!(t.description.as_deref(), Some("Telstra Internet"));
-        let plan = ports
-            .bills
-            .bill_plan(due.plan_id)
-            .expect("the Plan is there");
-        assert_eq!(t.splits[0].category_id, plan.category_id);
-        assert_eq!(t.splits[0].payee_id, plan.payee_id);
-        let entries = &ports.bills.entries;
-        assert!(carries_bill(entries, tid));
-        let paid = entry(entries, due).expect("the entry is there");
-        assert_eq!(status(paid, today()), BillStatus::Paid);
-        assert_eq!(paid_on(paid, transactions), Some(today()));
+        let splits = &ports.reads.splits;
+        assert_eq!(splits.len(), before + 1);
+        let paid = entry(&ports.bills.entries, due).expect("the entry is there");
+        assert_eq!(paid_on(paid, splits), Some(today()));
+        assert_eq!(amount(paid, &ports.bills.plans, splits), Some(cents(8_900)));
     }
 
     #[test]

@@ -16,7 +16,6 @@ use std::rc::Rc;
 use chrono::NaiveDate;
 use lib_core::{Money, UnitId};
 use lib_locale::format::{AmountStyle, format_amount};
-use lib_transactions::Transaction;
 
 pub use bills_page::{
     BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, Hint, TabView,
@@ -31,7 +30,7 @@ pub use schedule::{
 pub use skip::{SkipEvent, SkipPresenter, SkipViewModel};
 
 use crate::protocols::BillsPorts;
-use crate::{BillScheduleEntry, BillStatus, Recurrence, Resolution, msg};
+use crate::{BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, msg};
 
 /// Where a Presenter reads today from: the local date in a Client, a fixed day in a test. Bills is
 /// dated by the calendar day, so it reads no time.
@@ -107,19 +106,19 @@ fn cycle<T: Copy + PartialEq>(
     current
 }
 
-/// The Transactions `entries`' Matches name, read through the port, for the figures that need a
-/// Paid entry's amount and date.
-fn paid_transactions<'a>(
+/// The Splits `entries`' Matches name, read through the port, for the figures that need a Paid
+/// entry's amount and date.
+fn paid_splits<'a>(
     ports: &dyn BillsPorts,
     entries: impl IntoIterator<Item = &'a BillScheduleEntry>,
-) -> Vec<Transaction> {
-    let mut found: Vec<Transaction> = Vec::new();
+) -> Vec<BillSplit> {
+    let mut found: Vec<BillSplit> = Vec::new();
     for entry in entries {
         if let Resolution::Paid(split) = entry.resolution
-            && !found.iter().any(|t| t.id == split.transaction_id)
-            && let Some(transaction) = ports.transactions().paid_transaction(split.transaction_id)
+            && !found.iter().any(|s| s.split == split)
+            && let Some(paid) = ports.transactions().paid_split(split)
         {
-            found.push(transaction);
+            found.push(paid);
         }
     }
     found

@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use chrono::NaiveDate;
-use lib_bills::BillTransactions;
+use lib_bills::{BillSplit, BillTransactions, SplitRef};
 use lib_core::{
     AccountId, BillScheduleEntryId, CategoryId, Money, PayeeId, TagId, TransactionId,
     TransactionStatus,
@@ -104,15 +104,43 @@ impl TransactionRepository for TransactionsAdapter {
     }
 }
 
-/// Bills' read port, answered from the rows in memory.
+/// Bills' read port, answered from the rows in memory, each Split flattened as Bills reads it.
 impl BillTransactions for TransactionsAdapter {
-    fn transactions_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<Transaction> {
-        lib_bills::transactions_between(&self.rows, from, to)
+    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        self.rows
+            .iter()
+            .filter(|row| (from..=to).contains(&row.date))
+            .flat_map(bill_splits)
+            .collect()
     }
 
-    fn paid_transaction(&self, id: TransactionId) -> Option<Transaction> {
-        self.transaction(id)
+    fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        let row = self
+            .rows
+            .iter()
+            .find(|row| row.id == split.transaction_id)?;
+        bill_splits(row).nth(split.split_index)
     }
+}
+
+/// `transaction`'s Splits as Bills reads them, each with its Transaction's date, Account and memo.
+fn bill_splits(transaction: &Transaction) -> impl Iterator<Item = BillSplit> + '_ {
+    transaction
+        .splits
+        .iter()
+        .enumerate()
+        .map(|(split_index, split)| BillSplit {
+            split: SplitRef {
+                transaction_id: transaction.id,
+                split_index,
+            },
+            date: transaction.date,
+            account_id: transaction.account_id,
+            description: transaction.description.clone(),
+            amount: split.amount.clone(),
+            category_id: split.category_id,
+            payee_id: split.payee_id,
+        })
 }
 
 impl Change for TransactionsChange {

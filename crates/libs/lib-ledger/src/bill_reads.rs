@@ -4,7 +4,9 @@
 //!   answered from the stub's Accounts, Categories and Payees, which aren't persisted, mapped onto
 //!   Bills' own read types. Each flag is filled by its owning domain's rule, so the rule lives once
 //!   (`docs/development/viper-architecture.md`, Rules > Dependencies). Each mapping moves to
-//!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s.
+//!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s;
+//!   [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for a Client that copies
+//!   Bills' reads from the Ledger.
 //! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
 //!   Ledger keeps a copy for the Dashboard, the rail badge, Budgets and Documents. It goes when
 //!   the last of them reads Bills through `lib-bills`.
@@ -12,11 +14,12 @@
 use lib_accounts::Account;
 use lib_bills::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
-    BillScheduleEntry,
+    BillScheduleEntry, BillSplit, SplitRef,
 };
 use lib_categories::Category;
 use lib_core::CategoryTypes;
 use lib_payees::Payee;
+use lib_transactions::Transaction;
 
 use crate::Ledger;
 
@@ -38,6 +41,38 @@ impl Ledger {
         self.bill_entries = entries;
         true
     }
+
+    /// The Ledger's Transactions as Bills reads them, a [`BillSplit`] per Split, in the
+    /// Transactions' order.
+    pub fn bill_splits(&self) -> Vec<BillSplit> {
+        bill_splits(&self.transactions)
+    }
+}
+
+/// `transactions` flattened as Bills reads them: each Split with its Transaction's date, Account
+/// and memo.
+pub(crate) fn bill_splits(transactions: &[Transaction]) -> Vec<BillSplit> {
+    transactions
+        .iter()
+        .flat_map(|transaction| {
+            transaction
+                .splits
+                .iter()
+                .enumerate()
+                .map(|(split_index, split)| BillSplit {
+                    split: SplitRef {
+                        transaction_id: transaction.id,
+                        split_index,
+                    },
+                    date: transaction.date,
+                    account_id: transaction.account_id,
+                    description: transaction.description.clone(),
+                    amount: split.amount.clone(),
+                    category_id: split.category_id,
+                    payee_id: split.payee_id,
+                })
+        })
+        .collect()
 }
 
 /// `accounts` as Bills reads them.
@@ -118,6 +153,25 @@ mod tests {
         );
         assert_eq!(ledger.bill_categories().len(), ledger.categories().len());
         assert_eq!(ledger.bill_payees().len(), ledger.payees().len());
+        let splits: usize = ledger.transactions().iter().map(|t| t.splits.len()).sum();
+        assert_eq!(ledger.bill_splits().len(), splits);
+        let split = ledger
+            .transactions()
+            .iter()
+            .find(|t| t.is_split())
+            .expect("the stub has a split Transaction");
+        let second = ledger
+            .bill_splits()
+            .into_iter()
+            .find(|s| s.split.transaction_id == split.id && s.split.split_index == 1)
+            .expect("its second Split is read");
+        assert_eq!(
+            (second.date, second.account_id, &second.description),
+            (split.date, split.account_id, &split.description)
+        );
+        assert_eq!(second.amount, split.splits[1].amount);
+        assert_eq!(second.category_id, split.splits[1].category_id);
+        assert_eq!(second.payee_id, split.splits[1].payee_id);
 
         let home_loan = ledger
             .bill_accounts()
@@ -166,7 +220,7 @@ mod tests {
         );
         assert_eq!(fake.bills.plans, booked.plans);
         assert_eq!(fake.bills.entries, booked.entries);
-        assert_eq!(fake.reads.transactions, transactions);
+        assert_eq!(fake.reads.splits, bill_splits(&transactions));
     }
 
     #[test]

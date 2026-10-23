@@ -1,5 +1,5 @@
 //! The Bills ports as the Desktop holds them: the store `build_shell` is given, shared by the
-//! Bills module and `LedgerStore`, with the Accounts, Categories, Payees, Transactions and Units
+//! Bills module and `LedgerStore`, with the Accounts, Categories, Payees, Splits and Units
 //! Bills reads copied from the Ledger (#778's halfway shims), and the step that commits a Bills
 //! write and keeps the Ledger's read copy in line after it.
 //!
@@ -103,7 +103,7 @@ impl LedgerBackedPorts {
             accounts: ledger.bill_accounts(),
             categories: ledger.bill_categories(),
             payees: ledger.bill_payees(),
-            transactions: ledger.transactions().to_vec(),
+            splits: ledger.bill_splits(),
         };
         self.units = InMemoryBillUnits {
             codes: ledger
