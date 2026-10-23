@@ -47,7 +47,7 @@ impl BillsAdapter {
     /// # Errors
     /// Returns the error of the read, or [`Error::Validation`] for a value the schema's checks
     /// should have kept out.
-    #[tracing::instrument(name = "Load the Bills", level = "debug", skip_all)]
+    #[tracing::instrument(name = "Load the Bills", level = "debug", skip_all, err)]
     pub fn load(pending: PendingWrites) -> Result<Self> {
         let (plans, entries) = pending.writer().run(|pool| async move {
             let mut conn = pool.acquire().await?;
@@ -93,7 +93,7 @@ impl BillsAdapter {
     ///
     /// # Errors
     /// Returns the error of the read; memory is left as it was then.
-    #[tracing::instrument(name = "Reload the Bills", level = "debug", skip_all)]
+    #[tracing::instrument(name = "Reload the Bills", level = "debug", skip_all, err)]
     pub fn reload(&mut self) -> Result<()> {
         let fresh = Self::load(self.pending.clone())?;
         self.plans = fresh.plans;

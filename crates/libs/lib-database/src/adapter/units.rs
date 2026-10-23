@@ -46,7 +46,7 @@ impl UnitsAdapter {
     /// # Errors
     /// Returns [`Error::NotFound`] if the database has no base Unit yet, as an empty one doesn't:
     /// [`Self::seed`] it first. Otherwise the error of the read.
-    #[tracing::instrument(name = "Load the Units", level = "debug", skip_all)]
+    #[tracing::instrument(name = "Load the Units", level = "debug", skip_all, err)]
     pub fn load(pending: PendingWrites) -> Result<Self> {
         let rows = pending.writer().run(|pool| async move {
             let mut conn = pool.acquire().await?;
@@ -121,7 +121,7 @@ impl UnitsAdapter {
     ///
     /// # Errors
     /// Returns the error of the read; memory is left as it was then.
-    #[tracing::instrument(name = "Reload the Units", level = "debug", skip_all)]
+    #[tracing::instrument(name = "Reload the Units", level = "debug", skip_all, err)]
     pub fn reload(&mut self) -> Result<()> {
         let fresh = Self::load(self.pending.clone())?;
         self.units.rows = fresh.units.rows;

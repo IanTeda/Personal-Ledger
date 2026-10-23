@@ -23,7 +23,6 @@ use lib_bill_payments::PayOutcome;
 use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
-use lib_locale::format::upper;
 
 use crate::bill_payments::router::DialogRouter;
 use crate::bills::DesktopPorts;
@@ -275,7 +274,7 @@ fn match_panel(view: &PayViewModel, actions: &DialogActions, cx: &App) -> Vec<An
             .text_size(px(11.0))
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .text_color(color::faint_text(cx))
-            .child(upper(&view.candidates_heading))
+            .child(view.candidates_heading.clone())
             .into_any_element(),
     ];
     if let Some(none) = &view.no_candidates {

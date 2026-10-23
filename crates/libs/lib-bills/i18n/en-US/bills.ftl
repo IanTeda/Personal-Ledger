@@ -155,6 +155,7 @@ bills-plan-error-amount = Enter an amount greater than zero.
 bills-plan-error-ends-before-first-due = Ends on can't be before first due.
 bills-plan-error-lead = Enter a whole number of days.
 bills-plan-error-gone = This bill plan no longer exists.
+bills-plan-error-other = This bill plan could not be saved.
 
 ## The Skip dialog (8e). `$name` is the Bill Plan's name and `$due` the entry's due date, both
 ## already formatted.

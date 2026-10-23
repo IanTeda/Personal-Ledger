@@ -20,7 +20,7 @@ use lib_bills::{BillError, EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, 
 use lib_core::{DateStyle, Money};
 use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
-    parse_positive_amount,
+    parse_positive_amount, upper,
 };
 use lib_viper::view::{Choice, DialogFrame, TextFieldView};
 
@@ -383,7 +383,7 @@ impl PayPresenter {
                 },
             ],
             mode: self.mode,
-            candidates_heading: msg::bill_payments_pay_candidates(),
+            candidates_heading: upper(&msg::bill_payments_pay_candidates()),
             candidates: self.opened.candidates.clone(),
             no_candidates: self
                 .candidates
@@ -542,7 +542,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Pay it directly", "Match existing transaction"]
         );
-        assert_eq!(view.candidates_heading, "Unmatched transactions");
+        assert_eq!(view.candidates_heading, "UNMATCHED TRANSACTIONS");
         assert!(
             view.candidates[0].summary.starts_with("Telstra \u{b7} "),
             "{}",

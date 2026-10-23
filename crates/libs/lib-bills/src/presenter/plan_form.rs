@@ -677,7 +677,13 @@ fn refusal_text(refusal: &BillError) -> String {
         BillError::PlanNotFound => msg::bills_plan_error_gone(),
         // Not reachable from the form: One-shot hides Ends On, Edit locks the Unit, and the rest
         // come from settlement.
-        other => other.to_string(),
+        BillError::UnitLocked(_)
+        | BillError::EndsOnForOneShot
+        | BillError::EntryNotFound
+        | BillError::EntryNotOpen
+        | BillError::NotACandidate
+        | BillError::NotPaid
+        | BillError::NotSkipped => msg::bills_plan_error_other(),
     }
 }
 
