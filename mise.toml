@@ -19,6 +19,8 @@ uv = "0.12.5"
 [env]
 RUST_BACKTRACE = "1"
 CARGO_TERM_COLOR = "always"
+# graphify writes its knowledge graph here rather than the default `graphify-out/`.
+GRAPHIFY_OUT = ".graphify-out"
 
 
 # -------------------------------[WATCH]----------------------------------------

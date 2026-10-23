@@ -93,4 +93,4 @@ A ticket that migrates in steps lists under "Seams to decide" the halfway state 
 
 ## graphify
 
-A knowledge graph lives in `graphify-out/`. For codebase questions, start with `graphify query "<question>"`, `graphify path "<A>" "<B>"` or `graphify explain "<concept>"`; they return a scoped subgraph, smaller than `GRAPH_REPORT.md` or raw grep. Read `GRAPH_REPORT.md` only for broad architecture review. After modifying code, run `graphify update .` (AST-only, no API cost).
+A knowledge graph lives in `.graphify-out/` (`GRAPHIFY_OUT` in `mise.toml`). For codebase questions, start with `graphify query "<question>"`, `graphify path "<A>" "<B>"` or `graphify explain "<concept>"`; they return a scoped subgraph, smaller than `GRAPH_REPORT.md` or raw grep. Read `GRAPH_REPORT.md` only for broad architecture review. After modifying code, run `graphify update .` (AST-only, no API cost).

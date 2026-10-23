@@ -31,5 +31,6 @@
         "repo": "johnnyvizz/claude-kit"
       }
     }
-  }
+  },
+  "env": { "GRAPHIFY_OUT": ".graphify-out" }
 }

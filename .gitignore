@@ -177,7 +177,7 @@ mise.local.toml
 .mise.local.toml
 
 # graphify knowledge graph (derived output)
-graphify-out/
+.graphify-out/
 
 # Archify receipts: build evidence beside each rendered diagram, not its source. Scratch work and
 # `--out-dir` review/repair evidence belong in `.archify/` (already ignored by `.*` above); the folder
