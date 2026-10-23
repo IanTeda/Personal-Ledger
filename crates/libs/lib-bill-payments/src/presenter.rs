@@ -13,15 +13,14 @@
 //! The candidates and every name the Dialog shows are read when it opens: it is modal, so nothing
 //! changes them under it.
 
-use bigdecimal::{BigDecimal, Signed};
 use chrono::{Duration, NaiveDate};
 use lib_bills::interactor::MatchBill;
 use lib_bills::presenter::money;
 use lib_bills::{BillError, EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
 use lib_core::{DateStyle, Money};
 use lib_locale::format::{
-    AmountStyle, DateInputError, DateInputOptions, date_error_message, format_amount,
-    format_date_input, format_month_day, parse_date_with,
+    AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
+    parse_positive_amount,
 };
 use lib_viper::view::{Choice, DialogFrame, TextFieldView};
 
@@ -336,24 +335,11 @@ impl PayPresenter {
     }
 
     fn amount_money(&self) -> Option<Money> {
-        self.amount
-            .trim()
-            .parse::<BigDecimal>()
-            .ok()
-            .filter(Signed::is_positive)
-            .map(Money)
+        parse_positive_amount(&self.amount)
     }
 
     fn parse_date(&self) -> Result<Option<NaiveDate>, String> {
-        let options = DateInputOptions {
-            style: self.date_style,
-            allow_yearless: true,
-        };
-        match parse_date_with(&self.date, self.today, &options) {
-            Ok(date) => Ok(Some(date)),
-            Err(DateInputError::Empty) => Ok(None),
-            Err(error) => Err(date_error_message(&error, self.today, &options)),
-        }
+        parse_optional_date(&self.date, self.today, self.date_style)
     }
 
     /// Whether confirm would pay or match from the active panel: Pay it directly needs a positive

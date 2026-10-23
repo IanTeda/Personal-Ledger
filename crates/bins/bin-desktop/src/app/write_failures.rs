@@ -49,40 +49,57 @@ impl Shell {
     /// view model reading it is rebuilt, and raises an error Toast for each. If a domain can't be
     /// read back either, its rows in memory stand and the Toast says they aren't saved.
     fn roll_back(&mut self, failure: &WriteFailure, cx: &mut Context<'_, Self>) {
-        if failure.domains.contains(&Domain::Units) {
-            let text = match crate::units::ports::reload(&self.units, &self.ledger, cx) {
-                Ok(()) => crate::msg::desktop_toast_write_failed_units(),
-                Err(error) => {
-                    tracing::error!(%error, "Failed to reload the Units after a failed write");
-                    crate::msg::desktop_toast_write_failed_units_unsaved()
-                }
+        let mut done = Vec::new();
+        for &domain in &failure.domains {
+            if done.contains(&domain) {
+                continue;
+            }
+            done.push(domain);
+            // A new module's domain adds one arm: how it reloads, and its two Messages.
+            let Reload {
+                name,
+                reloaded,
+                restored,
+                unsaved,
+            } = match domain {
+                Domain::Units => Reload {
+                    name: "Units",
+                    reloaded: crate::units::ports::reload(&self.units, &self.ledger, cx),
+                    restored: crate::msg::desktop_toast_write_failed_units,
+                    unsaved: crate::msg::desktop_toast_write_failed_units_unsaved,
+                },
+                Domain::Transactions => Reload {
+                    name: "Transactions",
+                    reloaded: self
+                        .ledger
+                        .update(cx, |store, cx| store.reload_transactions(cx)),
+                    restored: crate::msg::desktop_toast_write_failed_transactions,
+                    unsaved: crate::msg::desktop_toast_write_failed_transactions_unsaved,
+                },
+                Domain::Bills => Reload {
+                    name: "Bills",
+                    reloaded: self.ledger.update(cx, |store, cx| store.reload_bills(cx)),
+                    restored: crate::msg::desktop_toast_write_failed_bills,
+                    unsaved: crate::msg::desktop_toast_write_failed_bills_unsaved,
+                },
             };
-            self.raise_toast(ToastKind::Error, text);
-        }
-        if failure.domains.contains(&Domain::Transactions) {
-            let reloaded = self
-                .ledger
-                .update(cx, |store, cx| store.reload_transactions(cx));
             let text = match reloaded {
-                Ok(()) => crate::msg::desktop_toast_write_failed_transactions(),
+                Ok(()) => restored(),
                 Err(error) => {
-                    tracing::error!(%error, "Failed to reload the Transactions after a failed write");
-                    crate::msg::desktop_toast_write_failed_transactions_unsaved()
-                }
-            };
-            self.raise_toast(ToastKind::Error, text);
-        }
-        if failure.domains.contains(&Domain::Bills) {
-            let reloaded = self.ledger.update(cx, |store, cx| store.reload_bills(cx));
-            let text = match reloaded {
-                Ok(()) => crate::msg::desktop_toast_write_failed_bills(),
-                Err(error) => {
-                    tracing::error!(%error, "Failed to reload the Bills after a failed write");
-                    crate::msg::desktop_toast_write_failed_bills_unsaved()
+                    tracing::error!(%error, domain = name, "Failed to reload after a failed write");
+                    unsaved()
                 }
             };
             self.raise_toast(ToastKind::Error, text);
         }
         cx.notify();
     }
+}
+
+/// One domain's reload and the Toast text for each way it ends.
+struct Reload {
+    name: &'static str,
+    reloaded: lib_database::Result<()>,
+    restored: fn() -> String,
+    unsaved: fn() -> String,
 }

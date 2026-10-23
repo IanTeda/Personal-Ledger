@@ -12,12 +12,9 @@
 //!
 //! The choices are read when the Dialog opens, as it is modal and nothing changes them under it.
 
-use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, DateStyle, Money, PayeeId, UnitId};
-use lib_locale::format::{
-    DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
-};
+use lib_locale::format::{format_date_input, parse_optional_date, parse_positive_amount};
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use super::{cycle, recurrence_label};
@@ -402,24 +399,11 @@ impl PlanFormPresenter {
     }
 
     fn parse(&self, text: &str) -> Result<Option<NaiveDate>, String> {
-        let options = DateInputOptions {
-            style: self.date_style,
-            allow_yearless: true,
-        };
-        match parse_date_with(text, self.today, &options) {
-            Ok(date) => Ok(Some(date)),
-            Err(DateInputError::Empty) => Ok(None),
-            Err(error) => Err(date_error_message(&error, self.today, &options)),
-        }
+        parse_optional_date(text, self.today, self.date_style)
     }
 
     fn amount_money(&self) -> Option<Money> {
-        self.amount
-            .trim()
-            .parse::<BigDecimal>()
-            .ok()
-            .filter(Signed::is_positive)
-            .map(Money)
+        parse_positive_amount(&self.amount)
     }
 
     fn lead_days(&self) -> Result<Option<u32>, ()> {

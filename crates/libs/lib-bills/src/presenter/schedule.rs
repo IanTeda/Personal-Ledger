@@ -582,7 +582,7 @@ impl SchedulePresenter {
                 Some(if Some(&unit) == base.as_ref() {
                     text
                 } else {
-                    format!("{text} {unit}")
+                    super::with_unit(&text, &unit)
                 })
             }
         };

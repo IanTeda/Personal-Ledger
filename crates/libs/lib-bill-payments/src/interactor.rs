@@ -88,6 +88,9 @@ pub(crate) mod test_support {
     use lib_bills::fake::InMemoryPorts;
     use lib_core::Money;
 
+    // `date`, `today` and `cents` repeat `lib-bills`' own test helpers on purpose: those sit
+    // behind `#[cfg(test)]`, and sharing three one-liners would mean a public test-support
+    // surface on `lib-bills` that a feature crate's API shouldn't carry.
     pub fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }

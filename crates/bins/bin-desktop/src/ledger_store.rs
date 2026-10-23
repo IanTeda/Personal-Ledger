@@ -83,7 +83,7 @@ impl LedgerStore {
             bills: setup.bills,
             commit: setup.commit,
         };
-        store.refresh_transactions();
+        store.copy_transactions();
         store.copy_bills();
         store
     }
@@ -139,7 +139,7 @@ impl LedgerStore {
             self.commit.commit();
             let mut what = domains(&changes);
             if what.contains(&Domain::Transactions) {
-                self.refresh_transactions();
+                self.copy_transactions();
             }
             if bills_written && self.copy_bills() {
                 what.insert(Domain::Bills);
@@ -156,7 +156,7 @@ impl LedgerStore {
     /// Returns the error reading them back; the port and the read copy are left as they were.
     pub fn reload_transactions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
         self.transactions.borrow_mut().reload()?;
-        self.refresh_transactions();
+        self.copy_transactions();
         self.announce(cx, BTreeSet::from([Domain::Transactions]));
         Ok(())
     }
@@ -184,15 +184,15 @@ impl LedgerStore {
 
     /// Brings the Transactions read copy in line with the port after the Bill Payments module
     /// wrote it, announcing `Domain::Transactions` only when it changed.
-    pub fn refresh_transactions_from_port(&mut self, cx: &mut Context<'_, Self>) {
-        if self.refresh_transactions() {
+    pub fn refresh_transactions(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_transactions() {
             self.announce(cx, BTreeSet::from([Domain::Transactions]));
         }
     }
 
     /// Brings the read copy in line with the port, returning whether it changed.
-    fn refresh_transactions(&mut self) -> bool {
-        let transactions = self.transactions.borrow().transactions().transactions();
+    fn copy_transactions(&mut self) -> bool {
+        let transactions = self.transactions.borrow().all_transactions();
         self.ledger.refresh_transactions(transactions)
     }
 

@@ -41,7 +41,6 @@ impl BillPayments for BillPaymentsAdapter {
     fn record_payment(&mut self, transaction: Transaction, entry: BillScheduleEntry) {
         self.transactions
             .borrow_mut()
-            .transactions_mut()
             .upsert_transaction(transaction);
         self.bills.borrow_mut().entries_mut().upsert_entry(entry);
     }

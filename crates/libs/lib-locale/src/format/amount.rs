@@ -5,6 +5,7 @@
 //! a positive can carry an explicit `+`. Negativity is read from the rounded ICU4X decimal, never
 //! by re-parsing formatted text.
 
+use bigdecimal::{BigDecimal, Signed};
 use fixed_decimal::Sign;
 use lib_core::Money;
 
@@ -13,6 +14,15 @@ use crate::error::Result;
 
 /// The minus shown before a negative amount: U+2212, not a hyphen. The one place it is spelt.
 const MINUS: char = '\u{2212}';
+
+/// Reads a typed amount: a positive decimal, or `None` for empty, unparseable or non-positive text.
+pub fn parse_positive_amount(text: &str) -> Option<Money> {
+    text.trim()
+        .parse::<BigDecimal>()
+        .ok()
+        .filter(Signed::is_positive)
+        .map(Money)
+}
 
 /// How many fractional digits an amount is shown with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

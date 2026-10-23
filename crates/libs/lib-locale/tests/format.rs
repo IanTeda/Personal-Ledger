@@ -14,7 +14,8 @@ use chrono::{NaiveDate, NaiveTime};
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
     Amount, AmountStyle, Unit, format_amount, format_date, format_money, format_month,
-    format_month_day, format_number, format_time, format_time_minutes, format_year_month, upper,
+    format_month_day, format_number, format_time, format_time_minutes, format_year_month,
+    parse_positive_amount, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -55,6 +56,14 @@ fn rounding_is_half_away_from_zero_and_never_negative_zero() {
         assert_eq!(format_number(&money("0.5"), 0), "1");
         assert_eq!(format_number(&money("-0.004"), 2), "0.00");
     });
+}
+
+#[test]
+fn a_typed_amount_must_be_a_positive_decimal() {
+    assert_eq!(parse_positive_amount(" 12.50 "), Some(money("12.50")));
+    for text in ["", "0", "-3", "abc"] {
+        assert_eq!(parse_positive_amount(text), None, "{text:?}");
+    }
 }
 
 fn amount(text: &str, style: AmountStyle) -> Amount {

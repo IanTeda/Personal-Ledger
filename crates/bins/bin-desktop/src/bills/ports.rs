@@ -28,7 +28,9 @@ use crate::ledger_store::LedgerStore;
 /// The Bills ports the Bills module and `LedgerStore` share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// The store's two repositories as the one a Bills Interactor writes through.
+/// The store's two repositories as the one a Bills Interactor writes through. It forwards rather
+/// than lending the store's own: `bills()` returns a borrow that must outlive the call, and the
+/// store is shared behind a `RefCell` whose guard can't be lent out of it.
 struct Store(SharedBillsStore);
 
 impl BillPlanRepository for Store {

@@ -319,6 +319,24 @@ pub fn format_date_input(date: NaiveDate, style: Option<DateStyle>) -> String {
     }
 }
 
+/// Reads a typed date field that may be left empty: `None` for empty, the date otherwise, and the
+/// Message for a bad entry. Day-and-month alone is accepted (taking today's year).
+pub fn parse_optional_date(
+    text: &str,
+    today: NaiveDate,
+    style: Option<DateStyle>,
+) -> Result<Option<NaiveDate>, String> {
+    let options = DateInputOptions {
+        style,
+        allow_yearless: true,
+    };
+    match parse_date_with(text, today, &options) {
+        Ok(date) => Ok(Some(date)),
+        Err(DateInputError::Empty) => Ok(None),
+        Err(error) => Err(date_error_message(&error, today, &options)),
+    }
+}
+
 /// The user-facing text for a typed-date error, as a Message with the expected format as an
 /// argument (today's date in the Locale's short form, its ISO form and the accepted words),
 /// never a literal `YYYY-MM-DD`.
@@ -364,6 +382,20 @@ mod tests {
 
     fn day(year: i32, month: u32, date: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, date).expect("test date is valid")
+    }
+
+    #[test]
+    fn an_optional_date_is_none_when_empty_and_a_message_when_bad() {
+        let today = day(2026, 9, 19);
+        assert_eq!(
+            parse_optional_date("  ", today, Some(DateStyle::Iso)),
+            Ok(None)
+        );
+        assert_eq!(
+            parse_optional_date("2026-10-01", today, Some(DateStyle::Iso)),
+            Ok(Some(day(2026, 10, 1)))
+        );
+        assert!(parse_optional_date("soon", today, Some(DateStyle::Iso)).is_err());
     }
 
     #[test]

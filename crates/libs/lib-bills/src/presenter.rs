@@ -51,9 +51,14 @@ pub fn money(ports: &dyn BillsPorts, amount: &Money, unit: UnitId) -> String {
         return text;
     }
     match units.unit_code(unit) {
-        Some(code) => format!("{text} {code}"),
+        Some(code) => with_unit(&text, &code),
         None => text,
     }
+}
+
+/// An amount's text followed by its Unit's code: the one place the suffix is spelt.
+fn with_unit(text: &str, code: &str) -> String {
+    format!("{text} {code}")
 }
 
 /// A Recurrence as the Planner and the Plan form name it. Public for the Documents picker, which

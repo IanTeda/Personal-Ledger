@@ -13,8 +13,8 @@ use std::rc::Rc;
 
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlanRepository, BillScheduleRepository};
-use lib_transactions::TransactionRepository;
 use lib_transactions::fake::InMemoryTransactions;
+use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
@@ -102,6 +102,16 @@ pub trait TransactionsStore {
     fn transactions(&self) -> &dyn TransactionRepository;
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository;
+
+    /// Every Transaction, so a caller needn't reach through the repository.
+    fn all_transactions(&self) -> Vec<Transaction> {
+        self.transactions().transactions()
+    }
+
+    /// Stores `transaction`, inserting or replacing it.
+    fn upsert_transaction(&mut self, transaction: Transaction) {
+        self.transactions_mut().upsert_transaction(transaction);
+    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///

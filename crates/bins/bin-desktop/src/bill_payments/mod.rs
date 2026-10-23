@@ -37,6 +37,6 @@ pub fn payments(transactions: SharedTransactionsStore, bills: &DesktopPorts) -> 
 /// read copies in line, so the Transactions View, the Dashboard and the Bills page see the payment
 /// at once, and copies the reads back into the Bills ports for the next event.
 pub(crate) fn sync(bills: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_transactions_from_port(cx));
+    ledger.update(cx, |store, cx| store.refresh_transactions(cx));
     crate::bills::ports::sync(bills, ledger, cx);
 }
