@@ -35,20 +35,16 @@ impl Shell {
         self.push_display_preferences(display, cx);
     }
 
-    /// Shows every Notice the module Routers queued since the last drain (`crate::notices`): a
-    /// Toast on the stack, a message on the status line. Runs after a page's `handle`, which
-    /// asks for it, and after each key and Dialog click, which a Dialog's Presenter handles.
-    /// Returns whether any came, so a key that changed nothing else still redraws.
-    pub(super) fn drain_notices(&mut self) -> bool {
-        let notices = crate::notices::drain();
-        let any = !notices.is_empty();
-        for notice in notices {
+    /// Shows every Notice the Routers queued since the last drain (`crate::notices`): a Toast on
+    /// the stack, a message on the status line. Each input's `send` runs it once the input is
+    /// handled and committed (`crate::input`).
+    pub(crate) fn drain_notices(&mut self) {
+        for notice in crate::notices::drain() {
             match notice {
                 Notice::Toast(kind, text) => self.raise_toast(kind, text),
                 Notice::Status(text) => self.chrome.status_message = Some(text),
             }
         }
-        any
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.

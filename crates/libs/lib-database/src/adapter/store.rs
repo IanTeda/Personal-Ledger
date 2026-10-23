@@ -1,15 +1,17 @@
 //! What a Client holds each module's ports by: the SQLite adapter start-up opens
 //! ([`crate::open_storage`]), or the in-memory ports a test builds the Client on. The bins'
-//! `build_shell` take a [`UnitsStore`] (both bins), and a [`TransactionsStore`] and a
-//! [`BillsStore`] (the Desktop), so either can stand behind the module. A store only holds its
-//! rows: the bin commits every store's writes at once, through [`Commit`](crate::Commit).
+//! `build_shell` take them bundled as [`Stores`], so either can stand behind the module. A store
+//! only holds its rows: the bin commits every store's writes at once, through
+//! [`Commit`](crate::Commit), once per input. [`Stores::fake`] builds the bundle on in-memory
+//! stores with a [`CountingCommit`], so a test asserts that once.
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
 //! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::mpsc;
 
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlanRepository, BillScheduleRepository};
@@ -20,7 +22,9 @@ use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
 };
 
-use crate::{BillsAdapter, Result, TransactionsAdapter, UnitsAdapter};
+use crate::{
+    BillsAdapter, Commit, InMemoryCommit, Result, Stores, TransactionsAdapter, UnitsAdapter,
+};
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
 /// other domains', so each Client answers them itself (its `units/ports.rs`).
@@ -246,5 +250,74 @@ impl BillsStore for InMemoryBills {
 
     fn reload(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+/// A commit that counts its calls before handing each on, so a test asserts the Client commits
+/// exactly once per input, whether or not the input wrote anything.
+pub struct CountingCommit {
+    inner: Rc<dyn Commit>,
+    count: Rc<Cell<usize>>,
+}
+
+impl CountingCommit {
+    /// Counts the commits made through `inner`, starting from none.
+    pub fn new(inner: Rc<dyn Commit>) -> Self {
+        Self {
+            inner,
+            count: Rc::default(),
+        }
+    }
+
+    /// The count so far, shared so the test reads it after the commit has moved into the Client.
+    pub fn count(&self) -> Rc<Cell<usize>> {
+        self.count.clone()
+    }
+}
+
+impl Commit for CountingCommit {
+    fn commit(&self) {
+        self.count.set(self.count.get() + 1);
+        self.inner.commit();
+    }
+}
+
+impl Stores {
+    /// `units`, `transactions` and `bills` in memory, committed through a [`CountingCommit`] whose
+    /// count is returned, on a failure channel nothing reports on, since there is no writer.
+    pub fn fake(
+        units: InMemoryPorts,
+        transactions: InMemoryTransactions,
+        bills: InMemoryBills,
+    ) -> (Self, Rc<Cell<usize>>) {
+        let commit = CountingCommit::new(Rc::new(InMemoryCommit));
+        let count = commit.count();
+        let stores = Self {
+            units: Box::new(units),
+            transactions: Box::new(transactions),
+            bills: Box::new(bills),
+            commit: Rc::new(commit),
+            failures: mpsc::channel().1,
+        };
+        (stores, count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_fake_counts_every_commit_including_one_with_nothing_written() {
+        let (stores, count) = Stores::fake(
+            InMemoryPorts::stub(chrono::Utc::now()),
+            InMemoryTransactions::default(),
+            InMemoryBills::default(),
+        );
+
+        stores.commit.commit();
+        stores.commit.commit();
+
+        assert_eq!(count.get(), 2);
     }
 }

@@ -2,7 +2,7 @@
 //! and Skip open in today's Dialog host, Pay opens through the Bill Payments module's entry point
 //! and a Transaction is shown through the Transactions module's, all through the page's gpui
 //! context, which is why the Router is built for each `handle` call. A Notice goes onto the bin's
-//! queue (`crate::notices`).
+//! queue (`crate::notices`), which the input's `send` drains.
 
 use gpui::{Context, Entity};
 use lib_bill_payments::SharedPayments;
@@ -17,7 +17,6 @@ use super::view::page::BillsPage;
 use crate::chrome::dialog_host::open_dialog;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
-use crate::view::event::ViewEvent;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
@@ -84,10 +83,9 @@ impl BillsRouter for PageRouter<'_, '_> {
 }
 
 impl Notify for PageRouter<'_, '_> {
-    /// Queues `notice` and asks `Shell` to drain the queue.
+    /// Queues `notice`, for the input's `send` to drain into the Shell.
     fn notify(&mut self, notice: Notice) {
         Queue.notify(notice);
-        self.cx.emit(ViewEvent::NoticesQueued);
     }
 }
 

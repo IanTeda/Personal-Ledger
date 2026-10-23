@@ -1,8 +1,13 @@
 //! The `ViewEvent` channel into `Shell`: `Shell` subscribes to each View Entity and handles
 //! every event in `handle_view_event`, the one place a View's request turns into `Shell` state
-//! (ADR-0032, ADR-0037). An `impl Shell` block, not a module of the same name.
+//! (ADR-0032, ADR-0037). As the root Router, it turns a Toast or a status a View not yet a module
+//! raised into one input (`ShellInput::Notice`), so it reaches the frame as a module's Notice
+//! does; the other requests are handled as before. An `impl Shell` block, not a module of the
+//! same name.
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
+use lib_shell::ShellInput;
+use lib_toast::Notice;
 
 use super::Shell;
 use crate::view::event::{Reveal, ViewEvent};
@@ -36,7 +41,9 @@ impl Shell {
     /// the palette use, so a View's request and a keypress leave the same state behind.
     pub(super) fn handle_view_event(&mut self, event: ViewEvent, cx: &mut Context<'_, Self>) {
         match event {
-            ViewEvent::RaiseToast { kind, text } => self.raise_toast(kind, text),
+            ViewEvent::RaiseToast { kind, text } => {
+                self.send_shell(ShellInput::Notice(Notice::Toast(kind, text)), cx);
+            }
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
             ViewEvent::OpenHostedDialog(open) => self.open_hosted_dialog(*open),
             ViewEvent::Navigate(noun) => {
@@ -46,10 +53,11 @@ impl Shell {
                     self.reset_view_scroll(cx);
                 }
             }
-            ViewEvent::SetStatus(text) => self.chrome.status_message = text,
-            ViewEvent::NoticesQueued => {
-                self.drain_notices();
+            ViewEvent::SetStatus(Some(text)) => {
+                self.send_shell(ShellInput::Notice(Notice::Status(text)), cx);
             }
+            // A Notice carries text only, so clearing stays the View's request.
+            ViewEvent::SetStatus(None) => self.chrome.status_message = None,
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
             ViewEvent::EnterMode(mode) => {
                 self.nav.enter_mode(mode.input_mode());
@@ -113,6 +121,14 @@ mod tests {
                 storage,
                 cx,
             )
+        });
+        // A Toast or status arrives as one input, which drains into the Shell through the door.
+        cx.update(|cx| {
+            crate::input::install(
+                std::rc::Rc::new(lib_database::InMemoryCommit),
+                shell.downgrade(),
+                cx,
+            );
         });
         let view = cx.new(|_| StandInView);
         shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));

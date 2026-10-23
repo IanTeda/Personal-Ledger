@@ -25,9 +25,7 @@ mod msg {
 }
 
 pub use error::Error;
-use std::rc::Rc;
 
-use lib_database::{Commit, UnitsStore};
 pub use shell::Shell;
 
 use lib_config::KeyBindingConfig;
@@ -39,18 +37,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Builds the `Shell` the way `main` does, from the key bindings and the Colours already
 /// resolved. Takes only what the shell reads so tests can build one without parsing the
-/// user's config, and never touches the locale or the terminal. `units` is where the Units are
-/// kept: the Ledger file's adapter, or a test's in-memory ports; `commit` ends each Interactor
-/// call's writes, every adapter's at once; `failures` is the writer's failure channel, on which a
-/// failed write rolls back.
+/// user's config, and never touches the locale or the terminal. `stores` is where the Units are
+/// kept, the Ledger file's adapter or a test's in-memory ports, with the commit that ends each
+/// Interactor call's writes, every adapter's at once, and the writer's failure channel, on which
+/// a failed write rolls back. The TUI has no Transactions or Bills View on storage yet (#774), so
+/// it leaves those stores unread.
 pub fn build_shell(
     keybindings: KeyBindingConfig,
     colours: colours::Colours,
-    units: Box<dyn UnitsStore>,
-    commit: Rc<dyn Commit>,
-    failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
+    stores: lib_database::Stores,
 ) -> Shell {
     Shell::with_keybindings(keybindings)
-        .with_units(units, commit, failures)
+        .with_units(stores.units, stores.commit, stores.failures)
         .with_colours(colours)
 }

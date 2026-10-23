@@ -3,9 +3,14 @@
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
 //! The Ledger's Transactions, Bill Plans and Bill Schedule are read copies of their ports (#774):
-//! `apply` forwards a command's Transaction and Bills changes to the ports, commits, and refreshes
-//! the copies from them. The Bills ports are shared with the Bills module, which writes them
+//! `apply` forwards a command's Transaction and Bills changes to the ports and refreshes the
+//! copies from them. The Bills ports are shared with the Bills module, which writes them
 //! through its Interactors and refreshes the copy after each event ([`LedgerStore::refresh_bills`]).
+//!
+//! The store holds no commit: what `apply` forwards is committed by the input it ran in
+//! (`crate::input::send`). A View not yet a module runs `apply` from its own click, outside any
+//! input, so the store then emits [`LegacyApplied`], which the root Router turns into one `send`
+//! that commits it: `send`'s legacy arm, gone when the last such View migrates.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -13,18 +18,16 @@ use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_bills::BillsPorts as _;
-use lib_database::{Commit, SharedTransactionsStore};
+use lib_database::SharedTransactionsStore;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 
 /// What `build_shell` hands the Ledger: where its Transactions are kept, shared with the Bill
-/// Payments module, the Bills ports it shares with the Bills module, and the commit that ends each
-/// call's writes, every adapter's at once.
+/// Payments module, and the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
-    pub commit: Rc<dyn Commit>,
 }
 
 impl LedgerSetup {
@@ -38,7 +41,6 @@ impl LedgerSetup {
                 transactions: ledger.transactions().to_vec(),
             })),
             bills: LedgerBackedPorts::in_memory(&ledger),
-            commit: Rc::new(lib_database::InMemoryCommit),
         }
     }
 }
@@ -49,14 +51,19 @@ pub struct LedgerChanged {
     pub what: BTreeSet<Domain>,
 }
 
+/// Emitted when [`LedgerStore::apply`] forwarded writes outside any input, so the root Router
+/// sends one to commit them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyApplied;
+
 pub struct LedgerStore {
     ledger: Ledger,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
-    commit: Rc<dyn Commit>,
 }
 
 impl EventEmitter<LedgerChanged> for LedgerStore {}
+impl EventEmitter<LegacyApplied> for LedgerStore {}
 
 impl LedgerStore {
     /// `ledger` with its own Transactions and Bills in memory as the ports, for a test that needs
@@ -70,7 +77,6 @@ impl LedgerStore {
             ledger,
             transactions: Rc::new(RefCell::new(transactions)),
             bills,
-            commit: Rc::new(lib_database::InMemoryCommit),
         }
     }
 
@@ -81,7 +87,6 @@ impl LedgerStore {
             ledger,
             transactions: setup.transactions,
             bills: setup.bills,
-            commit: setup.commit,
         };
         store.copy_transactions();
         store.copy_bills();
@@ -123,9 +128,10 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes nothing and emits
     /// nothing; a landed command announces the domains its recorded changes touched. Its
-    /// Transaction and Bills changes are saved as one commit (the forwarding shims, #774), with
-    /// the Unmatch a deleted Transaction's entries need; the other domains' aren't persisted yet
-    /// (#636), so they're dropped here.
+    /// Transaction and Bills changes go to the ports (the forwarding shims, #774), with the
+    /// Unmatch a deleted Transaction's entries need, for the input's one commit; run outside any
+    /// input, it emits [`LegacyApplied`] to be committed. The other domains' changes aren't
+    /// persisted yet (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -136,7 +142,9 @@ impl LedgerStore {
         if !changes.is_empty() {
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
-            self.commit.commit();
+            if !crate::input::sending(cx) {
+                cx.emit(LegacyApplied);
+            }
             let mut what = domains(&changes);
             if what.contains(&Domain::Transactions) {
                 self.copy_transactions();
@@ -240,6 +248,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use gpui::{AppContext, Entity, TestAppContext};
+    use lib_database::{Commit, PendingWrites};
     use lib_ledger::{DeletePayee, LedgerParts};
 
     use super::*;
@@ -299,13 +308,66 @@ mod tests {
         assert!(events.borrow().is_empty());
     }
 
+    #[gpui::test]
+    fn a_write_outside_any_input_asks_for_one_and_a_write_inside_one_asks_nothing(
+        cx: &mut TestAppContext,
+    ) {
+        let (store, _) = store(cx);
+        let asked = Rc::new(RefCell::new(0));
+        let sink = asked.clone();
+        cx.update(|cx| {
+            crate::input::install(
+                Rc::new(lib_database::InMemoryCommit),
+                gpui::WeakEntity::new_invalid(),
+                cx,
+            );
+            cx.subscribe(&store, move |_, _: &LegacyApplied, _| {
+                *sink.borrow_mut() += 1;
+            })
+            .detach();
+        });
+        let ids: Vec<_> = store.read_with(cx, |store, _| {
+            store
+                .ledger()
+                .payees()
+                .iter()
+                .map(|payee| payee.id)
+                .collect()
+        });
+
+        store.update(cx, |store, cx| {
+            store.apply(cx, DeletePayee(ids[0])).expect("deleted")
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            *asked.borrow(),
+            1,
+            "a View's own click asks the root Router for an input"
+        );
+
+        cx.update(|cx| {
+            crate::input::send(cx, |cx| {
+                store.update(cx, |store, cx| {
+                    store.apply(cx, DeletePayee(ids[1])).expect("deleted")
+                })
+            })
+        });
+        cx.run_until_parked();
+        assert_eq!(*asked.borrow(), 1, "the input it ran in commits it");
+    }
+
     /// The Desktop's start-up storage on a Ledger file in `dir`, as of `today`.
     fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> lib_database::Storage {
         lib_database::open_storage(&dir.join("ledger.pldb"), today).expect("the Ledger opens")
     }
 
-    fn on_storage(cx: &mut TestAppContext, storage: lib_database::Storage) -> Entity<LedgerStore> {
-        on_storage_with_bills(cx, storage).0
+    /// A store on `storage`, with the pending writes the test commits, as an input's `send` would.
+    fn on_storage(
+        cx: &mut TestAppContext,
+        storage: lib_database::Storage,
+    ) -> (Entity<LedgerStore>, PendingWrites) {
+        let (store, _, _, pending) = on_storage_with_bills(cx, storage);
+        (store, pending)
     }
 
     /// [`on_storage`] with the Bills ports the store shares, which the Bills module writes, and
@@ -317,10 +379,11 @@ mod tests {
         Entity<LedgerStore>,
         DesktopBillsPorts,
         lib_bill_payments::SharedPayments,
+        PendingWrites,
     ) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
-        let commit: Rc<dyn Commit> = Rc::new(storage.pending);
-        let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), commit.clone());
+        let pending = storage.pending;
+        let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)));
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let store = cx.new(|_| {
@@ -329,11 +392,10 @@ mod tests {
                 LedgerSetup {
                     transactions,
                     bills: bills.clone(),
-                    commit,
                 },
             )
         });
-        (store, bills, payments)
+        (store, bills, payments, pending)
     }
 
     #[gpui::test]
@@ -344,7 +406,7 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let store = on_storage(cx, storage);
+        let (store, pending) = on_storage(cx, storage);
         let (wallet, everyday, groceries) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             let account = |name: &str| {
@@ -383,13 +445,14 @@ mod tests {
                 .apply(cx, DeleteAccount(wallet))
                 .expect("the Wallet is deleted");
         });
+        pending.commit();
         let before = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
         crate::quit(&writer);
         drop(store);
         drop(writer);
 
         // The next day, so a re-seed would show as shifted dates.
-        let reopened = on_storage(
+        let (reopened, _) = on_storage(
             cx,
             storage_in(dir.path(), today.succ_opt().expect("a date")),
         );
@@ -421,19 +484,20 @@ mod tests {
         })
     }
 
-    /// Writes nothing more, then opens the Ledger in `dir` again a day later, so a re-seed would
-    /// show as shifted dates.
+    /// Commits what was written, as the input's `send` would, then opens the Ledger in `dir`
+    /// again a day later, so a re-seed would show as shifted dates.
     fn restart(
         cx: &mut TestAppContext,
-        store: Entity<LedgerStore>,
+        (store, pending): (Entity<LedgerStore>, PendingWrites),
         writer: lib_database::Writer,
         dir: &std::path::Path,
         today: chrono::NaiveDate,
     ) -> Entity<LedgerStore> {
+        pending.commit();
         crate::quit(&writer);
         drop(store);
         drop(writer);
-        on_storage(cx, storage_in(dir, today.succ_opt().expect("a date")))
+        on_storage(cx, storage_in(dir, today.succ_opt().expect("a date"))).0
     }
 
     #[gpui::test]
@@ -446,7 +510,7 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, bills, payments) = on_storage_with_bills(cx, storage);
+        let (store, bills, payments, pending) = on_storage_with_bills(cx, storage);
         let (plans, entries) = bills_of(cx, &store);
         let (matched, split) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
@@ -525,11 +589,11 @@ mod tests {
             .run(ports.bills, ports.accounts, ports.categories)
             .expect("the plan is edited");
         }
-        cx.update(|cx| crate::bill_payments::sync(&bills, &store, cx));
+        cx.update(|cx| crate::bill_payments::refresh(&bills, &store, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
 
-        let reopened = restart(cx, store, writer, dir.path(), today);
+        let reopened = restart(cx, (store, pending), writer, dir.path(), today);
 
         assert_eq!(bills_of(cx, &reopened), before);
         let after = &before.1;
@@ -568,7 +632,7 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let store = on_storage(cx, storage);
+        let (store, pending) = on_storage(cx, storage);
         let (entry, account) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             ledger
@@ -598,7 +662,7 @@ mod tests {
         });
         assert_eq!(resolution(cx, &store), Some(Resolution::Unresolved));
 
-        let reopened = restart(cx, store, writer, dir.path(), today);
+        let reopened = restart(cx, (store, pending), writer, dir.path(), today);
 
         assert_eq!(resolution(cx, &reopened), Some(Resolution::Unresolved));
     }

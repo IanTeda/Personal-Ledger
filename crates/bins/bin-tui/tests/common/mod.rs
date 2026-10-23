@@ -47,9 +47,13 @@ pub fn shell_on(
     let shell = build_shell(
         KeyBindingConfig::default(),
         Colours::default(),
-        units,
-        commit,
-        failures,
+        lib_database::Stores {
+            units,
+            transactions: Box::new(lib_transactions::fake::InMemoryTransactions::default()),
+            bills: Box::new(lib_bills::fake::InMemoryBills::default()),
+            commit,
+            failures,
+        },
     );
     (shell, report)
 }

@@ -187,7 +187,7 @@ impl ConfirmDialog for PayDialog {
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<PayOutcome>> {
         copy_reads(&self.ports, scope.ledger.read(cx).ledger());
         let router = self.send(PayEvent::Confirm);
-        crate::bill_payments::sync(&self.ports, &scope.ledger, cx);
+        crate::bill_payments::refresh(&self.ports, &scope.ledger, cx);
         let outcome = router.closed.flatten()?;
         Some(Landed {
             toast: None,

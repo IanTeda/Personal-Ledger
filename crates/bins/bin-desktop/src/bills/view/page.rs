@@ -1,7 +1,8 @@
 //! The Bills page's View: the `lib-bills` page Presenter in a gpui Entity, which the Shell hosts as
 //! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It turns keys into chord text for
 //! the Bills keymap and clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
-//! `planner.rs`), and keeps the Ledger read copy in line after every event ([`ports::sync`]).
+//! `planner.rs`), and keeps the Ledger read copy in line after every event ([`ports::refresh`]).
+//! Each key and click is one input (`crate::input::send`), which commits what it wrote.
 //!
 //! A focused scope select's open list and highlight are gpui's widget state, so they are kept here:
 //! while one has focus, `j`/`k` and `Enter` drive it instead of the rows.
@@ -102,9 +103,16 @@ impl BillsPage {
         }
     }
 
-    /// Sends `event` to the Presenter with the Desktop's Router, then saves what it wrote and
-    /// brings the Ledger read copy in line.
+    /// A key or click on the page, or the page being entered: `event` as one input, committed
+    /// once it is handled.
     pub(in crate::bills) fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
+        crate::input::send(cx, |cx| self.handle(event, cx));
+    }
+
+    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
+    /// in line with what it wrote. Inside an input already, as [`Self::send`] or a Dialog's
+    /// confirm.
+    fn handle(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
         let tab = self.presenter.tab();
         let mut router = PageRouter {
             ports: self.ports.clone(),
@@ -114,30 +122,31 @@ impl BillsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::sync(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         if self.presenter.tab() != tab {
             self.scroll.set_offset(gpui::Point::default());
         }
         cx.notify();
     }
 
-    /// A confirmed Dialog's outcome, handed back by the Dialog host.
+    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     pub(in crate::bills) fn dialog_landed(
         &mut self,
         outcome: BillsOutcome,
         cx: &mut Context<'_, Self>,
     ) {
-        self.send(BillsPageEvent::DialogClosed(Some(outcome)), cx);
+        self.handle(BillsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
     /// A landed Pay Dialog, handed back by the Dialog host: the page redraws from its ports, the
-    /// entry Paid. A Pay raises no Toast, since the row turning Paid is the feedback.
+    /// entry Paid. A Pay raises no Toast, since the row turning Paid is the feedback. Inside the
+    /// confirm's input.
     pub(in crate::bills) fn pay_landed(
         &mut self,
         _outcome: PayOutcome,
         cx: &mut Context<'_, Self>,
     ) {
-        self.send(BillsPageEvent::DialogClosed(None), cx);
+        self.handle(BillsPageEvent::DialogClosed(None), cx);
     }
 
     /// The page as drawn.

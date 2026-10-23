@@ -86,6 +86,35 @@ fn a_new_month_generates_its_bills_while_the_dashboard_shows(app: &mut TestAppCo
 }
 
 #[gpui::test]
+fn a_day_tick_commits_once_and_a_month_turn_lands_its_new_bills_in_that_commit(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+
+    let before = ui.commits();
+    ui.turn_date_to(common::date(2026, 6, 30));
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "a tick is one input, written or not"
+    );
+
+    let before = ui.commits();
+    ui.turn_date_to(common::date(2026, 8, 31));
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "the month's generated Bills land in the tick's one commit"
+    );
+    assert!(
+        attention_due_in(&mut ui, "2026-08")
+            .iter()
+            .any(|plan| plan != STORED_IN_AUGUST),
+        "the month turned and generated its entries"
+    );
+}
+
+#[gpui::test]
 fn a_new_months_generation_that_fails_to_save_rolls_back_with_an_error_toast(
     app: &mut TestAppContext,
 ) {

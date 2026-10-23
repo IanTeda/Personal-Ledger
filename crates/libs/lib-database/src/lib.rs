@@ -79,14 +79,16 @@ pub mod adapter;
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
 pub use adapter::store::{
-    BillsStore, SharedBillsStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
+    BillsStore, CountingCommit, SharedBillsStore, SharedTransactionsStore, TransactionsStore,
+    UnitsStore,
 };
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;
 
-/// A Client's Ledger file, opened at start-up with its adapters and the writer.
+/// A Client's Ledger file, opened at start-up with its adapters and the writer, and the
+/// [`Stores`] its Shell is built on.
 pub mod storage;
-pub use storage::{Storage, open_storage};
+pub use storage::{Storage, Stores, open_storage};
 
 /// The dev seed: each persisted domain's stub seed, written through its adapter.
 pub mod seed;

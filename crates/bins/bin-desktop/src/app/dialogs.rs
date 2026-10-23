@@ -127,17 +127,15 @@ impl Shell {
         self.views.settings.read(cx).accounts().clone()
     }
 
-    /// The cancel button: closes the Dialog without applying it.
+    /// The cancel button: closes the Dialog without applying it, as one input.
     pub(super) fn handle_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
+        crate::input::send(cx, |_| self.close_dialog());
     }
 
-    /// The confirm button, the click twin of `Enter`.
+    /// The confirm button, the click twin of `Enter`: one input, whose commit saves what the
+    /// Dialog and the page it hands its outcome to wrote.
     pub(super) fn handle_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        self.drain_notices();
-        cx.notify();
+        crate::input::send(cx, |cx| self.confirm_open_dialog(cx));
     }
 
     /// A click inside the open `T` Dialog: runs `change` on it and repaints. A no-op when another

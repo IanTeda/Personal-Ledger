@@ -1,7 +1,8 @@
 //! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It turns keys
 //! into chord text for the Units keymap and clicks into events, draws the view model
 //! (`render.rs`, `pane.rs`), and keeps the Ledger read copy in line after every event
-//! ([`ports::sync`]). The Settings View hosts it as any other page.
+//! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
+//! what it wrote. The Settings View hosts it as any other page.
 
 mod pane;
 mod render;
@@ -70,26 +71,32 @@ impl UnitsPage {
         }
     }
 
-    /// Sends `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote.
+    /// A key or click on the page: `event` as one input, committed once it is handled.
     pub(in crate::units) fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::sync(&self.ports, &self.ledger, cx);
+        crate::input::send(cx, |cx| self.handle(event, cx));
+    }
+
+    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
+    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
+    /// confirm.
+    fn handle(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+        ports::refresh(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::sync(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 
-    /// A confirmed Dialog's outcome, handed back by the Dialog host.
+    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     pub(in crate::units) fn dialog_landed(
         &mut self,
         outcome: lib_units::presenter::UnitsOutcome,
         cx: &mut Context<'_, Self>,
     ) {
-        self.send(UnitsPageEvent::DialogClosed(Some(outcome)), cx);
+        self.handle(UnitsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
     /// The page as drawn, with usage and holdings as the Ledger has them now.
@@ -163,11 +170,11 @@ impl Page for UnitsPage {
         })
     }
 
-    /// X-Large docks the detail pane.
+    /// X-Large docks the detail pane. The layout, not an input, so nothing is committed.
     fn set_frame(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
         let docked = frame.window_size == WindowSize::XLarge;
         if docked != self.presenter.view_model().docked {
-            self.send(UnitsPageEvent::SetDocked(docked), cx);
+            self.handle(UnitsPageEvent::SetDocked(docked), cx);
         }
     }
 

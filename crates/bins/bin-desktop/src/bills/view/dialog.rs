@@ -263,7 +263,7 @@ impl ConfirmDialog for BillsDialog {
             }
             View::Skip(presenter) => send(presenter, SkipEvent::Confirm, SkipPresenter::handle),
         };
-        ports::sync(&self.ports, &scope.ledger, cx);
+        ports::refresh(&self.ports, &scope.ledger, cx);
         let outcome = router.closed.flatten()?;
         Some(Landed {
             toast: None,

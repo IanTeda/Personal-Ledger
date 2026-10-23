@@ -800,6 +800,7 @@ dependencies = [
  "lib_locale_build",
  "lib_toast",
  "lib_tracing",
+ "lib_transactions",
  "lib_units",
  "lib_viper",
  "ratatui",
@@ -4921,6 +4922,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "lib_core",
+ "lib_toast",
 ]
 
 [[package]]

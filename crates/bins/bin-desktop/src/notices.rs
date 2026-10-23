@@ -1,13 +1,10 @@
 //! The bin's one queue of [`Notice`]s: every module Router pushes onto it through [`Queue`], and
-//! `Shell` drains it into its Toast stack and status line after the Presenter's `handle`
-//! (ADR-0048). A page asks for the drain with [`ViewEvent::NoticesQueued`]; a Dialog's keys and
-//! clicks already run inside `Shell`, which drains once they return.
+//! each input's `send` (`crate::input`) drains it into `Shell`'s Toast stack and status line after
+//! the Presenter's `handle` and the commit (ADR-0048).
 //!
 //! The queue is per thread rather than held by `Shell`, since today's Dialog host calls a Dialog
-//! with no gpui context to reach `Shell` through. Halfway state: #823's `send` takes the drain
-//! over, and #826 moves the Toast stack and status line into `lib-shell`.
-//!
-//! [`ViewEvent::NoticesQueued`]: crate::view::event::ViewEvent::NoticesQueued
+//! with no gpui context to reach `Shell` through. Halfway state: #826 moves the Toast stack and
+//! status line into `lib-shell`.
 
 use std::cell::RefCell;
 

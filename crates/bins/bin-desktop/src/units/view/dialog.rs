@@ -358,7 +358,7 @@ impl ConfirmDialog for UnitsDialog {
     /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<UnitsOutcome>> {
-        ports::sync(&self.ports, &scope.ledger, cx);
+        ports::refresh(&self.ports, &scope.ledger, cx);
         let router = match &self.view {
             View::UnitForm(presenter, _) => send(
                 presenter,
@@ -386,7 +386,7 @@ impl ConfirmDialog for UnitsDialog {
                 DeletePriceSourcePresenter::handle,
             ),
         };
-        ports::sync(&self.ports, &scope.ledger, cx);
+        ports::refresh(&self.ports, &scope.ledger, cx);
         let outcome = router.closed.flatten()?;
         Some(Landed {
             toast: None,

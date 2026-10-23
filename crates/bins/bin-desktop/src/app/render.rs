@@ -186,23 +186,23 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
             })
         };
-        // The hosted Dialogs' clicks: an edit runs on the open Dialog and raises the Toast it
-        // returns; cancel and confirm run the host's cycle.
+        // The hosted Dialogs' clicks, each one input: an edit runs on the open Dialog and raises
+        // the Toast it returns; cancel and confirm run the host's cycle.
         let dialog_actions = DialogActions {
             edit: {
                 let entity = entity.clone();
                 Rc::new(move |cx, change| {
                     entity.update(cx, |shell, cx| {
-                        let toast = shell
-                            .chrome
-                            .dialog
-                            .as_mut()
-                            .and_then(|dialog| change(dialog, cx));
-                        if let Some((kind, message)) = toast {
-                            shell.raise_toast(kind, message);
-                        }
-                        shell.drain_notices();
-                        cx.notify();
+                        crate::input::send(cx, |cx| {
+                            let toast = shell
+                                .chrome
+                                .dialog
+                                .as_mut()
+                                .and_then(|dialog| change(dialog, cx));
+                            if let Some((kind, message)) = toast {
+                                shell.raise_toast(kind, message);
+                            }
+                        });
                     });
                 })
             },
@@ -245,10 +245,7 @@ impl Render for Shell {
                 cx.notify();
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                let changed = this.handle_key_down(event, WindowSize::of(window), cx);
-                // What a Dialog's Presenter queued while handling the key.
-                let notified = this.drain_notices();
-                if changed || notified {
+                if this.handle_key_down(event, WindowSize::of(window), cx) {
                     cx.notify();
                 }
                 this.run_pending_effects(cx);

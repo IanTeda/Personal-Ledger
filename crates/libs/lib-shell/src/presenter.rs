@@ -1,15 +1,26 @@
 //! The Shell's Presenter. It holds the Clock and the last calendar month it saw, and tells its
-//! Router once the Clock reads a new one.
+//! Router once the Clock reads a new one. The Client's own inputs, a Notice, a legacy write and a
+//! failed one, pass through it to the Router until the Presenter holds what they change (#826).
 
 use lib_core::{Clock, Period};
+use lib_toast::Notice;
 
 use crate::protocols::ShellRouter;
 
-/// What the Client delivers to the Shell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShellInput {
+/// What the Client delivers to the Shell, each through its one `send`. `F` is the Client's write
+/// failure ([`ShellRouter::Failure`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellInput<F> {
     /// The Client's day poll fired: read the Clock for a new month.
     DayTick,
+    /// A View not yet a module raised a Toast or set the status line.
+    Notice(Notice),
+    /// A View not yet a module ran a write on the Client's legacy store, outside any input the
+    /// Shell saw. The write has run; this input exists so the `send` it arrives in commits it,
+    /// the one commit path (#823). It goes when the last such View migrates.
+    LegacyApply,
+    /// A committed write failed.
+    WriteFailed(F),
 }
 
 pub struct ShellPresenter {
@@ -26,7 +37,11 @@ impl ShellPresenter {
         Self { clock, month }
     }
 
-    pub fn handle(&mut self, input: ShellInput, router: &mut dyn ShellRouter) {
+    pub fn handle<R: ShellRouter + ?Sized>(
+        &mut self,
+        input: ShellInput<R::Failure>,
+        router: &mut R,
+    ) {
         match input {
             ShellInput::DayTick => {
                 let today = self.clock.today();
@@ -35,6 +50,9 @@ impl ShellPresenter {
                     router.month_turned(today);
                 }
             }
+            ShellInput::Notice(notice) => router.notify(notice),
+            ShellInput::LegacyApply => {}
+            ShellInput::WriteFailed(failure) => router.write_failed(failure),
         }
     }
 }
@@ -73,6 +91,28 @@ mod tests {
         shell.handle(ShellInput::DayTick, &mut router);
 
         assert_eq!(router.routed, vec![Routed::MonthTurned(date(2026, 10, 1))]);
+    }
+
+    #[test]
+    fn a_notice_and_a_write_failure_go_to_the_router_and_a_legacy_write_asks_nothing() {
+        let mut shell = ShellPresenter::new(Clock::fixed(date(2026, 9, 19)));
+        let mut router = RecordingRouter::default();
+        let saved = Notice::Toast(lib_toast::ToastKind::Success, "Saved".to_string());
+
+        shell.handle(ShellInput::Notice(saved.clone()), &mut router);
+        shell.handle(ShellInput::LegacyApply, &mut router);
+        shell.handle(
+            ShellInput::WriteFailed("disk full".to_string()),
+            &mut router,
+        );
+
+        assert_eq!(
+            router.routed,
+            vec![
+                Routed::Notice(saved),
+                Routed::WriteFailed("disk full".to_string())
+            ]
+        );
     }
 
     #[test]

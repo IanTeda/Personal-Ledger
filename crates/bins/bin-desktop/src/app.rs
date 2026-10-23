@@ -17,9 +17,9 @@
 //! sit in `app/`. The file holds the `Shell` struct, construction, persisted setters, the accessor
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
-//! `log_feed`, `rail`, `render`, `status`, `toasts`) under `app/` that is an `impl Shell` block,
-//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `budgets_ui`, ...)
-//! marks per-domain wiring.
+//! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `app/` that is an
+//! `impl Shell` block, not the real module of the same name; a `_ui` suffix (`documents_ui`,
+//! `budgets_ui`, ...) marks per-domain wiring.
 //!
 //! `Shell` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
@@ -39,6 +39,7 @@ mod key_dispatch;
 mod log_feed;
 mod rail;
 mod render;
+mod root_router;
 mod snapshots;
 mod status;
 mod toasts;
@@ -66,7 +67,7 @@ pub use write_failures::WRITE_FAILURE_POLL;
 
 use std::time::Duration;
 
-use crate::ledger_store::{LedgerStore, notify_on};
+use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
@@ -185,10 +186,14 @@ impl Shell {
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
-        crate::units::ports::sync(&units.ports, &ledger, cx);
+        crate::units::ports::refresh(&units.ports, &ledger, cx);
         let units_ports = units.ports.clone();
         // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
+        // A View not yet a module wrote through the Ledger from its own click: one input commits it.
+        let legacy_applied = cx.subscribe(&ledger, |shell, _, _: &LegacyApplied, cx| {
+            shell.send_shell(lib_shell::ShellInput::LegacyApply, cx);
+        });
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
         let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
@@ -325,6 +330,7 @@ impl Shell {
                 inventory_changed,
                 settings_subscription,
                 settings_view_observer,
+                legacy_applied,
             ],
         }
     }

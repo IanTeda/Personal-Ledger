@@ -1,7 +1,8 @@
 //! The Bills ports as the Desktop holds them: the store `build_shell` is given, shared by the
 //! Bills module and `LedgerStore`, with the Accounts, Categories, Payees, Splits and Units
-//! Bills reads copied from the Ledger (#778's halfway shims), and the step that commits a Bills
-//! write and keeps the Ledger's read copy in line after it.
+//! Bills reads copied from the Ledger (#778's halfway shims), and the step that keeps the
+//! Ledger's read copy in line after a Bills write. The write is committed by the input it was made
+//! in (`crate::input::send`), not here.
 //!
 //! The reads are copied before each Bills event, since a port can't reach the `LedgerStore`
 //! Entity without a gpui context; each goes when its domain answers through its own port.
@@ -20,7 +21,7 @@ use lib_bills::{
     BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
     unmatch_transaction,
 };
-use lib_database::{Commit, SharedBillsStore};
+use lib_database::SharedBillsStore;
 use lib_ledger::{Ledger, LedgerChange};
 
 use crate::ledger_store::LedgerStore;
@@ -54,19 +55,17 @@ impl BillScheduleRepository for Store {
 }
 
 /// `store`'s Bill Plans and Bill Schedule, with what Bills reads of the other domains copied from
-/// the Ledger, and the commit that ends each Interactor call.
+/// the Ledger.
 pub struct LedgerBackedPorts {
     store: Store,
-    commit: Rc<dyn Commit>,
     reads: InMemoryBillReads,
     units: InMemoryBillUnits,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: SharedBillsStore, commit: Rc<dyn Commit>) -> DesktopPorts {
+    pub fn shared(store: SharedBillsStore) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store: Store(store),
-            commit,
             reads: InMemoryBillReads::default(),
             units: InMemoryBillUnits::default(),
         }))
@@ -74,13 +73,10 @@ impl LedgerBackedPorts {
 
     /// `ledger`'s own Bill Plans and Bill Schedule in memory, for a test that needs no storage.
     pub fn in_memory(ledger: &Ledger) -> DesktopPorts {
-        let ports = Self::shared(
-            Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
-                plans: ledger.bill_plans().to_vec(),
-                entries: ledger.bill_entries().to_vec(),
-            })),
-            Rc::new(lib_database::InMemoryCommit),
-        );
+        let ports = Self::shared(Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
+            plans: ledger.bill_plans().to_vec(),
+            entries: ledger.bill_entries().to_vec(),
+        })));
         ports.borrow_mut().copy_reads(ledger);
         ports
     }
@@ -194,9 +190,9 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
 }
 
 /// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
-/// wherever it is (ADR-0019), then commits and refreshes the read copy as after a Bills event, so
-/// the Dashboard, the rail badge and Budgets see the new entries. A failed save rolls back like
-/// any Bills write.
+/// wherever it is (ADR-0019), then refreshes the read copy as after a Bills event, so the
+/// Dashboard, the rail badge and Budgets see the new entries. The day poll's input commits them as
+/// one write, and a failed save rolls back like any Bills write.
 pub fn new_month(
     ports: &DesktopPorts,
     ledger: &Entity<LedgerStore>,
@@ -205,7 +201,7 @@ pub fn new_month(
 ) {
     let written = PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
     tracing::info!(written, %today, "Generated the Bill Schedule for a new month");
-    sync(ports, ledger, cx);
+    refresh(ports, ledger, cx);
 }
 
 /// Copies what Bills reads of the other domains from `ledger` into `ports`, before an event or
@@ -214,12 +210,10 @@ pub fn copy_reads(ports: &DesktopPorts, ledger: &Ledger) {
     ports.borrow_mut().copy_reads(ledger);
 }
 
-/// Commits the Interactor call just made, if any, then brings the Ledger's Bills read copy in line
-/// with the ports, announcing `Domain::Bills` when it changed, and copies the reads back for the
-/// next event. Run after every Bills event and Dialog confirm, so a write is saved as one
-/// transaction and the Dashboard, the rail badge, Budgets and Documents see it at once.
-pub fn sync(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ports.borrow().commit.commit();
+/// Brings the Ledger's Bills read copy in line with the ports, announcing `Domain::Bills` when it
+/// changed, and copies the reads back for the next event. Run after every Bills event and Dialog
+/// confirm, so the Dashboard, the rail badge, Budgets and Documents see a write at once.
+pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_bills(cx));
     copy_reads(ports, ledger.read(cx).ledger());
 }

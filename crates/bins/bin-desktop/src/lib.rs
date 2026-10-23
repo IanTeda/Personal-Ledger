@@ -16,6 +16,7 @@ mod error;
 mod form;
 mod help;
 mod import;
+mod input;
 mod inventory;
 mod ledger_store;
 pub mod locale;
@@ -46,7 +47,7 @@ use gpui::{
 use app::Shell;
 pub use chrome::window_size::WindowSize;
 pub use error::Error;
-use lib_database::{BillsStore, Commit, Storage, TransactionsStore, UnitsStore, open_storage};
+use lib_database::{Storage, Stores, open_storage};
 use persistence::{PersistedState, WindowGeometry};
 
 /// Crate Result type alias used across the Desktop binary.
@@ -77,28 +78,26 @@ pub struct ShellLogs {
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes
-/// hang off.
-/// `units`, `transactions` and `bills` are where the Units, the Transactions and the Bills are kept:
-/// the app's SQLite adapters, or a test's in-memory ports. `commit` ends each call's writes, every
-/// adapter's at once. `failures` is the writer's failure channel, on which a failed write rolls
-/// back.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "each is one start-up input the app and the tests both supply"
-)]
+/// hang off. `stores` is where the Units, the Transactions and the Bills are kept, the app's
+/// SQLite adapters or a test's in-memory ports, with the commit every input ends in
+/// (`input::send`) and the writer's failure channel, on which a failed write rolls back.
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
-    units: Box<dyn UnitsStore>,
-    transactions: Box<dyn TransactionsStore>,
-    bills: Box<dyn BillsStore>,
-    commit: Rc<dyn Commit>,
-    failures: std::sync::mpsc::Receiver<lib_database::WriteFailure>,
+    stores: Stores,
     clock: lib_core::Clock,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
+    let Stores {
+        units,
+        transactions,
+        bills,
+        commit,
+        failures,
+    } = stores;
+    input::install(commit, cx.weak_entity(), cx);
     let today = clock.today();
     let nav = navigation::nav::NavState::starting_at(persisted.noun);
     let documents_state = (
@@ -119,16 +118,14 @@ pub fn build_shell(
     // The Transactions and Bills stores are shared: Pay it directly writes both (#779).
     let transactions: lib_database::SharedTransactionsStore =
         Rc::new(std::cell::RefCell::new(transactions));
-    let bills =
-        bills::LedgerBackedPorts::shared(Rc::new(std::cell::RefCell::new(bills)), commit.clone());
+    let bills = bills::LedgerBackedPorts::shared(Rc::new(std::cell::RefCell::new(bills)));
     let payments = bill_payments::payments(transactions.clone(), &bills);
     let storage = ledger_store::LedgerSetup {
         transactions,
         bills: bills.clone(),
-        commit: commit.clone(),
     };
     let bills = bills::BillsSetup::new(bills, payments, &bindings.keybindings);
-    let units = units::UnitsSetup::new(units, commit, &bindings.keybindings);
+    let units = units::UnitsSetup::new(units, &bindings.keybindings);
     let mut shell = Shell::with_clock(nav, focus_handle, clock, units, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
@@ -172,7 +169,7 @@ pub fn start_on(
         tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
     })?;
     bills::ports::generate(&mut storage.bills, today);
-    storage.pending.commit();
+    lib_database::Commit::commit(&storage.pending);
     Ok(storage)
 }
 
@@ -188,14 +185,8 @@ pub fn quit(writer: &lib_database::Writer) {
 /// Opens the main window and runs the app until it quits. Tracing is already initialised, feeding
 /// `logs` for the Tracing page, and `storage` is the Ledger file [`start`] opened.
 pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: Storage) {
-    let Storage {
-        units,
-        transactions,
-        bills,
-        pending,
-        writer,
-        failures,
-    } = storage;
+    let writer = storage.writer.clone();
+    let stores = Stores::from(storage);
     let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
@@ -295,11 +286,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                                 buffer: logs,
                                 configured_level,
                             },
-                            Box::new(units),
-                            Box::new(transactions),
-                            Box::new(bills),
-                            Rc::new(pending),
-                            failures,
+                            stores,
                             app::wall_clock(chrono::Local::now().date_naive()),
                             focus_handle,
                             cx,

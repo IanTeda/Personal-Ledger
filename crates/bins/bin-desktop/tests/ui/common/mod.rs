@@ -36,7 +36,7 @@ use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{PriceSourceId, UnitId};
 use lib_database::{
-    BillsStore, Commit, Domain, InMemoryCommit, TransactionsStore, UnitsStore, WriteFailure,
+    BillsStore, Commit, CountingCommit, Domain, Stores, TransactionsStore, UnitsStore, WriteFailure,
 };
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
@@ -62,9 +62,12 @@ pub fn config_for(path: &std::path::Path) -> lib_config::Config {
     config
 }
 
-/// A failure channel nothing will report on: the in-memory ports have no writer.
-fn no_failures() -> mpsc::Receiver<WriteFailure> {
-    mpsc::channel().1
+/// `stores` with its commit counted, so a test asserts one per input.
+fn counted(mut stores: Stores) -> (Stores, Rc<Cell<usize>>) {
+    let commit = CountingCommit::new(stores.commit);
+    let count = commit.count();
+    stores.commit = Rc::new(commit);
+    (stores, count)
 }
 
 /// Marks `written` on every write through it, so the commit after it knows there is one to fail.
@@ -325,6 +328,8 @@ pub struct Harness<'a> {
     pub logs: lib_tracing::LogBuffer,
     /// The day the Shell's clock reads, [`today`] until [`Harness::turn_date_to`] moves it.
     date: Rc<Cell<NaiveDate>>,
+    /// How many times the Shell has committed, once per input (`input::send`).
+    commits: Rc<Cell<usize>>,
 }
 
 /// The open Add or Edit account dialog's form: plain values, as `Harness::account_form` reads
@@ -366,11 +371,11 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-            Box::new(stub_transactions()),
-            Box::new(stub_bills()),
-            Rc::new(InMemoryCommit),
-            no_failures(),
+            Stores::fake(
+                InMemoryPorts::stub(chrono::Utc::now()),
+                stub_transactions(),
+                stub_bills(),
+            ),
         )
     }
 
@@ -381,11 +386,7 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(storage.units),
-            Box::new(storage.transactions),
-            Box::new(storage.bills),
-            Rc::new(storage.pending),
-            storage.failures,
+            counted(Stores::from(storage)),
         )
     }
 
@@ -399,19 +400,21 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(FailingUnits::new(
-                InMemoryPorts::stub(chrono::Utc::now()),
-                &written,
-                reload_fails,
-            )),
-            Box::new(stub_transactions()),
-            Box::new(stub_bills()),
-            Rc::new(FailingCommit {
-                domains: vec![Domain::Units],
-                written,
-                report,
+            counted(Stores {
+                units: Box::new(FailingUnits::new(
+                    InMemoryPorts::stub(chrono::Utc::now()),
+                    &written,
+                    reload_fails,
+                )),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Units],
+                    written,
+                    report,
+                }),
+                failures,
             }),
-            failures,
         )
     }
 
@@ -426,21 +429,23 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-            Box::new(FailingTransactions {
-                transactions: Marked {
-                    inner: stored.clone(),
-                    written: written.clone(),
-                },
-                stored,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                transactions: Box::new(FailingTransactions {
+                    transactions: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    stored,
+                }),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Transactions],
+                    written,
+                    report,
+                }),
+                failures,
             }),
-            Box::new(stub_bills()),
-            Rc::new(FailingCommit {
-                domains: vec![Domain::Transactions],
-                written,
-                report,
-            }),
-            failures,
         )
     }
 
@@ -455,21 +460,23 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-            Box::new(stub_transactions()),
-            Box::new(FailingBills {
-                bills: Marked {
-                    inner: stored.clone(),
-                    written: written.clone(),
-                },
-                stored,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(FailingBills {
+                    bills: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    stored,
+                }),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Bills],
+                    written,
+                    report,
+                }),
+                failures,
             }),
-            Rc::new(FailingCommit {
-                domains: vec![Domain::Bills],
-                written,
-                report,
-            }),
-            failures,
         )
     }
 
@@ -484,43 +491,38 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-            Box::new(FailingTransactions {
-                transactions: Marked {
-                    inner: transactions.clone(),
-                    written: written.clone(),
-                },
-                stored: transactions,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                transactions: Box::new(FailingTransactions {
+                    transactions: Marked {
+                        inner: transactions.clone(),
+                        written: written.clone(),
+                    },
+                    stored: transactions,
+                }),
+                bills: Box::new(FailingBills {
+                    bills: Marked {
+                        inner: bills.clone(),
+                        written: written.clone(),
+                    },
+                    stored: bills,
+                }),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Transactions, Domain::Bills],
+                    written,
+                    report,
+                }),
+                failures,
             }),
-            Box::new(FailingBills {
-                bills: Marked {
-                    inner: bills.clone(),
-                    written: written.clone(),
-                },
-                stored: bills,
-            }),
-            Rc::new(FailingCommit {
-                domains: vec![Domain::Transactions, Domain::Bills],
-                written,
-                report,
-            }),
-            failures,
         )
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one per store build_shell takes, which each constructor varies"
-    )]
+    /// The Shell on `stores`, whose commits `commits` counts.
     fn build(
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
-        units: Box<dyn UnitsStore>,
-        transactions: Box<dyn TransactionsStore>,
-        bills: Box<dyn BillsStore>,
-        commit: Rc<dyn Commit>,
-        failures: mpsc::Receiver<WriteFailure>,
+        (stores, commits): (Stores, Rc<Cell<usize>>),
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
@@ -544,11 +546,7 @@ impl<'a> Harness<'a> {
                     buffer: logs.clone(),
                     configured_level,
                 },
-                units,
-                transactions,
-                bills,
-                commit,
-                failures,
+                stores,
                 clock,
                 focus_handle,
                 cx,
@@ -559,7 +557,13 @@ impl<'a> Harness<'a> {
             cx,
             logs,
             date,
+            commits,
         }
+    }
+
+    /// How many times the Shell has committed since it was built: once per input.
+    pub fn commits(&self) -> usize {
+        self.commits.get()
     }
 
     /// Moves the Shell's clock to `day`, then lets the Shell notice: past one poll of its clock.

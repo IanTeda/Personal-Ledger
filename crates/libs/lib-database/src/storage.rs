@@ -1,9 +1,10 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
 //! the Client migrations, then the Units, Transactions and Bills adapters on the pending batch
 //! every adapter shares. The Desktop and the TUI both open it here, so they read and write the
-//! same rows (ADR-0046).
+//! same rows (ADR-0046), and both build their Shell on the [`Stores`] made from it.
 
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::mpsc;
 
 use chrono::{NaiveDate, Utc};
@@ -11,7 +12,7 @@ use lib_units::fake::InMemoryPorts;
 
 use crate::{
     BillsAdapter, Error, PendingWrites, Result, TransactionsAdapter, UnitsAdapter, WriteFailure,
-    Writer, seed,
+    Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -24,6 +25,31 @@ pub struct Storage {
     /// Flushed when the Client quits, so the last writes land before the thread dies.
     pub writer: Writer,
     pub failures: mpsc::Receiver<WriteFailure>,
+}
+
+/// What a Client's Shell is built on: each module's store, the one commit that ends every input's
+/// writes, every store's at once, and the channel a failed commit is reported on. Made from the
+/// [`Storage`] start-up opened, or from in-memory stores for a test ([`Stores::fake`]), so
+/// building the Shell takes one argument for storage. The writer isn't here: the Client keeps it
+/// from the [`Storage`] to flush as it quits.
+pub struct Stores {
+    pub units: Box<dyn store::UnitsStore>,
+    pub transactions: Box<dyn store::TransactionsStore>,
+    pub bills: Box<dyn store::BillsStore>,
+    pub commit: Rc<dyn crate::Commit>,
+    pub failures: mpsc::Receiver<WriteFailure>,
+}
+
+impl From<Storage> for Stores {
+    fn from(storage: Storage) -> Self {
+        Self {
+            units: Box::new(storage.units),
+            transactions: Box::new(storage.transactions),
+            bills: Box::new(storage.bills),
+            commit: Rc::new(storage.pending),
+            failures: storage.failures,
+        }
+    }
 }
 
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,

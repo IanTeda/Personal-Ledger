@@ -55,8 +55,10 @@ tui-piechart = { version = "1.0.2" }
 rustix = { version = "1.1.4", features = ["event"] }
 
 [dev-dependencies]
-# The key-clash test checks the Bills module's default keys before the TUI draws Bills on it.
+# The key-clash test checks the Bills module's default keys before the TUI draws Bills on it; the
+# test Shell's `Stores` holds empty Bills and Transactions too.
 lib_bills = { path = "../../libs/lib-bills" }
+lib_transactions = { path = "../../libs/lib-transactions" }
 # The Units persistence test opens a real Ledger file in a throwaway directory.
 tempfile = { workspace = true }
 

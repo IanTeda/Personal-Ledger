@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 ## -- Internal Dependencies --
 lib_core = { path = "../lib-core" }
+lib_toast = { path = "../lib-toast" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }

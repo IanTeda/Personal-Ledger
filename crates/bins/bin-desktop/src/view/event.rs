@@ -26,9 +26,6 @@ pub enum ViewEvent {
     Navigate(Noun),
     /// Replace the status message shown in the Chrome; `None` clears it.
     SetStatus(Option<String>),
-    /// A module Router queued Notices (`crate::notices`): `Shell` drains them into its Toast stack
-    /// and status line.
-    NoticesQueued,
     /// Jump to a record another View owns (ADR-0037): `Shell` makes its destination active, then
     /// asks that View to show it.
     Reveal(Reveal),

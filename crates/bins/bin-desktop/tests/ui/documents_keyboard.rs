@@ -201,6 +201,28 @@ fn y_accepts_the_focused_strong_match_and_u_undoes_it(app: &mut TestAppContext) 
     assert!(!undone.toasts.is_empty(), "undo says so with a Toast");
 }
 
+/// The page isn't a module yet, so its key isn't one input: each request it makes of the root
+/// Router is, the write and the Toast saying so, each committed once through the one door.
+#[gpui::test]
+fn an_accept_from_the_pages_own_key_commits_its_write_and_its_toast_once_each(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let toasts = ui.documents().toasts.len();
+
+    let before = ui.commits();
+    ui.press("y");
+
+    assert_eq!(
+        ui.documents().toasts.len(),
+        toasts + 1,
+        "the accept says so"
+    );
+    assert_eq!(ui.commits(), before + 2);
+}
+
 #[gpui::test]
 fn u_with_nothing_to_undo_changes_nothing_and_says_so(app: &mut TestAppContext) {
     let mut ui = on_documents(app);

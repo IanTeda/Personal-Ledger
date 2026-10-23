@@ -377,18 +377,24 @@ impl Shell {
     /// [`chrome::dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
     /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
     /// stay untouched while a dialog is up.
+    /// Each key the Dialog takes is one input, whose commit saves what its confirm wrote.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if let Some(dialog) = self.chrome.dialog.as_mut() {
-            return match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
+        if self.chrome.dialog.is_none() {
+            return false;
+        }
+        crate::input::send(cx, |cx| {
+            let Some(dialog) = self.chrome.dialog.as_mut() else {
+                return false;
+            };
+            match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
                 DialogOutcome::Ignored => false,
                 DialogOutcome::Handled => true,
                 DialogOutcome::Confirm => {
                     self.confirm_open_dialog(cx);
                     true
                 }
-            };
-        }
-        false
+            }
+        })
     }
 
     /// Runs what the key handlers left pending for after the `cx.notify()` -- effects that need

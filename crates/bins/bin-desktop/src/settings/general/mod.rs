@@ -61,15 +61,18 @@ impl GeneralPage {
         self.ledger.read(cx).ledger().base_unit()
     }
 
-    /// Makes `id` the base Unit. A refusal means the Unit was removed under the select, which
-    /// repaints without it, so there is nothing to report.
+    /// Makes `id` the base Unit, one input committed once it ran (`crate::input::send`). A
+    /// refusal means the Unit was removed under the select, which repaints without it, so there
+    /// is nothing to report.
     fn set_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
-        let _ = {
-            let mut ports = self.ports.borrow_mut();
-            let ports = ports.split_mut();
-            SetBaseUnit(id).run(ports.units, ports.base_unit)
-        };
-        crate::units::ports::sync(&self.ports, &self.ledger, cx);
+        crate::input::send(cx, |cx| {
+            let _ = {
+                let mut ports = self.ports.borrow_mut();
+                let ports = ports.split_mut();
+                SetBaseUnit(id).run(ports.units, ports.base_unit)
+            };
+            crate::units::ports::refresh(&self.ports, &self.ledger, cx);
+        });
         cx.notify();
     }
 

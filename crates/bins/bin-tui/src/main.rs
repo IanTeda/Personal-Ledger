@@ -65,22 +65,11 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    // The TUI's Transactions View still draws its fixture and it has no Bills View (#774), so it
-    // leaves those adapters unread.
-    let lib_database::Storage {
-        units,
-        transactions: _,
-        bills: _,
-        pending,
-        writer,
-        failures,
-    } = storage;
+    let writer = storage.writer.clone();
     let ran = build_shell(
         config.keybindings_config().clone(),
         colours,
-        Box::new(units),
-        std::rc::Rc::new(pending),
-        failures,
+        lib_database::Stores::from(storage),
     )
     .run()
     .await;

@@ -555,6 +555,52 @@ fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut Te
 }
 
 #[gpui::test]
+fn a_failed_write_draws_its_error_toast_with_no_further_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_units(app, false);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s j j l");
+    rename_aud_to_aux(&mut ui);
+    let shown = visible_toasts(&mut ui).len();
+    assert!(
+        !ui.is_drawn(&format!("toast-dismiss-{shown}")),
+        "nothing has failed yet"
+    );
+
+    ui.settle_writes();
+
+    assert!(
+        ui.is_drawn(&format!("toast-dismiss-{shown}")),
+        "the Error Toast is drawn as the failure arrives"
+    );
+    assert_eq!(visible_toasts(&mut ui)[shown].0, "Error");
+}
+
+#[gpui::test]
+fn each_units_key_commits_once_whether_or_not_it_writes(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.press("e");
+    ui.press("backspace backspace backspace");
+    type_word(&mut ui, "aux");
+    let before = ui.commits();
+    ui.press("enter");
+    assert_eq!(ui.unit_codes()[0], "aux", "the confirm saved the rename");
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "the Dialog's confirm commits once"
+    );
+
+    let before = ui.commits();
+    ui.press("j");
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "a move writes nothing and commits once"
+    );
+}
+
+#[gpui::test]
 fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_units(app, true);
     ui.resize_to(WindowSize::Large);
