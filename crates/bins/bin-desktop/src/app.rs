@@ -67,6 +67,9 @@ pub use write_failures::WRITE_FAILURE_POLL;
 
 use std::time::Duration;
 
+/// The Shell's Presenter over the Desktop's Settings pages.
+type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
+
 use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
@@ -76,7 +79,7 @@ use gpui::{
 };
 
 use lib_ledger::Ledger;
-use lib_toast::Toasts;
+use lib_shell::{NavInput, ToastInput};
 
 use crate::view::active::{ActiveViewEntity, ViewEntities};
 use crate::view::budgets::state::{BudgetsSources, BudgetsView};
@@ -102,9 +105,8 @@ use lib_categories::Category;
 /// `chrome::rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
 const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 
-/// Owns the shell's render tree and the live `NavState`.
+/// Owns the shell's render tree, and the Shell's Presenter with where the person is.
 pub struct Shell {
-    nav: NavState,
     focus_handle: FocusHandle,
     /// The View area's sideways scroll, for a View wider than the space the Chrome leaves it
     /// (ADR-0042). The Chrome itself never scrolls sideways.
@@ -119,9 +121,12 @@ pub struct Shell {
     /// its to read. The Shell's own `a` enters an `Insert` no View asked for, which swallows every
     /// key as before.
     view_mode: Option<ViewMode>,
-    /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
-    /// [`ChromeState`] and ADR-0032.
+    /// Chrome's own state (the palette, Dialog and rail tooltip), see [`ChromeState`] and
+    /// ADR-0032. The status message and Toasts are the Presenter's.
     chrome: ChromeState,
+    /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
+    #[cfg(debug_assertions)]
+    debug_toast_kind: usize,
     /// Previously run palette command names, most-recent-first, deduplicated -- outlives any
     /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
     /// so `^r` can reach commands run in an earlier palette session.
@@ -144,9 +149,10 @@ pub struct Shell {
     /// moved on only when [`Self::presenter`] sees the Clock cross into a new calendar month, so
     /// everything derived from it (the seeded dates, the default range) agrees within a month.
     today: chrono::NaiveDate,
-    /// The Shell as a `lib-shell` module, which so far holds the Clock (the local date, or a
-    /// test's pinned day; every View is built with it) and notices a month turn.
-    presenter: lib_shell::ShellPresenter,
+    /// The Shell as a `lib-shell` module: the status line, the Toasts, where the person is (the
+    /// noun, focus and mode), the global keymap, and the Clock (the local date, or a test's pinned
+    /// day; every View is built with it), whose month turn it notices.
+    presenter: ShellPresenter,
     /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
     /// Schedule is generated through.
     bills: crate::bills::DesktopPorts,
@@ -271,17 +277,11 @@ impl Shell {
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
         Self {
-            nav,
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
             prefix_timer: None,
             view_mode: None,
             chrome: ChromeState {
-                status_message: None,
-                toasts: Toasts::default(),
-                toasts_hovered: false,
-                #[cfg(debug_assertions)]
-                debug_toast_kind: 0,
                 palette: None,
                 collapsed_rail_tooltip: None,
                 rail_override: None,
@@ -293,13 +293,15 @@ impl Shell {
                 pending_colour_change: None,
                 undo_menu_open: false,
             },
+            #[cfg(debug_assertions)]
+            debug_toast_kind: 0,
             command_history: Vec::new(),
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
             ledger,
             units: units_ports,
             today,
-            presenter: lib_shell::ShellPresenter::new(clock),
+            presenter: ShellPresenter::new(clock, nav),
             bills: bills_ports,
             views: ViewEntities {
                 dashboard: dashboard_view,
@@ -366,7 +368,7 @@ impl Shell {
     }
 
     pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
-        self.nav.restore_settings_page(section);
+        self.navigate(NavInput::RestoreSettingsPage(section));
         self.views
             .settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));
@@ -419,7 +421,7 @@ impl Shell {
     /// explorer's filesystem walk.
     #[doc(hidden)]
     pub fn open_ledger_for_test(&mut self) {
-        self.nav.open_ledger();
+        self.navigate(NavInput::OpenLedger);
     }
 
     /// Empties the Inventory, standing in for removing every Location until the Remove dialog
@@ -462,8 +464,8 @@ impl Shell {
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
     #[doc(hidden)]
-    pub fn status_message(&self) -> Option<&str> {
-        self.chrome.status_message.as_deref()
+    pub fn status_message(&self) -> Option<String> {
+        self.presenter.view_model().status
     }
 
     /// Previously run palette commands, most recent first.
@@ -473,7 +475,12 @@ impl Shell {
     }
 
     pub fn nav(&self) -> &NavState {
-        &self.nav
+        self.presenter.nav()
+    }
+
+    /// Moves the person to another View, zone or mode, through the Shell's Presenter.
+    fn navigate(&mut self, input: NavInput<SettingsPage>) {
+        self.presenter.navigate(input);
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {
@@ -483,7 +490,7 @@ impl Shell {
     /// Which View owns the keyboard, page status and main pane right now.
     fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
-            self.nav.noun(),
+            self.nav().noun(),
             self.views.settings.read(cx).selected_section(),
             self.views.transactions.read(cx).import_open(),
         )
@@ -497,10 +504,11 @@ impl Shell {
     /// Hands the Display Preferences to the Views that read them and the Toasts Preference to
     /// the Toasts, after a Settings change.
     fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
-        self.chrome.toasts.set_display(lib_toast::Display {
-            toasts_on: display.toasts_on,
-            ..self.chrome.toasts.display()
-        });
+        self.presenter
+            .toast(ToastInput::Display(lib_toast::Display {
+                toasts_on: display.toasts_on,
+                ..self.presenter.toasts().display()
+            }));
         let (date_style, glyphs, density) = (
             display.date_style,
             display.status_glyphs,

@@ -33,8 +33,8 @@ impl Shell {
     pub fn toasts_snapshot(&self) -> ToastsSnapshot {
         ToastsSnapshot {
             visible: self
-                .chrome
-                .toasts
+                .presenter
+                .toasts()
                 .visible()
                 .iter()
                 .map(|toast| ToastSnapshot {
@@ -43,10 +43,10 @@ impl Shell {
                     count: toast.count(),
                 })
                 .collect(),
-            more: self.chrome.toasts.more_count(),
+            more: self.presenter.toasts().more_count(),
             history: self
-                .chrome
-                .toasts
+                .presenter
+                .toasts()
                 .history()
                 .iter()
                 .map(|entry| ToastSnapshot {
@@ -56,7 +56,7 @@ impl Shell {
                 })
                 .collect(),
             history_open: self.toast_history_open(),
-            on: self.chrome.toasts.display().toasts_on,
+            on: self.presenter.toasts().display().toasts_on,
         }
     }
 

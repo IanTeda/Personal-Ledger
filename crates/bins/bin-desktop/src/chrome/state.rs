@@ -1,10 +1,8 @@
-//! Chrome's own state: the frame's status message, the Toast stack and its keybindings, the
-//! command palette, the open Dialog, the rail's `b` override and the collapsed rail's hover
-//! tooltip. `Shell` owns one of these as its `chrome` field; none of it is View state, so Chrome does not become an Entity
-//! (ADR-0032).
-
-use chrono::{DateTime, Local};
-use lib_toast::Toasts;
+//! Chrome's own state: the command palette, the open Dialog, the rail's `b` override and the
+//! collapsed rail's hover tooltip. `Shell` owns one of these as its `chrome` field; none of it is
+//! View state, so Chrome does not become an Entity (ADR-0032). The status message, the Toasts,
+//! focus and modes are the Shell's Presenter's (#826); what is left here moves to the bin's
+//! `shell::state` (#827).
 
 use crate::{
     chrome::{
@@ -18,18 +16,6 @@ use crate::{
 };
 
 pub(crate) struct ChromeState {
-    /// Replaces the status line's hint strip until the next keypress -- the `g`-prefix's own
-    /// "flash the hint strip" abort message, and the command palette's "not yet built" message
-    /// once it closes back to `Normal` (see `Shell::run_command`).
-    pub(crate) status_message: Option<String>,
-    /// The Toasts raised this session (`crate::chrome::toast` draws them), stamped with the local time
-    /// for the history. Advanced by `Shell::start_toast_clock`'s timer.
-    pub(crate) toasts: Toasts<DateTime<Local>>,
-    /// The pointer is over the Toast stack, which pauses the timers.
-    pub(crate) toasts_hovered: bool,
-    /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
-    #[cfg(debug_assertions)]
-    pub(crate) debug_toast_kind: usize,
     /// The command palette's own input/selection state -- `Some` only while
     /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
     /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop-mockups/README.md`'s Notes).

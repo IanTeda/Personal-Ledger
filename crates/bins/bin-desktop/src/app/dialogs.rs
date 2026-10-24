@@ -10,7 +10,6 @@ use crate::{
     chrome::dialog_host::{
         Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
     },
-    navigation::nav::InputMode,
     settings::accounts::AccountsPage,
 };
 use gpui::Context;
@@ -23,7 +22,6 @@ impl Shell {
     pub(super) fn open_dialog(&mut self, dialog: OpenDialog) {
         self.close_dialog();
         self.chrome.dialog = Some(dialog);
-        self.nav.enter_mode(InputMode::Dialog);
         self.presenter.dialog(DialogInput::Opened);
     }
 
@@ -51,7 +49,6 @@ impl Shell {
             cx,
         );
         self.chrome.hosted = Some((dialog, closed));
-        self.nav.enter_mode(InputMode::Dialog);
         self.presenter.dialog(DialogInput::Opened);
     }
 
@@ -84,7 +81,7 @@ impl Shell {
     /// Opens the Help Dialog over the active page, carrying the shortcuts that page adds to the
     /// global ones.
     pub(super) fn open_help(&mut self, cx: &mut Context<'_, Self>) {
-        let mut shortcuts = if self.nav.noun() == Noun::Settings {
+        let mut shortcuts = if self.nav().noun() == Noun::Settings {
             self.views.settings.read(cx).cheat_sheet(cx)
         } else {
             Vec::new()
@@ -104,7 +101,6 @@ impl Shell {
         self.chrome.dialog_confirm = None;
         let legacy = self.chrome.dialog.take().is_some();
         if legacy || self.chrome.hosted.take().is_some() {
-            self.nav.exit_mode();
             self.presenter.dialog(DialogInput::Closed);
         }
     }

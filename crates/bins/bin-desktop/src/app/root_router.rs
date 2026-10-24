@@ -4,10 +4,10 @@
 //! and [`Shell::resolve_key`] each key the global keymap resolves. An `impl Shell` block; the rest
 //! of the root Router is still `Shell` itself, until it moves to the bin's `shell/` router (#827).
 //!
-//! Halfway state: the focus, modes, rails and palette a global command acts on are still the
-//! Shell's own fields, which the Router can't borrow beside the Presenter. So the Router hands
-//! each command back and the Shell acts on it once the Presenter returns (#826 moves them into
-//! `lib-shell`).
+//! Halfway state: the rails, palette and Views a global command acts on are still the Shell's own
+//! fields, and the focus and mode it changes are the Presenter's, which the Router can't borrow
+//! while the Presenter calls it. So the Router hands each command back and the Shell acts on it
+//! once the Presenter returns, until the root Router moves to the bin's `shell/` router (#827).
 
 use chrono::NaiveDate;
 use gpui::{Context, Entity};

@@ -2,6 +2,7 @@
 //! command registry itself (`navigation::command`).
 
 use gpui::{App, Context};
+use lib_shell::{NavInput, ToastInput};
 
 use super::{Shell, explorer::explorer_start_dir};
 use crate::{
@@ -70,63 +71,63 @@ impl Shell {
                 ));
             }
             CommandEffect::Navigate(noun) => {
-                self.nav.exit_mode();
-                let noun_before = self.nav.noun();
-                self.nav.set_noun(noun);
-                if self.nav.noun() != noun_before {
+                self.navigate(NavInput::ExitMode);
+                let noun_before = self.nav().noun();
+                self.navigate(NavInput::Show(noun));
+                if self.nav().noun() != noun_before {
                     self.reset_view_scroll(cx);
                 }
             }
             CommandEffect::OpenSettingsPage(section) => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.open_settings_page(section, cx);
             }
             CommandEffect::CloseLedger => {
-                self.nav.exit_mode();
-                self.nav.close_ledger();
+                self.navigate(NavInput::ExitMode);
+                self.navigate(NavInput::CloseLedger);
             }
             CommandEffect::Accounts(verb) => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.run_accounts_command(command.name, verb, argument, cx);
             }
             CommandEffect::Colour(change) => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.chrome.pending_colour_change = Some(change);
             }
             CommandEffect::DismissToast => {
-                self.nav.exit_mode();
-                self.chrome.toasts.dismiss_newest();
+                self.navigate(NavInput::ExitMode);
+                self.presenter.toast(ToastInput::DismissNewest);
             }
             CommandEffect::DismissAllToasts => {
-                self.nav.exit_mode();
-                self.chrome.toasts.dismiss_all();
+                self.navigate(NavInput::ExitMode);
+                self.presenter.toast(ToastInput::DismissAll);
             }
             CommandEffect::SetToasts(on) => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.set_toasts_on(on, cx);
             }
             CommandEffect::OpenToastHistory => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.open_toast_history();
             }
             CommandEffect::MergeTags => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.open_settings_page(SettingsPage::Tags, cx);
                 let tags = self.views.settings.read(cx).tags().clone();
                 tags.update(cx, |page, cx| page.open_merge_dialog(None, cx));
             }
             CommandEffect::Import => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.open_import(cx);
             }
             CommandEffect::Documents(verb) => {
-                self.nav.exit_mode();
+                self.navigate(NavInput::ExitMode);
                 self.run_documents_command(verb, cx);
             }
             CommandEffect::Budgets(verb) => {
-                self.nav.exit_mode();
-                let noun_before = self.nav.noun();
-                self.nav.set_noun(Noun::Budgets);
+                self.navigate(NavInput::ExitMode);
+                let noun_before = self.nav().noun();
+                self.navigate(NavInput::Show(Noun::Budgets));
                 if noun_before != Noun::Budgets {
                     self.reset_view_scroll(cx);
                 }
@@ -166,10 +167,10 @@ impl Shell {
                 }
             }
             CommandEffect::NotYetBuilt => {
-                self.nav.exit_mode();
-                self.chrome.status_message = Some(
-                    crate::msg::desktop_status_command_not_yet_built(command.name),
-                );
+                self.navigate(NavInput::ExitMode);
+                self.set_status(crate::msg::desktop_status_command_not_yet_built(
+                    command.name,
+                ));
             }
         }
     }
@@ -187,7 +188,7 @@ impl Shell {
         let Some(command) = command::all().find(|command| command.name == command_name) else {
             return;
         };
-        self.nav.enter_mode(InputMode::Command);
+        self.navigate(NavInput::EnterMode(InputMode::Command));
         self.run_command(command, "", cx);
         if let Some(change) = self.chrome.pending_colour_change.take() {
             change.apply(cx);
@@ -196,7 +197,7 @@ impl Shell {
     }
 
     pub(super) fn open_palette(&mut self) {
-        self.nav.enter_mode(InputMode::Command);
+        self.navigate(NavInput::EnterMode(InputMode::Command));
         self.chrome.palette = Some(Palette::with_history(self.command_history.clone()));
     }
 }
@@ -206,9 +207,9 @@ impl Shell {
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on.
     /// Leaves the page's scroll alone when Settings is already showing.
     pub(super) fn open_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
-        let noun_before = self.nav.noun();
-        self.nav.record_settings_page(section);
-        self.nav.set_noun(Noun::Settings);
+        let noun_before = self.nav().noun();
+        self.navigate(NavInput::SettingsPage(section));
+        self.navigate(NavInput::Show(Noun::Settings));
         if noun_before != Noun::Settings {
             self.reset_view_scroll(cx);
         }

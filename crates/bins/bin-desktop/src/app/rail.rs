@@ -2,6 +2,7 @@
 //! rail itself (`chrome::rail`).
 
 use gpui::{Context, Timer};
+use lib_shell::NavInput;
 
 use super::{Shell, TOOLTIP_REVEAL_DELAY};
 use crate::{
@@ -71,9 +72,9 @@ impl Shell {
     /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
     /// `g`-jump and the palette land in the same state per acceptance criterion 1.
     pub(super) fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<'_, Self>) {
-        let noun_before = self.nav.noun();
-        self.nav.set_noun(noun);
-        if self.nav.noun() != noun_before {
+        let noun_before = self.nav().noun();
+        self.navigate(NavInput::Show(noun));
+        if self.nav().noun() != noun_before {
             self.reset_view_scroll(cx);
         }
         cx.notify();

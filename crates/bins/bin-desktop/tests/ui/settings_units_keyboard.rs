@@ -52,7 +52,7 @@ fn selected(ui: &mut Harness<'_>) -> String {
 }
 
 fn status_message(ui: &mut Harness<'_>) -> Option<String> {
-    ui.read(|shell| shell.status_message().map(str::to_string))
+    ui.read(|shell| shell.status_message())
 }
 
 fn type_word(ui: &mut Harness<'_>, word: &str) {

@@ -41,8 +41,7 @@ fn the_add_button_says_it_is_not_yet_built(app: &mut TestAppContext) {
     ui.click("transactions-add");
 
     assert_eq!(
-        ui.read(|s| s.status_message().map(str::to_string))
-            .as_deref(),
+        ui.read(|s| s.status_message()).as_deref(),
         Some("add transaction \u{2014} not yet built")
     );
 }

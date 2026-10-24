@@ -8,16 +8,18 @@ use crate::{
     navigation::nav::FocusZone,
     view::active::{ActiveViewEntity, ShellView},
 };
+use lib_list_cursor::Step;
+use lib_shell::NavInput;
 
 impl Shell {
     pub(super) fn apply_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
-        let noun_before = self.nav.noun();
-        match self.nav.focus() {
+        let noun_before = self.nav().noun();
+        match self.nav().focus() {
             FocusZone::PrimaryRail => self.apply_primary_rail_movement(movement),
             FocusZone::ContextRail => self.apply_context_rail_movement(movement),
             FocusZone::View => self.apply_view_movement(movement, cx),
         }
-        if self.nav.noun() != noun_before {
+        if self.nav().noun() != noun_before {
             self.reset_view_scroll(cx);
         }
     }
@@ -32,29 +34,20 @@ impl Shell {
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
-        match movement {
-            Movement::Next => self.nav.move_primary_highlight_next(),
-            Movement::Prev => self.nav.move_primary_highlight_prev(),
-            Movement::First => self.nav.move_primary_highlight_first(),
-            Movement::Last => self.nav.move_primary_highlight_last(),
-            // The rail's fixed 10 rows are not a real page; the List Cursor's half page is a
-            // reasonable stand-in for `Ctrl-d`/`Ctrl-u` there.
-            Movement::HalfPageDown => {
-                for _ in 0..lib_list_cursor::HALF_PAGE {
-                    self.nav.move_primary_highlight_next();
-                }
-            }
-            Movement::HalfPageUp => {
-                for _ in 0..lib_list_cursor::HALF_PAGE {
-                    self.nav.move_primary_highlight_prev();
-                }
-            }
-            Movement::Enter => self.nav.commit_primary_highlight(),
-        }
+        let input = match movement {
+            Movement::Next => NavInput::MoveHighlight(Step::Next),
+            Movement::Prev => NavInput::MoveHighlight(Step::Prev),
+            Movement::First => NavInput::MoveHighlight(Step::First),
+            Movement::Last => NavInput::MoveHighlight(Step::Last),
+            Movement::HalfPageDown => NavInput::MoveHighlight(Step::HalfPageDown),
+            Movement::HalfPageUp => NavInput::MoveHighlight(Step::HalfPageUp),
+            Movement::Enter => NavInput::CommitHighlight,
+        };
+        self.navigate(input);
     }
 
     fn apply_context_rail_movement(&mut self, movement: Movement) {
-        let count = chrome_rail::context::entity_count(self.nav.noun());
+        let count = chrome_rail::context::entity_count(self.nav().noun());
         // Every noun besides Dashboard has a placeholder context rail with nothing in it yet
         // (see `chrome::rail::context::entity_count`'s own doc) -- movement is a no-op there, not an
         // out-of-bounds index.
@@ -62,7 +55,7 @@ impl Shell {
             return;
         }
         let half_page = (count / 2).max(1);
-        let current = self.nav.context().unwrap_or(0);
+        let current = self.nav().context().unwrap_or(0);
         let next = match movement.step() {
             Some(step) => lib_list_cursor::step_by(current, count, step, half_page),
             // The handoff's own "Movement" bullet: `Enter` "selects the entity and leaves
@@ -72,7 +65,7 @@ impl Shell {
             // (out of scope for this map, per issue #144).
             None => current,
         };
-        self.nav.set_context(Some(next));
+        self.navigate(NavInput::Context(Some(next)));
     }
 
     fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {

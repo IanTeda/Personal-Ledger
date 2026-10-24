@@ -23,10 +23,10 @@
 //! a movement or `enter`, so a list's own `tab` or `a` wins over the Shell's; otherwise the View's
 //! leftover handler has it. Each step that reaches a Presenter does so through its own `send`.
 //!
-//! Halfway state: the Notices drain into the Shell's own Toast stack and status line, and the
-//! focus, modes and status line the route reads are still the bin's (#826 moves them into
-//! `lib-shell`). The palette, Search, filter and file explorer stay in the bin behind `InputMode`
-//! until their own slice.
+//! Before any step, the Shell's Presenter hears the key arrive and clears the status message, so a
+//! message the key sets answers it alone. The Notices drain into the Presenter's Toast stack and
+//! status line. Halfway state: the palette, Search, filter and file explorer stay in the bin behind
+//! `InputMode` until their own slice.
 
 use std::borrow::BorrowMut;
 use std::rc::Rc;

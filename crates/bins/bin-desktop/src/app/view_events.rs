@@ -11,6 +11,7 @@ use lib_toast::Notice;
 
 use super::Shell;
 use crate::view::event::{Reveal, ViewEvent};
+use lib_shell::NavInput;
 
 impl Shell {
     /// Subscribes `Shell` to a View Entity's events. The subscription is kept on `Shell`, since
@@ -49,9 +50,9 @@ impl Shell {
             ViewEvent::OpenHostedDialog(open) => self.open_hosted_dialog(*open),
             ViewEvent::HostDialog(dialog) => self.host_dialog(dialog, cx),
             ViewEvent::Navigate(noun) => {
-                let noun_before = self.nav.noun();
-                self.nav.set_noun(noun);
-                if self.nav.noun() != noun_before {
+                let noun_before = self.nav().noun();
+                self.navigate(NavInput::Show(noun));
+                if self.nav().noun() != noun_before {
                     self.reset_view_scroll(cx);
                 }
             }
@@ -59,28 +60,28 @@ impl Shell {
                 self.send_shell(ShellInput::Notice(Notice::Status(text)), cx);
             }
             // A Notice carries text only, so clearing stays the View's request.
-            ViewEvent::SetStatus(None) => self.chrome.status_message = None,
+            ViewEvent::SetStatus(None) => self.presenter.clear_status(),
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
             ViewEvent::EnterMode(mode) => {
-                self.nav.enter_mode(mode.input_mode());
+                self.navigate(NavInput::EnterMode(mode.input_mode()));
                 self.view_mode = Some(mode);
             }
             // Only the View's own mode: a mode entered since (a Dialog) is left alone.
             ViewEvent::ExitMode => {
                 if self.view_owns_mode() {
-                    self.nav.exit_mode();
+                    self.navigate(NavInput::ExitMode);
                 }
                 self.view_mode = None;
             }
             ViewEvent::RunCommand(name) => self.handle_empty_state_command_click(name, cx),
-            ViewEvent::SettingsPageChanged(page) => self.nav.record_settings_page(page),
+            ViewEvent::SettingsPageChanged(page) => self.navigate(NavInput::SettingsPage(page)),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
         }
     }
 
     /// A cross-View jump: makes the record's destination active, then asks its View to show it.
     pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        self.nav.set_noun(reveal.noun());
+        self.navigate(NavInput::Show(reveal.noun()));
         self.reset_view_scroll(cx);
         self.active_view_entity(cx).reveal(reveal, cx);
     }
@@ -88,7 +89,7 @@ impl Shell {
     /// Whether the current mode is one the active View entered itself, so its keys are the View's.
     pub(super) fn view_owns_mode(&self) -> bool {
         self.view_mode
-            .is_some_and(|mode| mode.input_mode() == self.nav.mode())
+            .is_some_and(|mode| mode.input_mode() == self.nav().mode())
     }
 }
 
@@ -143,7 +144,7 @@ mod tests {
         });
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {
-            let toasts = shell.chrome.toasts.visible();
+            let toasts = shell.presenter.toasts().visible();
             assert_eq!(toasts.len(), 1);
             assert_eq!(toasts[0].text(), "Saved");
         });
@@ -156,19 +157,19 @@ mod tests {
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {
             assert!(shell.chrome.dialog.is_some());
-            assert_eq!(shell.nav.mode(), InputMode::Dialog);
+            assert_eq!(shell.nav().mode(), InputMode::Dialog);
         });
 
         view.update(cx, |_, cx| cx.emit(ViewEvent::Navigate(Noun::Bills)));
         cx.run_until_parked();
-        shell.read_with(cx, |shell, _| assert_eq!(shell.nav.noun(), Noun::Bills));
+        shell.read_with(cx, |shell, _| assert_eq!(shell.nav().noun(), Noun::Bills));
 
         view.update(cx, |_, cx| {
             cx.emit(ViewEvent::SetStatus(Some("Exported".to_string())))
         });
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.status_message(), Some("Exported"));
+            assert_eq!(shell.status_message().as_deref(), Some("Exported"));
         });
 
         view.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
@@ -204,7 +205,7 @@ mod tests {
         view.update(cx, |_, cx| cx.emit(ViewEvent::Reveal(Reveal::BillPlan(id))));
         cx.run_until_parked();
         shell.read_with(cx, |shell, cx| {
-            assert_eq!(shell.nav.noun(), Noun::Bills);
+            assert_eq!(shell.nav().noun(), Noun::Bills);
             let page = shell.bills_snapshot(cx);
             assert_eq!(page.tab, "Planner");
             assert_eq!(page.plans[page.selected], last_plan);

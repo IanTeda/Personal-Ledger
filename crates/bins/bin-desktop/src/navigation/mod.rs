@@ -1,4 +1,5 @@
-//! Navigation and the keyboard grammar: the pure state `Shell` applies (`nav`), the palette's
+//! Navigation and the keyboard grammar: the Desktop's names for where the person is (`nav`; the
+//! state machine is `lib-shell`'s, held by the Shell's Presenter), the palette's
 //! command registry (`command`), the movement a key makes through the focused zone (`movement`),
 //! a keystroke as a keymap names it (`chord`) and the file explorer (`explorer`). The keys
 //! themselves are `lib-shell`'s global keymap, and their order is `crate::input`'s.

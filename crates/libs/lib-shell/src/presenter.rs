@@ -1,15 +1,26 @@
-//! The Shell's Presenter. It holds the Clock and the last calendar month it saw, and tells its
-//! Router once the Clock reads a new one. It resolves each key the Client offers it through the
-//! global keymap, holding a `g` prefix until the next key or the Client's timer ends it. The
-//! Client's own inputs, a Notice, a legacy write and a failed one, pass through it to the Router
-//! until the Presenter holds what they change (#826).
+//! The Shell's Presenter. It holds what the frame shows: the status line, the Toast stack and its
+//! history (`lib-toast`'s model), and where the person is ([`NavState`]: the View showing, focus
+//! and the input mode). It holds the Clock and the last calendar month it saw, telling its Router
+//! once the Clock reads a new one, and resolves each key the Client offers it through the global
+//! keymap, holding a `g` prefix until the next key or the Client's timer ends it.
+//!
+//! It never reads time itself: the Client's timers deliver [`ShellInput::DayTick`],
+//! [`ShellInput::ToastTick`] and [`ShellInput::PrefixExpired`], and stamps each Notice it shows.
+//! A status message answers one key: every key clears it as it arrives ([`ShellPresenter::keypress`]),
+//! before the key is handled, so one the key sets survives; clicks and ticks leave it.
 
+use std::time::{Duration, Instant};
+
+use chrono::{DateTime, Local};
 use lib_config::KeyBindingConfig;
 use lib_core::{Clock, Period};
-use lib_toast::Notice;
+use lib_list_cursor::{HALF_PAGE, Step};
+use lib_toast::{Display, Notice, Toasts};
 use lib_viper::keymap::Keymap;
 
-use crate::keymap::{ShellCommand, global_keymap};
+use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
+use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
+use crate::navigation::Noun;
 use crate::protocols::ShellRouter;
 
 /// What the Client delivers to the Shell, each through its one `send`. `F` is the Client's write
@@ -18,7 +29,11 @@ use crate::protocols::ShellRouter;
 pub enum ShellInput<F> {
     /// The Client's day poll fired: read the Clock for a new month.
     DayTick,
-    /// A View not yet a module raised a Toast or set the status line.
+    /// The Client's Toast timer fired at `now`, on its monotonic clock: advance the Toasts by the
+    /// time since the last tick. The Client ticks only while a Toast is up ([`ShellPresenter::toasts_ticking`]).
+    ToastTick(Instant),
+    /// A View not yet a module raised a Toast or set the status line. It reaches the Router, which
+    /// queues it with every module's Notices for the Client to show ([`ShellPresenter::show`]).
     Notice(Notice),
     /// A View not yet a module ran a write on the Client's legacy store, outside any input the
     /// Shell saw. The write has run; this input exists so the `send` it arrives in commits it,
@@ -51,13 +66,84 @@ pub enum ShellKey {
 /// delivers them through [`ShellPresenter::dialog`] wherever a Dialog opens, with no Router to hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogInput {
-    /// A Dialog opened: until it closes it takes every key.
+    /// A Dialog opened: until it closes it takes every key, in `Dialog` mode.
     Opened,
-    /// The open Dialog closed.
+    /// The open Dialog closed, leaving its mode.
     Closed,
 }
 
-pub struct ShellPresenter {
+/// A change to where the person is: the View, focus or mode. None asks the Router anything, so the
+/// Client delivers them through [`ShellPresenter::navigate`] from inside the input that made them.
+/// `P` is the Client's Settings page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavInput<P> {
+    /// Shows `Noun`, a step in the Back history.
+    Show(Noun),
+    Back,
+    Forward,
+    /// The Settings page showing changed, a history step while Settings shows.
+    SettingsPage(P),
+    /// The launch restored the last Settings page, no history step.
+    RestoreSettingsPage(P),
+    /// Moves the primary rail's browsed row, leaving the Noun until [`NavInput::CommitHighlight`].
+    MoveHighlight(Step),
+    /// Shows the primary rail's browsed row.
+    CommitHighlight,
+    Context(ContextSelection),
+    FocusNext,
+    FocusPrevious,
+    Focus(FocusZone),
+    EnterMode(InputMode),
+    /// Leaves the mode, restoring the focus from before it.
+    ExitMode,
+    OpenLedger,
+    CloseLedger,
+}
+
+/// A change to the Toast stack from a click, a command or a Preference. None asks the Router
+/// anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastInput {
+    DismissAll,
+    DismissNewest,
+    /// Dismisses the `index`th Toast on show, top first.
+    DismissVisible(usize),
+    /// The pointer is over the stack, or has left it: the timers pause while it is there.
+    Hover(bool),
+    /// The Toasts Preference changed.
+    Display(Display),
+}
+
+/// One of the Shell's own status-line hints: the key its command is bound to now, after
+/// `[keybindings]`, for the Client to label.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellHint {
+    pub command: ShellCommand,
+    pub key: String,
+}
+
+/// What the frame draws from the Shell, as owned values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellViewModel {
+    pub mode: InputMode,
+    pub focus: FocusZone,
+    /// The message answering the last key, which replaces the hints until the next.
+    pub status: Option<String>,
+    /// The Shell's hints in the order they drop from the end: the palette, Search, Help and the
+    /// rail toggle, each under its key now. A command `[keybindings]` unbinds has none.
+    pub hints: Vec<ShellHint>,
+}
+
+/// The commands the Shell's hints name, in the order they drop from the end.
+const HINTS: [(&str, ShellCommand); 4] = [
+    (OPEN_COMMAND_POPUP, ShellCommand::Command),
+    (SEARCH, ShellCommand::Search),
+    (HELP, ShellCommand::Help),
+    (TOGGLE_RAIL, ShellCommand::ToggleRail),
+];
+
+/// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between.
+pub struct ShellPresenter<P> {
     clock: Clock,
     /// The calendar month the Shell last saw the Clock read.
     month: Period,
@@ -65,12 +151,20 @@ pub struct ShellPresenter {
     keymap: Keymap<ShellCommand>,
     /// The first key of a sequence typed so far, until the next key or [`ShellInput::PrefixExpired`].
     prefix: Option<String>,
+    nav: NavState<P>,
+    status: Option<String>,
+    /// Stamped with the local time each was raised at, for the history.
+    toasts: Toasts<DateTime<Local>>,
+    toasts_hovered: bool,
+    /// The last [`ShellInput::ToastTick`]'s time, which the next advances from. `None` while the
+    /// stack is empty, so the first tick after a raise only starts the count.
+    last_tick: Option<Instant>,
 }
 
-impl ShellPresenter {
+impl<P: Copy + Eq + Default> ShellPresenter<P> {
     /// The Shell on the month `clock` reads now, which the Client generated the Schedule for as
-    /// it started.
-    pub fn new(clock: Clock) -> Self {
+    /// it started, and at `nav`, where the launch restored the person to.
+    pub fn new(clock: Clock, nav: NavState<P>) -> Self {
         let month = Period::of(clock.today());
         Self {
             clock,
@@ -78,6 +172,11 @@ impl ShellPresenter {
             dialog_open: false,
             keymap: global_keymap(&KeyBindingConfig::default()),
             prefix: None,
+            nav,
+            status: None,
+            toasts: Toasts::default(),
+            toasts_hovered: false,
+            last_tick: None,
         }
     }
 
@@ -88,6 +187,114 @@ impl ShellPresenter {
 
     pub fn keymap(&self) -> &Keymap<ShellCommand> {
         &self.keymap
+    }
+
+    pub fn nav(&self) -> &NavState<P> {
+        &self.nav
+    }
+
+    pub fn toasts(&self) -> &Toasts<DateTime<Local>> {
+        &self.toasts
+    }
+
+    pub fn view_model(&self) -> ShellViewModel {
+        ShellViewModel {
+            mode: self.nav.mode(),
+            focus: self.nav.focus(),
+            status: self.status.clone(),
+            hints: HINTS
+                .iter()
+                .filter_map(|&(name, command)| {
+                    let key = self.keymap.chord(name).filter(|key| !key.is_empty())?;
+                    Some(ShellHint {
+                        command,
+                        key: key.to_string(),
+                    })
+                })
+                .collect(),
+        }
+    }
+
+    /// A key arrived, before anything handles it: clears the status message, so the message a key
+    /// sets answers that key alone. Returns whether one was showing, which asks for a redraw.
+    pub fn keypress(&mut self) -> bool {
+        self.status.take().is_some()
+    }
+
+    /// Clears the status message at a View's request: a View not yet a module that changed what it
+    /// shows from under the message (Budgets' tab). Goes with the last such View.
+    pub fn clear_status(&mut self) {
+        self.status = None;
+    }
+
+    /// Shows a Notice the Client drained after an input, stamped `at` for the Toast history: a
+    /// Toast on the stack, or a message on the status line.
+    pub fn show(&mut self, notice: Notice, at: DateTime<Local>) {
+        match notice {
+            Notice::Toast(kind, text) => {
+                if self.toasts.visible().is_empty() {
+                    self.last_tick = None;
+                }
+                self.toasts.raise(kind, text, at);
+            }
+            Notice::Status(text) => self.status = Some(text),
+        }
+    }
+
+    /// Whether a Toast is up for the Client's timer to tick.
+    pub fn toasts_ticking(&self) -> bool {
+        !self.toasts.visible().is_empty()
+    }
+
+    pub fn toast(&mut self, input: ToastInput) {
+        match input {
+            ToastInput::DismissAll => self.toasts.dismiss_all(),
+            ToastInput::DismissNewest => {
+                self.toasts.dismiss_newest();
+            }
+            ToastInput::DismissVisible(index) => {
+                self.toasts.dismiss_visible(index);
+            }
+            ToastInput::Hover(hovered) => self.toasts_hovered = hovered,
+            ToastInput::Display(display) => self.toasts.set_display(display),
+        }
+    }
+
+    /// Moves the person to another View, zone or mode. A Back or Forward with nowhere to go does
+    /// nothing.
+    pub fn navigate(&mut self, input: NavInput<P>) {
+        let nav = &mut self.nav;
+        match input {
+            NavInput::Show(noun) => nav.set_noun(noun),
+            NavInput::Back => {
+                nav.go_back();
+            }
+            NavInput::Forward => {
+                nav.go_forward();
+            }
+            NavInput::SettingsPage(page) => nav.record_settings_page(page),
+            NavInput::RestoreSettingsPage(page) => nav.restore_settings_page(page),
+            NavInput::MoveHighlight(step) => match step {
+                Step::Next => nav.move_primary_highlight_next(),
+                Step::Prev => nav.move_primary_highlight_prev(),
+                Step::First => nav.move_primary_highlight_first(),
+                Step::Last => nav.move_primary_highlight_last(),
+                // The rail has no viewport to page, so half a list's page of rows stands in.
+                Step::HalfPageDown => {
+                    (0..HALF_PAGE).for_each(|_| nav.move_primary_highlight_next())
+                }
+                Step::HalfPageUp => (0..HALF_PAGE).for_each(|_| nav.move_primary_highlight_prev()),
+            },
+            NavInput::CommitHighlight => nav.commit_primary_highlight(),
+            NavInput::Context(context) => nav.set_context(context),
+            NavInput::FocusNext => nav.cycle_focus_forward(),
+            NavInput::FocusPrevious => nav.cycle_focus_backward(),
+            NavInput::Focus(zone) => nav.set_focus(zone),
+            NavInput::EnterMode(mode) => nav.enter_mode(mode),
+            NavInput::ExitMode => nav.exit_mode(),
+            NavInput::OpenLedger => nav.open_ledger(),
+            NavInput::CloseLedger => nav.close_ledger(),
+        }
     }
 
     /// Resolves `chord`, a key as `[keybindings]` writes it, through the global keymap. A key
@@ -112,8 +319,13 @@ impl ShellPresenter {
         self.resolve(chord.to_string(), router)
     }
 
-    fn resolve<R: ShellRouter + ?Sized>(&self, chord: String, router: &mut R) -> ShellKey {
+    /// Runs a kept command: the Toast keys on the Shell's own stack, the rest by the Router.
+    fn resolve<R: ShellRouter + ?Sized>(&mut self, chord: String, router: &mut R) -> ShellKey {
         match self.keymap.event(&chord) {
+            Some(ShellCommand::DismissToasts) => {
+                self.toasts.dismiss_all();
+                ShellKey::Taken
+            }
             Some(command) if !command.falls_back() => {
                 router.run(command);
                 ShellKey::Taken
@@ -127,10 +339,50 @@ impl ShellPresenter {
         self.dialog_open
     }
 
-    /// A Dialog opening also drops a waiting prefix, since the Dialog takes the next key.
+    /// A Dialog opening enters `Dialog` mode and drops a waiting prefix, since the Dialog takes the
+    /// next key; one closing leaves the mode.
     pub fn dialog(&mut self, input: DialogInput) {
-        self.dialog_open = input == DialogInput::Opened;
         self.prefix = None;
+        match input {
+            DialogInput::Opened => {
+                self.dialog_open = true;
+                self.nav.enter_mode(InputMode::Dialog);
+            }
+            DialogInput::Closed if self.dialog_open => {
+                self.dialog_open = false;
+                self.nav.exit_mode();
+            }
+            DialogInput::Closed => {}
+        }
+    }
+
+    /// Whether a modal surface is up (the palette or file explorer, a Dialog, a filter), which
+    /// pauses the Toast timers.
+    fn modal_open(&self) -> bool {
+        matches!(
+            self.nav.mode(),
+            InputMode::Command | InputMode::Dialog | InputMode::Filter
+        )
+    }
+
+    /// Advances the Toasts to `now`, paused while the pointer is over them or a modal is up.
+    fn tick_toasts(&mut self, now: Instant) {
+        let elapsed = self
+            .last_tick
+            .replace(now)
+            .map_or(Duration::ZERO, |last| now.saturating_duration_since(last));
+        if self.toasts.visible().is_empty() {
+            // A dismissed stack never reports the pointer leaving it.
+            self.toasts_hovered = false;
+            self.last_tick = None;
+            return;
+        }
+        if self.toasts_hovered || self.modal_open() {
+            self.toasts.pause();
+        } else {
+            self.toasts.resume();
+        }
+        self.toasts.advance(elapsed);
     }
 
     pub fn handle<R: ShellRouter + ?Sized>(
@@ -146,6 +398,7 @@ impl ShellPresenter {
                     router.month_turned(today);
                 }
             }
+            ShellInput::ToastTick(now) => self.tick_toasts(now),
             ShellInput::Notice(notice) => router.notify(notice),
             ShellInput::LegacyApply => {}
             ShellInput::WriteFailed(failure) => router.write_failed(failure),
@@ -160,19 +413,27 @@ mod tests {
 
     use lib_list_cursor::Step;
 
+    use lib_toast::ToastKind;
+
     use super::*;
-    use crate::Noun;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::keymap::{GLOBAL_BINDINGS, TOGGLE_RAIL};
+    use crate::keymap::GLOBAL_BINDINGS;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
+    /// A Client with no Settings pages to step between.
+    type Shell = ShellPresenter<()>;
+
+    fn presenter(clock: Clock) -> Shell {
+        ShellPresenter::new(clock, NavState::new())
+    }
+
     #[test]
     fn a_day_tick_in_the_same_month_calls_nothing() {
         let (clock, day) = Clock::settable(date(2026, 9, 19));
-        let mut shell = ShellPresenter::new(clock);
+        let mut shell = presenter(clock);
         let mut router = RecordingRouter::default();
 
         day.set(date(2026, 9, 30));
@@ -184,7 +445,7 @@ mod tests {
     #[test]
     fn a_day_tick_in_a_new_month_turns_it_once_with_the_new_day() {
         let (clock, day) = Clock::settable(date(2026, 9, 30));
-        let mut shell = ShellPresenter::new(clock);
+        let mut shell = presenter(clock);
         let mut router = RecordingRouter::default();
 
         day.set(date(2026, 10, 1));
@@ -196,9 +457,9 @@ mod tests {
 
     #[test]
     fn a_notice_and_a_write_failure_go_to_the_router_and_a_legacy_write_asks_nothing() {
-        let mut shell = ShellPresenter::new(Clock::fixed(date(2026, 9, 19)));
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
         let mut router = RecordingRouter::default();
-        let saved = Notice::Toast(lib_toast::ToastKind::Success, "Saved".to_string());
+        let saved = Notice::Toast(ToastKind::Success, "Saved".to_string());
 
         shell.handle(ShellInput::Notice(saved.clone()), &mut router);
         shell.handle(ShellInput::LegacyApply, &mut router);
@@ -218,7 +479,7 @@ mod tests {
 
     #[test]
     fn a_dialog_is_open_from_its_opening_to_its_closing() {
-        let mut shell = ShellPresenter::new(Clock::fixed(date(2026, 9, 19)));
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
         assert!(!shell.dialog_open());
 
         shell.dialog(DialogInput::Opened);
@@ -231,7 +492,7 @@ mod tests {
     #[test]
     fn a_day_tick_in_the_same_month_of_another_year_turns_it() {
         let (clock, day) = Clock::settable(date(2026, 9, 30));
-        let mut shell = ShellPresenter::new(clock);
+        let mut shell = presenter(clock);
         let mut router = RecordingRouter::default();
 
         day.set(date(2027, 9, 1));
@@ -240,12 +501,12 @@ mod tests {
         assert_eq!(router.routed, vec![Routed::MonthTurned(date(2027, 9, 1))]);
     }
 
-    fn shell() -> ShellPresenter {
-        ShellPresenter::new(Clock::fixed(date(2026, 9, 19)))
+    fn shell() -> Shell {
+        presenter(Clock::fixed(date(2026, 9, 19)))
     }
 
     /// Offers `chords` in turn, returning the last answer and what the Router was asked.
-    fn press(shell: &mut ShellPresenter, chords: &[&str]) -> (ShellKey, Vec<Routed>) {
+    fn press(shell: &mut Shell, chords: &[&str]) -> (ShellKey, Vec<Routed>) {
         let mut router = RecordingRouter::default();
         let mut answer = ShellKey::Taken;
         for chord in chords {
@@ -264,7 +525,11 @@ mod tests {
     #[test]
     fn each_kept_command_runs_on_its_default_chord() {
         for binding in GLOBAL_BINDINGS {
-            if binding.event.falls_back() || binding.chord.is_empty() {
+            // The Shell clears its own Toasts.
+            if binding.event.falls_back()
+                || binding.chord.is_empty()
+                || binding.event == ShellCommand::DismissToasts
+            {
                 continue;
             }
             let chords: Vec<&str> = binding.chord.split(' ').collect();
@@ -385,6 +650,264 @@ mod tests {
         assert_eq!(
             press(&mut shell(), &["g", "g"]),
             (passed("g g", Some(ShellCommand::Move(Step::First))), vec![])
+        );
+    }
+
+    fn local(seconds: i64) -> DateTime<Local> {
+        DateTime::from_timestamp(seconds, 0)
+            .expect("a real time")
+            .with_timezone(&Local)
+    }
+
+    fn texts(shell: &Shell) -> Vec<String> {
+        shell
+            .toasts()
+            .visible()
+            .iter()
+            .map(|toast| toast.text().to_string())
+            .collect()
+    }
+
+    fn toast(kind: ToastKind, text: &str) -> Notice {
+        Notice::Toast(kind, text.to_string())
+    }
+
+    fn status(text: &str) -> Notice {
+        Notice::Status(text.to_string())
+    }
+
+    #[test]
+    fn a_toast_notice_goes_on_the_stack_and_a_status_notice_on_the_status_line() {
+        let mut shell = shell();
+
+        shell.show(toast(ToastKind::Success, "Saved"), local(100));
+        shell.show(status("g x is not a jump"), local(100));
+
+        assert_eq!(texts(&shell), ["Saved"]);
+        assert_eq!(
+            shell
+                .toasts()
+                .history()
+                .iter()
+                .next()
+                .map(|e| *e.last_raised()),
+            Some(local(100)),
+            "stamped as the Client said"
+        );
+        assert_eq!(
+            shell.view_model().status.as_deref(),
+            Some("g x is not a jump")
+        );
+    }
+
+    #[test]
+    fn a_key_clears_the_status_before_it_is_handled_so_one_it_sets_survives() {
+        let mut shell = shell();
+        shell.show(status("Exported"), local(0));
+
+        assert!(shell.keypress(), "a showing message asks for a redraw");
+        assert_eq!(shell.view_model().status, None);
+
+        shell.show(status("Undo is not built yet"), local(0));
+        assert_eq!(
+            shell.view_model().status.as_deref(),
+            Some("Undo is not built yet")
+        );
+        assert!(shell.keypress());
+        assert!(!shell.keypress(), "nothing left to clear");
+    }
+
+    #[test]
+    fn a_click_a_tick_or_a_dialog_button_leaves_the_status() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+        shell.show(status("Exported"), local(0));
+        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        shell.dialog(DialogInput::Opened);
+
+        shell.handle(ShellInput::LegacyApply, &mut router);
+        shell.handle(ShellInput::DayTick, &mut router);
+        shell.handle(ShellInput::ToastTick(Instant::now()), &mut router);
+        shell.toast(ToastInput::DismissVisible(0));
+        shell.dialog(DialogInput::Closed);
+
+        assert_eq!(shell.view_model().status.as_deref(), Some("Exported"));
+    }
+
+    #[test]
+    fn a_toast_lives_out_its_lifetime_over_toast_ticks() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+        let start = Instant::now();
+        let tick = |shell: &mut Shell, router: &mut RecordingRouter, seconds: u64| {
+            shell.handle(
+                ShellInput::ToastTick(start + Duration::from_secs(seconds)),
+                router,
+            );
+        };
+        shell.show(toast(ToastKind::Success, "Saved"), local(0));
+        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+        assert!(shell.toasts_ticking());
+
+        tick(&mut shell, &mut router, 10);
+        tick(&mut shell, &mut router, 13);
+        assert_eq!(
+            texts(&shell),
+            ["Saved", "Save failed"],
+            "the first tick only starts the count"
+        );
+
+        tick(&mut shell, &mut router, 15);
+        assert_eq!(texts(&shell), ["Save failed"], "an Error stays");
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn the_toasts_pause_while_hovered_or_while_a_modal_is_up() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+        let start = Instant::now();
+        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        shell.handle(ShellInput::ToastTick(start), &mut router);
+
+        shell.toast(ToastInput::Hover(true));
+        shell.handle(
+            ShellInput::ToastTick(start + Duration::from_secs(10)),
+            &mut router,
+        );
+        assert_eq!(texts(&shell), ["Synced"], "hovered");
+
+        shell.toast(ToastInput::Hover(false));
+        shell.navigate(NavInput::EnterMode(InputMode::Command));
+        shell.handle(
+            ShellInput::ToastTick(start + Duration::from_secs(20)),
+            &mut router,
+        );
+        assert_eq!(texts(&shell), ["Synced"], "the palette is up");
+
+        shell.navigate(NavInput::ExitMode);
+        shell.handle(
+            ShellInput::ToastTick(start + Duration::from_secs(30)),
+            &mut router,
+        );
+        assert!(texts(&shell).is_empty());
+        assert!(!shell.toasts_ticking());
+    }
+
+    #[test]
+    fn a_toast_raised_onto_an_empty_stack_starts_a_fresh_count() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+        let start = Instant::now();
+        shell.show(toast(ToastKind::Info, "one"), local(0));
+        shell.handle(ShellInput::ToastTick(start), &mut router);
+        shell.toast(ToastInput::DismissAll);
+
+        shell.show(toast(ToastKind::Info, "two"), local(0));
+        shell.handle(
+            ShellInput::ToastTick(start + Duration::from_secs(60)),
+            &mut router,
+        );
+
+        assert_eq!(texts(&shell), ["two"], "the idle minute isn't its age");
+    }
+
+    #[test]
+    fn ctrl_l_dismisses_the_toasts_on_the_shell_alone() {
+        let mut shell = shell();
+        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+
+        assert_eq!(press(&mut shell, &["ctrl+l"]), (ShellKey::Taken, vec![]));
+        assert!(texts(&shell).is_empty());
+    }
+
+    #[test]
+    fn tab_cycles_focus_and_a_mode_returns_focus_where_it_found_it() {
+        let mut shell = shell();
+        assert_eq!(shell.view_model().focus, FocusZone::View);
+
+        shell.navigate(NavInput::FocusNext);
+        assert_eq!(shell.view_model().focus, FocusZone::PrimaryRail);
+
+        shell.navigate(NavInput::EnterMode(InputMode::Search));
+        shell.navigate(NavInput::Focus(FocusZone::View));
+        assert_eq!(shell.view_model().mode, InputMode::Search);
+
+        shell.navigate(NavInput::ExitMode);
+        assert_eq!(shell.view_model().mode, InputMode::Normal);
+        assert_eq!(shell.view_model().focus, FocusZone::PrimaryRail);
+    }
+
+    #[test]
+    fn a_dialog_is_dialog_mode_from_its_opening_to_its_closing() {
+        let mut shell = shell();
+
+        shell.dialog(DialogInput::Opened);
+        assert_eq!(shell.view_model().mode, InputMode::Dialog);
+
+        shell.dialog(DialogInput::Closed);
+        assert_eq!(shell.view_model().mode, InputMode::Normal);
+
+        shell.navigate(NavInput::EnterMode(InputMode::Insert));
+        shell.dialog(DialogInput::Closed);
+        assert_eq!(
+            shell.view_model().mode,
+            InputMode::Insert,
+            "no Dialog was open to close"
+        );
+    }
+
+    #[test]
+    fn showing_a_noun_moves_focus_to_the_view_and_back_returns() {
+        let mut shell = shell();
+        shell.navigate(NavInput::FocusNext);
+
+        shell.navigate(NavInput::Show(Noun::Bills));
+        assert_eq!(shell.nav().noun(), Noun::Bills);
+        assert_eq!(shell.view_model().focus, FocusZone::View);
+
+        shell.navigate(NavInput::Back);
+        assert_eq!(shell.nav().noun(), Noun::Dashboard);
+        assert!(!shell.nav().can_go_back(), "nowhere further back");
+    }
+
+    fn hint_keys(shell: &Shell) -> Vec<(ShellCommand, String)> {
+        shell
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| (hint.command, hint.key))
+            .collect()
+    }
+
+    #[test]
+    fn the_hints_name_each_key_as_bound_now() {
+        let mut shell = shell();
+        assert_eq!(
+            hint_keys(&shell),
+            [
+                (ShellCommand::Command, ":".to_string()),
+                (ShellCommand::Search, "/".to_string()),
+                (ShellCommand::Help, "?".to_string()),
+                (ShellCommand::ToggleRail, "b".to_string()),
+            ]
+        );
+
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(TOGGLE_RAIL.to_string(), "ctrl+b".to_string());
+        config.bindings.insert(SEARCH.to_string(), String::new());
+        shell.set_keymap(&config);
+
+        assert_eq!(
+            hint_keys(&shell),
+            [
+                (ShellCommand::Command, ":".to_string()),
+                (ShellCommand::Help, "?".to_string()),
+                (ShellCommand::ToggleRail, "ctrl+b".to_string()),
+            ],
+            "a rebound key, and an unbound command drops"
         );
     }
 }

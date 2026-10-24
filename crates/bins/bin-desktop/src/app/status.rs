@@ -29,10 +29,9 @@ impl Shell {
         window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) {
-        if self.nav.mode() != InputMode::Normal {
+        if self.nav().mode() != InputMode::Normal {
             return;
         }
-        self.chrome.status_message = None;
         // A click ends a waiting `g` as its timer would.
         if self.prefix_timer.take().is_some() {
             self.send_shell(lib_shell::ShellInput::PrefixExpired, cx);

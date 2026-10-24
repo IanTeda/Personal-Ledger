@@ -8,6 +8,7 @@ use lib_toast::ToastKind;
 
 use super::Shell;
 use crate::navigation::explorer::{ExplorerFilter, ExplorerMode};
+use lib_shell::NavInput;
 
 /// Where `:open`'s file explorer starts browsing -- the handoff names no default starting
 /// directory of its own, so the platform home directory is the reasonable stand-in, falling
@@ -70,7 +71,7 @@ impl Shell {
     /// Command mode the same way the palette's own `esc` does.
     pub(super) fn handle_explorer_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.file_explorer = None;
-        self.nav.exit_mode();
+        self.navigate(NavInput::ExitMode);
         cx.notify();
     }
 
@@ -103,7 +104,7 @@ impl Shell {
         // Neither mode can fail yet (no real `.pldb` I/O), so `toast-ledger-open-failed` waits
         // for the ticket that parses and creates ledger files.
         if explorer.mode() == ExplorerMode::Open {
-            self.nav.open_ledger();
+            self.navigate(NavInput::OpenLedger);
             self.raise_toast(
                 ToastKind::Success,
                 lib_locale::msg::toast_ledger_opened(&name),
@@ -115,7 +116,7 @@ impl Shell {
             );
         }
         self.file_explorer = None;
-        self.nav.exit_mode();
+        self.navigate(NavInput::ExitMode);
         cx.notify();
     }
 }

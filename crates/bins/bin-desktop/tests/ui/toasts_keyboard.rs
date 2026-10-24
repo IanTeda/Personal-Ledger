@@ -1,6 +1,8 @@
 //! The Toast layer and the Toast history driven by keys and commands: raising and merging Toasts,
-//! `ctrl-l` and `:dismiss all`, `:messages` opening the history, and `:toasts off`/`on`. State is
-//! read back from `Shell`.
+//! `ctrl-l` and `:dismiss all`, `:messages` opening the history, `:toasts off`/`on`, and the Toast
+//! timer running a Toast's lifetime out. State is read back from `Shell`.
+
+use std::time::Duration;
 
 use super::common;
 
@@ -95,4 +97,18 @@ fn toasts_off_and_on_set_the_preference(app: &mut TestAppContext) {
 
     ui.press(": t o a s t s space o n enter");
     assert!(ui.toasts().on);
+}
+
+#[gpui::test]
+fn the_toast_timer_runs_a_toast_out_and_leaves_an_error(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.raise_toast(ToastKind::Success, "Saved");
+    ui.raise_toast(ToastKind::Error, "Save failed");
+
+    ui.advance_clock(Duration::from_secs(3));
+    assert_eq!(ui.toasts().visible.len(), 2, "a Success lives four seconds");
+
+    ui.advance_clock(Duration::from_secs(2));
+    let texts: Vec<String> = ui.toasts().visible.into_iter().map(|t| t.text).collect();
+    assert_eq!(texts, ["Save failed"], "an Error stays until dismissed");
 }

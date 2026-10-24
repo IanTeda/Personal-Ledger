@@ -17,7 +17,7 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
 }
 
 fn status(ui: &mut Harness<'_>) -> Option<String> {
-    ui.read(|shell| shell.status_message().map(str::to_string))
+    ui.read(|shell| shell.status_message())
 }
 
 /// Right-clicks the row and picks an entry of its context menu: the rows carry no buttons.

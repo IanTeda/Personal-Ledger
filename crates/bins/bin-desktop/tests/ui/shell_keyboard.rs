@@ -1,7 +1,8 @@
 //! Shell chrome driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
 //! zone cycling, the rail toggle, the modes the global keys enter and leave, and the order a key
 //! is offered in (`bin_desktop`'s `input::route_key`), each step winning a key a later one also
-//! binds. Assertions read `NavState` back from `Shell`, never pixels.
+//! binds, the status message answering one key, and the hints naming rebound keys. Assertions read
+//! `NavState` back from `Shell`, never pixels.
 
 use std::time::Duration;
 
@@ -432,4 +433,30 @@ fn an_override_moves_a_global_key_and_frees_its_default(app: &mut TestAppContext
 
     ui.press("g z");
     assert_eq!(ui.noun(), Noun::Settings);
+}
+
+#[gpui::test]
+fn a_status_message_answers_its_key_and_clears_on_the_next(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let status = |ui: &mut Harness<'_>| ui.read(|shell| shell.status_message());
+
+    ui.press("g x");
+    let message = status(&mut ui).expect("`g x` says it is no jump");
+    assert!(message.contains("g x"), "{message}");
+
+    ui.press("j");
+    assert_eq!(status(&mut ui), None, "the next key clears it");
+}
+
+#[gpui::test]
+fn the_shell_hints_name_a_rebound_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("toggle_rail", "ctrl+b"));
+
+    let keys: Vec<String> = ui
+        .read(|shell| shell.shell_hints_snapshot())
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+
+    assert_eq!(keys, [":", "/", "?", "ctrl+b"]);
 }

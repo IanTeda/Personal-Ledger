@@ -11,6 +11,7 @@ use lib_core::{BudgetId, CategoryId};
 use lib_ledger::{ArchiveBudget, DuplicateBudget, LedgerCommand, RestoreBudget, SetDefaultBudget};
 
 use super::Shell;
+use lib_shell::NavInput;
 use std::rc::Rc;
 
 use crate::{
@@ -165,7 +166,7 @@ impl Shell {
             let Some(OpenDialog::Budgets(dialog)) = self.chrome.dialog.take() else {
                 return;
             };
-            self.nav.exit_mode();
+            self.navigate(NavInput::ExitMode);
             self.apply_budgets_request(*dialog, cx);
             return;
         }
@@ -407,7 +408,7 @@ impl Shell {
             }
             _ => {
                 if let Some(error) = refused {
-                    self.chrome.status_message = Some(match error {
+                    self.set_status(match error {
                         budgets::BudgetError::DefaultCannotBeArchived => {
                             crate::msg::desktop_budgets_manage_error_default()
                         }

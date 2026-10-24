@@ -196,8 +196,7 @@ fn pay_and_skip_refuse_a_row_with_nothing_to_settle(app: &mut TestAppContext) {
     ui.press("p");
     assert_eq!(ui.bills().dialog, None);
     assert_eq!(
-        ui.read(|s| s.status_message().map(str::to_string))
-            .as_deref(),
+        ui.read(|s| s.status_message()).as_deref(),
         Some("this bill isn't actionable")
     );
 

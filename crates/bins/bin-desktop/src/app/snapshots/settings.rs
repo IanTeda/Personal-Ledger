@@ -31,7 +31,7 @@ impl Shell {
     #[doc(hidden)]
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
         SettingsSnapshot {
-            status_message: self.chrome.status_message.clone(),
+            status_message: self.status_message(),
             ..self.views.settings.read(cx).snapshot()
         }
     }

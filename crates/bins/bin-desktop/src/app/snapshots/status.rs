@@ -25,4 +25,12 @@ impl Shell {
             right: status.right,
         })
     }
+
+    /// The Shell's own hint strip as `(key, action)` pairs, every one before any drops for width:
+    /// what shows while the View on show has no legend of its own.
+    #[doc(hidden)]
+    pub fn shell_hints_snapshot(&self) -> Vec<(String, String)> {
+        use crate::chrome::statusline::{shell_hint_entries, shell_hints};
+        shell_hints(&shell_hint_entries(&self.presenter.view_model().hints))
+    }
 }

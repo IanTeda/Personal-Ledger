@@ -6,8 +6,8 @@ use lib_toast::Notify;
 use crate::keymap::ShellCommand;
 
 /// The Client's root Router, which acts on what the Shell's Presenter decides. It takes the
-/// Shell's Notices as every module Router does (ADR-0048): until the Presenter holds the Toast
-/// stack and status line (#826), it hands them on to the Client's.
+/// Shell's Notices as every module Router does (ADR-0048), queueing them with theirs for the
+/// Client to show on the Presenter once the input is handled.
 pub trait ShellRouter: Notify {
     /// What the Client's storage reports when a write fails. The Client's own, since the Shell
     /// is toolkit-free and storage-free and can't name it.

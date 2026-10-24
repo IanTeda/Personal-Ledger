@@ -4,6 +4,7 @@
 //! handles its own input in its Entity (`view::documents`, ADR-0037), which builds the dialogs;
 //! what a confirmed dialog changes on the page goes back to it through its named methods.
 
+use lib_shell::NavInput;
 use std::rc::Rc;
 
 use gpui::{Context, Window};
@@ -57,7 +58,7 @@ impl Shell {
 
     /// The `?` cheat-sheet's Documents group as `(action, keys)`. Empty off the page.
     pub(super) fn documents_cheat_sheet(&self, cx: &gpui::App) -> Vec<(String, &'static str)> {
-        if self.nav.noun() != Noun::Documents {
+        if self.nav().noun() != Noun::Documents {
             return Vec::new();
         }
         self.views.documents.read(cx).cheat_sheet()
@@ -99,8 +100,7 @@ impl Shell {
             }
             Purpose::File(id) => {
                 let Some(doc_type) = state.doc_type else {
-                    self.chrome.status_message =
-                        Some(crate::msg::desktop_documents_picker_need_type());
+                    self.set_status(crate::msg::desktop_documents_picker_need_type());
                     return;
                 };
                 self.close_documents_dialog();
@@ -148,8 +148,8 @@ impl Shell {
         cx: &mut gpui::App,
     ) {
         use crate::navigation::command::DocumentsVerb;
-        let noun_before = self.nav.noun();
-        self.nav.set_noun(Noun::Documents);
+        let noun_before = self.nav().noun();
+        self.navigate(NavInput::Show(Noun::Documents));
         if noun_before != Noun::Documents {
             self.reset_view_scroll(cx);
         }
@@ -203,7 +203,7 @@ impl Shell {
             else {
                 return;
             };
-            self.nav.exit_mode();
+            self.navigate(NavInput::ExitMode);
             self.apply_documents_picker(*state, cx);
             return;
         }

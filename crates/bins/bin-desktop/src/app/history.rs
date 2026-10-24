@@ -5,6 +5,7 @@ use gpui::Context;
 
 use super::Shell;
 use crate::chrome::topbar::TopBarAction;
+use lib_shell::NavInput;
 
 impl Shell {
     /// A click on Back, Forward, Undo or the recent-actions list (`chrome::topbar::TopBar`'s
@@ -15,17 +16,17 @@ impl Shell {
         action: TopBarAction,
         cx: &mut Context<'_, Self>,
     ) {
-        let noun_before = self.nav.noun();
+        let noun_before = self.nav().noun();
         match action {
             TopBarAction::Back => {
-                self.nav.go_back();
+                self.navigate(NavInput::Back);
             }
             TopBarAction::Forward => {
-                self.nav.go_forward();
+                self.navigate(NavInput::Forward);
             }
             TopBarAction::Undo | TopBarAction::UndoTo(_) => {
                 self.chrome.undo_menu_open = false;
-                self.chrome.status_message = Some(crate::msg::desktop_status_undo_not_yet_built());
+                self.set_status(crate::msg::desktop_status_undo_not_yet_built());
             }
             TopBarAction::ToggleUndoMenu => {
                 self.chrome.undo_menu_open = !self.chrome.undo_menu_open;
@@ -35,12 +36,12 @@ impl Shell {
             }
         }
         if matches!(action, TopBarAction::Back | TopBarAction::Forward) {
-            let page = self.nav.settings_page();
+            let page = self.nav().settings_page();
             self.views
                 .settings
                 .update(cx, |view, cx| view.set_selected_section(cx, page));
         }
-        if self.nav.noun() != noun_before {
+        if self.nav().noun() != noun_before {
             self.chrome.undo_menu_open = false;
             self.reset_view_scroll(cx);
         }

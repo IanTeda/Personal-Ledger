@@ -1,16 +1,15 @@
-//! The Toast concern of `Shell`: raising, the clock, pausing and the history modal. An `impl Shell`
-//! block, not the Toast model (`lib_toast`) or its drawing (`chrome::toast`).
-
-use std::time::{Duration, Instant};
+//! The Toast concern of `Shell`: showing Notices on the Shell's Presenter, the clock and the history
+//! modal. An `impl Shell` block, not the Toast stack (the Presenter's, as `lib_toast`'s model) or
+//! its drawing (`chrome::toast`).
 
 use chrono::Local;
-use gpui::{Context, Timer};
+use gpui::Context;
+use lib_shell::ShellInput;
 use lib_toast::{Notice, ToastKind};
 
 use super::Shell;
 use crate::{
     chrome::dialog_host::{OpenDialog, ToastHistoryDialog},
-    navigation::nav::InputMode,
     settings::display::DisplayPreferences,
 };
 
@@ -35,39 +34,43 @@ impl Shell {
         self.push_display_preferences(display, cx);
     }
 
-    /// Shows every Notice the Routers queued since the last drain (`crate::notices`): a Toast on
-    /// the stack, a message on the status line. Each input's `send` runs it once the input is
-    /// handled and committed (`crate::input`).
+    /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
+    /// Presenter, stamped with the local time for the Toast history. Each input's `send` runs it
+    /// once the input is handled and committed (`crate::input`).
     pub(crate) fn drain_notices(&mut self) {
         for notice in crate::notices::drain() {
-            match notice {
-                Notice::Toast(kind, text) => self.raise_toast(kind, text),
-                Notice::Status(text) => self.chrome.status_message = Some(text),
-            }
+            self.presenter.show(notice, Local::now());
         }
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.
     pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
-        self.chrome.toasts.raise(kind, text, Local::now());
+        self.presenter
+            .show(Notice::Toast(kind, text.into()), Local::now());
     }
 
-    /// Starts the Toast clock for the window's life: every [`crate::chrome::toast::TICK`] it advances
-    /// the model by the real time elapsed, paused while the pointer is over the stack or a modal
-    /// surface is open, and redraws only when a Toast has gone.
+    /// Sets the status message from the Shell's own handling (a palette command, an Undo with
+    /// nothing built behind it), which the next key clears.
+    pub(super) fn set_status(&mut self, text: String) {
+        self.presenter.show(Notice::Status(text), Local::now());
+    }
+
+    /// Starts the Toast clock for the window's life: every [`crate::chrome::toast::TICK`] while a
+    /// Toast is up, a [`ShellInput::ToastTick`] on the executor's clock, one input each, which the
+    /// Presenter advances the Toasts by unless the pointer is over them or a modal is open. The
+    /// executor's timer and clock, so headless tests advance them; an empty stack sends nothing.
     pub fn start_toast_clock(&self, cx: &mut Context<'_, Self>) {
         cx.spawn(async move |this, cx| {
-            let mut last = Instant::now();
             loop {
-                Timer::after(crate::chrome::toast::TICK).await;
-                let now = Instant::now();
-                let elapsed = now - last;
-                last = now;
+                cx.background_executor()
+                    .timer(crate::chrome::toast::TICK)
+                    .await;
+                let now = cx.background_executor().now();
                 // Stops once the window, and with it the Shell, has gone.
                 if this
                     .update(cx, |shell, cx| {
-                        if shell.advance_toasts(elapsed) {
-                            cx.notify();
+                        if shell.presenter.toasts_ticking() {
+                            shell.send_shell(ShellInput::ToastTick(now), cx);
                         }
                     })
                     .is_err()
@@ -77,43 +80,6 @@ impl Shell {
             }
         })
         .detach();
-    }
-
-    /// One clock tick; `true` when the stack changed and needs a redraw.
-    pub(super) fn advance_toasts(&mut self, elapsed: Duration) -> bool {
-        let before = (
-            self.chrome.toasts.visible().len(),
-            self.chrome.toasts.more_count(),
-            self.chrome.toasts.echo().is_some(),
-        );
-        if before.0 == 0 {
-            // A dismissed stack never reports the pointer leaving it.
-            self.chrome.toasts_hovered = false;
-            return false;
-        }
-        if self.chrome.toasts_hovered || self.modal_open() {
-            self.chrome.toasts.pause();
-        } else {
-            self.chrome.toasts.resume();
-        }
-        self.chrome.toasts.advance(elapsed);
-        before
-            != (
-                self.chrome.toasts.visible().len(),
-                self.chrome.toasts.more_count(),
-                self.chrome.toasts.echo().is_some(),
-            )
-    }
-
-    /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
-    /// popover -- which pauses the Toast timers.
-    pub(super) fn modal_open(&self) -> bool {
-        self.chrome.palette.is_some()
-            || self.file_explorer.is_some()
-            || matches!(
-                self.nav.mode(),
-                InputMode::Command | InputMode::Dialog | InputMode::Filter
-            )
     }
 
     pub(super) fn toast_history_open(&self) -> bool {

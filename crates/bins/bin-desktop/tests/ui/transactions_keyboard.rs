@@ -17,7 +17,7 @@ fn on_transactions(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 fn status(ui: &mut Harness<'_>) -> Option<String> {
-    ui.read(|s| s.status_message().map(str::to_string))
+    ui.read(|s| s.status_message())
 }
 
 #[gpui::test]

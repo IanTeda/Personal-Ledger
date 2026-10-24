@@ -2,6 +2,7 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Shell;
+use lib_shell::{NavInput, ToastInput};
 use std::rc::Rc;
 
 use gpui_component::scroll::{Scrollbar, ScrollbarShow};
@@ -46,7 +47,7 @@ impl Render for Shell {
             self.chrome.rail_override = None;
         }
         let rail_mode = self.primary_rail(window_size, cx);
-        let focus = self.nav.focus();
+        let focus = self.nav().focus();
         let active_entity = self.active_view_entity(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
@@ -129,7 +130,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |index, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.chrome.toasts.dismiss_visible(index);
+                    shell.presenter.toast(ToastInput::DismissVisible(index));
                     cx.notify();
                 });
             })
@@ -137,7 +138,9 @@ impl Render for Shell {
         let on_toast_hover: crate::chrome::toast::OnHover = {
             let entity = entity.clone();
             Rc::new(move |hovered, _window, cx| {
-                entity.update(cx, |shell, _cx| shell.chrome.toasts_hovered = hovered);
+                entity.update(cx, |shell, _cx| {
+                    shell.presenter.toast(ToastInput::Hover(hovered))
+                });
             })
         };
         // Hidden while the history is open, which lists them in full.
@@ -146,7 +149,7 @@ impl Render for Shell {
             None
         } else {
             crate::chrome::toast::render(
-                &self.chrome.toasts,
+                self.presenter.toasts(),
                 on_toast_dismiss,
                 on_toast_hover,
                 window.viewport_size().width,
@@ -224,7 +227,7 @@ impl Render for Shell {
         // line reads its page status.
         let active_element = active_entity.element(
             focus == FocusZone::View,
-            self.nav.ledger_open(),
+            self.nav().ledger_open(),
             window_size,
             cx,
         );
@@ -261,8 +264,8 @@ impl Render for Shell {
                     .child(TopBar::new(
                         on_rail_toggle,
                         on_topbar_action,
-                        self.nav.can_go_back(),
-                        self.nav.can_go_forward(),
+                        self.nav().can_go_back(),
+                        self.nav().can_go_forward(),
                         self.chrome.undo_menu_open,
                     ))
                     .child(
@@ -272,7 +275,7 @@ impl Render for Shell {
                             .flex()
                             .child(
                                 PrimaryRail::new(
-                                    self.nav.primary_highlight(),
+                                    self.nav().primary_highlight(),
                                     focus == FocusZone::PrimaryRail,
                                     rail_mode,
                                     self.chrome.collapsed_rail_tooltip,
@@ -295,11 +298,12 @@ impl Render for Shell {
                                 .documents_inbox(documents::inbox_count(self.documents(cx))),
                             )
                             .when(
-                                self.nav.noun().has_context_entities() && self.nav.ledger_open(),
+                                self.nav().noun().has_context_entities()
+                                    && self.nav().ledger_open(),
                                 |this| {
                                     this.child(ContextRail::new(
-                                        self.nav.noun(),
-                                        self.nav.context(),
+                                        self.nav().noun(),
+                                        self.nav().context(),
                                         focus == FocusZone::ContextRail,
                                     ))
                                 },
@@ -314,7 +318,7 @@ impl Render for Shell {
                                     &self.view_x_scroll_handle,
                                     focus == FocusZone::View,
                                     cx.listener(|shell, _: &MouseDownEvent, _window, cx| {
-                                        shell.nav.set_focus(FocusZone::View);
+                                        shell.navigate(NavInput::Focus(FocusZone::View));
                                         cx.notify();
                                     }),
                                     cx,
@@ -323,24 +327,20 @@ impl Render for Shell {
                     ),
             )
             .child(
-                StatusLine::new(
-                    self.nav.mode(),
-                    self.chrome.status_message.clone(),
-                    self.command_echo(),
-                )
-                .toast_echo(
-                    self.chrome
-                        .toasts
-                        .echo()
-                        .filter(|_| !toast_history_open)
-                        .map(|toast| (toast.kind(), toast.text().to_string())),
-                )
-                .page(view_chrome.status)
-                .mode_label(
-                    crate::navigation::active_view::mode_label(active_view)
-                        .filter(|_| self.nav.mode() == InputMode::Normal),
-                )
-                .on_hint(on_hint),
+                StatusLine::new(self.presenter.view_model(), self.command_echo())
+                    .toast_echo(
+                        self.presenter
+                            .toasts()
+                            .echo()
+                            .filter(|_| !toast_history_open)
+                            .map(|toast| (toast.kind(), toast.text().to_string())),
+                    )
+                    .page(view_chrome.status)
+                    .mode_label(
+                        crate::navigation::active_view::mode_label(active_view)
+                            .filter(|_| self.nav().mode() == InputMode::Normal),
+                    )
+                    .on_hint(on_hint),
             )
             .children(
                 self.chrome
@@ -363,7 +363,11 @@ impl Render for Shell {
                     .map(|dialog| help_view::render(on_help_close, &dialog.shortcuts, cx)),
             )
             .children(toast_history_open.then(|| {
-                toast_history_view::render(self.chrome.toasts.history(), on_toast_history_close, cx)
+                toast_history_view::render(
+                    self.presenter.toasts().history(),
+                    on_toast_history_close,
+                    cx,
+                )
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))

@@ -4,6 +4,7 @@
 
 use super::Shell;
 use lib_core::{PayeeId, TagId};
+use lib_shell::NavInput;
 
 use crate::{
     navigation::nav::{FocusZone, Noun},
@@ -21,8 +22,8 @@ impl Shell {
     /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
     /// page (#284).
     pub(super) fn open_import(&mut self, cx: &mut App) {
-        self.nav.set_noun(Noun::Transactions);
-        self.nav.set_focus(FocusZone::View);
+        self.navigate(NavInput::Show(Noun::Transactions));
+        self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
         self.views
             .transactions
@@ -35,7 +36,7 @@ impl Shell {
         self.views
             .transactions
             .update(cx, |view, cx| view.show_filtered(filters, cx));
-        self.nav.set_noun(Noun::Transactions);
+        self.navigate(NavInput::Show(Noun::Transactions));
         self.reset_view_scroll(cx);
     }
 

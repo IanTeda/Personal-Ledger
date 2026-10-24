@@ -28,13 +28,13 @@ impl Shell {
             },
         });
         snapshot.toasts = self
-            .chrome
-            .toasts
+            .presenter
+            .toasts()
             .visible()
             .iter()
             .map(|toast| toast.text().to_string())
             .collect();
-        snapshot.status = self.chrome.status_message.clone();
+        snapshot.status = self.status_message();
         snapshot.picker = match dialog {
             Some(DocumentsDialog::Picker(state)) => Some(PickerSnapshot {
                 kind: state.kind.label(),

@@ -391,8 +391,7 @@ fn the_menus_test_entry_puts_not_built_on_the_status_line(app: &mut TestAppConte
     ui.right_click(&row);
     ui.click("settings-units-menu-test-source");
     assert_eq!(
-        ui.read(|shell| shell.status_message().map(str::to_string))
-            .as_deref(),
+        ui.read(|shell| shell.status_message()).as_deref(),
         Some("test price source \u{2014} not yet built")
     );
     assert_eq!(ui.dialog(), None);
