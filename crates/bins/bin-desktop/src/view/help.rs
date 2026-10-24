@@ -4,6 +4,8 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use lib_shell::ShellCommand;
+use lib_viper::keymap::Keymap;
 
 use crate::{
     dialog, help,
@@ -33,7 +35,12 @@ impl Dialog for HelpDialog {
     }
 }
 
-pub fn render(on_close: OnClose, settings: &[(String, String)], cx: &App) -> AnyElement {
+pub fn render(
+    on_close: OnClose,
+    keymap: &Keymap<ShellCommand>,
+    settings: &[(String, String)],
+    cx: &App,
+) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -45,12 +52,12 @@ pub fn render(on_close: OnClose, settings: &[(String, String)], cx: &App) -> Any
                 div()
                     .flex()
                     .child(facts_column(cx))
-                    .child(shortcuts_column(settings, cx)),
+                    .child(shortcuts_column(keymap, settings, cx)),
             )
             .child(footer(on_close, cx)),
         cx,
     );
-    // Keyboard input is already swallowed in `InputMode::Help`; this stops clicks reaching the
+    // Keyboard input is already swallowed in `InputMode::Dialog`; this stops clicks reaching the
     // rails behind.
     div()
         .id("help-occluder")
@@ -252,7 +259,11 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_col().gap(px(10.0)).children(rows)
 }
 
-fn shortcuts_column(settings: &[(String, String)], cx: &App) -> impl IntoElement {
+fn shortcuts_column(
+    keymap: &Keymap<ShellCommand>,
+    settings: &[(String, String)],
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
@@ -265,14 +276,14 @@ fn shortcuts_column(settings: &[(String, String)], cx: &App) -> impl IntoElement
         .text_size(px(12.5))
         .child(kicker(crate::msg::desktop_help_shortcuts_label(), cx))
         .child(two_columns(
-            help::jump_shortcuts()
+            help::jump_shortcuts(keymap)
                 .into_iter()
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),
         ))
         .child(rule(cx))
         .child(two_columns(
-            help::global_shortcuts()
+            help::global_shortcuts(keymap)
                 .into_iter()
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),

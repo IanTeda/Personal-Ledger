@@ -3,7 +3,8 @@
 //! (the shared grammar lives in `docs/navigation-design.md`).
 
 use lib_shell::ShellCommand;
-use lib_shell::keymap::GLOBAL_BINDINGS;
+use lib_shell::keymap::{self, GLOBAL_BINDINGS};
+use lib_viper::keymap::{BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 
 use crate::navigation::nav::NounLabel;
 
@@ -57,41 +58,83 @@ pub fn copyright() -> String {
 }
 
 /// The `g`-jump cheat-sheet, as `(noun label, "g x")`, in the global keymap's own order (the view
-/// lays it out row-major in two columns).
-pub fn jump_shortcuts() -> Vec<(String, String)> {
+/// lays it out row-major in two columns). Each key is the one `keymap` binds now, so a
+/// `[keybindings]` override shows here as it does in the status line.
+pub fn jump_shortcuts(keymap: &Keymap<ShellCommand>) -> Vec<(String, String)> {
     GLOBAL_BINDINGS
         .iter()
         .filter_map(|binding| match binding.event {
-            ShellCommand::Jump(noun) => Some((noun.label(), binding.chord.to_string())),
+            ShellCommand::Jump(noun) => Some((noun.label(), bound(keymap, binding.command))),
             _ => None,
         })
         .collect()
 }
 
-/// The non-jump shortcuts, as `(action, keys)`, two columns row-major.
-pub fn global_shortcuts() -> [(String, &'static str); 5] {
-    [
-        (crate::msg::desktop_help_shortcut_palette(), ":"),
-        (crate::msg::desktop_help_shortcut_help(), "?"),
-        (crate::msg::desktop_help_shortcut_focus(), "j/k"),
-        (crate::msg::desktop_help_shortcut_confirm(), "enter"),
-        (crate::msg::desktop_help_shortcut_close(), "esc"),
+/// The non-jump shortcuts, as `(action, keys)`, two columns row-major, each key read from
+/// `keymap` as [`jump_shortcuts`]'s are.
+pub fn global_shortcuts(keymap: &Keymap<ShellCommand>) -> Vec<(String, String)> {
+    let key = |command| bound(keymap, command);
+    vec![
+        (
+            crate::msg::desktop_help_shortcut_palette(),
+            key(keymap::OPEN_COMMAND_POPUP),
+        ),
+        (crate::msg::desktop_help_shortcut_help(), key(keymap::HELP)),
+        (
+            crate::msg::desktop_help_shortcut_focus(),
+            format!("{}/{}", key(MOVE_DOWN), key(MOVE_UP)),
+        ),
+        (crate::msg::desktop_help_shortcut_confirm(), key(SELECT)),
+        (crate::msg::desktop_help_shortcut_close(), key(BACK)),
     ]
+}
+
+/// The chord `command` is bound to, empty when `[keybindings]` unbinds it.
+fn bound(keymap: &Keymap<ShellCommand>, command: &str) -> String {
+    keymap.chord(command).unwrap_or_default().to_string()
 }
 
 #[cfg(test)]
 mod tests {
+    use lib_config::KeyBindingConfig;
+
     use super::*;
 
     #[test]
     fn jump_shortcuts_cover_every_noun_in_the_keymaps_order() {
         crate::locale::init_for_tests();
-        let shortcuts = jump_shortcuts();
+        let shortcuts = jump_shortcuts(&lib_shell::global_keymap(&KeyBindingConfig::default()));
         assert_eq!(shortcuts.len(), lib_shell::Noun::ALL.len());
         assert_eq!(shortcuts[0], ("Dashboard".to_string(), "g d".to_string()));
         assert!(shortcuts.contains(&("Transactions".to_string(), "g l".to_string())));
         assert!(shortcuts.contains(&("Notifications".to_string(), "g a".to_string())));
         assert!(shortcuts.contains(&("Credit cards".to_string(), "g k".to_string())));
+    }
+
+    #[test]
+    fn the_cheat_sheet_shows_the_keys_keybindings_rebinds() {
+        crate::locale::init_for_tests();
+        let mut config = KeyBindingConfig::default();
+        for (command, chord) in [
+            ("jump_dashboard", "g h"),
+            ("help", "f1"),
+            ("move_down", "down"),
+            ("back", "q"),
+        ] {
+            config
+                .bindings
+                .insert(command.to_string(), chord.to_string());
+        }
+        let keymap = lib_shell::global_keymap(&config);
+
+        assert_eq!(
+            jump_shortcuts(&keymap)[0],
+            ("Dashboard".to_string(), "g h".to_string())
+        );
+        let shortcuts = global_shortcuts(&keymap);
+        assert!(shortcuts.contains(&("This help".to_string(), "f1".to_string())));
+        assert!(shortcuts.contains(&("Close overlay".to_string(), "q".to_string())));
+        assert!(shortcuts.iter().any(|(_, keys)| keys == "down/k"));
     }
 
     #[test]
@@ -107,9 +150,9 @@ mod tests {
     #[test]
     fn the_help_key_and_close_key_are_listed() {
         crate::locale::init_for_tests();
-        let shortcuts = global_shortcuts();
-        assert!(shortcuts.contains(&("This help".to_string(), "?")));
-        assert!(shortcuts.contains(&("Close overlay".to_string(), "esc")));
+        let shortcuts = global_shortcuts(&lib_shell::global_keymap(&KeyBindingConfig::default()));
+        assert!(shortcuts.contains(&("This help".to_string(), "?".to_string())));
+        assert!(shortcuts.contains(&("Close overlay".to_string(), "esc".to_string())));
     }
 
     #[test]

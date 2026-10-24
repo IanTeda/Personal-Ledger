@@ -9,10 +9,10 @@
 //! scoped strictly to whichever zone (`NavState::focus`) currently has it (issue #149); the
 //! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
 //! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
-//! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169,
-//! `InputMode::Help`). No `View` trait (ADR-0016): `Root` forwards to the active View through
-//! `view::active::ActiveViewEntity` (ADR-0037), and `render_view` in `router/render.rs` draws the
-//! Views not yet moved onto it.
+//! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169, a
+//! Dialog in `InputMode::Dialog`). No `View` trait (ADR-0016): `Root` forwards to the active View
+//! through `view::active::ActiveViewEntity` (ADR-0037), and `render_view` in `router/render.rs`
+//! draws the Views not yet moved onto it.
 //!
 //! The file holds the `Root` struct, [`build`], construction, persisted setters, the accessor
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern

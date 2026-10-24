@@ -1,5 +1,7 @@
 # Desktop Views are gpui Entities that own their View state
 
+> Partly superseded by [`docs/development/viper-architecture.md`](../development/viper-architecture.md) (Input, The Shell module): `navigation/key_router.rs` is gone. The Desktop's one router is `input.rs`'s `route_key`, which offers each key to an open Dialog, a mode left in the bin, `lib-shell`'s global keymap, the focused module's keymap, then a View not yet a module, in that order. The rest of this decision, a View Entity per destination that owns its state, stands.
+
 The Desktop's per-destination state (selection, scroll, filter forms, expanded rows, the open Import) sits as roughly 80 flat fields on `Shell`, with prefixed groups such as `settings_*`, `documents_*` and `transactions_*`. Each group belongs to one View, but `Shell` owns all of them, so the Divergent Change in `shell.rs` (#531) will not shrink by moving code alone. [ADR-0016](0016-shell-replaces-feasibility-tab-bar-for-desktop-navigation.md) and its #538 update rejected a `View` trait and kept `Shell` dispatching on the exhaustive `ActiveView` enum, because a `dyn View` would need a borrow-split context bag around `Shell`'s shared state.
 
 We're making each destination's **View** a gpui `Entity` that owns its View state. `Shell` holds one typed `Entity` per destination and dispatches on `ActiveView`, as it does now, so no trait object or `AnyView` erasure is needed. The Entity owns only what belongs to its destination; `Shell` keeps what is cross-cutting.

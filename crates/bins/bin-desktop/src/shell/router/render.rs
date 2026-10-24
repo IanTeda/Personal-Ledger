@@ -358,10 +358,14 @@ impl Render for Root {
                     cx,
                 )
             }))
-            .children(
-                self.dialog::<HelpDialog>()
-                    .map(|dialog| help_view::render(on_help_close, &dialog.shortcuts, cx)),
-            )
+            .children(self.dialog::<HelpDialog>().map(|dialog| {
+                help_view::render(
+                    on_help_close,
+                    self.presenter.keymap(),
+                    &dialog.shortcuts,
+                    cx,
+                )
+            }))
             .children(toast_history_open.then(|| {
                 toast_history_view::render(
                     self.presenter.toasts().history(),
