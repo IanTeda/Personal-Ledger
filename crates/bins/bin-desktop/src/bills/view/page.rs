@@ -526,7 +526,17 @@ fn tab_row(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -> i
         .items_center()
         .children(view.tabs.iter().map(|tab| {
             let id = tab.tab;
-            let on_click = on_event(entity, BillsPageEvent::ShowTab(id));
+            // A click isn't a key, so the Shell keeps the status line through it: the tab clears
+            // a message about the tab it leaves, as the key that switches tabs does.
+            let on_click: OnPlainClick = {
+                let entity = entity.clone();
+                Rc::new(move |_window, cx| {
+                    entity.update(cx, |page, cx| {
+                        page.send(BillsPageEvent::ShowTab(id), cx);
+                        cx.emit(ViewEvent::SetStatus(None));
+                    });
+                })
+            };
             let hover = color::hover(cx);
             div()
                 .id(SharedString::from(format!("bills-tab-{id:?}")))

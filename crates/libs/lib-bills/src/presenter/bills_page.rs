@@ -212,7 +212,8 @@ impl BillsPagePresenter {
     }
 
     /// Switches the tab, dropping the selection and any filter focus. A new tab starts at the top;
-    /// the Shell clears a stale status message on the key that switched it (ADR-0048).
+    /// the Shell clears a stale status message on the key that switched it (ADR-0048), and the
+    /// Client on a click.
     fn show_tab(&mut self, tab: BillsTab) {
         self.tab = tab;
         self.schedule.reset_selection();

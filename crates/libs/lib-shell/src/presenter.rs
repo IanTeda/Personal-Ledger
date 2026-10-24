@@ -4,8 +4,9 @@
 //! once the Clock reads a new one, and resolves each key the Client offers it through the global
 //! keymap, holding a `g` prefix until the next key or the Client's timer ends it.
 //!
-//! It never reads time itself: the Client's timers deliver [`ShellInput::DayTick`],
-//! [`ShellInput::ToastTick`] and [`ShellInput::PrefixExpired`], and stamps each Notice it shows.
+//! It never reads time itself: the Client's timers deliver [`ShellInput::DayTick`] and
+//! [`ShellInput::PrefixExpired`], and the Toast timer's time to [`ShellPresenter::tick_toasts`],
+//! and the Client stamps each Notice it shows.
 //! A status message answers one key: every key clears it as it arrives ([`ShellPresenter::keypress`]),
 //! before the key is handled, so one the key sets survives; clicks and ticks leave it.
 
@@ -29,9 +30,6 @@ use crate::protocols::ShellRouter;
 pub enum ShellInput<F> {
     /// The Client's day poll fired: read the Clock for a new month.
     DayTick,
-    /// The Client's Toast timer fired at `now`, on its monotonic clock: advance the Toasts by the
-    /// time since the last tick. The Client ticks only while a Toast is up ([`ShellPresenter::toasts_ticking`]).
-    ToastTick(Instant),
     /// A View not yet a module raised a Toast or set the status line. It reaches the Router, which
     /// queues it with every module's Notices for the Client to show ([`ShellPresenter::show`]).
     Notice(Notice),
@@ -156,7 +154,7 @@ pub struct ShellPresenter<P> {
     /// Stamped with the local time each was raised at, for the history.
     toasts: Toasts<DateTime<Local>>,
     toasts_hovered: bool,
-    /// The last [`ShellInput::ToastTick`]'s time, which the next advances from. `None` while the
+    /// The last [`ShellPresenter::tick_toasts`]' time, which the next advances from. `None` while the
     /// stack is empty, so the first tick after a raise only starts the count.
     last_tick: Option<Instant>,
 }
@@ -290,8 +288,16 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             NavInput::FocusNext => nav.cycle_focus_forward(),
             NavInput::FocusPrevious => nav.cycle_focus_backward(),
             NavInput::Focus(zone) => nav.set_focus(zone),
-            NavInput::EnterMode(mode) => nav.enter_mode(mode),
-            NavInput::ExitMode => nav.exit_mode(),
+            // The next key belongs to the mode, or to the one left, so a waiting prefix can't
+            // finish on it; a Dialog opening drops it the same way.
+            NavInput::EnterMode(mode) => {
+                self.prefix = None;
+                nav.enter_mode(mode);
+            }
+            NavInput::ExitMode => {
+                self.prefix = None;
+                nav.exit_mode();
+            }
             NavInput::OpenLedger => nav.open_ledger(),
             NavInput::CloseLedger => nav.close_ledger(),
         }
@@ -365,8 +371,12 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
         )
     }
 
-    /// Advances the Toasts to `now`, paused while the pointer is over them or a modal is up.
-    fn tick_toasts(&mut self, now: Instant) {
+    /// The Client's Toast timer fired at `now`, on its monotonic clock: advances the Toasts by the
+    /// time since the last tick, paused while the pointer is over them or a modal is up. Returns
+    /// whether what the stack draws changed, the only time the Client need redraw. Not an input:
+    /// a tick writes nothing, so it needs no `send`. The Client ticks only while a Toast is up
+    /// ([`Self::toasts_ticking`]).
+    pub fn tick_toasts(&mut self, now: Instant) -> bool {
         let elapsed = self
             .last_tick
             .replace(now)
@@ -375,14 +385,23 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             // A dismissed stack never reports the pointer leaving it.
             self.toasts_hovered = false;
             self.last_tick = None;
-            return;
+            return false;
         }
+        let drawn = |toasts: &Toasts<DateTime<Local>>| {
+            (
+                toasts.visible().len(),
+                toasts.more_count(),
+                toasts.echo().is_some(),
+            )
+        };
+        let before = drawn(&self.toasts);
         if self.toasts_hovered || self.modal_open() {
             self.toasts.pause();
         } else {
             self.toasts.resume();
         }
         self.toasts.advance(elapsed);
+        drawn(&self.toasts) != before
     }
 
     pub fn handle<R: ShellRouter + ?Sized>(
@@ -398,7 +417,6 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
                     router.month_turned(today);
                 }
             }
-            ShellInput::ToastTick(now) => self.tick_toasts(now),
             ShellInput::Notice(notice) => router.notify(notice),
             ShellInput::LegacyApply => {}
             ShellInput::WriteFailed(failure) => router.write_failed(failure),
@@ -619,6 +637,21 @@ mod tests {
     }
 
     #[test]
+    fn a_mode_change_drops_a_waiting_g() {
+        let mut shell = shell();
+
+        press(&mut shell, &["g"]);
+        shell.navigate(NavInput::EnterMode(InputMode::Search));
+        shell.navigate(NavInput::ExitMode);
+
+        assert_eq!(
+            press(&mut shell, &["d"]),
+            (passed("d", None), vec![]),
+            "`d` after leaving Search is no jump"
+        );
+    }
+
+    #[test]
     fn prefix_expired_cancels_a_waiting_g() {
         let mut shell = shell();
         let mut router = RecordingRouter::default();
@@ -727,7 +760,7 @@ mod tests {
 
         shell.handle(ShellInput::LegacyApply, &mut router);
         shell.handle(ShellInput::DayTick, &mut router);
-        shell.handle(ShellInput::ToastTick(Instant::now()), &mut router);
+        shell.tick_toasts(Instant::now());
         shell.toast(ToastInput::DismissVisible(0));
         shell.dialog(DialogInput::Closed);
 
@@ -737,77 +770,83 @@ mod tests {
     #[test]
     fn a_toast_lives_out_its_lifetime_over_toast_ticks() {
         let mut shell = shell();
-        let mut router = RecordingRouter::default();
         let start = Instant::now();
-        let tick = |shell: &mut Shell, router: &mut RecordingRouter, seconds: u64| {
-            shell.handle(
-                ShellInput::ToastTick(start + Duration::from_secs(seconds)),
-                router,
-            );
+        let tick = |shell: &mut Shell, seconds: u64| {
+            shell.tick_toasts(start + Duration::from_secs(seconds));
         };
         shell.show(toast(ToastKind::Success, "Saved"), local(0));
         shell.show(toast(ToastKind::Error, "Save failed"), local(0));
         assert!(shell.toasts_ticking());
 
-        tick(&mut shell, &mut router, 10);
-        tick(&mut shell, &mut router, 13);
+        tick(&mut shell, 10);
+        tick(&mut shell, 13);
         assert_eq!(
             texts(&shell),
             ["Saved", "Save failed"],
             "the first tick only starts the count"
         );
 
-        tick(&mut shell, &mut router, 15);
+        tick(&mut shell, 15);
         assert_eq!(texts(&shell), ["Save failed"], "an Error stays");
-        assert!(router.routed.is_empty());
     }
 
     #[test]
     fn the_toasts_pause_while_hovered_or_while_a_modal_is_up() {
         let mut shell = shell();
-        let mut router = RecordingRouter::default();
         let start = Instant::now();
         shell.show(toast(ToastKind::Info, "Synced"), local(0));
-        shell.handle(ShellInput::ToastTick(start), &mut router);
+        shell.tick_toasts(start);
 
         shell.toast(ToastInput::Hover(true));
-        shell.handle(
-            ShellInput::ToastTick(start + Duration::from_secs(10)),
-            &mut router,
-        );
+        shell.tick_toasts(start + Duration::from_secs(10));
         assert_eq!(texts(&shell), ["Synced"], "hovered");
 
         shell.toast(ToastInput::Hover(false));
         shell.navigate(NavInput::EnterMode(InputMode::Command));
-        shell.handle(
-            ShellInput::ToastTick(start + Duration::from_secs(20)),
-            &mut router,
-        );
+        shell.tick_toasts(start + Duration::from_secs(20));
         assert_eq!(texts(&shell), ["Synced"], "the palette is up");
 
         shell.navigate(NavInput::ExitMode);
-        shell.handle(
-            ShellInput::ToastTick(start + Duration::from_secs(30)),
-            &mut router,
-        );
+        shell.tick_toasts(start + Duration::from_secs(30));
         assert!(texts(&shell).is_empty());
         assert!(!shell.toasts_ticking());
     }
 
     #[test]
+    fn a_toast_tick_reports_only_a_change_to_the_drawn_stack() {
+        let mut shell = shell();
+        let start = Instant::now();
+        assert!(!shell.tick_toasts(start), "nothing up");
+
+        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+        assert!(
+            !shell.tick_toasts(start),
+            "the first tick only starts the count"
+        );
+        assert!(
+            !shell.tick_toasts(start + Duration::from_secs(60)),
+            "a sticky Error never changes"
+        );
+
+        shell.show(toast(ToastKind::Success, "Saved"), local(0));
+        assert!(!shell.tick_toasts(start + Duration::from_secs(61)));
+        assert!(
+            shell.tick_toasts(start + Duration::from_secs(70)),
+            "the Success expiring changes the stack"
+        );
+        assert_eq!(texts(&shell), ["Save failed"]);
+    }
+
+    #[test]
     fn a_toast_raised_onto_an_empty_stack_starts_a_fresh_count() {
         let mut shell = shell();
-        let mut router = RecordingRouter::default();
         let start = Instant::now();
         shell.show(toast(ToastKind::Info, "one"), local(0));
-        shell.handle(ShellInput::ToastTick(start), &mut router);
+        shell.tick_toasts(start);
         shell.toast(ToastInput::DismissAll);
 
         shell.show(toast(ToastKind::Info, "two"), local(0));
-        shell.handle(
-            ShellInput::ToastTick(start + Duration::from_secs(60)),
-            &mut router,
-        );
+        shell.tick_toasts(start + Duration::from_secs(60));
 
         assert_eq!(texts(&shell), ["two"], "the idle minute isn't its age");
     }

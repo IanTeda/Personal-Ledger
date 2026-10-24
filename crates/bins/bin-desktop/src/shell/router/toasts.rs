@@ -4,7 +4,6 @@
 
 use chrono::Local;
 use gpui::Context;
-use lib_shell::ShellInput;
 use lib_toast::{Notice, ToastKind};
 
 use super::Root;
@@ -56,9 +55,10 @@ impl Root {
     }
 
     /// Starts the Toast clock for the window's life: every [`crate::shell::view::toast::TICK`] while a
-    /// Toast is up, a [`ShellInput::ToastTick`] on the executor's clock, one input each, which the
-    /// Presenter advances the Toasts by unless the pointer is over them or a modal is open. The
-    /// executor's timer and clock, so headless tests advance them; an empty stack sends nothing.
+    /// Toast is up, the executor's time to the Presenter, which advances the Toasts unless the
+    /// pointer is over them or a modal is open, and a redraw only when the stack changed. A tick
+    /// writes nothing, so it's no input through `send`, which would commit and redraw each time. The
+    /// executor's timer and clock, so headless tests advance them; an empty stack ticks nothing.
     pub fn start_toast_clock(&self, cx: &mut Context<'_, Self>) {
         cx.spawn(async move |this, cx| {
             loop {
@@ -69,8 +69,8 @@ impl Root {
                 // Stops once the window, and with it the Shell, has gone.
                 if this
                     .update(cx, |shell, cx| {
-                        if shell.presenter.toasts_ticking() {
-                            shell.send_shell(ShellInput::ToastTick(now), cx);
+                        if shell.presenter.toasts_ticking() && shell.presenter.tick_toasts(now) {
+                            cx.notify();
                         }
                     })
                     .is_err()

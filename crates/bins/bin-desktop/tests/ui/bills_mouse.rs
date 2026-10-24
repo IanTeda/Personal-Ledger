@@ -5,6 +5,7 @@
 
 use super::common;
 use lib_core::BillPlanId;
+use lib_toast::Notice;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -25,6 +26,26 @@ fn clicking_the_tabs_switches_them(app: &mut TestAppContext) {
     assert_eq!(ui.bills().tab, "Planner");
     ui.click("bills-tab-Schedule");
     assert_eq!(ui.bills().tab, "Schedule");
+}
+
+#[gpui::test]
+fn clicking_a_tab_clears_the_status_message(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.queue_notice(Notice::Status("this bill isn't actionable".into()));
+    ui.press("j");
+    assert_eq!(
+        ui.read(|shell| shell.status_message()).as_deref(),
+        Some("this bill isn't actionable")
+    );
+
+    ui.click("bills-tab-Planner");
+
+    assert_eq!(ui.bills().tab, "Planner");
+    assert_eq!(
+        ui.read(|shell| shell.status_message()),
+        None,
+        "the message was about the Schedule tab the click left"
+    );
 }
 
 #[gpui::test]

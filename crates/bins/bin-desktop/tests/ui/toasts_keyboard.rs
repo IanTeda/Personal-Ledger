@@ -112,3 +112,19 @@ fn the_toast_timer_runs_a_toast_out_and_leaves_an_error(app: &mut TestAppContext
     let texts: Vec<String> = ui.toasts().visible.into_iter().map(|t| t.text).collect();
     assert_eq!(texts, ["Save failed"], "an Error stays until dismissed");
 }
+
+#[gpui::test]
+fn a_sticky_toast_ticks_without_an_input(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.raise_toast(ToastKind::Error, "Save failed");
+    let commits = ui.commits();
+
+    ui.advance_clock(Duration::from_secs(10));
+
+    assert_eq!(ui.toasts().visible.len(), 1);
+    assert_eq!(
+        ui.commits(),
+        commits,
+        "a tick writes nothing, so commits nothing"
+    );
+}
