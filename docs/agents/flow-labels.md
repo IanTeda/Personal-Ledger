@@ -11,7 +11,7 @@ A **Flow** is one of the paths through the mattpocock skills. Every open issue c
 | `flow:implementation` | `/implement`, `/tdd`, `/code-review`, `/retro`; `/diagnosing-bugs` for hard bugs | Specified work, ready to build, including bug fixes                                                             |
 | `flow:triage`         | `/triage`                                                                      | A raw issue someone else filed: a bug report or a feature request that hasn't been evaluated yet                |
 
-The `flow:` label is the only label that names the next skill. `priority:` ranks the ticket, `state:` says what is happening to it now, and the `triage:` labels keep their narrower jobs: `needs-info` and `wontfix` record the reporter's status and the outcome, and `ready-for-agent` marks work an agent can take unattended.
+The `flow:` label is the only label that names the next skill. `priority:` ranks the ticket, `state:` says what is happening to it now, and `agent:` says who actions it, and with `flow:implementation` marks work ready to take. Waiting and review are `state:`, because they pause a Flow rather than name one.
 
 - **One per open issue:** every open issue carries exactly one `flow:` label. Closing an issue removes it, the same way it removes the `priority:` rank.
 - **It follows the work:** a ticket's Flow is what happens to it next, not where it came from or where it sits. A Wayfinder map that carries execution in its Notes may chart build slices as child tickets. Those slices are `flow:implementation`, picked up with `/implement`, and they keep their `wayfinder:task` label while they are children of the map.

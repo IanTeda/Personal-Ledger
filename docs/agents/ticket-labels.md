@@ -4,7 +4,7 @@ Every GitHub issue carries a `category:` label naming its intent, every open iss
 
 ## Labels
 
-On finishing, `triage:ready-for-agent` is removed and the `agent:*` label is set to the model and effort that actually actioned the ticket. Other labels are untouched.
+On finishing, the `agent:*` label is set to the model and effort that actually actioned the ticket. Other labels are untouched.
 
 - **Category from creation:** a ticket gets its `category:` when it is created, usually in the backlog, whatever its `wayfinder:` type. A ticket charted from a parent inherits the parent's category unless its intent clearly differs, such as a bug found while charting an enhancement.
 - **The Now cap:** no more than 5 open tickets are `priority:10-now`, whatever their state. A sixth means moving one down to `priority:20-next`.
@@ -13,7 +13,7 @@ On finishing, `triage:ready-for-agent` is removed and the `agent:*` label is set
 
 ## Recording label decisions
 
-A label decision (the `category:`, the `priority:` rank and the `agent:` label) is recorded in a `## Labels` section at the end of the ticket body, one line per label with its reason, and updated in place when the decision changes. The body is the spec, so the reason travels with it. A `state:` or `flow:` change is an event rather than a decision: it is recorded as a comment naming the step that caused it, as [When labels change](#when-labels-change) says, and never as a `## Labels` line.
+A label decision (the `category:`, the `priority:` rank and the `agent:` label, `agent:human` included) is recorded in a `## Labels` section at the end of the ticket body, one line per label with its reason, and updated in place when the decision changes. The body is the spec, so the reason travels with it. A `state:` or `flow:` change is an event rather than a decision: it is recorded as a comment naming the step that caused it, as [When labels change](#when-labels-change) says, and never as a `## Labels` line.
 
 ```markdown
 ## Labels
@@ -48,7 +48,7 @@ The result:
 On finishing, Claude either closes the ticket itself or gates it for your review, decided by the tripwires below. The `agent:*` label picks the model, not the review.
 
 - **Close:** no tripwire fired, and you didn't ask to review first. The closing comment says why Claude closed it without review: no tripwire, every acceptance criterion verified.
-- **Gate:** any tripwire fired, or you asked to review first. Claude swaps the state for `state:30-needs-review`, comments with the commit and each tripwire that fired, and opens the run's final message with `Needs human review: #<n>` and those tripwires. The ticket stays open.
+- **Gate:** any tripwire fired, or you asked to review first. Claude swaps the state for `state:needs-review`, comments with the commit and each tripwire that fired, and opens the run's final message with `Needs human review: #<n>` and those tripwires. The ticket stays open.
 
 Tripwires, checked against the commit's diff and the run; the paths for each are in [This project](#this-project):
 
@@ -67,17 +67,18 @@ A gated ticket closes when you close it, or when you tell Claude it's approved.
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Creating a ticket                      | Gives it a `category:` (inherited from its parent if it has one) and a `priority:` rank, each with its reason in the `## Labels` section, and a `flow:` label: `flow:triage` for a raw issue someone else filed, `flow:grilling` for your own idea, or the Flow the creating step names below |
 | Re-categorising or re-ranking a ticket | Changes the label and updates its line in the `## Labels` section                                                 |
-| Claiming a ticket (assigning it)       | Adds `state:10-in-progress`                                                                                       |
+| Claiming a ticket (assigning it)       | Assigns it; no label. The assignee is the claim                                                                   |
 | About to action a ticket with a model other than its `agent:*` label | Asks the user, and waits for a yes before starting                                                 |
-| Finishing a ticket                     | In the same session as the commit: removes `triage:ready-for-agent`, sets its `agent:<model>-<effort>` label to the model and effort that actioned it and updates its `## Labels` line, then closes or gates it by [Closing or review](#closing-or-review). Closing comments with the commit and why no review was needed, removes its `priority:` rank, `flow:` and `state:` labels, adds `state:90-done`, and closes it. Other labels stay |
-| You approve a `state:30-needs-review` ticket | Comments with your approval, removes its `priority:` rank and `flow:` label, swaps `state:30-needs-review` for `state:90-done`, and closes it |
-| Triage finishes                        | Removes `triage:needs-evaluation` and swaps `flow:triage` for `flow:grilling` (it needs a spec) or `flow:implementation` (it's ready for an agent or a human), or closes it as `triage:wontfix`; comments with the outcome |
+| Finishing a ticket                     | In the same session as the commit: sets its `agent:<model>-<effort>` label to the model and effort that actioned it and updates its `## Labels` line, then closes or gates it by [Closing or review](#closing-or-review). Closing comments with the commit and why no review was needed, removes its `priority:` rank, `flow:` and `state:` labels, adds none, and closes it as completed. Other labels stay |
+| You approve a `state:needs-review` ticket | Comments with your approval, removes its `priority:` rank, `flow:` label and `state:needs-review`, and closes it |
+| Triage finishes                        | Swaps `flow:triage` for `flow:grilling` (it needs a spec) or `flow:implementation` (it's ready for an agent or a human, and gets an `agent:` label, `agent:human` included), or closes it as not planned; comments with the outcome |
+| Triage waits on the reporter           | Adds `state:waiting`, and comments that it's waiting on the reporter                                              |
 | Grilling finds the effort too big for one session | Swaps `flow:grilling` for `flow:wayfinding`; the ticket becomes the map (`wayfinder:map`) and comments why |
 | `/to-tickets` charts a parent's tickets | Gives each new ticket `flow:implementation` and swaps the parent's `flow:` for `flow:implementation`; the parent closes by [Closing or review](#closing-or-review) once its tickets do |
 | A Wayfinder map clears                 | Swaps the map's `flow:wayfinding` for `flow:grilling`, so `/to-spec` and `/to-tickets` turn its decisions into a buildable plan |
 | Implementation hits a seam the ticket didn't decide | Swaps `flow:implementation` for `flow:grilling`, keeps the rank, and comments with the seam |
-| Releasing a ticket unfinished          | Swaps `state:10-in-progress` for `state:20-waiting`, and comments with where it stopped                          |
-| Anything else that blocks a ticket     | Adds `state:20-waiting`, and comments with what it's waiting on                                                  |
+| Releasing a ticket unfinished          | Unassigns it, adds `state:waiting`, and comments with where it stopped                                            |
+| Anything else that blocks a ticket     | Adds `state:waiting`, and comments with what it's waiting on                                                  |
 | A parent ticket closes, or a Wayfinder session starts | Re-ranks the affected tickets, and checks open tickets against `git log`: closes or gates a finished one by [Closing or review](#closing-or-review) |
 
 ## This project
