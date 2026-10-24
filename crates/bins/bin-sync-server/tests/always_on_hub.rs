@@ -26,11 +26,12 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
+use bin_sync_server::sync::{self, SyncService};
 use lib_core::{HlcClock, RowID};
 use lib_database::DatabaseConnection;
 use lib_rpc::{
-    ChangeSet as ProtoChangeSet, PullRequest, PushRequest, SyncService, SyncServiceClient,
-    SyncServiceServer, UtilitiesService, UtilitiesServiceServer,
+    PullRequest, PushRequest, SyncServiceClient, SyncServiceServer, UtilitiesService,
+    UtilitiesServiceServer,
 };
 use secrecy::SecretString;
 use sqlx::SqlitePool;
@@ -217,7 +218,7 @@ async fn push_category_in_a_fresh_session(
     client
         .push(bearer_request(
             PushRequest {
-                change_sets: change_sets.into_iter().map(ProtoChangeSet::from).collect(),
+                change_sets: change_sets.into_iter().map(sync::to_proto).collect(),
             },
             access_token,
         ))

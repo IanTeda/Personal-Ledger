@@ -13,10 +13,11 @@
 //!
 //! ## Types
 //!
-//! - `ChangeSet`: One field-level edit, mirroring `lib_database::ChangeSet`
+//! - `ChangeSet`: One field-level edit, the wire form of `lib_database::ChangeSet`
+//!   (`bin-sync-server`'s `sync` module maps between the two)
 //! - `PushRequest`/`PushResponse`, `PullRequest`/`PullResponse`
 //! - `SyncServiceClient`: gRPC client for connecting to the sync service
-//! - `SyncService`: Server trait for implementing the sync service
+//! - `SyncService`: Server trait for implementing the sync service (`bin-sync-server` does)
 //! - `SyncServiceServer`: Server implementation for the sync service
 
 /// gRPC client for the SyncService.

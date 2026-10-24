@@ -2818,39 +2818,6 @@
       "toSide": "top"
     },
     {
-      "id": "lib-rpc--lib-core",
-      "from": "lib-rpc",
-      "to": "lib-core",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          1536.0,
-          624.0
-        ],
-        [
-          1344.0,
-          624.0
-        ],
-        [
-          1344.0,
-          1224.0
-        ],
-        [
-          896.0,
-          1224.0
-        ]
-      ]
-    },
-    {
-      "id": "lib-rpc--lib-database",
-      "from": "lib-rpc",
-      "to": "lib-database",
-      "label": "recorded exception #759",
-      "fromSide": "left",
-      "toSide": "right"
-    },
-    {
       "id": "lib-tags--lib-accounts",
       "from": "lib-tags",
       "to": "lib-accounts",
@@ -3122,7 +3089,7 @@
         "Solid: normal dependency, read from cargo metadata",
         "Dashed: build-dependency only (lib-locale-build's Catalogue codegen)",
         "Dev-dependencies are not drawn: bin-tui on lib-bills, lib-budgets on lib-payees and lib-tags, lib-payees on lib-categories, and lib-database's contract-tests features on lib-units, lib-transactions, lib-bills and lib-bill-payments",
-        "lib-rpc on lib-database is the recorded exception until the Sync Server's storage is decided (#759)"
+        "lib-rpc is the wire protocol only: bin-sync-server implements SyncService over lib-database itself (#759)"
       ]
     },
     {

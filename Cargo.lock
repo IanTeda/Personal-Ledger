@@ -4903,13 +4903,9 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "fake",
- "lib_core",
- "lib_database",
  "prost",
  "prost-types",
  "rand 0.8.8",
- "sqlx",
- "thiserror 2.0.20",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",

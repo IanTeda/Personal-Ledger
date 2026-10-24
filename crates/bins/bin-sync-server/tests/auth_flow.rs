@@ -25,10 +25,10 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use bin_sync_server::sync::SyncService;
 use lib_database::{DatabaseConnection, SyncUser};
 use lib_rpc::{
-    PullRequest, SyncService, SyncServiceClient, SyncServiceServer, UtilitiesService,
-    UtilitiesServiceServer,
+    PullRequest, SyncServiceClient, SyncServiceServer, UtilitiesService, UtilitiesServiceServer,
 };
 use secrecy::SecretString;
 use sha2::{Digest, Sha256};

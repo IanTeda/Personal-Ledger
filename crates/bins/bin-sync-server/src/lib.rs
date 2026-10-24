@@ -3,3 +3,4 @@
 //! otherwise keep private to `main.rs`. `main.rs` stays the actual entry point.
 
 pub mod auth;
+pub mod sync;

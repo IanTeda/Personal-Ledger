@@ -6,9 +6,9 @@
 
 use lib_core as domain;
 use lib_database as database;
+use lib_rpc as proto;
 
-use crate::error::{RpcError, RpcResult};
-use crate::sync::proto;
+use super::{SyncError, SyncResult};
 
 /// Pull Change Sets from the Sync Server's durable Change Set log since a cursor.
 ///
@@ -19,14 +19,14 @@ use crate::sync::proto;
 pub async fn pull(
     service: &super::SyncService,
     request: tonic::Request<proto::PullRequest>,
-) -> RpcResult<tonic::Response<proto::PullResponse>> {
+) -> SyncResult<tonic::Response<proto::PullResponse>> {
     let pull_request = request.into_inner();
 
     let since_id = pull_request
         .since_id
         .map(|s| {
             s.parse::<domain::RowID>()
-                .map_err(|e| RpcError::InvalidArgument(format!("Invalid since_id '{}': {}", s, e)))
+                .map_err(|e| SyncError::InvalidArgument(format!("Invalid since_id '{}': {}", s, e)))
         })
         .transpose()?;
 
@@ -42,9 +42,6 @@ pub async fn pull(
     tracing::debug!(since_id = ?since_id, count = change_sets.len(), "Pulled Change Sets");
 
     Ok(tonic::Response::new(proto::PullResponse {
-        change_sets: change_sets
-            .into_iter()
-            .map(proto::ChangeSet::from)
-            .collect(),
+        change_sets: change_sets.into_iter().map(super::to_proto).collect(),
     }))
 }

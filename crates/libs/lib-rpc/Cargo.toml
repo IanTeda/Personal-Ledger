@@ -14,15 +14,8 @@ workspace = true
 doctest = false
 
 [dependencies]
-## -- Internal Dependencies --
-lib_database = { path = "../../../crates/libs/lib-database" }
-lib_core = { path = "../../../crates/libs/lib-core" }
-
 ## -- Workspace Shared Dependencies --
-chrono = { workspace = true }
-sqlx = { workspace = true }
 tonic = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 
 ## -- Library Dependencies --

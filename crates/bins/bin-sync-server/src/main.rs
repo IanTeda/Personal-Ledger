@@ -1,5 +1,6 @@
 mod auth;
 mod error;
+mod sync;
 
 use std::sync::Arc;
 
@@ -12,8 +13,9 @@ use tonic::service::Routes;
 
 use error::SyncServerResult;
 use lib_config as config;
-use lib_rpc::{SyncService, SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
+use lib_rpc::{SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
 use lib_tracing as telemetry;
+use sync::SyncService;
 
 /// Bootstrap account credentials for this feasibility cycle -- ADR-0010 fixes the
 /// Sync Server's user store at exactly one account; real credential provisioning is

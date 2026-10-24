@@ -3,10 +3,9 @@
 //! Handles a Client's `SyncService/Push` call: insert every pushed Change Set into the
 //! Sync Server's durable Change Set log (ADR-0009).
 
-use lib_database as database;
+use lib_rpc as proto;
 
-use crate::error::RpcResult;
-use crate::sync::proto;
+use super::SyncResult;
 
 /// Push one or more Change Sets into the Sync Server's durable Change Set log.
 ///
@@ -17,7 +16,7 @@ use crate::sync::proto;
 pub async fn push(
     service: &super::SyncService,
     request: tonic::Request<proto::PushRequest>,
-) -> RpcResult<tonic::Response<proto::PushResponse>> {
+) -> SyncResult<tonic::Response<proto::PushResponse>> {
     let push_request = request.into_inner();
 
     tracing::debug!(
@@ -27,7 +26,7 @@ pub async fn push(
 
     let mut accepted_count = 0;
     for change_set in push_request.change_sets {
-        let change_set: database::ChangeSet = change_set.try_into()?;
+        let change_set = super::from_proto(change_set)?;
         change_set.insert(service.database_ref()).await?;
         accepted_count += 1;
     }

@@ -33,11 +33,12 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
+use bin_sync_server::sync::{self, SyncService};
 use lib_core::{HlcClock, RowID};
 use lib_database::{ChangeSet, DatabaseConnection};
 use lib_rpc::{
-    ChangeSet as ProtoChangeSet, PullRequest, PushRequest, SyncService, SyncServiceClient,
-    SyncServiceServer, UtilitiesService, UtilitiesServiceServer,
+    PullRequest, PushRequest, SyncServiceClient, SyncServiceServer, UtilitiesService,
+    UtilitiesServiceServer,
 };
 use secrecy::SecretString;
 use sqlx::SqlitePool;
@@ -267,7 +268,7 @@ async fn push_pull_sync_with_offline_catch_up() {
                 change_sets: change_sets_one
                     .iter()
                     .cloned()
-                    .map(ProtoChangeSet::from)
+                    .map(sync::to_proto)
                     .collect(),
             },
             &access_token,
@@ -290,7 +291,7 @@ async fn push_pull_sync_with_offline_catch_up() {
                 change_sets: change_sets_two
                     .iter()
                     .cloned()
-                    .map(ProtoChangeSet::from)
+                    .map(sync::to_proto)
                     .collect(),
             },
             &access_token,

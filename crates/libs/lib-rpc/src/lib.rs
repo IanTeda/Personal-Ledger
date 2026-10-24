@@ -4,6 +4,10 @@
 //! for the sync and utilities services. It serves as the main interface for interacting
 //! with the personal ledger's gRPC APIs.
 //!
+//! It is the wire protocol only and holds no storage: `bin-sync-server` implements
+//! [`SyncService`] over its Change Set log, since only bins depend on `lib-database`
+//! (`docs/development/viper-architecture.md`, Dependencies).
+//!
 //! ## Services
 //!
 //! - **SyncService**: Pushes and pulls Change Sets between Clients and the Sync Server (FR.39a).
@@ -14,7 +18,6 @@
 //! Use the re-exported clients and servers to build gRPC clients or implement servers.
 //! Message types are available for constructing requests and handling responses.
 
-pub(crate) mod error;
 mod generated;
 mod sync;
 mod utilities;
