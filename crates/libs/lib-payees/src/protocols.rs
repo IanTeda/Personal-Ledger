@@ -34,7 +34,9 @@ pub trait PayeeRepository {
 /// How many rows in other domains name a Payee. A read port, so `lib-payees` needn't depend on the
 /// Transactions or Bills crates to refuse deleting a Payee in use.
 pub trait PayeeUsage {
-    fn payee_usage(&self, id: PayeeId) -> PayeeUse;
+    /// `None` when the count can't be read: unknown, never taken as unused, so a Payee that may be
+    /// in use is never offered for deleting (#840).
+    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse>;
 }
 
 /// How many rows name a Payee, carried by the delete refusal so a Dialog can say why and offer

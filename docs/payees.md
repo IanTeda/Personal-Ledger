@@ -42,7 +42,7 @@ In the desktop app, open the Payees page in Settings (press `g` `s` and pick Pay
 - Press `n` to add a payee, `e` to edit the selected one, or `d` to delete, deactivate or reactivate it. Each row's `edit` and `delete` links do the same for that row. If you've changed these keys under `[keybindings]` in your settings, the page follows your keys.
 - In the add and edit dialogs, `Tab` and `Shift+Tab` move between the fields. Type a match rule and press `Enter` to add it (that adds the rule, it doesn't save the dialog), click a rule's `✕` to remove it, or press `Backspace` in the empty rule box to remove the last one. Press `ctrl+Enter` to save from any field, or `Esc` to close without saving.
 - If the name is already taken, or another payee already has the match rule you typed, the dialog tells you which and won't save until you change it.
-- The delete dialog knows before you confirm whether the payee is in use. An unused payee asks you to type its name first, so you can't delete one by accident. One in use is offered Deactivate instead, and an inactive one Reactivate.
+- The delete dialog knows before you confirm whether the payee is in use. An unused payee asks you to type its name first, so you can't delete one by accident. One in use is offered Deactivate instead, and an inactive one Reactivate. If the app can't check whether a payee is in use, it treats it as in use: the dialog says so and offers Deactivate (or Reactivate) rather than Delete.
 
 A message at the bottom of the window confirms each change. If a change can't be saved, a message says so straight away and the list goes back to what was last saved.
 

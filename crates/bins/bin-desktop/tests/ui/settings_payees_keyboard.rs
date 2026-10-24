@@ -14,12 +14,16 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
 /// Settings on the Payees page (seven presses down the index) with focus stepped into it.
 fn in_payees(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
+    to_payees(&mut ui);
+    ui
+}
+
+fn to_payees(ui: &mut Harness<'_>) {
     ui.press("g s");
     ui.press("j j j j j j j");
     assert_eq!(ui.settings().page, "Payees");
     ui.press("l");
     assert!(ui.settings().page_focused);
-    ui
 }
 
 /// The newest Toast's text, if one is showing.
@@ -117,6 +121,74 @@ fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppCont
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to payees, so they are back as last saved"
     }));
+}
+
+/// Settings on the Payees page with the row named `name` selected.
+fn on_payee(ui: &mut Harness<'_>, name: &str) {
+    to_payees(ui);
+    let row = ui
+        .settings_payees()
+        .payee_names
+        .iter()
+        .position(|payee| payee == name)
+        // A name the stub doesn't seed selects the first row, which the assert below refuses.
+        .unwrap_or_default();
+    ui.press("g g");
+    for _ in 0..row {
+        ui.press("j");
+    }
+    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some(name));
+}
+
+#[gpui::test]
+fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toast(
+    app: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = common::config_for(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let writer = storage.writer.clone();
+    let mut ui = Harness::with_storage_counting_payees_unused(app, storage);
+    on_payee(&mut ui, "Woolworths");
+    let stored = ui.settings_payees().payee_names;
+
+    ui.press("d");
+    assert_eq!(
+        ui.dialog_value("action").as_deref(),
+        Some("Delete"),
+        "the miscount offers Delete for a Payee the stub's Splits name"
+    );
+    ui.press("W o o l w o r t h s enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        last_toast(&mut ui).as_deref(),
+        Some("Deleted payee Woolworths")
+    );
+    writer.flush().expect("the writer is running");
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_payees().payee_names, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to payees, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
+fn d_on_a_payee_whose_use_cant_be_counted_offers_only_deactivate(app: &mut TestAppContext) {
+    let mut ui = Harness::with_unreadable_payee_usage(app);
+    // Nothing names Netflix, so only the failed count keeps it from Delete.
+    on_payee(&mut ui, "Netflix");
+
+    ui.press("d");
+
+    assert_eq!(ui.dialog_value("action").as_deref(), Some("Deactivate"));
+    assert_eq!(
+        ui.dialog_value("warning").as_deref(),
+        Some(
+            "What uses this payee couldn't be checked, so it can't be deleted — only deactivated."
+        )
+    );
 }
 
 #[gpui::test]

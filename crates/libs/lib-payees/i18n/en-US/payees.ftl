@@ -60,7 +60,8 @@ payees-edit-usage-callout = { $count ->
 } Changing the default category only affects new transactions — existing ones keep whatever category they were assigned at the time.
 
 ## The Delete payee Dialog (6d). A Payee nothing names is deleted; one in use can only be
-## deactivated, and an inactive one in use is offered reactivation. `$name` is the Payee's name,
+## deactivated, and an inactive one in use is offered reactivation. A Payee whose use can't be
+## counted is offered what one in use is, with an `-unchecked` warning. `$name` is the Payee's name,
 ## `$count` the Splits carrying it, `$rules` its match rules.
 
 payees-delete-title = Delete payee — { $name }
@@ -77,6 +78,7 @@ payees-deactivate-warning = This payee is used by <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
 }</strong>, so it can't be deleted — only deactivated.
+payees-deactivate-warning-unchecked = What uses this payee <strong>couldn't be checked</strong>, so it can't be deleted — only deactivated.
 payees-deactivate-callout = It stays on the list and in the Transactions filter, dimmed, and its transactions keep it. Its match rules stop matching on import. You can reactivate it later.
 payees-reactivate-title = Reactivate payee — { $name }
 payees-reactivate-submit = Reactivate payee
@@ -84,5 +86,6 @@ payees-reactivate-warning = This payee is inactive and used by <strong>{ $count 
     [one] { $count } transaction
    *[other] { $count } transactions
 }</strong>.
+payees-reactivate-warning-unchecked = This payee is inactive, and what uses it <strong>couldn't be checked</strong>.
 payees-reactivate-callout = Reactivating counts it again and its match rules match on import again.
 payees-delete-confirm-label = Type { $name } to confirm

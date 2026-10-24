@@ -152,6 +152,42 @@ impl<T: PayeeRepository> PayeeRepository for Marked<T> {
     }
 }
 
+/// A Payees store whose usage counts every Payee as unused, as a count taken before a Split
+/// naming one landed would, so a delete it allows reaches the file.
+struct CountedUnusedPayees {
+    inner: Box<dyn PayeesStore>,
+    usage: lib_payees::fake::InMemoryPayeeUsage,
+}
+
+impl PayeesStore for CountedUnusedPayees {
+    fn payees(&self) -> &dyn PayeeRepository {
+        self.inner.payees()
+    }
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        self.inner.payees_mut()
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        &self.usage
+    }
+
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
+        lib_payees::PortsMut {
+            payees: self.inner.payees_mut(),
+            usage: &self.usage,
+        }
+    }
+
+    fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
+        self.inner.bill_payees()
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.inner.reload()
+    }
+}
+
 /// A Payees port whose writes never reach `stored`, the rows as they are on disk: a reload puts
 /// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingPayees {
@@ -493,6 +529,44 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores::from(storage)),
+        )
+    }
+
+    /// As [`Harness::new`], on a Payees usage whose every count fails, as a Ledger file that
+    /// can't be read would.
+    pub fn with_unreadable_payee_usage(app: &'a mut TestAppContext) -> Self {
+        let mut payees = stub_payees();
+        payees.usage.unreadable = true;
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Stores::fake(
+                InMemoryPorts::stub(chrono::Utc::now()),
+                payees,
+                stub_transactions(),
+                stub_bills(),
+            ),
+        )
+    }
+
+    /// As [`Harness::with_storage`], with a Payees usage that counts every Payee as unused, so a
+    /// delete of a Payee in use reaches the file and its foreign keys refuse it.
+    /// [`Harness::settle_writes`], after the writer is flushed, lets the Shell hear of the failure.
+    pub fn with_storage_counting_payees_unused(
+        app: &'a mut TestAppContext,
+        storage: lib_database::Storage,
+    ) -> Self {
+        let mut stores = Stores::from(storage);
+        stores.payees = Box::new(CountedUnusedPayees {
+            inner: stores.payees,
+            usage: lib_payees::fake::InMemoryPayeeUsage::default(),
+        });
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(stores),
         )
     }
 

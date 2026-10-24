@@ -9,7 +9,8 @@
 //!
 //! Usage is other domains' rows, so [`PayeeUsage`] counts the `splits` and `bill_plans` naming a
 //! Payee in the file, blocking: what the last commit left, not a write still pending. A Payee
-//! those tables name can't be deleted (their foreign keys), which backstops the delete refusal.
+//! those tables name can't be deleted (their foreign keys), which backstops the delete refusal. A
+//! count that can't be read is unknown, never unused (#840).
 
 use lib_bills::{BillPayee, BillPayees};
 use lib_core::{CategoryId, PayeeId, RowID};
@@ -137,18 +138,18 @@ impl PayeeRepository for StoredPayees {
 }
 
 impl PayeeUsage for StoredUsage {
-    /// A count that can't be read is logged and answered as unused: the delete it would allow is
-    /// then refused by the file's foreign keys, and reported as a failed write.
-    fn payee_usage(&self, id: PayeeId) -> PayeeUse {
+    /// A count that can't be read is logged and answered as unknown, so the Payee is never offered
+    /// for deleting while it may be in use (#840).
+    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
         self.writer
             .run(move |pool| async move {
                 let mut conn = pool.acquire().await?;
                 count_usage(&mut conn, id).await
             })
-            .unwrap_or_else(|error| {
+            .inspect_err(|error| {
                 tracing::error!(%error, payee = %id, "Failed to count what names a Payee");
-                PayeeUse::default()
             })
+            .ok()
     }
 }
 
@@ -519,6 +520,34 @@ mod tests {
             payees.reload().expect("the rows load");
             assert!(payees.payees().payee(id).is_some(), "Payee {id} stays");
         }
+    }
+
+    /// A count the file can't answer is unknown, not unused, so the delete it would allow is
+    /// refused before anything is written.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_count_that_fails_is_unknown_and_refuses_the_delete(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut payees = factory.create(default_payees());
+        let netflix = PayeeId::seed(3);
+        factory
+            .writer
+            .run(|pool| async move {
+                sqlx::query("ALTER TABLE splits RENAME TO splits_gone")
+                    .execute(&pool)
+                    .await?;
+                Ok(())
+            })
+            .expect("the table is renamed");
+
+        assert_eq!(payees.usage().payee_usage(netflix), None);
+        assert_eq!(
+            lib_payees::interactor::DeletePayee(netflix).run(payees.split_mut()),
+            Err(lib_payees::DeletePayeeRefusal::Unchecked)
+        );
+        assert!(payees.payees().payee(netflix).is_some(), "Netflix stays");
     }
 
     /// The new foreign keys refuse a Split or Bill Plan naming a Payee that doesn't exist.

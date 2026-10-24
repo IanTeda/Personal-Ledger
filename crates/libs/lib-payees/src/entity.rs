@@ -294,11 +294,14 @@ pub enum DeletePayeeRefusal {
     /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
     #[error("a payee in use can only be deactivated")]
     InUse { splits: usize, bill_plans: usize },
+    /// What names the Payee couldn't be counted, so it may be in use: it can only be deactivated.
+    #[error("a payee whose use can't be counted can only be deactivated")]
+    Unchecked,
 }
 
 /// Removes Payee `id` and its aliases and returns the row, refused while a Split or a Bill Plan
-/// names it: such a Payee can only be deactivated. Checked before anything is removed, so a
-/// refusal leaves `payees` untouched.
+/// names it, or while what names it can't be counted: such a Payee can only be deactivated.
+/// Checked before anything is removed, so a refusal leaves `payees` untouched.
 pub fn delete_payee(
     payees: &mut Vec<Payee>,
     usage: &dyn PayeeUsage,
@@ -308,7 +311,8 @@ pub fn delete_payee(
         .iter()
         .position(|p| p.id == id)
         .ok_or(DeletePayeeRefusal::NotFound)?;
-    let PayeeUse { splits, bill_plans } = usage.payee_usage(id);
+    let PayeeUse { splits, bill_plans } =
+        usage.payee_usage(id).ok_or(DeletePayeeRefusal::Unchecked)?;
     if splits + bill_plans > 0 {
         return Err(DeletePayeeRefusal::InUse { splits, bill_plans });
     }

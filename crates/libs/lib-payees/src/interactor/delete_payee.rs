@@ -48,7 +48,7 @@ mod tests {
     }
 
     #[test]
-    fn a_used_or_missing_payee_is_refused_and_nothing_is_written() {
+    fn a_used_missing_or_uncounted_payee_is_refused_and_nothing_is_written() {
         let mut ports = InMemoryPorts::stub();
         let woolworths = PayeeId::seed(1);
         let used = PayeeUse {
@@ -69,6 +69,14 @@ mod tests {
             DeletePayee(PayeeId::new()).run(ports.split_mut()),
             Err(DeletePayeeRefusal::NotFound)
         );
+        let mut unreadable = before.clone();
+        unreadable.usage.unreadable = true;
+        assert_eq!(
+            DeletePayee(PayeeId::seed(3)).run(unreadable.split_mut()),
+            Err(DeletePayeeRefusal::Unchecked),
+            "a Payee whose use can't be counted may be in use"
+        );
         assert_eq!(ports, before);
+        assert_eq!(unreadable.payees, before.payees);
     }
 }

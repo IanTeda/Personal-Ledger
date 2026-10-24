@@ -150,5 +150,12 @@ pub(super) fn readback(view: &DeletePayeeViewModel) -> Vec<(&'static str, String
                 .unwrap_or_default(),
         ),
         ("action", format!("{:?}", view.action)),
+        (
+            "warning",
+            view.warning
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect(),
+        ),
     ]
 }

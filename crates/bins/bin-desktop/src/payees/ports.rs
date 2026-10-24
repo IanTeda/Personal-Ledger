@@ -72,7 +72,10 @@ fn usage_in(ledger: &Ledger) -> InMemoryPayeeUsage {
     for id in ledger.bill_plans().iter().filter_map(|plan| plan.payee_id) {
         uses.entry(id).or_default().bill_plans += 1;
     }
-    InMemoryPayeeUsage { uses }
+    InMemoryPayeeUsage {
+        uses,
+        ..Default::default()
+    }
 }
 
 impl PayeesPorts for LedgerBackedPorts {
@@ -182,12 +185,16 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(&ledger);
         let ports = ports.borrow();
 
-        let woolworths = PayeesPorts::usage(&*ports).payee_usage(PayeeId::seed(1));
+        let woolworths = PayeesPorts::usage(&*ports)
+            .payee_usage(PayeeId::seed(1))
+            .expect("memory always counts");
         assert!(
             woolworths.splits > 0,
             "the stub's groceries name Woolworths"
         );
-        let telstra = PayeesPorts::usage(&*ports).payee_usage(PayeeId::seed(20));
+        let telstra = PayeesPorts::usage(&*ports)
+            .payee_usage(PayeeId::seed(20))
+            .expect("memory always counts");
         assert_eq!(telstra.bill_plans, 1);
         let leaves = ports.categories().payee_categories();
         assert!(leaves.iter().any(|leaf| leaf.id == CategoryId::seed(7)));
