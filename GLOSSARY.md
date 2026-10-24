@@ -128,7 +128,7 @@ One entry in the Desktop Client's Settings index rail and the View it opens, suc
 _Avoid_: section, tab, settings screen.
 
 **Colour Theme**:
-A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
+A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients, and they are the only Colour Themes: the user cannot add one of their own, and overriding every Colour Role in `[theme]` changes how that Client looks without making a new Colour Theme. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
 
 **Colour Role**:
