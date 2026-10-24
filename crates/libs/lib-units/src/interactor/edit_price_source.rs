@@ -19,13 +19,15 @@ pub struct EditPriceSource {
 impl EditPriceSource {
     /// Returns the record written.
     pub fn run(self, price_sources: &mut dyn PriceSourceRepository) -> Result<PriceSourceRecord> {
-        let (id, new_endpoint) = (self.id, self.endpoint.is_some());
+        let (id, endpoint_changed) = (self.id, self.endpoint.is_some());
         let outcome = self.apply(price_sources);
         match &outcome {
-            Ok(_) => tracing::info!(price_source_id = %id, new_endpoint, "Edited a Price Source"),
+            Ok(_) => {
+                tracing::info!(price_source_id = %id, endpoint_changed, "Edited a Price Source")
+            }
             Err(refusal) => tracing::info!(
                 price_source_id = %id,
-                new_endpoint,
+                endpoint_changed,
                 %refusal,
                 "Refused to edit a Price Source"
             ),

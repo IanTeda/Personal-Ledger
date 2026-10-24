@@ -25,11 +25,11 @@ impl DeleteUnit {
         usage: &dyn UnitUsage,
     ) -> Result<UnitRow> {
         let outcome = self.apply(units, base_unit, usage);
-        let new_base = self.new_base;
+        let new_base = self.new_base.map(tracing::field::display);
         match &outcome {
-            Ok(_) => tracing::info!(unit_id = %self.id, ?new_base, "Deleted a Unit"),
+            Ok(_) => tracing::info!(unit_id = %self.id, new_base, "Deleted a Unit"),
             Err(refusal) => {
-                tracing::info!(unit_id = %self.id, ?new_base, %refusal, "Refused to delete a Unit");
+                tracing::info!(unit_id = %self.id, new_base, %refusal, "Refused to delete a Unit");
             }
         }
         outcome

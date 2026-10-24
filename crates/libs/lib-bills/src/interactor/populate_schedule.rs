@@ -19,7 +19,11 @@ impl PopulateSchedule {
         let mut rows = Rows::read(bills);
         populate(&rows.plans, &mut rows.entries, self.today);
         let written = rows.write_back(bills);
-        tracing::info!(written, today = %self.today, "Populated the Bill Schedule");
+        // Most runs find the Schedule already at the horizon, and a run that writes nothing
+        // changes nothing to log.
+        if written > 0 {
+            tracing::info!(written, today = %self.today, "Generated the Bill Schedule");
+        }
         written
     }
 }

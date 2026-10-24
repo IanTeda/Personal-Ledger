@@ -26,7 +26,7 @@ impl DeletePriceSource {
         match &outcome {
             Ok(deleted) => tracing::info!(
                 price_source_id = %self.0,
-                moved_to_manual = deleted.moved,
+                units_moved_to_manual = deleted.moved,
                 "Deleted a Price Source"
             ),
             Err(refusal) => {
