@@ -123,8 +123,8 @@ pub struct ShellLogs {
 }
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
-/// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes
-/// hang off. `stores` is where the Units, the Transactions and the Bills are kept, the app's
+/// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
+/// off. `stores` is where the Units, the Payees, the Transactions and the Bills are kept, the app's
 /// SQLite adapters or a test's in-memory ports, with the commit every input ends in
 /// (`crate::input::send`) and the writer's failure channel, on which a failed write rolls back.
 pub fn build(
@@ -138,6 +138,7 @@ pub fn build(
 ) -> Root {
     let Stores {
         units,
+        payees,
         transactions,
         bills,
         commit,
@@ -161,12 +162,18 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    // The Transactions and Bills stores are shared: Pay it directly writes both (#779).
+    // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
+    // Payees store is shared by the Ledger's forwarding shim and the Bills reads (#831).
+    let payees: lib_database::SharedPayeesStore = Rc::new(std::cell::RefCell::new(payees));
     let transactions: lib_database::SharedTransactionsStore =
         Rc::new(std::cell::RefCell::new(transactions));
-    let bills = crate::bills::LedgerBackedPorts::shared(Rc::new(std::cell::RefCell::new(bills)));
+    let bills = crate::bills::LedgerBackedPorts::shared(
+        Rc::new(std::cell::RefCell::new(bills)),
+        payees.clone(),
+    );
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
     let storage = crate::ledger_store::LedgerSetup {
+        payees,
         transactions,
         bills: bills.clone(),
     };
@@ -251,9 +258,10 @@ pub struct Root {
     /// Transactions with its Import step, Documents, and Settings. Each reaches `Root` only
     /// through `ViewEvent`.
     views: ViewEntities,
-    /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
-    /// badge and the Inventory removal read the Documents.
-    /// Keeps each View's event subscription alive: dropping one silently stops its events.
+    /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared:
+    /// Settings › Documents edits the Types, and the Documents page, the rail badge and the
+    /// Inventory removal read the Documents. Keeps each View's event subscription alive: dropping
+    /// one silently stops its events.
     view_subscriptions: Vec<Subscription>,
 }
 

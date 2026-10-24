@@ -21,6 +21,7 @@ impl Root {
             if readback.kind != "Skip" {
                 snapshot.plan_name = readback.value("name").map(str::to_string);
                 snapshot.plan_unit = readback.value("unit").map(str::to_string);
+                snapshot.plan_payee = readback.value("payee").map(str::to_string);
             }
         }
         if let Some(dialog) = open.and_then(|open| open.downcast::<PayDialog>()) {

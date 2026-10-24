@@ -61,10 +61,12 @@ mod tests {
     use super::*;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
-    use crate::{BillsAdapter, PendingWrites, TransactionsAdapter, UnitsAdapter, Writer};
+    use crate::{
+        BillsAdapter, PayeesAdapter, PendingWrites, TransactionsAdapter, UnitsAdapter, Writer,
+    };
 
     /// Both adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units are stored first, which a Bill Plan's Unit names.
+    /// stub's Units and Payees are stored first, which a Bill Plan and a Split name.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -79,6 +81,8 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
+            PayeesAdapter::seed(&writer, crate::seed::stub_payees())
+                .expect("the stub Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

@@ -1,7 +1,7 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
-//! the Client migrations, then the Units, Transactions and Bills adapters on the pending batch
-//! every adapter shares. The Desktop and the TUI both open it here, so they read and write the
-//! same rows (ADR-0046), and both build their Shell on the [`Stores`] made from it.
+//! the Client migrations, then the Units, Payees, Transactions and Bills adapters on the pending
+//! batch every adapter shares. The Desktop and the TUI both open it here, so they read and write
+//! the same rows (ADR-0046), and both build their Shell on the [`Stores`] made from it.
 
 use std::path::Path;
 use std::rc::Rc;
@@ -11,14 +11,15 @@ use chrono::{NaiveDate, Utc};
 use lib_units::fake::InMemoryPorts;
 
 use crate::{
-    BillsAdapter, Error, PendingWrites, Result, TransactionsAdapter, UnitsAdapter, WriteFailure,
-    Writer, adapter::store, seed,
+    BillsAdapter, Error, PayeesAdapter, PendingWrites, Result, TransactionsAdapter, UnitsAdapter,
+    WriteFailure, Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
 /// each Interactor call, and the writer every adapter saves through, with its failure reports.
 pub struct Storage {
     pub units: UnitsAdapter,
+    pub payees: PayeesAdapter,
     pub transactions: TransactionsAdapter,
     pub bills: BillsAdapter,
     pub pending: PendingWrites,
@@ -34,6 +35,7 @@ pub struct Storage {
 /// from the [`Storage`] to flush as it quits.
 pub struct Stores {
     pub units: Box<dyn store::UnitsStore>,
+    pub payees: Box<dyn store::PayeesStore>,
     pub transactions: Box<dyn store::TransactionsStore>,
     pub bills: Box<dyn store::BillsStore>,
     pub commit: Rc<dyn crate::Commit>,
@@ -44,6 +46,7 @@ impl From<Storage> for Stores {
     fn from(storage: Storage) -> Self {
         Self {
             units: Box::new(storage.units),
+            payees: Box::new(storage.payees),
             transactions: Box::new(storage.transactions),
             bills: Box::new(storage.bills),
             commit: Rc::new(storage.pending),
@@ -54,9 +57,10 @@ impl From<Storage> for Stores {
 
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,
 /// blocking. A Ledger with no base Unit is new, so it is seeded first with the stub's Units, Price
-/// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), and
-/// the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and Documents name
-/// those Transactions (#774). The first-launch seed is removed once every domain persists.
+/// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), the
+/// stub's Payees, which its Splits and Bill Plans name, and the stub Ledger's Transactions and
+/// Bills as of `today`, whose Paid entries and Documents name those Transactions (#774). The
+/// first-launch seed is removed once every domain persists.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the file.
@@ -67,6 +71,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
     let units = match UnitsAdapter::load(pending.clone()) {
         Err(Error::NotFound(_)) => {
             UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))?;
+            PayeesAdapter::seed(&writer, seed::stub_payees())?;
             TransactionsAdapter::seed(&writer, seed::stub_ledger_transactions(today))?;
             let bills = seed::stub_ledger_bills(today);
             BillsAdapter::seed(&writer, bills.plans, bills.entries)?;
@@ -75,10 +80,12 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
         }
         loaded => loaded?,
     };
+    let payees = PayeesAdapter::load(pending.clone())?;
     let transactions = TransactionsAdapter::load(pending.clone())?;
     let bills = BillsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
+        payees,
         transactions,
         bills,
         pending,
@@ -121,6 +128,31 @@ mod tests {
         expected.remove(0);
         assert_eq!(reopened.transactions.transactions(), expected);
         assert!(reopened.transactions.transaction(gone).is_none());
+    }
+
+    #[test]
+    fn a_new_ledger_opens_with_the_stub_payees_and_an_added_one_survives_a_restart() {
+        use lib_payees::Payee;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        assert_eq!(storage.payees.payees().payees(), seed::stub_payees());
+        let corner = Payee {
+            id: lib_core::PayeeId::new(),
+            name: "Corner Shop".into(),
+            aliases: vec!["CORNER".into()],
+            default_category: None,
+            is_active: true,
+        };
+
+        storage.payees.payees_mut().upsert_payee(corner.clone());
+        storage.pending.commit();
+        storage.writer.flush().expect("the writer is running");
+        drop(storage);
+        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+
+        assert_eq!(reopened.payees.payees().payee(corner.id), Some(corner));
     }
 
     #[test]

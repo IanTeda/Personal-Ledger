@@ -36,6 +36,8 @@ pub struct BillsSnapshot {
     pub plan_name: Option<String>,
     /// The open Add or Edit Dialog's Unit, by code.
     pub plan_unit: Option<String>,
+    /// The open Add or Edit Dialog's Payee, by name.
+    pub plan_payee: Option<String>,
     /// The open Pay Dialog's panel, `Match` or `Direct`.
     pub pay_mode: Option<String>,
     /// How many Transactions the open Pay Dialog offers to match.
@@ -88,6 +90,7 @@ impl BillsPage {
             dialog: None,
             plan_name: None,
             plan_unit: None,
+            plan_payee: None,
             pay_mode: None,
             pay_candidates: None,
         }

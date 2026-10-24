@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               (SELECT COUNT(*) FROM splits WHERE payee_id = ?1)     AS \"splits!: i64\",\n               (SELECT COUNT(*) FROM bill_plans WHERE payee_id = ?1) AS \"bill_plans!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "splits!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "bill_plans!: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "db1e0f9552ad4b33ee36f4e397e5b4eb8d277a32a9faa63010b5616a2407a0ee"
+}

@@ -97,6 +97,29 @@ fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppCont
 }
 
 #[gpui::test]
+fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_payees(app);
+    ui.press("g s");
+    ui.press("j j j j j j j");
+    ui.press("l");
+    let stored = ui.settings_payees().payee_names;
+
+    ui.press("n z o o enter");
+    assert_eq!(
+        ui.settings_payees().payee_names.len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_payees().payee_names, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to payees, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
 fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
     // A new Payee is unused, so the dialog hard-deletes it.

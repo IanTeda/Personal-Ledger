@@ -1,8 +1,9 @@
 //! Halfway shims (#774) between `lib-bills` and the domains that still live on the Ledger:
 //!
-//! - **`BillAccounts`, `BillCategories` and `BillPayees` for `Ledger`.** `lib-bills`' read ports
-//!   answered from the stub's Accounts, Categories and Payees, which aren't persisted, mapped onto
-//!   Bills' own read types. Each flag is filled by its owning domain's rule, so the rule lives once
+//! - **`BillAccounts` and `BillCategories` for `Ledger`.** `lib-bills`' read ports answered from
+//!   the stub's Accounts and Categories, which aren't persisted, mapped onto Bills' own read types.
+//!   `BillPayees` is `lib-database`'s Payees adapter's now (#831); [`bill_payees`] stays for the
+//!   stub's own Bills seed. Each flag is filled by its owning domain's rule, so the rule lives once
 //!   (`docs/development/viper-architecture.md`, Rules > Dependencies). Each mapping moves to
 //!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s;
 //!   [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for a Client that copies
@@ -13,7 +14,7 @@
 
 use lib_accounts::Account;
 use lib_bills::{
-    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
+    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPlan,
     BillScheduleEntry, BillSplit, SplitRef,
 };
 use lib_categories::Category;
@@ -127,12 +128,6 @@ impl BillCategories for Ledger {
     }
 }
 
-impl BillPayees for Ledger {
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        bill_payees(&self.payees)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
@@ -152,7 +147,7 @@ mod tests {
             ledger.accounts().iter().map(|a| a.id).collect::<Vec<_>>()
         );
         assert_eq!(ledger.bill_categories().len(), ledger.categories().len());
-        assert_eq!(ledger.bill_payees().len(), ledger.payees().len());
+        assert_eq!(bill_payees(ledger.payees()).len(), ledger.payees().len());
         let splits: usize = ledger.transactions().iter().map(|t| t.splits.len()).sum();
         assert_eq!(ledger.bill_splits().len(), splits);
         let split = ledger
@@ -192,7 +187,7 @@ mod tests {
             .find(|c| c.name == "Utilities")
             .expect("the stub has Utilities");
         assert!(!utilities.is_leaf);
-        assert!(ledger.bill_payees().iter().any(|p| !p.is_active));
+        assert!(bill_payees(ledger.payees()).iter().any(|p| !p.is_active));
     }
 
     /// `lib-bills`' fake stub stands in for these mappings and for `PayBill`, so its tests run on
@@ -202,7 +197,7 @@ mod tests {
         let ledger = Ledger::stub_on(today());
         assert_eq!(ledger.bill_accounts(), lib_bills::fake::stub_accounts());
         assert_eq!(ledger.bill_categories(), lib_bills::fake::stub_categories());
-        let payees = ledger.bill_payees();
+        let payees = bill_payees(ledger.payees());
         for payee in lib_bills::fake::stub_payees() {
             assert!(payees.contains(&payee), "{payee:?}");
         }

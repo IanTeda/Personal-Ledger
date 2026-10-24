@@ -24,13 +24,14 @@ use lib_units::{LastPrice, PriceLink, UnitRow};
 
 use crate::Result;
 use crate::adapter::bills::BillsAdapter;
+use crate::adapter::payees::PayeesAdapter;
 use crate::adapter::transactions::TransactionsAdapter;
 use crate::adapter::units::UnitsAdapter;
 use crate::writer::Writer;
 
 /// Writes every persisted domain's stub seed, blocking until it lands: Units, Price Sources and
-/// the base Unit, then the Transactions and the Bills dated from `now`'s local day. Each later
-/// domain adds its seed as it migrates.
+/// the base Unit, the Payees, which the Splits and Bill Plans name, then the Transactions and the
+/// Bills dated from `now`'s local day. Each later domain adds its seed as it migrates.
 ///
 /// # Errors
 /// Returns the error of a write; nothing of that domain's is written then.
@@ -38,9 +39,15 @@ use crate::writer::Writer;
 pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
     let today = now.with_timezone(&Local).date_naive();
     UnitsAdapter::seed_from(writer, InMemoryPorts::stub(now))?;
+    PayeesAdapter::seed(writer, stub_payees())?;
     TransactionsAdapter::seed(writer, stub_ledger_transactions(today))?;
     let bills = stub_ledger_bills(today);
     BillsAdapter::seed(writer, bills.plans, bills.entries)
+}
+
+/// `lib-payees`' stub seed, the stub Ledger's Payees, with the ids its Splits and Bill Plans name.
+pub fn stub_payees() -> Vec<lib_payees::Payee> {
+    lib_payees::fake::InMemoryPorts::stub().payees.payees
 }
 
 /// The stub Ledger's Transactions as of `today`: `lib_transactions::fake`'s, with those the Bills
@@ -236,6 +243,30 @@ mod tests {
         let adapter =
             BillsAdapter::load(PendingWrites::new(writer.clone())).expect("the Bills load");
         lib_bills::contract::snapshot(&adapter)
+    }
+
+    fn stored_payees(writer: &Writer) -> Vec<lib_payees::Payee> {
+        let mut adapter =
+            PayeesAdapter::load(PendingWrites::new(writer.clone())).expect("the Payees load");
+        lib_payees::contract::snapshot(&mut adapter)
+    }
+
+    /// The Payees are the stub Ledger's, by id, so the Splits and Bill Plans written after them
+    /// name stored rows.
+    #[test]
+    fn the_stub_seed_writes_the_stub_ledgers_payees_twice_over_the_same_rows() {
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+        let mut expected = lib_ledger::Ledger::stub().payees().to_vec();
+        expected.sort_by_key(|payee| payee.id);
+        for payee in &mut expected {
+            payee.aliases.sort();
+        }
+
+        stub(&writer, now).expect("the first seed lands");
+        stub(&writer, now).expect("the second seed lands");
+
+        assert_eq!(stored_payees(&writer), expected);
     }
 
     #[test]

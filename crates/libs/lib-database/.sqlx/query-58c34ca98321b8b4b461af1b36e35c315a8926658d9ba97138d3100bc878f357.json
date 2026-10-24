@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id                  AS \"id!: PayeeId\",\n               name,\n               default_category_id AS \"default_category_id?: CategoryId\",\n               is_active\n           FROM payees\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: PayeeId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_category_id?: CategoryId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 3,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "58c34ca98321b8b4b461af1b36e35c315a8926658d9ba97138d3100bc878f357"
+}

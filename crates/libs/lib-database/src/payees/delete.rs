@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
-    async fn delete_by_id_rejects_a_payee_still_referenced_by_an_alias(pool: SqlitePool) {
+    async fn delete_by_id_takes_the_payees_aliases_with_it(pool: SqlitePool) {
         let mut payee = crate::Payees::mock();
         payee.name = "Kmart".to_string();
         let payee = payee.insert(&pool).await.unwrap();
@@ -63,11 +63,14 @@ mod tests {
             .await
             .unwrap();
 
-        let result = crate::Payees::delete_by_id(payee.id, &pool).await;
+        crate::Payees::delete_by_id(payee.id, &pool).await.unwrap();
 
         assert!(
-            result.is_err(),
-            "the foreign_keys pragma should reject deleting a Payee its own alias references"
+            crate::PayeeAliases::find_all_for_payee(payee.id, &pool)
+                .await
+                .unwrap()
+                .is_empty(),
+            "the aliases cascade with their Payee"
         );
     }
 }

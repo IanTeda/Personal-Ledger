@@ -8,15 +8,17 @@
 -- settlement by Match, at the Split). It is unique, so a Split pays at most one entry and an entry
 -- is paid by at most one Split.
 --
--- category_id and payee_id have no foreign keys yet: Categories and Payees aren't persisted, so
--- no row would back them (#774). Each becomes a REFERENCES when its domain persists.
+-- payee_id references the Payee, with no cascade: a Payee a Split names can only be deactivated
+-- (ADR-0012), and the key is the backstop to that rule. category_id has no foreign key yet:
+-- Categories aren't persisted, so no row would back it (#774). It becomes a REFERENCES when
+-- Categories persist.
 
 CREATE TABLE IF NOT EXISTS splits (
     transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     position INTEGER NOT NULL CHECK (position >= 0),
     amount TEXT NOT NULL,
     category_id UUID NOT NULL,
-    payee_id UUID,
+    payee_id UUID REFERENCES payees(id),
     bill_schedule_entry_id UUID UNIQUE REFERENCES bill_schedule_entries(id),
     PRIMARY KEY (transaction_id, position)
 );

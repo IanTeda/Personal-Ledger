@@ -7,14 +7,17 @@
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
-//! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them.
+//! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
+//! ([`SharedPayeesStore`]): Bills reads its rows, and the Desktop's Ledger forwards the Payees
+//! writers not yet migrated to it.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc;
 
 use lib_bills::fake::InMemoryBills;
-use lib_bills::{BillPlanRepository, BillScheduleRepository};
+use lib_bills::{BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_payees::{PayeeRepository, PayeeUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
@@ -22,8 +25,10 @@ use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
 };
 
+use crate::adapter::payees::bill_payees;
 use crate::{
-    BillsAdapter, Commit, InMemoryCommit, Result, Stores, TransactionsAdapter, UnitsAdapter,
+    BillsAdapter, Commit, InMemoryCommit, PayeesAdapter, Result, Stores, TransactionsAdapter,
+    UnitsAdapter,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -253,6 +258,110 @@ impl BillsStore for InMemoryBills {
     }
 }
 
+/// A Payees store shared by the Ledger's forwarding shim and the Bills reads. Single-threaded, as
+/// the ports are.
+pub type SharedPayeesStore = Rc<RefCell<dyn PayeesStore>>;
+
+/// The Payees repository and usage ports, wherever they are kept, and the rows as Bills reads
+/// them.
+pub trait PayeesStore {
+    fn payees(&self) -> &dyn PayeeRepository;
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository;
+
+    fn usage(&self) -> &dyn PayeeUsage;
+
+    /// The repository and usage, for one write.
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_>;
+
+    /// Every Payee as `lib-bills`' `BillPayees` reads it, inactive ones included.
+    fn bill_payees(&self) -> Vec<BillPayee> {
+        bill_payees(&self.payees().payees())
+    }
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl PayeesStore for PayeesAdapter {
+    fn payees(&self) -> &dyn PayeeRepository {
+        PayeesAdapter::payees(self)
+    }
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        PayeesAdapter::payees_mut(self)
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        PayeesAdapter::usage(self)
+    }
+
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
+        PayeesAdapter::split_mut(self)
+    }
+
+    fn bill_payees(&self) -> Vec<BillPayee> {
+        lib_bills::BillPayees::bill_payees(self)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        PayeesAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedPayeesStore`]).
+impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
+    fn payees(&self) -> &dyn PayeeRepository {
+        (**self).payees()
+    }
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        (**self).payees_mut()
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        (**self).usage()
+    }
+
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
+        (**self).split_mut()
+    }
+
+    fn bill_payees(&self) -> Vec<BillPayee> {
+        (**self).bill_payees()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl PayeesStore for lib_payees::fake::InMemoryPorts {
+    fn payees(&self) -> &dyn PayeeRepository {
+        &self.payees
+    }
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        &mut self.payees
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        &self.usage
+    }
+
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
+        lib_payees::fake::InMemoryPorts::split_mut(self)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// A commit that counts its calls before handing each on, so a test asserts the Client commits
 /// exactly once per input, whether or not the input wrote anything.
 pub struct CountingCommit {
@@ -283,10 +392,12 @@ impl Commit for CountingCommit {
 }
 
 impl Stores {
-    /// `units`, `transactions` and `bills` in memory, committed through a [`CountingCommit`] whose
-    /// count is returned, on a failure channel nothing reports on, since there is no writer.
+    /// `units`, `payees`, `transactions` and `bills` in memory, committed through a
+    /// [`CountingCommit`] whose count is returned, on a failure channel nothing reports on, since
+    /// there is no writer.
     pub fn fake(
         units: InMemoryPorts,
+        payees: lib_payees::fake::InMemoryPorts,
         transactions: InMemoryTransactions,
         bills: InMemoryBills,
     ) -> (Self, Rc<Cell<usize>>) {
@@ -294,6 +405,7 @@ impl Stores {
         let count = commit.count();
         let stores = Self {
             units: Box::new(units),
+            payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
             commit: Rc::new(commit),
@@ -311,6 +423,7 @@ mod tests {
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
         let (stores, count) = Stores::fake(
             InMemoryPorts::stub(chrono::Utc::now()),
+            lib_payees::fake::InMemoryPorts::stub(),
             InMemoryTransactions::default(),
             InMemoryBills::default(),
         );

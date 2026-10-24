@@ -649,6 +649,7 @@ pub(super) fn readback(
         ("select_open", selects.any_open().to_string()),
         ("unit", chosen_label(&view.unit).unwrap_or_default()),
         ("account", chosen_label(&view.account).unwrap_or_default()),
+        ("payee", chosen_label(&view.payee).unwrap_or_default()),
         ("amount", view.amount.text.clone()),
         ("refusal", view.refusal.clone().unwrap_or_default()),
     ]

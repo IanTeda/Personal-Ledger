@@ -49,6 +49,7 @@ pub fn shell_on(
         Colours::default(),
         lib_database::Stores {
             units,
+            payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
             transactions: Box::new(lib_transactions::fake::InMemoryTransactions::default()),
             bills: Box::new(lib_bills::fake::InMemoryBills::default()),
             commit,

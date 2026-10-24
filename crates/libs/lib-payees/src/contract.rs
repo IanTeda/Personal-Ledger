@@ -1,6 +1,6 @@
 //! The contract every stored Payees port set keeps (ADR-0046), run against both the in-memory
-//! ports here and the `lib-database` adapter (#831), so the fakes the Presenter tests use can be
-//! trusted.
+//! ports here and the `lib-database` adapter (`adapter/payees.rs`), so the fakes the Presenter
+//! tests use can be trusted.
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through

@@ -318,12 +318,13 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::PayeesAdapter;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
-    /// The adapter on one test database, with its pending batch. A reload commits, loads afresh,
-    /// and fails the check if the writer reported a failure, so a write SQLite refuses can't pass
-    /// unseen.
+    /// The adapter on one test database, with its pending batch. The stub's Payees are stored
+    /// first, which a Split names. A reload commits, loads afresh, and fails the check if the
+    /// writer reported a failure, so a write SQLite refuses can't pass unseen.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -333,6 +334,8 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
+            PayeesAdapter::seed(&writer, crate::seed::stub_payees())
+                .expect("the stub Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

@@ -33,10 +33,12 @@ use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
-use lib_core::{PriceSourceId, UnitId};
+use lib_core::{PayeeId, PriceSourceId, UnitId};
 use lib_database::{
-    BillsStore, Commit, CountingCommit, Domain, Stores, TransactionsStore, UnitsStore, WriteFailure,
+    BillsStore, Commit, CountingCommit, Domain, PayeesStore, Stores, TransactionsStore, UnitsStore,
+    WriteFailure,
 };
+use lib_payees::{Payee, PayeeRepository, PayeeUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
@@ -134,6 +136,56 @@ impl<T: TransactionRepository> TransactionRepository for Marked<T> {
     }
 }
 
+impl<T: PayeeRepository> PayeeRepository for Marked<T> {
+    fn payees(&self) -> Vec<Payee> {
+        self.inner.payees()
+    }
+
+    fn upsert_payee(&mut self, payee: Payee) {
+        self.written.set(true);
+        self.inner.upsert_payee(payee);
+    }
+
+    fn delete_payee(&mut self, id: PayeeId) {
+        self.written.set(true);
+        self.inner.delete_payee(id);
+    }
+}
+
+/// A Payees port whose writes never reach `stored`, the rows as they are on disk: a reload puts
+/// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingPayees {
+    payees: Marked<lib_payees::fake::InMemoryPayees>,
+    usage: lib_payees::fake::InMemoryPayeeUsage,
+    stored: lib_payees::fake::InMemoryPayees,
+}
+
+impl PayeesStore for FailingPayees {
+    fn payees(&self) -> &dyn PayeeRepository {
+        &self.payees
+    }
+
+    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        &mut self.payees
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        &self.usage
+    }
+
+    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
+        lib_payees::PortsMut {
+            payees: &mut self.payees,
+            usage: &self.usage,
+        }
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.payees.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
 /// A Transactions port whose writes never reach `stored`, the rows as they are on disk: a reload
 /// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingTransactions {
@@ -216,6 +268,11 @@ fn stub_bills() -> InMemoryBills {
         plans: ledger.bill_plans().to_vec(),
         entries: ledger.bill_entries().to_vec(),
     }
+}
+
+/// The stub Ledger's Payees, as the in-memory ports hold them, nothing naming any.
+fn stub_payees() -> lib_payees::fake::InMemoryPorts {
+    lib_payees::fake::InMemoryPorts::stub()
 }
 
 /// The stub Ledger's Transactions as of the test date, as the in-memory port holds them.
@@ -381,6 +438,7 @@ impl<'a> Harness<'a> {
             configured_level,
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
+                stub_payees(),
                 stub_transactions(),
                 stub_bills(),
             ),
@@ -398,6 +456,7 @@ impl<'a> Harness<'a> {
             None,
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
+                stub_payees(),
                 stub_transactions(),
                 stub_bills(),
             ),
@@ -432,10 +491,44 @@ impl<'a> Harness<'a> {
                     &written,
                     reload_fails,
                 )),
+                payees: Box::new(stub_payees()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Units],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on a Payees port whose every write fails, as SQLite refusing it would;
+    /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
+    /// hear of the failure.
+    pub fn with_failing_payees(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_payees().payees;
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                payees: Box::new(FailingPayees {
+                    payees: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    usage: lib_payees::fake::InMemoryPayeeUsage::default(),
+                    stored,
+                }),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Payees],
                     written,
                     report,
                 }),
@@ -457,6 +550,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                payees: Box::new(stub_payees()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: stored.clone(),
@@ -488,6 +582,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                payees: Box::new(stub_payees()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(FailingBills {
                     bills: Marked {
@@ -519,6 +614,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                payees: Box::new(stub_payees()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: transactions.clone(),

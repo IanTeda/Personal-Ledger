@@ -1,9 +1,15 @@
 -- Migration: create payees and payee_aliases tables -- Payee is a first-class entity with
--- rename aliases (ADR-0012). Created before `transactions`, which references `payees(id)`.
+-- rename aliases (ADR-0012). Created before `splits` and `bill_plans`, which reference
+-- `payees(id)`.
+--
+-- default_category_id is the leaf Category that pre-fills a new Split for the Payee. It has no
+-- foreign key yet: Categories aren't persisted, so no row would back it (#774). It becomes a
+-- REFERENCES when Categories persist.
 
 CREATE TABLE IF NOT EXISTS payees (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    default_category_id UUID,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -19,13 +25,14 @@ BEGIN
     WHERE rowid = NEW.rowid;
 END;
 
--- Write-once: an alias is only ever inserted by a rename, never updated afterward, so it
--- carries no separate timestamp column -- its id's UUIDv7 stands in for when the rename
--- happened (the same reasoning `transactions` uses to omit created_on, FR.21).
+-- A Payee Alias (the UI's "match rule"): a former name or a hand-authored rule, stored trimmed and
+-- upper-cased. pattern is unique across Payees (ADR-0012 as amended), and an alias goes with its
+-- Payee when the Payee is deleted. A Payee's aliases are rewritten whenever it is, so they carry
+-- no timestamp column, and read back in rowid order, the order they were written in.
 CREATE TABLE IF NOT EXISTS payee_aliases (
     id UUID PRIMARY KEY,
-    payee_id UUID NOT NULL REFERENCES payees(id),
-    pattern TEXT NOT NULL
+    payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+    pattern TEXT NOT NULL UNIQUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_payee_aliases_payee_id ON payee_aliases(payee_id);

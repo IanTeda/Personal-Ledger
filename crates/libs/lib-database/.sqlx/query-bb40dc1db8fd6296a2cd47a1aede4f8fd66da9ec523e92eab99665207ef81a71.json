@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM payee_aliases WHERE payee_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bb40dc1db8fd6296a2cd47a1aede4f8fd66da9ec523e92eab99665207ef81a71"
+}

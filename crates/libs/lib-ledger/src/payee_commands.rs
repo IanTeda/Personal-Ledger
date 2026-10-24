@@ -4,7 +4,11 @@
 //!
 //! The rules, the delete refusal included, are `lib_payees`'. What the Ledger adds is the answer
 //! to `lib_payees`' [`PayeeUsage`] port, counted from its own Splits and Bill Plans, until the
-//! Payees adapter answers it from storage (#831).
+//! Payees page reads the Payees adapter's (#832).
+//!
+//! The Ledger's Payees are a read copy of the Payees port (#831): a Client forwards each recorded
+//! change to the port and refreshes the copy from it ([`Ledger::refresh_payees`]), for the Views
+//! that still read Payees from the Ledger. It goes when the last of them reads its own port.
 
 use lib_bills::BillPlan;
 use lib_core::PayeeId;
@@ -49,6 +53,18 @@ impl PayeeUsage for Ledger {
             bill_plans: &self.bill_plans,
         }
         .payee_usage(id)
+    }
+}
+
+impl Ledger {
+    /// Replaces the read copy of the Payees with what the Payees port holds, in the port's order.
+    /// Returns whether anything changed, so a Client announces only a real change.
+    pub fn refresh_payees(&mut self, payees: Vec<lib_payees::Payee>) -> bool {
+        if self.payees == payees {
+            return false;
+        }
+        self.payees = payees;
+        true
     }
 }
 
@@ -165,6 +181,18 @@ mod tests {
             aliases: Vec::new(),
             default_category: None,
         }
+    }
+
+    #[test]
+    fn a_refresh_takes_the_ports_rows_and_reports_only_a_change() {
+        let mut ledger = Ledger::stub();
+        let mut payees = ledger.payees().to_vec();
+
+        assert!(!ledger.refresh_payees(payees.clone()));
+
+        payees.remove(0);
+        assert!(ledger.refresh_payees(payees.clone()));
+        assert_eq!(ledger.payees(), payees);
     }
 
     fn id_of(ledger: &Ledger, name: &str) -> PayeeId {

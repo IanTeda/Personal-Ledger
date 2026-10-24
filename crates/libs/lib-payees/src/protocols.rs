@@ -2,9 +2,9 @@
 //! (ADR-0046): an adapter serves reads from memory and queues each write, so a write never fails
 //! here; a failed save is the adapter's to report. `fake` implements them in memory.
 //!
-//! Until the Payees Presenters land (#832) the Desktop still writes Payees through `lib-ledger`'s
-//! commands, which answer [`PayeeUsage`] from the Ledger; the repository is what `lib-database`'s
-//! adapter will implement (#831).
+//! `lib-database`'s Payees adapter implements both (#831). Until the Payees Presenters land (#832)
+//! the Desktop still writes Payees through `lib-ledger`'s commands, which answer [`PayeeUsage`]
+//! from the Ledger, and forwards their changes to the adapter.
 
 use lib_core::PayeeId;
 

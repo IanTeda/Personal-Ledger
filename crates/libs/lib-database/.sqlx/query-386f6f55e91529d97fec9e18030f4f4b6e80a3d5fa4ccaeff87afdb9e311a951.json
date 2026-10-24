@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT payee_id AS \"payee_id!: PayeeId\", pattern\n           FROM payee_aliases\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "payee_id!: PayeeId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "pattern",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "386f6f55e91529d97fec9e18030f4f4b6e80a3d5fa4ccaeff87afdb9e311a951"
+}
