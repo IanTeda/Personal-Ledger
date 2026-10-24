@@ -22,6 +22,7 @@ use serde_json::Value;
 /// `lib_shell`, the Shell module, keeps the rule too.
 const MIGRATED: &[&str] = &[
     "lib_bills",
+    "lib_payees",
     "lib_shell",
     "lib_toast",
     "lib_transactions",

@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window};
 use lib_core::PayeeId;
-use lib_payees::usage;
+use lib_payees::PayeeUsage;
 
 use super::form::{DeletePayeeForm, PayeeField, PayeeForm};
 use crate::form::field::TextField;
@@ -117,7 +117,7 @@ impl PayeesDialog {
     /// Splits there; a Payee that has gone draws nothing rather than panicking mid-render.
     fn draw(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
         let ledger = scope.ledger.read(cx).ledger();
-        let splits = |id: PayeeId| usage(ledger.transactions(), ledger.accounts(), None, id).splits;
+        let splits = |id: PayeeId| ledger.payee_usage(id).splits;
         let handlers = PayeeDialogHandlers {
             on_field_click: {
                 let actions = actions.clone();

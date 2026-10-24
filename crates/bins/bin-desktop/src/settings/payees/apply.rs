@@ -4,10 +4,9 @@
 use gpui::App;
 use lib_core::PayeeId;
 use lib_ledger::{
-    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, Ledger, LedgerCommand, SetPayeeActive,
-    SetPayeeActiveRefusal,
+    AddPayee, DeletePayee, EditPayee, Ledger, LedgerCommand, SetPayeeActive, SetPayeeActiveRefusal,
 };
-use lib_payees::{PayeeError, get};
+use lib_payees::{DeletePayeeRefusal, PayeeError, get};
 use lib_toast::ToastKind;
 
 use super::{dialogs::PayeesDialog, form::DeleteAction};

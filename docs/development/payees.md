@@ -75,7 +75,7 @@ Neither Client reads Payees from `lib-database`.
 
 - **TUI** — `crates/bins/bin-tui/src/payee/` (`mod.rs`, `fixture.rs`) supplies in-memory Payees; the screen is `view/payees.rs`. Spec: `docs/ux/tui-mockups/04-payees/README.md`.
 - **Desktop** — the Payees surface (handoff `docs/ux/desktop-mockups/20-payees/`, screens 6a–6e), all on in-memory stubs:
-  - `crates/libs/lib-payees/src/lib.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: PayeeId`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee`/`set_active`, `usage` (Split count and base-Unit total, computed live from the Transactions stub), and the counts. The Desktop dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/settings/payees/form.rs`. Start here; it is unit-tested without a window.
+  - `crates/libs/lib-payees/src/lib.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: PayeeId`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee` (refused while a Split or Bill Plan names the Payee)/`set_active`, and the counts. `protocols.rs` holds the ports: `PayeeRepository` and `PayeeUsage` (the Splits and Bill Plans naming a Payee, which `lib-ledger` answers from the Ledger until #831); `fake.rs` their in-memory versions, and `contract.rs` (feature `contract-tests`) the checks the fake and the adapter both keep. The Desktop dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/settings/payees/form.rs`. Start here; it is unit-tested without a window.
   - `src/settings/payees/` — `mod.rs` the `PayeesPage` Entity, `render.rs` the list (6a), `apply.rs` the confirm cycle, `dialogs/` the Add and Edit dialogs (`add.rs`, 6b and 6c) and the Delete/Deactivate/Reactivate dialog (`delete.rs`, 6d); the match-rule chips and input are `dialogs/rules_field.rs`, which only these dialogs use.
   - `src/import.rs` and `src/view/import.rs` — the stubbed Import "match payees" step (6e), opened by the `:import` palette verb: an 18-row seeded statement, `cleaned_name`/`cleaned_token` (the suggested Payee name and remembered alias), `match_row`, `summary` and `commit`, which creates new Payees, remembered aliases and one-Split Transactions in the stubs.
   - `src/view/transactions/import_step.rs` — the step's keys, clicks and commit on the `TransactionsView` Entity, which shows it in place of the Transactions page (ADR-0037).
@@ -94,7 +94,7 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 | PAY-002 | `settings/payees/render.rs` (inactive rows dimmed); Transactions payee filter |
 | PAY-003 | `lib_payees::edit_payee` |
 | PAY-004 | `lib_payees::set_active`, `settings/payees/dialogs/delete.rs` |
-| PAY-005 | `settings/payees/render.rs`, `lib_payees::usage` |
+| PAY-005 | `settings/payees/render.rs` |
 | PAY-007 | `Payee::default_category`, `PayeeOptions` |
 | PAY-008 | `settings/payees/dialogs/rules_field.rs`, `lib_payees::match_alias` |
 | PAY-009 | `lib_payees::delete_payee`, `DeleteAction` |

@@ -10,15 +10,23 @@
 //!   input ignored, and is unique across Payees. It matches raw text as a case-insensitive
 //!   *contains*; the longest matching alias wins, then the Payee name alphabetically. Only active
 //!   Payees match.
-//! - A Payee no Split references may be hard-deleted with its aliases; a referenced one can only
-//!   be deactivated (and reactivated). Inactive Payees drop out of the Payee counts.
+//! - A Payee no Split or Bill Plan names may be hard-deleted with its aliases; a named one can only
+//!   be deactivated (and reactivated). Inactive Payees drop out of the Payee counts. What names a
+//!   Payee is other domains' rows, read through the [`PayeeUsage`] port (`protocols`).
 //! - A default Category is an optional leaf that only pre-fills new Splits.
 
-use bigdecimal::BigDecimal;
-use lib_core::{AccountId, CategoryId, Money, PayeeId, UnitId};
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
+pub mod fake;
+pub mod protocols;
 
-use lib_accounts::Account;
-use lib_transactions::Transaction;
+use lib_core::{CategoryId, PayeeId};
+
+pub use protocols::{PayeeRepository, PayeeUsage, PayeeUse, PortsMut};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payee {
@@ -181,7 +189,7 @@ pub enum PayeeError {
     /// Another Payee already owns this alias.
     #[error("{alias} is already a match rule on {owner}")]
     AliasTaken { alias: String, owner: String },
-    /// A Split references the Payee, so it can only be deactivated.
+    /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
     #[error("a payee in use can only be deactivated")]
     InUse,
     #[error("payee not found")]
@@ -297,13 +305,32 @@ pub fn edit_payee(payees: &mut [Payee], id: PayeeId, draft: &PayeeDraft) -> Resu
     Ok(())
 }
 
-/// Removes Payee `id` and its aliases and returns the row. Whether anything still names it is a
-/// cross-domain rule, so `Ledger::delete_payee` checks that before calling this.
-pub fn delete_payee(payees: &mut Vec<Payee>, id: PayeeId) -> Result<Payee, PayeeError> {
+/// Why a Payee delete was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum DeletePayeeRefusal {
+    #[error("payee not found")]
+    NotFound,
+    /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
+    #[error("a payee in use can only be deactivated")]
+    InUse { splits: usize, bill_plans: usize },
+}
+
+/// Removes Payee `id` and its aliases and returns the row, refused while a Split or a Bill Plan
+/// names it: such a Payee can only be deactivated. Checked before anything is removed, so a
+/// refusal leaves `payees` untouched.
+pub fn delete_payee(
+    payees: &mut Vec<Payee>,
+    usage: &dyn PayeeUsage,
+    id: PayeeId,
+) -> Result<Payee, DeletePayeeRefusal> {
     let index = payees
         .iter()
         .position(|p| p.id == id)
-        .ok_or(PayeeError::NotFound)?;
+        .ok_or(DeletePayeeRefusal::NotFound)?;
+    let PayeeUse { splits, bill_plans } = usage.payee_usage(id);
+    if splits + bill_plans > 0 {
+        return Err(DeletePayeeRefusal::InUse { splits, bill_plans });
+    }
     Ok(payees.remove(index))
 }
 
@@ -315,14 +342,6 @@ pub fn set_active(payees: &mut [Payee], id: PayeeId, is_active: bool) -> Result<
         .ok_or(PayeeError::NotFound)?;
     payee.is_active = is_active;
     Ok(())
-}
-
-/// Whether any Split carries Payee `id`.
-pub fn is_referenced(transactions: &[Transaction], id: PayeeId) -> bool {
-    transactions
-        .iter()
-        .flat_map(|t| &t.splits)
-        .any(|split| split.payee_id == Some(id))
 }
 
 /// The active Payee whose alias `raw` contains (case-insensitively): the longest alias wins, then
@@ -343,45 +362,6 @@ pub fn match_alias(payees: &[Payee], raw: &str) -> Option<PayeeId> {
         .map(|(_, payee)| payee.id)
 }
 
-/// A Payee's live figures for the TRANSACTIONS and TOTAL columns.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PayeeUsage {
-    /// Splits carrying the Payee, in any Unit and all time (what decides delete versus deactivate).
-    pub splits: usize,
-    /// The sum of those Splits whose Account is in the base Unit; other Units never mix in.
-    pub total: Money,
-}
-
-pub fn usage(
-    transactions: &[Transaction],
-    accounts: &[Account],
-    base_unit: Option<UnitId>,
-    id: PayeeId,
-) -> PayeeUsage {
-    let in_base_unit = |account_id: AccountId| {
-        accounts
-            .iter()
-            .find(|a| a.id == account_id)
-            .is_some_and(|a| base_unit == Some(a.unit))
-    };
-    let mut splits = 0;
-    let mut total = BigDecimal::new(0.into(), 2);
-    for transaction in transactions {
-        let counts = in_base_unit(transaction.account_id);
-        for split in transaction.splits.iter().filter(|s| s.payee_id == Some(id)) {
-            splits += 1;
-            if counts {
-                total += split.amount.0.clone();
-            }
-        }
-    }
-    PayeeUsage {
-        splits,
-        total: Money(total),
-    }
-}
-
-/// Active Payees: the sidebar badge and the "N payees" figure.
 /// Payees A–Z, ignoring case: the Settings page's order (it has no usage columns to rank by).
 pub fn sorted_by_name(payees: &[Payee]) -> Vec<&Payee> {
     let mut sorted: Vec<&Payee> = payees.iter().collect();
@@ -394,6 +374,7 @@ pub fn sorted_by_name(payees: &[Payee]) -> Vec<&Payee> {
     sorted
 }
 
+/// Active Payees: the sidebar badge and the "N payees" figure.
 pub fn active_count(payees: &[Payee]) -> usize {
     payees.iter().filter(|p| p.is_active).count()
 }
@@ -409,20 +390,58 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fake::InMemoryPayeeUsage;
 
     #[test]
     fn delete_returns_the_removed_row_and_refuses_an_unknown_id() {
         let mut payees = default_payees();
         let seeded = payees.len();
+        let unused = InMemoryPayeeUsage::default();
 
-        let removed = delete_payee(&mut payees, PayeeId::seed(1)).unwrap();
+        let removed = delete_payee(&mut payees, &unused, PayeeId::seed(1)).unwrap();
         assert_eq!(removed.id, PayeeId::seed(1));
         assert_eq!(payees.len(), seeded - 1);
         assert!(get(&payees, PayeeId::seed(1)).is_none());
         assert_eq!(
-            delete_payee(&mut payees, PayeeId::seed(1)),
-            Err(PayeeError::NotFound)
+            delete_payee(&mut payees, &unused, PayeeId::seed(1)),
+            Err(DeletePayeeRefusal::NotFound)
         );
+    }
+
+    #[test]
+    fn a_payee_a_split_or_bill_plan_names_is_refused_and_left_in_place() {
+        let mut payees = default_payees();
+        let before = payees.clone();
+        let mut usage = InMemoryPayeeUsage::default();
+        let by_splits = PayeeUse {
+            splits: 3,
+            bill_plans: 0,
+        };
+        let by_plan = PayeeUse {
+            splits: 0,
+            bill_plans: 1,
+        };
+        usage.uses.insert(PayeeId::seed(1), by_splits);
+        usage.uses.insert(PayeeId::seed(2), by_plan);
+
+        assert_eq!(
+            delete_payee(&mut payees, &usage, PayeeId::seed(1)),
+            Err(DeletePayeeRefusal::InUse {
+                splits: 3,
+                bill_plans: 0
+            })
+        );
+        assert_eq!(
+            delete_payee(&mut payees, &usage, PayeeId::seed(2)),
+            Err(DeletePayeeRefusal::InUse {
+                splits: 0,
+                bill_plans: 1
+            })
+        );
+        assert_eq!(payees, before);
+        // A named Payee can still be deactivated.
+        set_active(&mut payees, PayeeId::seed(1), false).unwrap();
+        assert!(!get(&payees, PayeeId::seed(1)).unwrap().is_active);
     }
 
     #[test]
@@ -440,8 +459,6 @@ mod tests {
         assert!(edit_payee(&mut payees, PayeeId::seed(u32::MAX), &draft).is_err());
         assert_eq!(payees, before);
     }
-
-    use lib_categories::{self as categories, default_categories};
 
     fn draft(name: &str, aliases: &[&str]) -> PayeeDraft {
         PayeeDraft {
@@ -473,15 +490,13 @@ mod tests {
         assert_eq!(aliases.len(), count);
     }
 
+    /// That each default Category is a leaf is another domain's rule, checked in `lib-ledger`'s
+    /// seed tests, which see both seeds.
     #[test]
-    fn seeded_aliases_are_normalised_and_default_categories_are_leaves() {
-        let categories = default_categories();
+    fn seeded_aliases_are_normalised() {
         for payee in default_payees() {
             for alias in &payee.aliases {
                 assert_eq!(normalise_alias(alias).as_ref(), Some(alias));
-            }
-            if let Some(category) = payee.default_category {
-                assert!(categories::is_leaf(&categories, category), "{}", payee.name);
             }
         }
     }

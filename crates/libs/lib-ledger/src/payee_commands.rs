@@ -2,46 +2,29 @@
 //! anything is written so a refusal leaves the Ledger untouched, and recording an upsert or delete
 //! per Payee it wrote (ADR-0039).
 //!
-//! Single-Payee rules (names, aliases) stay in `lib_payees`. What lives here is the rule that
-//! crosses domains: a Payee that a Split or a Bill Plan names can only be deactivated.
+//! The rules, the delete refusal included, are `lib_payees`'. What the Ledger adds is the answer
+//! to `lib_payees`' [`PayeeUsage`] port, counted from its own Splits and Bill Plans, until the
+//! Payees adapter answers it from storage (#831).
 
+use lib_bills::BillPlan;
 use lib_core::PayeeId;
-use lib_payees::{PayeeDraft, PayeeError, delete_payee, edit_payee, get, insert_payee};
+use lib_payees::{
+    DeletePayeeRefusal, PayeeDraft, PayeeError, PayeeUsage, PayeeUse, delete_payee, edit_payee,
+    get, insert_payee,
+};
+use lib_transactions::Transaction;
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
-/// How many rows name a Payee, so a Dialog can offer Delete or only Deactivate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PayeeUse {
-    pub splits: usize,
-    pub bill_plans: usize,
+/// The Ledger's Splits and Bill Plans as the [`PayeeUsage`] port, borrowed apart from its Payees
+/// so a delete can count and remove in one call.
+struct PayeeNames<'a> {
+    transactions: &'a [Transaction],
+    bill_plans: &'a [BillPlan],
 }
 
-impl PayeeUse {
-    pub fn is_used(self) -> bool {
-        self.splits + self.bill_plans > 0
-    }
-}
-
-/// Why a Payee delete was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeletePayeeRefusal {
-    #[error("payee not found")]
-    NotFound,
-    /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
-    #[error("a payee in use can only be deactivated")]
-    InUse { splits: usize, bill_plans: usize },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum SetPayeeActiveRefusal {
-    #[error("payee not found")]
-    NotFound,
-}
-
-impl Ledger {
-    /// How many Splits and Bill Plans name Payee `id`.
-    pub fn payee_use(&self, id: PayeeId) -> PayeeUse {
+impl PayeeUsage for PayeeNames<'_> {
+    fn payee_usage(&self, id: PayeeId) -> PayeeUse {
         PayeeUse {
             splits: self
                 .transactions
@@ -56,7 +39,26 @@ impl Ledger {
                 .count(),
         }
     }
+}
 
+/// How many Splits and Bill Plans name a Payee, for the Delete Dialog.
+impl PayeeUsage for Ledger {
+    fn payee_usage(&self, id: PayeeId) -> PayeeUse {
+        PayeeNames {
+            transactions: &self.transactions,
+            bill_plans: &self.bill_plans,
+        }
+        .payee_usage(id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum SetPayeeActiveRefusal {
+    #[error("payee not found")]
+    NotFound,
+}
+
+impl Ledger {
     /// Adds a new, active Payee and returns its id.
     pub fn add_payee(&mut self, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
         let id = insert_payee(&mut self.payees, draft)?;
@@ -72,12 +74,11 @@ impl Ledger {
 
     /// Hard-deletes Payee `id`, refused while a Split or a Bill Plan names it.
     pub fn delete_payee(&mut self, id: PayeeId) -> Result<(), DeletePayeeRefusal> {
-        get(&self.payees, id).ok_or(DeletePayeeRefusal::NotFound)?;
-        let PayeeUse { splits, bill_plans } = self.payee_use(id);
-        if splits + bill_plans > 0 {
-            return Err(DeletePayeeRefusal::InUse { splits, bill_plans });
-        }
-        delete_payee(&mut self.payees, id).map_err(|_| DeletePayeeRefusal::NotFound)?;
+        let names = PayeeNames {
+            transactions: &self.transactions,
+            bill_plans: &self.bill_plans,
+        };
+        delete_payee(&mut self.payees, &names, id)?;
         self.pending.push(LedgerChange::DeletePayee(id));
         Ok(())
     }
@@ -219,7 +220,7 @@ mod tests {
         let mut ledger = Ledger::stub();
         let id = ledger.add_payee(&draft("Corner Shop")).unwrap();
         ledger.drain_changes();
-        assert!(!ledger.payee_use(id).is_used());
+        assert!(!ledger.payee_usage(id).is_used());
 
         DeletePayee(id).run(&mut ledger).unwrap();
 
@@ -232,7 +233,7 @@ mod tests {
         let mut ledger = Ledger::stub();
         let id = id_of(&ledger, "J Smith");
         let before = ledger.payees().to_vec();
-        let used = ledger.payee_use(id);
+        let used = ledger.payee_usage(id);
         assert!(used.splits > 0);
 
         assert_eq!(
@@ -257,7 +258,7 @@ mod tests {
         let id = plan.payee_id.unwrap();
         ledger.transactions.clear();
 
-        let used = ledger.payee_use(id);
+        let used = ledger.payee_usage(id);
         assert_eq!(used.splits, 0);
         assert!(used.bill_plans > 0);
         assert!(matches!(
@@ -304,7 +305,7 @@ mod tests {
     fn an_in_use_payee_can_be_deactivated_and_the_change_is_recorded() {
         let mut ledger = Ledger::stub();
         let id = id_of(&ledger, "J Smith");
-        assert!(ledger.payee_use(id).is_used());
+        assert!(ledger.payee_usage(id).is_used());
 
         SetPayeeActive {
             id,

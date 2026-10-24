@@ -44,10 +44,7 @@ pub use inventory_commands::{
     AddArea, AddLocation, EditArea, EditLocation, MoveArea, MoveAreaRefusal, RemoveArea,
     RemoveLocation,
 };
-pub use payee_commands::{
-    AddPayee, DeletePayee, DeletePayeeRefusal, EditPayee, PayeeUse, SetPayeeActive,
-    SetPayeeActiveRefusal,
-};
+pub use payee_commands::{AddPayee, DeletePayee, EditPayee, SetPayeeActive, SetPayeeActiveRefusal};
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};

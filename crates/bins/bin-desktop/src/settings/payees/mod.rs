@@ -19,7 +19,7 @@ use gpui::AnyElement;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_core::PayeeId;
 use lib_ledger::Domain;
-use lib_payees::Payee;
+use lib_payees::{Payee, PayeeUsage};
 
 use crate::{
     ledger_store::{LedgerStore, notify_on},
@@ -242,7 +242,7 @@ impl PayeesPage {
         let Some(payee) = lib_payees::get(self.payees(cx), id) else {
             return;
         };
-        let payee_use = self.sources.ledger.read(cx).ledger().payee_use(id);
+        let payee_use = self.sources.ledger.read(cx).ledger().payee_usage(id);
         let action = DeleteAction::for_payee(payee, payee_use);
         let form = DeletePayeeForm::new(payee, action);
         open_dialog(PayeesDialog::Delete(id, form), Self::land, cx);

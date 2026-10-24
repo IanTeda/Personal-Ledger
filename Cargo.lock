@@ -4888,12 +4888,7 @@ dependencies = [
 name = "lib_payees"
 version = "0.1.0"
 dependencies = [
- "bigdecimal",
- "chrono",
- "lib_accounts",
- "lib_categories",
  "lib_core",
- "lib_transactions",
  "thiserror 2.0.20",
 ]
 

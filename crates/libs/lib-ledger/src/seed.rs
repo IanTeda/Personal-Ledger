@@ -107,6 +107,20 @@ mod tests {
     }
 
     #[test]
+    fn every_payees_default_category_is_a_leaf() {
+        let categories = default_categories();
+        for payee in default_payees() {
+            if let Some(category) = payee.default_category {
+                assert!(
+                    lib_categories::is_leaf(&categories, category),
+                    "{}",
+                    payee.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn per_account_counts_match_the_accounts_stub() {
         let (accounts, _, _, _, transactions) = seed();
         assert_eq!(count_for(&transactions, &accounts, "Wallet"), 96);
