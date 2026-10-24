@@ -19,7 +19,7 @@ Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in
 | `02-accounts` | Accounts | `Ledger TUI Accounts.dc.html` |
 | `03-categories` | Categories | `Ledger TUI Categories.dc.html` |
 | `04-payees` | Payees | `Ledger TUI Payees.dc.html` |
-| `05-settings` | Settings | `Ledger TUI Settings.dc.html` |
+| `05-settings` | Settings: the index page, page picker and sixteen pages | `Ledger TUI Settings.dc.html` |
 | `06-tags` | Tags | `Ledger TUI Tags.dc.html` |
 | `07-units` | Units | `Ledger TUI Units.dc.html` |
 

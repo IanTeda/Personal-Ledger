@@ -1,19 +1,23 @@
-# Handoff: Personal Ledger TUI — Settings (paged, keyboard first)
+# Handoff: Personal Ledger TUI — Settings (index page, keyboard first)
 
 ## Overview
 
 The Settings destination for the `bin-tui` Client. It carries the **same sixteen pages, in the same order, with the same content** as Desktop Settings ([`../../desktop-mockups/16-settings/`](../../desktop-mockups/16-settings/README.md), DESKTOP-063–DESKTOP-083), re-hosted in the TUI's one-view shell and reinterpreted for a keyboard-only terminal.
+
+**Navigation is the Desktop's Medium navigation** ([`../../desktop-mockups/01-shell/README.md`](../../desktop-mockups/01-shell/README.md#medium-settings-navigation-turn-2), DESKTOP-119 and DESKTOP-120, decided in [#692](https://github.com/IanTeda/Personal-Ledger/issues/692)), at every terminal width: `g s` lands on a full-page **Settings index**, `enter` opens a page in its place, and on a page `esc` goes back to the index, `p` opens the page picker and `[` / `]` step through the pages in index order. There is no docked index.
 
 This package replaces the earlier "database-backed settings" draft (a generic key/value `settings` table with defaults in a code registry). That model contradicted [ADR-0014](../../../adr/0014-preferences-table-and-leaner-sync-server-config.md), which chose typed Preference tables over a key/value store, and the Desktop design, so it is retired. Settings now follows the same Preference / Configuration split as the Desktop:
 
 - **Preferences and ledger data** are stored in the ledger, sync as Change Sets, and are marked `●` in the index.
 - **Configuration** stays on this device: `personal-ledger.conf`, the OS keychain, or local files. It never syncs and is marked `○`.
 
-Eighteen cards are drawn, one per page plus the General editing states and the Sync Server dialog:
+Twenty cards are drawn: the index page and the page picker, then one per page plus the General editing states and the Sync Server dialog:
 
 | ID | Local | Page or state | Desktop equivalent |
 | --- | --- | --- | --- |
-| TUI-019 | 4a | General, with the index focused | DESKTOP-063 (16a) |
+| TUI-047 | — | Settings index page, back from Display | DESKTOP-119 |
+| TUI-048 | — | Page picker, a centred popup over General | DESKTOP-120, as a popup |
+| TUI-019 | 4a | General at rest | DESKTOP-063 (16a), DESKTOP-126 |
 | TUI-020 | 4b | General, editing a field in place | 16a field edit |
 | TUI-021 | 4c | Base unit guard (typed confirm) | TUI-only, see below |
 | TUI-032 | 4d | Display | DESKTOP-064 (16f) |
@@ -32,7 +36,7 @@ Eighteen cards are drawn, one per page plus the General editing states and the S
 | TUI-038 | 4j | Logs | DESKTOP-075 (16m) |
 | TUI-039 | 4k | About | DESKTOP-077 (16n) |
 
-Cards appear in index order. The IDs are not consecutive because TUI-019–021 keep their IDs from the earlier draft and new cards take the next free numbers, in the order they were added (see [`../../mockup-ids.md`](../../mockup-ids.md)).
+The index page and picker come first, then the pages in index order. The IDs are not consecutive because TUI-019–021 keep their IDs from the earlier draft and new cards take the next free numbers, in the order they were added (see [`../../mockup-ids.md`](../../mockup-ids.md)).
 
 ## About the design files
 
@@ -48,47 +52,57 @@ Cards appear in index order. The IDs are not consecutive because TUI-019–021 k
 
 | Desktop | TUI interpretation |
 | --- | --- |
-| Settings is a destination with the primary rail kept open | Settings is one View in the shell. There is no primary rail. `g s` or `:settings [page]` opens it. |
-| Second rail (214px) is the index; clicking swaps the pane | Left pane (20 cols) is the index. **Moving the selection with `j/k` swaps the page live**, so you can scan pages without opening them. |
-| Scope note on each page header only | The scope note stays on every page heading. The index also gets a one-glyph scope column (`●` syncs · `○` this device), with a legend pinned to the bottom of the index. |
-| Rail footer "preferences sync · configuration local" | The index legend described above. |
-| Click a field; fields save on change | Focus the page (`l`/`enter`), move to a field (`j/k`), and `enter` opens it **in place**. `enter` saves, `esc` keeps the old value. Saving on commit is the TUI equivalent of "saved automatically". |
+| Settings is a destination with the primary rail kept open | Settings is one View in the shell. There is no primary rail. `g s` or `:settings` opens the index; `:settings <page>` opens a page directly. |
+| Medium: no docked index; `g s` opens a full-page index (DESKTOP-119) | The same, at every width. The index page lists the 16 pages, each with its scope glyph and a one-line description, and `enter` opens the selected page in its place (TUI-047). |
+| Medium: the breadcrumb heading **Settings › <Page> ▾**; **Settings** goes back to the index | The page heading is the breadcrumb `Settings › <Page>`, without the caret, since the picker isn't anchored to it. `esc` is the way back to the index, with the page you left still selected. |
+| Medium: the caret (or `p`) drops the page picker under the page name (DESKTOP-120) | `p` opens the picker as a **centred popup** over the dimmed page, the command popup's treatment rather than a drop-down: the 16 pages in index order, all of them in view at once, so there is no filter, `enter` to open, `esc` to close (TUI-048). A terminal has no pointer to anchor a drop-down to, and a centred popup is where the TUI's other popups already open. |
+| Medium: `[` / `]` step to the previous and next page | The same keys. `[` does nothing on General and `]` nothing on About. |
+| Scope note on each page header only | The scope note stays on every page heading. The index page also gives each row a one-glyph scope column (`●` syncs · `○` this device), with a legend pinned to its bottom. |
+| Rail footer "preferences sync · configuration local" | The index page legend described above. |
+| Click a field; fields save on change | Move to a field (`j/k`), and `enter` opens it **in place**. `enter` saves, `esc` keeps the old value. Saving on commit is the TUI equivalent of "saved automatically". |
 | Segmented controls, radios, checkboxes | Segmented row with `←→` · checkbox `[x]` with `space` · text fields become a one-line input. |
 | `+ Add …` buttons on list pages | The key shown in the block heading (`n add unit`). `n` always adds to the focused block. |
 | Row actions (edit · delete · test …) | Keys in the hint bar acting on the selected row (`e`, `d`, `t` …). |
 | Modal dialogs, 420–540px | Centred floating overlay (`Clear` + bordered `Block`, ~76% width, top third) over the dimmed page, the same treatment as the command palette. |
-| Status bar NORMAL chip + hints | Hint bar per focus. The status line shows the mode (`INSERT`, `CONFIRM`) when it isn't NORMAL, and `✓ Synced HH:MM` on the right. |
-| Header breadcrumb `settings › <page>` | Status line `Personal Ledger │ Settings › <Page>`, the page name in sentence case. |
+| Status bar NORMAL chip + hints | Hint bar per page. The status line shows the mode (`INSERT`, `CONFIRM`) when it isn't NORMAL, and `✓ Synced HH:MM` on the right. |
+| Medium status line `j/k section · [/] pages · p picker · esc settings` | The page's own keys, then `[/] pages · p picker · esc settings` at the end of every page's hint bar. |
+| Header breadcrumb | The status line names the View as it does for every View: `Personal Ledger │ Settings` on the index page, `Personal Ledger │ Settings › <Page>` on a page, the page name in sentence case. |
 
 **List pages and the full views.** Units, Accounts, Categories, Tags and Payees already have their own full TUI views (`../02-accounts`, `../03-categories`, `../04-payees`, `../06-tags`, `../07-units`). Their Settings pages are the compact management lists Desktop shows, and they use **the same forms and keys** as those views (`n`/`e`/`d`, typed delete confirm). `o` opens the full view, and `esc` from it returns to the Settings page. Their existing `g` jumps stay as they are.
+
+**Considered:** keeping the earlier two-pane layout (a 20-col docked index beside the page, `j/k` swapping the page live, focus moving between index and page with `l` / `h`), and docking it only on wide terminals, like the Desktop's Large. One layout at every width was chosen so the TUI matches the Desktop's Medium, which the 96-col minimum is closest to. The index page has room to say what each page holds, every page gets the whole View, focus never has to move between panes, and the picker and `[` / `]` keep any page one step from any other. What it gives up is scanning pages without opening them; `[` / `]` is the replacement.
 
 ## Terminal geometry
 
 Drawn at the shell's **96 × 30 cell** minimum.
 
 ```
-row 0        status line   Personal Ledger │ Settings › <Page>        [MODE ·] ✓ Synced HH:MM
-rows 1..n-2  two panes     index Length(20) │ page Min(0)
-row n-1      hint bar      contextual to the focused pane and page
+row 0        status line   Personal Ledger │ Settings [› <Page>]      [MODE ·] ✓ Synced HH:MM
+rows 1..n-2  view          the index page, or one page, Min(0)
+row n-1      hint bar      the index page's keys, or the page's keys then [/] pages · p picker · esc settings
 ```
 
-- **Index pane:** `settings 16` heading, 16 rows (label + scope glyph), then `Min(0)`, then the 2-row legend pinned to the bottom. The selected row is reversed when the index has focus. When the page has focus, the row is bold with a 1-col accent bar on the left, so you can still see where you are.
-- **Page pane:** heading row (`settings – <page>` bold on the left, the scope note dim on the right) over a strong rule, then the page body. Bodies are `Length` blocks over a `Min(0)`. Pages that fill the height (Logs, History) give the `Min(0)` to their list.
-- **Degrading below 96 columns:** drop the page's notes column, then collapse the index to its scope glyph and the first 3 letters (`gen ●`), then hide the index entirely and show it as a breadcrumb that `h` reopens.
+- **Index page (TUI-047):** heading row (`Settings` bold on the left, `16 pages` dim on the right) over a strong rule, then 16 rows, then `Min(0)`, then the 1-row legend `● syncs with the ledger · ○ this device only` pinned to the bottom over a rule. A row is the page name (16 cols), its scope glyph (2 cols), the one-line description, dim, and a dim `›` at the right edge. The selected row is reversed. The descriptions are Messages; they clip with `…` rather than wrap.
+- **Page:** heading row (the breadcrumb `Settings › <Page>` on the left, `Settings ›` dim; the scope note dim on the right) over a strong rule, then the page body across the whole View. Bodies are `Length` blocks over a `Min(0)`. Pages that fill the height (Logs, History) give the `Min(0)` to their list.
+- **Page picker (TUI-048):** a popup centred in the View, 40 cols wide and 20 rows tall (`Clear` + bordered `Block`): a title row (`Go to Settings Page` bold, `16 pages` dim) over a strong rule, then all 16 pages in index order, each with its scope glyph and a `•` on the page you are on. The page beneath dims.
+- **Degrading below 96 columns:** drop the page's notes column, then the index page's descriptions, leaving names and glyphs. The picker keeps its size and stays centred.
 
 ## Keyboard
 
-Focus has two places: the **index** and the **page**.
+Settings has two places: the **index page** and a **page**. Opening a page from the index, `[` / `]` and the picker all swap what Settings shows in place. None of them push onto the Shell's view stack, so `esc` on a page always comes back to the index, and `esc` on the index leaves Settings.
 
-| Key | Index focused | Page focused |
+| Key | Index page | A page |
 | --- | --- | --- |
-| `j` / `k` | previous / next page (swaps live) | previous / next field or row |
+| `j` / `k` | next / previous page | next / previous field or row |
 | `g` / `G` | first / last page | first / last field or row |
-| `l` / `enter` | focus the page | open the field to edit (form pages); page-specific on list pages |
-| `h` | — | back to the index |
-| `esc` | pop the view stack (leave Settings) | back to the index; inside an editor, keep the old value |
+| `enter` / `l` | open the selected page | open the field to edit (form pages); page-specific on list pages |
+| `[` / `]` | — | previous / next page in index order |
+| `p` | — | open the page picker |
+| `esc` | pop the view stack (leave Settings) | back to the index page, with this page selected; inside an editor, picker or dialog, close that first |
 | `tab` | — | next block on pages with two (Units, AI Connections, Backup) |
 | `u` / `ctrl r` | undo / redo the last change, anywhere in the app (History) | same |
+
+In the page picker: `j` / `k` (or `↑` / `↓`) move · `g` / `G` first / last · `enter` opens the selected page · `esc` closes the picker and stays on the page. It opens with the current page selected. There is no filter: all 16 pages are in view, and the mode stays `NORMAL`.
 
 Inside an open field (mode `INSERT`): `←→` choose · `space` toggle · `enter` save · `esc` keep the old value · `tab` save and move to the next field.
 
@@ -111,14 +125,14 @@ Dialogs: `tab` next field · `ctrl t` test (where there is a Test) · `enter` sa
 Every action is reachable by name ([`../navigation.md`](../navigation.md)):
 
 ```
-settings   [page]              opens Settings on that page (last visited if omitted)
+settings   [page]              opens that page directly; without a page, the index page
 set        <field> [value]     edits a Preference or Configuration field; without a value, opens it in place
 sync       now | edit
 backup     now | export | git
 undo | redo
 ```
 
-`<page>` completes on the 16 index labels. `<field>` completes on the field names of the form pages (`fy-start`, `base`, `date-style`, `glyphs` …). TUI-020 shows the command line echoing the equivalent `:set`, which is how users learn the typed form.
+`<page>` completes on the 16 index labels. A page opened by name sits on the index as if it had been opened from there, so `esc` goes back to the index page with it selected. `<field>` completes on the field names of the form pages (`fy-start`, `base`, `date-style`, `glyphs` …). TUI-020 shows the command line echoing the equivalent `:set`, which is how users learn the typed form.
 
 ---
 
@@ -159,14 +173,19 @@ Desktop's General page changes base unit with a plain select. The TUI keeps the 
 
 ```
 settings_view
-  focus: Index | Page
-  page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees | Documents
-      | Inventory | AiConnections | SyncServer | Backup | History | Logs | About   // remembered per session
+  showing: Index | Page                                     // g s and :settings show Index
+  selected: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees | Documents
+      | Inventory | AiConnections | SyncServer | Backup | History | Logs | About
+      // the index selection and the open page are one value: esc from a page lands on it,
+      // and [ / ] and the picker move it. Remembered per session.
   page_state: per page — selected field/row, focused block, expanded tree nodes
   editor: None | Field { field, candidate, was }            // INSERT
+  picker: None | Picker { selected }
   overlay: None | BaseUnitGuard { to, typed } | EditSyncServer | SetupGitBackup
          | AddProvider | EditProvider(id) | AddAssistant | the domain forms (unit, account, …)
 ```
+
+The page order is one list, shared by the index page, the picker and `[` / `]`, so the three never drift. Each page's description and label are Messages beside it.
 
 The data is Desktop's (`preferences` / ledger data / `configuration`, see its State block). Don't cache counts: derive them on each draw from the same queries the domain views use.
 
@@ -176,9 +195,9 @@ Use theme roles, not the wireframe hex values:
 
 | Role | Used here for |
 | --- | --- |
-| accent | the focused-page index bar, the open field's border, missing prices, failed tests, link text |
-| dim | labels, scope notes, the index legend, undone History rows, disabled hints |
-| selection (reversed) | the selected index row (index focused) or field/row (page focused), the chosen segment, the History marker |
+| accent | the open field's border, missing prices, failed tests, link text |
+| dim | labels, scope notes, the index descriptions and legend, `Settings ›` in the breadcrumb, the page under the picker, undone History rows, disabled hints |
+| selection (reversed) | the selected index or picker row, the selected field or row on a page, the chosen segment, the History marker |
 | header bar | the status line |
 
 Never rely on colour alone. The scope glyphs `●`/`○` are distinct shapes, failures use `■` plus words, and disabled keys are named as disabled in the dialog's own note.
@@ -187,10 +206,10 @@ Never rely on colour alone. The scope glyphs `●`/`○` are distinct shapes, fa
 
 1. **The Desktop mockup itself predates ADR-0021** on Display (it still shows date format and separators). The TUI follows the ADR. Raise the same correction on the Desktop package.
 2. **AI Connections and Git Backup** are decided in [ADR-0034](../../../adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md) and [ADR-0033](../../../adr/0033-git-backup-pushes-a-text-dump-and-documents-to-a-private-repository.md). The Desktop mockup still shows Read & write as selectable and says Git backup "commits the store"; build to the ADRs.
-3. **`g s`** already works in `shell.rs`, but [`../navigation.md`](../navigation.md)'s jump table doesn't list it. Add it there.
+3. **`bin-tui` still draws the retired two-pane groups layout** (`src/view/settings.rs`). Stage 1 of `CLAUDE_CODE.md` replaces it with the index page and page host.
 
 ## Files
 
-- `Ledger TUI Settings.dc.html` — TUI-019–021 and TUI-032–046, in index order. Open in a browser with `support.js` beside it.
+- `Ledger TUI Settings.dc.html` — TUI-047 and TUI-048, then TUI-019–021 and TUI-032–046 in index order. Open in a browser with `support.js` beside it.
 - `support.js` — runtime for the HTML file, not part of the deliverable.
 - `CLAUDE_CODE.md` — the staged work plan for building this design in `bin-tui`.

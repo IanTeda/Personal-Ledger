@@ -15,27 +15,28 @@ The Desktop already builds this destination (`crates/bins/bin-desktop/src/view/s
 
 Each stage is one ticket's worth of work. Run `/tracing` and `/unit-tests` as you go, and run `mise run lint` before every push.
 
-## Stage 1 — Index pane and page host
+## Stage 1 — Index page and page host
 
-**Files:** `src/view/settings.rs` (split it into `src/view/settings/{mod,index}.rs` plus one file per page, following the Desktop's `view/settings/` layout), `src/view/mod.rs`, `src/shell.rs`, `i18n/en-US/settings.ftl`
-**Spec:** README § *How the Desktop maps to the TUI*, § *Terminal geometry*, § *Keyboard* (the index/page focus table)
+**Files:** `src/view/settings.rs` (split it into `src/view/settings/{mod,index,picker}.rs` plus one file per page, following the Desktop's `view/settings/` layout), `src/view/mod.rs`, `src/shell.rs`, `i18n/en-US/settings.ftl`
+**Spec:** README § *How the Desktop maps to the TUI*, § *Terminal geometry*, § *Keyboard*, § *State*; cards TUI-047, TUI-048, TUI-019
 
 The work in this stage:
-- Replace the two-pane groups layout with `Layout::horizontal([Length(20), Min(0)])`.
-- The index lists the 16 pages in the Desktop's order, each with a `●`/`○` scope glyph, and a 2-row legend pinned to the bottom under a `Min(0)` gap.
-- The page pane draws a heading row (`settings – <page>` on the left, the scope note on the right) over a strong rule, then hands the rest of its area to the page.
-- `SettingsView` gains `focus: Index | Page` and `page: SettingsPage`, plus per-page state.
+- Replace the two-pane groups layout with the index page (TUI-047): a heading row, the 16 pages in the Desktop's order, each with its `●`/`○` scope glyph and a one-line description, and the 1-row legend pinned to the bottom under a `Min(0)` gap.
+- A page draws the breadcrumb heading `Settings › <Page>` with the scope note on the right, over a strong rule, then hands the whole View below it to the page.
+- The page picker (TUI-048): a popup centred in the View, the command popup's treatment, with a `Go to Settings Page` title, all 16 pages in index order and a `•` on the open page. It has no filter.
+- `SettingsView` gains `showing: Index | Page`, `selected: SettingsPage` (one value for the index selection and the open page), `picker: Option<Picker>` and per-page state. The page order is one list the index, picker and `[` / `]` all read.
 
 Done when:
-- `j/k` and `g/G` in the index **swap the page live** without moving focus.
-- `l`/`enter` focuses the page, and `h`/`esc` returns to the index.
-- `esc` in the index leaves the `Shell` view stack, as today.
-- The index row is reversed while the index has focus. While the page has focus, it is bold with a 1-col accent bar.
-- The last-visited page is remembered for the session, so `g s` reopens it.
+- On the index page `j/k` and `g/G` move the selection, `enter`/`l` opens the selected page, and `esc` leaves the `Shell` view stack, as today.
+- On a page `esc` returns to the index with that page selected, `[` / `]` step to the previous and next page (doing nothing at General and About), and `p` opens the picker. None of these push onto the `Shell` view stack.
+- The picker opens with the current page selected. `j`/`k` (and `↑`/`↓`) and `g`/`G` move, `enter` opens the page directly and `esc` closes it. The mode stays `NORMAL`.
+- `esc` closes an open editor, picker or overlay before it leaves the page.
+- The selection is remembered for the session: `g s` and `:settings` land on the index page with it selected.
 - `:settings <page>` opens a page directly, and `<page>` completes on the 16 labels in the command popup registry.
+- Each page's hint bar ends with `[/] pages · p picker · esc settings`.
 - Pages without content yet render their heading and scope note over an empty body, not a panic.
-- The old `GROUPS`, the "where values live" box, the reset block, the fake settings table and their layout tests are deleted along with the `H log` and `r`/`R` key paths. Their replacement tests cover the index: every page listed, live swap, the focus round trip, and layout at 96×30 and on a taller terminal.
-- All new text is Messages in `settings.ftl`, read through `msg::`. Page labels and scope notes are Messages. Command ids are not.
+- The old `GROUPS`, the "where values live" box, the reset block, the fake settings table and their layout tests are deleted along with the `H log` and `r`/`R` key paths. Their replacement tests cover the index page and navigation: every page listed, the index-to-page round trip landing on the same selection, `[` / `]` at both ends, picker move and open, and layout at 96×30 and on a taller terminal.
+- All new text is Messages in `settings.ftl`, read through `msg::`. Page labels, descriptions and scope notes are Messages. Command ids are not.
 
 Don't build a shared "settings registry" type. The old design needed one for the key/value store, and this design has none.
 
@@ -116,14 +117,13 @@ Done when:
 - `settings [page]`, `set <field> [value]`, `sync now|edit` and `backup now|export|git` are registry commands that reach the same code paths as their keys.
 - Commands whose backend doesn't exist show "not yet built".
 - Each page's hint bar is generated from the same key table its `handle_key` uses, so a key can't be shown without working, or work without being shown.
-- `navigation.md`'s jump table lists `g s`, which `shell.rs` already binds.
 - `docs/settings.md` describes the TUI Settings pages (run `/end-user-docs` if it needs restructuring).
 
 ## Throughout
 
 - **Theme roles, not hex.** See the README's Style table. Use `crate::colours::Colours`.
 - **Never rely on colour alone.** Scope is `●`/`○`, failures are `■` plus words, and disabled keys are drawn dim *and* named in the dialog's note.
-- **Cells clip, they don't wrap.** Row heights are fixed. Degrade below 96 columns in the README's order: drop notes, then shorten the index, then hide the index behind `h`.
+- **Cells clip, they don't wrap.** Row heights are fixed. Degrade below 96 columns in the README's order: drop the page's notes, then the index page's descriptions.
 - **Wireframe honesty.** Any figure without a real query behind it lives in a clearly named fixture or carries a `// wireframe:` comment. The module doc says which parts are real.
 - **Tests:** unit tests beside each page module for rendering at 96×30, key handling and focus. Use deterministic `fake` data for list pages. There are no doctests.
 - No mouse support required.

@@ -48,7 +48,7 @@ Keybindings fall into three tiers, checked in this order — a key that means so
 | --- | --- |
 | `Ctrl+;` | opens the command popup |
 | `?` | opens Help |
-| `g` then a letter | jumps directly to a domain view (`g a` accounts, `g b` budgets, `g c` categories, `g d` dashboard, `g k` balance checks, `g p` payees, `g r` reports, `g t` transactions, `g u` units) |
+| `g` then a letter | jumps directly to a domain view (`g a` accounts, `g b` budgets, `g c` categories, `g d` dashboard, `g k` balance checks, `g p` payees, `g r` reports, `g s` the Settings index, `g t` transactions, `g u` units) |
 | `Esc` | pops one level back through the view-navigation stack |
 | `q` | quits the app |
 
