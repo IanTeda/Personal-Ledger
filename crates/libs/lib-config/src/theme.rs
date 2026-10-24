@@ -143,10 +143,21 @@ impl ThemeConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ledger::LedgerConfig;
+    use lib_colour_theme::ColourVariant;
+    use std::collections::HashMap;
 
     fn parse_ini(ini: &str) -> ThemeConfig {
-        let config = config::Config::builder()
-            .add_source(config::File::from_str(ini, config::FileFormat::Ini))
+        parse_with_env(ini, HashMap::new())
+    }
+
+    /// Parse an INI file and an injected environment through the same source wiring
+    /// `LedgerConfig::parse` uses, so the env spelling is tested as it ships.
+    fn parse_with_env(ini: &str, env: HashMap<String, String>) -> ThemeConfig {
+        let builder = config::Config::builder()
+            .add_source(config::File::from_str(ini, config::FileFormat::Ini));
+        let config = LedgerConfig::add_explicit_and_env(builder, None, Some(env))
+            .unwrap()
             .build()
             .unwrap();
         ThemeConfig::from_config(&config)
@@ -154,6 +165,59 @@ mod tests {
 
     fn hex(value: &str) -> HexColor {
         HexColor::parse(value).unwrap()
+    }
+
+    /// Every Colour Role under each spelling, through the INI file and the environment: a
+    /// bare key lands on both Colour Variants, `[theme.light]` (or `PERSONAL_LEDGER_THEME__LIGHT__`)
+    /// on Light only, and `[theme.dark]` (or `PERSONAL_LEDGER_THEME__DARK__`) on Dark only.
+    /// A spelling that reaches the wrong variant, or a role that doesn't parse, fails with
+    /// its spelling named.
+    #[test]
+    fn every_role_lands_on_the_variants_its_spelling_names() {
+        const SPELLINGS: [(&str, &str, &[ColourVariant]); 3] = [
+            ("theme", "", &[ColourVariant::Light, ColourVariant::Dark]),
+            ("theme.light", "LIGHT__", &[ColourVariant::Light]),
+            ("theme.dark", "DARK__", &[ColourVariant::Dark]),
+        ];
+
+        for role in ColourRole::ALL {
+            let key = role.key();
+            let expected_colour = hex("#1A2B3C");
+
+            for (section, env_infix, reaches) in SPELLINGS {
+                let env_name = format!(
+                    "PERSONAL_LEDGER_THEME__{env_infix}{}",
+                    key.to_ascii_uppercase()
+                );
+                let cases = [
+                    (
+                        "ini",
+                        format!("[{section}]\n{key} = \"#1A2B3C\"\n"),
+                        HashMap::new(),
+                    ),
+                    (
+                        "env",
+                        String::new(),
+                        HashMap::from([(env_name, "1A2B3C".to_owned())]),
+                    ),
+                ];
+
+                for (source, ini, env) in cases {
+                    let theme = parse_with_env(&ini, env);
+                    let label = format!("{source} {section} {key}");
+                    assert!(theme.invalid.is_empty(), "{label}: {:?}", theme.invalid);
+
+                    for variant in [ColourVariant::Light, ColourVariant::Dark] {
+                        let expected = reaches.contains(&variant).then_some(&expected_colour);
+                        assert_eq!(
+                            theme.overrides.get(variant, role),
+                            expected,
+                            "{label} {variant:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -194,8 +258,8 @@ mod tests {
         let theme = parse_ini(
             "[theme]\naccent = \"#111111\"\n[theme.dark]\naccent = \"#222222\"\n[theme.light]\nnope = \"#333333\"\n",
         );
-        let dark = lib_colour_theme::ColourVariant::Dark;
-        let light = lib_colour_theme::ColourVariant::Light;
+        let dark = ColourVariant::Dark;
+        let light = ColourVariant::Light;
         assert_eq!(
             theme.overrides.get(dark, ColourRole::Accent),
             Some(&hex("#222222"))

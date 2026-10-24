@@ -190,7 +190,8 @@ impl LedgerConfig {
     /// single `_` after the prefix is followed by `SECTION__KEY`, where `__` is the nesting
     /// separator (so single underscores inside a key, like `LOG_FILE_PATH`, are preserved).
     /// `env` replaces the process environment when given.
-    fn add_explicit_and_env(
+    // Crate-visible so the `[theme]` tests can drive the same env wiring `parse` uses.
+    pub(crate) fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
         env: Option<HashMap<String, String>>,

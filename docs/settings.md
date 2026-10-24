@@ -356,6 +356,32 @@ accent = "#1F6FEB"
 accent = "#58A6FF"
 ```
 
+### Making your own look
+
+To give this Client its own look, override all seven Colour Roles. Set the same keys under `[Theme.Light]` and `[Theme.Dark]`, so each Colour Variant has its own colours:
+
+```ini
+[Theme.Light]
+foreground = "#1F2328"
+background = "#FFFFFF"
+accent = "#1F6FEB"
+cursor = "#1F6FEB"
+muted = "#656D76"
+positive = "#1A7F37"
+negative = "#CF222E"
+
+[Theme.Dark]
+foreground = "#E6EDF3"
+background = "#0D1117"
+accent = "#58A6FF"
+cursor = "#58A6FF"
+muted = "#8B949E"
+positive = "#3FB950"
+negative = "#F85149"
+```
+
+Your overrides change the colours of the Colour Theme you picked, and the Colour Theme picker still lists the built-in themes. Overriding every role doesn't add a new Colour Theme, and the look stays on this Client.
+
 ## Keybindings Section
 
 The `[Keybindings]` section defines the keyboard navigation keys and key combinations. Refer to [Navigation and keyboard grammar](navigation-design.md) for Personal Ledger's philosophy and approach to keyboard navigation.
@@ -540,10 +566,32 @@ confirm = "y"
 cancel = "x"
 
 # Optional: override Colour Roles of the chosen Colour Theme on this Client.
+# A bare [Theme] key applies to both Colour Variants; [Theme.Light] and [Theme.Dark]
+# apply to one and win over the bare key. Name only the roles you want to change.
 # [Theme]
+# foreground = "#1F2328"
+# background = "#FFFFFF"
 # accent = "#1F6FEB"
+# cursor = "#1F6FEB"
+# muted = "#656D76"
+# positive = "#1A7F37"
+# negative = "#CF222E"
+# [Theme.Light]
+# foreground = "#1F2328"
+# background = "#FFFFFF"
+# accent = "#1F6FEB"
+# cursor = "#1F6FEB"
+# muted = "#656D76"
+# positive = "#1A7F37"
+# negative = "#CF222E"
 # [Theme.Dark]
+# foreground = "#E6EDF3"
+# background = "#0D1117"
 # accent = "#58A6FF"
+# cursor = "#58A6FF"
+# muted = "#8B949E"
+# positive = "#3FB950"
+# negative = "#F85149"
 
 # Only read by bin-sync-server -- bin-tui/bin-desktop ignore this section.
 [Sync-Server]

@@ -139,6 +139,8 @@ accent = "#ff6666"
 
 As environment variables: `PERSONAL_LEDGER_THEME__ACCENT`, `PERSONAL_LEDGER_THEME__DARK__ACCENT`. A value that is not a colour, or an unknown key, is ignored with a `warn` naming the key and value; the Client still starts.
 
+Overriding all seven roles in both Colour Variants is how a user gets their own look. It is still not a Colour Theme: the `colour_theme` Preference and the Colour Theme picker are unchanged, and the overrides stay on that Client. Per-Client theme files and Ledger-stored themes were considered and set aside (#338): the files would not sync, and Ledger-stored themes would need a table and sync rows for little gain.
+
 ### Resolution
 
 1. Colour Theme from the `colour_theme` Preference (or the default).
