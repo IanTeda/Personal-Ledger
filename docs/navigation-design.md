@@ -74,7 +74,11 @@ When one page draws several tables, they share one selection, and the keys treat
 
 ## What's actually configurable
 
-`lib-config`'s `KeyBindingConfig` (`crates/libs/lib-config/src/keybindings.rs`, `[keybindings]` in `personal-ledger.conf`, `PERSONAL_LEDGER_KEYBINDINGS__*` env vars) is `bin-tui`-only today — `bin-desktop` doesn't consume it, and bringing it in is explicitly out of scope for this map (see "Out of scope" on the map). Within `bin-tui`, only the truly-global set is in scope for real remapping, per the map's own boundary — no per-view key (`n`/`e`/`d`/`a`/... inside any one domain's own `handle_key`) is configurable:
+`lib-config`'s `KeyBindingConfig` (`crates/libs/lib-config/src/keybindings.rs`, `[keybindings]` in `personal-ledger.conf`, `PERSONAL_LEDGER_KEYBINDINGS__*` env vars) is read by both Clients.
+
+`bin-desktop` reads the whole section once at startup and hands it to `shell::router::build` (`ShellBindings`). Every key it binds is remappable by command name: the Shell's global keymap (`lib_shell::global_keymap`, the Toast keys included), the keys every module Dialog shares (`lib_shell::dialog_keymap`), and each VIPER module's page keymap (Units, Payees, Bills). The status-line hints show the key each command is bound to now. Views not yet on a VIPER module still hardcode their keys.
+
+Within `bin-tui`, only the truly-global set is in scope for real remapping, per the map's own boundary — no per-view key (`n`/`e`/`d`/`a`/... inside any one domain's own `handle_key`) is configurable:
 
 - `back` (`Esc`), `help` (`?`), and `open_command_popup` (`:`) — bare keys, no modifier by default; all three are read from `KeyBindingConfig` at `Shell` startup (`Shell::with_keybindings`, wired from `main.rs`) as of [#160](https://github.com/IanTeda/Personal-Ledger/issues/160).
 - `quit` is **not** in this set — see "Quit" above.
