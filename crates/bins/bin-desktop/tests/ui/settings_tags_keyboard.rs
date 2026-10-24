@@ -188,3 +188,10 @@ fn enter_in_the_merge_dialog_merges_the_duplicate_away(app: &mut TestAppContext)
     assert!(!tags_page.tag_names.contains(&source));
     assert_eq!(tags_page.selected_tag.as_ref(), Some(&target));
 }
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_tags(app);
+
+    ui.assert_cheat_sheet_matches_status();
+}

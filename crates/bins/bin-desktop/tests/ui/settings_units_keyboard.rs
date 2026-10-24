@@ -731,3 +731,25 @@ fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppCont
         "tab is no longer bound"
     );
 }
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.assert_cheat_sheet_matches_status();
+}
+
+#[gpui::test]
+fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    assert!(
+        ui.status_as_shortcuts()
+            .iter()
+            .any(|(_, keys)| keys == "ctrl+n"),
+        "the status line shows the rebound key"
+    );
+
+    ui.assert_cheat_sheet_matches_status();
+}

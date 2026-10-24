@@ -21,7 +21,7 @@ pub type OnClose = dialog::OnClick;
 /// shell. It carries the shortcuts of the page it was opened over, worded when it opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDialog {
-    pub shortcuts: Vec<(String, &'static str)>,
+    pub shortcuts: Vec<(String, String)>,
 }
 
 impl Dialog for HelpDialog {
@@ -33,7 +33,7 @@ impl Dialog for HelpDialog {
     }
 }
 
-pub fn render(on_close: OnClose, settings: &[(String, &'static str)], cx: &App) -> AnyElement {
+pub fn render(on_close: OnClose, settings: &[(String, String)], cx: &App) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -252,7 +252,7 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_col().gap(px(10.0)).children(rows)
 }
 
-fn shortcuts_column(settings: &[(String, &'static str)], cx: &App) -> impl IntoElement {
+fn shortcuts_column(settings: &[(String, String)], cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
@@ -283,7 +283,7 @@ fn shortcuts_column(settings: &[(String, &'static str)], cx: &App) -> impl IntoE
                 .child(two_columns(
                     settings
                         .iter()
-                        .map(|(label, keys)| shortcut(label, *keys, cx))
+                        .map(|(label, keys)| shortcut(label, keys, cx))
                         .collect(),
                 ))
         })

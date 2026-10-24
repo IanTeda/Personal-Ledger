@@ -34,7 +34,7 @@ use crate::{
         },
     },
     shell::view::{
-        statusline::{PageStatus, owned_hints},
+        statusline::{Hint, PageStatus, owned_hints},
         window_size::WindowSize,
     },
     units::{UnitsPage, UnitsSetup, units_page},
@@ -116,15 +116,17 @@ pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
         Self::PAGE.scope_note().into_any_element()
     }
 
-    /// The page's keys as `(key, action)`, for the legend and the `?` cheat sheet.
-    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
-        settings_plain_page_hints()
+    /// The page's keys as `(key, action)`, for the legend and the `?` cheat sheet. The keys are
+    /// owned, so a page on a module Presenter returns its Presenter's hints here, rebound keys
+    /// included, and the cheat sheet lists what its status line shows.
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        owned_hints(settings_plain_page_hints())
     }
 
     /// The status line while the page has focus.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: owned_hints(self.hints(cx)),
+            hints: self.hints(cx),
             right: Self::PAGE.scope_note(),
         })
     }
@@ -168,7 +170,7 @@ pub trait PageHandle {
     fn set_page_focused(&self, focused: bool, cx: &mut App);
     fn set_frame(&self, frame: PageFrame, cx: &mut App);
     fn heading_meta(&self, cx: &App) -> AnyElement;
-    fn hints(&self, cx: &App) -> Vec<(&'static str, String)>;
+    fn hints(&self, cx: &App) -> Vec<Hint>;
     fn page_status(&self, cx: &App) -> Option<PageStatus>;
     fn side_pane(&self, cx: &App) -> Option<AnyElement>;
     fn view(&self) -> AnyView;
@@ -222,7 +224,7 @@ impl<T: Page> PageHandle for Entity<T> {
         self.read(cx).heading_meta(cx)
     }
 
-    fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
+    fn hints(&self, cx: &App) -> Vec<Hint> {
         self.read(cx).hints(cx)
     }
 

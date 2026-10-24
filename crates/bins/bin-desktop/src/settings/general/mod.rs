@@ -15,6 +15,7 @@ use lib_units::interactor::SetBaseUnit;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     settings::{SettingsPage, hints::settings_general_hints, pages::Page},
+    shell::view::statusline::{Hint, owned_hints},
     units::DesktopPorts,
     view::event::ViewEvent,
 };
@@ -138,7 +139,7 @@ impl Page for GeneralPage {
         self.page_focused = focused;
     }
 
-    fn hints(&self, _cx: &gpui::App) -> Vec<(&'static str, String)> {
-        settings_general_hints()
+    fn hints(&self, _cx: &gpui::App) -> Vec<Hint> {
+        owned_hints(settings_general_hints())
     }
 }

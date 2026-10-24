@@ -32,7 +32,7 @@ use crate::{
     navigation::{command::AccountsVerb, movement::Movement},
     shell::view::{
         dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
+        statusline::{Hint, PageStatus, owned_hints},
     },
     view::event::{Reveal, ViewEvent},
 };
@@ -143,8 +143,8 @@ impl Page for AccountsPage {
         self.page_focused = focused;
     }
 
-    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
-        accounts_hints()
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        owned_hints(accounts_hints())
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {

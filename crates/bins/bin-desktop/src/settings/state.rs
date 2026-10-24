@@ -352,8 +352,8 @@ impl SettingsView {
 
     /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
     /// page's.
-    pub fn cheat_sheet(&self, cx: &App) -> Vec<(String, &'static str)> {
-        settings_index_hints()
+    pub fn cheat_sheet(&self, cx: &App) -> Vec<(String, String)> {
+        owned_hints(settings_index_hints())
             .into_iter()
             .chain(self.pages.get(self.selected_section).hints(cx))
             .map(|(keys, action)| (action, keys))

@@ -31,7 +31,7 @@ use crate::{
     settings::hints::settings_tags_hints,
     shell::view::{
         dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
+        statusline::{Hint, PageStatus, owned_hints},
     },
     view::event::ViewEvent,
 };
@@ -144,8 +144,8 @@ impl Page for TagsPage {
         self.page_focused = focused;
     }
 
-    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
-        settings_tags_hints()
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        owned_hints(settings_tags_hints())
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {

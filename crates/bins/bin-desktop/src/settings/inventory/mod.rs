@@ -40,7 +40,7 @@ use crate::{
     settings::hints::settings_inventory_hints,
     shell::view::{
         dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
+        statusline::{Hint, PageStatus, owned_hints},
     },
     view::event::ViewEvent,
 };
@@ -274,8 +274,8 @@ impl Page for InventoryPage {
     }
 
     /// The `?` cheat-sheet's keys for the page, by the selected row.
-    fn hints(&self, cx: &App) -> Vec<(&'static str, String)> {
-        settings_inventory_hints(self.selected_row(cx))
+    fn hints(&self, cx: &App) -> Vec<Hint> {
+        owned_hints(settings_inventory_hints(self.selected_row(cx)))
     }
 
     fn set_page_focused(&mut self, focused: bool) {

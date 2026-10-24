@@ -29,7 +29,7 @@ use crate::{
         pages::{Page, PageFrame, focus_on_row_click},
         state::SettingsView,
     },
-    shell::view::{statusline::PageStatus, window_size::WindowSize},
+    shell::view::{statusline::Hint, window_size::WindowSize},
     view::event::ViewEvent,
 };
 
@@ -150,17 +150,15 @@ impl Page for UnitsPage {
         true
     }
 
-    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        Some(PageStatus {
-            hints: self
-                .presenter
-                .view_model()
-                .hints
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect(),
-            right: SettingsPage::Units.scope_note(),
-        })
+    /// The Presenter's legend, rebound keys included, which the default `page_status` and the `?`
+    /// cheat sheet both read.
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        self.presenter
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| (hint.chord, hint.action))
+            .collect()
     }
 
     /// X-Large docks the detail pane. The layout, not an input, so nothing is committed.

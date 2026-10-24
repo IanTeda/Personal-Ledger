@@ -22,7 +22,7 @@ use crate::{
         pages::{Page, PageFrame},
         step_choice,
     },
-    shell::view::statusline::{PageStatus, owned_hints},
+    shell::view::statusline::{Hint, PageStatus, owned_hints},
     theme::colours::ColourChange,
     view::event::ViewEvent,
 };
@@ -75,10 +75,10 @@ impl Page for DisplayPage {
         self.body_width = frame.body_width;
     }
 
-    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
         let mut keys = settings_display_hints();
         keys.extend(settings_colour_grid_hints().into_iter().take(2));
-        keys
+        owned_hints(keys)
     }
 
     fn page_status(&self, _cx: &App) -> Option<PageStatus> {

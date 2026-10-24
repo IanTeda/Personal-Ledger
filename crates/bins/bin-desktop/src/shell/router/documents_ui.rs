@@ -57,11 +57,17 @@ impl Root {
     }
 
     /// The `?` cheat-sheet's Documents group as `(action, keys)`. Empty off the page.
-    pub(super) fn documents_cheat_sheet(&self, cx: &gpui::App) -> Vec<(String, &'static str)> {
+    pub(super) fn documents_cheat_sheet(&self, cx: &gpui::App) -> Vec<(String, String)> {
         if self.nav().noun() != Noun::Documents {
             return Vec::new();
         }
-        self.views.documents.read(cx).cheat_sheet()
+        self.views
+            .documents
+            .read(cx)
+            .cheat_sheet()
+            .into_iter()
+            .map(|(action, keys)| (action, keys.to_string()))
+            .collect()
     }
 
     /// The picker's rows for `state`, as the Documents page words them.

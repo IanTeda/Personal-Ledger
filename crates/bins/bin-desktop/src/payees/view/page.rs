@@ -24,7 +24,7 @@ use crate::{
         pages::{Page, focus_on_row_click},
         state::SettingsView,
     },
-    shell::view::statusline::PageStatus,
+    shell::view::statusline::{Hint, PageStatus},
     view::event::{Reveal, ViewEvent},
 };
 
@@ -146,14 +146,15 @@ impl Page for PayeesPage {
         }
     }
 
+    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
+    fn hints(&self, cx: &App) -> Vec<Hint> {
+        legend(self.view_model(cx).hints)
+    }
+
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         let view = self.view_model(cx);
         Some(PageStatus {
-            hints: view
-                .hints
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect(),
+            hints: legend(view.hints),
             right: view.status,
         })
     }
@@ -172,4 +173,12 @@ impl Page for PayeesPage {
     ) -> Option<Subscription> {
         focus_on_row_click(entity, cx)
     }
+}
+
+/// The Presenter's hints as the status line and the `?` cheat sheet take them.
+fn legend(hints: Vec<lib_payees::presenter::Hint>) -> Vec<Hint> {
+    hints
+        .into_iter()
+        .map(|hint| (hint.chord, hint.action))
+        .collect()
 }

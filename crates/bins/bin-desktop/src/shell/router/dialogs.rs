@@ -96,6 +96,14 @@ impl Root {
         matches!(self.state.dialog, Some(OpenDialog::Help(_)))
     }
 
+    /// The open Help Dialog's page group as `(action, keys)`, for a test; `None` while it is not
+    /// open.
+    #[doc(hidden)]
+    pub fn help_shortcuts(&self) -> Option<Vec<(String, String)>> {
+        self.dialog::<HelpDialog>()
+            .map(|help| help.shortcuts.clone())
+    }
+
     /// Closes the open Dialog, in either host, without applying it.
     pub(super) fn close_dialog(&mut self) {
         self.state.dialog_confirm = None;

@@ -17,7 +17,10 @@ use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels,
 
 use crate::{
     settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
-    shell::view::dialog_host::open_dialog,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{Hint, owned_hints},
+    },
     view::event::ViewEvent,
 };
 use apply::TracingOutcome;
@@ -134,8 +137,8 @@ impl Page for TracingPage {
         true
     }
 
-    fn hints(&self, _cx: &App) -> Vec<(&'static str, String)> {
-        settings_tracing_hints()
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        owned_hints(settings_tracing_hints())
     }
 }
 

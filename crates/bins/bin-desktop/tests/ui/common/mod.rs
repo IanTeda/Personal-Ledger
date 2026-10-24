@@ -1046,6 +1046,43 @@ impl<'a> Harness<'a> {
         self.read_app(Root::status_snapshot)
     }
 
+    /// The open `?` Help Dialog's page group as `(action, keys)`; `None` while it is not open.
+    pub fn help_shortcuts(&mut self) -> Option<Vec<(String, String)>> {
+        self.read(Root::help_shortcuts)
+    }
+
+    /// The status line's hints as the `?` cheat sheet words them, `(action, keys)`; empty when
+    /// the line has no page content.
+    pub fn status_as_shortcuts(&mut self) -> Vec<(String, String)> {
+        self.status()
+            .map(|status| {
+                status
+                    .hints
+                    .into_iter()
+                    .map(|(keys, action)| (action, keys))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Opens `?` and asserts its page group lists every hint the status line showed before it.
+    #[expect(
+        clippy::expect_used,
+        reason = "test support: a `?` that opens no Help Dialog should fail the test loudly"
+    )]
+    pub fn assert_cheat_sheet_matches_status(&mut self) {
+        let legend = self.status_as_shortcuts();
+        assert!(!legend.is_empty(), "the page shows a legend");
+        self.press("?");
+        let shortcuts = self.help_shortcuts().expect("`?` opens the Help Dialog");
+        for hint in &legend {
+            assert!(
+                shortcuts.contains(hint),
+                "{hint:?} is on the status line but not in {shortcuts:?}"
+            );
+        }
+    }
+
     /// The Toast layer and its history, read back for assertions.
     pub fn toasts(&mut self) -> ToastsSnapshot {
         self.read(Root::toasts_snapshot)
