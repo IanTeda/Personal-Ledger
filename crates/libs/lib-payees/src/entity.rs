@@ -158,16 +158,17 @@ pub fn normalise_alias(raw: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_uppercase())
 }
 
-/// Errors for Payee operations.
+/// Errors for Payee operations. A variant carries the names the Presenter's `msg::` Message needs,
+/// but the `#[error]` text never repeats them: it is for logs, which never hold a Payee's name.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PayeeError {
     #[error("a payee needs a name")]
     NameRequired,
     /// Another Payee already has this name (case-insensitively); carries that Payee's name.
-    #[error("{0} already exists")]
+    #[error("another payee has this name")]
     DuplicateName(String),
     /// Another Payee already owns this alias.
-    #[error("{alias} is already a match rule on {owner}")]
+    #[error("another payee has this match rule")]
     AliasTaken { alias: String, owner: String },
     /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
     #[error("a payee in use can only be deactivated")]
@@ -681,5 +682,22 @@ mod tests {
         let bp = id_of(&payees, "BP");
         set_active(&mut payees, bp, false).unwrap();
         assert_eq!(match_alias(&payees, "BP SERVICE STN 4471"), None);
+    }
+
+    #[test]
+    fn a_refusals_log_text_never_holds_a_payee_name_or_match_rule() {
+        let refusals = [
+            PayeeError::DuplicateName("Coles".into()),
+            PayeeError::AliasTaken {
+                alias: "WOOLIES".into(),
+                owner: "Woolworths".into(),
+            },
+        ];
+        for refusal in refusals {
+            let text = refusal.to_string();
+            for name in ["Coles", "WOOLIES", "Woolworths"] {
+                assert!(!text.contains(name), "{text:?} holds {name}");
+            }
+        }
     }
 }
