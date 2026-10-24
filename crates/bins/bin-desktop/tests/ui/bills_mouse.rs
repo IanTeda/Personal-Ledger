@@ -48,6 +48,23 @@ fn clicking_a_tab_clears_the_status_message(app: &mut TestAppContext) {
     );
 }
 
+/// A status still queued when the tab is clicked loses to the clear: the click's `send` defers its
+/// drain before the click emits `SetStatus(None)`, and gpui runs the two in that order (#828).
+#[gpui::test]
+fn a_tab_click_clears_a_status_still_queued_when_it_lands(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.queue_notice(Notice::Status("this bill isn't actionable".into()));
+
+    ui.click("bills-tab-Planner");
+
+    assert_eq!(ui.bills().tab, "Planner");
+    assert_eq!(
+        ui.read(|shell| shell.status_message()),
+        None,
+        "the clear comes after the queued status, so it wins"
+    );
+}
+
 #[gpui::test]
 fn clicking_a_row_selects_it(app: &mut TestAppContext) {
     let mut ui = on_bills(app);

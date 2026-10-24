@@ -221,6 +221,11 @@ impl BillsPagePresenter {
     }
 
     pub fn view_model(&self) -> BillsPageViewModel {
+        let schedule = self.schedule.view_model();
+        let status = match self.tab {
+            BillsTab::Schedule => schedule.status.clone(),
+            BillsTab::Planner => self.planner.status(),
+        };
         BillsPageViewModel {
             add_button: msg::bills_add_button("+"),
             tabs: BillsTab::ALL
@@ -235,13 +240,10 @@ impl BillsPagePresenter {
                 })
                 .collect(),
             tab: self.tab,
-            schedule: self.schedule.view_model(),
+            schedule,
             planner: self.planner.view_model(),
             hints: self.hints(),
-            status: match self.tab {
-                BillsTab::Schedule => self.schedule.status(),
-                BillsTab::Planner => self.planner.status(),
-            },
+            status,
         }
     }
 
@@ -707,6 +709,32 @@ mod tests {
         assert!(!view.schedule.filters.narrowed);
         let selected = view.schedule.rows.iter().find(|row| row.selected);
         assert_eq!(selected.map(|row| row.id), Some(rent));
+    }
+
+    /// A pass that straddles midnight must not mix two days, so each reads the clock once.
+    #[test]
+    fn the_schedule_reads_the_day_once_per_pass() {
+        let (_, shared) = stub();
+        let reads = Rc::new(std::cell::Cell::new(0));
+        let counted = reads.clone();
+        let clock = Clock::new(move || {
+            counted.set(counted.get() + 1);
+            today()
+        });
+        let mut schedule = SchedulePresenter::new(shared, clock);
+        let mut router = RecordingRouter::default();
+        let reads_in = |reads: &std::cell::Cell<usize>, pass: &mut dyn FnMut()| {
+            reads.set(0);
+            pass();
+            reads.get()
+        };
+
+        assert_eq!(reads_in(&reads, &mut || drop(schedule.view_model())), 1);
+        assert_eq!(
+            reads_in(&reads, &mut || schedule
+                .handle(ScheduleEvent::Move(Step::Next), &mut router)),
+            1
+        );
     }
 
     #[test]

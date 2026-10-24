@@ -7,6 +7,7 @@
 //! Pay and Skip act on an actionable row (Due or Overdue, and stored); on any other they say so on
 //! the status line. A Paid row hands off to its Transaction.
 
+use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Clock, Period, Total};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
@@ -97,6 +98,9 @@ pub struct ScheduleViewModel {
     /// The stat callout, while the Bill select names one Plan.
     pub stats: Option<StatsView>,
     pub columns: ScheduleColumns,
+    /// The status line's right-hand text: the period (or All) and the rows shown of the rows
+    /// before the filters. Built in the same pass as the rows, so the two agree on the day.
+    pub status: String,
     pub rows: Vec<ScheduleLine>,
     /// What shows instead of the table while there are no rows.
     pub empty: Option<String>,
@@ -254,7 +258,7 @@ impl SchedulePresenter {
     pub fn handle(&mut self, event: ScheduleEvent, router: &mut dyn BillsRouter) {
         match event {
             ScheduleEvent::Move(step) => {
-                let len = self.rows().len();
+                let len = self.rows(self.clock.today()).len();
                 self.selected = lib_list_cursor::step(self.clamped(len), len, step);
             }
             ScheduleEvent::Select(index) => self.selected = index,
@@ -321,8 +325,13 @@ impl SchedulePresenter {
         let Some(found) = self.ports.borrow().bills().entry(id) else {
             return;
         };
-        self.show_period(schedule_period(&found, self.clock.today()));
-        self.selected = self.rows().iter().position(|row| row.id == id).unwrap_or(0);
+        let today = self.clock.today();
+        self.show_period(schedule_period(&found, today));
+        self.selected = self
+            .rows(today)
+            .iter()
+            .position(|row| row.id == id)
+            .unwrap_or(0);
     }
 
     /// The scope select `f` has focused.
@@ -340,26 +349,27 @@ impl SchedulePresenter {
         self.selected.min(len.saturating_sub(1))
     }
 
-    /// The rows before the filters.
-    fn unfiltered(&self) -> Vec<ScheduleRow> {
+    /// The rows before the filters, on `today`. A pass reads the clock once and hands the day
+    /// down, so one that straddles midnight can't mix two days.
+    fn unfiltered(&self, today: NaiveDate) -> Vec<ScheduleRow> {
         let ports = self.ports.borrow();
         let bills = ports.bills();
         schedule_rows(
             &bills.bill_plans(),
             &bills.entries(),
             (!self.all).then_some(self.period),
-            self.clock.today(),
+            today,
         )
     }
 
-    /// The rows shown.
-    fn rows(&self) -> Vec<ScheduleRow> {
+    /// The rows shown on `today`.
+    fn rows(&self, today: NaiveDate) -> Vec<ScheduleRow> {
         let plans = self.ports.borrow().bills().bill_plans();
-        self.filters.apply(&self.unfiltered(), &plans)
+        self.filters.apply(&self.unfiltered(today), &plans)
     }
 
     fn selected_row(&self) -> Option<ScheduleRow> {
-        let rows = self.rows();
+        let rows = self.rows(self.clock.today());
         rows.get(self.clamped(rows.len())).copied()
     }
 
@@ -446,19 +456,14 @@ impl SchedulePresenter {
         }
     }
 
-    /// The status line's right-hand text: the period (or All) and the rows shown of the rows
-    /// before the filters.
-    pub fn status(&self) -> String {
+    /// The status line's right-hand text for `shown` rows of `unfiltered`.
+    fn status(&self, shown: usize, unfiltered: usize) -> String {
         let period = if self.all {
             msg::bills_period_all()
         } else {
             format_year_month(self.period.year, self.period.month)
         };
-        msg::bills_status_period(
-            &period,
-            &self.rows().len().to_string(),
-            count(self.unfiltered().len()),
-        )
+        msg::bills_status_period(&period, &shown.to_string(), count(unfiltered))
     }
 
     pub fn view_model(&self) -> ScheduleViewModel {
@@ -501,6 +506,7 @@ impl SchedulePresenter {
                 stats_view(ports, plan, &stats)
             });
         ScheduleViewModel {
+            status: self.status(rows.len(), unfiltered.len()),
             period: self.period,
             period_label: format_year_month(self.period.year, self.period.month),
             all: self.all,

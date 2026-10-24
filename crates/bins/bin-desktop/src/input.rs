@@ -7,7 +7,8 @@
 //!
 //! A call from one module to another (the root Router's month turn, a Dialog handing its outcome
 //! to its page) runs inside the current `send`, so the one commit covers every module's writes.
-//! A nested `send` is a bug, refused by `debug_assert!`.
+//! A nested `send` is a bug, refused by `debug_assert!`; a release build runs it inside the outer
+//! one, so the one commit still holds.
 //!
 //! Every key takes one route, [`route_key`], offered to each step in turn until one takes it:
 //!
@@ -76,6 +77,12 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
         !door.open,
         "an input was sent inside another; a call between modules runs in the current send"
     );
+    if door.open {
+        // Release builds get past the assert: run inside the outer send, whose one commit and
+        // drain cover this input's writes and Notices too, and log the bug for the report.
+        tracing::error!("An input was sent inside another; it ran in the outer send");
+        return handle(cx);
+    }
     door.open = true;
     let handled = handle(cx);
     let app: &mut App = cx.borrow_mut();
@@ -320,11 +327,35 @@ mod tests {
         assert!(!cx.update(|cx| sending(cx)));
     }
 
+    #[cfg(debug_assertions)]
     #[gpui::test]
     #[should_panic(expected = "an input was sent inside another")]
     fn a_send_inside_a_send_is_refused(cx: &mut TestAppContext) {
         door(cx);
 
         cx.update(|cx| send(cx, |cx| send(cx, |_| ())));
+    }
+
+    /// Release builds skip the `debug_assert!`, so a nested `send` must still leave the one commit
+    /// to the outer one. Run with `cargo test --release`.
+    #[cfg(not(debug_assertions))]
+    #[gpui::test]
+    fn a_send_inside_a_send_runs_inline_and_the_outer_send_commits_once(cx: &mut TestAppContext) {
+        let count = door(cx);
+
+        let seen = cx.update(|cx| {
+            send(cx, |cx| {
+                let inner = send(cx, |cx| {
+                    assert!(sending(cx), "the inner handle runs inside the outer send");
+                    count.get()
+                });
+                assert!(sending(cx), "the inner send leaves the door open");
+                (inner, count.get())
+            })
+        });
+
+        assert_eq!(seen, (0, 0), "nothing commits until the outer handle ends");
+        assert_eq!(count.get(), 1);
+        assert!(!cx.update(|cx| sending(cx)));
     }
 }
