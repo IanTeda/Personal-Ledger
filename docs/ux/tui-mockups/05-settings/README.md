@@ -66,7 +66,7 @@ The index page and picker come first, then the pages in index order. The IDs are
 | Modal dialogs, 420–540px | Centred floating overlay (`Clear` + bordered `Block`, ~76% width, top third) over the dimmed page, the same treatment as the command palette. |
 | Status bar NORMAL chip + hints | Hint bar per page. The status line shows the mode (`INSERT`, `CONFIRM`) when it isn't NORMAL, and `✓ Synced HH:MM` on the right. |
 | Medium status line `j/k section · [/] pages · p picker · esc settings` | The page's own keys, then `[/] pages · p picker · esc settings` at the end of every page's hint bar. |
-| Header breadcrumb | The status line names the View as it does for every View: `Personal Ledger │ Settings` on the index page, `Personal Ledger │ Settings › <Page>` on a page, the page name in sentence case. |
+| Header breadcrumb | The page heading carries it: `Settings` on the index page, `Settings › <Page>` on a page, the page name in sentence case. The status line shows only `Personal Ledger`, as for every View, so the View name is not doubled. |
 
 **List pages and the full views.** Units, Accounts, Categories, Tags and Payees already have their own full TUI views (`../02-accounts`, `../03-categories`, `../04-payees`, `../06-tags`, `../07-units`). Their Settings pages are the compact management lists Desktop shows, and they use **the same forms and keys** as those views (`n`/`e`/`d`, typed delete confirm). `o` opens the full view, and `esc` from it returns to the Settings page. Their existing `g` jumps stay as they are.
 
@@ -77,7 +77,7 @@ The index page and picker come first, then the pages in index order. The IDs are
 Drawn at the shell's **96 × 30 cell** minimum.
 
 ```
-row 0        status line   Personal Ledger │ Settings [› <Page>]      [MODE ·] ✓ Synced HH:MM
+row 0        status line   Personal Ledger                          [MODE ·] ✓ Synced HH:MM
 rows 1..n-2  view          the index page, or one page, Min(0)
 row n-1      hint bar      the index page's keys, or the page's keys then [/] pages · p picker · esc settings
 ```

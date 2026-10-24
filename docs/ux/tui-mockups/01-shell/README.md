@@ -32,7 +32,7 @@ Every px value in the HTML is an artifact of drawing. Read the geometry in **ter
 Drawn at a **96 × 30 cell** minimum (one cell ≈ 6.6 × 16.5 px in the HTML).
 
 ```
-row 0        status line       reversed Block — "Personal Ledger | <View>" (View name capitalised, e.g. `Dashboard`, `Help`)   right: `✓ Synced HH:mm`
+row 0        status line       reversed Block — "Personal Ledger" (the View names itself in its own heading)   right: `✓ Synced HH:mm`
 rows 1..n-3  view region       exactly ONE view, full bleed — no tab strip, no sidebar, no tree
 row n-2      command line      shown only while typing a command (":" prompt); no idle hint
 row n-1      keybind hint bar   dim; contextual to the focused view
