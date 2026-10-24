@@ -1,7 +1,7 @@
-//! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while open,
-//! and the keyboard handling they share. A module's Dialog (Units, Bills, Pay) is an Entity in
-//! `shell::view::dialog_entity` instead; these twelve move there with their slices (#820). The key handling needs no window, so a Dialog's keys are unit-tested
-//! without one.
+//! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while
+//! open, and the keyboard handling they share. A module's Dialog (Units, Bills, Pay, Payees) is an
+//! Entity in `shell::view::dialog_entity` instead; these eleven move there with their slices
+//! (#820). The key handling needs no window, so a Dialog's keys are unit-tested without one.
 //!
 //! `Root` holds `Option<OpenDialog>` and opens and closes it only through `Root::open_dialog`
 //! and `Root::close_dialog`, which also enter and leave `InputMode::Dialog`, so the slot and
@@ -35,9 +35,8 @@ use crate::{
     form::field::TextField, ledger_store::LedgerStore, settings::accounts::dialogs::AccountsDialog,
     settings::documents::dialogs::DocumentTypesDialog,
     settings::institutions::dialogs::InstitutionsDialog,
-    settings::inventory::dialogs::InventoryDialog, settings::payees::dialogs::PayeesDialog,
-    settings::tags::dialogs::TagsDialog, settings::tracing::dialogs::TracingDialog,
-    view::event::ViewEvent, view::help::HelpDialog,
+    settings::inventory::dialogs::InventoryDialog, settings::tags::dialogs::TagsDialog,
+    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
@@ -274,14 +273,13 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open legacy Dialog, one variant per feature: the twelve not yet on a module's Presenter.
+/// The open legacy Dialog, one variant per feature: the eleven not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
     Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
-    Payees(PayeesDialog),
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
     Tags(TagsDialog),
@@ -299,7 +297,6 @@ impl OpenDialog {
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
-            Self::Payees(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
@@ -316,7 +313,6 @@ impl OpenDialog {
             Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
-            Self::Payees(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
@@ -366,7 +362,6 @@ dialog_variant!(Tracing, TracingDialog);
 dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
-dialog_variant!(Payees, PayeesDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Inventory, InventoryDialog);
 dialog_variant!(Tags, TagsDialog);

@@ -249,3 +249,88 @@ fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
     ui.press("escape");
     assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
 }
+
+#[gpui::test]
+fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_payees(app);
+
+    ui.press("n z o o tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("DefaultCategory"));
+    ui.press("x");
+    assert_eq!(
+        ui.dialog_value("name").as_deref(),
+        Some("zoo"),
+        "the select swallows typing"
+    );
+    ui.press("down");
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+    ui.press("ctrl-enter");
+    assert_eq!(ui.dialog(), None, "submit confirms from the select");
+    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("zoo"));
+
+    ui.press("e");
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+}
+
+#[gpui::test]
+fn enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    ui.press("n z o o shift-tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Rule"));
+    ui.press("z o o x enter");
+    assert_eq!(ui.dialog(), Some("AddPayee"), "enter added a chip");
+    assert_eq!(ui.dialog_value("rules").as_deref(), Some("ZOOX"));
+    ui.press("backspace");
+    assert_eq!(ui.dialog_value("rules").as_deref(), Some(""));
+
+    ui.press("w o o l i e s enter");
+    assert_eq!(ui.dialog_value("rules").as_deref(), Some(""));
+    assert_eq!(
+        ui.dialog_value("error").as_deref(),
+        Some("WOOLIES is already a match rule on Woolworths")
+    );
+}
+
+#[gpui::test]
+fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
+    ui.press("g s");
+    ui.press("j j j j j j j");
+    ui.press("l");
+    ui.press("n");
+
+    ui.press("ctrl-n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("DefaultCategory"));
+    ui.press("tab");
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("DefaultCategory"),
+        "tab is no longer bound"
+    );
+}
+
+#[gpui::test]
+fn a_documents_payee_link_lands_on_the_selected_payee(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g f");
+    for _ in 0..200 {
+        if ui.documents().selected_file.as_deref() == Some("aami-car-policy.pdf") {
+            break;
+        }
+        ui.press("j");
+    }
+    ui.press("L");
+    assert_eq!(ui.documents().dialog, Some("picker-follow"));
+
+    ui.press("enter");
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings().page, "Payees");
+    assert!(ui.settings().page_focused);
+    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("AAMI"));
+    ui.press("e");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("AAMI"));
+}

@@ -22,6 +22,7 @@ pub mod locale;
 pub mod navigation;
 #[doc(hidden)]
 pub mod notices;
+mod payees;
 mod period;
 pub mod persistence;
 mod settings;

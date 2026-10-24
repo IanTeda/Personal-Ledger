@@ -11,6 +11,7 @@ use gpui::{
 use crate::{
     ledger_store::LedgerStore,
     navigation::movement::Movement,
+    payees::{PayeesPage, PayeesSetup, payees_page},
     settings::{
         SettingsPage,
         about::AboutPage,
@@ -24,7 +25,6 @@ use crate::{
         institutions::InstitutionsPage,
         inventory::InventoryPage,
         page::PageRowClicked,
-        payees::{PayeesPage, PayeesSources},
         state::SettingsView,
         sync_server::SyncServerPage,
         tags::TagsPage,
@@ -40,6 +40,13 @@ use crate::{
     units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
 };
+
+/// What `shell::router::build` hands the Settings pages that are modules' Views: the Units and
+/// Payees modules' ports and keymaps.
+pub struct SettingsSetup {
+    pub units: UnitsSetup,
+    pub payees: PayeesSetup,
+}
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
 const LOG_LIST_OVERDRAW: gpui::Pixels = gpui::px(200.0);
@@ -267,9 +274,10 @@ impl SettingsPages {
     pub fn new(
         ledger: &Entity<LedgerStore>,
         clock: &lib_core::Clock,
-        units: UnitsSetup,
+        setup: SettingsSetup,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
+        let SettingsSetup { units, payees } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
             display: cx.new(|_| DisplayPage::default()),
@@ -278,14 +286,7 @@ impl SettingsPages {
             accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), cx)),
             categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), clock, cx)),
             tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),
-            payees: cx.new(|cx| {
-                PayeesPage::new(
-                    PayeesSources {
-                        ledger: ledger.clone(),
-                    },
-                    cx,
-                )
-            }),
+            payees: payees_page(payees.ports, ledger.clone(), payees.keymap, cx),
             documents: cx.new(|cx| DocumentsPage::new(ledger.clone(), cx)),
             inventory: cx.new(|cx| InventoryPage::new(ledger.clone(), cx)),
             sync_server: cx.new(|_| SyncServerPage),

@@ -48,7 +48,7 @@ None in `lib-core`. `lib_payees::Payee` is the domain type: `id: PayeeId`, `name
 
 `crates/libs/lib-database/src/adapter/payees.rs` is the Payees adapter (ADR-0041, ADR-0046): it loads every Payee with its aliases at start-up and serves `lib-payees`' `PayeeRepository` from memory, each write joining the one pending batch the Desktop commits once per input. It answers `PayeeUsage` by counting `splits` and `bill_plans` in the file, and `lib-bills`' `BillPayees` from its rows. `PayeesStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_payees::fake::InMemoryPorts` as the in-memory store. `lib-payees`' contract suite runs against both. A new Ledger, and `mise run db-seed`, write `lib_payees::fake::InMemoryPorts::stub`'s Payees before the Transactions and Bills, so the foreign keys hold.
 
-On the Desktop the Payees page and every other Payees writer are still `LedgerCommand`s: `LedgerStore::apply` forwards each `UpsertPayee` and `DeletePayee` to the store (`bin-desktop/src/settings/payees/ports.rs`), committed with the input the command ran in, and the Ledger's Payees are a read copy refreshed from the store (see the "During the transition" table in `viper-architecture.md`). A failed Payees write reloads the store and the copy with an Error Toast.
+On the Desktop the Payees page writes the store through `lib-payees`' Interactors, each input committing what it wrote (#832). Import commit and Category reassign are still `LedgerCommand`s: `LedgerStore::apply` forwards each `UpsertPayee` to the store (`bin-desktop/src/payees/ports.rs`), committed with the input the command ran in. The Ledger's Payees are a read copy refreshed from the store after either (see the "During the transition" table in `viper-architecture.md`). A failed Payees write reloads the store and the copy with an Error Toast.
 
 The older per-entity modules, `crates/libs/lib-database/src/payees/`:
 
@@ -75,18 +75,17 @@ Anything that accepts a typed Payee name should call this rather than inserting 
 
 ## UI
 
-The Desktop reads Payees from `lib-database` through the Ledger's read copy, and Bills through `BillPayees`; the TUI doesn't.
+The Desktop's Payees page reads `lib-database`'s store through `lib-payees`' Presenters, the other Views through the Ledger's read copy, and Bills through `BillPayees`; the TUI doesn't.
 
 - **TUI** — `crates/bins/bin-tui/src/payee/` (`mod.rs`, `fixture.rs`) supplies in-memory Payees; the screen is `view/payees.rs`. Spec: `docs/ux/tui-mockups/04-payees/README.md`.
 - **Desktop** — the Payees surface (handoff `docs/ux/desktop-mockups/20-payees/`, screens 6a–6e), persisted through the Payees adapter:
-  - `crates/libs/lib-payees/src/lib.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: PayeeId`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee` (refused while a Split or Bill Plan names the Payee)/`set_active`, and the counts. `protocols.rs` holds the ports: `PayeeRepository` and `PayeeUsage` (the Splits and Bill Plans naming a Payee, which `lib-ledger` answers from the Ledger for its commands, and the adapter from the file); `fake.rs` their in-memory versions, and `contract.rs` (feature `contract-tests`) the checks the fake and the adapter both keep. The Desktop dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/settings/payees/form.rs`. Start here; it is unit-tested without a window.
-  - `src/settings/payees/` — `mod.rs` the `PayeesPage` Entity, `render.rs` the list (6a), `apply.rs` the confirm cycle, `dialogs/` the Add and Edit dialogs (`add.rs`, 6b and 6c) and the Delete/Deactivate/Reactivate dialog (`delete.rs`, 6d); the match-rule chips and input are `dialogs/rules_field.rs`, which only these dialogs use.
-  - `src/import.rs` and `src/view/import.rs` — the stubbed Import "match payees" step (6e), opened by the `:import` palette verb: an 18-row seeded statement, `cleaned_name`/`cleaned_token` (the suggested Payee name and remembered alias), `match_row`, `summary` and `commit`, which creates new Payees, remembered aliases and one-Split Transactions, persisted through the forwarding shims.
+  - `crates/libs/lib-payees/` — the Payees VIPER module, `gpui`-free and unit-tested without a window. Start here. `entity.rs` holds the model and rules: the seeded `Payee` (`id: PayeeId`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee` (refused while a Split or Bill Plan names the Payee)/`set_active`, and the counts. `interactor/` has one Interactor per intent (add, edit, delete, deactivate, reactivate). `presenter/` has the page (`payees_page.rs`, 6a), the Add and Edit form (`payee_form.rs`, 6b and 6c) and the Delete Dialog (`delete_payee.rs`, 6d), whose `DeleteAction` (delete, deactivate or reactivate) is chosen from `PayeeUsage` when it opens. `protocols.rs` holds the ports: `PayeeRepository`, `PayeeUsage` (the Splits and Bill Plans naming a Payee, which the adapter counts in the file), `PayeeCategories` (the Default category select's leaves, which `lib-ledger` answers from the stub's Categories until they migrate), and the `PayeesRouter`. `keymap.rs` has the page's keys, `i18n/` its Messages, `fake.rs` the in-memory ports and a recording Router, and `contract.rs` (feature `contract-tests`) the checks the fake and the adapter both keep.
+  - `src/payees/` — the module's Desktop half: `view/page.rs` the page Entity and `view/page/render.rs` its list, `view/dialog.rs` the Dialogs as Entities on the Dialog host with one View each in `view/dialog/` (the match-rule chips and input are `rules_field.rs`), `router.rs` the `PayeesRouter`, and `ports.rs` the halfway shims: the Categories copied from the Ledger, the forwarding shim and the read copy's refresh.
+  - `src/import.rs` and `src/view/import.rs` — the stubbed Import "match payees" step (6e), opened by the `:import` palette verb: an 18-row seeded statement, its Category select's `CategoryOptions` (the Ledger's `PayeeCategories`), `cleaned_name`/`cleaned_token` (the suggested Payee name and remembered alias), `match_row`, `summary` and `commit`, which creates new Payees, remembered aliases and one-Split Transactions, persisted through the forwarding shims.
   - `src/view/transactions/import_step.rs` — the step's keys, clicks and commit on the `TransactionsView` Entity, which shows it in place of the Transactions page (ADR-0037).
-  - `src/shell.rs` — `handle_payees_key` (`n`/`e`/`d`) and `enter` on a Payee row opening Transactions filtered by Payee id (mirrors `open_category_transactions`).
-  - Messages in `i18n/en-US/payees.ftl` and `import.ftl`.
+  - Messages in `lib-payees`' `i18n/en-US/payees.ftl` and the Desktop's `import.ftl`.
 
-> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `settings/payees/mod.rs`, mounted by the paged Settings surface (`SettingsPage::Payees`); its dialogs and forms sit beside it in `settings/payees/dialogs/` and `settings/payees/form.rs`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `payees/view/page.rs`, mounted by the paged Settings surface (`SettingsPage::Payees`) inside the legacy Settings frame (#815); its Dialogs sit beside it in `payees/view/dialog/`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 
 ## Traceability
 
@@ -94,14 +93,14 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 
 | Requirement | Desktop location |
 | --- | --- |
-| PAY-001 | `lib_payees::insert_payee`, `settings/payees/dialogs/add.rs` |
-| PAY-002 | `settings/payees/render.rs` (inactive rows dimmed); Transactions payee filter |
+| PAY-001 | `lib_payees::insert_payee`, `lib_payees::interactor::AddPayee`, `payees/view/dialog/payee_form.rs` |
+| PAY-002 | `payees/view/page/render.rs` (inactive rows dimmed); Transactions payee filter |
 | PAY-003 | `lib_payees::edit_payee` |
-| PAY-004 | `lib_payees::set_active`, `settings/payees/dialogs/delete.rs` |
-| PAY-005 | `settings/payees/render.rs` |
-| PAY-007 | `Payee::default_category`, `PayeeOptions` |
-| PAY-008 | `settings/payees/dialogs/rules_field.rs`, `lib_payees::match_alias` |
-| PAY-009 | `lib_payees::delete_payee`, `DeleteAction` |
+| PAY-004 | `lib_payees::interactor::DeactivatePayee`, `payees/view/dialog/delete_payee.rs` |
+| PAY-005 | `payees/view/page/render.rs` |
+| PAY-007 | `Payee::default_category`, `PayeeCategories` |
+| PAY-008 | `payees/view/dialog/rules_field.rs`, `lib_payees::match_alias` |
+| PAY-009 | `lib_payees::delete_payee`, `lib_payees::presenter::DeleteAction` |
 | PAY-010 | `import.rs`, `view/import.rs` |
 
 ## Decisions

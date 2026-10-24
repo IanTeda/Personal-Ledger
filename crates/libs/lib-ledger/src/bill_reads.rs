@@ -1,4 +1,5 @@
-//! Halfway shims (#774) between `lib-bills` and the domains that still live on the Ledger:
+//! Halfway shims (#774, #832) between the migrated modules and the domains that still live on the
+//! Ledger:
 //!
 //! - **`BillAccounts` and `BillCategories` for `Ledger`.** `lib-bills`' read ports answered from
 //!   the stub's Accounts and Categories, which aren't persisted, mapped onto Bills' own read types.
@@ -8,6 +9,8 @@
 //!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s;
 //!   [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for a Client that copies
 //!   Bills' reads from the Ledger.
+//! - **`PayeeCategories` for `Ledger`.** The Default category select's leaves, from the stub's
+//!   Categories by `lib-categories`' leaf rule, until Categories migrate (#808).
 //! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
 //!   Ledger keeps a copy for the Dashboard, the rail badge, Budgets and Documents. It goes when
 //!   the last of them reads Bills through `lib-bills`.
@@ -19,7 +22,7 @@ use lib_bills::{
 };
 use lib_categories::Category;
 use lib_core::CategoryTypes;
-use lib_payees::Payee;
+use lib_payees::{Payee, PayeeCategories, PayeeCategory};
 use lib_transactions::Transaction;
 
 use crate::Ledger;
@@ -128,6 +131,42 @@ impl BillCategories for Ledger {
     }
 }
 
+/// `categories`' leaves as a Payee's Default category reads them, in order. A leaf whose name
+/// another leaf shares is labelled under its parent (`Parent › Leaf`), so a label always names
+/// exactly one Category.
+pub(crate) fn payee_categories(categories: &[Category]) -> Vec<PayeeCategory> {
+    let leaves: Vec<&Category> = categories
+        .iter()
+        .filter(|category| lib_categories::is_leaf(categories, category.id))
+        .collect();
+    leaves
+        .iter()
+        .map(|leaf| {
+            let shared = leaves
+                .iter()
+                .filter(|other| other.name == leaf.name)
+                .count()
+                > 1;
+            let parent = leaf
+                .parent
+                .and_then(|id| categories.iter().find(|c| c.id == id));
+            PayeeCategory {
+                id: leaf.id,
+                label: match parent {
+                    Some(parent) if shared => format!("{} \u{203a} {}", parent.name, leaf.name),
+                    _ => leaf.name.clone(),
+                },
+            }
+        })
+        .collect()
+}
+
+impl PayeeCategories for Ledger {
+    fn payee_categories(&self) -> Vec<PayeeCategory> {
+        payee_categories(&self.categories)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
@@ -188,6 +227,36 @@ mod tests {
             .expect("the stub has Utilities");
         assert!(!utilities.is_leaf);
         assert!(bill_payees(ledger.payees()).iter().any(|p| !p.is_active));
+    }
+
+    #[test]
+    fn payee_categories_are_the_leaves_and_a_shared_name_is_labelled_under_its_parent() {
+        let mut ledger = Ledger::stub();
+        let stub = payee_categories(&ledger.categories);
+        assert_eq!(
+            stub,
+            lib_payees::fake::stub_categories(),
+            "the Payees fake is the stub's"
+        );
+
+        let housing = ledger.categories[0].id;
+        let mut other = ledger.categories[0].clone();
+        other.id = lib_core::CategoryId::new();
+        other.name = "Groceries".into();
+        other.parent = Some(housing);
+        ledger.categories.push(other);
+
+        let labels: Vec<String> = ledger
+            .payee_categories()
+            .into_iter()
+            .map(|category| category.label)
+            .collect();
+        assert!(labels.contains(&"Food \u{203a} Groceries".to_string()));
+        assert!(labels.contains(&"Housing \u{203a} Groceries".to_string()));
+        assert!(
+            !labels.contains(&"Housing".to_string()),
+            "a parent isn't offered"
+        );
     }
 
     /// `lib-bills`' fake stub stands in for these mappings and for `PayBill`, so its tests run on

@@ -13,8 +13,7 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{
-    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, PayeeId, TagId,
-    TransactionId,
+    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId, TransactionId,
 };
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_institutions::InstitutionRow;
@@ -51,8 +50,8 @@ pub enum Domain {
 pub enum LedgerChange {
     UpsertAccount(Account),
     DeleteAccount(AccountId),
+    /// From Import commit and Category reassign; the Payees module writes its own port (#832).
     UpsertPayee(Payee),
-    DeletePayee(PayeeId),
     UpsertCategory(Category),
     DeleteCategory(CategoryId),
     UpsertTag(Tag),
@@ -81,7 +80,7 @@ pub enum LedgerChange {
 impl LedgerChange {
     pub fn domain(&self) -> Domain {
         match self {
-            Self::UpsertPayee(_) | Self::DeletePayee(_) => Domain::Payees,
+            Self::UpsertPayee(_) => Domain::Payees,
             Self::UpsertAccount(_) | Self::DeleteAccount(_) => Domain::Accounts,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
             Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
@@ -122,13 +121,13 @@ mod tests {
     #[test]
     fn domains_names_each_touched_domain_once() {
         let changes = [
-            LedgerChange::DeletePayee(PayeeId::seed(1)),
-            LedgerChange::DeletePayee(PayeeId::seed(2)),
+            LedgerChange::DeleteTag(TagId::seed(1)),
+            LedgerChange::DeleteTag(TagId::seed(2)),
             LedgerChange::DeleteCategory(CategoryId::seed(3)),
         ];
         assert_eq!(
             domains(&changes),
-            BTreeSet::from([Domain::Payees, Domain::Categories])
+            BTreeSet::from([Domain::Tags, Domain::Categories])
         );
     }
 

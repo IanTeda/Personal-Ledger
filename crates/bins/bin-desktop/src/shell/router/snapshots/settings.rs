@@ -2,6 +2,8 @@
 //! snapshot shape and its accessor sit together.
 
 #[doc(hidden)]
+pub use crate::payees::SettingsPayeesSnapshot;
+#[doc(hidden)]
 pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
@@ -11,8 +13,6 @@ pub use crate::settings::general::SettingsGeneralSnapshot;
 pub use crate::settings::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::inventory::SettingsInventorySnapshot;
-#[doc(hidden)]
-pub use crate::settings::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 #[doc(hidden)]

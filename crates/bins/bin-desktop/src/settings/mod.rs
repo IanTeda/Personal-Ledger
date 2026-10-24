@@ -15,7 +15,6 @@ pub mod institutions;
 pub mod inventory;
 pub mod page;
 pub mod pages;
-pub mod payees;
 pub mod picker;
 pub mod snapshot;
 pub mod state;

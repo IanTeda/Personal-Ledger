@@ -1,39 +1,39 @@
-//! The **Match rules** field the Add (6b) and Edit (6c) payee dialogs share: a chip row (a neutral
+//! The **Match rules** field the Add (6b) and Edit (6c) payee Dialogs share: a chip row (a neutral
 //! "no rules yet" chip while empty, otherwise one accent chip per rule with a `✕` to remove it),
-//! then the monospace rule input and its **+ add** button. `Root` owns the form and the keys;
-//! `enter` in the input adds a chip rather than submitting the dialog.
+//! then the monospace rule input and its **+ add** button.
 
-use std::rc::Rc;
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
-
-use lib_payees::PayeeError;
-
+use crate::shell::view::dialog_entity::OnChoose;
 use crate::{dialog, form::dialog_fields, theme::color};
-
-/// Called with the index of the chip whose `✕` was clicked.
-pub type OnRemoveRule = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 const MONOSPACE: &str = "monospace";
 
-pub struct RulesFieldProps<'a> {
-    /// Prefixes every element id, so the Add and Edit dialogs never share one.
+pub(super) struct RulesFieldProps<'a> {
+    /// Prefixes every element id, so the Add and Edit Dialogs never share one.
     pub id: &'static str,
+    pub label: String,
     pub rules: &'a [String],
+    pub no_rules: String,
     pub input: &'a str,
     pub placeholder: String,
+    pub add: String,
     pub focused: bool,
     pub on_input_click: dialog::OnClick,
     pub on_add_click: dialog::OnClick,
-    pub on_remove_rule: OnRemoveRule,
+    /// Called with the index of the chip whose `✕` was clicked.
+    pub on_remove_rule: OnChoose<usize>,
 }
 
-pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
+pub(super) fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
     let RulesFieldProps {
         id,
+        label,
         rules,
+        no_rules,
         input,
         placeholder,
+        add,
         focused,
         on_input_click,
         on_add_click,
@@ -50,7 +50,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
                 .border_color(color::border(cx))
                 .text_size(px(11.5))
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_payees_no_rules())
+                .child(no_rules)
                 .into_any_element(),
         ]
     } else {
@@ -70,10 +70,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
     let hover = color::hover(cx);
 
     div()
-        .child(dialog_fields::optional_label(
-            crate::msg::desktop_payees_field_match_rules(),
-            cx,
-        ))
+        .child(dialog_fields::optional_label(label, cx))
         .child(
             div()
                 .flex()
@@ -89,6 +86,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
                 .child(
                     div()
                         .id(SharedString::from(format!("{id}-rule-input")))
+                        .debug_selector(move || format!("{id}-rule-input"))
                         .cursor_pointer()
                         .flex_1()
                         .min_w(px(0.0))
@@ -110,6 +108,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
                 .child(
                     div()
                         .id(SharedString::from(format!("{id}-rule-add")))
+                        .debug_selector(move || format!("{id}-rule-add"))
                         .cursor_pointer()
                         .flex_none()
                         .py(px(8.0))
@@ -120,7 +119,7 @@ pub fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .hover(move |style| style.bg(hover))
                         .on_click(move |_event, window, cx| on_add_click(window, cx))
-                        .child(crate::msg::desktop_payees_rule_add("+")),
+                        .child(add),
                 ),
         )
         .into_any_element()
@@ -131,7 +130,7 @@ fn rule_chip(
     id: &'static str,
     index: usize,
     rule: &str,
-    on_remove_rule: OnRemoveRule,
+    on_remove_rule: OnChoose<usize>,
     cx: &App,
 ) -> AnyElement {
     div()
@@ -148,6 +147,7 @@ fn rule_chip(
         .child(
             div()
                 .id(SharedString::from(format!("{id}-rule-remove-{index}")))
+                .debug_selector(move || format!("{id}-rule-remove-{index}"))
                 .cursor_pointer()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .on_click(move |_event, window, cx| on_remove_rule(index, window, cx))
@@ -157,16 +157,7 @@ fn rule_chip(
 }
 
 /// The inline error under a field, in the accent text colour.
-pub fn error_line(error: &PayeeError, cx: &App) -> AnyElement {
-    let text = match error {
-        PayeeError::DuplicateName(name) => crate::msg::desktop_payees_error_name_taken(name),
-        PayeeError::AliasTaken { alias, owner } => {
-            crate::msg::desktop_payees_error_alias_taken(alias, owner)
-        }
-        // Not reachable from a form: blank names only disable the confirm button, and in-use and
-        // not-found come from delete and a vanished Payee.
-        other => other.to_string(),
-    };
+pub(super) fn error_line(text: String, cx: &App) -> AnyElement {
     div()
         .mt(px(6.0))
         .text_size(px(11.5))

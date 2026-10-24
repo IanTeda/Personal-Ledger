@@ -45,7 +45,7 @@ impl Root {
             ViewEvent::RaiseToast { kind, text } => {
                 self.send_shell(ShellInput::Notice(Notice::Toast(kind, text)), cx);
             }
-            // The legacy arm: the twelve Dialogs not yet on a module's Presenter (#820).
+            // The legacy arm: the eleven Dialogs not yet on a module's Presenter (#820).
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
             ViewEvent::OpenHostedDialog(open) => self.open_hosted_dialog(*open),
             ViewEvent::HostDialog(dialog) => self.host_dialog(dialog, cx),
@@ -119,7 +119,10 @@ mod tests {
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
-                crate::units::UnitsSetup::stub(),
+                crate::settings::pages::SettingsSetup {
+                    units: crate::units::UnitsSetup::stub(),
+                    payees: crate::payees::PayeesSetup::stub(&storage),
+                },
                 crate::bills::BillsSetup::stub(&storage),
                 storage,
                 cx,
@@ -187,7 +190,10 @@ mod tests {
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
-                crate::units::UnitsSetup::stub(),
+                crate::settings::pages::SettingsSetup {
+                    units: crate::units::UnitsSetup::stub(),
+                    payees: crate::payees::PayeesSetup::stub(&storage),
+                },
                 crate::bills::BillsSetup::stub(&storage),
                 storage,
                 cx,

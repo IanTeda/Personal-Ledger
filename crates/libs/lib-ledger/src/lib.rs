@@ -13,7 +13,7 @@ mod change;
 mod document_commands;
 mod institution_commands;
 mod inventory_commands;
-mod payee_commands;
+mod payee_reads;
 pub mod query;
 mod repository;
 pub mod seed;
@@ -44,7 +44,6 @@ pub use inventory_commands::{
     AddArea, AddLocation, EditArea, EditLocation, MoveArea, MoveAreaRefusal, RemoveArea,
     RemoveLocation,
 };
-pub use payee_commands::{AddPayee, DeletePayee, EditPayee, SetPayeeActive, SetPayeeActiveRefusal};
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};

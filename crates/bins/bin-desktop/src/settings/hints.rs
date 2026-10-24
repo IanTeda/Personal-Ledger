@@ -3,17 +3,6 @@
 
 use crate::settings::inventory::InventoryRow;
 
-/// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
-/// hand-off, which stays on the old page.
-pub(crate) fn settings_payees_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("d", crate::msg::desktop_hint_delete()),
-        ("n", crate::msg::desktop_hint_new()),
-    ]
-}
-
 /// The Settings Documents page's status-line legend (16p's keys), as `(key, action)`.
 pub(crate) fn settings_documents_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -163,17 +152,8 @@ pub(crate) fn tag_dialog_hints(editing: bool) -> Vec<(&'static str, String)> {
     hints
 }
 
-/// The status-line legend while an Add or Edit payee dialog is open (the handoff's 6b).
-pub(crate) fn payee_dialog_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("esc", crate::msg::desktop_hint_cancel()),
-        ("enter", crate::msg::desktop_hint_confirm()),
-        ("tab", crate::msg::desktop_hint_next_field()),
-    ]
-}
-
-/// The status-line legend while a plain confirm dialog is open (Delete payee, Remove tag, Clear
-/// logs): each has at most the one confirm field, so no `tab`.
+/// The status-line legend while a plain confirm dialog is open (Remove tag, Clear logs): each has
+/// at most the one confirm field, so no `tab`.
 pub(crate) fn confirm_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_cancel()),

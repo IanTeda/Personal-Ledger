@@ -163,14 +163,16 @@ pub fn build(
         .unwrap_or_default();
 
     // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
-    // Payees store is shared by the Ledger's forwarding shim and the Bills reads (#831).
-    let payees: lib_database::SharedPayeesStore = Rc::new(std::cell::RefCell::new(payees));
+    // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
+    // reads (#831, #832).
+    let payees = crate::payees::LedgerBackedPorts::shared(payees);
     let transactions: lib_database::SharedTransactionsStore =
         Rc::new(std::cell::RefCell::new(transactions));
     let bills = crate::bills::LedgerBackedPorts::shared(
         Rc::new(std::cell::RefCell::new(bills)),
         payees.clone(),
     );
+    let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
     let storage = crate::ledger_store::LedgerSetup {
         payees,
@@ -179,7 +181,11 @@ pub fn build(
     };
     let bills = crate::bills::BillsSetup::new(bills, payments, &bindings.keybindings);
     let units = crate::units::UnitsSetup::new(units, &bindings.keybindings);
-    let mut shell = Root::with_clock(nav, focus_handle, clock, units, bills, storage, cx);
+    let settings = crate::settings::pages::SettingsSetup {
+        units,
+        payees: payees_setup,
+    };
+    let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
@@ -273,7 +279,7 @@ impl Root {
         nav: NavState,
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
-        units: crate::units::UnitsSetup,
+        settings: crate::settings::pages::SettingsSetup,
         bills: crate::bills::BillsSetup,
         storage: crate::ledger_store::LedgerSetup,
         cx: &mut Context<'_, Self>,
@@ -283,8 +289,8 @@ impl Root {
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
-        crate::units::ports::refresh(&units.ports, &ledger, cx);
-        let units_ports = units.ports.clone();
+        crate::units::ports::refresh(&settings.units.ports, &ledger, cx);
+        let units_ports = settings.units.ports.clone();
         // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         // A View not yet a module wrote through the Ledger from its own click: one input commits it.
@@ -298,7 +304,7 @@ impl Root {
         let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let settings_view = cx.new(|cx| SettingsView::new(&ledger, &clock, units, cx));
+        let settings_view = cx.new(|cx| SettingsView::new(&ledger, &clock, settings, cx));
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());

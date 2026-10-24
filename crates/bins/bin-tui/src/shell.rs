@@ -3103,7 +3103,10 @@ mod tests {
         let bills = lib_bills::keymap::BILLS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
-        units.chain(bills).collect()
+        let payees = lib_payees::keymap::PAYEES_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
+        units.chain(bills).chain(payees).collect()
     }
 
     /// A default kept on a global key on purpose: `g` is the View-jump leader, so `g g` opens Tags

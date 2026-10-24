@@ -10,7 +10,6 @@ use lib_toast::ToastKind;
 use super::state::TransactionsView;
 use crate::{
     import::{self, ImportState, RowSelect},
-    settings::payees::form::PayeeOptions,
     view::{event::ViewEvent, import as import_view},
 };
 
@@ -24,9 +23,10 @@ impl TransactionsView {
     }
 
     /// The Category select's options on 6e: "choose category…", then every leaf.
-    pub(super) fn import_categories(&self, cx: &App) -> PayeeOptions {
-        PayeeOptions::new(
-            self.sources.ledger.read(cx).ledger().categories(),
+    pub(super) fn import_categories(&self, cx: &App) -> import::CategoryOptions {
+        use lib_payees::PayeeCategories as _;
+        import::CategoryOptions::new(
+            self.sources.ledger.read(cx).ledger().payee_categories(),
             crate::msg::desktop_import_choose_category(),
         )
     }

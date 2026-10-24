@@ -270,9 +270,30 @@ fn stub_bills() -> InMemoryBills {
     }
 }
 
-/// The stub Ledger's Payees, as the in-memory ports hold them, nothing naming any.
+/// The stub Ledger's Payees, as the in-memory ports hold them, with what names each counted from
+/// the stub's Splits and Bill Plans as the Payees adapter counts it in the file.
 fn stub_payees() -> lib_payees::fake::InMemoryPorts {
-    lib_payees::fake::InMemoryPorts::stub()
+    let mut ports = lib_payees::fake::InMemoryPorts::stub();
+    ports.usage = stub_payee_usage();
+    ports
+}
+
+/// What names each stub Payee, counted once as the harness is built: a Split a test adds later
+/// isn't counted.
+fn stub_payee_usage() -> lib_payees::fake::InMemoryPayeeUsage {
+    let mut usage = lib_payees::fake::InMemoryPayeeUsage::default();
+    let splits = stub_transactions().transactions;
+    for id in splits
+        .iter()
+        .flat_map(|t| &t.splits)
+        .filter_map(|s| s.payee_id)
+    {
+        usage.uses.entry(id).or_default().splits += 1;
+    }
+    for id in stub_bills().plans.iter().filter_map(|plan| plan.payee_id) {
+        usage.uses.entry(id).or_default().bill_plans += 1;
+    }
+    usage
 }
 
 /// The stub Ledger's Transactions as of the test date, as the in-memory port holds them.
@@ -522,7 +543,7 @@ impl<'a> Harness<'a> {
                         inner: stored.clone(),
                         written: written.clone(),
                     },
-                    usage: lib_payees::fake::InMemoryPayeeUsage::default(),
+                    usage: stub_payee_usage(),
                     stored,
                 }),
                 transactions: Box::new(stub_transactions()),

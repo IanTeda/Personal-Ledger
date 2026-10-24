@@ -12,6 +12,7 @@ use super::hints::{settings_index_hints, settings_medium_page_hints, settings_pi
 use crate::{
     ledger_store::LedgerStore,
     navigation::movement::Movement,
+    payees::PayeesPage,
     settings::accounts::AccountsPage,
     settings::categories::CategoriesPage,
     settings::display::{DisplayPage, DisplayPreferences},
@@ -19,8 +20,7 @@ use crate::{
     settings::general::GeneralPage,
     settings::institutions::InstitutionsPage,
     settings::inventory::InventoryPage,
-    settings::pages::{PageFrame, PageHandle, SettingsPages},
-    settings::payees::PayeesPage,
+    settings::pages::{PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::picker::PagePicker,
     settings::tags::TagsPage,
     settings::tracing::TracingPage,
@@ -29,7 +29,7 @@ use crate::{
         statusline::{PageStatus, owned_hints},
         window_size::WindowSize,
     },
-    units::{UnitsPage, UnitsSetup},
+    units::UnitsPage,
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
@@ -66,10 +66,10 @@ impl SettingsView {
     pub fn new(
         ledger: &Entity<LedgerStore>,
         clock: &lib_core::Clock,
-        units: UnitsSetup,
+        setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let pages = SettingsPages::new(ledger, clock, units, cx);
+        let pages = SettingsPages::new(ledger, clock, setup, cx);
         let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
         Self {
             pages,

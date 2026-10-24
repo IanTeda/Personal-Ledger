@@ -29,6 +29,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             crate::msg::LAYER,
             lib_units::msg::LAYER,
             lib_bills::msg::LAYER,
+            lib_payees::msg::LAYER,
             lib_bill_payments::msg::LAYER,
         ],
     );
@@ -51,6 +52,7 @@ pub fn init_for_tests() {
             crate::msg::LAYER,
             lib_units::msg::LAYER,
             lib_bills::msg::LAYER,
+            lib_payees::msg::LAYER,
             lib_bill_payments::msg::LAYER,
         ],
     );

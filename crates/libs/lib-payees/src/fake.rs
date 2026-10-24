@@ -1,11 +1,18 @@
 //! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
-//! field so a test can set up or read state directly.
+//! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
+//! records what it was asked.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use lib_core::PayeeId;
+use lib_core::{CategoryId, PayeeId};
+use lib_toast::{Notice, Notify};
 
-use crate::protocols::PortsMut;
+use crate::protocols::{
+    PayeeCategories, PayeeCategory, PayeesDialog, PayeesOutcome, PayeesPorts, PayeesRouter,
+    PortsMut, SharedPorts,
+};
 use crate::{Payee, PayeeRepository, PayeeUsage, PayeeUse, default_payees};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -42,22 +49,60 @@ impl PayeeUsage for InMemoryPayeeUsage {
     }
 }
 
+/// The Categories a test offers as defaults, in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InMemoryPayeeCategories {
+    pub categories: Vec<PayeeCategory>,
+}
+
+impl PayeeCategories for InMemoryPayeeCategories {
+    fn payee_categories(&self) -> Vec<PayeeCategory> {
+        self.categories.clone()
+    }
+}
+
+/// The stub Categories' leaves, with their ids, as a Payee's Default category reads them.
+pub fn stub_categories() -> Vec<PayeeCategory> {
+    [
+        (2, "Rent"),
+        (4, "Electricity"),
+        (5, "Water"),
+        (7, "Groceries"),
+        (8, "Dining"),
+        (9, "Transport"),
+        (10, "Household"),
+        (11, "Salary"),
+        (12, "Interest"),
+    ]
+    .into_iter()
+    .map(|(n, label)| PayeeCategory {
+        id: CategoryId::seed(n),
+        label: label.to_string(),
+    })
+    .collect()
+}
+
 /// Every Payees port in memory, together, so a test can hand a write the ones it takes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryPorts {
     pub payees: InMemoryPayees,
     pub usage: InMemoryPayeeUsage,
+    pub categories: InMemoryPayeeCategories,
 }
 
 impl InMemoryPorts {
-    /// The stub seed: the stub Ledger's Payees (see [`default_payees`]) with nothing naming any.
-    /// Ids match `lib-ledger`'s stub, so its Splits and Bill Plans still resolve their Payees.
+    /// The stub seed: the stub Ledger's Payees (see [`default_payees`]) with nothing naming any,
+    /// and the stub Categories' leaves. Ids match `lib-ledger`'s stub, so its Splits and Bill
+    /// Plans still resolve their Payees.
     pub fn stub() -> Self {
         Self {
             payees: InMemoryPayees {
                 payees: default_payees(),
             },
             usage: InMemoryPayeeUsage::default(),
+            categories: InMemoryPayeeCategories {
+                categories: stub_categories(),
+            },
         }
     }
 
@@ -66,6 +111,71 @@ impl InMemoryPorts {
             payees: &mut self.payees,
             usage: &self.usage,
         }
+    }
+
+    /// These ports shared, as the Presenters hold them, with a handle a test reads them back
+    /// through.
+    pub fn shared(self) -> (Rc<RefCell<Self>>, SharedPorts) {
+        let ports = Rc::new(RefCell::new(self));
+        let shared: SharedPorts = ports.clone();
+        (ports, shared)
+    }
+}
+
+impl PayeesPorts for InMemoryPorts {
+    fn payees(&self) -> &dyn PayeeRepository {
+        &self.payees
+    }
+
+    fn usage(&self) -> &dyn PayeeUsage {
+        &self.usage
+    }
+
+    fn categories(&self) -> &dyn PayeeCategories {
+        &self.categories
+    }
+
+    fn split_mut(&mut self) -> PortsMut<'_> {
+        InMemoryPorts::split_mut(self)
+    }
+}
+
+/// What a Presenter asked its Router for, in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterCall {
+    OpenDialog(PayeesDialog),
+    CloseDialog(Option<PayeesOutcome>),
+    Notice(Notice),
+}
+
+/// A Router that does nothing but record each call, in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingRouter {
+    pub calls: Vec<RouterCall>,
+}
+
+impl RecordingRouter {
+    /// The calls made since the last `take`.
+    pub fn take(&mut self) -> Vec<RouterCall> {
+        std::mem::take(&mut self.calls)
+    }
+}
+
+impl PayeesRouter for RecordingRouter {
+    /// Always opens: the recording Router builds no Presenter that could fail.
+    fn open_dialog(&mut self, dialog: PayeesDialog) -> bool {
+        self.calls.push(RouterCall::OpenDialog(dialog));
+        true
+    }
+
+    fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.calls.push(RouterCall::Notice(notice));
     }
 }
 

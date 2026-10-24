@@ -238,8 +238,10 @@ mod tests {
 
     fn stub() -> (Ledger, DesktopPorts) {
         let ledger = Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
-        let ports =
-            LedgerBackedPorts::in_memory(&ledger, crate::ledger_store::payees_in_memory(&ledger));
+        let ports = LedgerBackedPorts::in_memory(
+            &ledger,
+            crate::payees::LedgerBackedPorts::in_memory(&ledger),
+        );
         (ledger, ports)
     }
 
@@ -311,7 +313,7 @@ mod tests {
     #[test]
     fn the_payees_are_read_from_the_payees_store_not_copied_from_the_ledger() {
         let (mut ledger, _) = stub();
-        let store = crate::ledger_store::payees_in_memory(&ledger);
+        let store: SharedPayeesStore = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         let ports = LedgerBackedPorts::in_memory(&ledger, store.clone());
         let mut renamed = ledger.payees()[0].clone();
         renamed.name = "Renamed in the store".into();

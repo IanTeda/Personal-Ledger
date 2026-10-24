@@ -14,7 +14,7 @@ use gpui::{AnyElement, App, Rgba, ScrollHandle, SharedString, Window, div, prelu
 
 use lib_locale::format::upper;
 
-use crate::settings::payees::form::PayeeOptions;
+use crate::import::CategoryOptions;
 use lib_payees::{self, Payee};
 
 use crate::{
@@ -40,7 +40,7 @@ pub struct ImportPageProps<'a> {
     pub state: &'a ImportState,
     pub payees: &'a [Payee],
     /// The Category select's options, "choose category…" first.
-    pub categories: &'a PayeeOptions,
+    pub categories: &'a CategoryOptions,
     pub on_row_click: OnRowClick,
     pub on_select_click: OnSelectClick,
     pub on_option_click: OnOptionClick,
@@ -192,7 +192,7 @@ fn payee_text(row: &ImportRow, payees: &[Payee]) -> Option<String> {
     }
 }
 
-fn category_text(row: &ImportRow, categories: &PayeeOptions) -> Option<String> {
+fn category_text(row: &ImportRow, categories: &CategoryOptions) -> Option<String> {
     let id = row.category?;
     categories
         .ids

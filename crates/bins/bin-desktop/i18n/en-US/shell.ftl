@@ -24,6 +24,7 @@ desktop-hint-row = row
 desktop-hint-open-ledger = open ledger
 desktop-hint-open = open
 desktop-hint-edit = edit
+desktop-hint-confirm = confirm
 desktop-hint-delete = delete
 desktop-hint-remove = remove
 desktop-hint-merge = merge

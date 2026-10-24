@@ -138,7 +138,6 @@ impl Root {
                 | OpenDialog::Categories(_)
                 | OpenDialog::Institutions(_)
                 | OpenDialog::Accounts(_)
-                | OpenDialog::Payees(_)
                 | OpenDialog::DocumentTypes(_)
                 | OpenDialog::Inventory(_),
             )

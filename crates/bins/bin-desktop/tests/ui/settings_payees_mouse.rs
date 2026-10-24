@@ -93,3 +93,43 @@ fn the_delete_action_deactivates_a_used_payee_once_its_name_is_typed(app: &mut T
         Some("Deactivated payee Woolworths".to_string())
     );
 }
+
+#[gpui::test]
+fn a_rule_and_a_default_category_are_added_by_clicks(app: &mut TestAppContext) {
+    let mut ui = on_payees(app);
+
+    ui.click("settings-payees-add");
+    ui.press("z o o");
+    ui.click("add-payee-category");
+    ui.click("add-payee-category-option-1");
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+    ui.click("add-payee-rule-input");
+    ui.press("z o o x");
+    ui.click("add-payee-rule-add");
+    assert_eq!(ui.dialog_value("rules").as_deref(), Some("ZOOX"));
+    ui.click("add-payee-rule-remove-0");
+    assert_eq!(ui.dialog_value("rules").as_deref(), Some(""));
+    ui.click("add-payee-confirm");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("zoo"));
+}
+
+#[gpui::test]
+fn a_documents_payee_link_lands_on_the_selected_payee(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.click("primary-rail-Documents");
+    // Rows below the fold have no on-screen bounds to click, so reaching one is set-up.
+    for _ in 0..200 {
+        if ui.documents().selected_file.as_deref() == Some("aami-car-policy.pdf") {
+            break;
+        }
+        ui.press("j");
+    }
+
+    ui.click("documents-link-0");
+
+    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("AAMI"));
+    ui.click(&format!("settings-payees-edit-{}", PayeeId::seed(22)));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("AAMI"));
+}

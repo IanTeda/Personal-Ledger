@@ -114,7 +114,7 @@ impl LedgerRepository for StubRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_core::{PayeeId, UnitId};
+    use lib_core::{TagId, UnitId};
 
     #[test]
     fn a_new_stub_loads_the_stub_ledger() {
@@ -127,8 +127,8 @@ mod tests {
     #[test]
     fn apply_records_each_batch_in_order() {
         let repository = StubRepository::new();
-        let first = vec![LedgerChange::DeletePayee(PayeeId::seed(1))];
-        let second = vec![LedgerChange::DeletePayee(PayeeId::seed(2))];
+        let first = vec![LedgerChange::DeleteTag(TagId::seed(1))];
+        let second = vec![LedgerChange::DeleteTag(TagId::seed(2))];
         repository.apply(&first).unwrap();
         repository.apply(&second).unwrap();
         assert_eq!(repository.applied(), vec![first, second]);
@@ -147,7 +147,7 @@ mod tests {
         let repository = StubRepository::new();
         repository.fail_next();
         assert!(matches!(
-            repository.apply(&[LedgerChange::DeletePayee(PayeeId::seed(1))]),
+            repository.apply(&[LedgerChange::DeleteTag(TagId::seed(1))]),
             Err(RepositoryError::StubFailure)
         ));
         assert!(repository.applied().is_empty());

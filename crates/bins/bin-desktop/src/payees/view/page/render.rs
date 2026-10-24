@@ -1,22 +1,17 @@
-//! The **Payees** page (`docs/ux/desktop-mockups/16-settings/README.md`, to the 2j pattern): a kicker (A–Z)
-//! with **+ Add payee** over one bordered list of name, default category and match rules, with
-//! `edit · delete` per row. Usage lives in Transactions and Reports, so there are no transaction
-//! or total columns. It reuses the Payees model and dialogs.
-//!
-//! [`PayeesPage`] draws it, and every click is bound to the same handler its key reaches
-//! (`n`/`e`/`d`). A row click only selects: the Transactions hand-off stays on the old page.
+//! Draws the Payees page's view model (`docs/ux/desktop-mockups/16-settings/README.md`, to the 2j
+//! pattern): a kicker (A–Z) with **+ Add payee** over one bordered list of name, Default category
+//! and match rules, with `edit · delete` per row. Every click sends the Presenter the event its key
+//! does; a row click only selects.
 
-use lib_core::PayeeId;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Entity, Rgba, SharedString, Window, div, prelude::*, px};
+use lib_locale::Segment;
 use lib_locale::format::upper;
-
-use lib_payees::Payee;
+use lib_payees::presenter::{PayeeLine, PayeesPageEvent, PayeesPageViewModel};
 
 use super::PayeesPage;
 use crate::theme::color;
-use lib_categories::Category;
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -25,46 +20,28 @@ const NAME_MIN_WIDTH: gpui::Pixels = px(140.0);
 const CATEGORY_WIDTH: gpui::Pixels = px(150.0);
 const RULES_WIDTH: gpui::Pixels = px(90.0);
 
-/// The heading's meta as plain text, for the status line: `24 payees · 3 without default category`.
-pub fn scope_text(payees: &[Payee]) -> String {
-    format!(
-        "{} \u{b7} {}",
-        crate::msg::desktop_payees_count(count(lib_payees::active_count(payees))),
-        crate::msg::desktop_payees_status_without_default(
-            &lib_payees::without_default_category_count(payees).to_string()
-        ),
-    )
-}
-
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
-}
-
 /// The heading's meta: the count, then the without-default clause with its number bold in the
 /// accent text colour.
-pub fn scope_note(payees: &[Payee], cx: &App) -> AnyElement {
+pub(super) fn scope_note(scope: &[Segment], cx: &App) -> AnyElement {
     div()
         .flex()
         .items_baseline()
         .gap(px(4.0))
-        .child(crate::msg::desktop_payees_count(count(
-            lib_payees::active_count(payees),
-        )))
-        .child("\u{b7}")
         .children(
-            crate::msg::desktop_payees_without_default(
-                &lib_payees::without_default_category_count(payees).to_string(),
-            )
-            .into_iter()
-            .map(|segment| match segment.tag.as_deref() {
-                Some("strong") => div()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::accent_text(cx))
-                    .child(segment.text)
-                    .into_any_element(),
-                _ => div().child(segment.text).into_any_element(),
-            }),
+            scope
+                .iter()
+                .filter(|segment| !segment.text.trim().is_empty())
+                .map(|segment| {
+                    let text = segment.text.trim().to_string();
+                    match segment.tag.as_deref() {
+                        Some("strong") => div()
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                            .text_color(color::accent_text(cx))
+                            .child(text)
+                            .into_any_element(),
+                        _ => div().child(text).into_any_element(),
+                    }
+                }),
         )
         .into_any_element()
 }
@@ -72,24 +49,20 @@ pub fn scope_note(payees: &[Payee], cx: &App) -> AnyElement {
 impl Render for PayeesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let payees = self.payees(cx);
-        let categories = self.categories(cx);
-        let selected = self.selected_id(cx);
+        let view = self.view_model(cx);
         let focused = self.page_focused;
-        let sorted = lib_payees::sorted_by_name(payees);
-        let last = sorted.len().saturating_sub(1);
+        let last = view.rows.len().saturating_sub(1);
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&entity, cx))
-            .when(sorted.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_color(color::muted(cx))
-                        .child(crate::msg::desktop_payees_empty("n")),
-                )
-            })
-            .when(!sorted.is_empty(), |this| {
+            .child(kicker_row(&view, &entity, cx))
+            .children(view.empty.clone().map(|empty| {
+                div()
+                    .text_color(color::muted(cx))
+                    .child(empty)
+                    .into_any_element()
+            }))
+            .when(!view.rows.is_empty(), |this| {
                 this.child(
                     div()
                         .flex()
@@ -97,13 +70,13 @@ impl Render for PayeesPage {
                         .border_1()
                         .border_color(color::border(cx))
                         .mb(px(18.0))
-                        .child(table_header(cx))
-                        .children(sorted.iter().enumerate().map(|(position, payee)| {
+                        .child(table_header(&view, cx))
+                        .children(view.rows.iter().enumerate().map(|(position, line)| {
                             row(
-                                payee,
-                                categories,
+                                line,
+                                &view,
                                 position == last,
-                                selected == Some(payee.id),
+                                view.selected == Some(line.id),
                                 focused,
                                 &entity,
                                 cx,
@@ -116,30 +89,26 @@ impl Render for PayeesPage {
                     .max_w(px(620.0))
                     .text_size(px(11.5))
                     .text_color(color::muted(cx))
-                    .child(crate::msg::desktop_payees_footnote()),
+                    .child(view.footnote.clone()),
             )
     }
 }
 
-impl PayeesPage {
-    /// The heading's meta, over the page's live rows.
-    pub(crate) fn scope_note(&self, cx: &App) -> AnyElement {
-        scope_note(self.payees(cx), cx)
-    }
+/// A click handler that sends the page `event`, as the key that does the same.
+fn on_event(entity: &Entity<PayeesPage>, event: PayeesPageEvent) -> OnPlainClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| {
+        let event = event.clone();
+        entity.update(cx, |page, cx| page.send(event, cx));
+    })
 }
 
-/// A click handler that runs `act` on the page with the clicked Payee's id.
-fn on_payee(
+fn kicker_row(
+    view: &PayeesPageViewModel,
     entity: &Entity<PayeesPage>,
-    id: PayeeId,
-    act: fn(&mut PayeesPage, PayeeId, &mut Context<'_, PayeesPage>),
-) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| entity.update(cx, |view, cx| act(view, id, cx)))
-}
-
-fn kicker_row(entity: &Entity<PayeesPage>, cx: &App) -> impl IntoElement {
-    let entity = entity.clone();
+    cx: &App,
+) -> impl IntoElement {
+    let on_add = on_event(entity, PayeesPageEvent::New);
     let hover = color::muted(cx);
     div()
         .flex()
@@ -151,7 +120,7 @@ fn kicker_row(entity: &Entity<PayeesPage>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_settings_payees_kicker())),
+                .child(upper(&view.kicker)),
         )
         // `btn btn-primary` at `height:32px`.
         .child(
@@ -167,13 +136,14 @@ fn kicker_row(entity: &Entity<PayeesPage>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, _window, cx| entity.update(cx, PayeesPage::click_add))
-                .child(crate::msg::desktop_payees_add_button("+")),
+                .on_click(move |_event, window, cx| on_add(window, cx))
+                .child(view.add_button.clone()),
         )
 }
 
 /// `padding:6px 14px; background:#eae9e9`: NAME, DEFAULT CATEGORY, MATCH RULES and ACTIONS.
-fn table_header(cx: &App) -> impl IntoElement {
+fn table_header(view: &PayeesPageViewModel, cx: &App) -> impl IntoElement {
+    let columns = &view.columns;
     div()
         .flex()
         .px(px(14.0))
@@ -188,35 +158,35 @@ fn table_header(cx: &App) -> impl IntoElement {
             div()
                 .flex_1()
                 .min_w(NAME_MIN_WIDTH)
-                .child(upper(&lib_locale::msg::column_name())),
+                .child(upper(&columns.name)),
         )
         .child(
             div()
                 .w(CATEGORY_WIDTH)
                 .flex_none()
-                .child(upper(&crate::msg::desktop_payees_column_default_category())),
+                .child(upper(&columns.default_category)),
         )
         .child(
             div()
                 .w(RULES_WIDTH)
                 .flex_none()
-                .child(upper(&crate::msg::desktop_payees_column_match_rules())),
+                .child(upper(&columns.match_rules)),
         )
-        .child(div().child(upper(&lib_locale::msg::column_actions())))
+        .child(div().child(upper(&columns.actions)))
 }
 
 /// The selected row is inverted while the page has focus (`background:#201e1d; color:#f3f2f2`)
 /// and only tinted while the index does.
 fn row(
-    payee: &Payee,
-    categories: &[Category],
+    line: &PayeeLine,
+    view: &PayeesPageViewModel,
     last: bool,
     selected: bool,
     focused: bool,
     entity: &Entity<PayeesPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let id = payee.id;
+    let id = line.id;
     let inverted = selected && focused;
     let hover = color::hover(cx);
     let (secondary, faint, missing, button_border): (Rgba, Rgba, Rgba, Rgba) = if inverted {
@@ -234,11 +204,12 @@ fn row(
             color::border(cx),
         )
     };
-    let category = payee
-        .default_category
-        .and_then(|category_id| categories.iter().find(|c| c.id == category_id));
-    let rules = count(payee.aliases.len());
-    let on_row_click = on_payee(entity, id, PayeesPage::click_row);
+    let on_row_click = {
+        let entity = entity.clone();
+        move |cx: &mut App| {
+            entity.update(cx, |page, cx| page.click(PayeesPageEvent::Select(id), cx));
+        }
+    };
 
     div()
         .debug_selector(move || format!("settings-payees-row-{id}"))
@@ -259,8 +230,8 @@ fn row(
         })
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
         // An inactive Payee stays listed, dimmed and tagged, rather than hidden.
-        .when(!payee.is_active, |this| this.opacity(0.55))
-        .on_click(move |_event, window, cx| on_row_click(window, cx))
+        .when(!line.is_active, |this| this.opacity(0.55))
+        .on_click(move |_event, _window, cx| on_row_click(cx))
         .child(
             div()
                 .flex_1()
@@ -272,9 +243,9 @@ fn row(
                     div()
                         .truncate()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .child(payee.name.clone()),
+                        .child(line.name.clone()),
                 )
-                .when(!payee.is_active, |this| {
+                .when(!line.is_active, |this| {
                     this.child(
                         div()
                             .flex_none()
@@ -284,17 +255,17 @@ fn row(
                             .border_color(button_border)
                             .text_size(px(10.0))
                             .text_color(secondary)
-                            .child(crate::msg::desktop_payees_inactive()),
+                            .child(view.inactive.clone()),
                     )
                 }),
         )
         .child(div().w(CATEGORY_WIDTH).flex_none().truncate().map(|this| {
-            match category {
-                Some(category) => this.text_color(secondary).child(category.name.clone()),
+            match &line.default_category {
+                Some(category) => this.text_color(secondary).child(category.clone()),
                 None => this
                     .text_color(missing)
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .child(crate::msg::desktop_payees_no_default_category()),
+                    .child(view.no_default_category.clone()),
             }
         }))
         .child(
@@ -302,7 +273,7 @@ fn row(
                 .w(RULES_WIDTH)
                 .flex_none()
                 .text_color(faint)
-                .child(crate::msg::desktop_payees_rule_count(rules)),
+                .child(line.rules.clone()),
         )
         .child(
             div()
@@ -310,16 +281,16 @@ fn row(
                 .gap(px(4.0))
                 .child(row_action_button(
                     SharedString::from(format!("settings-payees-edit-{id}")),
-                    crate::msg::desktop_payees_row_edit(),
+                    view.row_edit.clone(),
                     button_border,
-                    on_payee(entity, id, PayeesPage::click_edit),
+                    on_event(entity, PayeesPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-payees-delete-{id}")),
-                    crate::msg::desktop_payees_row_delete(),
+                    view.row_delete.clone(),
                     button_border,
-                    on_payee(entity, id, PayeesPage::click_delete),
+                    on_event(entity, PayeesPageEvent::DeleteRow(id)),
                     cx,
                 )),
         )
@@ -353,35 +324,4 @@ fn row_action_button(
             on_click(window, cx)
         })
         .child(label)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scope_text_reads_the_count_and_the_missing_defaults() {
-        crate::locale::init_for_tests();
-        let payees = lib_payees::default_payees();
-        assert_eq!(
-            scope_text(&payees),
-            format!(
-                "{} \u{b7} {} without default category",
-                crate::msg::desktop_payees_count(count(lib_payees::active_count(&payees))),
-                lib_payees::without_default_category_count(&payees)
-            )
-        );
-    }
-
-    #[test]
-    fn sorted_by_name_ignores_case() {
-        let payees = lib_payees::default_payees();
-        let names: Vec<String> = lib_payees::sorted_by_name(&payees)
-            .iter()
-            .map(|payee| payee.name.to_lowercase())
-            .collect();
-        let mut expected = names.clone();
-        expected.sort();
-        assert_eq!(names, expected);
-    }
 }

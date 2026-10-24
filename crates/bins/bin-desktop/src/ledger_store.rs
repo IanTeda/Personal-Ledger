@@ -4,9 +4,9 @@
 //!
 //! The Ledger's Payees, Transactions, Bill Plans and Bill Schedule are read copies of their ports
 //! (#774, #831): `apply` forwards a command's Payee, Transaction and Bills changes to the ports and
-//! refreshes the copies from them. The Bills ports are shared with the Bills module, which writes
-//! them through its Interactors and refreshes the copy after each event
-//! ([`LedgerStore::refresh_bills`]).
+//! refreshes the copies from them. The Payees and Bills ports are shared with their modules, which
+//! write them through their Interactors and refresh the copy after each event
+//! ([`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
 //!
 //! The store holds no commit: what `apply` forwards is committed by the input it ran in
 //! (`crate::input::send`). A View not yet a module runs `apply` from its own click, outside any
@@ -19,16 +19,17 @@ use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_bills::BillsPorts as _;
-use lib_database::{SharedPayeesStore, SharedTransactionsStore};
+use lib_database::{PayeesStore, SharedTransactionsStore};
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
+use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
-/// What `shell::router::build` hands the Ledger: where its Payees are kept, shared with the Bills
-/// reads, where its Transactions are kept, shared with the Bill Payments module, and the Bills
-/// ports it shares with the Bills module.
+/// What `shell::router::build` hands the Ledger: the Payees ports it shares with the Payees module
+/// and the Bills reads, where its Transactions are kept, shared with the Bill Payments module, and
+/// the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
-    pub payees: SharedPayeesStore,
+    pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
 }
@@ -39,7 +40,7 @@ impl LedgerSetup {
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
-        let payees = payees_in_memory(&ledger);
+        let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         Self {
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
@@ -48,16 +49,6 @@ impl LedgerSetup {
             payees,
         }
     }
-}
-
-/// `ledger`'s own Payees in memory as the Payees store, nothing naming any.
-pub(crate) fn payees_in_memory(ledger: &Ledger) -> SharedPayeesStore {
-    Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts {
-        payees: lib_payees::fake::InMemoryPayees {
-            payees: ledger.payees().to_vec(),
-        },
-        ..Default::default()
-    }))
 }
 
 /// Emitted after a write lands, naming every domain it touched.
@@ -73,7 +64,7 @@ pub struct LegacyApplied;
 
 pub struct LedgerStore {
     ledger: Ledger,
-    payees: SharedPayeesStore,
+    payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
 }
@@ -88,7 +79,7 @@ impl LedgerStore {
         let transactions = lib_transactions::fake::InMemoryTransactions {
             transactions: ledger.transactions().to_vec(),
         };
-        let payees = payees_in_memory(&ledger);
+        let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone());
         Self {
             ledger,
@@ -162,7 +153,7 @@ impl LedgerStore {
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
             let payees_written =
-                crate::settings::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
+                crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
             if !crate::input::sending(cx) {
@@ -220,6 +211,14 @@ impl LedgerStore {
         Ok(())
     }
 
+    /// Brings the Payees read copy in line with the ports after the Payees module wrote them,
+    /// announcing `Domain::Payees` only when it changed.
+    pub fn refresh_payees(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_payees() {
+            self.announce(cx, BTreeSet::from([Domain::Payees]));
+        }
+    }
+
     /// Brings the Bills read copy in line with the ports after the Bills module wrote them,
     /// announcing `Domain::Bills` only when it changed.
     pub fn refresh_bills(&mut self, cx: &mut Context<'_, Self>) {
@@ -238,7 +237,7 @@ impl LedgerStore {
 
     /// Brings the Payees read copy in line with the port, returning whether it changed.
     fn copy_payees(&mut self) -> bool {
-        let payees = self.payees.borrow().payees().payees();
+        let payees = PayeesStore::payees(&*self.payees.borrow()).payees();
         self.ledger.refresh_payees(payees)
     }
 
@@ -293,15 +292,15 @@ mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
     use lib_database::{Commit, PendingWrites};
-    use lib_ledger::{DeletePayee, LedgerParts};
+    use lib_ledger::{LedgerParts, RemoveTag};
 
     use super::*;
-    use lib_core::PayeeId;
+    use lib_core::TagId;
 
     fn store(cx: &mut TestAppContext) -> (Entity<LedgerStore>, Rc<RefCell<Vec<LedgerChanged>>>) {
         let store = cx.new(|_| {
             LedgerStore::new(Ledger::from_parts(LedgerParts {
-                payees: lib_payees::default_payees(),
+                tags: lib_tags::default_tags(),
                 ..LedgerParts::default()
             }))
         });
@@ -319,19 +318,17 @@ mod tests {
     #[gpui::test]
     fn a_landed_command_announces_the_domains_it_changed(cx: &mut TestAppContext) {
         let (store, events) = store(cx);
-        let id = store.read_with(cx, |store, _| store.ledger().payees()[0].id);
+        let id = store.read_with(cx, |store, _| store.ledger().tags()[0].id);
 
         store.update(cx, |store, cx| {
-            store
-                .apply(cx, DeletePayee(id))
-                .expect("the Payee exists and nothing names it")
+            store.apply(cx, RemoveTag(id)).expect("the Tag exists")
         });
         cx.run_until_parked();
 
         assert_eq!(
             *events.borrow(),
             vec![LedgerChanged {
-                what: BTreeSet::from([Domain::Payees])
+                what: BTreeSet::from([Domain::Tags])
             }]
         );
     }
@@ -341,11 +338,7 @@ mod tests {
         let (store, events) = store(cx);
 
         store.update(cx, |store, cx| {
-            assert!(
-                store
-                    .apply(cx, DeletePayee(PayeeId::seed(u32::MAX)))
-                    .is_err()
-            );
+            assert!(store.apply(cx, RemoveTag(TagId::seed(u32::MAX))).is_err());
         });
         cx.run_until_parked();
 
@@ -371,16 +364,11 @@ mod tests {
             .detach();
         });
         let ids: Vec<_> = store.read_with(cx, |store, _| {
-            store
-                .ledger()
-                .payees()
-                .iter()
-                .map(|payee| payee.id)
-                .collect()
+            store.ledger().tags().iter().map(|tag| tag.id).collect()
         });
 
         store.update(cx, |store, cx| {
-            store.apply(cx, DeletePayee(ids[0])).expect("deleted")
+            store.apply(cx, RemoveTag(ids[0])).expect("removed")
         });
         cx.run_until_parked();
         assert_eq!(
@@ -392,7 +380,7 @@ mod tests {
         cx.update(|cx| {
             crate::input::send(cx, |cx| {
                 store.update(cx, |store, cx| {
-                    store.apply(cx, DeletePayee(ids[1])).expect("deleted")
+                    store.apply(cx, RemoveTag(ids[1])).expect("removed")
                 })
             })
         });
@@ -427,7 +415,7 @@ mod tests {
     ) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
-        let payees: SharedPayeesStore = Rc::new(RefCell::new(storage.payees));
+        let payees = crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees));
         let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), payees.clone());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);

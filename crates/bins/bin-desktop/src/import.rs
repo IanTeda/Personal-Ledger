@@ -14,10 +14,27 @@ use chrono::{Duration, NaiveDate};
 use lib_core::{AccountId, CategoryId, Money, PayeeId};
 use lib_ledger::{BookingPayee, ImportBooking};
 
-use crate::settings::payees::form::PayeeOptions;
-use lib_payees::{self, Payee};
+use lib_payees::{self, Payee, PayeeCategory};
 
 use crate::form::select::SelectState;
+
+/// The Category select's options: a lead label (`choose category…`), then every leaf a Payee may
+/// default to, as `lib-payees`' `PayeeCategories` labels it. `labels` are what the select shows and
+/// stores; `ids` runs parallel to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryOptions {
+    pub labels: Vec<String>,
+    pub ids: Vec<Option<CategoryId>>,
+}
+
+impl CategoryOptions {
+    pub fn new(leaves: Vec<PayeeCategory>, lead: String) -> Self {
+        let (labels, ids) = std::iter::once((lead, None))
+            .chain(leaves.into_iter().map(|leaf| (leaf.label, Some(leaf.id))))
+            .unzip();
+        Self { labels, ids }
+    }
+}
 
 /// The statement's file name, shown in the title-bar context and the subline.
 pub const STATEMENT_FILE: &str = "statement.csv";
@@ -393,7 +410,7 @@ impl ImportState {
         index: usize,
         select: RowSelect,
         payee_choices: &PayeeChoices,
-        categories: &PayeeOptions,
+        categories: &CategoryOptions,
     ) {
         let Some(row) = self.rows.get(index) else {
             return;
@@ -427,7 +444,7 @@ impl ImportState {
         key: SelectKey,
         payees: &[Payee],
         payee_choices: &PayeeChoices,
-        categories: &PayeeOptions,
+        categories: &CategoryOptions,
     ) -> bool {
         let Some((_, select, state)) = self.open_select.as_mut() else {
             return false;
@@ -454,7 +471,7 @@ impl ImportState {
         index: usize,
         payees: &[Payee],
         payee_choices: &PayeeChoices,
-        categories: &PayeeOptions,
+        categories: &CategoryOptions,
     ) {
         let Some((_, select, state)) = self.open_select.as_mut() else {
             return;
@@ -473,7 +490,7 @@ impl ImportState {
         &mut self,
         payees: &[Payee],
         payee_choices: &PayeeChoices,
-        categories: &PayeeOptions,
+        categories: &CategoryOptions,
     ) {
         let Some((index, select, state)) = self.open_select.take() else {
             return;
@@ -548,8 +565,6 @@ mod tests {
     use lib_ledger::{CommitImport, Ledger, LedgerCommand};
     use lib_payees::default_payees;
 
-    use lib_categories::default_categories;
-
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 28).unwrap()
     }
@@ -564,8 +579,11 @@ mod tests {
         PayeeChoices::new(payees, raw, |name| format!("+ create \"{name}\""))
     }
 
-    fn category_options() -> PayeeOptions {
-        PayeeOptions::new(&default_categories(), "choose category…".to_string())
+    fn category_options() -> CategoryOptions {
+        CategoryOptions::new(
+            lib_payees::fake::stub_categories(),
+            "choose category…".to_string(),
+        )
     }
 
     #[test]
