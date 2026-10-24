@@ -5,12 +5,13 @@
 use gpui::{App, Context, Keystroke};
 use lib_ledger::{CommitImport, CountImportedTransactions};
 use lib_list_cursor::Step;
-use lib_toast::ToastKind;
+use lib_toast::{Notice, Notify as _, ToastKind};
 
 use super::state::TransactionsView;
 use crate::{
     import::{self, ImportState, RowSelect},
-    view::{event::ViewEvent, import as import_view},
+    notices::Queue,
+    view::import as import_view,
 };
 
 impl TransactionsView {
@@ -109,8 +110,10 @@ impl TransactionsView {
         cx.notify();
     }
 
-    /// **continue** / `enter`: commits the import to the Ledger and lands on the page with a Toast.
-    /// Does nothing while a row needs review (the button is disabled then).
+    /// **continue** / `enter`: commits the import to the Ledger and lands on the page with a Toast,
+    /// as one input (`crate::input::send`): the booking and the count commit once, and the Toast is
+    /// queued as a Notice that input drains. Does nothing while a row needs review (the button is
+    /// disabled then).
     pub(super) fn continue_import(&mut self, cx: &mut Context<'_, Self>) {
         let Some(state) = self.state.import.as_ref() else {
             return;
@@ -119,41 +122,43 @@ impl TransactionsView {
             Ok(bookings) => bookings,
             Err(import::ImportError::NeedsReview(_)) => return,
         };
-        let committed = self.sources.ledger.update(cx, |store, cx| {
-            store.apply(
-                cx,
-                CommitImport {
-                    account_id: import::EVERYDAY_ACCOUNT_ID,
-                    bookings,
-                },
-            )
-        });
-        let (kind, text) = match committed {
-            Ok(committed) => {
-                let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
-                // A missing Everyday account has no count to bump, as before.
-                let _ = self.sources.ledger.update(cx, |store, cx| {
-                    store.apply(
-                        cx,
-                        CountImportedTransactions {
-                            id: import::EVERYDAY_ACCOUNT_ID,
-                            imported,
-                        },
-                    )
-                });
-                self.state.import = None;
-                self.reset_selection();
-                self.import_scroll.set_offset(gpui::Point::default());
-                (
-                    ToastKind::Success,
-                    crate::msg::desktop_import_done(
-                        i64::try_from(committed.transactions).unwrap_or(i64::MAX),
-                    ),
+        crate::input::send(cx, |cx| {
+            let committed = self.sources.ledger.update(cx, |store, cx| {
+                store.apply(
+                    cx,
+                    CommitImport {
+                        account_id: import::EVERYDAY_ACCOUNT_ID,
+                        bookings,
+                    },
                 )
-            }
-            Err(refusal) => (ToastKind::Error, refusal.to_string()),
-        };
-        cx.emit(ViewEvent::RaiseToast { kind, text });
+            });
+            let (kind, text) = match committed {
+                Ok(committed) => {
+                    let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
+                    // A missing Everyday account has no count to bump, as before.
+                    let _ = self.sources.ledger.update(cx, |store, cx| {
+                        store.apply(
+                            cx,
+                            CountImportedTransactions {
+                                id: import::EVERYDAY_ACCOUNT_ID,
+                                imported,
+                            },
+                        )
+                    });
+                    self.state.import = None;
+                    self.reset_selection();
+                    self.import_scroll.set_offset(gpui::Point::default());
+                    (
+                        ToastKind::Success,
+                        crate::msg::desktop_import_done(
+                            i64::try_from(committed.transactions).unwrap_or(i64::MAX),
+                        ),
+                    )
+                }
+                Err(refusal) => (ToastKind::Error, refusal.to_string()),
+            };
+            Queue.notify(Notice::Toast(kind, text));
+        });
         cx.notify();
     }
 

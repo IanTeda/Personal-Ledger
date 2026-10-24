@@ -1,5 +1,6 @@
 //! The Import step driven by keys: `:import` opening it in place of Transactions, row movement,
-//! Remember, the Payee and Category selects, and leaving it. State is read back from `Root`.
+//! Remember, the Payee and Category selects, committing, and leaving it. State is read back from
+//! `Root`.
 
 use super::common;
 
@@ -84,4 +85,81 @@ fn escape_leaves_the_import_step(app: &mut TestAppContext) {
     ui.press("escape");
     assert_eq!(ui.import(), None);
     assert_eq!(ui.noun(), Noun::Transactions);
+}
+
+/// Moves the Import selection to row `index` with `j` and `k`.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: an Import step that isn't open should fail the test loudly"
+)]
+fn select_row(ui: &mut Harness<'_>, index: usize) {
+    let selected = ui.import().expect("import is open").selected;
+    let (key, presses) = if index >= selected {
+        ("j", index - selected)
+    } else {
+        ("k", selected - index)
+    };
+    for _ in 0..presses {
+        ui.press(key);
+    }
+    assert_eq!(ui.import().expect("import is open").selected, index);
+}
+
+#[gpui::test]
+fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_import(app);
+    let candle = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .position(|row| row.raw == "SP AUSSIE CANDLE CO")
+        .expect("the seeded statement has the candle shop");
+    select_row(&mut ui, candle);
+    ui.press("n");
+
+    let to_review: Vec<usize> = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.status == "NeedsReview")
+        .map(|(index, _)| index)
+        .collect();
+    for index in to_review {
+        select_row(&mut ui, index);
+        // `j` steps past "choose category…" to the first leaf.
+        ui.press("c j enter");
+    }
+    let import = ui.import().expect("import is open");
+    assert!(import.remember);
+    assert!(import.can_continue, "every row is resolved");
+    assert_eq!(import.rows[candle].status, "NewPayee");
+
+    let before = ui.commits();
+    ui.press("enter");
+    assert_eq!(ui.import(), None, "enter committed the import");
+    assert_eq!(ui.commits(), before + 1, "one commit for the input");
+    let toast = ui
+        .toasts()
+        .history
+        .first()
+        .cloned()
+        .expect("a Toast says so");
+    assert_eq!(toast.kind, "Success");
+    assert_eq!(toast.text, "Imported 18 transactions");
+
+    ui.press("g s");
+    ui.press("j j j j j j j");
+    assert_eq!(ui.settings().page, "Payees");
+    let page = ui.settings_payees();
+    let row = page
+        .payee_names
+        .iter()
+        .position(|name| name == "Aussie Candle Co")
+        .expect("the Import commit's new Payee is listed");
+    assert_eq!(page.payee_rules[row], "1 rule");
 }

@@ -24,11 +24,14 @@ pub use view::page::PayeesPage;
 
 use lib_payees::presenter::PayeesPageEvent;
 
-/// The Payees page as the UI tests read it: names A–Z, and the selected row's name (ADR-0030).
+/// The Payees page as the UI tests read it: names A–Z, each row's match-rule count as drawn, and
+/// the selected row's name (ADR-0030).
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsPayeesSnapshot {
     pub payee_names: Vec<String>,
+    /// `1 rule`, parallel to `payee_names`.
+    pub payee_rules: Vec<String>,
     pub selected_payee: Option<String>,
 }
 

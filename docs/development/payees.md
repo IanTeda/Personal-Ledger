@@ -93,7 +93,7 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 | PAY-007 | `Payee::default_category`, `PayeeCategories` | `lib_payees::presenter::payee_form::tests::the_default_category_offers_none_then_every_leaf_and_ignores_others`, `settings_payees_mouse::a_rule_and_a_default_category_are_added_by_clicks` |
 | PAY-008 | `payees/view/dialog/rules_field.rs`, `lib_payees::match_alias` | `lib_payees::presenter::payee_form::tests::rules_are_normalised_deduped_and_another_payees_is_refused_in_the_input`, `settings_payees_keyboard::enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back` |
 | PAY-009 | `lib_payees::delete_payee`, `lib_payees::interactor::DeletePayee`, `lib_payees::presenter::DeleteAction` | `lib_payees::presenter::delete_payee::tests::the_three_outcomes_are_chosen_from_the_payees_use_when_it_opens`, `settings_payees_keyboard::d_deletes_an_unused_payee_once_its_name_is_typed` |
-| PAY-010 | `import.rs`, `view/import.rs` | `import::tests::commit_creates_payees_with_remembered_aliases_and_appends_transactions` |
+| PAY-010 | `import.rs`, `view/import.rs` | `import::tests::commit_creates_payees_with_remembered_aliases_and_appends_transactions`, `import_keyboard::a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule` |
 | PAY-011 | `lib_database::adapter::payees`, `seed::stub_payees` | `lib_database::adapter::payees::tests::written_rows_reload_the_same`, `smoke_payees_persist::an_added_and_a_renamed_payee_are_there_after_a_restart` |
 
 ## Decisions
@@ -109,7 +109,6 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 - **Halfway states.** The Transactions View, Documents, Import and Budgets read the Ledger's read copy of the Payees; Import commit and Category reassign write through the forwarding shim (#810, #813); `PayeeCategories` comes from the Ledger until Categories migrate (#808). Each is a row in [During the transition](viper-architecture.md#during-the-transition).
 - **The contract's writes don't run the Interactors.** `contract.rs` applies the Entity rules to rows itself, so the Interactors are tested only on the fakes ([#836](https://github.com/IanTeda/Personal-Ledger/issues/836)).
 - **The Deactivate Dialog counts transactions only.** A Payee only Bill Plans name reads "used by 0 transactions" ([#837](https://github.com/IanTeda/Personal-Ledger/issues/837)).
-- **No UI test shows an Import's new Payee on the Payees page** ([#838](https://github.com/IanTeda/Personal-Ledger/issues/838)).
 - **A failed usage read offers Delete.** The file refuses it and the Error Toast reloads, but no test drives a refused delete through to the Toast.
 - **The `Payee` to `BillPayee` mapping exists twice**, in `lib_database::adapter::payees` and `lib-ledger`'s `bill_reads.rs`, which the stub's Bills seed needs; the copy goes with the stub seed.
 - **The usage count is taken once in memory.** The in-memory Desktop and the UI harness count the stub's Splits and Bill Plans when they're built, so a Split a test adds later isn't counted.

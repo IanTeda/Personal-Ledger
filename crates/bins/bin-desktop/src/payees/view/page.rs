@@ -114,6 +114,7 @@ impl PayeesPage {
                 .iter()
                 .find(|row| Some(row.id) == view.selected)
                 .map(|row| row.name.clone()),
+            payee_rules: view.rows.iter().map(|row| row.rules.clone()).collect(),
             payee_names: view.rows.into_iter().map(|row| row.name).collect(),
         }
     }
