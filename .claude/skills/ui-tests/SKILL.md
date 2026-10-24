@@ -11,10 +11,10 @@ Run them with `mise run end-to-end-ui <view>` while developing (headless; no win
 
 Every test file is a module of the one `ui` test binary, declared in `tests/ui/main.rs`, so a new file needs a `mod <file>;` line there. Each file starts with `use super::common;` and takes a `&mut TestAppContext` under `#[gpui::test]`.
 
-- `Harness::new(app)` boots the app-level globals, pins the Locale to en-US and builds `Shell` through the lib's `build_shell` with `today()` fixed at 2026-06-15.
+- `Harness::new(app)` boots the app-level globals, pins the Locale to en-US and builds the Shell's `Root` through the lib's `shell::router::build` with `today()` fixed at 2026-06-15.
 - `ui.press("g f")` presses a space-separated keystroke sequence through the real key router, then settles.
 - `ui.click("selector")` clicks the centre of the element tagged `.debug_selector(|| "selector".to_string())` and panics if it was not drawn.
-- `ui.noun()`, `ui.documents()` and `ui.read(|shell| ...)` read state back from `Shell`.
+- `ui.noun()`, `ui.documents()` and `ui.read(|shell| ...)` read state back from `Root`.
 
 ## Model
 
@@ -27,7 +27,7 @@ Add one for user-visible keyboard or mouse behaviour: a key-router scope, a clic
 ## Adding what a test needs
 
 - **A click target:** tag only the element the test clicks with `debug_selector`. It needs no `cfg`; gpui makes it a no-op without `test-support`. Never hard-code coordinates. Rows below the fold have no bounds, so reach them with keys.
-- **A readback:** add a narrow read-only `#[doc(hidden)]` accessor or snapshot (like `DocumentsSnapshot`) on `Shell`. Keep `Shell` fields private and make a module `pub` only when a test needs it. No facade up front.
+- **A readback:** add a narrow read-only `#[doc(hidden)]` accessor or snapshot (like `DocumentsSnapshot`) on `Root`. Keep `Root` fields private and make a module `pub` only when a test needs it. No facade up front.
 
 ## What not to assert
 

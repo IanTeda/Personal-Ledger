@@ -1,6 +1,6 @@
 //! The Settings Accounts page driven by clicks: the add button, a row opening its ledger, and the
 //! rows' edit and delete actions. The dialogs' own forms are in `accounts_mouse.rs`. Only elements
-//! tagged with `debug_selector` are clicked; state is read back from `Shell`.
+//! tagged with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 use lib_core::AccountId;

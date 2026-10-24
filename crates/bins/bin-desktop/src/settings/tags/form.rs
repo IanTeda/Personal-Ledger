@@ -6,9 +6,9 @@ use lib_core::{HexColor, TagId};
 use lib_tags::{Tag, TagDraft, TagError, name_error, sorted_by_usage, swatches, transaction_count};
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectState,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
     transactions::Transaction,
 };
 
@@ -41,7 +41,7 @@ pub struct TagForm {
     pub focused: TagField,
     /// An Edit form, which adds the Active checkbox to the `Tab` order.
     pub editing: bool,
-    /// Every Tag, copied in when the Dialog opens so the name check needs nothing from `Shell`.
+    /// Every Tag, copied in when the Dialog opens so the name check needs nothing from `Root`.
     tags: Vec<Tag>,
     /// The Tag being edited; `None` on Add.
     own_id: Option<TagId>,
@@ -731,8 +731,8 @@ mod tests {
         assert!(!Dialog::close_open_select(&mut form));
     }
 
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+    use crate::shell::view::dialog_host::type_text;
+    use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
     fn tag_options() -> Vec<MergeOption> {
         ["a", "b", "c"]

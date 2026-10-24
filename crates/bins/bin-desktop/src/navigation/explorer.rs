@@ -1,7 +1,7 @@
 //! The floating "1e" file explorer behind `:open`
 //! (`docs/ux/desktop-mockups/01-shell/README.md`) -- browsing real directories to a `.pldb`
-//! ledger file. `Shell` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
-//! mirroring `crate::chrome::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
+//! ledger file. `Root` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
+//! mirroring `crate::shell::view::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
 //! here, `render` the one method that touches `gpui`.
 //!
 //! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
@@ -58,7 +58,7 @@ pub struct DirEntry {
 /// Which command opened the dialog (issue #167): `:open` and `:new` share the exact same
 /// browse-an-existing-`.pldb` dialog today, differing only in title/button text -- `:new`'s own
 /// eventual "create a fresh `.pldb`" workflow is still fog (the user's own words: "we still
-/// need to plan out the new file workflow"), not this. `Shell::confirm_explorer_open` also
+/// need to plan out the new file workflow"), not this. `Root::confirm_explorer_open` also
 /// reads this: only `Open` actually flips `NavState::ledger_open` on confirm, so picking an
 /// existing file in `New` mode does nothing beyond closing the dialog -- copying an existing
 /// ledger's data isn't what "new" means, even as a stand-in.
@@ -339,9 +339,9 @@ pub(crate) fn format_modified(modified: SystemTime, now: SystemTime) -> String {
 }
 
 /// A row click: the clicked entry's path and the platform's own click count (`2` for a real
-/// double-click) -- `Shell::handle_explorer_entry_click` opens immediately on a double-click
+/// double-click) -- `Root::handle_explorer_entry_click` opens immediately on a double-click
 /// landing on an already-selected `.pldb` row (README: "double-click a `.pldb` row opens
-/// immediately"), mirroring `chrome::rail::primary::OnRowClick`'s own `Rc`-shared-closure shape.
+/// immediately"), mirroring `shell::view::rail::primary::OnRowClick`'s own `Rc`-shared-closure shape.
 pub type OnEntryClick = Rc<dyn Fn(PathBuf, usize, &mut Window, &mut App)>;
 pub type OnBreadcrumbClick = Rc<dyn Fn(PathBuf, &mut Window, &mut App)>;
 pub type OnFilterToggle = Rc<dyn Fn(ExplorerFilter, &mut Window, &mut App)>;
@@ -352,7 +352,7 @@ impl FileExplorer {
     /// The floating dialog itself: `position: absolute`, centred at [`TOP_OFFSET`] from the
     /// window's top edge -- the same centring technique as `Palette::render`'s own doc explains
     /// (`gpui` has no CSS-style transform to recentre a percentage position). Borrows `self`
-    /// rather than consuming it, since `Shell` keeps this state past the render call that draws
+    /// rather than consuming it, since `Root` keeps this state past the render call that draws
     /// it.
     pub fn render(
         &self,

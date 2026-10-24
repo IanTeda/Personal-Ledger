@@ -1,9 +1,9 @@
 //! The **Tracing (Logs)** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! live log capture. [`TracingPage`] owns the log mirror and the virtualised list that shows it,
-//! renders itself (`render.rs`), builds the Clear logs Dialog (`dialogs/`) and reaches `Shell`
+//! renders itself (`render.rs`), builds the Clear logs Dialog (`dialogs/`) and reaches `Root`
 //! only through [`ViewEvent`]. Its Dialog draws and confirms itself through the Dialog host, and
 //! confirms through `apply.rs`; the page takes the outcome back in [`TracingPage::land`]. The
-//! capture feed (`app/log_feed.rs`) pushes new entries in. The Settings View
+//! capture feed (`shell/router/log_feed.rs`) pushes new entries in. The Settings View
 //! forwards the page's keys and status to it while the page has focus. The page has no form: the
 //! level radios filter the mirror at once.
 
@@ -16,8 +16,8 @@ use crate::settings::pages::Page;
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
-    chrome::dialog_host::open_dialog,
     settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
+    shell::view::dialog_host::open_dialog,
     view::event::ViewEvent,
 };
 use apply::TracingOutcome;

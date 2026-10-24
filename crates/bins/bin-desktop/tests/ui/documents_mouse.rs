@@ -1,7 +1,7 @@
 //! The Documents page driven by the mouse alone: the primary and index rails, list rows, the
 //! detail pane's LINKED TO names and ×, the header buttons and the Inbox's Accept and Skip.
 //! Targets are found with `debug_selector` tags and `debug_bounds`, never coordinates; assertions
-//! read state back from `Shell`.
+//! read state back from `Root`.
 
 #![expect(
     clippy::panic,

@@ -1,5 +1,5 @@
 //! Renders the **Fill from…** dialog (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9f) on the
-//! shared `crate::dialog` chrome at the handoff's 560px: the two sources as radio rows, each with
+//! shared `crate::dialog` frame at the handoff's 560px: the two sources as radio rows, each with
 //! the Total budgeted it would give the month, then the chosen source's diff against the plan.
 //! "The plan" is the baseline rather than a source (#386).
 

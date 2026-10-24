@@ -11,7 +11,7 @@ use lib_payees::{PayeeError, get};
 use lib_toast::ToastKind;
 
 use super::{dialogs::PayeesDialog, form::DeleteAction};
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };

@@ -9,7 +9,7 @@ use lib_ledger::{AddAccount, DeleteAccount, EditAccount, Ledger, LedgerCommand};
 use lib_toast::ToastKind;
 
 use super::{dialogs::AccountsDialog, form::AccountForm};
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };

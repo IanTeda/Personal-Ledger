@@ -1,6 +1,6 @@
 //! The Settings View driven by clicks, across its pages: the index rail and its Medium index page
 //! and picker. Each page's own clicks are in its `settings_<page>_mouse.rs`. Only elements tagged
-//! with `debug_selector` are clicked; state is read back from `Shell`.
+//! with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 

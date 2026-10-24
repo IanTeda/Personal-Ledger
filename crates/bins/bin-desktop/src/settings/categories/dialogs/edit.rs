@@ -1,5 +1,5 @@
 //! Renders the **Edit category** dialog (`docs/ux/desktop-mockups/18-categories/README.md`'s 5c) on the shared
-//! `crate::dialog` chrome. Form fields: Name, Type (editable only on top-level, locked for children),
+//! `crate::dialog` frame. Form fields: Name, Type (editable only on top-level, locked for children),
 //! Parent category (tree select, excluding depth-3, the category itself and its descendants),
 //! Monthly budget (optional, disabled on parents showing rollup). Warning notice with Split count.
 

@@ -14,9 +14,9 @@ use lib_toast::{Notice, Notify};
 use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
-use crate::chrome::dialog_entity::host_dialog;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
+use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,

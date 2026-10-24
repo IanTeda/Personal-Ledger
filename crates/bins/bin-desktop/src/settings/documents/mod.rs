@@ -1,8 +1,8 @@
 //! The **Document Types** Settings page (ADR-0037, and its amendment's one folder per page):
 //! `SettingsPage::Documents`, the Ledger's Document Types in type-filter order. [`DocumentsPage`]
 //! reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its keys and
-//! movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through [`ViewEvent`];
-//! `Shell`'s Dialog host draws them and confirms them through `apply.rs`. The Settings View
+//! movement, builds its Dialogs (`dialogs/`) and reaches `Root` only through [`ViewEvent`];
+//! `Root`'s Dialog host draws them and confirms them through `apply.rs`. The Settings View
 //! forwards to it while the page is open.
 //!
 //! The Documents destination (`src/documents/`, `src/view/documents/`) is not part of the page:
@@ -26,13 +26,13 @@ use lib_documents::types::{self as types, DocumentTypeRow};
 use lib_ledger::{Domain, MoveDocumentType};
 
 use crate::{
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_documents_hints,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::ViewEvent,
 };
 use apply::DocumentTypeOutcome;

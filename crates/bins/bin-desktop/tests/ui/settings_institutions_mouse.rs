@@ -1,5 +1,5 @@
 //! The Settings Institutions page driven by clicks: the Institutions row and add buttons, and the
-//! Add institution dialog's chips, unit choice and buttons. State is read back from `Shell`.
+//! Add institution dialog's chips, unit choice and buttons. State is read back from `Root`.
 
 use super::common;
 

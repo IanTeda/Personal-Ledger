@@ -5,7 +5,7 @@ use gpui::App;
 use lib_toast::ToastKind;
 
 use super::dialogs::TracingDialog;
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError},
     dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
 };
@@ -13,7 +13,7 @@ use crate::chrome::{
 /// What confirming a Tracing Dialog asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracingCommand {
-    /// Clear logs: the capture lives on the page, which `Shell` empties.
+    /// Clear logs: the capture lives on the page, which `Root` empties.
     ClearLogs,
 }
 

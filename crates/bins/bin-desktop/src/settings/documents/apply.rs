@@ -7,7 +7,7 @@ use lib_documents::types::{self, RemoveError};
 use lib_ledger::{AddDocumentType, EditDocumentType, Ledger, LedgerCommand, RemoveDocumentType};
 
 use super::dialogs::DocumentTypesDialog;
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };

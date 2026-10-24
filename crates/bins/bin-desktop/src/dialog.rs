@@ -1,8 +1,8 @@
-//! Shared chrome for a floating modal dialog (`docs/ux/desktop-mockups/16-settings/README.md`'s "Dialog"
+//! Shared frame for a floating modal dialog (`docs/ux/desktop-mockups/16-settings/README.md`'s "Dialog"
 //! component table): the full-viewport dimmer + centred bordered card, its header (with a
 //! destructive variant), body, action row, and Cancel/Confirm buttons.
 //!
-//! Extracted by studying `crate::navigation::explorer::FileExplorer` and `crate::chrome::palette::Palette`'s own
+//! Extracted by studying `crate::navigation::explorer::FileExplorer` and `crate::shell::view::palette::Palette`'s own
 //! hand-rolled floating overlays (issue #174's own ticket body) -- **neither is retrofitted to
 //! use this module**. Both already match a different, already-shipped spec of their own (the
 //! Shell & Navigation README's "1d"/"1e" component tables: a fixed top offset rather than
@@ -12,19 +12,19 @@
 //! purely for the four Settings dialogs still to come (issues #184-#187) to build on.
 //!
 //! **A pure render-helper, not a stateful dialog owner.** Like `Palette`/`FileExplorer`, each
-//! consuming dialog keeps owning its own open/close state as `Option<T>` on `Shell` and its own
-//! esc/enter key handling -- this module only draws the chrome. `Shell` has no *real* `gpui`
-//! focus-trapping for any floating overlay today (see `app.rs`'s own module doc: one
+//! consuming dialog keeps owning its own open/close state as `Option<T>` on `Root` and its own
+//! esc/enter key handling -- this module only draws the frame. `Root` has no *real* `gpui`
+//! focus-trapping for any floating overlay today (see `shell::router`'s own module doc: one
 //! `FocusHandle` for the whole window); "the dialog traps focus" is achieved by routing every
-//! keystroke through `Shell::handle_key_down` while the owning `Option<T>` is `Some`, and that
+//! keystroke through `Root::handle_key_down` while the owning `Option<T>` is `Some`, and that
 //! pattern carries over unchanged for whichever ownership/`InputMode` shape each dialog ticket
 //! picks. Deciding that shape is deliberately left to those tickets: unlike the file explorer
 //! (opened via a `:`-palette command, so reusing `InputMode::Command` while it's open was a
 //! natural fit), a Settings dialog opens from a plain button click inside the Settings view, with
 //! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
-//! (`Shell::handle_dialog_key`), a new mode alongside `Command`/`Search`.
+//! (`Root::handle_dialog_key`), a new mode alongside `Command`/`Search`.
 //!
-//! Dialog state and the keyboard handling Dialogs share now live in `crate::chrome::dialog_host`; this
+//! Dialog state and the keyboard handling Dialogs share now live in `crate::shell::view::dialog_host`; this
 //! module still only draws.
 
 use std::rc::Rc;

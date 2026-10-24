@@ -1,7 +1,7 @@
 //! The **Inventory** Settings page (ADR-0037, and its amendment's one folder per page):
 //! `SettingsPage::Inventory`, the Ledger's Locations and, under each open one, its Areas.
 //! [`InventoryPage`] reads its rows from [`LedgerStore`], renders itself (`render.rs`), handles its
-//! keys and movement, builds its Dialogs (`dialogs/`) and reaches `Shell` only through
+//! keys and movement, builds its Dialogs (`dialogs/`) and reaches `Root` only through
 //! [`ViewEvent`]. Its Dialogs draw and confirm themselves through the Dialog host, and confirm
 //! through `apply.rs`; the page takes the outcome back in [`InventoryPage::land`]. The Settings
 //! View forwards to it while the page is open.
@@ -34,14 +34,14 @@ use lib_ledger::{Domain, MoveArea};
 use lib_toast::ToastKind;
 
 use crate::{
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     inventory::{self, Inventory},
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_inventory_hints,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::ViewEvent,
 };
 use apply::InventoryOutcome;

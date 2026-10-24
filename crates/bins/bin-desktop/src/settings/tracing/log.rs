@@ -1,5 +1,5 @@
 //! The Settings › Tracing page's model, `gpui`-free: a mirror of the captured [`LogEntry`]s, the
-//! level filter over it, and the one-line entry format (issue #499). `Shell` pulls new entries in
+//! level filter over it, and the one-line entry format (issue #499). `Root` pulls new entries in
 //! and applies the returned [`LogChange`] to the virtualised list, so the list only remeasures
 //! what moved.
 //!
@@ -24,7 +24,7 @@ pub fn level_tag(level: Level) -> &'static str {
 }
 
 /// The short "subsystem" a target is shown as. For our own crates it is the first module after
-/// the crate (`bin_desktop::app::toast` is `app`), or the crate without its `bin_`/`lib_`
+/// the crate (`bin_desktop::shell::router::toasts` is `shell`), or the crate without its `bin_`/`lib_`
 /// prefix at the crate root (`lib_locale` is `locale`). A dependency shows as its crate, since
 /// its module names mean nothing on their own.
 pub fn subsystem(target: &str) -> &str {
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn subsystem_is_the_first_module_after_our_crate() {
-        assert_eq!(subsystem("bin_desktop::app::toast"), "app");
+        assert_eq!(subsystem("bin_desktop::shell::router::toasts"), "shell");
         assert_eq!(subsystem("lib_locale::format"), "format");
     }
 

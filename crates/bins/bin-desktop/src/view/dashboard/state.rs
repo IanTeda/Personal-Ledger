@@ -1,5 +1,5 @@
 //! The Dashboard's Entity (ADR-0032, ADR-0037). It reads the Ledger through [`LedgerStore`],
-//! renders itself (`impl Render` below), scrolls itself, and reaches `Shell` only through
+//! renders itself (`impl Render` below), scrolls itself, and reaches `Root` only through
 //! [`ViewEvent`]. It has no keys of its own beyond scrolling, so most of the View interface is a
 //! no-op.
 
@@ -14,11 +14,11 @@ use lib_ledger::Domain;
 use super::{AttentionBill, BudgetBar, BudgetList, Dashboard, OnBillClick, empty_state};
 use crate::{
     bills, budgets,
-    chrome::statusline::PageStatus,
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     period::Period,
     settings::display::StatusGlyphs,
+    shell::view::statusline::PageStatus,
     view::{
         event::{Reveal, ViewEvent},
         format, scroll_by_movement,
@@ -98,7 +98,7 @@ impl DashboardView {
         cx.notify();
     }
 
-    /// Records whether a Ledger is open, as `Shell` draws the page.
+    /// Records whether a Ledger is open, as `Root` draws the page.
     pub fn set_ledger_open(&mut self, open: bool) {
         self.ledger_open = open;
     }
@@ -119,7 +119,7 @@ impl DashboardView {
         cx.notify();
     }
 
-    /// Nothing is open within the page, so `Esc` is `Shell`'s.
+    /// Nothing is open within the page, so `Esc` is `Root`'s.
     pub fn escape(&mut self, _cx: &mut Context<'_, Self>) -> bool {
         false
     }

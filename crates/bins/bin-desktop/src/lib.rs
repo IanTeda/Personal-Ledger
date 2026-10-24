@@ -1,15 +1,14 @@
 //! Personal Ledger desktop library. Everything the `desktop` binary does lives here so the
-//! integration tests under `tests/` can build `Shell` through the same [`build_shell`] the app
-//! does; `main.rs` is only config, tracing and a call to [`run`]. Boots into `Shell`, the
-//! persistent-rail, command-palette-driven navigation chrome `docs/ux/desktop-mockups/README.md`
-//! specifies, in place of the feasibility cycle's flat `TabBar` screen-cycling (ADR-0016).
+//! integration tests under `tests/` can build the Shell's [`shell::router::Root`] through the same
+//! [`shell::router::build`] the app does; `main.rs` is only config, tracing and a call to [`run`].
+//! Boots into the Shell, the persistent-rail, command-palette-driven navigation frame
+//! `docs/ux/desktop-mockups/README.md` specifies, in place of the feasibility cycle's flat `TabBar`
+//! screen-cycling (ADR-0016).
 
-pub mod app;
 mod assets;
 mod bill_payments;
 mod bills;
 mod budgets;
-mod chrome;
 mod dialog;
 mod documents;
 mod error;
@@ -26,6 +25,7 @@ pub mod notices;
 mod period;
 pub mod persistence;
 mod settings;
+pub mod shell;
 pub mod theme;
 mod transactions;
 mod units;
@@ -37,18 +37,16 @@ mod msg {
 }
 
 use std::borrow::Cow;
-use std::rc::Rc;
 
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, TitlebarOptions, WindowBounds, WindowOptions,
-    point, prelude::*, px, size,
+    App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px,
+    size,
 };
 
-use app::Shell;
-pub use chrome::window_size::WindowSize;
 pub use error::Error;
 use lib_database::{Storage, Stores, open_storage};
 use persistence::{PersistedState, WindowGeometry};
+pub use shell::view::window_size::WindowSize;
 
 /// Crate Result type alias used across the Desktop binary.
 ///
@@ -61,86 +59,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 const ARCHIVO_REGULAR: &[u8] = include_bytes!("../assets/fonts/Archivo-Regular.ttf");
 const ARCHIVO_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-SemiBold.ttf");
 const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraBold.ttf");
-
-/// Keybinding overrides from config that `Shell` needs at construction.
-pub struct ShellBindings {
-    /// The whole `[keybindings]` section, which the Shell's global and Dialog keymaps and every
-    /// VIPER module's keymap read their overrides from.
-    pub keybindings: lib_config::KeyBindingConfig,
-}
-
-/// The live log capture the Tracing page shows, and the configured `log` level it opens on.
-pub struct ShellLogs {
-    pub buffer: lib_tracing::LogBuffer,
-    pub configured_level: Option<lib_tracing::Levels>,
-}
-
-/// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
-/// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes
-/// hang off. `stores` is where the Units, the Transactions and the Bills are kept, the app's
-/// SQLite adapters or a test's in-memory ports, with the commit every input ends in
-/// (`input::send`) and the writer's failure channel, on which a failed write rolls back.
-pub fn build_shell(
-    persisted: PersistedState,
-    bindings: ShellBindings,
-    logs: ShellLogs,
-    stores: Stores,
-    clock: lib_core::Clock,
-    focus_handle: FocusHandle,
-    cx: &mut Context<'_, Shell>,
-) -> Shell {
-    let Stores {
-        units,
-        transactions,
-        bills,
-        commit,
-        failures,
-    } = stores;
-    input::install(commit, cx.weak_entity(), cx);
-    let today = clock.today();
-    let nav = navigation::nav::NavState::starting_at(persisted.noun);
-    let documents_state = (
-        documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
-        documents::LibraryScope::from_id(
-            persisted.documents_scope.as_deref().unwrap_or("all"),
-            &documents::types::default_types(),
-            today,
-        ),
-        documents::LibrarySort::from_id(persisted.documents_sort.as_deref()),
-    );
-    let settings_page = persisted
-        .settings_page
-        .as_deref()
-        .map(settings::SettingsPage::from_id)
-        .unwrap_or_default();
-
-    // The Transactions and Bills stores are shared: Pay it directly writes both (#779).
-    let transactions: lib_database::SharedTransactionsStore =
-        Rc::new(std::cell::RefCell::new(transactions));
-    let bills = bills::LedgerBackedPorts::shared(Rc::new(std::cell::RefCell::new(bills)));
-    let payments = bill_payments::payments(transactions.clone(), &bills);
-    let storage = ledger_store::LedgerSetup {
-        transactions,
-        bills: bills.clone(),
-    };
-    let bills = bills::BillsSetup::new(bills, payments, &bindings.keybindings);
-    let units = units::UnitsSetup::new(units, &bindings.keybindings);
-    let mut shell = Shell::with_clock(nav, focus_handle, clock, units, bills, storage, cx);
-    shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
-    shell.set_settings_page(settings_page, cx);
-    shell.set_explorer_filters(persisted.explorer_filters);
-    shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
-    shell.set_keymaps(&bindings.keybindings);
-    shell.start_toast_clock(cx);
-    shell.start_date_clock(cx);
-    shell.listen_for_write_failures(failures, cx);
-    shell.set_log_capture(
-        logs.buffer,
-        settings::tracing::log::TracingLevel::from_configured(logs.configured_level),
-        cx,
-    );
-    shell
-}
 
 /// The Desktop's start-up before any window: opens the Ledger file the configuration names,
 /// creating and seeding it when new, with the stub dated from today, then generates the Bill
@@ -238,7 +156,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     // Medium is the floor (ADR-0042): no layout is designed narrower.
-                    window_min_size: Some(chrome::window_size::MIN_WINDOW),
+                    window_min_size: Some(shell::view::window_size::MIN_WINDOW),
                     // Wayland app_id / X11 WM_CLASS -- without this the window reports an
                     // empty class, which leaves window-manager rules (workspace assignment,
                     // etc.) with nothing to match on. Mirrors the packager identifier in
@@ -264,15 +182,15 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                         })
                         .detach();
                     cx.new(|cx| {
-                        build_shell(
+                        shell::router::build(
                             persisted,
-                            ShellBindings { keybindings },
-                            ShellLogs {
+                            shell::router::ShellBindings { keybindings },
+                            shell::router::ShellLogs {
                                 buffer: logs,
                                 configured_level,
                             },
                             stores,
-                            app::wall_clock(chrono::Local::now().date_naive()),
+                            shell::router::wall_clock(chrono::Local::now().date_naive()),
                             focus_handle,
                             cx,
                         )

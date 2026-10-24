@@ -1,4 +1,4 @@
-//! The Tracing page's **Clear logs** confirm (issue #502), on the shared `crate::dialog` chrome's
+//! The Tracing page's **Clear logs** confirm (issue #502), on the shared `crate::dialog` frame's
 //! destructive variant. Nothing to type: `enter` or the button clears, `esc` or Cancel keeps.
 
 use gpui::{AnyElement, App, div, prelude::*, px};

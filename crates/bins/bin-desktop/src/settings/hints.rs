@@ -1,5 +1,5 @@
 //! The status-line legends of the Settings pages and of the dialogs they open, as `(key, action)`
-//! pairs. They live beside the Settings Views that own the keys, not in `Shell`.
+//! pairs. They live beside the Settings Views that own the keys, not in `Root`.
 
 use crate::settings::inventory::InventoryRow;
 

@@ -10,9 +10,9 @@ use lib_units::presenter::{
 
 use super::{Clicks, enter, refusal, send, typed};
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::fields::text_field,
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 pub(super) fn key(presenter: &mut DeletePriceSourcePresenter, key: DialogKey) -> DialogOutcome {

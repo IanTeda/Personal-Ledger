@@ -10,12 +10,12 @@ use lib_toast::{Notice, Notify};
 
 use super::PayDialog;
 use crate::bills::DesktopPorts;
-use crate::chrome::dialog_entity::host_dialog;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
 /// Where the Pay Dialog's Presenter asks to go: closing, which the Dialog reads, and Notices, which
-/// `Shell` drains once the key or click returns.
+/// `Root` drains once the key or click returns.
 #[derive(Default)]
 pub(super) struct DialogRouter {
     /// `Some` once the Presenter closed the Dialog, with what its confirm did.

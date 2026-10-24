@@ -17,16 +17,16 @@ use super::{
     form::{AccountField, AccountForm, DeleteAccountForm},
 };
 use crate::{
-    chrome::dialog_host::{
+    form::field::TextField,
+    shell::view::dialog_host::{
         Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
     },
-    form::field::TextField,
 };
 
 /// The dialogs' shared width: `docs/ux/desktop-mockups/17-accounts/README.md`'s "Dialog" row.
 pub const WIDTH: gpui::Pixels = gpui::px(440.0);
 
-/// Every Accounts dialog `Shell` can have open, `None` when none is -- the README's own `State`
+/// Every Accounts dialog `Root` can have open, `None` when none is -- the README's own `State`
 /// block (`dialog: Option<Dialog>`). The [`AccountId`] is the account's [`Account::id`]. Each dialog
 /// ticket attaches its own form state to its variant.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,5 @@
 //! The Pay Dialog (`docs/ux/desktop-mockups/12-bills/README.md`'s 8d) on the shared
-//! `crate::dialog` chrome, an Entity in the Dialog host (`chrome::dialog_entity`): the segmented switch under the title bar,
+//! `crate::dialog` frame, an Entity in the Dialog host (`shell::view::dialog_entity`): the segmented switch under the title bar,
 //! then either the Match list or the Pay it directly fields. Every key and click becomes a
 //! `lib-bill-payments` Presenter event, and this draws the view model and nothing else.
 //!
@@ -26,13 +26,13 @@ use lib_bill_payments::presenter::{
 use crate::bill_payments::router::DialogRouter;
 use crate::bills::DesktopPorts;
 use crate::bills::ports::copy_reads;
-use crate::chrome::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::chrome::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::chrome::statusline::Hint;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::viper::typed;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
+use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::statusline::Hint;
 use crate::theme::color;
 use lib_shell::DialogCommand;
 use lib_viper::keymap::{BACK, Keymap, SELECT};

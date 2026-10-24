@@ -10,13 +10,13 @@ use super::{
     test_not_built, toggle_select, typed,
 };
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         dialog_fields::{label, text_field, two_up},
         select::SelectState,
         select_field::{self, SelectFieldProps},
     },
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 

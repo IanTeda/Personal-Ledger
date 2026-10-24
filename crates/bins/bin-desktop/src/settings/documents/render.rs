@@ -3,7 +3,7 @@
 //! type-filter order, then four one-sentence notes. Other carries a `default` outline tag and no
 //! **remove** button.
 //!
-//! Every action is a callback into `Shell`, so the keyboard (`n`/`e`/`x`/`J`/`K`) and the mouse
+//! Every action is a callback into `Root`, so the keyboard (`n`/`e`/`x`/`J`/`K`) and the mouse
 //! reach the same handlers.
 
 use std::rc::Rc;

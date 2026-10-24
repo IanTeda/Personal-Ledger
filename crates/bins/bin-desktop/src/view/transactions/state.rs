@@ -3,7 +3,7 @@
 //! draft and the Import step that takes the page over while it is open. It reads the rows through
 //! `LedgerStore`, and the Accounts, Categories, Payees and Tags its chips, filter choices
 //! and Import selects draw on through theirs. It renders itself (`impl Render` in `super`), handles
-//! its own keys, `Esc`, Search and movement, and reaches `Shell` only through [`ViewEvent`].
+//! its own keys, `Esc`, Search and movement, and reaches `Root` only through [`ViewEvent`].
 
 use chrono::NaiveDate;
 use gpui::{
@@ -21,11 +21,11 @@ use super::{
 use lib_payees::Payee;
 
 use crate::{
-    chrome::statusline::{PageStatus, owned_hints},
     import::ImportState,
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::display::{RowDensity, StatusGlyphs},
+    shell::view::statusline::{PageStatus, owned_hints},
     transactions::{
         self, Transaction,
         chips::FilterField,
@@ -91,7 +91,7 @@ pub struct TransactionsSources {
 pub struct TransactionsView {
     pub(super) sources: TransactionsSources,
     pub(super) today: NaiveDate,
-    /// The Display Preferences the table's text and row height follow. Pushed by `Shell`, which
+    /// The Display Preferences the table's text and row height follow. Pushed by `Root`, which
     /// owns the Settings page that changes them.
     pub(super) date_style: Option<DateStyle>,
     pub(super) glyphs: StatusGlyphs,
@@ -317,7 +317,7 @@ impl TransactionsView {
         false
     }
 
-    /// `/` opens the Search box; `Shell` enters `InputMode::Search` for it.
+    /// `/` opens the Search box; `Root` enters `InputMode::Search` for it.
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
         self.searching = true;
         cx.notify();

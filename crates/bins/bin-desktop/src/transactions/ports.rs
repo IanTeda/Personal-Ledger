@@ -1,5 +1,5 @@
 //! The Transactions port as the Desktop holds it (#774): the forwarding shim that saves today's
-//! writers' Transaction changes through the store `build_shell` is given (`LedgerSetup`).
+//! writers' Transaction changes through the store `shell::router::build` is given (`LedgerSetup`).
 //!
 //! The Transactions View and every writer of Transactions are still today's code: each runs as a
 //! `LedgerCommand` on the Ledger and records a `LedgerChange`. [`forward`] sends the Transaction

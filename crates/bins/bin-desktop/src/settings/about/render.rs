@@ -1,5 +1,5 @@
 //! Draws the **About** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): static
-//! project info, no interactive elements beyond the links -- no `Shell` state or click handlers
+//! project info, no interactive elements beyond the links -- no `Root` state or click handlers
 //! to thread through, unlike every other real section built so far.
 //!
 //! The project facts are shared with the `?` help overlay (`crate::view::help::facts`). The

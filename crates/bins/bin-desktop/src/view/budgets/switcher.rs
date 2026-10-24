@@ -1,7 +1,7 @@
 //! Renders the **Switcher** popover (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 11b): a 380px card
 //! anchored under the page title over a dimmed page, listing the active Budgets with their health
 //! line and method tag, then the archived ones dimmed, with `+ New budget` and `Manage budgets…`
-//! in the footer. `Shell` owns the state (`budgets::Switcher`) and every keystroke.
+//! in the footer. `Root` owns the state (`budgets::Switcher`) and every keystroke.
 
 use lib_core::BudgetId;
 use std::rc::Rc;

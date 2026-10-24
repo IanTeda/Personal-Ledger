@@ -27,8 +27,8 @@ pub fn date_style_label(choice: Option<DateStyle>) -> String {
 }
 
 /// The Display page's Preferences together: what the page's controls set, and what the other
-/// Views and the Chrome read. The Settings View owns them, and hands a copy to `Shell` on each
-/// change, since the other Views draw with them and the Toasts are `Shell`'s.
+/// Views and the Shell read. The Settings View owns them, and hands a copy to `Root` on each
+/// change, since the other Views draw with them and the Toasts are `Root`'s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DisplayPreferences {
     pub date_style: Option<DateStyle>,

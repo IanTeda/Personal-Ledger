@@ -1,5 +1,5 @@
 //! The Add, Edit and Remove **Area** dialogs (#495) and the notice the last Area holding Items
-//! gets instead of a Remove, on the shared `crate::dialog` chrome.
+//! gets instead of a Remove, on the shared `crate::dialog` frame.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 

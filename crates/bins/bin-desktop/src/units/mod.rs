@@ -26,7 +26,7 @@ pub use view::page::UnitsPage;
 #[doc(hidden)]
 pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 
-/// What `build_shell` hands the Units module: its ports and its keymap under `[keybindings]`.
+/// What `shell::router::build` hands the Units module: its ports and its keymap under `[keybindings]`.
 pub struct UnitsSetup {
     pub ports: DesktopPorts,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
@@ -40,7 +40,7 @@ impl UnitsSetup {
         }
     }
 
-    /// The stub seed in memory under the default keys, for a test that builds `Shell` directly.
+    /// The stub seed in memory under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn stub() -> Self {
         Self::new(

@@ -1,5 +1,5 @@
 //! Renders the **Edit account** dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3c) on the same
-//! form and chrome as Add (`super::add`), pre-filled from the account.
+//! form and frame as Add (`super::add`), pre-filled from the account.
 //!
 //! **Editable**: Name, Institution, Type, and the UI-only Account number. **Shown read-only**:
 //! Unit and Opening balance -- the glossary fixes a Unit at creation, and an opening balance
@@ -174,7 +174,7 @@ fn usage_notice(account: &Account) -> String {
     )
 }
 
-/// A label above a non-interactive box in the chrome tint: the Unit and Opening balance an
+/// A label above a non-interactive box in the `chrome` tint: the Unit and Opening balance an
 /// existing account can no longer change.
 fn read_only_field(
     id: &'static str,

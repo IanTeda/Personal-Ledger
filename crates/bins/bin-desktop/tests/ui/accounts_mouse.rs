@@ -1,6 +1,6 @@
 //! The Add account dialog's form driven by clicks: focusing a text field, opening a select and
 //! choosing an option, and the confirm button adding only a valid form. Only elements tagged with
-//! `debug_selector` are clicked; state is read back from `Shell`.
+//! `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 

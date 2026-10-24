@@ -1,7 +1,7 @@
 //! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] owns the View state
 //! that belongs to Settings: the page on show, where keyboard focus sits and the Medium page
 //! picker. It builds its pages ([`SettingsPages`]), renders itself (`impl Render` in `super`),
-//! handles the index and its focus keys, and reaches `Shell` only through [`ViewEvent`], which it
+//! handles the index and its focus keys, and reaches `Root` only through [`ViewEvent`], which it
 //! re-emits from its pages.
 //!
 //! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has
@@ -10,10 +10,6 @@
 
 use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
-    chrome::{
-        statusline::{PageStatus, owned_hints},
-        window_size::WindowSize,
-    },
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     settings::accounts::AccountsPage,
@@ -29,6 +25,10 @@ use crate::{
     settings::tags::TagsPage,
     settings::tracing::TracingPage,
     settings::{SettingsFocus, SettingsPage},
+    shell::view::{
+        statusline::{PageStatus, owned_hints},
+        window_size::WindowSize,
+    },
     units::{UnitsPage, UnitsSetup},
     view::event::{Reveal, ViewEvent, ViewMode},
 };
@@ -47,22 +47,22 @@ pub struct SettingsView {
     pub(super) scroll_handle: ScrollHandle,
     /// The Medium index page's scroll, its own so moving the selection doesn't reset it.
     pub(super) index_scroll: ScrollHandle,
-    /// Whether the View zone has focus, told by `Shell` as it draws the View.
+    /// Whether the View zone has focus, told by `Root` as it draws the View.
     pub(super) zone_focused: bool,
-    /// The Window Size the View was last drawn at, told by `Shell` as it draws the View, so its
+    /// The Window Size the View was last drawn at, told by `Root` as it draws the View, so its
     /// keys and status line act on the layout on screen. At Medium, Settings is a drill-down: the
     /// index is a page of its own and a page's heading carries the page picker (DESKTOP-119).
     window_size: WindowSize,
     /// The Medium page picker, while it is open.
     picker: Option<PagePicker>,
-    /// Keeps each page's events reaching this View: its `ViewEvent`s re-emitted for `Shell`, its
+    /// Keeps each page's events reaching this View: its `ViewEvent`s re-emitted for `Root`, its
     /// changes repainting this View and its row clicks handing it focus.
     _page_subscriptions: Vec<Subscription>,
 }
 
 impl SettingsView {
     /// Builds the pages from the Ledger. The Tracing capture arrives later, through
-    /// `Shell::set_log_capture`.
+    /// `Root::set_log_capture`.
     pub fn new(
         ledger: &Entity<LedgerStore>,
         clock: &lib_core::Clock,
@@ -133,7 +133,7 @@ impl SettingsView {
         &self.pages.units
     }
 
-    /// The Tracing page's Entity, for `Shell`'s capture feed and the Settings snapshots.
+    /// The Tracing page's Entity, for `Root`'s capture feed and the Settings snapshots.
     pub fn tracing(&self) -> &Entity<TracingPage> {
         &self.pages.tracing
     }
@@ -189,7 +189,7 @@ impl SettingsView {
     }
 
     // -----------------------------------------------------------------------------------------
-    // The interface `Shell` forwards to (ADR-0037)
+    // The interface `Root` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
     /// The focused page's module keymap, by `chord`, ahead of every key of Settings' own. Not while
@@ -589,7 +589,7 @@ impl SettingsView {
     }
 
     /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
-    /// `Shell`, which made the change itself.
+    /// `Root`, which made the change itself.
     pub fn set_display(&mut self, display: DisplayPreferences, cx: &mut Context<'_, Self>) {
         self.pages
             .display

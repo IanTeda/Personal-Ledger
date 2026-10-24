@@ -1,7 +1,7 @@
 //! The **Tags** Settings page (ADR-0037, and its amendment's one folder per page): the Tags table
 //! with its likely duplicates and their merge. [`TagsPage`] reads its rows from [`LedgerStore`],
 //! renders itself (`render.rs`), handles its keys and movement, builds its Dialogs (`dialogs/`)
-//! and reaches `Shell` only through [`ViewEvent`]. The Dialog host holds them, and they draw,
+//! and reaches `Root` only through [`ViewEvent`]. The Dialog host holds them, and they draw,
 //! read back and confirm themselves (`dialogs/`, `apply.rs`), handing each outcome back to
 //! [`TagsPage::land`]. The Settings View forwards to it while the page is open.
 //!
@@ -26,13 +26,13 @@ use lib_ledger::Domain;
 use lib_tags::{DuplicateGroup, Tag};
 
 use crate::{
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_tags_hints,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::ViewEvent,
 };
 use apply::TagOutcome;
@@ -320,8 +320,10 @@ mod tests {
 
         use super::super::TagsPage;
         use crate::{
-            chrome::dialog_host::{Dialog, DialogScope, HostedOpen, Landed, OpenDialog, type_text},
             ledger_store::test_ledger,
+            shell::view::dialog_host::{
+                Dialog, DialogScope, HostedOpen, Landed, OpenDialog, type_text,
+            },
             view::event::ViewEvent,
         };
 

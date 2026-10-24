@@ -1,5 +1,5 @@
-//! The Documents dialogs on the shared `crate::dialog` chrome: **Add document**, **Edit document**
-//! and **Import files**. `Shell` owns the live forms (`documents::form`) and every keystroke while
+//! The Documents dialogs on the shared `crate::dialog` frame: **Add document**, **Edit document**
+//! and **Import files**. `Root` owns the live forms (`documents::form`) and every keystroke while
 //! one is open; this module only draws them.
 
 use std::rc::Rc;
@@ -529,7 +529,7 @@ pub struct PickerProps<'a> {
     pub on_pick: OnPickerRow,
 }
 
-/// The link picker in the command palette's chrome: a query line, the kind filter, an Inbox-only
+/// The link picker in the command palette's frame: a query line, the kind filter, an Inbox-only
 /// Document Type line and a capped, scrolling list of results.
 pub fn render_picker(props: PickerProps<'_>, cx: &App) -> AnyElement {
     let PickerProps {
@@ -641,14 +641,14 @@ pub fn render_picker(props: PickerProps<'_>, cx: &App) -> AnyElement {
 
     div()
         .absolute()
-        .top(crate::chrome::palette::TOP_OFFSET)
+        .top(crate::shell::view::palette::TOP_OFFSET)
         .left(px(0.0))
         .right(px(0.0))
         .flex()
         .justify_center()
         .child(
             div()
-                .w(crate::chrome::palette::WIDTH)
+                .w(crate::shell::view::palette::WIDTH)
                 .flex()
                 .flex_col()
                 .bg(color::background(cx))

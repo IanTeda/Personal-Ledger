@@ -12,13 +12,13 @@ use super::{
     toggle_select, typed,
 };
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         fields::text_field,
         select::SelectState,
         select_field::{self, SelectFieldProps},
     },
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 

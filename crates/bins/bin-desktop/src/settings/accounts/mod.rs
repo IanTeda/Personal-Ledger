@@ -1,6 +1,6 @@
 //! The **Accounts** Settings page (ADR-0037's amendment: one folder per page). [`AccountsPage`] is
 //! the page's Entity: it owns the selection, renders itself (`render.rs`), handles the page's keys
-//! and movement, builds its Dialogs and reaches `Shell` only through [`ViewEvent`]. The Dialog host
+//! and movement, builds its Dialogs and reaches `Root` only through [`ViewEvent`]. The Dialog host
 //! holds the Dialogs, and they draw, read back and confirm themselves (`dialogs/`, `apply.rs`),
 //! handing each outcome back to [`AccountsPage::land`]. The Settings View forwards to the page
 //! while it is open.
@@ -27,13 +27,13 @@ use form::{AccountForm, AccountOptions, DeleteAccountForm};
 use hints::accounts_hints;
 
 use crate::{
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::{command::AccountsVerb, movement::Movement},
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::{Reveal, ViewEvent},
 };
 
@@ -327,7 +327,7 @@ impl AccountsPage {
         open_dialog(AccountsDialog::Delete(id, form), Self::land, cx);
     }
 
-    /// `accounts new|edit|delete [<account name>]`, once `Shell` has opened the page: opens the
+    /// `accounts new|edit|delete [<account name>]`, once `Root` has opened the page: opens the
     /// same dialog the page's `n`/`e`/`d` and buttons do. `new` pre-fills Name with the argument.
     /// `edit` and `delete` resolve the typed name ([`find_by_name`]), or use the selected row when
     /// none is given; a name that fits nothing or several accounts puts a status-line message
@@ -377,7 +377,7 @@ impl AccountsPage {
     }
 }
 
-/// Asks `Shell` for the account's ledger: Transactions filtered to it, from their first row. The
+/// Asks `Root` for the account's ledger: Transactions filtered to it, from their first row. The
 /// selection is untouched, so returning to Accounts finds the same row selected.
 fn open_ledger(id: AccountId, cx: &mut Context<'_, AccountsPage>) {
     cx.emit(ViewEvent::Reveal(Reveal::AccountTransactions(id)));

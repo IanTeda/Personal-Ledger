@@ -21,7 +21,6 @@ use lib_viper::keymap::Keymap;
 use crate::units::ports::{self, DesktopPorts};
 use crate::units::router::PageRouter;
 use crate::{
-    chrome::{statusline::PageStatus, window_size::WindowSize},
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{
@@ -30,6 +29,7 @@ use crate::{
         pages::{Page, PageFrame, focus_on_row_click},
         state::SettingsView,
     },
+    shell::view::{statusline::PageStatus, window_size::WindowSize},
     view::event::ViewEvent,
 };
 

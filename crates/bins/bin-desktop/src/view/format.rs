@@ -1,7 +1,7 @@
 //! The Settings **Display** preferences applied to real data: the date style (dates and amounts
 //! otherwise follow the Locale through `lib-locale`), the status and Flagged glyphs, and row
 //! density. `gpui`-free, and taking each
-//! preference as a plain argument (the enums in `settings.rs`, never `Shell`), so every view
+//! preference as a plain argument (the enums in `settings.rs`, never `Root`), so every view
 //! renders from one place and the Display section's PREVIEW table keeps matching what the app
 //! actually shows.
 //!

@@ -4,7 +4,7 @@
 //!
 //! A cell that starts a record is bold, closed months are muted and read-only, the current month's
 //! header is filled, and the cursor cell inverts. The cell being typed into shows its text with a
-//! caret inside an accent border. Every input is a callback into `Shell`.
+//! caret inside an accent border. Every input is a callback into `Root`.
 
 use std::rc::Rc;
 

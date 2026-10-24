@@ -1,5 +1,5 @@
 //! The Import step driven by clicks: a row, Remember and Back. Only elements tagged with
-//! `debug_selector` are clicked; state is read back from `Shell`.
+//! `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 

@@ -1,5 +1,5 @@
 //! Renders the **Edit tag** dialog (`docs/ux/desktop-mockups/19-tags/README.md`'s 7c) on the shared
-//! `crate::dialog` chrome, reusing the Add dialog's Name field, Colour field and callout. #353 adds
+//! `crate::dialog` frame, reusing the Add dialog's Name field, Colour field and callout. #353 adds
 //! the Active checkbox the handoff lacks: removing a Tag always deletes it, so Edit is where a Tag
 //! is deactivated and reactivated. Splits refer to a Tag by id, so the callout's count is every
 //! Transaction a rename or recolour reaches.

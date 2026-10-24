@@ -1,6 +1,6 @@
 //! What the integration tests read back of the Settings pages this View draws (ADR-0030), built by
 //! the Settings Entity from its own state (ADR-0037). The open dialog and the status message are
-//! `Shell`'s, so its accessors fill them in.
+//! `Root`'s, so its accessors fill them in.
 
 use gpui::App;
 

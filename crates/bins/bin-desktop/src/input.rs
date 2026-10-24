@@ -35,21 +35,21 @@ use gpui::{App, Global, WeakEntity};
 use lib_database::Commit;
 use lib_shell::ShellCommand;
 
-use crate::app::Shell;
+use crate::shell::router::Root;
 
 /// What [`send`] reaches through: the commit every store's writes end in, and the Shell the
-/// Notices drain into. One per window's App, installed by `build_shell`.
+/// Notices drain into. One per window's App, installed by `shell::router::build`.
 struct Door {
     commit: Rc<dyn Commit>,
-    shell: WeakEntity<Shell>,
+    shell: WeakEntity<Root>,
     /// Whether a `send` is running, so a second one inside it is caught.
     open: bool,
 }
 
 impl Global for Door {}
 
-/// Opens the door on `commit`, draining into `shell`. Called once, by `build_shell`.
-pub(crate) fn install(commit: Rc<dyn Commit>, shell: WeakEntity<Shell>, cx: &mut App) {
+/// Opens the door on `commit`, draining into `shell`. Called once, by `shell::router::build`.
+pub(crate) fn install(commit: Rc<dyn Commit>, shell: WeakEntity<Root>, cx: &mut App) {
     cx.set_global(Door {
         commit,
         shell,

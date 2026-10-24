@@ -1,5 +1,5 @@
 //! Renders the **Add tag** dialog (`docs/ux/desktop-mockups/19-tags/README.md`'s 7b) on the shared
-//! `crate::dialog` chrome: Name with its live inline error, the shared Colour field, and a callout
+//! `crate::dialog` frame: Name with its live inline error, the shared Colour field, and a callout
 //! on how names are matched. The handoff's callout offered to reuse a case-insensitive match; #354
 //! settled on refusing any name equal once case, spaces and punctuation are ignored, so the callout
 //! says that instead and there is no reuse button. The Tags page owns the live form

@@ -1,6 +1,6 @@
 //! The full-window drop overlay: while files are dragged over the window, a dashed frame says
 //! that dropping adds them to the Inbox, on every destination. Purely presentational -- the drop
-//! itself is `Shell::drop_documents`.
+//! itself is `Root::drop_documents`.
 //!
 //! gpui raises its active drag on `FileDropEvent::Entered` and clears it on `Exited`, and applies
 //! `group_drag_over` styles at paint time, so the overlay needs no state of its own and no

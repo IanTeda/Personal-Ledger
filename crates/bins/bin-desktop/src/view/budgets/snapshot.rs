@@ -1,6 +1,6 @@
 //! What the integration tests read back of the Budgets page (ADR-0030), built by the Budgets
 //! Entity from its own state (ADR-0037). The open dialog's fields are the Dialog host's, so
-//! `Shell`'s accessor fills them in.
+//! `Root`'s accessor fills them in.
 
 use gpui::App;
 use lib_core::CategoryId;
@@ -52,7 +52,7 @@ pub struct BudgetsSnapshot {
 
 impl BudgetsView {
     /// The page's part of the snapshot, built the way the render builds its rows. Every dialog
-    /// field is left `None` for `Shell` to fill.
+    /// field is left `None` for `Root` to fill.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> BudgetsSnapshot {
         let categories = self.categories(cx);

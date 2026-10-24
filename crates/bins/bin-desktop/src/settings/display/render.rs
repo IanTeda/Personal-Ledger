@@ -12,7 +12,7 @@
 //! real visual effect here despite this map's data otherwise being static/dummy).
 //!
 //! Configuration, not Preferences (`docs/ux/desktop-mockups/16-settings/README.md`'s Overview) -- like
-//! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
+//! every other click in this map, a selection is "saved" only in `Root`-owned in-memory state,
 //! not written to `personal-ledger.conf`.
 
 use std::rc::Rc;

@@ -28,14 +28,14 @@ use lib_viper::view::SelectView;
 use super::{OnPlainClick, OnRowClick, filters, planner, schedule};
 use crate::bills::ports::{self, DesktopPorts};
 use crate::bills::router::PageRouter;
-use crate::chrome::dialog_host::DialogKey;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::{movement::Movement, nav::Noun};
 use crate::settings::display::StatusGlyphs;
+use crate::shell::view::dialog_host::DialogKey;
 use crate::{
-    chrome::statusline::PageStatus,
+    shell::view::statusline::PageStatus,
     theme::color,
     view::event::{Reveal, ViewEvent},
 };

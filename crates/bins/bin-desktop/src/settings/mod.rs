@@ -1,5 +1,5 @@
 //! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): one page
-//! at a time, not a continuous scroll. The settings index rail (`chrome::rail::settings_index`) swaps the
+//! at a time, not a continuous scroll. The settings index rail (`shell::view::rail::settings_index`) swaps the
 //! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 
@@ -33,7 +33,9 @@ use gpui_component::{
     scroll::{Scrollbar, ScrollbarShow},
 };
 
-use crate::{chrome::rail::settings_index::SettingsIndexRail, navigation::nav::Noun, theme::color};
+use crate::{
+    navigation::nav::Noun, shell::view::rail::settings_index::SettingsIndexRail, theme::color,
+};
 
 use picker::PagePicker;
 use state::SettingsView;

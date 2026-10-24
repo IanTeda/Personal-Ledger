@@ -1,4 +1,4 @@
-//! The Skip this cycle Dialog (8e) on the shared `crate::dialog` chrome at the handoff's 400px.
+//! The Skip this cycle Dialog (8e) on the shared `crate::dialog` frame at the handoff's 400px.
 //! Skipping destroys nothing (Unskip reverses it), so there's no typed-name confirm and the confirm
 //! button keeps the neutral styling.
 

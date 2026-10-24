@@ -17,11 +17,11 @@ use lib_core::{BudgetId, CategoryId, Money};
 
 use crate::{
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
     period::Period,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
 };
 use lib_categories::{self, Category};
 

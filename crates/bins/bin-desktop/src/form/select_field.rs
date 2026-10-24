@@ -3,7 +3,7 @@
 //! fields below down rather than floating over them, so nothing clips at the dialog's edge. The
 //! list shows at most [`crate::form::select::MAX_VISIBLE_ROWS`] rows and scrolls with the highlight.
 //!
-//! A pure render-helper over `crate::form::select::SelectState`; `Shell` owns the state and the keys.
+//! A pure render-helper over `crate::form::select::SelectState`; `Root` owns the state and the keys.
 //! A read-only variant shows fixed text and takes no clicks (Institution while Type is Cash).
 
 use std::rc::Rc;

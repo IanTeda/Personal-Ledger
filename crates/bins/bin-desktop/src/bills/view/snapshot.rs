@@ -1,5 +1,5 @@
 //! What the integration tests read back of the Bills page (ADR-0030), built from the page's view
-//! model. The open Dialog is the Dialog host's, so `Shell`'s accessor fills it in.
+//! model. The open Dialog is the Dialog host's, so `Root`'s accessor fills it in.
 
 use super::page::BillsPage;
 
@@ -43,7 +43,7 @@ pub struct BillsSnapshot {
 }
 
 impl BillsPage {
-    /// The page for a test, from its view model. The Dialog fields are left empty for `Shell` to
+    /// The page for a test, from its view model. The Dialog fields are left empty for `Root` to
     /// fill.
     #[doc(hidden)]
     pub fn snapshot(&self) -> BillsSnapshot {

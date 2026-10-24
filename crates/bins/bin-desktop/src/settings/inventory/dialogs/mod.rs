@@ -1,6 +1,6 @@
 //! The Inventory page's Dialogs: Add, Edit and Remove a **Location** (`location.rs`) and a
 //! **Area** (`area.rs`), and the notice the last Area holding Items gets instead of a Remove.
-//! [`InventoryDialog`] is the value `Shell`'s Dialog host holds while one is open
+//! [`InventoryDialog`] is the value `Root`'s Dialog host holds while one is open
 //! (`OpenDialog::Inventory`). It draws itself (`Dialog::render`), every click reaching the form
 //! through the host's one edit callback, reads itself back for the UI tests and confirms itself
 //! through `apply.rs`.
@@ -15,13 +15,13 @@ use lib_core::{AreaId, ItemId, LocationId};
 
 use super::form::{AreaForm, LocationField, LocationForm, RemoveAreaForm, RemoveLocationForm};
 use crate::{
-    chrome::dialog_host::{
-        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    },
     dialog::OnClick,
     documents::{Document, DocumentLink},
     form::{field::TextField, select_field::OnOptionClick},
     inventory::Inventory,
+    shell::view::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     theme::color,
 };
 use location::OnFieldClick;
@@ -88,7 +88,7 @@ impl Dialog for InventoryDialog {
     }
 
     /// The legend: only Add location has several fields (name and Unit) to `tab` through.
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
         let mut hints = vec![
             ("esc", crate::msg::desktop_hint_cancel()),
             ("enter", crate::msg::desktop_hint_confirm()),
@@ -96,7 +96,7 @@ impl Dialog for InventoryDialog {
         if matches!(self, Self::Add(_)) {
             hints.push(("tab", crate::msg::desktop_hint_next_field()));
         }
-        Some(crate::chrome::statusline::owned_hints(hints))
+        Some(crate::shell::view::statusline::owned_hints(hints))
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {

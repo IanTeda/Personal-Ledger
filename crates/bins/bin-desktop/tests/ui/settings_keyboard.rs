@@ -1,6 +1,6 @@
 //! The Settings View driven by keys, across its pages: the index rail's paged navigation, focus
 //! stepping into and out of a page, and the Medium drill-down with its page picker. Each page's own
-//! keys are in its `settings_<page>_keyboard.rs`. State is read back from `Shell`.
+//! keys are in its `settings_<page>_keyboard.rs`. State is read back from `Root`.
 
 use super::common;
 

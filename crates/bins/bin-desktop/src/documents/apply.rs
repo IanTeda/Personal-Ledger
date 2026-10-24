@@ -1,10 +1,10 @@
 //! The Documents Dialogs' confirm cycle (ADR-0037): the command each form describes, wrapped with
 //! the page's context into an [`OnDocuments`] `lib_ledger` command, confirmed through
-//! [`confirm_ledger_with`](crate::chrome::dialog_apply::confirm_ledger_with). Accept all reads the
+//! [`confirm_ledger_with`](crate::shell::view::dialog_apply::confirm_ledger_with). Accept all reads the
 //! Transactions and Payees it matches against inside its own Ledger command.
 //!
 //! The link picker answers with a request that needs the live rows and may open another Dialog,
-//! so it stays `Shell`'s.
+//! so it stays `Root`'s.
 
 use lib_core::DocumentId;
 use std::path::Path;
@@ -20,7 +20,7 @@ use super::{
     self as documents, AddError, ExtractedFacts, FilingError, FilingUndo, ImportOutcome, Source,
     form::{self, DocumentForm, DocumentsDialog, ImportForm},
 };
-use crate::chrome::dialog_apply::{DialogForm, FormError, OutcomeToast};
+use crate::shell::view::dialog_apply::{DialogForm, FormError, OutcomeToast};
 
 /// Whether the path exists on disk, passed to the form checks so they stay testable.
 pub fn exists_on_disk(path: &Path) -> bool {
@@ -226,8 +226,8 @@ mod tests {
     use lib_ledger::LedgerParts;
 
     use super::*;
-    use crate::chrome::dialog_apply::confirm_ledger_with;
     use crate::ledger_store::{LedgerStore, test_ledger};
+    use crate::shell::view::dialog_apply::confirm_ledger_with;
 
     fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
         test_ledger(

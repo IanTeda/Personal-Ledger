@@ -1,5 +1,5 @@
-//! Headless harness for the Desktop UI: repeats `lib::run`'s app-level setup, builds `Shell`
-//! through the lib's `build_shell` with a fixed date and the deterministic stub seed, and offers
+//! Headless harness for the Desktop UI: repeats `lib::run`'s app-level setup, builds `Root`
+//! through the lib's `shell::router::build` with a fixed date and the deterministic stub seed, and offers
 //! key presses, selector clicks and read helpers. Nothing here opens a real window or touches
 //! `persistence`, so it runs in a sandbox with no GPU.
 
@@ -10,19 +10,18 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs, WindowSize,
-    app::{
-        BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
-        SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
-        SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
-        SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-        SettingsTracingSnapshot, SettingsUnitsSnapshot, Shell, StatusSnapshot, ToastsSnapshot,
-        TransactionsSnapshot,
-    },
-    build_shell,
+    WindowSize,
     locale::init_for_tests,
     navigation::nav::{Noun, RailMode},
     persistence::PersistedState,
+    shell::router::{
+        self, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot,
+        ImportSnapshot, Root, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
+        SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
+        SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
+        SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot,
+        ShellBindings, ShellLogs, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
+    },
     theme,
 };
 use chrono::NaiveDate;
@@ -329,9 +328,9 @@ pub fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).expect("fixed test date is valid")
 }
 
-/// A `Shell` in a headless window, with helpers to drive and read it.
+/// A `Root` in a headless window, with helpers to drive and read it.
 pub struct Harness<'a> {
-    pub shell: Entity<Shell>,
+    pub shell: Entity<Root>,
     pub cx: &'a mut VisualTestContext,
     /// The Shell's live log capture: push entries here, then [`Harness::settle_logs`].
     pub logs: lib_tracing::LogBuffer,
@@ -360,7 +359,7 @@ pub struct AccountFormSnapshot {
 }
 
 impl<'a> Harness<'a> {
-    /// Boots the app-level globals and a `Shell` with default (nothing persisted) state.
+    /// Boots the app-level globals and a `Root` with default (nothing persisted) state.
     pub fn new(app: &'a mut TestAppContext) -> Self {
         Self::with_logs(
             app,
@@ -579,7 +578,7 @@ impl<'a> Harness<'a> {
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
-            build_shell(
+            router::build(
                 PersistedState::default(),
                 ShellBindings { keybindings },
                 ShellLogs {
@@ -609,20 +608,18 @@ impl<'a> Harness<'a> {
     /// Moves the Shell's clock to `day`, then lets the Shell notice: past one poll of its clock.
     pub fn turn_date_to(&mut self, day: NaiveDate) {
         self.date.set(day);
-        self.advance_clock(bin_desktop::app::DATE_POLL);
+        self.advance_clock(router::DATE_POLL);
     }
 
     /// Lets the Shell hear of a failed write: past one poll of the writer's failure channel.
     pub fn settle_writes(&mut self) {
-        self.advance_clock(bin_desktop::app::WRITE_FAILURE_POLL);
+        self.advance_clock(router::WRITE_FAILURE_POLL);
     }
 
     /// Lets the Tracing page's live feed pull what was pushed: past its coalescing window.
     pub fn settle_logs(&mut self) {
         self.cx.run_until_parked();
-        self.cx
-            .executor()
-            .advance_clock(bin_desktop::app::LOG_COALESCE * 2);
+        self.cx.executor().advance_clock(router::LOG_COALESCE * 2);
         self.cx.run_until_parked();
     }
 
@@ -765,91 +762,91 @@ impl<'a> Harness<'a> {
 
     /// The Documents page's state, read back for assertions.
     pub fn documents(&mut self) -> DocumentsSnapshot {
-        self.read_app(Shell::documents_snapshot)
+        self.read_app(Root::documents_snapshot)
     }
 
     /// The Bills page's state, read back for assertions.
     pub fn bills(&mut self) -> BillsSnapshot {
-        self.read_app(Shell::bills_snapshot)
+        self.read_app(Root::bills_snapshot)
     }
 
     /// The Budgets page's state, read back for assertions.
     pub fn budgets(&mut self) -> BudgetsSnapshot {
-        self.read_app(Shell::budgets_snapshot)
+        self.read_app(Root::budgets_snapshot)
     }
 
     /// The Settings shell's state (page and open dialog), read back for assertions.
     pub fn settings(&mut self) -> SettingsSnapshot {
-        self.read_app(Shell::settings_snapshot)
+        self.read_app(Root::settings_snapshot)
     }
 
     /// The open hosted Dialog's kind (`AddTag`, `DeleteCategory`), read back through the Dialog
     /// itself; `None` when none is open.
     pub fn dialog(&mut self) -> Option<&'static str> {
-        self.read_app(Shell::dialog_readback)
+        self.read_app(Root::dialog_readback)
             .map(|readback| readback.kind)
     }
 
     /// The open hosted Dialog's value labelled `label` (`name`, `confirm`), if it shows one.
     pub fn dialog_value(&mut self, label: &str) -> Option<String> {
-        self.read_app(Shell::dialog_readback)?
+        self.read_app(Root::dialog_readback)?
             .value(label)
             .map(str::to_string)
     }
 
     /// The Settings Accounts page's state, read back for assertions.
     pub fn settings_accounts(&mut self) -> SettingsAccountsSnapshot {
-        self.read_app(Shell::settings_accounts_snapshot)
+        self.read_app(Root::settings_accounts_snapshot)
     }
 
     /// The Settings Categories page's state, read back for assertions.
     pub fn settings_categories(&mut self) -> SettingsCategoriesSnapshot {
-        self.read_app(Shell::settings_categories_snapshot)
+        self.read_app(Root::settings_categories_snapshot)
     }
 
     /// The Settings Display page's state, read back for assertions.
     pub fn settings_display(&mut self) -> SettingsDisplaySnapshot {
-        self.read_app(Shell::settings_display_snapshot)
+        self.read_app(Root::settings_display_snapshot)
     }
 
     /// The Settings DocumentTypes page's state, read back for assertions.
     pub fn settings_document_types(&mut self) -> SettingsDocumentTypesSnapshot {
-        self.read_app(Shell::settings_document_types_snapshot)
+        self.read_app(Root::settings_document_types_snapshot)
     }
 
     /// The Settings Institutions page's state, read back for assertions.
     pub fn settings_institutions(&mut self) -> SettingsInstitutionsSnapshot {
-        self.read_app(Shell::settings_institutions_snapshot)
+        self.read_app(Root::settings_institutions_snapshot)
     }
 
     /// The Settings Inventory page's state, read back for assertions.
     pub fn settings_inventory(&mut self) -> SettingsInventorySnapshot {
-        self.read_app(Shell::settings_inventory_snapshot)
+        self.read_app(Root::settings_inventory_snapshot)
     }
 
     /// The Settings Payees page's state, read back for assertions.
     pub fn settings_payees(&mut self) -> SettingsPayeesSnapshot {
-        self.read_app(Shell::settings_payees_snapshot)
+        self.read_app(Root::settings_payees_snapshot)
     }
 
     /// The Settings Tags page's state, read back for assertions.
     pub fn settings_tags(&mut self) -> SettingsTagsSnapshot {
-        self.read_app(Shell::settings_tags_snapshot)
+        self.read_app(Root::settings_tags_snapshot)
     }
 
     /// The Settings Tracing page's state, read back for assertions.
     pub fn settings_tracing(&mut self) -> SettingsTracingSnapshot {
-        self.read_app(Shell::settings_tracing_snapshot)
+        self.read_app(Root::settings_tracing_snapshot)
     }
 
     /// The Settings General page's state, read back for assertions.
     pub fn settings_general(&mut self) -> SettingsGeneralSnapshot {
-        self.read_app(Shell::settings_general_snapshot)
+        self.read_app(Root::settings_general_snapshot)
     }
 
     /// The Settings Units page's state, read back for assertions.
     pub fn settings_units(&mut self) -> SettingsUnitsSnapshot {
-        self.read_app(Shell::settings_units_snapshot)
+        self.read_app(Root::settings_units_snapshot)
     }
 
     /// The Units table's rows as `(code, name, type)`, as drawn.
@@ -892,7 +889,7 @@ impl<'a> Harness<'a> {
     /// none is open.
     pub fn account_form(&mut self) -> AccountFormSnapshot {
         let readback = self
-            .read_app(Shell::dialog_readback)
+            .read_app(Root::dialog_readback)
             .filter(|readback| matches!(readback.kind, "AddAccount" | "EditAccount"))
             .expect("an Add or Edit account dialog is open");
         let text = |label: &str| readback.value(label).unwrap_or_default().to_string();
@@ -923,32 +920,32 @@ impl<'a> Harness<'a> {
 
     /// The Transactions page's state, read back for assertions.
     pub fn transactions(&mut self) -> TransactionsSnapshot {
-        self.read_app(Shell::transactions_snapshot)
+        self.read_app(Root::transactions_snapshot)
     }
 
     /// The status line's hints and right-hand text for the View on show (or the open Dialog's
     /// hints); `None` when there are none.
     pub fn status(&mut self) -> Option<StatusSnapshot> {
-        self.read_app(Shell::status_snapshot)
+        self.read_app(Root::status_snapshot)
     }
 
     /// The Toast layer and its history, read back for assertions.
     pub fn toasts(&mut self) -> ToastsSnapshot {
-        self.read(Shell::toasts_snapshot)
+        self.read(Root::toasts_snapshot)
     }
 
     /// The Import step's state; `None` while it is not showing.
     pub fn import(&mut self) -> Option<ImportSnapshot> {
-        self.read_app(Shell::import_snapshot)
+        self.read_app(Root::import_snapshot)
     }
 
     /// The Dashboard's Needs Attention Bill rows.
     pub fn dashboard_bills(&mut self) -> Vec<DashboardBillSnapshot> {
-        self.read_app(Shell::dashboard_bills_snapshot)
+        self.read_app(Root::dashboard_bills_snapshot)
     }
 
     /// Queues `notice` as a module Router does from inside a Presenter's `handle`. Nothing shows
-    /// until `Shell` drains the queue, after the next key or Dialog click.
+    /// until `Root` drains the queue, after the next key or Dialog click.
     pub fn queue_notice(&mut self, notice: lib_toast::Notice) {
         use lib_toast::Notify as _;
         bin_desktop::notices::Queue.notify(notice);
@@ -979,12 +976,12 @@ impl<'a> Harness<'a> {
     }
 
     /// Reads from the Shell without mutating it.
-    pub fn read<T>(&mut self, f: impl FnOnce(&Shell) -> T) -> T {
+    pub fn read<T>(&mut self, f: impl FnOnce(&Root) -> T) -> T {
         self.shell.read_with(self.cx, |shell, _| f(shell))
     }
 
     /// As [`Self::read`], for the snapshots that read Entities (ADR-0032) and so need the `App`.
-    pub fn read_app<T>(&mut self, f: impl FnOnce(&Shell, &App) -> T) -> T {
+    pub fn read_app<T>(&mut self, f: impl FnOnce(&Root, &App) -> T) -> T {
         self.shell.read_with(self.cx, |shell, cx| f(shell, cx))
     }
 }

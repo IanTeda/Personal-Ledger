@@ -1,6 +1,6 @@
 //! The Transactions page driven by keys alone: rows and selection, the search box, the filter
 //! popover, the not-yet-built row actions, leaving the Import step and a Reveal from Bills. Assertions read `TransactionsSnapshot`, `NavState`
-//! and the status message back from `Shell`, never pixels.
+//! and the status message back from `Root`, never pixels.
 
 use super::common;
 

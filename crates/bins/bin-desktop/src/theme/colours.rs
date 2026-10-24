@@ -134,7 +134,7 @@ pub fn set_colour_appearance(colour_appearance: Option<ColourAppearance>, cx: &m
     update(cx, |colours| colours.colour_appearance = colour_appearance);
 }
 
-/// A Preference change picked in Settings or the command palette, carried out of `Shell`'s
+/// A Preference change picked in Settings or the command palette, carried out of `Root`'s
 /// key handling (which has no `App`) and applied once it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColourChange {

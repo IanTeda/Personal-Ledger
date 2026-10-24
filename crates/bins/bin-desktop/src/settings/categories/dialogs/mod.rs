@@ -20,12 +20,12 @@ use super::{
     form::{CategoryForm, DeleteCategoryForm},
 };
 use crate::{
-    chrome::dialog_host::{
-        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    },
     dialog,
     form::field::TextField,
     ledger_store::LedgerStore,
+    shell::view::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
 };
 
 /// The handlers a Categories Dialog binds: the Add and Edit forms' field, parent and type changes,

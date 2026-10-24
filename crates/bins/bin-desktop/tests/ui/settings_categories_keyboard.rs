@@ -1,5 +1,5 @@
 //! The Settings Categories page driven by keys: row movement, the add, edit and delete dialogs,
-//! and Esc closing each without a write. State is read back from `Shell`.
+//! and Esc closing each without a write. State is read back from `Root`.
 
 use super::common;
 

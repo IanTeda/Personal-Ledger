@@ -17,7 +17,6 @@ use lib_core::{DateStyle, DocumentId};
 use lib_locale::format::format_date_input;
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::types::DocumentTypeRow,
     documents::{
         self, Document, DocumentType, FileKind, ImportLine, KeyDate, KeyDateKind, LibraryScope,
@@ -26,6 +25,7 @@ use crate::{
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
     transactions::filter_form::parse_date,
 };
 
@@ -396,7 +396,7 @@ impl DocumentForm {
 
     /// Whether the fields that need nothing outside the form are filled and readable: the Title,
     /// the Path (Add), the dates. What a Path points at (a missing, unsupported or duplicate file)
-    /// is `Shell`'s to check, with the Library and the disk, when the form is applied.
+    /// is `Root`'s to check, with the Library and the disk, when the form is applied.
     pub fn is_complete(&self) -> bool {
         let readable = |field: &TextField| parse_date(field.text(), self.today, self.date_style);
         !self.title.is_blank()
@@ -835,9 +835,9 @@ impl Dialog for DocumentsDialog {
         }
     }
 
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
         use crate::view::documents::hints::{dialog_hints, picker_hints};
-        Some(crate::chrome::statusline::owned_hints(match self {
+        Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Import(..) => dialog_hints(true),
             Self::Picker(_) => picker_hints(),
             Self::Add(_) | Self::Edit(..) | Self::Facts(..) | Self::AcceptAll(_) => {
@@ -1147,8 +1147,8 @@ mod tests {
         assert_eq!(form.merchant.text(), "A");
     }
 
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
     use crate::documents::types::default_types;
+    use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
     fn doc_options() -> DocumentOptions {
         DocumentOptions::new(&default_types(), |kind| {

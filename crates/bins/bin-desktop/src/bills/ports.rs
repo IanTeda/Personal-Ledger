@@ -1,4 +1,4 @@
-//! The Bills ports as the Desktop holds them: the store `build_shell` is given, shared by the
+//! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by the
 //! Bills module and `LedgerStore`, with the Accounts, Categories, Payees, Splits and Units
 //! Bills reads copied from the Ledger (#778's halfway shims), and the step that keeps the
 //! Ledger's read copy in line after a Bills write. The write is committed by the input it was made

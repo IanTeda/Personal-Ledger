@@ -17,10 +17,10 @@ use lib_units::UnitRow;
 
 use crate::{
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
     transactions,
 };
 use lib_accounts::Account;
@@ -662,8 +662,8 @@ mod tests {
     }
 
     use crate::budgets::BudgetsDialog;
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+    use crate::shell::view::dialog_host::type_text;
+    use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
     fn budgets_today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()

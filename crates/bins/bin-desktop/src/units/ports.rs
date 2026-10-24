@@ -1,4 +1,4 @@
-//! The Units ports as the Desktop holds them: the store `build_shell` is given, with `UnitUsage`
+//! The Units ports as the Desktop holds them: the store `shell::router::build` is given, with `UnitUsage`
 //! and `UnitHoldings` answered from the Ledger read copy (#746's halfway shims), and the step that
 //! keeps that read copy in line after a Units write. The write is committed by the input it was
 //! made in (`crate::input::send`), not here.

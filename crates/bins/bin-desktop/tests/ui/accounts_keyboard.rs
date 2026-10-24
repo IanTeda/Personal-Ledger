@@ -1,7 +1,7 @@
 //! The Add and Edit account dialogs' form driven by keys: the `Tab` ring, typing into the focused
 //! field, the opening balance's filter, the selects (open, step, commit, the first `Esc` closing
 //! only the list), the Cash and Edit read-only rules, and `Enter` confirming only a valid form.
-//! The dialogs open from the Settings Accounts page; state is read back from `Shell`.
+//! The dialogs open from the Settings Accounts page; state is read back from `Root`.
 
 use super::common;
 

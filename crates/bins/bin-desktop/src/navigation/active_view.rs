@@ -1,4 +1,4 @@
-//! `ActiveView` -- the one thing `Shell` dispatches on to decide which View owns the keyboard,
+//! `ActiveView` -- the one thing `Root` dispatches on to decide which View owns the keyboard,
 //! the page status and the main pane: `lib-shell`'s, over the Desktop's Settings pages
 //! (ADR-0016). The mode label it names is a Message, so it stays here.
 

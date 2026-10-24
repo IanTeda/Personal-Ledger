@@ -1,4 +1,4 @@
-//! The command registry driving `crate::chrome::palette::Palette`
+//! The command registry driving `crate::shell::view::palette::Palette`
 //! (`docs/ux/desktop-mockups/01-shell/README.md`'s "Command registry" section): "every rail
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
@@ -17,8 +17,8 @@
 //! `Command::effect` (issue #144's own architecture review, "deepen the command's interface")
 //! replaces an earlier `handler: Option<fn(&mut NavState)>` plus a `CommandKind` taxonomy field
 //! that was almost entirely decorative (nothing rendered it, one test read it). That shape
-//! couldn't express "open a `Shell`-owned dialog" -- `open`/`new` had `handler: None` and
-//! `Shell::run_command` matched on `command.name` string literals to special-case them, a
+//! couldn't express "open a `Root`-owned dialog" -- `open`/`new` had `handler: None` and
+//! `Root::run_command` matched on `command.name` string literals to special-case them, a
 //! typo-prone escape hatch mirrored in the type system by nothing at all. `CommandEffect` is a
 //! closed enum instead: every command's effect is real, exhaustively matched, compiler-checked
 //! -- the same shape `bin-tui`'s own `Action` enum already uses (ADR-0013), just per-command
@@ -32,13 +32,13 @@ use crate::{
     theme::colours::ColourChange,
 };
 
-/// What running a command does -- the palette's, and `Shell::run_command`'s, one source of
+/// What running a command does -- the palette's, and `Root::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not
 /// wired up yet" the way the old `handler` field had, because [`Self::NotYetBuilt`] says so
 /// directly instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandEffect {
-    /// Jump the primary rail to this noun -- `Shell::run_command` calls `NavState::set_noun`
+    /// Jump the primary rail to this noun -- `Root::run_command` calls `NavState::set_noun`
     /// directly; there's no per-noun `fn(&mut NavState)` to indirect through any more.
     Navigate(Noun),
     /// `:settings <page>`: opens that Settings page with focus in it.
@@ -47,7 +47,7 @@ pub enum CommandEffect {
     OpenDialog(ExplorerMode),
     /// `:close`: returns to the "1a" empty state, same as cold start.
     CloseLedger,
-    /// An `accounts <verb> [<account name>]` command: `Shell::run_command` jumps to the Accounts
+    /// An `accounts <verb> [<account name>]` command: `Root::run_command` jumps to the Accounts
     /// page and opens the matching dialog, resolving the typed name (see [`split_input`]).
     Accounts(AccountsVerb),
     /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
@@ -64,16 +64,16 @@ pub enum CommandEffect {
     /// `:tags merge`: jumps to the Tags page and opens the 7e Merge dialog with neither select
     /// chosen (#354).
     MergeTags,
-    /// A `budgets <verb>` command: `Shell::run_command` jumps to the Budgets page and runs the
+    /// A `budgets <verb>` command: `Root::run_command` jumps to the Budgets page and runs the
     /// verb on the Budget on show.
     Budgets(BudgetsVerb),
-    /// A `documents <verb>` command: `Shell::run_command` jumps to Documents and runs the verb.
+    /// A `documents <verb>` command: `Root::run_command` jumps to Documents and runs the verb.
     Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// No real behaviour behind this command yet (`docs/ux/tui-mockups/01-shell/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
-    /// `Shell::run_command` turns this into the status-line flash.
+    /// `Root::run_command` turns this into the status-line flash.
     NotYetBuilt,
 }
 
@@ -235,7 +235,7 @@ pub fn split_input(input: &str) -> (&str, &str) {
 /// `commands::DOMAINS` order exactly (`bin-tui/src/popup/command/commands/mod.rs`: "Dashboard
 /// first then alphabetical"). One [`CommandEffect::Navigate`] command per rail item (`Noun::ALL`'s
 /// own order, each its own single-command domain), plus the one real footer affordance
-/// (`crate::chrome::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
+/// (`crate::shell::view::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
 /// alongside its own noun's command) and the file-level `open`/`new`/`close` trio under
 /// `Ledger`, which has no noun of its own. The three `accounts <verb>` commands take a typed
 /// account name (see [`split_input`]).

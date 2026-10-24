@@ -13,7 +13,7 @@ use lib_ledger::{
 use super::{dialogs::CategoriesDialog, form::CategoryForm};
 use crate::{
     budgets,
-    chrome::{
+    shell::view::{
         dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
         dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
     },

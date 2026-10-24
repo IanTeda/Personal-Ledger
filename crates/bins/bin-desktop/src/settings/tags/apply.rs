@@ -8,7 +8,7 @@ use lib_tags::{TagError, get};
 use lib_toast::ToastKind;
 
 use super::dialogs::TagsDialog;
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, DialogScope, DialogToast, Landed},
 };

@@ -1,6 +1,6 @@
 //! The **Institutions** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! Institutions table. [`InstitutionsPage`] reads it straight from [`LedgerStore`], renders itself
-//! (`render.rs`), builds the Add institution Dialog (`dialogs/`) and reaches `Shell` only through
+//! (`render.rs`), builds the Add institution Dialog (`dialogs/`) and reaches `Root` only through
 //! [`ViewEvent`]. The Dialog host holds it, and it draws, reads back and confirms itself
 //! (`dialogs/`, `apply.rs`). The Settings View forwards the page's keys and status to it while the page has focus.
 
@@ -16,9 +16,9 @@ use lib_institutions::InstitutionRow;
 use lib_ledger::Domain;
 
 use crate::{
-    chrome::dialog_host::open_dialog,
     ledger_store::{LedgerStore, notify_on},
     settings::SettingsPage,
+    shell::view::dialog_host::open_dialog,
     view::event::ViewEvent,
 };
 use apply::InstitutionsOutcome;

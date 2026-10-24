@@ -1,11 +1,11 @@
-//! `ActiveViewEntity` -- the active View as `Shell` forwards to it (ADR-0037). Each method holds
+//! `ActiveViewEntity` -- the active View as `Root` forwards to it (ADR-0037). Each method holds
 //! the one exhaustive match over the Views and forwards to the inherent method of the same name on
 //! the View's Entity, so a new View fails to compile here and nowhere else. There is no `View`
 //! trait and no `dyn` erasure (ADR-0016).
 //!
-//! The Views not yet moved onto this interface sit in [`ShellView`], and `Shell` keeps their
+//! The Views not yet moved onto this interface sit in [`ShellView`], and `Root` keeps their
 //! handlers until their own ticket moves them. Every `ShellView` arm here does nothing, since
-//! `Shell` has already run its own handler for it.
+//! `Root` has already run its own handler for it.
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
@@ -16,8 +16,8 @@ use super::{
 use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
 use crate::{
-    chrome::statusline::PageStatus,
     navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
+    shell::view::statusline::PageStatus,
 };
 
 /// The active View, holding its typed Entity once it renders and handles its own input.
@@ -30,14 +30,14 @@ pub enum ActiveViewEntity {
     Transactions(Entity<TransactionsView>),
     Documents(Entity<DocumentsView>),
     /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
-    /// forwarded to by the View; `Shell` still draws the other pages with Ledger data and handles
-    /// their keys first (`Shell`) until each moves into the View.
+    /// forwarded to by the View; `Root` still draws the other pages with Ledger data and handles
+    /// their keys first (`Root`) until each moves into the View.
     Settings(Entity<SettingsView>),
-    /// A View whose rendering and input are still `Shell`'s.
+    /// A View whose rendering and input are still `Root`'s.
     Shell(ShellView),
 }
 
-/// The Views whose rendering and input are still `Shell`'s: [`ActiveView`] less each View that
+/// The Views whose rendering and input are still `Root`'s: [`ActiveView`] less each View that
 /// has moved onto [`ActiveViewEntity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellView {
@@ -45,7 +45,7 @@ pub enum ShellView {
     Placeholder(Noun),
 }
 
-/// The View Entities `Shell` owns, one per View that renders and handles its own input.
+/// The View Entities `Root` owns, one per View that renders and handles its own input.
 pub struct ViewEntities {
     pub dashboard: Entity<DashboardView>,
     pub bills: Entity<BillsPage>,
@@ -56,7 +56,7 @@ pub struct ViewEntities {
 }
 
 impl ActiveViewEntity {
-    /// The Entity behind `view`, from the View Entities `Shell` owns.
+    /// The Entity behind `view`, from the View Entities `Root` owns.
     pub fn new(view: ActiveView, views: &ViewEntities) -> Self {
         match view {
             ActiveView::Bills => Self::Bills(views.bills.clone()),
@@ -71,13 +71,13 @@ impl ActiveViewEntity {
         }
     }
 
-    /// The View as a child element of `Shell`'s main pane, told whether the View zone has focus
-    /// for the focus rings it draws within itself. A `ShellView` is drawn by `Shell`.
+    /// The View as a child element of `Root`'s main pane, told whether the View zone has focus
+    /// for the focus rings it draws within itself. A `ShellView` is drawn by `Root`.
     pub fn element(
         &self,
         zone_focused: bool,
         ledger_open: bool,
-        window_size: crate::chrome::window_size::WindowSize,
+        window_size: crate::shell::view::window_size::WindowSize,
         cx: &mut App,
     ) -> AnyElement {
         match self {

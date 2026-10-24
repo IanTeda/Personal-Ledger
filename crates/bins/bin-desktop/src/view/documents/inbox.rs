@@ -1,6 +1,6 @@
 //! The Inbox (4b): the list pane's column header, rows, footnote and drop target, and the detail
 //! pane's extracted facts, Suggested Link card, other candidates and key hints. A child of the
-//! Documents page so it shares the Library's buttons, glyph and preview. Pure drawing: `Shell`
+//! Documents page so it shares the Library's buttons, glyph and preview. Pure drawing: `Root`
 //! owns the focus, the filing actions and every key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};

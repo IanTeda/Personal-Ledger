@@ -1,8 +1,8 @@
-//! The Add, Edit and Remove **Location** dialogs on the shared `crate::dialog` chrome. Add and Edit
+//! The Add, Edit and Remove **Location** dialogs on the shared `crate::dialog` frame. Add and Edit
 //! share one renderer: the Name and the Unit (a picker on Add, shown disabled on Edit), and nothing
 //! else, since a Location's address and cover are edited from the Inventory surface (16q). Remove
 //! is a plain confirm for an empty Location and otherwise the red dialog that asks for the name
-//! typed. The form holds the live state, and `Shell`'s Dialog host routes every key and click to
+//! typed. The form holds the live state, and `Root`'s Dialog host routes every key and click to
 //! it; this module only draws.
 
 use std::rc::Rc;

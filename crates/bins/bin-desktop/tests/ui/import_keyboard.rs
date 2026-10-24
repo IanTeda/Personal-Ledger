@@ -1,5 +1,5 @@
 //! The Import step driven by keys: `:import` opening it in place of Transactions, row movement,
-//! Remember, the Payee and Category selects, and leaving it. State is read back from `Shell`.
+//! Remember, the Payee and Category selects, and leaving it. State is read back from `Root`.
 
 use super::common;
 

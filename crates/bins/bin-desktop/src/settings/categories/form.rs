@@ -6,8 +6,8 @@ use chrono::NaiveDate;
 use lib_core::{CategoryId, CategoryTypes};
 
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 /// The Add/Edit category dialog's fields, in `Tab` order: Name, Parent, Type, Budget.
@@ -114,7 +114,7 @@ impl CategoryForm {
 }
 
 /// A form for deleting a category: confirmation name. The category's name is copied in at open
-/// so the form validates without `Shell`.
+/// so the form validates without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteCategoryForm {
     pub confirmation_name: TextField,
@@ -141,9 +141,9 @@ impl DeleteCategoryForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chrome::dialog_host::{Dialog, type_text};
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
     use crate::settings::categories::dialogs::CategoriesDialog;
+    use crate::shell::view::dialog_host::{Dialog, type_text};
+    use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
     fn add_category() -> OpenDialog {
         OpenDialog::Categories(CategoriesDialog::Add {

@@ -1,7 +1,7 @@
 //! The Documents link picker's rules: what it lists, in what order, and what a query keeps. One
-//! palette-chrome modal searches every record kind a Document can link to (Transaction, Account,
+//! palette-framed modal searches every record kind a Document can link to (Transaction, Account,
 //! Payee, Bill Plan, Inventory Item), so this is `gpui`-free and unit-tested without a window, the
-//! same split `chrome/palette.rs` and `documents/mod.rs` use. `app/documents_ui.rs` owns the keys and the
+//! same split `shell/view/palette.rs` and `documents/mod.rs` use. `shell/router/documents_ui.rs` owns the keys and the
 //! effects of a pick; `view/documents/dialogs.rs` draws it.
 
 use lib_core::DocumentId;
@@ -11,10 +11,10 @@ use chrono::NaiveDate;
 use lib_locale::format::format_date;
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::model::Lookups,
     documents::{DocumentLink, DocumentType},
     form::field::TextField,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
     transactions::Transaction,
     view::format,
 };
@@ -108,12 +108,12 @@ pub struct PickerState {
     pub anchor: NaiveDate,
     /// The Document Types in Settings order, copied in as the Dialog opens for the Inbox select.
     type_ids: Vec<DocumentType>,
-    /// What the last key asked `Shell` to do with the live rows, which a Dialog cannot see.
+    /// What the last key asked `Root` to do with the live rows, which a Dialog cannot see.
     pub request: Option<PickerRequest>,
 }
 
-/// What a picker key asks `Shell` to do once it confirms: the rows come from the ledger, so only
-/// `Shell` can say how many there are or what the highlighted one is.
+/// What a picker key asks `Root` to do once it confirms: the rows come from the ledger, so only
+/// `Root` can say how many there are or what the highlighted one is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PickerRequest {
     /// `enter`: act on the highlighted row.
@@ -177,7 +177,7 @@ impl PickerState {
 impl Dialog for PickerState {
     /// Typing goes to the query, `tab` cycles the kind filter and, in the Inbox, `←`/`→` step the
     /// Document Type select. `↑`/`↓`, `ctrl+n`/`ctrl+p` and `enter` need the live rows, so they
-    /// ask `Shell` through [`PickerRequest`].
+    /// ask `Root` through [`PickerRequest`].
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         let request = match key {
             DialogKey::Enter => PickerRequest::Pick,

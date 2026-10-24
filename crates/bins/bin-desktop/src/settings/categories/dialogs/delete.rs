@@ -1,5 +1,5 @@
 //! Renders the **Delete category** destructive-confirm dialog (`docs/ux/desktop-mockups/18-categories/README.md`'s
-//! 5d) on the shared `crate::dialog` chrome's destructive variant: accent border and title, copy
+//! 5d) on the shared `crate::dialog` frame's destructive variant: accent border and title, copy
 //! naming the real Split count and Budget references, the Uncategorised re-pointing notice,
 //! typed-name confirm (exact, case-sensitive) gating **Delete category**. A parent is refused
 //! (status message, dialog not opened) with "delete or move its children first".

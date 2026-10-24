@@ -1,4 +1,4 @@
-//! The Bills Dialogs' Views, each open one an Entity in the Dialog host (`chrome::dialog_entity`).
+//! The Bills Dialogs' Views, each open one an Entity in the Dialog host (`shell::view::dialog_entity`).
 //! [`BillsDialog`] holds a `lib-bills` Presenter and the widget state that is gpui's to keep (which
 //! select's list is open and its highlight). Every key and click becomes a Presenter event; each
 //! View draws the Presenter's view model and nothing else.
@@ -19,11 +19,11 @@ use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
 use self::plan_form::PlanSelects;
 use crate::bills::ports::{self, DesktopPorts};
-use crate::chrome::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::chrome::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::chrome::statusline::Hint;
 use crate::dialog;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
+use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::statusline::Hint;
 
 /// The open Bills Dialog's clicks.
 type Clicks = DialogClicks<BillsDialog>;
@@ -142,7 +142,7 @@ impl BillsDialog {
 }
 
 /// Where a Bills Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Shell` to drain once the key or click returns. The page opens Dialogs and reports
+/// queue for `Root` to drain once the key or click returns. The page opens Dialogs and reports
 /// outcomes.
 #[derive(Default)]
 struct DialogRouter {

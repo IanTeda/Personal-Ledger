@@ -4,7 +4,7 @@
 //!
 //! An over-budget month or cell takes the accent and a `▲`; the current month is drawn outlined
 //! and labelled "to date", and counts in neither AVG nor OVER. A month in which a row was
-//! unbudgeted shows `—`. The cursor cell inverts. Every input is a callback into `Shell`.
+//! unbudgeted shows `—`. The cursor cell inverts. Every input is a callback into `Root`.
 
 use std::rc::Rc;
 

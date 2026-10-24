@@ -228,7 +228,7 @@ fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Error and warning use the Toast marks, which hold 3:1 against the box's chrome ground; info
+/// Error and warning use the Toast marks, which hold 3:1 against the box's `chrome` ground; info
 /// stays muted like the body and debug drops back to faint.
 fn level_colour(level: Level, cx: &App) -> Rgba {
     match level {

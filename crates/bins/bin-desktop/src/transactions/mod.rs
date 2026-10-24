@@ -1,5 +1,5 @@
 //! Pure Transactions-surface domain types (`docs/ux/desktop-mockups/03-transactions/README.md`) --
-//! `gpui`-free, the same "pure state, chrome renders it" split `accounts/mod.rs` uses. The View
+//! `gpui`-free, the same "pure state, its View renders it" split `accounts/mod.rs` uses. The View
 //! reads the Ledger's Transactions, a read copy of the Transactions port that `ports.rs` keeps in
 //! line (#774); the stub seed is `lib_transactions::fake`'s, joined to the other stubs by
 //! `lib_ledger::default_transactions`.

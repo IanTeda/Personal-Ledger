@@ -4,8 +4,8 @@
 
 use lib_viper::view::SelectView;
 
-use crate::chrome::dialog_host::{DialogKey, DialogOutcome};
 use crate::form::select::SelectState;
+use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
 
 /// What `Enter` does on a form: confirm while the Presenter would, else nothing.
 pub(crate) fn enter(can_confirm: bool) -> DialogOutcome {

@@ -1,6 +1,6 @@
 //! The Dashboard driven by keys: it is the start page, lists the Bills needing attention, scrolls
 //! on movement keys and takes `/` into a Search with nothing to type into. State is read back from
-//! `Shell`.
+//! `Root`.
 
 use super::common;
 

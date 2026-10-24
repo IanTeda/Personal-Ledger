@@ -23,7 +23,7 @@ use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 
-/// What `build_shell` hands the Ledger: where its Transactions are kept, shared with the Bill
+/// What `shell::router::build` hands the Ledger: where its Transactions are kept, shared with the Bill
 /// Payments module, and the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
     pub transactions: SharedTransactionsStore,
@@ -32,7 +32,7 @@ pub struct LedgerSetup {
 
 impl LedgerSetup {
     /// The stub Ledger's Transactions and Bills as of `today`, in memory, for a test that builds
-    /// `Shell` directly.
+    /// `Root` directly.
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);

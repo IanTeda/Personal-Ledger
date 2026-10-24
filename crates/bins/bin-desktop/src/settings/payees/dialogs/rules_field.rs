@@ -1,6 +1,6 @@
 //! The **Match rules** field the Add (6b) and Edit (6c) payee dialogs share: a chip row (a neutral
 //! "no rules yet" chip while empty, otherwise one accent chip per rule with a `✕` to remove it),
-//! then the monospace rule input and its **+ add** button. `Shell` owns the form and the keys;
+//! then the monospace rule input and its **+ add** button. `Root` owns the form and the keys;
 //! `enter` in the input adds a chip rather than submitting the dialog.
 
 use std::rc::Rc;

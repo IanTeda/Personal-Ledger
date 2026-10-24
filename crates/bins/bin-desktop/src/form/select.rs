@@ -261,7 +261,7 @@ mod tests {
     }
 }
 
-/// A key a focused select understands, parsed from a keystroke by `Shell`.
+/// A key a focused select understands, parsed from a keystroke by `Root`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectKey {
     Up,

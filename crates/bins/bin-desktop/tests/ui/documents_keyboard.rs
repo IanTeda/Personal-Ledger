@@ -1,7 +1,7 @@
 //! The Documents page driven by keys alone: landing, the Inbox/Library toggle, the index and list
 //! zones, the Library's sort and search, the Inbox's accept, skip and undo, the link picker, `L`,
 //! the Add and Import dialogs and the palette's `documents` commands. Assertions read state back
-//! from `Shell`, never pixels.
+//! from `Root`, never pixels.
 
 #![expect(
     clippy::panic,
@@ -10,8 +10,8 @@
 
 use super::common;
 
-use bin_desktop::app::DocumentsSnapshot;
 use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::shell::router::DocumentsSnapshot;
 use common::Harness;
 use gpui::TestAppContext;
 

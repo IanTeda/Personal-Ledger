@@ -25,7 +25,7 @@ pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
 
 use lib_bills::presenter::BillsPageEvent;
 
-/// What `build_shell` hands the Bills module: its ports, shared with `LedgerStore`, the payments
+/// What `shell::router::build` hands the Bills module: its ports, shared with `LedgerStore`, the payments
 /// port the Pay Dialog it opens writes through, and its keymap under `[keybindings]`.
 pub struct BillsSetup {
     pub ports: DesktopPorts,
@@ -47,7 +47,7 @@ impl BillsSetup {
     }
 
     /// `storage`'s Bills ports and payments under the default keys, for a test that builds
-    /// `Shell` directly.
+    /// `Root` directly.
     #[cfg(test)]
     pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
         Self::new(

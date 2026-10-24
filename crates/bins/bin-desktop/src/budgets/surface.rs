@@ -2,9 +2,9 @@
 //! the open dialog.
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     period::Period,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
 };
 use lib_core::{BudgetId, CategoryId};
 
@@ -180,7 +180,7 @@ pub enum ManageAction {
     Restore,
 }
 
-/// What a key in Manage budgets asks `Shell` to do once it confirms.
+/// What a key in Manage budgets asks `Root` to do once it confirms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManageRequest {
     New,
@@ -228,7 +228,7 @@ impl Manage {
 
 impl Dialog for Manage {
     /// `j`/`k` move, `enter` opens, `n` starts a new Budget, `e` edits, `d` duplicates, `*` sets
-    /// the default and `x` archives or restores. Each but the moves is a request `Shell` runs.
+    /// the default and `x` archives or restores. Each but the moves is a request `Root` runs.
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         let last = self.rows.len().checked_sub(1)?;
         let at = self.selected.min(last);
@@ -263,7 +263,7 @@ impl Dialog for Manage {
     }
 }
 
-/// What a key on 9d asks `Shell` to do once it confirms.
+/// What a key on 9d asks `Root` to do once it confirms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailRequest {
     /// `t` or `enter`: hand off to Transactions.
@@ -404,9 +404,9 @@ impl Dialog for BudgetsDialog {
         self.inner_mut().is_some_and(Dialog::close_open_select)
     }
 
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
         use crate::view::budgets::hints;
-        Some(crate::chrome::statusline::owned_hints(match self {
+        Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Switcher(_) => hints::budgets_switcher_hints(),
             Self::Budget(_) | Self::EditLimit(_) => hints::budgets_limit_hints(),
             Self::Stop(_) => hints::budgets_stop_hints(),

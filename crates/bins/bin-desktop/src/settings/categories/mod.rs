@@ -1,7 +1,7 @@
 //! The **Categories** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! nested Category tree, Expense then Income. [`CategoriesPage`] reads the tree straight from
 //! [`LedgerStore`], keeps its own cursor and folds, renders itself (`render.rs`), builds the Add,
-//! Edit and Delete Dialogs (`dialogs/`) and reaches `Shell` only through [`ViewEvent`]; `Shell`'s
+//! Edit and Delete Dialogs (`dialogs/`) and reaches `Root` only through [`ViewEvent`]; `Root`'s
 //! Dialog host draws them and runs their confirm cycle through `apply.rs`. The Settings View
 //! forwards its keys, movement and status to it while the page has focus.
 
@@ -26,14 +26,14 @@ use lib_list_cursor::step_id;
 
 use crate::{
     budgets::PERSONAL_SPENDING_ID,
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     form::field::TextField,
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_categories_hints,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::ViewEvent,
 };
 use dialogs::CategoriesDialog;
@@ -395,7 +395,7 @@ impl CategoriesPage {
     }
 
     /// Opens the Delete dialog on `category_id`, copying its name in so the form validates without
-    /// `Shell`. A no-op if the Category is gone.
+    /// `Root`. A no-op if the Category is gone.
     fn open_delete_dialog(&mut self, category_id: CategoryId, cx: &mut Context<'_, Self>) {
         let Some(category) = self.categories(cx).iter().find(|c| c.id == category_id) else {
             return;

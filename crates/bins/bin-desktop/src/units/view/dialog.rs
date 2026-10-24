@@ -1,4 +1,4 @@
-//! The Units Dialogs' Views, each open one an Entity in the Dialog host (`chrome::dialog_entity`).
+//! The Units Dialogs' Views, each open one an Entity in the Dialog host (`shell::view::dialog_entity`).
 //! [`UnitsDialog`] holds a `lib-units` Presenter and the widget state that is gpui's to keep (which
 //! select's list is open and its highlight). Every key and click becomes a Presenter event; each
 //! View draws the Presenter's view model and nothing else.
@@ -28,10 +28,10 @@ use crate::form::viper::{
 use crate::ledger_store::LedgerStore;
 use crate::units::ports::{self, DesktopPorts};
 use crate::{
-    chrome::dialog_entity::{DialogClicks, DialogClosed, HostedDialog},
-    chrome::dialog_host::{DialogKey, DialogOutcome, DialogReadback},
     dialog,
     form::select::SelectState,
+    shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog},
+    shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback},
     theme::color,
 };
 
@@ -192,7 +192,7 @@ impl UnitsDialog {
 }
 
 /// Where a Units Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Shell` to drain once the key or click returns. The page opens Dialogs.
+/// queue for `Root` to drain once the key or click returns. The page opens Dialogs.
 #[derive(Default)]
 struct DialogRouter {
     /// `Some` once the Presenter closed its Dialog, with what its confirm did.

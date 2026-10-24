@@ -1,7 +1,7 @@
 //! The Settings Accounts page driven by keys: row selection, `enter` opening an Account's ledger,
 //! the add, edit and delete dialogs with what confirming each one does, the status line, and the
 //! `accounts` command. The dialogs' own forms are in `accounts_keyboard.rs`. State is read back
-//! from `Shell`.
+//! from `Root`.
 
 use super::common;
 

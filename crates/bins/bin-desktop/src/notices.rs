@@ -2,8 +2,8 @@
 //! each input's `send` (`crate::input`) drains it into the Shell's Presenter, which holds the Toast
 //! stack and status line, after the Presenter's `handle` and the commit (ADR-0048).
 //!
-//! The queue is per thread rather than held by `Shell`, since today's Dialog host calls a Dialog
-//! with no gpui context to reach `Shell` through.
+//! The queue is per thread rather than held by `Root`, since today's Dialog host calls a Dialog
+//! with no gpui context to reach `Root` through.
 
 use std::cell::RefCell;
 

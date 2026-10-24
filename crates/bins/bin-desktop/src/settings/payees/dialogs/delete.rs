@@ -1,9 +1,9 @@
 //! Renders the **Delete payee** dialog (`docs/ux/desktop-mockups/20-payees/README.md`'s 6d) on the shared
-//! `crate::dialog` chrome's destructive variant at the handoff's 440px. #283 overrode the handoff's
+//! `crate::dialog` frame's destructive variant at the handoff's 440px. #283 overrode the handoff's
 //! always-hard-delete, so the one dialog serves three [`DeleteAction`]s: an unreferenced Payee is
 //! deleted, a referenced one is deactivated, and a referenced inactive one is offered
 //! reactivation. The first two sit behind the typed-name confirm (exact, case-sensitive);
-//! reactivating loses nothing, so it drops the gate and the red chrome.
+//! reactivating loses nothing, so it drops the gate and the red frame.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 

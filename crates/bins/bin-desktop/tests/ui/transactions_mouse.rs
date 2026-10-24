@@ -1,7 +1,7 @@
 //! The Transactions page driven by clicks: rows, chips and their clear buttons, the search box,
 //! the add button, the filter popover's fields, options, status control and buttons, and the
 //! Import step's selects and focus. Only elements tagged with `debug_selector` are clicked; state
-//! is read back from `Shell`.
+//! is read back from `Root`.
 
 #![expect(
     clippy::expect_used,

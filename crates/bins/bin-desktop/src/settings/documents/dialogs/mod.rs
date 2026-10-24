@@ -1,5 +1,5 @@
 //! The Document type dialogs: Add, Edit and Remove a type, and the notice Other gets instead of a
-//! Remove. [`DocumentTypesDialog`] is the value `Shell`'s Dialog host holds while one is open
+//! Remove. [`DocumentTypesDialog`] is the value `Root`'s Dialog host holds while one is open
 //! (`OpenDialog::DocumentTypes`). It draws itself (`Dialog::render`), every click reaching the form
 //! through the host's one edit callback, reads itself back for the UI tests and confirms itself
 //! through `apply.rs`.
@@ -15,11 +15,11 @@ use lib_documents::types::{RemindLead, TracksDate};
 
 use super::form::{DocumentTypeForm, FormField, RemoveForm};
 use crate::{
-    chrome::dialog_host::{
-        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    },
     dialog::OnClick,
     form::{field::TextField, fields::OnSegmentClick, select_field::OnOptionClick},
+    shell::view::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
 };
 use add_edit::OnFieldClick;
 
@@ -230,7 +230,7 @@ impl Dialog for DocumentTypesDialog {
     }
 
     /// The legend: Remove and the notice have no fields to `tab` through.
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
         let mut hints = vec![
             ("esc", crate::msg::desktop_hint_cancel()),
             ("enter", crate::msg::desktop_hint_confirm()),
@@ -238,7 +238,7 @@ impl Dialog for DocumentTypesDialog {
         if matches!(self, Self::Add(_) | Self::Edit(..)) {
             hints.push(("tab", crate::msg::desktop_hint_next_field()));
         }
-        Some(crate::chrome::statusline::owned_hints(hints))
+        Some(crate::shell::view::statusline::owned_hints(hints))
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {

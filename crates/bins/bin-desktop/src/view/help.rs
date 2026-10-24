@@ -1,4 +1,4 @@
-//! The `?` help overlay: an About-style card on `dialog`'s chrome -- project facts on the left,
+//! The `?` help overlay: an About-style card on `dialog`'s frame -- project facts on the left,
 //! the shortcut cheat-sheet on the right, a Close button in the footer.
 
 use std::rc::Rc;
@@ -6,8 +6,8 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     dialog, help,
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
     theme::color,
 };
 

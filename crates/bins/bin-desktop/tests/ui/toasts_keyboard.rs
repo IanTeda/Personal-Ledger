@@ -1,6 +1,6 @@
 //! The Toast layer and the Toast history driven by keys and commands: raising and merging Toasts,
 //! `ctrl-l` and `:dismiss all`, `:messages` opening the history, `:toasts off`/`on`, and the Toast
-//! timer running a Toast's lifetime out. State is read back from `Shell`.
+//! timer running a Toast's lifetime out. State is read back from `Root`.
 
 use std::time::Duration;
 

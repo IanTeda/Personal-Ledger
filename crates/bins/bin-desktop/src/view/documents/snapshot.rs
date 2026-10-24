@@ -1,6 +1,6 @@
 //! What the integration tests read back of the Documents page (ADR-0030), built by the Documents
 //! Entity from its own state (ADR-0037). The open dialog, the Toasts and the status message are
-//! `Shell`'s, so its accessor fills them in.
+//! `Root`'s, so its accessor fills them in.
 
 use gpui::App;
 
@@ -50,7 +50,7 @@ pub struct PickerSnapshot {
 }
 
 impl DocumentsView {
-    /// The page's part of the snapshot; the dialog, Toasts and status are left empty for `Shell`.
+    /// The page's part of the snapshot; the dialog, Toasts and status are left empty for `Root`.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> DocumentsSnapshot {
         let state = &self.state;

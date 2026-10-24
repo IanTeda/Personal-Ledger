@@ -1,6 +1,6 @@
 //! The Settings Institutions page's dialog driven by keys once open: typing, `enter` to save and
 //! `escape` to cancel. The page has no keys of its own, so the dialog is opened with its tagged
-//! button. State is read back from `Shell`.
+//! button. State is read back from `Root`.
 
 use super::common;
 

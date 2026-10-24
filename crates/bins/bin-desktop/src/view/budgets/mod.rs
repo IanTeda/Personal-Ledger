@@ -7,7 +7,7 @@
 //! Switcher popover (11b, `switcher`) and the New budget (11c, `budget_dialog`) and Manage budgets (11f,
 //! `manage_dialog`) dialogs. [`state::BudgetsView`] renders the page itself (ADR-0037): every
 //! action is a call back into the Budgets Entity, so the keyboard and the mouse reach the same
-//! methods. The dialogs are still drawn by `Shell`'s Dialog host.
+//! methods. The dialogs are still drawn by `Root`'s Dialog host.
 
 pub mod budget_dialog;
 pub mod detail_dialog;

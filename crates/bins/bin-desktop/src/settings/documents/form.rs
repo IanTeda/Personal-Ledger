@@ -7,9 +7,9 @@ use lib_core::DocumentTypeId;
 use lib_documents::types::*;
 
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectState,
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 /// Longest Document Type name, in characters (#477).
@@ -63,7 +63,7 @@ pub enum NameError {
 }
 
 /// The Add/Edit dialog's draft. The other types' names are copied in at open, so the form
-/// validates without `Shell`.
+/// validates without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentTypeForm {
     pub name: TextField,
@@ -238,7 +238,7 @@ fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {
 }
 
 /// The Remove dialog's destination select. The destination names and whether one is needed are
-/// copied in at open, so the dialog validates without `Shell`.
+/// copied in at open, so the dialog validates without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveForm {
     /// Where the removed type's Filed files can move: every other type, in order.
@@ -419,9 +419,11 @@ mod tests {
         assert_eq!(destination_names(&types, DocumentTypeId::seed(3)).len(), 8);
     }
 
-    use crate::chrome::dialog_host::type_text;
-    use crate::chrome::dialog_host::{Dialog, DialogKey, DialogOutcome, OpenDialog, handle_key};
     use crate::settings::documents::dialogs::DocumentTypesDialog;
+    use crate::shell::view::dialog_host::type_text;
+    use crate::shell::view::dialog_host::{
+        Dialog, DialogKey, DialogOutcome, OpenDialog, handle_key,
+    };
 
     fn add_document_type() -> OpenDialog {
         OpenDialog::DocumentTypes(DocumentTypesDialog::Add(DocumentTypeForm::new(

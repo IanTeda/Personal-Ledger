@@ -1,5 +1,5 @@
 //! The Tracing page's Dialogs: just the Clear logs confirm. [`TracingDialog`] is the value
-//! `Shell`'s Dialog host holds while it is open (`OpenDialog::Tracing`). It draws itself
+//! `Root`'s Dialog host holds while it is open (`OpenDialog::Tracing`). It draws itself
 //! (`Dialog::render`), reads itself back for the UI tests and confirms itself through `apply.rs`.
 
 pub mod clear_logs;
@@ -7,9 +7,9 @@ pub mod clear_logs;
 use gpui::{AnyElement, App};
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
     form::field::TextField,
     settings::hints,
+    shell::view::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
 };
 
 /// The open Tracing Dialog.
@@ -29,8 +29,8 @@ impl Dialog for TracingDialog {
     }
 
     /// Clear logs is a confirm.
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
-        Some(crate::chrome::statusline::owned_hints(
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+        Some(crate::shell::view::statusline::owned_hints(
             hints::confirm_dialog_hints(),
         ))
     }

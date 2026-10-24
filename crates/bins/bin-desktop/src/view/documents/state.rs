@@ -2,8 +2,8 @@
 //! are read through `LedgerStore`; Settings › Documents edits the Types too.
 //! [`DocumentsView`] owns the page's own state: mode, scope, sort, search, focus zone, selections
 //! and the last filing for `u`. It renders itself (`impl Render` in `super`), handles its own keys,
-//! `Esc`, Search and movement, files Documents, hands files to the OS, and reaches `Shell` only
-//! through [`ViewEvent`]. It builds the Documents dialogs, which `Shell`'s Dialog host draws and
+//! `Esc`, Search and movement, files Documents, hands files to the OS, and reaches `Root` only
+//! through [`ViewEvent`]. It builds the Documents dialogs, which `Root`'s Dialog host draws and
 //! confirms.
 
 use chrono::NaiveDate;
@@ -22,10 +22,6 @@ use super::{
     hints::{inbox_hints, index_hints, library_hints},
 };
 use crate::{
-    chrome::{
-        dialog_host::OpenDialog,
-        statusline::{PageStatus, owned_hints},
-    },
     documents::{
         self, Document, DocumentLink, DocumentsMode, FilingUndo, KeyDateKind, LibraryScope,
         LibrarySort, RailEntry,
@@ -36,6 +32,10 @@ use crate::{
     },
     ledger_store::{LedgerChanged, LedgerStore, notify_on},
     navigation::{movement::Movement, nav::Noun},
+    shell::view::{
+        dialog_host::OpenDialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use lib_ledger::Domain;
@@ -93,11 +93,11 @@ pub struct DocumentsSources {
 pub struct DocumentsView {
     pub(super) sources: DocumentsSources,
     pub(super) today: NaiveDate,
-    /// The Display Preference the dates on the page and in its forms follow. Pushed by `Shell`,
+    /// The Display Preference the dates on the page and in its forms follow. Pushed by `Root`,
     /// which owns the Settings page that changes it.
     pub(super) date_style: Option<DateStyle>,
     /// Whether the View zone has focus, which the index rail's and the list's focus rings draw
-    /// within. Handed over by `Shell` as it draws the page; the View never reads `Shell`'s focus.
+    /// within. Handed over by `Root` as it draws the page; the View never reads `Root`'s focus.
     pub(super) zone_focused: bool,
     /// Whether the Library's Search is open (`InputMode::Search`, which the View entered).
     pub(super) searching: bool,
@@ -160,7 +160,7 @@ impl DocumentsView {
         cx.notify();
     }
 
-    /// Records whether the View zone has focus, as `Shell` draws the page.
+    /// Records whether the View zone has focus, as `Root` draws the page.
     pub fn set_zone_focused(&mut self, focused: bool) {
         self.zone_focused = focused;
     }
@@ -265,12 +265,12 @@ impl DocumentsView {
     pub(super) fn stored_text(&self, cx: &App) -> String {
         crate::msg::desktop_documents_status_stored(
             &documents::model::size_text(documents::total_bytes(self.documents(cx))),
-            crate::chrome::statusline::STUB_LEDGER_FILE,
+            crate::shell::view::statusline::STUB_LEDGER_FILE,
         )
     }
 
     // -----------------------------------------------------------------------------------------
-    // The interface `Shell` forwards to (ADR-0037)
+    // The interface `Root` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
     /// The Documents keys, ahead of the Shell's fallback (`a` would otherwise enter Insert mode). `false`
@@ -994,7 +994,7 @@ impl DocumentsView {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Dialogs the page builds; `Shell`'s Dialog host draws and confirms them
+    // Dialogs the page builds; `Root`'s Dialog host draws and confirms them
     // -----------------------------------------------------------------------------------------
 
     /// `Y`, **Accept all strong matches** and `:documents accept-all`: asks first, with the count.

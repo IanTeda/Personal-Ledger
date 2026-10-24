@@ -1,5 +1,5 @@
 //! The `?` Help Dialog driven by clicks: its close button. Only elements tagged with
-//! `debug_selector` are clicked; state is read back from `Shell`.
+//! `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 

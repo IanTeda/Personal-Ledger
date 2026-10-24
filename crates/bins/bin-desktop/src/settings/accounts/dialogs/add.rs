@@ -1,5 +1,5 @@
 //! Renders the **Add account** dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3b) on the shared
-//! `crate::dialog` chrome. `Shell` owns the live form (`settings::accounts::form::AccountForm`) and every
+//! `crate::dialog` frame. `Root` owns the live form (`settings::accounts::form::AccountForm`) and every
 //! keystroke while it is open (`InputMode::Dialog`); this module only draws it.
 //!
 //! Width is 440px rather than `dialog::WIDTH`'s 420px, the README's own note: only because the

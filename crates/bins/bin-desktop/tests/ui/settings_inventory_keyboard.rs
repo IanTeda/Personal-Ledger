@@ -1,6 +1,6 @@
 //! The Settings Inventory page driven by keys: one flat selection over Location and Area rows,
 //! tree keys, `J`/`K` reorder, the placeholder dialog keys, the empty state and the status line.
-//! State is read back from `Shell`.
+//! State is read back from `Root`.
 
 use super::common;
 

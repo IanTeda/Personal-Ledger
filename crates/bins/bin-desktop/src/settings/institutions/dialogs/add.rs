@@ -1,5 +1,5 @@
 //! Renders the **Add institution** dialog (issue #187's own "2e"), on the shared `crate::dialog`
-//! chrome -- the one dialog in this map whose own raw markup sets `width:460px` instead of the
+//! frame -- the one dialog in this map whose own raw markup sets `width:460px` instead of the
 //! shared [`dialog::WIDTH`] (see that constant's own doc).
 //!
 //! Three field shapes, none reused verbatim from the Unit dialogs:
@@ -10,7 +10,7 @@
 //! - **Account types**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s
 //!   `.chip` role) -- the first *multi*-select control in this crate; every other "pick one"
 //!   control (segmented controls, dot radios) only ever holds one selection at a time.
-//! - **Default unit**: a single-select built from `Shell::settings_units`' own live `Vec`, not a
+//! - **Default unit**: a single-select built from `Root::settings_units`' own live `Vec`, not a
 //!   compile-time enum -- `form::fields::segmented_control`'s `&'static [T]` bound can't take a
 //!   runtime slice, so this module builds its own segmented-style row instead of reusing that
 //!   function. Still a segmented control rather than the raw mockup's own `<select>`, same

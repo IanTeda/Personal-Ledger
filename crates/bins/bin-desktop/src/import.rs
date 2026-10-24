@@ -2,7 +2,7 @@
 //! settled it: a seeded mock statement (no real CSV upload or parsing), each line matched to a
 //! Payee by its Payee Aliases, the rest given a cleaned-up name to create, and **continue**
 //! committing the lot to the in-memory stubs. `gpui`-free, so every rule is unit-tested without a
-//! window; `Shell` owns an [`ImportState`] and `view::import` draws it.
+//! window; `Root` owns an [`ImportState`] and `view::import` draws it.
 //!
 //! **Row status** follows the handoff's Behaviour section: a row *needs review* while its Payee or
 //! its Category is unresolved, and **continue** is refused while any row does. A resolved row is a
@@ -334,7 +334,7 @@ impl PayeeChoices {
     }
 }
 
-/// A key an open row select understands, parsed from a keystroke by `Shell`.
+/// A key an open row select understands, parsed from a keystroke by `Root`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectKey {
     Up,

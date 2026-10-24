@@ -12,9 +12,9 @@ use lib_units::UnitRow;
 
 use super::form::{AddInstitutionForm, InstitutionProduct};
 use crate::{
-    chrome::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
     dialog,
     form::field::TextField,
+    shell::view::dialog_host::{Dialog, DialogActions, DialogReadback, DialogScope},
 };
 
 /// The open Institutions Dialog.
@@ -132,7 +132,7 @@ impl Dialog for InstitutionsDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chrome::dialog_host::{OpenDialog, type_text};
+    use crate::shell::view::dialog_host::{OpenDialog, type_text};
     use lib_units::default_units;
 
     #[test]

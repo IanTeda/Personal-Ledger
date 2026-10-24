@@ -1,6 +1,6 @@
 //! The 4a view header (`docs/ux/desktop-mockups/03-transactions/README.md`): the title with its computed count
 //! line and the **add transaction** button, then the filter chip row with `clear filters` and the
-//! search box, closed by the 2px rule. Every action is a callback into `Shell`, so keys and clicks
+//! search box, closed by the 2px rule. Every action is a callback into `Root`, so keys and clicks
 //! share handlers.
 //!
 //! Chips follow the map's decision: an outline chip (at its default) ends in `▾`, an accent chip
@@ -21,7 +21,7 @@ use crate::{
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnChipClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
 /// Where each chip was last painted, in window coordinates: written while painting, read by
-/// `Shell` to anchor the filter popover under the chip that opened it.
+/// `Root` to anchor the filter popover under the chip that opened it.
 pub type ChipBounds = Rc<RefCell<HashMap<FilterField, Bounds<Pixels>>>>;
 
 pub struct HeaderProps {

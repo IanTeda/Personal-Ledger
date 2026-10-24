@@ -1,6 +1,6 @@
 //! The Add and Edit **Document type** dialogs (#478's stacked-form variant A) on the shared
-//! `crate::dialog` chrome. They share one renderer: Name, Tracks date, Remind and Financial year
-//! stacked with a hint under each. `Shell` owns the live state and every key; this module is a
+//! `crate::dialog` frame. They share one renderer: Name, Tracks date, Remind and Financial year
+//! stacked with a hint under each. `Root` owns the live state and every key; this module is a
 //! pure render-helper.
 
 use std::rc::Rc;

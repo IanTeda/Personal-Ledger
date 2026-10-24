@@ -1,7 +1,7 @@
 //! Renders **Manage budgets** (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 11f) on the shared
-//! `crate::dialog` chrome: the header counts, one row per Budget with its actions, and the three
+//! `crate::dialog` frame: the header counts, one row per Budget with its actions, and the three
 //! notes. An archived row is dimmed and offers only `restore` and `duplicate`; `set default` is
-//! left off the default and `archive` is refused on it (#400). `Shell` owns the row cursor and
+//! left off the default and `archive` is refused on it (#400). `Root` owns the row cursor and
 //! every keystroke.
 
 use lib_core::BudgetId;

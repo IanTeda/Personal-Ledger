@@ -1,6 +1,6 @@
 //! The Budgets page driven by clicks: tabs, period nav, rows and their edit action, Plan cells and
 //! the dialogs' buttons. Only elements tagged with `debug_selector` are clicked; state is read back
-//! from `Shell`.
+//! from `Root`.
 
 use super::common;
 

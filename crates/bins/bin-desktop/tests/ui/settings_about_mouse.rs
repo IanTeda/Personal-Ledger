@@ -1,6 +1,6 @@
 //! The Settings About page driven by clicks: the About index entry swaps the page in, and the
 //! version line is drawn on it. About has no buttons or fields, so there is nothing else to
-//! click. State is read back from `Shell`.
+//! click. State is read back from `Root`.
 
 use super::common;
 

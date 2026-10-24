@@ -1,5 +1,5 @@
 //! The `?` Help Dialog driven by keys: `?` opens it over the View and `Esc` closes it. State is
-//! read back from `Shell`.
+//! read back from `Root`.
 
 use super::common;
 

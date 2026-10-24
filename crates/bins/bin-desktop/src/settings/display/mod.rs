@@ -1,6 +1,6 @@
 //! The Settings › Display page (ADR-0037's amendment, one folder per page). [`DisplayPage`] owns the
 //! Display Preferences (`preferences.rs`), the keyboard focus on its controls and on the Colour Theme
-//! grid (`colour_theme.rs`), and renders itself (`render.rs`). Each change reaches `Shell` as
+//! grid (`colour_theme.rs`), and renders itself (`render.rs`). Each change reaches `Root` as
 //! [`ViewEvent::DisplayChanged`]; the Settings View forwards the page's keys and focus to it while
 //! the page has focus.
 
@@ -15,7 +15,6 @@ use lib_colour_theme::ColourTheme;
 use lib_core::DateStyle;
 
 use crate::{
-    chrome::statusline::{PageStatus, owned_hints},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -23,6 +22,7 @@ use crate::{
         pages::{Page, PageFrame},
         step_choice,
     },
+    shell::view::statusline::{PageStatus, owned_hints},
     theme::colours::ColourChange,
     view::event::ViewEvent,
 };
@@ -93,7 +93,7 @@ impl Page for DisplayPage {
     }
 }
 
-/// The Display page: the Display Preferences its controls set and the other Views and the Chrome
+/// The Display page: the Display Preferences its controls set and the other Views and the Shell
 /// read, and the keyboard focus on its controls and Colour Theme grid. Only one of the two is
 /// focused at a time, and neither while focus is elsewhere in Settings.
 #[derive(Debug, Default)]
@@ -121,7 +121,7 @@ impl DisplayPage {
     }
 
     /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
-    /// `Shell`, which made the change itself.
+    /// `Root`, which made the change itself.
     pub fn set_preferences(&mut self, preferences: DisplayPreferences, cx: &mut Context<'_, Self>) {
         self.preferences = preferences;
         cx.notify();
@@ -252,7 +252,7 @@ impl DisplayPage {
         self.field_focus = Some(DISPLAY_FIELD_COUNT - 1);
     }
 
-    /// Applies a change made on the page and hands the result to `Shell`.
+    /// Applies a change made on the page and hands the result to `Root`.
     fn change_display(
         &mut self,
         change: impl FnOnce(&mut DisplayPreferences),
@@ -297,7 +297,7 @@ impl DisplayPage {
 }
 
 /// Applies a Colour Theme once the current update is done: the change refreshes every window,
-/// which must not happen while `Shell` is mid-update.
+/// which must not happen while `Root` is mid-update.
 fn apply_colour(change: ColourChange, cx: &mut Context<'_, DisplayPage>) {
     cx.defer(move |cx| change.apply(cx));
 }

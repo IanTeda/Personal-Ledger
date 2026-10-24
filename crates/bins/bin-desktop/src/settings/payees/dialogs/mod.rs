@@ -1,4 +1,4 @@
-//! The Payees Dialogs: Add, Edit and Delete a payee. [`PayeesDialog`] is the value `Shell`'s Dialog
+//! The Payees Dialogs: Add, Edit and Delete a payee. [`PayeesDialog`] is the value `Root`'s Dialog
 //! host holds while one is open (`OpenDialog::Payees`). It draws itself (`Dialog::render`), every
 //! click reaching the form through the host's one edit callback, reads itself back for the UI
 //! tests and confirms itself through `apply.rs`.
@@ -15,10 +15,10 @@ use lib_core::PayeeId;
 use lib_payees::usage;
 
 use super::form::{DeletePayeeForm, PayeeField, PayeeForm};
-use crate::chrome::dialog_host::{
+use crate::form::field::TextField;
+use crate::shell::view::dialog_host::{
     Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
 };
-use crate::form::field::TextField;
 pub use add::PayeeDialogHandlers;
 
 /// Which Payees dialog is open, following `AccountsDialog`.
@@ -70,8 +70,8 @@ impl Dialog for PayeesDialog {
         self.form_mut().is_some_and(PayeeForm::close_open_select)
     }
 
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
-        Some(crate::chrome::statusline::owned_hints(match self {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+        Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Delete(..) => crate::settings::hints::confirm_dialog_hints(),
             Self::Add(_) | Self::Edit(..) => crate::settings::hints::payee_dialog_hints(),
         }))
@@ -204,7 +204,9 @@ mod tests {
     use lib_categories::default_categories;
     use lib_payees::default_payees;
 
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key, type_text};
+    use crate::shell::view::dialog_host::{
+        DialogKey, DialogOutcome, OpenDialog, handle_key, type_text,
+    };
 
     fn payee_options() -> PayeeOptions {
         PayeeOptions::new(&default_categories(), "none".into())

@@ -1,19 +1,19 @@
-//! `ViewEvent` -- the requests a View makes of `Shell`. A View emits one of these with
-//! `cx.emit` and never holds a handle to `Shell` (ADR-0032): `Shell` subscribes to each View
-//! and handles every event in one place (`app/view_events.rs`).
+//! `ViewEvent` -- the requests a View makes of `Root`. A View emits one of these with
+//! `cx.emit` and never holds a handle to `Root` (ADR-0032): `Root` subscribes to each View
+//! and handles every event in one place (`shell/router/view_events.rs`).
 
 use lib_core::{AccountId, BillPlanId, PayeeId, TransactionId};
 use lib_toast::ToastKind;
 
 use crate::{
     bills::EntryId,
-    chrome::{
-        dialog_entity::DialogHandle,
-        dialog_host::{HostedOpen, OpenDialog},
-    },
     navigation::nav::{InputMode, Noun},
     period::Period,
     settings::{SettingsPage, display::DisplayPreferences},
+    shell::view::{
+        dialog_entity::DialogHandle,
+        dialog_host::{HostedOpen, OpenDialog},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,13 +29,13 @@ pub enum ViewEvent {
     HostDialog(DialogHandle),
     /// Make `Noun` the active destination, as the rail or a `g`-jump would.
     Navigate(Noun),
-    /// Replace the status message shown in the Chrome; `None` clears it.
+    /// Replace the status message shown in the Shell; `None` clears it.
     SetStatus(Option<String>),
-    /// Jump to a record another View owns (ADR-0037): `Shell` makes its destination active, then
+    /// Jump to a record another View owns (ADR-0037): `Root` makes its destination active, then
     /// asks that View to show it.
     Reveal(Reveal),
     /// Enter a mode for something the View has opened itself: an edit in place (Budgets' Plan
-    /// cell), its Search box or its filter popover (Transactions). While it lasts, `Shell` hands
+    /// cell), its Search box or its filter popover (Transactions). While it lasts, `Root` hands
     /// the View that mode's keys, and `Esc` comes back to the View as `escape`.
     EnterMode(ViewMode),
     /// Leave the mode the View entered, once what it opened is closed.
@@ -43,22 +43,22 @@ pub enum ViewEvent {
     /// Run a palette command by name, as its click target on a View would (the Dashboard's
     /// `:open`/`:new` empty state).
     RunCommand(&'static str),
-    /// The Display Preferences changed on Settings. They are cross-cutting: `Shell` hands them to
+    /// The Display Preferences changed on Settings. They are cross-cutting: `Root` hands them to
     /// the Views that draw with them, and the Toasts Preference to its Toasts.
     DisplayChanged(DisplayPreferences),
-    /// Settings swapped its open page; `Shell` records it as a step for Back and Forward.
+    /// Settings swapped its open page; `Root` records it as a step for Back and Forward.
     SettingsPageChanged(SettingsPage),
 }
 
-/// A mode a View enters for something it has opened itself: the [`InputMode`]s `Shell` hands
+/// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands
 /// back to the View rather than reading itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
-    /// An edit in place. `Shell` hands the View every key first.
+    /// An edit in place. `Root` hands the View every key first.
     Insert,
-    /// The View's Search box. `Shell` hands the View every key through `search_key`.
+    /// The View's Search box. `Root` hands the View every key through `search_key`.
     Search,
-    /// A filter popover. `Shell` hands the View every key first.
+    /// A filter popover. `Root` hands the View every key first.
     Filter,
 }
 

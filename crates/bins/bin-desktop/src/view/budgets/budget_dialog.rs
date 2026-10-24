@@ -1,8 +1,8 @@
 //! Renders the **New budget** dialog (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 11c) and its edit
-//! mode on the shared `crate::dialog` chrome at the handoff's 640px: Name and Unit, the four
+//! mode on the shared `crate::dialog` frame at the handoff's 640px: Name and Unit, the four
 //! method cards, the on-budget Account chips and Start from. Only Category limits is built, so
 //! the other three cards are drawn dimmed and take no click (#400). Edit mode locks the Unit and
-//! leaves Start from out. `Shell` owns the live form (`budgets::form::BudgetForm`).
+//! leaves Start from out. `Root` owns the live form (`budgets::form::BudgetForm`).
 
 use lib_core::AccountId;
 use std::rc::Rc;
@@ -85,7 +85,7 @@ fn method_cards() -> [MethodCard; 4] {
     ]
 }
 
-/// The chosen card takes the 2px ink border and the chrome fill; the rest are dimmed and say
+/// The chosen card takes the 2px ink border and the `chrome` fill; the rest are dimmed and say
 /// they come later.
 fn method_card(card: MethodCard, cx: &App) -> AnyElement {
     div()

@@ -1,8 +1,8 @@
-//! Shell chrome driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
+//! The Shell driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
 //! zone cycling, the rail toggle, the modes the global keys enter and leave, and the order a key
 //! is offered in (`bin_desktop`'s `input::route_key`), each step winning a key a later one also
 //! binds, the status message answering one key, and the hints naming rebound keys. Assertions read
-//! `NavState` back from `Shell`, never pixels.
+//! `NavState` back from `Root`, never pixels.
 
 use std::time::Duration;
 
@@ -101,7 +101,7 @@ fn a_g_jump_survives_a_slow_second_key_on_the_wall_clock(app: &mut TestAppContex
 
     ui.press("g");
     // Real time only: the executor's clock stands still, so the pending `g` is still live.
-    std::thread::sleep(bin_desktop::app::PENDING_G_TIMEOUT + Duration::from_millis(100));
+    std::thread::sleep(bin_desktop::shell::router::PENDING_G_TIMEOUT + Duration::from_millis(100));
     ui.press("l");
 
     assert_eq!(ui.noun(), Noun::Transactions);
@@ -112,7 +112,7 @@ fn a_pending_g_lapses_once_the_executor_clock_passes_its_timeout(app: &mut TestA
     let mut ui = Harness::new(app);
 
     ui.press("g");
-    ui.advance_clock(bin_desktop::app::PENDING_G_TIMEOUT + Duration::from_millis(1));
+    ui.advance_clock(bin_desktop::shell::router::PENDING_G_TIMEOUT + Duration::from_millis(1));
     ui.press("l");
 
     assert_eq!(

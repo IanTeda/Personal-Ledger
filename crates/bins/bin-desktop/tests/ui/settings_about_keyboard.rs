@@ -1,7 +1,7 @@
 //! The Settings About page driven by keys. About has no controls, so `l` and `enter` on the
 //! index are a quiet no-op and focus stays on the index. The checks cover reaching the page
 //! with `shift-g`, the keys that must leave it unchanged, and `esc` returning focus to the index
-//! from a page that has it. State is read back from `Shell`.
+//! from a page that has it. State is read back from `Root`.
 
 use super::common;
 

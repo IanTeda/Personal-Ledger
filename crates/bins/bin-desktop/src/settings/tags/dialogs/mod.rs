@@ -15,14 +15,14 @@ use lib_tags::{Tag, get, transaction_count};
 
 use super::form::{MergeTagsForm, RemoveTagForm, TagForm};
 use crate::{
-    chrome::dialog_host::{
-        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
-    },
     dialog::OnClick,
     form::colour_field::OnPick,
     form::field::TextField,
     settings::hints::{confirm_dialog_hints, merge_tags_dialog_hints, tag_dialog_hints},
     settings::tags::form::TagField,
+    shell::view::dialog_host::{
+        Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
+    },
     transactions::Transaction,
 };
 use add::OnFieldClick;
@@ -245,8 +245,8 @@ impl Dialog for TagsDialog {
         self.inner_mut().close_open_select()
     }
 
-    fn hints(&self) -> Option<Vec<crate::chrome::statusline::Hint>> {
-        Some(crate::chrome::statusline::owned_hints(match self {
+    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+        Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Add(_) => tag_dialog_hints(false),
             Self::Edit(..) => tag_dialog_hints(true),
             Self::Remove(..) => confirm_dialog_hints(),

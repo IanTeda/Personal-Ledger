@@ -5,7 +5,7 @@ use gpui::App;
 use lib_ledger::{AddInstitution, Ledger, LedgerCommand};
 
 use super::dialogs::InstitutionsDialog;
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, Dialog, DialogScope, Landed},
 };

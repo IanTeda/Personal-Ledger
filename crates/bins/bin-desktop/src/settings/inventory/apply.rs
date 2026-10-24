@@ -11,7 +11,7 @@ use lib_ledger::{
 use lib_toast::ToastKind;
 
 use super::{InventoryRow, dialogs::InventoryDialog};
-use crate::chrome::{
+use crate::shell::view::{
     dialog_apply::{DialogForm, FormError, OutcomeToast, confirm_ledger},
     dialog_host::{ConfirmDialog, Dialog, DialogScope, DialogToast, Landed},
 };

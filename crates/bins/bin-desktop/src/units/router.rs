@@ -11,9 +11,9 @@ use lib_units::{UnitsDialog as Which, UnitsRouter};
 use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
 use super::view::page::UnitsPage;
-use crate::chrome::dialog_entity::host_dialog;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
+use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,

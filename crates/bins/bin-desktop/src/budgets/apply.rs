@@ -1,9 +1,9 @@
 //! The Budgets write Dialogs' confirm cycle (ADR-0037): the command each form describes, wrapped
 //! with the Budget on show and today into an [`OnBudget`] `lib_ledger` command, confirmed through
-//! [`confirm_ledger_with`](crate::chrome::dialog_apply::confirm_ledger_with).
+//! [`confirm_ledger_with`](crate::shell::view::dialog_apply::confirm_ledger_with).
 //!
 //! Only the forms that write are here. The Switcher, Manage and Category detail lists answer
-//! with a request that opens another Dialog or moves the cursor, which stays `Shell`'s.
+//! with a request that opens another Dialog or moves the cursor, which stays `Root`'s.
 
 use chrono::NaiveDate;
 use lib_core::{BudgetId, CategoryId};
@@ -13,8 +13,8 @@ use lib_ledger::{
 
 use super::{BudgetError, BudgetsDialog, FillSource, form::BudgetDraft, limit_form::LimitDraft};
 use crate::{
-    chrome::dialog_apply::{DialogForm, FormError, OutcomeToast},
     period::Period,
+    shell::view::dialog_apply::{DialogForm, FormError, OutcomeToast},
 };
 
 /// What confirming a Budgets write Dialog asks for.

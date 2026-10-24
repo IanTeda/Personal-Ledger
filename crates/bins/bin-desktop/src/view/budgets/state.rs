@@ -1,8 +1,8 @@
 //! The Budgets destination's Entities (ADR-0032, ADR-0037). The Budgets are read through
 //! [`LedgerStore`], which holds the only copy. Categories 5c and the Dashboard read them
 //! showing. It renders itself (`impl Render` in `super`), handles its own keys, `Esc` and
-//! movement, and reaches `Shell` only through [`ViewEvent`]. It builds the Budgets dialogs, and
-//! `Shell` asks it for the ones the palette and the other dialogs open.
+//! movement, and reaches `Root` only through [`ViewEvent`]. It builds the Budgets dialogs, and
+//! `Root` asks it for the ones the palette and the other dialogs open.
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
@@ -18,13 +18,13 @@ use crate::{
         self, BudgetsDialog, BudgetsTab, PlanEdit, default_plan_start,
         limit_form::{LimitForm, LimitOptions, StopForm},
     },
-    chrome::{
-        dialog_host::OpenDialog,
-        statusline::{PageStatus, owned_hints},
-    },
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     period::Period,
+    shell::view::{
+        dialog_host::OpenDialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::{Reveal, ViewEvent, ViewMode},
 };
 use lib_ledger::Domain;
@@ -289,7 +289,7 @@ impl BudgetsView {
         ))
     }
 
-    // The dialogs. Each builder only reads, so `Shell` can open the same dialog from the palette
+    // The dialogs. Each builder only reads, so `Root` can open the same dialog from the palette
     // or from another dialog; the page opens them through `ViewEvent::OpenDialog`.
 
     /// 11b, with the Budget on show highlighted.
@@ -411,7 +411,7 @@ impl BudgetsView {
         }
     }
 
-    // The interface `Shell` forwards to (ADR-0037).
+    // The interface `Root` forwards to (ADR-0037).
 
     /// Keys the page claims before the Shell's fallback: every key typed into a Plan cell (9b, Insert
     /// mode), bar `esc`, which comes back through [`Self::escape`]; and `tab`, which switches the
@@ -614,7 +614,7 @@ impl BudgetsView {
         })
     }
 
-    // What `Shell` asks of the page from outside it.
+    // What `Root` asks of the page from outside it.
 
     /// Shows Budget `id`, keeping the active tab (every method built has all three) and putting
     /// each tab's cursor and range back at its start.
@@ -1070,7 +1070,7 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 6, 15).expect("a valid date")
     }
 
-    /// What the page asked of `Shell`, kept as plain values the tests can compare.
+    /// What the page asked of `Root`, kept as plain values the tests can compare.
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Seen {
         Dialog(String),
@@ -1204,7 +1204,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(draft(&view, cx), None);
         assert_eq!(events.borrow().last(), Some(&Seen::ExitInsert));
-        // With nothing being typed, `Esc` is left to `Shell`.
+        // With nothing being typed, `Esc` is left to `Root`.
         assert!(!view.update(cx, |view, cx| view.escape(cx)));
     }
 

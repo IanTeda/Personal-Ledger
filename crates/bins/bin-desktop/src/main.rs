@@ -1,5 +1,5 @@
 //! Personal Ledger desktop entry point: config, tracing, the Ledger file, then a call into the lib,
-//! where the window and `Shell` setup live so integration tests can share them.
+//! where the window and `Root` setup live so integration tests can share them.
 
 use bin_desktop::Result;
 use clap::Parser;

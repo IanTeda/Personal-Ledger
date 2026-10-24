@@ -1,5 +1,5 @@
 //! The Settings View's own keys on the index and the General page: the index's ends, `/` with no
-//! Search, and `Esc` on the index. State is read back from `Shell`.
+//! Search, and `Esc` on the index. State is read back from `Root`.
 
 use super::common;
 

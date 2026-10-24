@@ -206,7 +206,7 @@ fn resolve<T: Copy>(text: &str, handed_off: Option<(T, &str)>) -> (String, Optio
     }
 }
 
-/// A key a focused select understands, parsed from a keystroke by `Shell`.
+/// A key a focused select understands, parsed from a keystroke by `Root`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectKey {
     Up,

@@ -1,5 +1,5 @@
 //! The Settings Tags page driven by keys: row selection, the add, edit and remove dialogs and
-//! the merge dialog. State is read back from `Shell`.
+//! the merge dialog. State is read back from `Root`.
 
 use super::common;
 

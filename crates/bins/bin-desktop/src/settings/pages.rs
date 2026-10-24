@@ -9,10 +9,6 @@ use gpui::{
 };
 
 use crate::{
-    chrome::{
-        statusline::{PageStatus, owned_hints},
-        window_size::WindowSize,
-    },
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     settings::{
@@ -36,6 +32,10 @@ use crate::{
             TracingPage,
             log::{LogView, TracingLevel},
         },
+    },
+    shell::view::{
+        statusline::{PageStatus, owned_hints},
+        window_size::WindowSize,
     },
     units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
@@ -243,7 +243,7 @@ impl<T: Page> PageHandle for Entity<T> {
     }
 }
 
-/// The Entity of every Settings page. Settings builds them and `Shell` reaches them only through
+/// The Entity of every Settings page. Settings builds them and `Root` reaches them only through
 /// the typed accessors on [`SettingsView`], for the palette commands that drive a page, the
 /// Tracing capture feed and the test snapshots.
 pub struct SettingsPages {

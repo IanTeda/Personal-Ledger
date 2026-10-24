@@ -1,5 +1,5 @@
 //! The Settings Documents page driven by keys: row selection, `J`/`K` reorder and `x` on Other.
-//! State is read back from `Shell`.
+//! State is read back from `Root`.
 
 use super::common;
 

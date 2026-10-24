@@ -13,10 +13,10 @@
 use lib_core::{AreaId, LocationId};
 
 use crate::{
-    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectState,
     inventory::{self, Inventory, Location, LocationDraft, LocationError, NameError},
+    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -711,7 +711,7 @@ mod tests {
         );
     }
 
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
+    use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key};
 
     fn location_context() -> LocationContext {
         LocationContext {

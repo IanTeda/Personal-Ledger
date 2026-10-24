@@ -1,6 +1,6 @@
 //! The Settings Display page driven by keys: walking the controls and into the Colour Theme
 //! grid, changing each control with `h`/`l`, toggling the checkbox, and stepping back out.
-//! State is read back from `Shell`.
+//! State is read back from `Root`.
 
 use super::common;
 

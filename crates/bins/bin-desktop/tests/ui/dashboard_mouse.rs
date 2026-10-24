@@ -1,5 +1,5 @@
 //! The Dashboard driven by clicks. Only elements tagged with `debug_selector` are clicked; state
-//! is read back from `Shell`.
+//! is read back from `Root`.
 
 use super::common;
 

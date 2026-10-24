@@ -1,5 +1,5 @@
 //! The Settings Data & backup page driven by keys: paging to it and the focus behaviour. State is
-//! read back from `Shell`.
+//! read back from `Root`.
 
 use super::common;
 

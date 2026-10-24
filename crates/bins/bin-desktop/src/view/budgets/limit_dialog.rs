@@ -1,7 +1,7 @@
 //! Renders the **Edit budget** dialog (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9e) on the
-//! shared `crate::dialog` chrome at the handoff's 480px: the Category picker when opened from
+//! shared `crate::dialog` frame at the handoff's 480px: the Category picker when opened from
 //! **+ Budget a category**, Amount per month, Starting, the Applies to and Rollover segmented
-//! controls, the before/after summary and the note. `Shell` owns the live form
+//! controls, the before/after summary and the note. `Root` owns the live form
 //! (`budgets::limit_form::LimitForm`) and every keystroke while it is open.
 
 use std::rc::Rc;

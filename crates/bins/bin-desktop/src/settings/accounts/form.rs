@@ -8,17 +8,17 @@ use lib_core::{AccountType, Money, UnitId};
 use lib_locale::Label;
 
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::{
         field::TextField,
         select::{SelectKey, SelectState},
     },
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 /// The Delete account dialog's live form state -- pure, `gpui`-free. Just the typed-back
 /// confirmation: there is nothing to `Tab` between, so the input is implicitly always focused
 /// (the same shape as the Settings `DeleteUnitForm`). The account's name is copied in at open so
-/// the form validates without `Shell`.
+/// the form validates without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteAccountForm {
     pub confirm_input: TextField,
@@ -143,7 +143,7 @@ pub struct AccountForm {
     pub opening_balance: TextField,
     pub account_number: TextField,
     pub focused: AccountField,
-    /// The select lists, copied from `Shell` when the dialog opens so select keys and `Tab` need
+    /// The select lists, copied from `Root` when the dialog opens so select keys and `Tab` need
     /// nothing else.
     options: AccountOptions,
     /// Edit mode: Unit and Opening balance are fixed once an account exists (FR.13), so they are
@@ -440,7 +440,7 @@ mod tests {
     use lib_core::AccountId;
 
     use super::super::dialogs::AccountsDialog;
-    use crate::chrome::dialog_host::Dialog;
+    use crate::shell::view::dialog_host::Dialog;
 
     fn date(year: i32, month: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, 1).expect("test dates are valid")
@@ -865,7 +865,9 @@ mod tests {
         );
     }
 
-    use crate::chrome::dialog_host::{DialogKey, DialogOutcome, OpenDialog, handle_key, type_text};
+    use crate::shell::view::dialog_host::{
+        DialogKey, DialogOutcome, OpenDialog, handle_key, type_text,
+    };
 
     fn account_options() -> AccountOptions {
         AccountOptions::new(

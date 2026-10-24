@@ -1,6 +1,6 @@
 //! The command palette driven by keys alone: opening and closing, filtering, selection, tab
 //! completion, `^r` history and running commands. Assertions read `PaletteSnapshot` and `NavState`
-//! back from `Shell`, never pixels.
+//! back from `Root`, never pixels.
 
 #![expect(
     clippy::expect_used,
@@ -9,8 +9,8 @@
 
 use super::common;
 
-use bin_desktop::app::PaletteSnapshot;
 use bin_desktop::navigation::nav::{InputMode, Noun};
+use bin_desktop::shell::router::PaletteSnapshot;
 use common::Harness;
 use gpui::TestAppContext;
 

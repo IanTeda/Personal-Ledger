@@ -1,8 +1,8 @@
 //! Renders the **Add payee** dialog, and the form the Edit dialog (`edit.rs`) shares with it (`docs/ux/desktop-mockups/20-payees/README.md`'s 6b
-//! and 6c) on the shared `crate::dialog` chrome: Name, Default category (the shared `select_field`
+//! and 6c) on the shared `crate::dialog` frame: Name, Default category (the shared `select_field`
 //! dropdown, "none" then the leaf Categories), the shared Match rules field, and a callout. The two
 //! differ only in title, rule placeholder, submit label and callout, so they share one renderer
-//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`settings::payees::form::PayeeForm`) and every
+//! keyed by [`PayeeDialogMode`]. `Root` owns the live form (`settings::payees::form::PayeeForm`) and every
 //! keystroke while it is open.
 
 use std::rc::Rc;

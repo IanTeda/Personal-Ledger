@@ -9,12 +9,12 @@ use super::{
     toggle_select,
 };
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         select::SelectState,
         select_field::{self, SelectFieldProps},
     },
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 fn handle(presenter: &mut SetBaseUnitPresenter, event: SetBaseUnitEvent) {

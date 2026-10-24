@@ -1,4 +1,4 @@
-//! Design tokens for the desktop shell chrome. Colours come from the resolved Colour Theme
+//! Design tokens for the Desktop's Shell. Colours come from the resolved Colour Theme
 //! (`color`, ADR-0025); type scale and spacing stay fixed by the Modernist design system
 //! (`docs/ux/desktop-mockups/01-shell/README.md`'s "Design Tokens" table), as a Colour
 //! Theme doesn't carry them (`docs/colour-themes-design.md` "Not part of a Colour Theme").
@@ -84,7 +84,7 @@ pub mod color {
         info_toast_bar => |c| c.info_toast.bar;
     }
 
-    /// A Toast Kind's leading bar and glyph: its role corrected to 3:1 against chrome (ADR-0026).
+    /// A Toast Kind's leading bar and glyph: its role corrected to 3:1 against the `chrome` ground (ADR-0026).
     pub fn toast_mark(kind: lib_toast::ToastKind, cx: &App) -> Rgba {
         let marks = resolved(cx).toast_marks;
         to_gpui(match kind {
@@ -128,7 +128,7 @@ pub mod type_scale {
     pub const SECTION_KICKER_LETTER_SPACING_EM: f32 = 0.11;
 }
 
-/// Spacing. Fixed-pixel padding and gaps for the shell chrome's own bands and rows -- not a
+/// Spacing. Fixed-pixel padding and gaps for the Shell's own bands and rows -- not a
 /// general-purpose spacing scale, just the values the handoff names.
 pub mod spacing {
     use super::*;

@@ -1,4 +1,4 @@
-//! The Add and Edit bill plan Dialog (8c) on the shared `crate::dialog` chrome. One View serves
+//! The Add and Edit bill plan Dialog (8c) on the shared `crate::dialog` frame. One View serves
 //! both: Edit shows the Unit locked and the Active checkbox, Add a Unit select and no Active. The
 //! body scrolls past 480px, the handoff's own cap, since this form has more fields than any other
 //! Dialog.
@@ -13,7 +13,6 @@ use lib_viper::view::{SelectView, TextFieldView};
 
 use super::{BillsDialog, Clicks, View, send};
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::{
         dialog_fields::{label, suffixed_label, text_field, two_up},
@@ -24,6 +23,7 @@ use crate::{
             choose_option, chosen_label, enter, labels, select_key, synced, toggle_select, typed,
         },
     },
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 

@@ -1,7 +1,7 @@
 //! The **Payees** Settings page (ADR-0037, and its amendment's one folder per page): the Payees
 //! table with its rules and Default category. [`PayeesPage`] reads its rows from [`LedgerStore`],
 //! renders itself (`render.rs`), handles its keys and movement, builds its Dialogs (`dialogs/`)
-//! and reaches `Shell` only through [`ViewEvent`]; `Shell`'s Dialog host draws them and confirms
+//! and reaches `Root` only through [`ViewEvent`]; `Root`'s Dialog host draws them and confirms
 //! them through `apply.rs`. The Settings View forwards to it while the page is open.
 
 pub mod apply;
@@ -22,13 +22,13 @@ use lib_ledger::Domain;
 use lib_payees::Payee;
 
 use crate::{
-    chrome::{
-        dialog_host::open_dialog,
-        statusline::{PageStatus, owned_hints},
-    },
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_payees_hints,
+    shell::view::{
+        dialog_host::open_dialog,
+        statusline::{PageStatus, owned_hints},
+    },
     view::event::{Reveal, ViewEvent},
 };
 use apply::PayeeOutcome;
@@ -237,7 +237,7 @@ impl PayeesPage {
     }
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
-    /// without `Shell`. A no-op if the Payee is gone.
+    /// without `Root`. A no-op if the Payee is gone.
     fn open_delete_dialog(&mut self, id: PayeeId, cx: &mut Context<'_, Self>) {
         let Some(payee) = lib_payees::get(self.payees(cx), id) else {
             return;

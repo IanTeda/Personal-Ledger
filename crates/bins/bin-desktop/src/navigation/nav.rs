@@ -36,7 +36,7 @@ impl NounLabel for Noun {
 }
 
 /// The primary rail's own two drawn states (option 1a vs. its collapsed 1c state). Which one is
-/// drawn follows the Window Size, not `NavState` (`crate::chrome::rail::RailOverride`).
+/// drawn follows the Window Size, not `NavState` (`crate::shell::view::rail::RailOverride`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RailMode {
     Expanded,

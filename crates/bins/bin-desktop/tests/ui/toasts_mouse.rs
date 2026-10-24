@@ -1,5 +1,5 @@
 //! The Toast layer and the Toast history driven by clicks: a Toast's cross and the history's close
-//! button. Only elements tagged with `debug_selector` are clicked; state is read back from `Shell`.
+//! button. Only elements tagged with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 

@@ -6,10 +6,10 @@ use lib_core::{CategoryId, PayeeId};
 use lib_ledger::PayeeUse;
 
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     form::field::TextField,
     form::select::SelectKey,
     form::select::SelectState,
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 use lib_categories::{self, Category};
 use lib_payees::{Payee, PayeeDraft, PayeeError, alias_owner, clean_name, normalise_alias};
@@ -82,7 +82,7 @@ impl PayeeField {
 /// The Add and Edit payee dialogs' live form state -- pure, `gpui`-free. Name and the rule input
 /// are [`TextField`]s; Default category is a [`SelectState`]; the rules are chips, added from the
 /// input and removed by their `✕`. The select's options and the Payees the checks read are
-/// copied in when the dialog opens, so the form validates without `Shell`.
+/// copied in when the dialog opens, so the form validates without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayeeForm {
     pub name: TextField,
@@ -321,7 +321,7 @@ impl DeleteAction {
         }
     }
 
-    /// Reactivating loses nothing, so it skips the typed-name gate and the destructive chrome.
+    /// Reactivating loses nothing, so it skips the typed-name gate and the destructive frame.
     pub fn is_destructive(self) -> bool {
         self != Self::Reactivate
     }
@@ -329,7 +329,7 @@ impl DeleteAction {
 
 /// The 6d dialog's typed-name confirmation (exact and case-sensitive, as in Accounts and
 /// Categories). The Payee's name and [`DeleteAction`] are copied in at open so the form validates
-/// without `Shell`.
+/// without `Root`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletePayeeForm {
     pub confirmation_name: TextField,

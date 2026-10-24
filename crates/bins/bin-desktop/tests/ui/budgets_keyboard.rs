@@ -1,6 +1,6 @@
 //! The Budgets page driven by keys: tabs, the period and range navs, row selection, the Plan grid
 //! and its cell editor, and the detail, limit, stop, fill, switcher and new-budget dialogs. State
-//! is read back from `Shell`.
+//! is read back from `Root`.
 
 use super::common;
 

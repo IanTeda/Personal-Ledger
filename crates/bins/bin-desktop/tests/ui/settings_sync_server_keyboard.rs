@@ -1,6 +1,6 @@
 //! The Settings Sync server page driven by keys: paging to it, and stepping into and out of it.
 //! The page is a read-only column with one stand-in button, so it has no keys of its own. State is
-//! read back from `Shell`.
+//! read back from `Root`.
 
 use super::common;
 

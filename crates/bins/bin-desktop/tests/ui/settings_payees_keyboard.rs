@@ -1,5 +1,5 @@
 //! The Settings Payees page driven by keys: row selection, and the add, edit and delete dialogs
-//! with what confirming each one does. State is read back from `Shell`.
+//! with what confirming each one does. State is read back from `Root`.
 
 use super::common;
 

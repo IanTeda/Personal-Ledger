@@ -1,4 +1,4 @@
-//! Shell chrome driven by the mouse: primary rail rows (expanded and collapsed) and the topbar's
+//! The Shell driven by the mouse: primary rail rows (expanded and collapsed) and the topbar's
 //! rail toggle, Back/Forward and Undo with its recent-actions list, and how the status line fits a
 //! narrow window. Only the elements clicked or measured are tagged with `debug_selector`.
 

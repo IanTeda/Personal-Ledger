@@ -19,9 +19,9 @@ use secrecy::{ExposeSecret as _, SecretString};
 
 use super::{Clicks, UnitsDialog, View, enter, help, refusal, send, test_not_built, typed};
 use crate::{
-    chrome::dialog_host::{DialogKey, DialogOutcome},
     dialog,
     form::fields::{field_label, segmented_labelled, text_field},
+    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 

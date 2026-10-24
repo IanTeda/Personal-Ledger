@@ -1,5 +1,5 @@
 //! The "not yet built" placeholder nouns reached by `g` jumps: each lands on its noun and draws
-//! the placeholder view. Assertions read the Noun back from `Shell`, never pixels.
+//! the placeholder view. Assertions read the Noun back from `Root`, never pixels.
 
 use super::common;
 

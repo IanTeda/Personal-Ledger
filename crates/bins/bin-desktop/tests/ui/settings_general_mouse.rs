@@ -1,5 +1,5 @@
 //! The Settings View's own clicks: an index entry hands focus back to the index, and a button
-//! with nothing behind it says so on the status line. State is read back from `Shell`.
+//! with nothing behind it says so on the status line. State is read back from `Root`.
 
 use super::common;
 

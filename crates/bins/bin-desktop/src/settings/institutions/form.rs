@@ -47,7 +47,7 @@ impl InstitutionProduct {
 pub struct AddInstitutionForm {
     pub name: TextField,
     pub account_types: Vec<InstitutionProduct>,
-    /// The selected default unit's own *code*, not an index into `Shell::settings_units` -- a
+    /// The selected default unit's own *code*, not an index into `Root::settings_units` -- a
     /// code stays meaningful even if that `Vec`'s shape changes, though nothing in this map
     /// actually opens two dialogs at once for that to matter yet.
     pub default_unit_code: Option<String>,

@@ -1,5 +1,5 @@
 //! The Settings Sync server page driven by clicks: its index entry and Sync now. Only elements
-//! tagged with `debug_selector` are clicked; state is read back from `Shell`.
+//! tagged with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
 
