@@ -513,9 +513,7 @@ mod tests {
 
     #[test]
     fn help_closes_on_question_mark_or_enter_and_ignores_the_rest() {
-        let mut dialog = OpenDialog::Help(HelpDialog {
-            shortcuts: Vec::new(),
-        });
+        let mut dialog = OpenDialog::Help(HelpDialog { group: None });
         for key in [DialogKey::Char('?'), DialogKey::Enter] {
             assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Confirm);
         }

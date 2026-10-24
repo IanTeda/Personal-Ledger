@@ -18,6 +18,7 @@ use crate::settings::state::SettingsView;
 use crate::{
     navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
     shell::view::statusline::PageStatus,
+    view::help::HelpGroup,
 };
 
 /// The active View, holding its typed Entity once it renders and handles its own input.
@@ -241,6 +242,17 @@ impl ActiveViewEntity {
             Self::Documents(view) => view.read(cx).page_status(cx),
             Self::Settings(view) => view.read(cx).page_status(cx),
             Self::Shell(_) => None,
+        }
+    }
+
+    /// The View's own group of keys for the `?` Help Dialog, `None` for a View that adds none
+    /// to the global shortcuts.
+    pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
+        match self {
+            Self::Bills(view) => view.read(cx).help_group(cx),
+            Self::Documents(view) => view.read(cx).help_group(cx),
+            Self::Settings(view) => view.read(cx).help_group(cx),
+            Self::Dashboard(_) | Self::Budgets(_) | Self::Transactions(_) | Self::Shell(_) => None,
         }
     }
 }

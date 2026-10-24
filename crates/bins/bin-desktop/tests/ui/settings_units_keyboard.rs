@@ -736,7 +736,7 @@ fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppCont
 fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
     let mut ui = on_units(app);
 
-    ui.assert_cheat_sheet_matches_status();
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }
 
 #[gpui::test]
@@ -751,5 +751,5 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
         "the status line shows the rebound key"
     );
 
-    ui.assert_cheat_sheet_matches_status();
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }

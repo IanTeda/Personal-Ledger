@@ -18,6 +18,7 @@ fn help_opens_with_question_mark_and_escape_closes_it(app: &mut TestAppContext) 
     ui.press("?");
     assert_eq!(mode(&mut ui), InputMode::Dialog);
     assert!(ui.read(|s| s.help_open()));
+    assert_eq!(ui.help_group(), None, "the Dashboard adds no page group");
     ui.press("escape");
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert_eq!(ui.noun(), Noun::Dashboard);

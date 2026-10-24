@@ -362,7 +362,7 @@ impl Render for Root {
                 help_view::render(
                     on_help_close,
                     self.presenter.keymap(),
-                    &dialog.shortcuts,
+                    dialog.group.as_ref(),
                     cx,
                 )
             }))

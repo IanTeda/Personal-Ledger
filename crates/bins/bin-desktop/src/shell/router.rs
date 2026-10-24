@@ -56,8 +56,8 @@ pub use log_feed::LOG_COALESCE;
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
-    DashboardBillSnapshot, DocumentsSnapshot, ImportRowSnapshot, ImportSnapshot, PaletteSnapshot,
-    SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
+    DashboardBillSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot, ImportSnapshot,
+    PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
     SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
     SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,

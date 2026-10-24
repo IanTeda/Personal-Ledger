@@ -385,3 +385,33 @@ fn an_override_of_next_field_moves_the_plan_forms_field(app: &mut TestAppContext
     ui.press("tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Category"));
 }
+
+#[gpui::test]
+fn question_mark_lists_the_schedules_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+
+    ui.assert_cheat_sheet_matches_status("Bills keys");
+}
+
+#[gpui::test]
+fn question_mark_lists_the_planners_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    ui.press("tab");
+    assert_eq!(ui.bills().tab, "Planner");
+
+    ui.assert_cheat_sheet_matches_status("Bills keys");
+}
+
+#[gpui::test]
+fn the_cheat_sheet_shows_a_rebound_bills_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("bills.pay", "ctrl+p"));
+    ui.press("g w");
+    assert!(
+        ui.status_as_shortcuts()
+            .iter()
+            .any(|(_, keys)| keys == "ctrl+p"),
+        "the status line shows the rebound key"
+    );
+
+    ui.assert_cheat_sheet_matches_status("Bills keys");
+}

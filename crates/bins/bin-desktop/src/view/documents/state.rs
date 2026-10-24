@@ -36,7 +36,10 @@ use crate::{
         dialog_host::OpenDialog,
         statusline::{PageStatus, owned_hints},
     },
-    view::event::{Reveal, ViewEvent, ViewMode},
+    view::{
+        event::{Reveal, ViewEvent, ViewMode},
+        help::HelpGroup,
+    },
 };
 use lib_ledger::Domain;
 
@@ -420,9 +423,8 @@ impl DocumentsView {
         })
     }
 
-    /// The `?` cheat-sheet's Documents group as `(action, keys)`: the index keys, then the current
-    /// mode's.
-    pub fn cheat_sheet(&self) -> Vec<(String, &'static str)> {
+    /// The `?` cheat-sheet's Documents group: the index keys, then the current mode's.
+    pub fn help_group(&self, _cx: &App) -> Option<HelpGroup> {
         let mode = match self.state.mode {
             DocumentsMode::Library => {
                 let mut hints = library_hints();
@@ -438,12 +440,16 @@ impl DocumentsView {
                 hints
             }
         };
-        index_hints()
+        let keys = index_hints()
             .into_iter()
             .chain(mode)
             .chain(std::iter::once(("I", crate::msg::desktop_hint_import())))
-            .map(|(keys, action)| (action, keys))
-            .collect()
+            .map(|(keys, action)| (action, keys.to_string()))
+            .collect();
+        Some(HelpGroup {
+            heading: crate::msg::desktop_help_documents_label(),
+            keys,
+        })
     }
 
     // -----------------------------------------------------------------------------------------

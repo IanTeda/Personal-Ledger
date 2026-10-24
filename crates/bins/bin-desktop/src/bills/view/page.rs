@@ -34,6 +34,7 @@ use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::{movement::Movement, nav::Noun};
 use crate::settings::display::StatusGlyphs;
 use crate::shell::view::dialog_host::DialogKey;
+use crate::view::help::HelpGroup;
 use crate::{
     shell::view::statusline::PageStatus,
     theme::color,
@@ -339,6 +340,20 @@ impl BillsPage {
                 .map(|hint| (hint.chord, hint.action))
                 .collect(),
             right: view.status,
+        })
+    }
+
+    /// The `?` cheat-sheet's Bills group: the hints the status line shows for the tab shown.
+    pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
+        let keys = self
+            .page_status(cx)?
+            .hints
+            .into_iter()
+            .map(|(keys, action)| (action, keys))
+            .collect();
+        Some(HelpGroup {
+            heading: crate::msg::desktop_help_bills_label(),
+            keys,
         })
     }
 

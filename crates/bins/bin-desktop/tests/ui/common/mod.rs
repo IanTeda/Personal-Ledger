@@ -15,7 +15,7 @@ use bin_desktop::{
     navigation::nav::{Noun, RailMode},
     persistence::PersistedState,
     shell::router::{
-        self, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot,
+        self, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, HelpGroup,
         ImportSnapshot, Root, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
         SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
         SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
@@ -1046,9 +1046,10 @@ impl<'a> Harness<'a> {
         self.read_app(Root::status_snapshot)
     }
 
-    /// The open `?` Help Dialog's page group as `(action, keys)`; `None` while it is not open.
-    pub fn help_shortcuts(&mut self) -> Option<Vec<(String, String)>> {
-        self.read(Root::help_shortcuts)
+    /// The open `?` Help Dialog's page group; `None` while it is not open or the View on show
+    /// has no group.
+    pub fn help_group(&mut self) -> Option<HelpGroup> {
+        self.read(Root::help_group)
     }
 
     /// The status line's hints as the `?` cheat sheet words them, `(action, keys)`; empty when
@@ -1065,20 +1066,26 @@ impl<'a> Harness<'a> {
             .unwrap_or_default()
     }
 
-    /// Opens `?` and asserts its page group lists every hint the status line showed before it.
+    /// Opens `?` and asserts its page group is headed `heading` and lists every hint the status
+    /// line showed before it.
     #[expect(
         clippy::expect_used,
-        reason = "test support: a `?` that opens no Help Dialog should fail the test loudly"
+        reason = "test support: a `?` that opens no page group should fail the test loudly"
     )]
-    pub fn assert_cheat_sheet_matches_status(&mut self) {
+    pub fn assert_cheat_sheet_matches_status(&mut self, heading: &str) {
         let legend = self.status_as_shortcuts();
         assert!(!legend.is_empty(), "the page shows a legend");
         self.press("?");
-        let shortcuts = self.help_shortcuts().expect("`?` opens the Help Dialog");
+        assert!(self.read(Root::help_open), "`?` opens the Help Dialog");
+        let group = self
+            .help_group()
+            .expect("the View on show has a page group");
+        assert_eq!(group.heading, heading);
         for hint in &legend {
             assert!(
-                shortcuts.contains(hint),
-                "{hint:?} is on the status line but not in {shortcuts:?}"
+                group.keys.contains(hint),
+                "{hint:?} is on the status line but not in {:?}",
+                group.keys
             );
         }
     }

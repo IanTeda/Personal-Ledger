@@ -562,3 +562,10 @@ fn o_on_a_file_that_is_missing_says_so_instead_of_opening_it(app: &mut TestAppCo
         "a warning toast names the file"
     );
 }
+
+#[gpui::test]
+fn question_mark_lists_the_documents_keys_under_their_own_heading(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+
+    ui.assert_cheat_sheet_matches_status("Documents keys");
+}

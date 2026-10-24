@@ -56,20 +56,6 @@ impl Root {
         self.views.documents.read(cx).persisted()
     }
 
-    /// The `?` cheat-sheet's Documents group as `(action, keys)`. Empty off the page.
-    pub(super) fn documents_cheat_sheet(&self, cx: &gpui::App) -> Vec<(String, String)> {
-        if self.nav().noun() != Noun::Documents {
-            return Vec::new();
-        }
-        self.views
-            .documents
-            .read(cx)
-            .cheat_sheet()
-            .into_iter()
-            .map(|(action, keys)| (action, keys.to_string()))
-            .collect()
-    }
-
     /// The picker's rows for `state`, as the Documents page words them.
     fn documents_picker_rows(&self, state: &PickerState, cx: &gpui::App) -> Vec<PickerRow> {
         self.views.documents.read(cx).picker_rows(state, cx)

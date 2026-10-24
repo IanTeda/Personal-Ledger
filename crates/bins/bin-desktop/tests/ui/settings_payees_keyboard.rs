@@ -339,7 +339,7 @@ fn a_documents_payee_link_lands_on_the_selected_payee(app: &mut TestAppContext) 
 fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 
-    ui.assert_cheat_sheet_matches_status();
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }
 
 #[gpui::test]
@@ -350,5 +350,5 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
     ui.press("l");
     assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "ctrl+n"]);
 
-    ui.assert_cheat_sheet_matches_status();
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }

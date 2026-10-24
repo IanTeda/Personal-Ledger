@@ -13,6 +13,8 @@ desktop-help-footer-note = Free software — no warranty, see the license for de
 
 desktop-help-shortcuts-label = Keyboard shortcuts
 desktop-help-settings-label = Settings keys
+desktop-help-documents-label = Documents keys
+desktop-help-bills-label = Bills keys
 desktop-help-shortcut-palette = Command palette
 desktop-help-shortcut-help = This help
 desktop-help-shortcut-focus = Move focus

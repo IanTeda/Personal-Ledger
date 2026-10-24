@@ -3,9 +3,8 @@
 //! and snapshots use. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
 
 use super::Root;
-use crate::navigation::nav::Noun;
 use crate::settings::inventory::InventoryPage;
-use crate::view::help::HelpDialog;
+use crate::view::help::{HelpDialog, HelpGroup};
 use crate::{
     settings::accounts::AccountsPage,
     shell::view::dialog_host::{
@@ -78,16 +77,11 @@ impl Root {
             .readback(&self.dialog_scope(), cx)
     }
 
-    /// Opens the Help Dialog over the active page, carrying the shortcuts that page adds to the
-    /// global ones.
+    /// Opens the Help Dialog over the active View, carrying the page group that View adds to the
+    /// global shortcuts.
     pub(super) fn open_help(&mut self, cx: &mut Context<'_, Self>) {
-        let mut shortcuts = if self.nav().noun() == Noun::Settings {
-            self.views.settings.read(cx).cheat_sheet(cx)
-        } else {
-            Vec::new()
-        };
-        shortcuts.extend(self.documents_cheat_sheet(cx));
-        self.open_dialog(OpenDialog::Help(HelpDialog { shortcuts }));
+        let group = self.active_view_entity(cx).help_group(cx);
+        self.open_dialog(OpenDialog::Help(HelpDialog { group }));
     }
 
     /// Whether the Help Dialog is the open Dialog.
@@ -96,12 +90,11 @@ impl Root {
         matches!(self.state.dialog, Some(OpenDialog::Help(_)))
     }
 
-    /// The open Help Dialog's page group as `(action, keys)`, for a test; `None` while it is not
-    /// open.
+    /// The open Help Dialog's page group, for a test; `None` while it is not open or carries
+    /// none.
     #[doc(hidden)]
-    pub fn help_shortcuts(&self) -> Option<Vec<(String, String)>> {
-        self.dialog::<HelpDialog>()
-            .map(|help| help.shortcuts.clone())
+    pub fn help_group(&self) -> Option<HelpGroup> {
+        self.dialog::<HelpDialog>()?.group.clone()
     }
 
     /// Closes the open Dialog, in either host, without applying it.

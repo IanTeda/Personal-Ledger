@@ -31,6 +31,7 @@ use crate::{
     },
     units::UnitsPage,
     view::event::{Reveal, ViewEvent, ViewMode},
+    view::help::HelpGroup,
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
@@ -350,14 +351,17 @@ impl SettingsView {
         Some(status)
     }
 
-    /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
-    /// page's.
-    pub fn cheat_sheet(&self, cx: &App) -> Vec<(String, String)> {
-        owned_hints(settings_index_hints())
+    /// The `?` cheat-sheet's Settings group: the index keys, then the open page's.
+    pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
+        let keys = owned_hints(settings_index_hints())
             .into_iter()
             .chain(self.pages.get(self.selected_section).hints(cx))
             .map(|(keys, action)| (action, keys))
-            .collect()
+            .collect();
+        Some(HelpGroup {
+            heading: crate::msg::desktop_help_settings_label(),
+            keys,
+        })
     }
 
     // -----------------------------------------------------------------------------------------

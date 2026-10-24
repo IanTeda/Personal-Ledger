@@ -20,10 +20,18 @@ const KEY_WIDTH: gpui::Pixels = px(44.0);
 pub type OnClose = dialog::OnClick;
 
 /// The `?` Help Dialog: read-only, so `?` or `Esc` closes it and every other key is left to the
-/// shell. It carries the shortcuts of the page it was opened over, worded when it opened.
+/// shell. It carries the page group of the View it was opened over, worded when it opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDialog {
-    pub shortcuts: Vec<(String, String)>,
+    pub group: Option<HelpGroup>,
+}
+
+/// A View's own keys in the Help Dialog, under the View's heading: `keys` as `(action, keys)`,
+/// read from the hints its status line shows so a rebound key shows rebound.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelpGroup {
+    pub heading: String,
+    pub keys: Vec<(String, String)>,
 }
 
 impl Dialog for HelpDialog {
@@ -38,7 +46,7 @@ impl Dialog for HelpDialog {
 pub fn render(
     on_close: OnClose,
     keymap: &Keymap<ShellCommand>,
-    settings: &[(String, String)],
+    group: Option<&HelpGroup>,
     cx: &App,
 ) -> AnyElement {
     let overlay = dialog::overlay(
@@ -52,7 +60,7 @@ pub fn render(
                 div()
                     .flex()
                     .child(facts_column(cx))
-                    .child(shortcuts_column(keymap, settings, cx)),
+                    .child(shortcuts_column(keymap, group, cx)),
             )
             .child(footer(on_close, cx)),
         cx,
@@ -261,7 +269,7 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
 
 fn shortcuts_column(
     keymap: &Keymap<ShellCommand>,
-    settings: &[(String, String)],
+    group: Option<&HelpGroup>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -288,16 +296,20 @@ fn shortcuts_column(
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),
         ))
-        .when(!settings.is_empty(), |this| {
-            this.child(rule(cx))
-                .child(kicker(crate::msg::desktop_help_settings_label(), cx))
-                .child(two_columns(
-                    settings
-                        .iter()
-                        .map(|(label, keys)| shortcut(label, keys, cx))
-                        .collect(),
-                ))
-        })
+        .when_some(
+            group.filter(|group| !group.keys.is_empty()),
+            |this, group| {
+                this.child(rule(cx))
+                    .child(kicker(group.heading.clone(), cx))
+                    .child(two_columns(
+                        group
+                            .keys
+                            .iter()
+                            .map(|(label, keys)| shortcut(label, keys, cx))
+                            .collect(),
+                    ))
+            },
+        )
 }
 
 fn footer(on_close: OnClose, cx: &App) -> impl IntoElement {
