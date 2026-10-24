@@ -39,6 +39,28 @@ impl PayBill {
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
     ) -> Result<TransactionId, BillError> {
+        let (plan, due, date) = (self.entry.plan_id, self.entry.due, self.date);
+        let outcome = self.apply(transaction_id, payments);
+        match &outcome {
+            Ok(_) => tracing::info!(
+                bill_plan_id = %plan,
+                %due,
+                %date,
+                %transaction_id,
+                "Paid a Bill"
+            ),
+            Err(refusal) => {
+                tracing::info!(bill_plan_id = %plan, %due, %date, %refusal, "Refused to pay a Bill");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        transaction_id: TransactionId,
+        payments: &mut dyn BillPayments,
+    ) -> Result<TransactionId, BillError> {
         let entry = payments.entry(self.entry).ok_or(BillError::EntryNotFound)?;
         if !entry.is_open() {
             return Err(BillError::EntryNotOpen);

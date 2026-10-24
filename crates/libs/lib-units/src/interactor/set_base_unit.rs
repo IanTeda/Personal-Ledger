@@ -13,6 +13,21 @@ impl SetBaseUnit {
         units: &dyn UnitRepository,
         base_unit: &mut dyn BaseUnitRepository,
     ) -> Result<()> {
+        let outcome = self.apply(units, base_unit);
+        match &outcome {
+            Ok(()) => tracing::info!(unit_id = %self.0, "Set the base Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %self.0, %refusal, "Refused to set the base Unit");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        units: &dyn UnitRepository,
+        base_unit: &mut dyn BaseUnitRepository,
+    ) -> Result<()> {
         let unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         if !unit.is_active {
             return Err(Error::InactiveBase);

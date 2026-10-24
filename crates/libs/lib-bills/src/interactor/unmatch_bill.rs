@@ -15,6 +15,18 @@ impl UnmatchBill {
     /// # Errors
     /// `EntryNotFound` for an entry that is gone and `NotPaid` for one that isn't Paid.
     pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+        let outcome = self.apply(bills);
+        let (plan, due) = (self.entry.plan_id, self.entry.due);
+        match &outcome {
+            Ok(()) => tracing::info!(bill_plan_id = %plan, %due, "Unmatched a Bill"),
+            Err(refusal) => {
+                tracing::info!(bill_plan_id = %plan, %due, %refusal, "Refused to unmatch a Bill");
+            }
+        }
+        outcome
+    }
+
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
         let mut rows = Rows::read(bills);
         unmatch(&mut rows.entries, self.entry)?;
         rows.write_back(bills);

@@ -14,6 +14,21 @@ impl DeactivateUnit {
         units: &mut dyn UnitRepository,
         base_unit: &dyn BaseUnitRepository,
     ) -> Result<UnitRow> {
+        let outcome = self.apply(units, base_unit);
+        match &outcome {
+            Ok(_) => tracing::info!(unit_id = %self.0, "Deactivated a Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %self.0, %refusal, "Refused to deactivate a Unit");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        units: &mut dyn UnitRepository,
+        base_unit: &dyn BaseUnitRepository,
+    ) -> Result<UnitRow> {
         let mut unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         if unit.id == base_unit.base_unit() {
             return Err(Error::DeactivateBase);

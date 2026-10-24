@@ -185,8 +185,7 @@ pub fn forward(ports: &DesktopPorts, changes: &[LedgerChange]) -> bool {
 /// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
 /// writing the entries generation adds. The caller commits them.
 pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
-    let written = PopulateSchedule { today }.run(store);
-    tracing::debug!(written, "Generated the Bill Schedule on start");
+    PopulateSchedule { today }.run(store);
 }
 
 /// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
@@ -199,8 +198,7 @@ pub fn new_month(
     today: chrono::NaiveDate,
     cx: &mut App,
 ) {
-    let written = PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    tracing::info!(written, %today, "Generated the Bill Schedule for a new month");
+    PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
     refresh(ports, ledger, cx);
 }
 

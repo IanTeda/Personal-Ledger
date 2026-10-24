@@ -26,6 +26,20 @@ impl AddBillPlan {
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
     ) -> Result<BillPlanId, BillError> {
+        let outcome = self.apply(bills, accounts, categories);
+        match &outcome {
+            Ok(id) => tracing::info!(bill_plan_id = %id, "Added a Bill Plan"),
+            Err(refusal) => tracing::info!(%refusal, "Refused to add a Bill Plan"),
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        bills: &mut dyn BillsRepository,
+        accounts: &dyn BillAccounts,
+        categories: &dyn BillCategories,
+    ) -> Result<BillPlanId, BillError> {
         let mut rows = Rows::read(bills);
         let id = insert_plan(
             &mut rows.plans,

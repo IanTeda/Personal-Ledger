@@ -18,7 +18,9 @@ impl PopulateSchedule {
     pub fn run(self, bills: &mut dyn BillsRepository) -> usize {
         let mut rows = Rows::read(bills);
         populate(&rows.plans, &mut rows.entries, self.today);
-        rows.write_back(bills)
+        let written = rows.write_back(bills);
+        tracing::info!(written, today = %self.today, "Populated the Bill Schedule");
+        written
     }
 }
 

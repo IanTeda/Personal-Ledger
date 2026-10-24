@@ -21,6 +21,7 @@ impl AddPriceSource {
             updates: self.updates,
         };
         price_sources.upsert_price_source(PriceSourceRecord::Custom(source.clone()));
+        tracing::info!(price_source_id = %source.id, "Added a Price Source");
         source
     }
 }

@@ -24,6 +24,7 @@ bigdecimal = { workspace = true }
 chrono = { workspace = true }
 secrecy = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [features]
 # The port contract suite (`contract`), for `lib-database` to run against its adapter.

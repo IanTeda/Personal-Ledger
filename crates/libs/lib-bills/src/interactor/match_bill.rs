@@ -69,6 +69,36 @@ impl MatchBill {
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
     ) -> Result<(), BillError> {
+        let outcome = self.apply(bills, transactions, accounts, categories);
+        let (plan, due) = (self.entry.plan_id, self.entry.due);
+        let (transaction, split) = (self.split.transaction_id, self.split.split_index);
+        match &outcome {
+            Ok(()) => tracing::info!(
+                bill_plan_id = %plan,
+                %due,
+                transaction_id = %transaction,
+                split_index = split,
+                "Matched a Bill to a Split"
+            ),
+            Err(refusal) => tracing::info!(
+                bill_plan_id = %plan,
+                %due,
+                transaction_id = %transaction,
+                split_index = split,
+                %refusal,
+                "Refused to match a Bill to a Split"
+            ),
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        bills: &mut dyn BillsRepository,
+        transactions: &dyn BillTransactions,
+        accounts: &dyn BillAccounts,
+        categories: &dyn BillCategories,
+    ) -> Result<(), BillError> {
         let mut rows = Rows::read(bills);
         match_split(
             &rows.plans,

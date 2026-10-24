@@ -21,6 +21,22 @@ impl EditUnit {
         units: &mut dyn UnitRepository,
         price_sources: &dyn PriceSourceRepository,
     ) -> Result<UnitRow> {
+        let (id, kind) = (self.id, self.kind);
+        let outcome = self.apply(units, price_sources);
+        match &outcome {
+            Ok(_) => tracing::info!(unit_id = %id, ?kind, "Edited a Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %id, ?kind, %refusal, "Refused to edit a Unit");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        units: &mut dyn UnitRepository,
+        price_sources: &dyn PriceSourceRepository,
+    ) -> Result<UnitRow> {
         let mut unit = units.unit(self.id).ok_or(Error::UnitGone)?;
         if !price_source_exists(&price_sources.price_source_records(), self.link.source_id) {
             return Err(Error::PriceSourceGone);

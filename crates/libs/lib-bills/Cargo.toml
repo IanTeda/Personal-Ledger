@@ -23,6 +23,7 @@ lib_viper = { path = "../lib-viper" }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [features]
 # The port contract suite (`contract`), for `lib-database` to run against its adapter.

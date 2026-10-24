@@ -10,6 +10,17 @@ pub struct ReactivateUnit(pub UnitId);
 impl ReactivateUnit {
     /// Returns the Unit as written.
     pub fn run(self, units: &mut dyn UnitRepository) -> Result<UnitRow> {
+        let outcome = self.apply(units);
+        match &outcome {
+            Ok(_) => tracing::info!(unit_id = %self.0, "Reactivated a Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %self.0, %refusal, "Refused to reactivate a Unit");
+            }
+        }
+        outcome
+    }
+
+    fn apply(self, units: &mut dyn UnitRepository) -> Result<UnitRow> {
         let mut unit = units.unit(self.0).ok_or(Error::UnitGone)?;
         unit.is_active = true;
         units.upsert_unit(unit.clone());

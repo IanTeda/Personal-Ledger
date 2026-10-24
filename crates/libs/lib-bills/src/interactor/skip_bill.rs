@@ -17,6 +17,18 @@ impl SkipBill {
     /// `EntryNotFound` for an entry that is gone, `EntryNotOpen` for one already settled or
     /// superseded, and `PlanNotFound` for an entry whose Plan is gone.
     pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+        let outcome = self.apply(bills);
+        let (plan, due) = (self.entry.plan_id, self.entry.due);
+        match &outcome {
+            Ok(()) => tracing::info!(bill_plan_id = %plan, %due, "Skipped a Bill"),
+            Err(refusal) => {
+                tracing::info!(bill_plan_id = %plan, %due, %refusal, "Refused to skip a Bill");
+            }
+        }
+        outcome
+    }
+
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
         let mut rows = Rows::read(bills);
         skip(&rows.plans, &mut rows.entries, self.entry)?;
         rows.write_back(bills);

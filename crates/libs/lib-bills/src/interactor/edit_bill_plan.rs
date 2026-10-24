@@ -29,6 +29,23 @@ impl EditBillPlan {
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
     ) -> Result<(), BillError> {
+        let (id, is_active) = (self.id, self.is_active);
+        let outcome = self.apply(bills, accounts, categories);
+        match &outcome {
+            Ok(()) => tracing::info!(bill_plan_id = %id, is_active, "Edited a Bill Plan"),
+            Err(refusal) => {
+                tracing::info!(bill_plan_id = %id, is_active, %refusal, "Refused to edit a Bill Plan");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        bills: &mut dyn BillsRepository,
+        accounts: &dyn BillAccounts,
+        categories: &dyn BillCategories,
+    ) -> Result<(), BillError> {
         let mut rows = Rows::read(bills);
         edit_plan(
             &mut rows.plans,

@@ -15,6 +15,18 @@ impl UnskipBill {
     /// # Errors
     /// `EntryNotFound` for an entry that is gone and `NotSkipped` for one that isn't Skipped.
     pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+        let outcome = self.apply(bills);
+        let (plan, due) = (self.entry.plan_id, self.entry.due);
+        match &outcome {
+            Ok(()) => tracing::info!(bill_plan_id = %plan, %due, "Unskipped a Bill"),
+            Err(refusal) => {
+                tracing::info!(bill_plan_id = %plan, %due, %refusal, "Refused to unskip a Bill");
+            }
+        }
+        outcome
+    }
+
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
         let mut rows = Rows::read(bills);
         unskip(&mut rows.entries, self.entry)?;
         rows.write_back(bills);

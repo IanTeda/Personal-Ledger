@@ -22,6 +22,25 @@ impl DeletePriceSource {
         price_sources: &mut dyn PriceSourceRepository,
         units: &mut dyn UnitRepository,
     ) -> Result<PriceSourceDeleted> {
+        let outcome = self.apply(price_sources, units);
+        match &outcome {
+            Ok(deleted) => tracing::info!(
+                price_source_id = %self.0,
+                moved_to_manual = deleted.moved,
+                "Deleted a Price Source"
+            ),
+            Err(refusal) => {
+                tracing::info!(price_source_id = %self.0, %refusal, "Refused to delete a Price Source");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        price_sources: &mut dyn PriceSourceRepository,
+        units: &mut dyn UnitRepository,
+    ) -> Result<PriceSourceDeleted> {
         let id = self.0;
         if id == MANUAL_ENTRY {
             return Err(Error::ChangeManualEntry);

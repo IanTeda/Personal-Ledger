@@ -24,6 +24,23 @@ impl DeleteUnit {
         base_unit: &mut dyn BaseUnitRepository,
         usage: &dyn UnitUsage,
     ) -> Result<UnitRow> {
+        let outcome = self.apply(units, base_unit, usage);
+        let new_base = self.new_base;
+        match &outcome {
+            Ok(_) => tracing::info!(unit_id = %self.id, ?new_base, "Deleted a Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %self.id, ?new_base, %refusal, "Refused to delete a Unit");
+            }
+        }
+        outcome
+    }
+
+    fn apply(
+        self,
+        units: &mut dyn UnitRepository,
+        base_unit: &mut dyn BaseUnitRepository,
+        usage: &dyn UnitUsage,
+    ) -> Result<UnitRow> {
         let all = units.units();
         let unit = all
             .iter()

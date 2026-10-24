@@ -4683,6 +4683,7 @@ dependencies = [
  "lib_toast",
  "lib_transactions",
  "lib_viper",
+ "tracing",
 ]
 
 [[package]]
@@ -4699,6 +4700,7 @@ dependencies = [
  "lib_toast",
  "lib_viper",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]
@@ -4976,6 +4978,7 @@ dependencies = [
  "lib_viper",
  "secrecy",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]
