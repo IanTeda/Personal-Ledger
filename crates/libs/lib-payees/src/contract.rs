@@ -289,17 +289,17 @@ pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut 
     let before = snapshot(&mut ports);
     assert_eq!(
         delete(ports.split_mut(), woolworths),
-        Err(DeletePayeeRefusal::InUse {
+        Err(DeletePayeeRefusal::InUse(PayeeUse {
             splits: 2,
-            bill_plans: 1
-        })
+            bill_plans: 1,
+        }))
     );
     assert_eq!(
         delete(ports.split_mut(), telstra),
-        Err(DeletePayeeRefusal::InUse {
+        Err(DeletePayeeRefusal::InUse(PayeeUse {
             splits: 0,
-            bill_plans: 1
-        }),
+            bill_plans: 1,
+        })),
         "a Bill Plan alone keeps a Payee"
     );
     factory.commit(&mut ports);

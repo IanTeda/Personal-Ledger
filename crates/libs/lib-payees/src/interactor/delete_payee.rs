@@ -60,10 +60,7 @@ mod tests {
 
         assert_eq!(
             DeletePayee(woolworths).run(ports.split_mut()),
-            Err(DeletePayeeRefusal::InUse {
-                splits: 2,
-                bill_plans: 1
-            })
+            Err(DeletePayeeRefusal::InUse(used))
         );
         assert_eq!(
             DeletePayee(PayeeId::new()).run(ports.split_mut()),

@@ -170,9 +170,6 @@ pub enum PayeeError {
     /// Another Payee already owns this alias.
     #[error("another payee has this match rule")]
     AliasTaken { alias: String, owner: String },
-    /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
-    #[error("a payee in use can only be deactivated")]
-    InUse,
     #[error("payee not found")]
     NotFound,
 }
@@ -293,7 +290,7 @@ pub enum DeletePayeeRefusal {
     NotFound,
     /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
     #[error("a payee in use can only be deactivated")]
-    InUse { splits: usize, bill_plans: usize },
+    InUse(PayeeUse),
     /// What names the Payee couldn't be counted, so it may be in use: it can only be deactivated.
     #[error("a payee whose use can't be counted can only be deactivated")]
     Unchecked,
@@ -311,10 +308,9 @@ pub fn delete_payee(
         .iter()
         .position(|p| p.id == id)
         .ok_or(DeletePayeeRefusal::NotFound)?;
-    let PayeeUse { splits, bill_plans } =
-        usage.payee_usage(id).ok_or(DeletePayeeRefusal::Unchecked)?;
-    if splits + bill_plans > 0 {
-        return Err(DeletePayeeRefusal::InUse { splits, bill_plans });
+    let uses = usage.payee_usage(id).ok_or(DeletePayeeRefusal::Unchecked)?;
+    if uses.is_used() {
+        return Err(DeletePayeeRefusal::InUse(uses));
     }
     Ok(payees.remove(index))
 }
@@ -411,17 +407,17 @@ mod tests {
 
         assert_eq!(
             delete_payee(&mut payees, &usage, PayeeId::seed(1)),
-            Err(DeletePayeeRefusal::InUse {
+            Err(DeletePayeeRefusal::InUse(PayeeUse {
                 splits: 3,
-                bill_plans: 0
-            })
+                bill_plans: 0,
+            }))
         );
         assert_eq!(
             delete_payee(&mut payees, &usage, PayeeId::seed(2)),
-            Err(DeletePayeeRefusal::InUse {
+            Err(DeletePayeeRefusal::InUse(PayeeUse {
                 splits: 0,
-                bill_plans: 1
-            })
+                bill_plans: 1,
+            }))
         );
         assert_eq!(payees, before);
         // A named Payee can still be deactivated.

@@ -171,9 +171,7 @@ impl DeletePayeePresenter {
                 DeleteAction::Delete => DeletePayee(self.id)
                     .run(ports)
                     .map_err(|refusal| match refusal {
-                        DeletePayeeRefusal::InUse { splits, bill_plans } => {
-                            Refused::InUse(Some(PayeeUse { splits, bill_plans }))
-                        }
+                        DeletePayeeRefusal::InUse(uses) => Refused::InUse(Some(uses)),
                         DeletePayeeRefusal::Unchecked => Refused::InUse(None),
                         DeletePayeeRefusal::NotFound => Refused::Gone,
                     })
@@ -193,7 +191,10 @@ impl DeletePayeePresenter {
                 let toast = match change {
                     PayeeChange::Deactivated => lib_locale::msg::toast_payee_deactivated(&name),
                     PayeeChange::Reactivated => lib_locale::msg::toast_payee_reactivated(&name),
-                    PayeeChange::Deleted | PayeeChange::Saved => {
+                    PayeeChange::Deleted => lib_locale::msg::toast_payee_deleted(&name),
+                    // The Delete Dialog never saves a Payee, so no Toast is due for one.
+                    PayeeChange::Saved => {
+                        debug_assert!(false, "the Delete payee Dialog doesn't save a payee");
                         lib_locale::msg::toast_payee_deleted(&name)
                     }
                 };

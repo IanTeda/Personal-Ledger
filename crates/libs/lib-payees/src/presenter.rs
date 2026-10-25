@@ -31,7 +31,7 @@ fn refusal_text(error: &PayeeError) -> String {
         PayeeError::DuplicateName(name) => msg::payees_error_name_taken(name),
         PayeeError::AliasTaken { alias, owner } => msg::payees_error_alias_taken(alias, owner),
         PayeeError::NotFound => msg::payees_refusal_gone(),
-        refusal @ (PayeeError::NameRequired | PayeeError::InUse) => {
+        refusal @ PayeeError::NameRequired => {
             debug_assert!(false, "no Payees Dialog shows {refusal:?}");
             msg::payees_refusal_gone()
         }
