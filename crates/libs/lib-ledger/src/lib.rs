@@ -59,7 +59,7 @@ use lib_documents::{
     Document, default_documents,
     types::{DocumentTypeRow, default_types},
 };
-use lib_institutions::{InstitutionRow, default_institutions};
+use lib_institutions::{Institution, default_institutions};
 use lib_inventory::{Inventory, default_inventory};
 use lib_payees::{Payee, default_payees};
 use lib_tags::{Tag, default_tags};
@@ -81,7 +81,7 @@ pub struct Ledger {
     documents: Vec<Document>,
     document_types: Vec<DocumentTypeRow>,
     inventory: Inventory,
-    institutions: Vec<InstitutionRow>,
+    institutions: Vec<Institution>,
     units: Vec<UnitRow>,
     /// The Ledger's one base Unit, which is also the default for new Accounts.
     base_unit: UnitId,
@@ -106,7 +106,7 @@ pub struct LedgerParts {
     pub documents: Vec<Document>,
     pub document_types: Vec<DocumentTypeRow>,
     pub inventory: Inventory,
-    pub institutions: Vec<InstitutionRow>,
+    pub institutions: Vec<Institution>,
     pub units: Vec<UnitRow>,
     pub base_unit: UnitId,
     pub price_sources: Vec<PriceSourceRecord>,
@@ -295,7 +295,7 @@ impl Ledger {
         &self.inventory
     }
 
-    pub fn institutions(&self) -> &[InstitutionRow] {
+    pub fn institutions(&self) -> &[Institution] {
         &self.institutions
     }
 

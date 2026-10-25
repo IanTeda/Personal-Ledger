@@ -17,7 +17,8 @@ use crate::settings::pages::Page;
 use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_accounts::{Account, NO_INSTITUTION, NameLookup, NetWorth, display_order, find_by_name};
-use lib_core::AccountId;
+use lib_core::{AccountId, InstitutionId};
+use lib_institutions::Institution;
 use lib_ledger::Domain;
 use lib_locale::Label;
 
@@ -38,12 +39,14 @@ use crate::{
 };
 
 /// What to show for an account's `institution`: the placeholder's Message in the Locale in
-/// effect, or a user-managed Institution's name unchanged (Ledger data, not a Message).
-pub fn institution_label(institution: &str) -> String {
+/// effect, or the name of the one of `institutions` it names, unchanged (Ledger data, not a
+/// Message). An id `institutions` doesn't hold shows nothing.
+pub fn institution_label(institution: InstitutionId, institutions: &[Institution]) -> String {
     if institution == NO_INSTITUTION {
         lib_locale::msg::institution_none()
     } else {
-        institution.to_string()
+        lib_institutions::get(institutions, institution)
+            .map_or_else(String::new, |institution| institution.name.clone())
     }
 }
 
@@ -89,7 +92,7 @@ pub fn dialog_options(
             .ledger()
             .institutions()
             .iter()
-            .map(|institution| institution.name.clone())
+            .map(|institution| (institution.id, institution.name.clone()))
             .collect(),
         ledger
             .read(cx)
@@ -399,7 +402,7 @@ mod tests {
         Account {
             id,
             name: name.to_string(),
-            institution: NO_INSTITUTION.to_string(),
+            institution: NO_INSTITUTION,
             account_type,
             unit: lib_core::UnitId::SEED_AUD,
             balance: money("0"),
@@ -440,10 +443,18 @@ mod tests {
     }
 
     #[test]
-    fn institution_label_renders_the_placeholder_and_passes_names_through() {
+    fn institution_label_renders_the_placeholder_and_names_an_institution_by_its_id() {
         lib_locale::with_locale(lib_locale::Locale::EnUs, || {
-            assert_eq!(institution_label(NO_INSTITUTION), "No institution");
-            assert_eq!(institution_label("ANZ Banking Group"), "ANZ Banking Group");
+            let institutions = lib_institutions::default_institutions();
+            assert_eq!(
+                institution_label(NO_INSTITUTION, &institutions),
+                "No institution"
+            );
+            assert_eq!(
+                institution_label(InstitutionId::SEED_ANZ, &institutions),
+                "ANZ Banking Group"
+            );
+            assert_eq!(institution_label(InstitutionId::new(), &institutions), "");
         });
     }
 
@@ -482,7 +493,7 @@ mod tests {
             );
             assert!(
                 account.institution == NO_INSTITUTION
-                    || institutions.iter().any(|i| i.name == account.institution),
+                    || lib_institutions::get(&institutions, account.institution).is_some(),
                 "{} names an unknown institution {}",
                 account.name,
                 account.institution

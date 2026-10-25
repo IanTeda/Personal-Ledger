@@ -1,18 +1,27 @@
 //! The Institutions writes (ADR-0038): each a command value that records an upsert per row it
-//! wrote (ADR-0039).
-//!
-//! An Institution row has no id yet, so a change names the row itself; it takes an id with the
-//! UUIDv7 newtypes (ADR-0040).
+//! wrote (ADR-0039). The add rule is `lib_institutions`', run over the Ledger's own rows until the
+//! Desktop's Institutions page writes through the module's port (#850).
 
-use lib_institutions::add_institution;
+use lib_core::InstitutionId;
+use lib_institutions::{InstitutionDraft, InstitutionError, insert_institution};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
 impl Ledger {
-    /// Appends an Institution. `account_type` is the joined label the dialog built, stored as given.
-    pub fn add_institution(&mut self, name: String, account_type: String) {
-        let row = add_institution(&mut self.institutions, name, account_type);
+    /// Appends an Institution, its name trimmed, and returns its id. `account_type` is the joined
+    /// label the dialog built, stored as given. A blank or taken name is refused and writes nothing.
+    pub fn add_institution(
+        &mut self,
+        name: String,
+        account_type: String,
+    ) -> Result<InstitutionId, InstitutionError> {
+        let row = insert_institution(
+            &mut self.institutions,
+            &InstitutionDraft { name, account_type },
+        )?;
+        let id = row.id;
         self.pending.push(LedgerChange::UpsertInstitution(row));
+        Ok(id)
     }
 }
 
@@ -24,12 +33,10 @@ pub struct AddInstitution {
 }
 
 impl LedgerCommand for AddInstitution {
-    type Outcome = ();
-    /// Adding an Institution can't be refused: the form has already validated it.
-    type Refusal = std::convert::Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<(), Self::Refusal> {
-        ledger.add_institution(self.name, self.account_type);
-        Ok(())
+    type Outcome = InstitutionId;
+    type Refusal = InstitutionError;
+    fn run(self, ledger: &mut Ledger) -> Result<InstitutionId, InstitutionError> {
+        ledger.add_institution(self.name, self.account_type)
     }
 }
 
@@ -43,7 +50,7 @@ mod tests {
         let mut ledger = Ledger::stub();
         let before = ledger.institutions().len();
 
-        AddInstitution {
+        let id = AddInstitution {
             name: "Bank X".into(),
             account_type: "savings \u{b7} offset".into(),
         }
@@ -52,11 +59,31 @@ mod tests {
 
         assert_eq!(ledger.institutions().len(), before + 1);
         let added = ledger.institutions().last().unwrap().clone();
+        assert_eq!(added.id, id);
         assert_eq!(added.name, "Bank X");
         assert_eq!(added.account_type, "savings \u{b7} offset");
         assert_eq!(
             ledger.drain_changes(),
             vec![LedgerChange::UpsertInstitution(added)]
         );
+    }
+
+    #[test]
+    fn a_taken_name_is_refused_and_records_nothing() {
+        let mut ledger = Ledger::stub();
+        let before = ledger.institutions().to_vec();
+
+        let refusal = AddInstitution {
+            name: "anz banking group".into(),
+            account_type: "savings".into(),
+        }
+        .run(&mut ledger);
+
+        assert_eq!(
+            refusal,
+            Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+        );
+        assert_eq!(ledger.institutions(), before);
+        assert!(ledger.drain_changes().is_empty());
     }
 }

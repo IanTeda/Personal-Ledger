@@ -10,5 +10,17 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[dependencies]
+## -- Internal Dependencies --
+lib_core = { path = "../lib-core" }
+
+## -- Workspace Dependencies --
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# The port contract suite (`contract`), for `lib-database` to run against its adapter.
+contract-tests = []
+
 [lints]
 workspace = true

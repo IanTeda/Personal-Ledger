@@ -138,14 +138,14 @@ impl LedgerCommand for CountImportedTransactions {
 mod tests {
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
-    use lib_core::{AccountType, Money, UnitId};
+    use lib_core::{AccountType, InstitutionId, Money, UnitId};
 
     use super::*;
 
     fn draft(name: &str) -> AccountDraft {
         AccountDraft {
             name: name.to_owned(),
-            institution: "Somewhere".to_owned(),
+            institution: InstitutionId::SEED_ANZ,
             account_type: AccountType::Bank,
             account_number: Some("123".to_owned()),
         }

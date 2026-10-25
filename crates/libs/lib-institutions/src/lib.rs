@@ -1,104 +1,25 @@
 //! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`GLOSSARY.md`'s
-//! Institution). Pure and I/O-free: the desktop's Settings › Institutions page reads them from the
-//! `LedgerStore`, and the Account Type labels stay in the desktop, which owns the Message
-//! catalogue.
+//! Institution). A VIPER module being migrated (`docs/development/viper-architecture.md`, #847):
+//! the Entity with its add rule and stub seed (`entity`), one Interactor per intent
+//! (`interactor`) and the repository port (`protocols`). `fake` holds the in-memory port and the
+//! stub seed; `contract` the checks both it and, once Institutions persist (#849), `lib-database`'s
+//! adapter keep. The page's Presenter, keymap and Messages arrive with the page (#850); until then
+//! the Desktop's Settings › Institutions page reads them from the `LedgerStore` and writes them
+//! through a `LedgerCommand`. No UI toolkit and no I/O.
+//!
+//! The rule: an Institution's name is required, stored trimmed, and case-insensitively unique.
+//! Only add exists; edit and delete are a backlog ticket.
 
-/// One row of the **Institutions** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a
-/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns). Owned `String` fields, not
-/// `&'static str` -- issue #187's own Add institution dialog produces real typed text, same
-/// reasoning as `UnitRow`'s own migration for issue #184.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstitutionRow {
-    pub name: String,
-    /// The ACCOUNT TYPE column, e.g. `"savings \u{b7} offset"` -- the mockup joins multiple
-    /// types with the same `\u{b7}` separator the scope notes use, as one free-form label (not a
-    /// `Vec` of chips -- that multi-select shape belongs to the Add institution dialog's own
-    /// input, not this read-only table cell). `AddInstitutionForm::account_types` joins the same
-    /// way when a dialog-created row is appended (see the desktop's settings dialog wiring).
-    pub account_type: String,
-}
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
+mod entity;
+pub mod fake;
+pub mod interactor;
+pub mod protocols;
 
-/// The mockup's own six seeded rows, in its own order (the mockup's static scope note claims "7
-/// institutions", but only six rows are actually drawn -- treated as the same kind of
-/// mockup-authoring slip [`default_units`]'s own doc calls out elsewhere, not a seventh row to
-/// invent; the scope note is dynamic and derived from `Shell::settings_institutions.len()`
-/// regardless, so it self-corrects to whatever this slice actually holds). A function rather
-/// than a `const` slice now that [`InstitutionRow`] owns its strings.
-pub fn default_institutions() -> Vec<InstitutionRow> {
-    vec![
-        InstitutionRow {
-            name: "ANZ Banking Group".to_string(),
-            account_type: "savings \u{b7} offset".to_string(),
-        },
-        InstitutionRow {
-            name: "American Express".to_string(),
-            account_type: "credit card".to_string(),
-        },
-        InstitutionRow {
-            name: "Vanguard Investments".to_string(),
-            account_type: "investment".to_string(),
-        },
-        InstitutionRow {
-            name: "Westpac Banking".to_string(),
-            account_type: "savings".to_string(),
-        },
-        InstitutionRow {
-            name: "Cryptocurrency Exchange".to_string(),
-            account_type: "crypto".to_string(),
-        },
-        InstitutionRow {
-            name: "Superannuation Fund".to_string(),
-            account_type: "retirement".to_string(),
-        },
-    ]
-}
-
-/// Appends an institution from the Add institution dialog. `account_type` is the joined label the
-/// dialog built, so it is stored as given. Returns the row it appended.
-pub fn add_institution(
-    institutions: &mut Vec<InstitutionRow>,
-    name: String,
-    account_type: String,
-) -> InstitutionRow {
-    let row = InstitutionRow { name, account_type };
-    institutions.push(row.clone());
-    row
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_institutions_matches_the_mockups_own_six_seeded_rows() {
-        let names: Vec<_> = default_institutions()
-            .into_iter()
-            .map(|institution| institution.name)
-            .collect();
-        assert_eq!(
-            names,
-            vec![
-                "ANZ Banking Group",
-                "American Express",
-                "Vanguard Investments",
-                "Westpac Banking",
-                "Cryptocurrency Exchange",
-                "Superannuation Fund",
-            ]
-        );
-    }
-
-    #[test]
-    fn an_added_institution_is_appended_with_its_joined_account_types() {
-        let mut institutions = default_institutions();
-        let before = institutions.len();
-        let added = add_institution(
-            &mut institutions,
-            "Bank X".into(),
-            "savings \u{b7} offset".into(),
-        );
-        assert_eq!(added.name, "Bank X");
-        assert_eq!(added.account_type, "savings \u{b7} offset");
-        assert_eq!(institutions.len(), before + 1);
-    }
-}
+pub use entity::*;
+pub use protocols::InstitutionRepository;

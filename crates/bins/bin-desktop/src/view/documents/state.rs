@@ -206,6 +206,7 @@ impl DocumentsView {
     pub fn lookups<'a>(&self, cx: &'a App) -> Lookups<'a> {
         Lookups {
             accounts: self.sources.ledger.read(cx).ledger().accounts(),
+            institutions: self.sources.ledger.read(cx).ledger().institutions(),
             payees: self.sources.ledger.read(cx).ledger().payees(),
             plans: self.sources.ledger.read(cx).ledger().bill_plans(),
             types: self.types(cx),

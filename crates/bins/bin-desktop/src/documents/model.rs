@@ -22,11 +22,13 @@ use crate::{
     view::format,
 };
 use lib_accounts::Account;
+use lib_institutions::Institution;
 
 /// The shared stubs a Document's Links point into, and the clock they are read against.
 pub struct Lookups<'a> {
     pub types: &'a [DocumentTypeRow],
     pub accounts: &'a [Account],
+    pub institutions: &'a [Institution],
     pub payees: &'a [Payee],
     pub plans: &'a [BillPlan],
     pub inventory: &'a Inventory,
@@ -627,6 +629,7 @@ mod tests {
     struct World {
         types: Vec<DocumentTypeRow>,
         accounts: Vec<Account>,
+        institutions: Vec<Institution>,
         payees: Vec<Payee>,
         plans: Vec<BillPlan>,
         transactions: Vec<Transaction>,
@@ -642,6 +645,7 @@ mod tests {
         World {
             types: documents::types::default_types(),
             accounts: ledger.accounts().to_vec(),
+            institutions: ledger.institutions().to_vec(),
             payees: ledger.payees().to_vec(),
             plans: ledger.bill_plans().to_vec(),
             transactions: ledger.transactions().to_vec(),
@@ -658,6 +662,7 @@ mod tests {
             Lookups {
                 types: &self.types,
                 accounts: &self.accounts,
+                institutions: &self.institutions,
                 payees: &self.payees,
                 plans: &self.plans,
                 inventory: &self.inventory,

@@ -4,7 +4,7 @@
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_accounts::{Account, AccountDraft, GROUP_ORDER, NO_INSTITUTION, NewAccount};
-use lib_core::{AccountType, Money, UnitId};
+use lib_core::{AccountType, InstitutionId, Money, UnitId};
 use lib_locale::Label;
 
 use crate::{
@@ -75,19 +75,42 @@ pub struct AccountOptions {
     pub institutions: Vec<String>,
     pub types: Vec<String>,
     pub units: Vec<String>,
+    /// The id of each of `institutions`, in the same order: the select stores the name, the
+    /// Account the id.
+    institution_ids: Vec<InstitutionId>,
     /// The id of each of `units`, in the same order: the select stores the code, the Account the id.
     unit_ids: Vec<UnitId>,
 }
 
 impl AccountOptions {
-    pub fn new(institutions: Vec<String>, units: Vec<(UnitId, String)>) -> Self {
+    pub fn new(institutions: Vec<(InstitutionId, String)>, units: Vec<(UnitId, String)>) -> Self {
+        let (institution_ids, institutions) = institutions.into_iter().unzip();
         let (unit_ids, units) = units.into_iter().unzip();
         Self {
             institutions,
             types: GROUP_ORDER.iter().map(Label::label).collect(),
             units,
+            institution_ids,
             unit_ids,
         }
+    }
+
+    /// The name the Institution select stores for `id`.
+    pub fn institution_name(&self, id: InstitutionId) -> Option<&str> {
+        let index = self
+            .institution_ids
+            .iter()
+            .position(|institution| *institution == id)?;
+        self.institutions.get(index).map(String::as_str)
+    }
+
+    /// The Institution the select's `name` names.
+    pub fn institution_id(&self, name: &str) -> Option<InstitutionId> {
+        let index = self
+            .institutions
+            .iter()
+            .position(|institution| institution == name)?;
+        self.institution_ids.get(index).copied()
     }
 
     /// The code the Unit select stores for `id`.
@@ -180,7 +203,9 @@ impl AccountForm {
         let institution = if account.institution == NO_INSTITUTION {
             options.institutions.first().cloned()
         } else {
-            Some(account.institution.clone())
+            options
+                .institution_name(account.institution)
+                .map(str::to_string)
         };
         Self {
             name: TextField::new(account.name.clone()),
@@ -390,11 +415,11 @@ impl AccountForm {
     }
 
     /// The Institution the account links to: the placeholder for Cash, else the picked one.
-    fn resolved_institution(&self, account_type: &AccountType) -> Option<String> {
+    fn resolved_institution(&self, account_type: &AccountType) -> Option<InstitutionId> {
         if *account_type == AccountType::Cash {
-            Some(NO_INSTITUTION.to_string())
+            Some(NO_INSTITUTION)
         } else {
-            self.institution.value().map(str::to_string)
+            self.options.institution_id(self.institution.value()?)
         }
     }
 
@@ -450,7 +475,7 @@ mod tests {
         AccountOptions::new(
             lib_institutions::default_institutions()
                 .into_iter()
-                .map(|institution| institution.name)
+                .map(|institution| (institution.id, institution.name))
                 .collect(),
             lib_units::default_units(chrono::Utc::now())
                 .into_iter()
@@ -562,19 +587,6 @@ mod tests {
     }
 
     #[test]
-    fn the_placeholder_institution_stores_a_key_not_display_text() {
-        for locale in lib_locale::Locale::SUPPORTED {
-            lib_locale::with_locale(locale, || {
-                assert_ne!(
-                    NO_INSTITUTION,
-                    lib_locale::msg::institution_none(),
-                    "{locale}"
-                );
-            });
-        }
-    }
-
-    #[test]
     fn leaving_cash_brings_the_earlier_institution_pick_back() {
         let options = add_options();
         let mut form = valid_form(&options);
@@ -671,7 +683,7 @@ mod tests {
         let new = form.into_new_account(date(2026, 9), true).expect("valid");
         assert_eq!(new.draft.name, "Rainy Day");
         assert_eq!(new.draft.account_type, AccountType::Bank);
-        assert_eq!(new.draft.institution, "ANZ Banking Group");
+        assert_eq!(new.draft.institution, InstitutionId::SEED_ANZ);
         assert_eq!(new.unit, UnitId::SEED_AUD);
         assert_eq!(new.draft.account_number, None);
         assert_eq!(crate::view::format::amount(&new.balance).1, "1,500.00");
@@ -792,7 +804,7 @@ mod tests {
 
         assert!(apply_to(&form, &mut account));
         assert_eq!(account.name, "Daily");
-        assert_eq!(account.institution, "Westpac Banking");
+        assert_eq!(account.institution, InstitutionId::SEED_WESTPAC);
         assert_eq!(account.account_type, AccountType::CreditCard);
         assert_eq!(account.account_number, None);
         assert_eq!(account.id, before.id);
@@ -834,7 +846,7 @@ mod tests {
         let mut form = AccountForm::from_account(&account, &options);
         form.account_type = SelectState::new(Some("Bank".to_string()));
         assert!(apply_to(&form, &mut account));
-        assert_eq!(account.institution, "ANZ Banking Group");
+        assert_eq!(account.institution, InstitutionId::SEED_ANZ);
     }
 
     #[test]
@@ -871,7 +883,10 @@ mod tests {
 
     fn account_options() -> AccountOptions {
         AccountOptions::new(
-            vec!["ANZ".to_string(), "CBA".to_string()],
+            vec![
+                (InstitutionId::seed(1), "ANZ".to_string()),
+                (InstitutionId::seed(2), "CBA".to_string()),
+            ],
             vec![
                 (UnitId::SEED_AUD, "aud".to_string()),
                 (UnitId::SEED_BTC, "btc".to_string()),

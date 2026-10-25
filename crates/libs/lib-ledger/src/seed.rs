@@ -121,6 +121,19 @@ mod tests {
     }
 
     #[test]
+    fn every_stub_account_names_a_stub_institution_or_the_placeholder() {
+        let institutions = lib_institutions::default_institutions();
+        for account in default_accounts() {
+            assert!(
+                account.institution == lib_accounts::NO_INSTITUTION
+                    || lib_institutions::get(&institutions, account.institution).is_some(),
+                "{} names an unknown Institution",
+                account.name
+            );
+        }
+    }
+
+    #[test]
     fn per_account_counts_match_the_accounts_stub() {
         let (accounts, _, _, _, transactions) = seed();
         assert_eq!(count_for(&transactions, &accounts, "Wallet"), 96);

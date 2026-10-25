@@ -53,7 +53,10 @@ impl Render for AccountsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
         let accounts = self.accounts(cx);
-        let units = self.ledger.read(cx).ledger().units();
+        let names = Names {
+            units: self.ledger.read(cx).ledger().units(),
+            institutions: self.ledger.read(cx).ledger().institutions(),
+        };
         let selected = self.selected_index(cx);
         let focused = self.page_focused;
         div()
@@ -62,7 +65,7 @@ impl Render for AccountsPage {
             .child(kicker_row(&entity, cx))
             .children(
                 accounts::group_accounts(accounts).iter().map(|group| {
-                    group_block(group, accounts, units, selected, focused, &entity, cx)
+                    group_block(group, accounts, &names, selected, focused, &entity, cx)
                 }),
             )
             .when(accounts.is_empty(), |this| {
@@ -140,10 +143,16 @@ const INSTITUTION_GAP: gpui::Pixels = px(24.0);
 const UNIT_WIDTH: gpui::Pixels = px(90.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
 
+/// What a row's ids are named by: the Units and Institutions on the Ledger.
+struct Names<'a> {
+    units: &'a [lib_units::UnitRow],
+    institutions: &'a [lib_institutions::Institution],
+}
+
 fn group_block(
     group: &accounts::AccountGroup,
     accounts: &[Account],
-    units: &[lib_units::UnitRow],
+    names: &Names<'_>,
     selected: Option<usize>,
     focused: bool,
     entity: &Entity<AccountsPage>,
@@ -177,7 +186,7 @@ fn group_block(
                             let account = accounts.get(index)?;
                             Some(row(
                                 account,
-                                units,
+                                names,
                                 position == last,
                                 selected == Some(index),
                                 focused,
@@ -230,7 +239,7 @@ fn table_header(cx: &App) -> impl IntoElement {
 
 fn row(
     account: &Account,
-    units: &[lib_units::UnitRow],
+    names: &Names<'_>,
     last: bool,
     selected: bool,
     focused: bool,
@@ -279,11 +288,12 @@ fn row(
                 .pr(INSTITUTION_GAP)
                 .truncate()
                 .text_color(color::muted(cx))
-                .child(institution_label(&account.institution)),
+                .child(institution_label(account.institution, names.institutions)),
         )
         .child(
             div().w(UNIT_WIDTH).text_color(color::muted(cx)).child(
-                units
+                names
+                    .units
                     .iter()
                     .find(|unit| unit.id == account.unit)
                     .map_or_else(String::new, |unit| unit.code.clone()),

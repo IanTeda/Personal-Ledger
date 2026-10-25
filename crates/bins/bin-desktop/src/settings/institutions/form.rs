@@ -1,6 +1,7 @@
 //! The Add institution dialog's live form state -- pure, `gpui`-free; the Dialog host holds it and
 //! `dialogs/add.rs` renders it.
 
+use lib_institutions::InstitutionError;
 use lib_units::UnitRow;
 
 use crate::form::field::TextField;
@@ -51,6 +52,8 @@ pub struct AddInstitutionForm {
     /// code stays meaningful even if that `Vec`'s shape changes, though nothing in this map
     /// actually opens two dialogs at once for that to matter yet.
     pub default_unit_code: Option<String>,
+    /// The last refusal, with the name it refused: shown until the name is edited.
+    refusal: Option<(String, InstitutionError)>,
 }
 
 impl AddInstitutionForm {
@@ -63,7 +66,21 @@ impl AddInstitutionForm {
             name: TextField::default(),
             account_types: vec![InstitutionProduct::Savings],
             default_unit_code: units.first().map(|unit| unit.code.clone()),
+            refusal: None,
         }
+    }
+
+    /// Records a refusal of the name as typed now.
+    pub fn refuse(&mut self, refusal: InstitutionError) {
+        self.refusal = Some((self.name.text().to_string(), refusal));
+    }
+
+    /// The refusal to show under the name, while the name is still the one it refused.
+    pub fn name_error(&self) -> Option<&InstitutionError> {
+        self.refusal
+            .as_ref()
+            .filter(|(refused, _)| refused == self.name.text())
+            .map(|(_, refusal)| refusal)
     }
 
     /// Toggles `account_type`'s own membership -- present removes it, absent adds it.

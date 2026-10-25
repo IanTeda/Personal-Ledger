@@ -12,7 +12,7 @@ mod render;
 use crate::settings::pages::Page;
 use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
-use lib_institutions::InstitutionRow;
+use lib_institutions::Institution;
 use lib_ledger::Domain;
 
 use crate::{
@@ -42,7 +42,7 @@ impl InstitutionsPage {
         }
     }
 
-    fn institutions<'a>(&self, cx: &'a App) -> &'a [InstitutionRow] {
+    fn institutions<'a>(&self, cx: &'a App) -> &'a [Institution] {
         self.ledger.read(cx).ledger().institutions()
     }
 

@@ -8,14 +8,16 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountId, AccountType, Money, UnitId};
+use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
 /// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
-/// deliberately absent from `institutions::default_institutions()`: it is not a user-managed row.
+/// deliberately absent from `lib_institutions::default_institutions()`: it is not a user-managed
+/// row. Its id is the Institutions seed's place 0, which no seeded Institution takes.
 ///
-/// This is a stable key, never display text: the row syncs between Clients, so storing a rendered
-/// name would show one Client's Locale on another. Render it through the Desktop's `institution_label`, which owns the Message.
-pub const NO_INSTITUTION: &str = "system:institution-none";
+/// This is a stable id, never display text: the row syncs between Clients, so storing a rendered
+/// name would show one Client's Locale on another. Render it through the Desktop's
+/// `institution_label`, which owns the Message.
+pub const NO_INSTITUTION: InstitutionId = InstitutionId::seed(0);
 
 /// The order the Accounts page groups accounts in -- fixed, never alphabetised or sorted by
 /// balance (the README's implementation note 3). Not `AccountType::all()`, whose order puts
@@ -28,14 +30,13 @@ pub const GROUP_ORDER: [AccountType; 5] = [
     AccountType::Investment,
 ];
 
-/// One row of the Accounts page. `institution` is the Institution's name -- the same value key the
-/// select control stores -- and `unit` is the Unit's id, so editing a Unit's code leaves the
-/// Account on that Unit; the code is looked up through the Ledger when shown.
+/// One row of the Accounts page. `institution` and `unit` are ids, so the Account stays on its
+/// Institution and Unit whatever they're called; their names are looked up when shown.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Account {
     pub id: AccountId,
     pub name: String,
-    pub institution: String,
+    pub institution: InstitutionId,
     pub account_type: AccountType,
     /// The Unit this Account counts in. Fixed at creation.
     pub unit: UnitId,
@@ -57,7 +58,7 @@ pub struct Account {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccountDraft {
     pub name: String,
-    pub institution: String,
+    pub institution: InstitutionId,
     pub account_type: AccountType,
     pub account_number: Option<String>,
 }
@@ -110,7 +111,7 @@ pub fn edit_account(
         .find(|account| account.id == id)
         .ok_or(AccountError::NotFound)?;
     account.name.clone_from(&draft.name);
-    account.institution.clone_from(&draft.institution);
+    account.institution = draft.institution;
     account.account_type = draft.account_type.clone();
     account.account_number.clone_from(&draft.account_number);
     Ok(())
@@ -294,7 +295,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(1),
             name: "Wallet".to_string(),
-            institution: NO_INSTITUTION.to_string(),
+            institution: NO_INSTITUTION,
             account_type: AccountType::Cash,
             unit: UnitId::SEED_AUD,
             balance: money("240.00"),
@@ -306,7 +307,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(2),
             name: "ANZ Everyday".to_string(),
-            institution: "ANZ Banking Group".to_string(),
+            institution: InstitutionId::SEED_ANZ,
             account_type: AccountType::Bank,
             unit: UnitId::SEED_AUD,
             balance: money("4182.55"),
@@ -318,7 +319,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(3),
             name: "ANZ Offset".to_string(),
-            institution: "ANZ Banking Group".to_string(),
+            institution: InstitutionId::SEED_ANZ,
             account_type: AccountType::Bank,
             unit: UnitId::SEED_AUD,
             balance: money("463203.10"),
@@ -330,7 +331,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(4),
             name: "Amex Platinum".to_string(),
-            institution: "American Express".to_string(),
+            institution: InstitutionId::SEED_AMEX,
             account_type: AccountType::CreditCard,
             unit: UnitId::SEED_AUD,
             balance: money("-2318.44"),
@@ -342,7 +343,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(5),
             name: "Home Loan".to_string(),
-            institution: "Westpac Banking".to_string(),
+            institution: InstitutionId::SEED_WESTPAC,
             account_type: AccountType::Loan,
             unit: UnitId::SEED_AUD,
             balance: money("-381311.34"),
@@ -354,7 +355,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(6),
             name: "Vanguard VAS".to_string(),
-            institution: "Vanguard Investments".to_string(),
+            institution: InstitutionId::SEED_VANGUARD,
             account_type: AccountType::Investment,
             unit: UnitId::SEED_VAS,
             balance: money("1240"),
@@ -366,7 +367,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(7),
             name: "Bitcoin".to_string(),
-            institution: "Cryptocurrency Exchange".to_string(),
+            institution: InstitutionId::SEED_CRYPTO_EXCHANGE,
             account_type: AccountType::Investment,
             unit: UnitId::SEED_BTC,
             balance: money("0.4120"),
@@ -386,7 +387,7 @@ mod tests {
         Account {
             id,
             name: name.to_string(),
-            institution: NO_INSTITUTION.to_string(),
+            institution: NO_INSTITUTION,
             account_type,
             unit: UnitId::SEED_AUD,
             balance: money("0"),
@@ -563,7 +564,7 @@ mod tests {
     fn draft(name: &str) -> AccountDraft {
         AccountDraft {
             name: name.to_string(),
-            institution: "Bank".to_string(),
+            institution: InstitutionId::SEED_WESTPAC,
             account_type: AccountType::CreditCard,
             account_number: Some("42".to_string()),
         }

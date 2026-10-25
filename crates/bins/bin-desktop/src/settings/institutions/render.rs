@@ -13,7 +13,7 @@
 use std::rc::Rc;
 
 use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
-use lib_institutions::InstitutionRow;
+use lib_institutions::Institution;
 
 use super::InstitutionsPage;
 use crate::theme::color;
@@ -69,7 +69,7 @@ const ACCOUNT_TYPE_WIDTH: gpui::Pixels = px(140.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
 
 fn table(
-    institutions: &[InstitutionRow],
+    institutions: &[Institution],
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
     cx: &App,
@@ -120,7 +120,7 @@ fn table_header(cx: &App) -> impl IntoElement {
 }
 
 fn row(
-    institution: &InstitutionRow,
+    institution: &Institution,
     last: bool,
     index: usize,
     on_edit_click: OnRowIndexClick,

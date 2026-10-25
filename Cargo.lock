@@ -4819,6 +4819,11 @@ dependencies = [
 [[package]]
 name = "lib_institutions"
 version = "0.1.0"
+dependencies = [
+ "lib_core",
+ "thiserror 2.0.20",
+ "tracing",
+]
 
 [[package]]
 name = "lib_inventory"

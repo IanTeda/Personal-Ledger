@@ -130,6 +130,12 @@ desktop-settings-institutions-name-placeholder = e.g. Commonwealth Bank
 desktop-settings-institutions-account-types = Account types
 desktop-settings-institutions-default-unit = Default unit
 desktop-settings-institutions-no-units = No units available
+
+## An Add institution refusal, under the name. `$name` is the Institution already holding the name,
+## as it spells it; names are compared ignoring case and surrounding spaces.
+
+desktop-settings-institutions-error-name-taken = { $name } already exists
+desktop-settings-institutions-error-name-required = An institution needs a name
 desktop-settings-account-type-savings = savings
 desktop-settings-account-type-offset = offset
 

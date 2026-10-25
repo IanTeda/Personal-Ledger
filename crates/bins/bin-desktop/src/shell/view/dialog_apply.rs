@@ -103,10 +103,9 @@ mod tests {
         type Refusal = String;
 
         fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Added, String> {
-            if ledger.institutions().iter().any(|row| row.name == self.0) {
-                return Err(format!("{} is taken", self.0));
-            }
-            ledger.add_institution(self.0, String::new());
+            ledger
+                .add_institution(self.0.clone(), String::new())
+                .map_err(|_| format!("{} is taken", self.0))?;
             Ok(Added(ledger.institutions().len()))
         }
     }

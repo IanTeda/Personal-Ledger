@@ -150,7 +150,10 @@ mod tests {
     fn add_dialog(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> AccountsDialog {
         let options = ledger.read_with(cx, |store, _| {
             AccountOptions::new(
-                vec!["ANZ Banking Group".to_string()],
+                vec![(
+                    lib_core::InstitutionId::SEED_ANZ,
+                    "ANZ Banking Group".to_string(),
+                )],
                 store
                     .ledger()
                     .units()

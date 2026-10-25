@@ -89,7 +89,7 @@ pub fn render(
                         accent: false,
                         read_only: form
                             .is_cash()
-                            .then(|| institution_label(NO_INSTITUTION).into()),
+                            .then(|| institution_label(NO_INSTITUTION, &[]).into()),
                         on_field_click: click(AccountField::Institution),
                         on_option_click: option_click(AccountField::Institution),
                     },

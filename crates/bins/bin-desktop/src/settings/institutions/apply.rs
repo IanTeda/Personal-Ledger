@@ -2,6 +2,7 @@
 //! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
 
 use gpui::App;
+use lib_institutions::InstitutionError;
 use lib_ledger::{AddInstitution, Ledger, LedgerCommand};
 
 use super::dialogs::InstitutionsDialog;
@@ -24,24 +25,19 @@ pub enum InstitutionsOutcome {
 
 impl OutcomeToast for InstitutionsOutcome {}
 
-/// Why an Institutions command didn't land: none of them can be refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InstitutionsRefusal {}
-
 impl LedgerCommand for InstitutionsCommand {
     type Outcome = InstitutionsOutcome;
-    type Refusal = InstitutionsRefusal;
+    type Refusal = InstitutionError;
 
-    fn run(self, ledger: &mut Ledger) -> Result<InstitutionsOutcome, InstitutionsRefusal> {
+    fn run(self, ledger: &mut Ledger) -> Result<InstitutionsOutcome, InstitutionError> {
         let Self::Add(add) = self;
-        let Ok(()) = add.run(ledger);
-        Ok(InstitutionsOutcome::Saved)
+        add.run(ledger).map(|_| InstitutionsOutcome::Saved)
     }
 }
 
 impl DialogForm for InstitutionsDialog {
     type Command = InstitutionsCommand;
-    type Refusal = InstitutionsRefusal;
+    type Refusal = InstitutionError;
 
     fn command(&self) -> Result<InstitutionsCommand, FormError> {
         if !Dialog::is_valid(self) {
@@ -59,8 +55,10 @@ impl DialogForm for InstitutionsDialog {
         }))
     }
 
-    fn refuse(&mut self, refusal: InstitutionsRefusal) {
-        match refusal {}
+    /// Shown under the name until it's edited.
+    fn refuse(&mut self, refusal: InstitutionError) {
+        let Self::Add(form) = self;
+        form.refuse(refusal);
     }
 }
 
@@ -76,7 +74,6 @@ impl ConfirmDialog for InstitutionsDialog {
     }
 }
 
-/// An Institution can't be refused, so there's no refused case to drive.
 #[cfg(test)]
 mod tests {
     use gpui::{Entity, TestAppContext};
@@ -143,6 +140,31 @@ mod tests {
                     InstitutionProduct::Loan.label()
                 )
             );
+        });
+    }
+
+    #[gpui::test]
+    fn a_taken_name_stays_open_with_its_refusal_and_adds_nothing(cx: &mut TestAppContext) {
+        let ledger = ledger(cx);
+        let mut dialog = add_dialog(&ledger, cx);
+        let InstitutionsDialog::Add(form) = &mut dialog;
+        form.name = TextField::new("Bank X");
+        cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
+            .expect("the first Bank X lands");
+        let mut again = add_dialog(&ledger, cx);
+        let InstitutionsDialog::Add(form) = &mut again;
+        form.name = TextField::new("bank x");
+
+        let landed = cx.update(|cx| confirm_ledger(&mut again, &ledger, cx));
+
+        assert!(landed.is_none());
+        let InstitutionsDialog::Add(form) = &again;
+        assert_eq!(
+            form.name_error(),
+            Some(&InstitutionError::DuplicateName("Bank X".into()))
+        );
+        ledger.read_with(cx, |store, _| {
+            assert_eq!(store.ledger().institutions().len(), 1)
         });
     }
 }

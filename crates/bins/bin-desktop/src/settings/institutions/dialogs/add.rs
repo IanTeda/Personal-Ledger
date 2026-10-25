@@ -19,11 +19,13 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use lib_institutions::InstitutionError;
 use lib_units::UnitRow;
 
 use super::{Change, InstitutionsDialogHandlers};
 use crate::{
     dialog,
+    form::colour_field::error_line,
     form::fields::{field_label, text_field},
     settings::institutions::form::{AddInstitutionForm, InstitutionProduct},
     theme::color,
@@ -62,7 +64,13 @@ pub fn render(
             cx,
         ))
         .child(dialog::body([
-            name_field(form.name.text(), cx).into_any_element(),
+            div()
+                .child(name_field(form.name.text(), cx))
+                .children(
+                    form.name_error()
+                        .map(|error| error_line(name_error_text(error), cx)),
+                )
+                .into_any_element(),
             account_types_field(&form.account_types, on_account_type_click, cx).into_any_element(),
             default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click, cx)
                 .into_any_element(),
@@ -84,6 +92,18 @@ pub fn render(
         ));
 
     dialog::overlay(WIDTH, false, card, cx)
+}
+
+/// A name refusal as the dialog words it.
+fn name_error_text(error: &InstitutionError) -> String {
+    match error {
+        InstitutionError::DuplicateName(name) => {
+            crate::msg::desktop_settings_institutions_error_name_taken(name)
+        }
+        InstitutionError::NameRequired => {
+            crate::msg::desktop_settings_institutions_error_name_required()
+        }
+    }
 }
 
 fn name_field(value: &str, cx: &App) -> AnyElement {

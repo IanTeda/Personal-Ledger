@@ -43,7 +43,8 @@ pub use row_id::{RowID, RowIDError};
 mod ids;
 pub use ids::{
     AccountId, AreaId, BillPlanId, BillScheduleEntryId, BudgetId, CategoryId, DocumentId,
-    DocumentTypeId, ItemId, LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
+    DocumentTypeId, InstitutionId, ItemId, LocationId, PayeeId, PriceSourceId, TagId,
+    TransactionId, UnitId,
 };
 
 /// Category types used for classifying financial transactions.

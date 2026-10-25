@@ -393,7 +393,11 @@ fn describe(
         }
         DocumentLink::Account(id) => {
             let account = lookups.accounts.iter().find(|account| account.id == id)?;
-            let text = format!("{} \u{b7} {}", account.name, account.institution);
+            let institution = crate::settings::accounts::institution_label(
+                account.institution,
+                lookups.institutions,
+            );
+            let text = format!("{} \u{b7} {institution}", account.name);
             Some((
                 crate::msg::desktop_documents_link_account(),
                 text.clone(),
@@ -505,6 +509,7 @@ mod tests {
     struct World {
         types: Vec<crate::documents::types::DocumentTypeRow>,
         accounts: Vec<Account>,
+        institutions: Vec<lib_institutions::Institution>,
         payees: Vec<Payee>,
         plans: Vec<BillPlan>,
         transactions: Vec<Transaction>,
@@ -520,6 +525,7 @@ mod tests {
         World {
             types: crate::documents::types::default_types(),
             accounts: ledger.accounts().to_vec(),
+            institutions: ledger.institutions().to_vec(),
             payees: ledger.payees().to_vec(),
             plans: ledger.bill_plans().to_vec(),
             transactions: ledger.transactions().to_vec(),
@@ -536,6 +542,7 @@ mod tests {
             Lookups {
                 types: &self.types,
                 accounts: &self.accounts,
+                institutions: &self.institutions,
                 payees: &self.payees,
                 plans: &self.plans,
                 inventory: &self.inventory,

@@ -179,6 +179,11 @@ ledger_id!(
     14
 );
 ledger_id!(
+    /// An Institution's id.
+    InstitutionId,
+    15
+);
+ledger_id!(
     /// A Unit's id. Addresses the Unit across edits, so a Unit's code (which a person can change)
     /// is never the key an Account or a command holds.
     UnitId,
@@ -191,6 +196,18 @@ impl UnitId {
     pub const SEED_AUD: Self = Self::seed(1);
     pub const SEED_BTC: Self = Self::seed(2);
     pub const SEED_VAS: Self = Self::seed(3);
+}
+
+impl InstitutionId {
+    /// The stub seed's fixed ids, in `lib_institutions`' seed order. They live here, not in
+    /// `lib_institutions`, because `lib_accounts`' seed points at them and the domain crates never
+    /// depend on each other.
+    pub const SEED_ANZ: Self = Self::seed(1);
+    pub const SEED_AMEX: Self = Self::seed(2);
+    pub const SEED_VANGUARD: Self = Self::seed(3);
+    pub const SEED_WESTPAC: Self = Self::seed(4);
+    pub const SEED_CRYPTO_EXCHANGE: Self = Self::seed(5);
+    pub const SEED_SUPER_FUND: Self = Self::seed(6);
 }
 
 #[cfg(test)]
