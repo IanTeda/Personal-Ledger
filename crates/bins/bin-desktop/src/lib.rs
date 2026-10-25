@@ -16,6 +16,7 @@ mod form;
 mod help;
 mod import;
 mod input;
+mod institutions;
 mod inventory;
 mod ledger_store;
 pub mod locale;

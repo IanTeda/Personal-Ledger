@@ -167,6 +167,9 @@ pub fn build(
     // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
     // reads (#831, #832).
     let payees = crate::payees::LedgerBackedPorts::shared(payees);
+    let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
+    let institutions_setup =
+        crate::institutions::InstitutionsSetup::new(institutions.clone(), &bindings.keybindings);
     let transactions: lib_database::SharedTransactionsStore =
         Rc::new(std::cell::RefCell::new(transactions));
     let bills = crate::bills::LedgerBackedPorts::shared(
@@ -185,6 +188,7 @@ pub fn build(
     let units = crate::units::UnitsSetup::new(units, &bindings.keybindings);
     let settings = crate::settings::pages::SettingsSetup {
         units,
+        institutions: institutions_setup,
         payees: payees_setup,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);

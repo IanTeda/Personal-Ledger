@@ -10,6 +10,7 @@
 
 use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
+    institutions::InstitutionsPage,
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     payees::PayeesPage,
@@ -18,7 +19,6 @@ use crate::{
     settings::display::{DisplayPage, DisplayPreferences},
     settings::documents::DocumentsPage,
     settings::general::GeneralPage,
-    settings::institutions::InstitutionsPage,
     settings::inventory::InventoryPage,
     settings::pages::{PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::picker::PagePicker,

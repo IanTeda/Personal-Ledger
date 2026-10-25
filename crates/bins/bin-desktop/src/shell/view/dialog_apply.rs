@@ -104,9 +104,12 @@ mod tests {
 
         fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Added, String> {
             ledger
-                .add_institution(self.0.clone(), String::new())
+                .add_tag(&lib_tags::TagDraft {
+                    name: self.0.clone(),
+                    color: None,
+                })
                 .map_err(|_| format!("{} is taken", self.0))?;
-            Ok(Added(ledger.institutions().len()))
+            Ok(Added(ledger.tags().len()))
         }
     }
 
@@ -133,8 +136,8 @@ mod tests {
         }
     }
 
-    fn institution_count(ledger: &Entity<LedgerStore>, cx: &gpui::TestAppContext) -> usize {
-        ledger.read_with(cx, |store, _| store.ledger().institutions().len())
+    fn tag_count(ledger: &Entity<LedgerStore>, cx: &gpui::TestAppContext) -> usize {
+        ledger.read_with(cx, |store, _| store.ledger().tags().len())
     }
 
     #[gpui::test]
@@ -146,7 +149,7 @@ mod tests {
 
         assert!(landed.is_none());
         assert!(form.shown.is_none());
-        assert_eq!(institution_count(&ledger, cx), 0);
+        assert_eq!(tag_count(&ledger, cx), 0);
     }
 
     #[gpui::test]
@@ -166,7 +169,7 @@ mod tests {
             landed.toast,
             Some((lib_toast::ToastKind::Success, "row 1".into()))
         );
-        assert_eq!(institution_count(&ledger, cx), 1);
+        assert_eq!(tag_count(&ledger, cx), 1);
     }
 
     #[gpui::test]
@@ -183,6 +186,6 @@ mod tests {
 
         assert!(landed.is_none());
         assert_eq!(form.shown.as_deref(), Some("Bank X is taken"));
-        assert_eq!(institution_count(&ledger, cx), 1);
+        assert_eq!(tag_count(&ledger, cx), 1);
     }
 }

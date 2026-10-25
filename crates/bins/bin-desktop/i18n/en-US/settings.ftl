@@ -117,28 +117,6 @@ desktop-settings-density-roomy = roomy
 desktop-settings-glyphs-unicode = unicode — { $glyphs }
 desktop-settings-glyphs-ascii = ascii fallback — { $glyphs }
 
-## Institutions. `$glyph` is the plus sign on the add button.
-
-desktop-settings-institutions-add =
-    .button = { $glyph } Add institution
-    .title = Add institution
-    .submit = Add institution
-
-desktop-settings-institutions-column-account-types = Account type
-desktop-settings-institutions-name-label = Institution name
-desktop-settings-institutions-name-placeholder = e.g. Commonwealth Bank
-desktop-settings-institutions-account-types = Account types
-desktop-settings-institutions-default-unit = Default unit
-desktop-settings-institutions-no-units = No units available
-
-## An Add institution refusal, under the name. `$name` is the Institution already holding the name,
-## as it spells it; names are compared ignoring case and surrounding spaces.
-
-desktop-settings-institutions-error-name-taken = { $name } already exists
-desktop-settings-institutions-error-name-required = An institution needs a name
-desktop-settings-account-type-savings = savings
-desktop-settings-account-type-offset = offset
-
 ## Sync server, Data & backup and Tracing.
 
 desktop-settings-sync-url = Server URL

@@ -3,10 +3,11 @@
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
 //! The Ledger's Institutions, Payees, Transactions, Bill Plans and Bill Schedule are read copies of
-//! their ports (#774, #831, #849): `apply` forwards a command's Institution, Payee, Transaction and
-//! Bills changes to the ports and refreshes the copies from them. The Payees and Bills ports are shared with their modules, which
-//! write them through their Interactors and refresh the copy after each event
-//! ([`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
+//! their ports (#774, #831, #849, #850): `apply` forwards a command's Payee, Transaction and Bills
+//! changes to the ports and refreshes the copies from them. The Institutions, Payees and Bills
+//! ports are shared with their modules, which write them through their Interactors and refresh the
+//! copy after each event ([`LedgerStore::refresh_institutions`], [`LedgerStore::refresh_payees`],
+//! [`LedgerStore::refresh_bills`]).
 //!
 //! The store holds no commit: what `apply` forwards is committed by the input it ran in
 //! (`crate::input::send`). A View not yet a module runs `apply` from its own click, outside any
@@ -19,17 +20,19 @@ use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_bills::BillsPorts as _;
-use lib_database::{InstitutionsStore, PayeesStore, SharedTransactionsStore};
+use lib_database::{PayeesStore, SharedTransactionsStore};
+use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
+use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
-/// What `shell::router::build` hands the Ledger: where its Institutions are kept, the Payees ports it shares with the Payees module
-/// and the Bills reads, where its Transactions are kept, shared with the Bill Payments module, and
+/// What `shell::router::build` hands the Ledger: the Institutions ports it shares with the
+/// Institutions module, the Payees ports it shares with the Payees module and the Bills reads, where its Transactions are kept, shared with the Bill Payments module, and
 /// the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
-    pub institutions: Box<dyn InstitutionsStore>,
+    pub institutions: DesktopInstitutionsPorts,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
@@ -43,7 +46,7 @@ impl LedgerSetup {
         let ledger = Ledger::stub_on(today);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         Self {
-            institutions: institutions_in_memory(&ledger),
+            institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             })),
@@ -51,13 +54,6 @@ impl LedgerSetup {
             payees,
         }
     }
-}
-
-/// `ledger`'s own Institutions in memory as the Institutions store.
-fn institutions_in_memory(ledger: &Ledger) -> Box<dyn InstitutionsStore> {
-    Box::new(lib_institutions::fake::InMemoryInstitutions {
-        institutions: ledger.institutions().to_vec(),
-    })
 }
 
 /// Emitted after a write lands, naming every domain it touched.
@@ -73,7 +69,7 @@ pub struct LegacyApplied;
 
 pub struct LedgerStore {
     ledger: Ledger,
-    institutions: Box<dyn InstitutionsStore>,
+    institutions: DesktopInstitutionsPorts,
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
@@ -92,7 +88,7 @@ impl LedgerStore {
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone());
         Self {
-            institutions: institutions_in_memory(&ledger),
+            institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -152,8 +148,8 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Institution, Payee, Transaction and Bills changes go to the ports (the
-    /// forwarding shims, #774, #831, #849), with the Unmatch a deleted Transaction's entries need, for the input's one
+    /// touched. Its Payee, Transaction and Bills changes go to the ports (the
+    /// forwarding shims, #774, #831), with the Unmatch a deleted Transaction's entries need, for the input's one
     /// commit; run outside any input, it emits [`LegacyApplied`] to be committed. The Payees go
     /// first, since the Splits an Import books name the Payees it creates. The other domains'
     /// changes aren't persisted yet (#636), so they're dropped here.
@@ -165,8 +161,6 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
-            let institutions_written =
-                crate::settings::institutions::ports::forward(&mut *self.institutions, &changes);
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
@@ -175,9 +169,6 @@ impl LedgerStore {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
-            if institutions_written {
-                self.copy_institutions();
-            }
             if payees_written {
                 self.copy_payees();
             }
@@ -198,7 +189,7 @@ impl LedgerStore {
     /// # Errors
     /// Returns the error reading them back; the port and the read copy are left as they were.
     pub fn reload_institutions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.institutions.reload()?;
+        self.institutions.borrow_mut().reload()?;
         self.copy_institutions();
         self.announce(cx, BTreeSet::from([Domain::Institutions]));
         Ok(())
@@ -241,6 +232,14 @@ impl LedgerStore {
         Ok(())
     }
 
+    /// Brings the Institutions read copy in line with the ports after the Institutions module wrote
+    /// them, announcing `Domain::Institutions` only when it changed.
+    pub fn refresh_institutions(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_institutions() {
+            self.announce(cx, BTreeSet::from([Domain::Institutions]));
+        }
+    }
+
     /// Brings the Payees read copy in line with the ports after the Payees module wrote them,
     /// announcing `Domain::Payees` only when it changed.
     pub fn refresh_payees(&mut self, cx: &mut Context<'_, Self>) {
@@ -267,7 +266,7 @@ impl LedgerStore {
 
     /// Brings the Institutions read copy in line with the port, returning whether it changed.
     fn copy_institutions(&mut self) -> bool {
-        let institutions = self.institutions.institutions().institutions();
+        let institutions = self.institutions.borrow().institutions().institutions();
         self.ledger.refresh_institutions(institutions)
     }
 
@@ -451,7 +450,8 @@ mod tests {
     ) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
-        let institutions = Box::new(storage.institutions);
+        let institutions =
+            crate::institutions::LedgerBackedPorts::shared(Box::new(storage.institutions));
         let payees = crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees));
         let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), payees.clone());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));

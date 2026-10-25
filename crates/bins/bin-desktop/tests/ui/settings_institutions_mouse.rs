@@ -112,3 +112,28 @@ fn an_institution_with_no_account_type_cannot_be_added(app: &mut TestAppContext)
     assert_eq!(ui.dialog(), Some("AddInstitution"));
     assert_eq!(ui.settings_institutions().institutions.len(), before);
 }
+
+#[gpui::test]
+fn a_row_click_selects_its_institution_and_a_row_button_leaves_the_selection_on_that_row(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_page(app, "Institutions");
+    let names: Vec<String> = ui
+        .settings_institutions()
+        .institutions
+        .into_iter()
+        .map(|row| row.0)
+        .collect();
+
+    ui.click("settings-institutions-row-2");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.get(2)
+    );
+    ui.click("institution-delete-4");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.get(4)
+    );
+    assert_eq!(ui.dialog(), None);
+}

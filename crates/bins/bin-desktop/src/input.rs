@@ -262,7 +262,14 @@ mod tests {
         let payees = lib_payees::keymap::PAYEES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
-        units.chain(bills).chain(payees).collect()
+        let institutions = lib_institutions::keymap::INSTITUTIONS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
+        units
+            .chain(bills)
+            .chain(payees)
+            .chain(institutions)
+            .collect()
     }
 
     /// The defaults among `bindings` the Shell takes before any module sees them (step 3).

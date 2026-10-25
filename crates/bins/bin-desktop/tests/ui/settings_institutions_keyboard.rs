@@ -1,6 +1,6 @@
-//! The Settings Institutions page's dialog driven by keys once open: typing, `enter` to save and
-//! `escape` to cancel. The page has no keys of its own, so the dialog is opened with its tagged
-//! button. State is read back from `Root`.
+//! The Settings Institutions page driven by keys: row selection, `n` for the Add dialog and its
+//! typing, `enter` to save and `escape` to cancel, and the legend `?` lists. State is read back
+//! from `Root`.
 
 use super::common;
 
@@ -15,6 +15,126 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
     ui.click(&format!("settings-index-{page}"));
     assert_eq!(ui.settings().page, page);
     ui
+}
+
+/// The Institutions page with focus stepped into it.
+fn in_institutions(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = on_page(app, "Institutions");
+    ui.press("l");
+    assert!(ui.settings().page_focused);
+    ui
+}
+
+/// The status line's hint keys, in order; empty when the line has no page content.
+fn hint_keys(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.status()
+        .map(|status| status.hints.into_iter().map(|(key, _)| key).collect())
+        .unwrap_or_default()
+}
+
+fn status(ui: &mut Harness<'_>) -> Option<String> {
+    ui.read(|shell| shell.status_message())
+}
+
+#[gpui::test]
+fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    let names: Vec<String> = ui
+        .settings_institutions()
+        .institutions
+        .into_iter()
+        .map(|row| row.0)
+        .collect();
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.first()
+    );
+    ui.press("j");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.get(1)
+    );
+    ui.press("k");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.first()
+    );
+    ui.press("shift-g");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.last()
+    );
+    ui.press("g g");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_ref(),
+        names.first()
+    );
+}
+
+#[gpui::test]
+fn n_opens_the_add_dialog_and_escape_cancels_it(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn adding_an_institution_selects_it_and_raises_a_toast(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    ui.press("n");
+    ui.press("b a n k");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("bank")
+    );
+    assert_eq!(
+        ui.toasts().history.first().map(|toast| toast.text.clone()),
+        Some("Added bank".to_string())
+    );
+}
+
+#[gpui::test]
+fn e_and_d_say_edit_and_delete_are_not_built_yet(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    ui.press("e");
+    assert_eq!(
+        status(&mut ui).as_deref(),
+        Some("edit institution \u{2014} not yet built")
+    );
+    ui.press("d");
+    assert_eq!(
+        status(&mut ui).as_deref(),
+        Some("delete institution \u{2014} not yet built")
+    );
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+#[gpui::test]
+fn a_rebound_new_key_shows_on_the_status_line_and_in_the_cheat_sheet(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    ui.press("g s");
+    ui.click("settings-index-Institutions");
+    ui.press("l");
+    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "ctrl+n"]);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }
 
 #[gpui::test]

@@ -1,11 +1,12 @@
 //! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`GLOSSARY.md`'s
-//! Institution). A VIPER module being migrated (`docs/development/viper-architecture.md`, #847):
-//! the Entity with its add rule and stub seed (`entity`), one Interactor per intent
-//! (`interactor`) and the repository port (`protocols`). `fake` holds the in-memory port and the
-//! stub seed; `contract` the checks both it and `lib-database`'s adapter keep (#849). The page's
-//! Presenter, keymap and Messages arrive with the page (#850); until then the Desktop's Settings ›
-//! Institutions page reads them from the `LedgerStore`'s read copy and writes them through a
-//! `LedgerCommand`, which the store forwards to the port. No UI toolkit and no I/O.
+//! Institution). A VIPER module (`docs/development/viper-architecture.md`, #847): the Entity with
+//! its add rule and stub seed (`entity`), one Interactor per intent (`interactor`), one Presenter
+//! per View and Dialog (`presenter`), the ports and the `InstitutionsRouter` (`protocols`), the
+//! page's default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the
+//! stub seed and a recording Router; `contract` the checks both they and `lib-database`'s adapter
+//! keep (#849). No UI toolkit and no I/O; the Desktop draws the view models
+//! (`bin-desktop/src/institutions/`). Accounts still read Institutions from the `Ledger` read copy
+//! until the Accounts page moves.
 //!
 //! The rule: an Institution's name is required, stored trimmed, and case-insensitively unique.
 //! Only add exists; edit and delete are a backlog ticket.
@@ -19,7 +20,13 @@ pub mod contract;
 mod entity;
 pub mod fake;
 pub mod interactor;
+pub mod keymap;
+pub mod msg;
+pub mod presenter;
 pub mod protocols;
 
 pub use entity::*;
-pub use protocols::InstitutionRepository;
+pub use protocols::{
+    InstitutionRepository, InstitutionUnits, InstitutionsDialog, InstitutionsOutcome,
+    InstitutionsPorts, InstitutionsRouter, SharedPorts,
+};

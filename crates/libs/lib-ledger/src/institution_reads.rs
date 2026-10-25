@@ -1,8 +1,8 @@
 //! The Ledger's Institutions are a read copy of the Institutions port (#849): a Client refreshes it
 //! from the port after each Institutions write and on rollback ([`Ledger::refresh_institutions`]),
-//! for the Accounts page and its Institution select, and the Institutions page until it reads its
-//! own port (#850). The one writer, the Institutions page's add, records an `UpsertInstitution` a
-//! Client forwards to the port. The copy goes when the last reader has its own port.
+//! for the Accounts page and its Institution select. Nothing writes Institutions through the
+//! Ledger: the Institutions module writes its port (#850). The copy goes when the last reader has
+//! its own port.
 
 use lib_institutions::Institution;
 

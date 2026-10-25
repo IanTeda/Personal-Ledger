@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::{
+    institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     payees::{PayeesPage, PayeesSetup, payees_page},
@@ -22,7 +23,6 @@ use crate::{
         documents::DocumentsPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
-        institutions::InstitutionsPage,
         inventory::InventoryPage,
         page::PageRowClicked,
         state::SettingsView,
@@ -41,10 +41,11 @@ use crate::{
     view::event::{Reveal, ViewEvent},
 };
 
-/// What `shell::router::build` hands the Settings pages that are modules' Views: the Units and
-/// Payees modules' ports and keymaps.
+/// What `shell::router::build` hands the Settings pages that are modules' Views: the Units,
+/// Institutions and Payees modules' ports and keymaps.
 pub struct SettingsSetup {
     pub units: UnitsSetup,
+    pub institutions: InstitutionsSetup,
     pub payees: PayeesSetup,
 }
 
@@ -279,12 +280,21 @@ impl SettingsPages {
         setup: SettingsSetup,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
-        let SettingsSetup { units, payees } = setup;
+        let SettingsSetup {
+            units,
+            institutions,
+            payees,
+        } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
             display: cx.new(|_| DisplayPage::default()),
             units: units_page(units.ports, ledger.clone(), units.keymap, cx),
-            institutions: cx.new(|cx| InstitutionsPage::new(ledger.clone(), cx)),
+            institutions: institutions_page(
+                institutions.ports,
+                ledger.clone(),
+                institutions.keymap,
+                cx,
+            ),
             accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), cx)),
             categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), clock, cx)),
             tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),

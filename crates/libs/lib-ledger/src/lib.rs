@@ -11,7 +11,6 @@ mod budgets_seed_tests;
 mod category_commands;
 mod change;
 mod document_commands;
-mod institution_commands;
 mod institution_reads;
 mod inventory_commands;
 mod payee_reads;
@@ -40,7 +39,6 @@ pub use document_commands::{
     ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, SkipDocument,
     ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
-pub use institution_commands::AddInstitution;
 pub use inventory_commands::{
     AddArea, AddLocation, EditArea, EditLocation, MoveArea, MoveAreaRefusal, RemoveArea,
     RemoveLocation,

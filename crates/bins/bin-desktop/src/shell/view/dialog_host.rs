@@ -1,6 +1,6 @@
 //! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while
 //! open, and the keyboard handling they share. A module's Dialog (Units, Bills, Pay, Payees) is an
-//! Entity in `shell::view::dialog_entity` instead; these eleven move there with their slices
+//! Entity in `shell::view::dialog_entity` instead; these ten move there with their slices
 //! (#820). The key handling needs no window, so a Dialog's keys are unit-tested without one.
 //!
 //! `Root` holds `Option<OpenDialog>` and opens and closes it only through `Root::open_dialog`
@@ -34,7 +34,6 @@ use crate::{
     budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
     form::field::TextField, ledger_store::LedgerStore, settings::accounts::dialogs::AccountsDialog,
     settings::documents::dialogs::DocumentTypesDialog,
-    settings::institutions::dialogs::InstitutionsDialog,
     settings::inventory::dialogs::InventoryDialog, settings::tags::dialogs::TagsDialog,
     settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
 };
@@ -273,11 +272,10 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open legacy Dialog, one variant per feature: the eleven not yet on a module's Presenter.
+/// The open legacy Dialog, one variant per feature: the ten not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    Institutions(InstitutionsDialog),
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
     DocumentTypes(DocumentTypesDialog),
@@ -294,7 +292,6 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
@@ -310,7 +307,6 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Institutions(dialog) => dialog,
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
@@ -359,7 +355,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Institutions, InstitutionsDialog);
 dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);

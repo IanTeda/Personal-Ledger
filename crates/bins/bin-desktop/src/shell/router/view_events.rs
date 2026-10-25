@@ -121,6 +121,7 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 crate::settings::pages::SettingsSetup {
                     units: crate::units::UnitsSetup::stub(),
+                    institutions: crate::institutions::InstitutionsSetup::stub(&storage),
                     payees: crate::payees::PayeesSetup::stub(&storage),
                 },
                 crate::bills::BillsSetup::stub(&storage),
@@ -192,6 +193,7 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 crate::settings::pages::SettingsSetup {
                     units: crate::units::UnitsSetup::stub(),
+                    institutions: crate::institutions::InstitutionsSetup::stub(&storage),
                     payees: crate::payees::PayeesSetup::stub(&storage),
                 },
                 crate::bills::BillsSetup::stub(&storage),

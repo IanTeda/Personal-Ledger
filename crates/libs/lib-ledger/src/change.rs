@@ -16,7 +16,6 @@ use lib_core::{
     AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId, TransactionId,
 };
 use lib_documents::{Document, types::DocumentTypeRow};
-use lib_institutions::Institution;
 use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
 use lib_tags::Tag;
@@ -74,7 +73,6 @@ pub enum LedgerChange {
     DeleteArea(AreaId),
     UpsertItem(Item),
     DeleteItem(ItemId),
-    UpsertInstitution(Institution),
 }
 
 impl LedgerChange {
@@ -95,7 +93,6 @@ impl LedgerChange {
             | Self::DeleteArea(_)
             | Self::UpsertItem(_)
             | Self::DeleteItem(_) => Domain::Inventory,
-            Self::UpsertInstitution(_) => Domain::Institutions,
         }
     }
 }
@@ -128,15 +125,6 @@ mod tests {
         assert_eq!(
             domains(&changes),
             BTreeSet::from([Domain::Tags, Domain::Categories])
-        );
-    }
-
-    #[test]
-    fn an_institution_change_names_its_own_domain() {
-        assert_eq!(
-            LedgerChange::UpsertInstitution(lib_institutions::default_institutions().remove(0))
-                .domain(),
-            Domain::Institutions
         );
     }
 
