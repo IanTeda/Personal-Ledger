@@ -216,6 +216,10 @@ impl PayeesStore for FailingPayees {
         }
     }
 
+    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
+        Some(&mut self.usage)
+    }
+
     fn reload(&mut self) -> lib_database::Result<()> {
         self.payees.inner = self.stored.clone();
         Ok(())
@@ -304,32 +308,6 @@ fn stub_bills() -> InMemoryBills {
         plans: ledger.bill_plans().to_vec(),
         entries: ledger.bill_entries().to_vec(),
     }
-}
-
-/// The stub Ledger's Payees, as the in-memory ports hold them, with what names each counted from
-/// the stub's Splits and Bill Plans as the Payees adapter counts it in the file.
-fn stub_payees() -> lib_payees::fake::InMemoryPorts {
-    let mut ports = lib_payees::fake::InMemoryPorts::stub();
-    ports.usage = stub_payee_usage();
-    ports
-}
-
-/// What names each stub Payee, counted once as the harness is built: a Split a test adds later
-/// isn't counted.
-fn stub_payee_usage() -> lib_payees::fake::InMemoryPayeeUsage {
-    let mut usage = lib_payees::fake::InMemoryPayeeUsage::default();
-    let splits = stub_transactions().transactions;
-    for id in splits
-        .iter()
-        .flat_map(|t| &t.splits)
-        .filter_map(|s| s.payee_id)
-    {
-        usage.uses.entry(id).or_default().splits += 1;
-    }
-    for id in stub_bills().plans.iter().filter_map(|plan| plan.payee_id) {
-        usage.uses.entry(id).or_default().bill_plans += 1;
-    }
-    usage
 }
 
 /// The stub Ledger's Transactions as of the test date, as the in-memory port holds them.
@@ -495,7 +473,7 @@ impl<'a> Harness<'a> {
             configured_level,
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
-                stub_payees(),
+                lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
             ),
@@ -513,7 +491,7 @@ impl<'a> Harness<'a> {
             None,
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
-                stub_payees(),
+                lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
             ),
@@ -535,7 +513,7 @@ impl<'a> Harness<'a> {
     /// As [`Harness::new`], on a Payees usage whose every count fails, as a Ledger file that
     /// can't be read would.
     pub fn with_unreadable_payee_usage(app: &'a mut TestAppContext) -> Self {
-        let mut payees = stub_payees();
+        let mut payees = lib_payees::fake::InMemoryPorts::stub();
         payees.usage.unreadable = true;
         Self::build(
             app,
@@ -586,7 +564,7 @@ impl<'a> Harness<'a> {
                     &written,
                     reload_fails,
                 )),
-                payees: Box::new(stub_payees()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
                 commit: Rc::new(FailingCommit {
@@ -605,7 +583,7 @@ impl<'a> Harness<'a> {
     pub fn with_failing_payees(app: &'a mut TestAppContext) -> Self {
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = stub_payees().payees;
+        let stored = lib_payees::fake::InMemoryPorts::stub().payees;
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -617,7 +595,7 @@ impl<'a> Harness<'a> {
                         inner: stored.clone(),
                         written: written.clone(),
                     },
-                    usage: stub_payee_usage(),
+                    usage: lib_payees::fake::InMemoryPayeeUsage::default(),
                     stored,
                 }),
                 transactions: Box::new(stub_transactions()),
@@ -645,7 +623,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                payees: Box::new(stub_payees()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: stored.clone(),
@@ -677,7 +655,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                payees: Box::new(stub_payees()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(FailingBills {
                     bills: Marked {
@@ -709,7 +687,7 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                payees: Box::new(stub_payees()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: transactions.clone(),

@@ -1,26 +1,27 @@
 //! The Payees ports as the Desktop holds them: the store `shell::router::build` is given, with
-//! `PayeeCategories` copied from the Ledger read copy (#832's halfway shim), and the step that
-//! keeps the Ledger's read copy of the Payees in line after a Payees write. The write is committed
-//! by the input it was made in (`crate::input::send`), not here.
+//! `PayeeCategories` copied from the Ledger read copy (#832's halfway shim) and an in-memory
+//! store's usage counted from it (#841), and the step that keeps the Ledger's read copy of the
+//! Payees in line after a Payees write. The write is committed by the input it was made in
+//! (`crate::input::send`), not here.
 //!
 //! The ports are one value shared three ways: the Payees module's Presenters read and write them
 //! as [`PayeesPorts`], and the Ledger's forwarding shim ([`forward`]) and the Bills reads hold the
 //! same value as a `PayeesStore`.
 //!
-//! The Categories are copied from the Ledger before each Payees event, since a port can't reach
-//! the `LedgerStore` Entity without a gpui context. The copy goes when Categories answer it
-//! through their own port (#808).
+//! The Categories, and an in-memory store's usage, are copied from the Ledger before each Payees
+//! event, since a port can't reach the `LedgerStore` Entity without a gpui context. So a Split
+//! written since, by an Import commit, is counted. The Categories copy goes when Categories answer
+//! it through their own port (#808); the stored Desktop's usage is the adapter's, counted in the
+//! file.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_core::PayeeId;
 use lib_database::PayeesStore;
 use lib_ledger::{Ledger, LedgerChange};
 use lib_payees::fake::{InMemoryPayeeCategories, InMemoryPayeeUsage};
-use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeeUse, PayeesPorts, PortsMut};
+use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 use crate::ledger_store::LedgerStore;
 
@@ -28,7 +29,7 @@ use crate::ledger_store::LedgerStore;
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// `store`'s Payees and their use, with the Categories a Payee may default to copied from the
-/// Ledger.
+/// Ledger, and an in-memory store's use counted from it.
 pub struct LedgerBackedPorts {
     store: Box<dyn PayeesStore>,
     categories: InMemoryPayeeCategories,
@@ -49,32 +50,17 @@ impl LedgerBackedPorts {
             payees: lib_payees::fake::InMemoryPayees {
                 payees: ledger.payees().to_vec(),
             },
-            usage: usage_in(ledger),
             ..Default::default()
         }));
-        ports.borrow_mut().copy_categories(ledger);
+        ports.borrow_mut().copy_from_ledger(ledger);
         ports
     }
 
-    fn copy_categories(&mut self, ledger: &Ledger) {
+    fn copy_from_ledger(&mut self, ledger: &Ledger) {
         self.categories.categories = ledger.payee_categories();
-    }
-}
-
-/// How many of `ledger`'s Splits and Bill Plans name each Payee, as in-memory usage: what the
-/// Payees adapter counts in the file.
-fn usage_in(ledger: &Ledger) -> InMemoryPayeeUsage {
-    let mut uses: HashMap<PayeeId, PayeeUse> = HashMap::new();
-    let splits = ledger.transactions().iter().flat_map(|t| &t.splits);
-    for id in splits.filter_map(|split| split.payee_id) {
-        uses.entry(id).or_default().splits += 1;
-    }
-    for id in ledger.bill_plans().iter().filter_map(|plan| plan.payee_id) {
-        uses.entry(id).or_default().bill_plans += 1;
-    }
-    InMemoryPayeeUsage {
-        uses,
-        ..Default::default()
+        if let Some(usage) = self.store.usage_to_count() {
+            usage.uses = ledger.payee_uses();
+        }
     }
 }
 
@@ -114,6 +100,10 @@ impl PayeesStore for LedgerBackedPorts {
         self.store.split_mut()
     }
 
+    fn usage_to_count(&mut self) -> Option<&mut InMemoryPayeeUsage> {
+        self.store.usage_to_count()
+    }
+
     fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
         self.store.bill_payees()
     }
@@ -139,24 +129,25 @@ pub fn forward(store: &mut dyn PayeesStore, changes: &[LedgerChange]) -> bool {
     wrote
 }
 
-/// Copies the Categories a Payee may default to from `ledger` into `ports`, for the next Payees
-/// event and a view model drawn outside one.
-pub fn copy_categories(ports: &DesktopPorts, ledger: &Ledger) {
-    ports.borrow_mut().copy_categories(ledger);
+/// Copies the Categories a Payee may default to from `ledger` into `ports`, and recounts an
+/// in-memory store's usage from its Splits and Bill Plans, for the next Payees event and a view
+/// model drawn outside one.
+pub fn copy_from_ledger(ports: &DesktopPorts, ledger: &Ledger) {
+    ports.borrow_mut().copy_from_ledger(ledger);
 }
 
 /// Brings the Ledger read copy of the Payees in line with the ports, announcing `Domain::Payees`
-/// when it changed, and copies the Categories back for the next Payees event. Run before and after
+/// when it changed, and copies the Categories and usage back for the next Payees event. Run before and after
 /// every Payees event and Dialog confirm, so Transactions, Bills, Import and Documents see a write
 /// at once.
 pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_payees(cx));
-    copy_categories(ports, ledger.read(cx).ledger());
+    copy_from_ledger(ports, ledger.read(cx).ledger());
 }
 
 #[cfg(test)]
 mod tests {
-    use lib_core::{CategoryId, TransactionId};
+    use lib_core::{CategoryId, PayeeId, TransactionId};
     use lib_payees::fake::InMemoryPorts;
 
     use super::*;
@@ -199,5 +190,27 @@ mod tests {
         let leaves = ports.categories().payee_categories();
         assert!(leaves.iter().any(|leaf| leaf.id == CategoryId::seed(7)));
         assert!(!leaves.iter().any(|leaf| leaf.id == CategoryId::seed(6)));
+    }
+
+    #[test]
+    fn a_split_written_after_the_ports_are_built_is_counted_at_the_next_copy() {
+        let mut ledger = Ledger::stub();
+        let woolworths = PayeeId::seed(1);
+        let ports = LedgerBackedPorts::in_memory(&ledger);
+        let before = PayeesPorts::usage(&*ports.borrow())
+            .payee_usage(woolworths)
+            .expect("memory always counts");
+
+        let mut transactions = ledger.transactions().to_vec();
+        let mut booked = transactions[0].clone();
+        booked.id = TransactionId::seed(9_999);
+        booked.splits.truncate(1);
+        booked.splits[0].payee_id = Some(woolworths);
+        transactions.push(booked);
+        ledger.refresh_transactions(transactions);
+        copy_from_ledger(&ports, &ledger);
+
+        let uses = PayeesPorts::usage(&*ports.borrow()).payee_usage(woolworths);
+        assert_eq!(uses.map(|uses| uses.splits), Some(before.splits + 1));
     }
 }

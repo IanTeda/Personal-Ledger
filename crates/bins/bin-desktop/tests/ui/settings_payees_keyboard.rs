@@ -192,6 +192,21 @@ fn d_on_a_payee_whose_use_cant_be_counted_offers_only_deactivate(app: &mut TestA
 }
 
 #[gpui::test]
+fn d_on_a_payee_an_import_created_and_named_on_a_split_offers_only_deactivate(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    // The Import commit books a Split naming its new Payee after the harness counted usage.
+    super::import_keyboard::commit_the_candle_shop_as_a_new_payee(&mut ui);
+    on_payee(&mut ui, "Aussie Candle Co");
+
+    ui.press("d");
+
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
+    assert_eq!(ui.dialog_value("action").as_deref(), Some("Deactivate"));
+}
+
+#[gpui::test]
 fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
     // A new Payee is unused, so the dialog hard-deletes it.

@@ -274,6 +274,13 @@ pub trait PayeesStore {
     /// The repository and usage, for one write.
     fn split_mut(&mut self) -> lib_payees::PortsMut<'_>;
 
+    /// The usage a store holds in memory rather than counts, for its holder to recount from the
+    /// Splits and Bill Plans it can see before each ask (#841). `None` for the adapter, which
+    /// counts in the file on each ask.
+    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
+        None
+    }
+
     /// Every Payee as `lib-bills`' `BillPayees` reads it, inactive ones included.
     fn bill_payees(&self) -> Vec<BillPayee> {
         bill_payees(&self.payees().payees())
@@ -330,6 +337,10 @@ impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
         (**self).split_mut()
     }
 
+    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
+        (**self).usage_to_count()
+    }
+
     fn bill_payees(&self) -> Vec<BillPayee> {
         (**self).bill_payees()
     }
@@ -339,7 +350,8 @@ impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
     }
 }
 
-/// Memory is all there is, so a reload has nothing to read.
+/// Memory is all there is, so a reload has nothing to read, and the usage is whatever its holder
+/// last counted.
 impl PayeesStore for lib_payees::fake::InMemoryPorts {
     fn payees(&self) -> &dyn PayeeRepository {
         &self.payees
@@ -355,6 +367,10 @@ impl PayeesStore for lib_payees::fake::InMemoryPorts {
 
     fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
         lib_payees::fake::InMemoryPorts::split_mut(self)
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
+        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> Result<()> {

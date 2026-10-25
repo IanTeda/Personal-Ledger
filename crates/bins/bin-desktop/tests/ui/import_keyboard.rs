@@ -105,11 +105,15 @@ fn select_row(ui: &mut Harness<'_>, index: usize) {
     assert_eq!(ui.import().expect("import is open").selected, index);
 }
 
-#[gpui::test]
-fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
-    app: &mut TestAppContext,
-) {
-    let mut ui = on_import(app);
+/// Opens Import, takes the candle shop's row as a new Payee, resolves every other row and commits,
+/// so one Split names a Payee the commit created. Ends on Transactions with the Import closed.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: an Import step that won't commit should fail the test loudly"
+)]
+pub(super) fn commit_the_candle_shop_as_a_new_payee(ui: &mut Harness<'_>) {
+    ui.press(": i m p o r t enter");
+    assert_eq!(ui.noun(), Noun::Transactions);
     let candle = ui
         .import()
         .expect("import is open")
@@ -117,7 +121,7 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
         .iter()
         .position(|row| row.raw == "SP AUSSIE CANDLE CO")
         .expect("the seeded statement has the candle shop");
-    select_row(&mut ui, candle);
+    select_row(ui, candle);
     ui.press("n");
 
     let to_review: Vec<usize> = ui
@@ -130,7 +134,7 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
         .map(|(index, _)| index)
         .collect();
     for index in to_review {
-        select_row(&mut ui, index);
+        select_row(ui, index);
         // `j` steps past "choose category…" to the first leaf.
         ui.press("c j enter");
     }
@@ -151,6 +155,14 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
         .expect("a Toast says so");
     assert_eq!(toast.kind, "Success");
     assert_eq!(toast.text, "Imported 18 transactions");
+}
+
+#[gpui::test]
+fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    commit_the_candle_shop_as_a_new_payee(&mut ui);
 
     ui.press("g s");
     ui.press("j j j j j j j");

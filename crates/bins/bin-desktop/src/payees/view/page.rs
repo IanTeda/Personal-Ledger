@@ -52,7 +52,7 @@ impl PayeesPage {
         keymap: Keymap<PayeesPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        ports::copy_categories(&ports, ledger.read(cx).ledger());
+        ports::copy_from_ledger(&ports, ledger.read(cx).ledger());
         Self {
             presenter: PayeesPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
@@ -95,7 +95,7 @@ impl PayeesPage {
 
     /// The page as drawn, with the Categories as the Ledger has them now.
     pub fn view_model(&self, cx: &App) -> PayeesPageViewModel {
-        ports::copy_categories(&self.ports, self.ledger.read(cx).ledger());
+        ports::copy_from_ledger(&self.ports, self.ledger.read(cx).ledger());
         self.presenter.view_model()
     }
 
