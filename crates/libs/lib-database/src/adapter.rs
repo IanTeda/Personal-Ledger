@@ -4,6 +4,7 @@
 
 pub mod bill_payments;
 pub mod bills;
+pub mod institutions;
 pub mod payees;
 pub mod transactions;
 pub mod units;

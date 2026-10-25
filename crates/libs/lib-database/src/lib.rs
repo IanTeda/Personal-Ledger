@@ -78,10 +78,11 @@ pub use change_sets::ChangeSet;
 pub mod adapter;
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
+pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
-    BillsStore, CountingCommit, PayeesStore, SharedBillsStore, SharedPayeesStore,
-    SharedTransactionsStore, TransactionsStore, UnitsStore,
+    BillsStore, CountingCommit, InstitutionsStore, PayeesStore, SharedBillsStore,
+    SharedPayeesStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;

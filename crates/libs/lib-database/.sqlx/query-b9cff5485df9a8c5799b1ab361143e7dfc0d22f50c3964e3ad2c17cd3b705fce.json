@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: InstitutionId\", name, account_type\n           FROM institutions\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: InstitutionId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_type",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "b9cff5485df9a8c5799b1ab361143e7dfc0d22f50c3964e3ad2c17cd3b705fce"
+}

@@ -124,8 +124,8 @@ pub struct ShellLogs {
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
-/// off. `stores` is where the Units, the Payees, the Transactions and the Bills are kept, the app's
-/// SQLite adapters or a test's in-memory ports, with the commit every input ends in
+/// off. `stores` is where the Units, the Institutions, the Payees, the Transactions and the Bills
+/// are kept, the app's SQLite adapters or a test's in-memory ports, with the commit every input ends in
 /// (`crate::input::send`) and the writer's failure channel, on which a failed write rolls back.
 pub fn build(
     persisted: PersistedState,
@@ -138,6 +138,7 @@ pub fn build(
 ) -> Root {
     let Stores {
         units,
+        institutions,
         payees,
         transactions,
         bills,
@@ -175,6 +176,7 @@ pub fn build(
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
     let storage = crate::ledger_store::LedgerSetup {
+        institutions,
         payees,
         transactions,
         bills: bills.clone(),

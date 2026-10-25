@@ -2,9 +2,9 @@
 //! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
-//! The Ledger's Payees, Transactions, Bill Plans and Bill Schedule are read copies of their ports
-//! (#774, #831): `apply` forwards a command's Payee, Transaction and Bills changes to the ports and
-//! refreshes the copies from them. The Payees and Bills ports are shared with their modules, which
+//! The Ledger's Institutions, Payees, Transactions, Bill Plans and Bill Schedule are read copies of
+//! their ports (#774, #831, #849): `apply` forwards a command's Institution, Payee, Transaction and
+//! Bills changes to the ports and refreshes the copies from them. The Payees and Bills ports are shared with their modules, which
 //! write them through their Interactors and refresh the copy after each event
 //! ([`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
 //!
@@ -19,29 +19,31 @@ use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_bills::BillsPorts as _;
-use lib_database::{PayeesStore, SharedTransactionsStore};
+use lib_database::{InstitutionsStore, PayeesStore, SharedTransactionsStore};
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
-/// What `shell::router::build` hands the Ledger: the Payees ports it shares with the Payees module
+/// What `shell::router::build` hands the Ledger: where its Institutions are kept, the Payees ports it shares with the Payees module
 /// and the Bills reads, where its Transactions are kept, shared with the Bill Payments module, and
 /// the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
+    pub institutions: Box<dyn InstitutionsStore>,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
 }
 
 impl LedgerSetup {
-    /// The stub Ledger's Payees, Transactions and Bills as of `today`, in memory, for a test that
-    /// builds `Root` directly.
+    /// The stub Ledger's Institutions, Payees, Transactions and Bills as of `today`, in memory, for
+    /// a test that builds `Root` directly.
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         Self {
+            institutions: institutions_in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             })),
@@ -49,6 +51,13 @@ impl LedgerSetup {
             payees,
         }
     }
+}
+
+/// `ledger`'s own Institutions in memory as the Institutions store.
+fn institutions_in_memory(ledger: &Ledger) -> Box<dyn InstitutionsStore> {
+    Box::new(lib_institutions::fake::InMemoryInstitutions {
+        institutions: ledger.institutions().to_vec(),
+    })
 }
 
 /// Emitted after a write lands, naming every domain it touched.
@@ -64,6 +73,7 @@ pub struct LegacyApplied;
 
 pub struct LedgerStore {
     ledger: Ledger,
+    institutions: Box<dyn InstitutionsStore>,
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
@@ -73,8 +83,8 @@ impl EventEmitter<LedgerChanged> for LedgerStore {}
 impl EventEmitter<LegacyApplied> for LedgerStore {}
 
 impl LedgerStore {
-    /// `ledger` with its own Payees, Transactions and Bills in memory as the ports, for a test that
-    /// needs no storage.
+    /// `ledger` with its own Institutions, Payees, Transactions and Bills in memory as the ports,
+    /// for a test that needs no storage.
     pub fn new(ledger: Ledger) -> Self {
         let transactions = lib_transactions::fake::InMemoryTransactions {
             transactions: ledger.transactions().to_vec(),
@@ -82,6 +92,7 @@ impl LedgerStore {
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
         let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone());
         Self {
+            institutions: institutions_in_memory(&ledger),
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -89,15 +100,17 @@ impl LedgerStore {
         }
     }
 
-    /// `ledger` with its Payees, Transactions and Bills read from `setup`'s stores, which its
-    /// writes then go to.
+    /// `ledger` with its Institutions, Payees, Transactions and Bills read from `setup`'s stores,
+    /// which its writes then go to.
     pub fn with_storage(ledger: Ledger, setup: LedgerSetup) -> Self {
         let mut store = Self {
             ledger,
+            institutions: setup.institutions,
             payees: setup.payees,
             transactions: setup.transactions,
             bills: setup.bills,
         };
+        store.copy_institutions();
         store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
@@ -139,8 +152,8 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Payee, Transaction and Bills changes go to the ports (the forwarding shims,
-    /// #774, #831), with the Unmatch a deleted Transaction's entries need, for the input's one
+    /// touched. Its Institution, Payee, Transaction and Bills changes go to the ports (the
+    /// forwarding shims, #774, #831, #849), with the Unmatch a deleted Transaction's entries need, for the input's one
     /// commit; run outside any input, it emits [`LegacyApplied`] to be committed. The Payees go
     /// first, since the Splits an Import books name the Payees it creates. The other domains'
     /// changes aren't persisted yet (#636), so they're dropped here.
@@ -152,6 +165,8 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
+            let institutions_written =
+                crate::settings::institutions::ports::forward(&mut *self.institutions, &changes);
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
@@ -160,6 +175,9 @@ impl LedgerStore {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
+            if institutions_written {
+                self.copy_institutions();
+            }
             if payees_written {
                 self.copy_payees();
             }
@@ -172,6 +190,18 @@ impl LedgerStore {
             self.announce(cx, what);
         }
         Ok(outcome)
+    }
+
+    /// Puts the Institutions back as stored, after a write that named them failed, and overwrites
+    /// the read copy, announcing `Domain::Institutions` so every reader redraws (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the port and the read copy are left as they were.
+    pub fn reload_institutions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
+        self.institutions.reload()?;
+        self.copy_institutions();
+        self.announce(cx, BTreeSet::from([Domain::Institutions]));
+        Ok(())
     }
 
     /// Puts the Payees back as stored, after a write that named them failed, and overwrites the
@@ -233,6 +263,12 @@ impl LedgerStore {
         if self.copy_transactions() {
             self.announce(cx, BTreeSet::from([Domain::Transactions]));
         }
+    }
+
+    /// Brings the Institutions read copy in line with the port, returning whether it changed.
+    fn copy_institutions(&mut self) -> bool {
+        let institutions = self.institutions.institutions().institutions();
+        self.ledger.refresh_institutions(institutions)
     }
 
     /// Brings the Payees read copy in line with the port, returning whether it changed.
@@ -415,6 +451,7 @@ mod tests {
     ) {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
+        let institutions = Box::new(storage.institutions);
         let payees = crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees));
         let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), payees.clone());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
@@ -423,6 +460,7 @@ mod tests {
             LedgerStore::with_storage(
                 Ledger::stub_on(today),
                 LedgerSetup {
+                    institutions,
                     payees,
                     transactions,
                     bills: bills.clone(),

@@ -12,6 +12,7 @@ mod category_commands;
 mod change;
 mod document_commands;
 mod institution_commands;
+mod institution_reads;
 mod inventory_commands;
 mod payee_reads;
 pub mod query;

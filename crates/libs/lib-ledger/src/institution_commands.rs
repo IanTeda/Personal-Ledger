@@ -1,6 +1,7 @@
 //! The Institutions writes (ADR-0038): each a command value that records an upsert per row it
-//! wrote (ADR-0039). The add rule is `lib_institutions`', run over the Ledger's own rows until the
-//! Desktop's Institutions page writes through the module's port (#850).
+//! wrote (ADR-0039), which a Client forwards to the Institutions port (#849). The add rule is
+//! `lib_institutions`', run over the Ledger's read copy until the Desktop's Institutions page
+//! writes through the module's port (#850).
 
 use lib_core::InstitutionId;
 use lib_institutions::{InstitutionDraft, InstitutionError, insert_institution};

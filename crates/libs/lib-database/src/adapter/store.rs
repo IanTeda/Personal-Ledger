@@ -10,6 +10,9 @@
 //! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
 //! ([`SharedPayeesStore`]): Bills reads its rows, and the Desktop's Ledger forwards the Payees
 //! writers not yet migrated to it.
+//!
+//! [`Stores::with_units`] fills every store but the Units with an empty in-memory one, for a Client
+//! test that drives only the Units: a domain joining the bundle then needs no edit there (#849).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -17,6 +20,8 @@ use std::sync::mpsc;
 
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_institutions::InstitutionRepository;
+use lib_institutions::fake::InMemoryInstitutions;
 use lib_payees::{PayeeRepository, PayeeUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
@@ -27,8 +32,8 @@ use lib_units::{
 
 use crate::adapter::payees::bill_payees;
 use crate::{
-    BillsAdapter, Commit, InMemoryCommit, PayeesAdapter, Result, Stores, TransactionsAdapter,
-    UnitsAdapter,
+    BillsAdapter, Commit, InMemoryCommit, InstitutionsAdapter, PayeesAdapter, Result, Stores,
+    TransactionsAdapter, UnitsAdapter, WriteFailure,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -93,6 +98,48 @@ impl UnitsStore for InMemoryPorts {
             base_unit: &mut self.base_unit,
             usage,
         }
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// The Institutions repository port, wherever it is kept.
+pub trait InstitutionsStore {
+    fn institutions(&self) -> &dyn InstitutionRepository;
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl InstitutionsStore for InstitutionsAdapter {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        self
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        InstitutionsAdapter::reload(self)
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl InstitutionsStore for InMemoryInstitutions {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        self
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        self
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -408,11 +455,12 @@ impl Commit for CountingCommit {
 }
 
 impl Stores {
-    /// `units`, `payees`, `transactions` and `bills` in memory, committed through a
-    /// [`CountingCommit`] whose count is returned, on a failure channel nothing reports on, since
+    /// `units`, `institutions`, `payees`, `transactions` and `bills` in memory, committed through
+    /// a [`CountingCommit`] whose count is returned, on a failure channel nothing reports on, since
     /// there is no writer.
     pub fn fake(
         units: InMemoryPorts,
+        institutions: InMemoryInstitutions,
         payees: lib_payees::fake::InMemoryPorts,
         transactions: InMemoryTransactions,
         bills: InMemoryBills,
@@ -421,6 +469,7 @@ impl Stores {
         let count = commit.count();
         let stores = Self {
             units: Box::new(units),
+            institutions: Box::new(institutions),
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
@@ -428,6 +477,25 @@ impl Stores {
             failures: mpsc::channel().1,
         };
         (stores, count)
+    }
+
+    /// `units` committed through `commit`, failures reported on `failures`, and every other store
+    /// empty in memory. For a Client test that drives only the Units, which then needs no edit as
+    /// a domain joins the bundle (the TUI's, #849).
+    pub fn with_units(
+        units: Box<dyn UnitsStore>,
+        commit: Rc<dyn Commit>,
+        failures: mpsc::Receiver<WriteFailure>,
+    ) -> Self {
+        Self {
+            units,
+            institutions: Box::new(InMemoryInstitutions::default()),
+            payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
+            transactions: Box::new(InMemoryTransactions::default()),
+            bills: Box::new(InMemoryBills::default()),
+            commit,
+            failures,
+        }
     }
 }
 
@@ -439,6 +507,7 @@ mod tests {
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
         let (stores, count) = Stores::fake(
             InMemoryPorts::stub(chrono::Utc::now()),
+            InMemoryInstitutions::stub(),
             lib_payees::fake::InMemoryPorts::stub(),
             InMemoryTransactions::default(),
             InMemoryBills::default(),

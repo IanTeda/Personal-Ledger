@@ -53,3 +53,28 @@ fn add_institution_enter_does_nothing_without_a_name(app: &mut TestAppContext) {
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
 }
+
+#[gpui::test]
+fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_institutions(app);
+    ui.press("g s");
+    ui.click("settings-index-Institutions");
+    let stored = ui.settings_institutions().institutions;
+
+    ui.click("settings-add-institution");
+    ui.press("b a n k tab enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().institutions.len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_institutions().institutions, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text
+                == "Couldn't save the change to institutions, so they are back as last saved"
+    }));
+}

@@ -1,6 +1,5 @@
 //! The contract every stored Institutions port keeps (ADR-0046), run against both the in-memory
-//! port here and, once Institutions persist (#849), the `lib-database` adapter, so the fake the
-//! tests use can be trusted.
+//! port here and the `lib-database` adapter (#849), so the fake the tests use can be trusted.
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
