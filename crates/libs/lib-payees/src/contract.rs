@@ -4,17 +4,16 @@
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
-//! the Payee rules, reloads as a restart would, and expects the same rows back. Until the Payees
-//! Interactors land (#832) the writes here apply the rules to the rows read from the repository
-//! and write back what changed, as `lib-ledger`'s commands do to the Ledger.
+//! the Payees Interactors, as a Client does, reloads as a restart would, and expects the same rows
+//! back.
 
 use lib_core::{CategoryId, PayeeId};
 
 use crate::fake::InMemoryPorts;
+use crate::interactor::{AddPayee, DeactivatePayee, DeletePayee, EditPayee};
 use crate::protocols::PortsMut;
 use crate::{
-    DeletePayeeRefusal, Payee, PayeeDraft, PayeeError, PayeeUse, default_payees, delete_payee,
-    edit_payee, find_by_name, get, insert_payee, set_active,
+    DeletePayeeRefusal, Payee, PayeeDraft, PayeeError, PayeeUse, default_payees, find_by_name, get,
 };
 
 /// A stored set of the Payees ports, lent out together for one write.
@@ -130,45 +129,37 @@ fn draft(name: &str, aliases: &[&str]) -> PayeeDraft {
     }
 }
 
-/// Adds a Payee by the rules, writing the new row.
 fn add(ports: PortsMut<'_>, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
-    let mut rows = ports.payees.payees();
-    let id = insert_payee(&mut rows, draft)?;
-    let row = get(&rows, id).expect("the Payee was just added").clone();
-    ports.payees.upsert_payee(row);
-    Ok(id)
+    AddPayee(draft.clone())
+        .run(ports.payees)
+        .map(|payee| payee.id)
 }
 
-/// Edits a Payee by the rules, writing the edited row.
 fn edit(ports: PortsMut<'_>, id: PayeeId, draft: &PayeeDraft) -> Result<(), PayeeError> {
-    let mut rows = ports.payees.payees();
-    edit_payee(&mut rows, id, draft)?;
-    let row = get(&rows, id).expect("the Payee was just edited").clone();
-    ports.payees.upsert_payee(row);
-    Ok(())
+    EditPayee {
+        id,
+        draft: draft.clone(),
+    }
+    .run(ports.payees)
+    .map(drop)
 }
 
-/// Deletes a Payee by the rules, refused while anything names it.
 fn delete(ports: PortsMut<'_>, id: PayeeId) -> Result<(), DeletePayeeRefusal> {
-    let mut rows = ports.payees.payees();
-    delete_payee(&mut rows, ports.usage, id)?;
-    ports.payees.delete_payee(id);
-    Ok(())
+    DeletePayee(id).run(ports).map(drop)
 }
 
 fn deactivate(ports: PortsMut<'_>, id: PayeeId) {
-    let mut rows = ports.payees.payees();
-    set_active(&mut rows, id, false).expect("the Payee is on the Ledger");
-    let row = get(&rows, id).expect("the Payee is on the Ledger").clone();
-    ports.payees.upsert_payee(row);
+    DeactivatePayee(id)
+        .run(ports.payees)
+        .expect("the Payee is on the Ledger");
 }
 
 fn id_of(ports: &mut impl StoredPorts, name: &str) -> PayeeId {
     find_by_name(&ports.split_mut().payees.payees(), name).expect("a stub Payee")
 }
 
-/// Writes every kind of change through the rules, reloads, and gets the same rows: an added Payee
-/// with aliases and a default Category, a rename that keeps the old name as an alias, and a
+/// Writes every kind of change through the Interactors, reloads, and gets the same rows: an added
+/// Payee with aliases and a default Category, a rename that keeps the old name as an alias, and a
 /// deactivation.
 pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_payees());
