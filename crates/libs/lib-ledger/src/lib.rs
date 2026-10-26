@@ -45,7 +45,7 @@ pub use inventory_commands::{
 };
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
-pub use tag_commands::{AddTag, EditTag, MergeTags, RemoveTag};
+pub use tag_commands::{MergeTags, RemoveTag};
 pub use tag_usage::{TagRows, transaction_count};
 pub use transaction_commands::{BookingPayee, CommitImport, ImportBooking, ImportCommitted};
 

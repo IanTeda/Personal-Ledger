@@ -16,10 +16,10 @@ pub use crate::settings::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 #[doc(hidden)]
-pub use crate::settings::tags::SettingsTagsSnapshot;
-#[doc(hidden)]
 pub use crate::settings::tracing::SettingsTracingSnapshot;
 use crate::shell::router::Root;
+#[doc(hidden)]
+pub use crate::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::units::SettingsUnitsSnapshot;
 

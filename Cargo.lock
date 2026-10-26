@@ -4980,7 +4980,13 @@ name = "lib_tags"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "lib_config",
  "lib_core",
+ "lib_list_cursor",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_toast",
+ "lib_viper",
  "thiserror 2.0.20",
  "tracing",
 ]

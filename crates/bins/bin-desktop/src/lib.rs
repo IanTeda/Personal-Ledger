@@ -31,6 +31,7 @@ mod period;
 pub mod persistence;
 mod settings;
 pub mod shell;
+mod tags;
 pub mod theme;
 mod transactions;
 mod units;

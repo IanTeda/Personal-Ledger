@@ -15,7 +15,6 @@ use lib_core::{AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId};
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
-use lib_tags::Tag;
 use lib_transactions::Transaction;
 
 use crate::Ledger;
@@ -48,7 +47,6 @@ pub enum LedgerChange {
     UpsertPayee(Payee),
     UpsertCategory(Category),
     DeleteCategory(CategoryId),
-    UpsertTag(Tag),
     DeleteTag(TagId),
     UpsertTransaction(Transaction),
     UpsertBillPlan(BillPlan),
@@ -74,7 +72,7 @@ impl LedgerChange {
         match self {
             Self::UpsertPayee(_) => Domain::Payees,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
-            Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
+            Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,

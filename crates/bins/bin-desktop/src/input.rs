@@ -271,12 +271,16 @@ mod tests {
         let categories = lib_categories::keymap::CATEGORIES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let tags = lib_tags::keymap::TAGS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         units
             .chain(bills)
             .chain(payees)
             .chain(institutions)
             .chain(accounts)
             .chain(categories)
+            .chain(tags)
             .collect()
     }
 

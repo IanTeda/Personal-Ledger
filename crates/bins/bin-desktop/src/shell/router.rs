@@ -192,6 +192,7 @@ pub fn build(
         categories.clone(),
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
+    let tags_setup = crate::tags::TagsSetup::new(tags.clone(), &bindings.keybindings);
     let categories_setup =
         crate::categories::CategoriesSetup::new(categories.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
@@ -222,6 +223,7 @@ pub fn build(
         payees: payees_setup,
         accounts: accounts_setup,
         categories: categories_setup,
+        tags: tags_setup,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);

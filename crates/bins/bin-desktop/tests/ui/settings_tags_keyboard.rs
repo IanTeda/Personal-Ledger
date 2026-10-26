@@ -181,9 +181,15 @@ fn enter_in_the_merge_dialog_merges_the_duplicate_away(app: &mut TestAppContext)
     let Some((source, target)) = merge_pair(&mut ui) else {
         panic!("a flagged duplicate opens Merge with both Tags chosen");
     };
+    let commits = ui.commits();
     ui.press("enter");
     let tags_page = ui.settings_tags();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "the retagging and the delete land in one commit"
+    );
     assert_eq!(tags_page.tag_names.len(), before - 1);
     assert!(!tags_page.tag_names.contains(&source));
     assert_eq!(tags_page.selected_tag.as_ref(), Some(&target));

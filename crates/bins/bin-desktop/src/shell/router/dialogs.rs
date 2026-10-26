@@ -134,10 +134,7 @@ impl Root {
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
             Some(
-                OpenDialog::Tracing(_)
-                | OpenDialog::Tags(_)
-                | OpenDialog::DocumentTypes(_)
-                | OpenDialog::Inventory(_),
+                OpenDialog::Tracing(_) | OpenDialog::DocumentTypes(_) | OpenDialog::Inventory(_),
             )
             | None => {}
         }

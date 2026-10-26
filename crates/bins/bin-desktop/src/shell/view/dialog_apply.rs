@@ -87,29 +87,28 @@ mod tests {
     use super::*;
 
     #[derive(Default)]
-    struct AddOnce(String);
+    struct RemoveOnce(String);
 
     #[derive(Debug, PartialEq, Eq)]
-    struct Added(usize);
+    struct Removed(usize);
 
-    impl OutcomeToast for Added {
+    impl OutcomeToast for Removed {
         fn toast(&self) -> Option<DialogToast> {
             Some((lib_toast::ToastKind::Success, format!("row {}", self.0)))
         }
     }
 
-    impl LedgerCommand for AddOnce {
-        type Outcome = Added;
+    impl LedgerCommand for RemoveOnce {
+        type Outcome = Removed;
         type Refusal = String;
 
-        fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Added, String> {
+        fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Removed, String> {
+            let tag = lib_tags::find_by_name(ledger.tags(), &self.0)
+                .ok_or_else(|| format!("{} is gone", self.0))?;
             ledger
-                .add_tag(&lib_tags::TagDraft {
-                    name: self.0.clone(),
-                    color: None,
-                })
-                .map_err(|_| format!("{} is taken", self.0))?;
-            Ok(Added(ledger.tags().len()))
+                .remove_tag(tag)
+                .map_err(|_| format!("{} is gone", self.0))?;
+            Ok(Removed(ledger.tags().len()))
         }
     }
 
@@ -120,14 +119,14 @@ mod tests {
     }
 
     impl DialogForm for LedgerForm {
-        type Command = AddOnce;
+        type Command = RemoveOnce;
         type Refusal = String;
 
-        fn command(&self) -> Result<AddOnce, FormError> {
+        fn command(&self) -> Result<RemoveOnce, FormError> {
             if self.text.is_empty() {
                 Err(FormError)
             } else {
-                Ok(AddOnce(self.text.clone()))
+                Ok(RemoveOnce(self.text.clone()))
             }
         }
 
@@ -136,25 +135,41 @@ mod tests {
         }
     }
 
+    /// A Ledger holding the one Tag the sample command removes.
+    fn seeded(cx: &mut gpui::TestAppContext) -> Entity<LedgerStore> {
+        crate::ledger_store::test_ledger(
+            cx,
+            lib_ledger::LedgerParts {
+                tags: vec![lib_tags::Tag {
+                    id: lib_core::TagId::seed(1),
+                    name: "Bank X".into(),
+                    color: None,
+                    is_active: true,
+                }],
+                ..lib_ledger::LedgerParts::default()
+            },
+        )
+    }
+
     fn tag_count(ledger: &Entity<LedgerStore>, cx: &gpui::TestAppContext) -> usize {
         ledger.read_with(cx, |store, _| store.ledger().tags().len())
     }
 
     #[gpui::test]
     fn confirm_ledger_leaves_an_invalid_form_open_and_runs_nothing(cx: &mut gpui::TestAppContext) {
-        let ledger = crate::ledger_store::test_ledger(cx, lib_ledger::LedgerParts::default());
+        let ledger = seeded(cx);
         let mut form = LedgerForm::default();
 
         let landed = cx.update(|cx| confirm_ledger(&mut form, &ledger, cx));
 
         assert!(landed.is_none());
         assert!(form.shown.is_none());
-        assert_eq!(tag_count(&ledger, cx), 0);
+        assert_eq!(tag_count(&ledger, cx), 1);
     }
 
     #[gpui::test]
     fn confirm_ledger_lands_the_command_with_its_outcome_toast(cx: &mut gpui::TestAppContext) {
-        let ledger = crate::ledger_store::test_ledger(cx, lib_ledger::LedgerParts::default());
+        let ledger = seeded(cx);
         let mut form = LedgerForm {
             text: "Bank X".into(),
             ..LedgerForm::default()
@@ -164,17 +179,17 @@ mod tests {
             .update(|cx| confirm_ledger(&mut form, &ledger, cx))
             .expect("a new name lands");
 
-        assert_eq!(landed.outcome, Added(1));
+        assert_eq!(landed.outcome, Removed(0));
         assert_eq!(
             landed.toast,
-            Some((lib_toast::ToastKind::Success, "row 1".into()))
+            Some((lib_toast::ToastKind::Success, "row 0".into()))
         );
-        assert_eq!(tag_count(&ledger, cx), 1);
+        assert_eq!(tag_count(&ledger, cx), 0);
     }
 
     #[gpui::test]
     fn confirm_ledger_hands_a_refusal_to_the_form_and_stays_open(cx: &mut gpui::TestAppContext) {
-        let ledger = crate::ledger_store::test_ledger(cx, lib_ledger::LedgerParts::default());
+        let ledger = seeded(cx);
         let mut form = LedgerForm {
             text: "Bank X".into(),
             ..LedgerForm::default()
@@ -185,7 +200,7 @@ mod tests {
         let landed = cx.update(|cx| confirm_ledger(&mut form, &ledger, cx));
 
         assert!(landed.is_none());
-        assert_eq!(form.shown.as_deref(), Some("Bank X is taken"));
-        assert_eq!(tag_count(&ledger, cx), 1);
+        assert_eq!(form.shown.as_deref(), Some("Bank X is gone"));
+        assert_eq!(tag_count(&ledger, cx), 0);
     }
 }

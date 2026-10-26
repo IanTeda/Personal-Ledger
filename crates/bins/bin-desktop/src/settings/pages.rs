@@ -27,7 +27,6 @@ use crate::{
         page::PageRowClicked,
         state::SettingsView,
         sync_server::SyncServerPage,
-        tags::TagsPage,
         tracing::{
             TracingPage,
             log::{LogView, TracingLevel},
@@ -37,6 +36,7 @@ use crate::{
         statusline::{Hint, PageStatus, owned_hints},
         window_size::WindowSize,
     },
+    tags::{TagsPage, TagsSetup, tags_page},
     units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
 };
@@ -49,6 +49,7 @@ pub struct SettingsSetup {
     pub payees: PayeesSetup,
     pub accounts: AccountsSetup,
     pub categories: CategoriesSetup,
+    pub tags: TagsSetup,
 }
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
@@ -288,6 +289,7 @@ impl SettingsPages {
             payees,
             accounts,
             categories,
+            tags,
         } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
@@ -301,7 +303,7 @@ impl SettingsPages {
             ),
             accounts: accounts_page(accounts, ledger.clone(), clock.clone(), cx),
             categories: categories_page(categories, ledger.clone(), clock, cx),
-            tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),
+            tags: tags_page(tags, ledger.clone(), cx),
             payees: payees_page(payees.ports, ledger.clone(), payees.keymap, cx),
             documents: cx.new(|cx| DocumentsPage::new(ledger.clone(), cx)),
             inventory: cx.new(|cx| InventoryPage::new(ledger.clone(), cx)),

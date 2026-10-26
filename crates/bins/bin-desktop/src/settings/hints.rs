@@ -40,18 +40,6 @@ pub(crate) fn settings_inventory_hints(
     }
 }
 
-/// The Settings Units page's legend, by the table the selected row is in: `tab` names the table
-/// The Settings Tags page's status-line legend (2j's keys), as `(key, action)`.
-pub(crate) fn settings_tags_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("x", crate::msg::desktop_hint_remove()),
-        ("m", crate::msg::desktop_hint_merge()),
-        ("n", crate::msg::desktop_hint_new()),
-    ]
-}
-
 /// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,
 /// `l`/`enter` step into it.
 pub(crate) fn settings_index_hints() -> Vec<(&'static str, String)> {
@@ -125,31 +113,6 @@ pub(crate) fn settings_tracing_hints() -> Vec<(&'static str, String)> {
         ("c", crate::msg::desktop_hint_clear_logs()),
         ("esc", crate::msg::desktop_hint_index()),
     ]
-}
-
-/// The status-line legend while the 7e Merge dialog is open.
-pub(crate) fn merge_tags_dialog_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("esc", crate::msg::desktop_hint_cancel()),
-        ("enter", crate::msg::desktop_hint_confirm()),
-        ("tab", crate::msg::desktop_hint_next_field()),
-        ("\u{2191}/\u{2193}", crate::msg::desktop_hint_choose()),
-    ]
-}
-
-/// The status-line legend while the Add or Edit tag dialog is open (the handoff's 7b/7c), with
-/// `←/→ colour` added: the swatch row has no other key. Edit adds `space` for its Active checkbox.
-pub(crate) fn tag_dialog_hints(editing: bool) -> Vec<(&'static str, String)> {
-    let mut hints = vec![
-        ("esc", crate::msg::desktop_hint_cancel()),
-        ("enter", crate::msg::desktop_hint_confirm()),
-        ("tab", crate::msg::desktop_hint_next_field()),
-        ("\u{2190}/\u{2192}", crate::msg::desktop_hint_colour()),
-    ];
-    if editing {
-        hints.push(("space", crate::msg::desktop_hint_toggle_active()));
-    }
-    hints
 }
 
 /// The status-line legend while a plain confirm dialog is open (Remove tag, Clear logs): each has

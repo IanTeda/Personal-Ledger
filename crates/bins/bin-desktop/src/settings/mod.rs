@@ -16,7 +16,6 @@ pub mod picker;
 pub mod snapshot;
 pub mod state;
 pub mod sync_server;
-pub mod tags;
 pub mod tracing;
 
 use crate::navigation::nav::NounLabel;

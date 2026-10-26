@@ -25,7 +25,6 @@ desktop-hint-open = open
 desktop-hint-edit = edit
 desktop-hint-confirm = confirm
 desktop-hint-remove = remove
-desktop-hint-merge = merge
 desktop-hint-new = new
 desktop-hint-add = add
 desktop-hint-filter = filter

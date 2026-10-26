@@ -61,7 +61,7 @@ impl LedgerSetup {
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         Self {
-            tags: crate::settings::tags::ports::in_memory(&ledger),
+            tags: crate::tags::ports::in_memory(&ledger),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
@@ -124,7 +124,7 @@ impl LedgerStore {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             accounts,
             categories,
-            tags: crate::settings::tags::ports::in_memory(&ledger),
+            tags: crate::tags::ports::in_memory(&ledger),
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -164,12 +164,6 @@ impl LedgerStore {
     /// the Categories store by `lib-payees`' `PayeeCategories` labelling (#858).
     pub fn payee_categories(&self) -> Vec<lib_payees::PayeeCategory> {
         self.categories.borrow().payee_categories()
-    }
-
-    /// What carries each Tag, as the Tags page and its Dialogs read it: the Tags store's own
-    /// figures, counted in the file when the Ledger is stored (#862).
-    pub fn tag_usage(&self) -> crate::settings::tags::ports::StoreUsage {
-        crate::settings::tags::ports::usage(&self.tags)
     }
 
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
@@ -231,8 +225,6 @@ impl LedgerStore {
         if !changes.is_empty() {
             let categories_upserted =
                 crate::categories::ports::forward(&mut *self.categories.borrow_mut(), &changes);
-            let tags_upserted =
-                crate::settings::tags::ports::forward(&mut *self.tags.borrow_mut(), &changes);
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
@@ -241,10 +233,8 @@ impl LedgerStore {
                 &mut *self.categories.borrow_mut(),
                 &changes,
             );
-            let tags_deleted = crate::settings::tags::ports::forward_deletes(
-                &mut *self.tags.borrow_mut(),
-                &changes,
-            );
+            let tags_deleted =
+                crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
@@ -252,7 +242,7 @@ impl LedgerStore {
             if categories_upserted || categories_deleted {
                 self.copy_categories();
             }
-            if tags_upserted || tags_deleted {
+            if tags_deleted {
                 self.copy_tags();
             }
             if payees_written {

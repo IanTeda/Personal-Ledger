@@ -1,19 +1,16 @@
 //! The Add and Edit tag dialogs' **Colour** field (#352): a "none" chip, the handoff's six preset
 //! swatches (`26×26`, `gap 8px`, the pick outlined `2px`) and a free hex box that takes any other
-//! colour. `settings::tags::form::TagForm` keeps the hex box as the one source of the colour, so this only draws
-//! it and reports clicks.
+//! colour. `lib-tags`' form Presenter keeps the hex box as the one source of the colour, so this
+//! only draws its view model and reports clicks.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use super::swatch::{swatch, swatch_colour};
-use crate::{
-    dialog,
-    form::dialog_fields::optional_label,
-    settings::tags::form::{TagField, TagForm},
-    theme::color,
-};
+use lib_tags::presenter::ColourField;
+
+use crate::{dialog, form::dialog_fields::optional_label, theme::color};
 
 const SWATCH_SIZE: gpui::Pixels = px(26.0);
 /// The hex box's preview swatch.
@@ -25,7 +22,7 @@ pub type OnPick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub struct ColourFieldProps<'a> {
     /// The dialog's id prefix, so each element id is unique.
     pub id: &'static str,
-    pub form: &'a TagForm,
+    pub field: &'a ColourField,
     pub on_pick: OnPick,
     pub on_hex_click: dialog::OnClick,
 }
@@ -33,12 +30,12 @@ pub struct ColourFieldProps<'a> {
 pub fn render(props: ColourFieldProps<'_>, cx: &App) -> AnyElement {
     let ColourFieldProps {
         id,
-        form,
+        field,
         on_pick,
         on_hex_click,
     } = props;
-    let picked = form.picked();
-    let row_focused = form.focused == TagField::Swatches;
+    let picked = field.picked;
+    let row_focused = field.row_focused;
     // The pick is outlined in ink; while the row has focus, in the accent, as a focused input is.
     let outline = if row_focused {
         color::accent(cx)
@@ -67,15 +64,17 @@ pub fn render(props: ColourFieldProps<'_>, cx: &App) -> AnyElement {
             .border_color(color::border(cx))
             .text_size(px(11.0))
             .text_color(color::muted(cx))
-            .child(crate::msg::desktop_tags_colour_none()),
+            .child(field.none.clone()),
     );
-    let presets = lib_tags::swatches()
-        .into_iter()
-        .zip(1..)
-        .map(|(preset, index)| pick(index, div().w(SWATCH_SIZE).bg(swatch_colour(&preset))));
+    let presets = field.swatches.iter().map(|preset| {
+        pick(
+            preset.pick,
+            div().w(SWATCH_SIZE).bg(swatch_colour(&preset.color)),
+        )
+    });
 
     div()
-        .child(optional_label(crate::msg::desktop_tags_field_colour(), cx))
+        .child(optional_label(field.label.clone(), cx))
         .child(
             div()
                 .flex()
@@ -83,33 +82,30 @@ pub fn render(props: ColourFieldProps<'_>, cx: &App) -> AnyElement {
                 .gap(px(8.0))
                 .child(none)
                 .children(presets)
-                .child(hex_box(id, form, on_hex_click, cx)),
+                .child(hex_box(id, field, on_hex_click, cx)),
         )
-        .children(
-            form.hex_invalid()
-                .then(|| error_line(crate::msg::desktop_tags_error_hex(), cx)),
-        )
+        .children(field.error.clone().map(|error| error_line(error, cx)))
         .into_any_element()
 }
 
 /// The free hex box: its own colour previewed ahead of the text once it parses.
 fn hex_box(
     id: &'static str,
-    form: &TagForm,
+    field: &ColourField,
     on_click: dialog::OnClick,
     cx: &App,
 ) -> impl IntoElement {
-    let focused = form.focused == TagField::Hex;
+    let focused = field.hex.focused;
     let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if form.hex.text().is_empty() {
+    let (text, text_color) = if field.hex.text.is_empty() {
         (
-            format!("{}{caret}", crate::msg::desktop_tags_hex_placeholder()),
+            format!("{}{caret}", field.hex.placeholder),
             color::faint_text(cx),
         )
     } else {
-        (format!("{}{caret}", form.hex.text()), color::foreground(cx))
+        (format!("{}{caret}", field.hex.text), color::foreground(cx))
     };
-    let preview = form.colour().ok().flatten();
+    let preview = field.preview.clone();
     div()
         .id(SharedString::from(format!("{id}-hex")))
         .cursor_pointer()

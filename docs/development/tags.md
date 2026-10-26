@@ -6,7 +6,7 @@ End-user documentation: [Tags](../tags.md).
 
 A Tag is a freeform, cross-cutting label attached many-to-many directly to Transactions, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary and **deferred schema, UI and reporting to a future build effort**.
 
-That deferral ended with persistence ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)): there is a `tags` table and a `lib-database` adapter, still no `lib-core` Tag type. The Tags page and Dialogs are not yet a module's Presenters (#863), and the Transactions View still carries Tags on its Splits through the Ledger.
+That deferral ended with persistence ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)): there is a `tags` table and a `lib-database` adapter, still no `lib-core` Tag type. The Tags page and Dialogs run on `lib-tags`' Presenters (#863), with Tag remove and merge answering the reassign port through the Ledger until `lib-reassign` (#813), and the Transactions View still carries Tags on its Splits through the Ledger.
 
 ## Data model
 

@@ -31,6 +31,8 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             lib_bills::msg::LAYER,
             lib_accounts::msg::LAYER,
             lib_categories::msg::LAYER,
+            lib_tags::msg::LAYER,
+            lib_tags::msg::LAYER,
             lib_payees::msg::LAYER,
             lib_institutions::msg::LAYER,
             lib_bill_payments::msg::LAYER,
