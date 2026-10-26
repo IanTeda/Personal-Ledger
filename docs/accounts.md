@@ -2,7 +2,7 @@
 
 An account is a place where you hold money or track what you owe. Personal Ledger tracks four kinds: everyday transaction accounts (bank and cash), credit cards, loans, and investments. Each kind has its own fields and workflow because each does something different.
 
-> **Heads up:** investment and loan accounts are in the design phase. For now, this page covers transaction and credit card accounts, which are built. Dedicated screens for loans and investments are still to come.
+> **Heads up:** investment and loan accounts are in the design phase. For now, this page covers transaction and credit card accounts, which are built. Dedicated screens for loans and investments are still to come. In the desktop app, the accounts you add, edit and delete are saved, so they are still there when you reopen it.
 
 ## What you can do
 
@@ -12,12 +12,15 @@ An account is a place where you hold money or track what you owe. Personal Ledge
 - Edit account details or deactivate accounts
 - View running balances computed from transactions
 - Move money between accounts
+- Delete an account together with its transactions, once no bill is paid from it
+- Keep your accounts after you close the desktop app
 
 ## Terminology
 
 - **Account Kind:** which type of account it is (Transaction, Credit Card, Loan, or Investment) — decided when you create it and can't be changed later.
 - **Balance:** the current total in a transaction or credit card account, computed from all its transactions.
 - **Unit:** the currency or security an account is denominated in (AUD, USD, AAPL shares, etc.) — fixed at creation.
+- **Institution:** the bank, lender or broker an account is held with. Cash accounts have none.
 
 ## Account kinds
 
@@ -59,6 +62,21 @@ The typical workflow depends on which account kind you're working with:
 2. Record Trades as you buy or sell.
 3. Track your quantity and cost basis.
 
+## Adding, editing and deleting in the desktop app
+
+On the Accounts page, press `n` to add an account, `e` to edit the selected one or `d` to delete it. The add dialog asks for a name, an institution, a type, a unit, a starting balance and an optional account number. Editing can change the name, institution, type and account number. The unit, starting balance and opened date are fixed once the account exists.
+
+The edit and delete dialogs say how many transactions the account has, counted from the transactions themselves, so an import can't leave the figure wrong.
+
+Deleting is deliberate. The dialog asks you to type the account's name back, and then:
+
+- The account's transactions are deleted with it, and each bill entry they paid goes back to unpaid.
+- The account's balance checks are deleted too.
+- Budgets that counted the account stay, but stop counting it. The dialog tells you how many budgets that is.
+- All of it is saved together, or none of it is.
+- If any bill is paid from the account, it can't be deleted. The dialog says how many bills, and asks you to move them to another account first. This includes some of the accounts that come with a new ledger.
+- If the account has been deleted while you were editing it, saving tells you so under the form.
+
 ## Worked example
 
 You open Personal Ledger on the 15th of September and decide to set up your accounts. You create a bank account named "Everyday" denominated in AUD with a starting balance of $2,500 (from your last bank statement). You create a credit card account named "Visa" with a $5,000 limit and 19.99% interest rate. Over the next week you record two transactions: a $80 coffee shop purchase against Visa, and a $120 paycheck deposit into Everyday. The Everyday balance now reads $2,620. When your credit card statement arrives on the 25th, you verify it against Personal Ledger by marking those transactions as reconciled, confirming everything matches reality.
@@ -71,7 +89,9 @@ Personal Ledger shows accounts on a list with their balances, filterable by kind
 
 - An account's Unit (currency) is set at creation and cannot be changed later.
 - A transaction can only move between accounts sharing the same Unit.
-- Deleting an account affects its transactions — see Transactions for how that works.
+- Deleting an account deletes its transactions and its balance checks, and sets the bill entries they paid back to unpaid. An account that bills are paid from can't be deleted until those bills move to another account.
+- An account's institution is chosen from your institutions. Cash accounts use the built-in "No institution" entry.
+- Accounts you saved before this version of the desktop app are not carried over: a ledger made earlier needs to be started fresh.
 
 ## Scope
 
@@ -112,6 +132,8 @@ Intended features for Accounts. Ticked means built in at least one app; the tag 
 - [ ] ACC-011: Record investment trades (buys and sells)
 - [ ] ACC-012: Dedicated loan account screens and views
 - [ ] ACC-013: Dedicated investment account screens and views
+- [x] ACC-014 (desktop): Keep accounts after the app closes
+- [x] ACC-015 (desktop): Delete an account with its transactions and balance checks, all or nothing, refusing an account bills are paid from
 
 ## For developers
 

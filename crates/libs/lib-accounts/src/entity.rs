@@ -40,7 +40,7 @@ pub struct Account {
     /// In `unit`, at whatever precision the Unit carries (`0.4120` for btc). Its opening value is
     /// fixed at creation; nothing in this map moves it afterwards.
     pub balance: Money,
-    /// UI-only: the design has the field, the domain model does not, so it is never persisted.
+    /// The form's optional field. Persisted (`accounts.account_number`), though no rule reads it.
     pub account_number: Option<String>,
     pub opened_at: NaiveDate,
 }
