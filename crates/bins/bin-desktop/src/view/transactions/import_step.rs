@@ -3,7 +3,7 @@
 //! for the concern; the pure rules live in `crate::import` and the drawing in `view::import`.
 
 use gpui::{App, Context, Keystroke};
-use lib_ledger::{CommitImport, CountImportedTransactions};
+use lib_ledger::CommitImport;
 use lib_list_cursor::Step;
 use lib_toast::{Notice, Notify as _, ToastKind};
 
@@ -111,8 +111,8 @@ impl TransactionsView {
     }
 
     /// **continue** / `enter`: commits the import to the Ledger and lands on the page with a Toast,
-    /// as one input (`crate::input::send`): the booking and the count commit once, and the Toast is
-    /// queued as a Notice that input drains. Does nothing while a row needs review (the button is
+    /// as one input (`crate::input::send`): the booking commits once, and the Toast is queued as a
+    /// Notice that input drains. Nothing writes the Account: its Dialogs count the Transactions. Does nothing while a row needs review (the button is
     /// disabled then).
     pub(super) fn continue_import(&mut self, cx: &mut Context<'_, Self>) {
         let Some(state) = self.state.import.as_ref() else {
@@ -134,17 +134,6 @@ impl TransactionsView {
             });
             let (kind, text) = match committed {
                 Ok(committed) => {
-                    let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
-                    // A missing Everyday account has no count to bump, as before.
-                    let _ = self.sources.ledger.update(cx, |store, cx| {
-                        store.apply(
-                            cx,
-                            CountImportedTransactions {
-                                id: import::EVERYDAY_ACCOUNT_ID,
-                                imported,
-                            },
-                        )
-                    });
                     self.state.import = None;
                     self.reset_selection();
                     self.import_scroll.set_offset(gpui::Point::default());

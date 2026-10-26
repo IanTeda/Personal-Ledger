@@ -21,6 +21,7 @@ use serde_json::Value;
 /// `lib_viper`, the generic types they share, and `lib_toast`, the Notices they send the Shell.
 /// `lib_shell`, the Shell module, keeps the rule too.
 const MIGRATED: &[&str] = &[
+    "lib_accounts",
     "lib_bills",
     "lib_institutions",
     "lib_payees",

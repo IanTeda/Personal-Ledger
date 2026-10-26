@@ -408,8 +408,6 @@ mod tests {
             balance: money("0"),
             account_number: None,
             opened_at: date(2024, 1),
-            transaction_count: 0,
-            budget_count: 0,
         }
     }
 

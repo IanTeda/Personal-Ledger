@@ -6,8 +6,8 @@
 //! Account deletes the Transactions booked to it.
 
 use lib_accounts::{
-    Account, AccountDraft, AccountError, NewAccount, count_imported, edit_account, get,
-    insert_account, remove_account,
+    Account, AccountDraft, AccountError, NewAccount, edit_account, get, insert_account,
+    remove_account,
 };
 use lib_core::AccountId;
 
@@ -24,7 +24,7 @@ pub struct AccountDeleted {
 impl Ledger {
     /// Adds the Account `new` describes and returns its id.
     pub fn add_account(&mut self, new: NewAccount) -> AccountId {
-        let id = insert_account(&mut self.accounts, new);
+        let id = insert_account(&mut self.accounts, new).id;
         self.record_account(id);
         id
     }
@@ -58,18 +58,6 @@ impl Ledger {
             name: removed.name,
             transactions,
         })
-    }
-
-    /// Adds `imported` to Account `id`'s stub Transaction count, which the Edit and Delete Dialogs
-    /// show, after an Import books that many Transactions to it.
-    pub fn count_imported_transactions(
-        &mut self,
-        id: AccountId,
-        imported: u32,
-    ) -> Result<(), AccountError> {
-        count_imported(&mut self.accounts, id, imported)?;
-        self.record_account(id);
-        Ok(())
     }
 
     fn record_account(&mut self, id: AccountId) {
@@ -119,21 +107,6 @@ impl LedgerCommand for DeleteAccount {
     }
 }
 
-/// [`Ledger::count_imported_transactions`] as a value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CountImportedTransactions {
-    pub id: AccountId,
-    pub imported: u32,
-}
-
-impl LedgerCommand for CountImportedTransactions {
-    type Outcome = ();
-    type Refusal = AccountError;
-    fn run(self, ledger: &mut Ledger) -> Result<(), AccountError> {
-        ledger.count_imported_transactions(self.id, self.imported)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use bigdecimal::BigDecimal;
@@ -168,10 +141,7 @@ mod tests {
 
         assert!(ledger.accounts().iter().filter(|a| a.id == id).count() == 1);
         let account = get(ledger.accounts(), id).unwrap();
-        assert_eq!(
-            (account.name.as_str(), account.transaction_count),
-            ("Fresh", 0)
-        );
+        assert_eq!(account.name, "Fresh");
         let changes = ledger.drain_changes();
         assert!(matches!(&changes[..], [LedgerChange::UpsertAccount(a)] if a.id == id));
     }
@@ -267,33 +237,5 @@ mod tests {
                 .iter()
                 .all(|change| matches!(change, LedgerChange::DeleteTransaction(_)))
         );
-    }
-
-    #[test]
-    fn counting_an_import_adds_to_the_stub_count_and_a_missing_account_is_refused() {
-        let mut ledger = Ledger::stub();
-        let before = ledger.accounts()[0].clone();
-
-        CountImportedTransactions {
-            id: before.id,
-            imported: 3,
-        }
-        .run(&mut ledger)
-        .unwrap();
-
-        assert_eq!(
-            get(ledger.accounts(), before.id).unwrap().transaction_count,
-            before.transaction_count + 3
-        );
-        assert_eq!(ledger.drain_changes().len(), 1);
-        assert_eq!(
-            CountImportedTransactions {
-                id: AccountId::seed(999),
-                imported: 1,
-            }
-            .run(&mut ledger),
-            Err(AccountError::NotFound)
-        );
-        assert!(ledger.drain_changes().is_empty());
     }
 }

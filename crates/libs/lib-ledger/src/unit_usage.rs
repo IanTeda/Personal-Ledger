@@ -67,7 +67,8 @@ impl UnitHoldings for Ledger {
                 name: account.name.clone(),
                 kind: account.account_type.clone(),
                 balance: account.balance.clone(),
-                transactions: account.transaction_count,
+                transactions: u32::try_from(self.account_use(account.id).transactions)
+                    .unwrap_or(u32::MAX),
             })
             .collect()
     }

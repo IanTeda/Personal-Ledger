@@ -10,6 +10,7 @@ pub mod edit;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*};
+use lib_accounts::AccountUsage;
 use lib_core::AccountId;
 
 use super::{
@@ -119,6 +120,7 @@ impl Dialog for AccountsDialog {
                 Some(account) => edit::render(
                     form,
                     account,
+                    ledger.account_usage(account.id),
                     &dialog_options(&scope.ledger, Some(account.unit), cx),
                     on_field_click,
                     on_option_click,
@@ -132,6 +134,7 @@ impl Dialog for AccountsDialog {
             Self::Delete(id, form) => match account(id) {
                 Some(account) => delete::render(
                     account,
+                    ledger.account_usage(account.id),
                     ledger.unit_code(account.unit),
                     form,
                     actions.cancel.clone(),
@@ -145,19 +148,29 @@ impl Dialog for AccountsDialog {
     }
 
     /// Reads back an Add or Edit form's focused field (its `AccountField` variant name), drafts,
-    /// selects and whether it would confirm; a Delete's typed-back `confirm`.
-    fn readback(&self, _scope: &DialogScope, _cx: &App) -> Option<DialogReadback> {
-        let (kind, form) = match self {
-            Self::Add(form) => ("AddAccount", form),
-            Self::Edit(_, form) => ("EditAccount", form),
-            Self::Delete(_, form) => {
+    /// selects and whether it would confirm; a Delete's typed-back `confirm`. Edit and Delete also
+    /// read back the `transactions` and `budgets` counts they show.
+    fn readback(&self, scope: &DialogScope, cx: &App) -> Option<DialogReadback> {
+        let usage = |id: &AccountId| {
+            let usage = scope.ledger.read(cx).ledger().account_usage(*id);
+            [
+                ("transactions", usage.transactions.to_string()),
+                ("budgets", usage.budgets.to_string()),
+            ]
+        };
+        let (kind, form, counts) = match self {
+            Self::Add(form) => ("AddAccount", form, None),
+            Self::Edit(id, form) => ("EditAccount", form, Some(usage(id))),
+            Self::Delete(id, form) => {
+                let mut values = vec![("confirm", form.confirm_input.text().to_string())];
+                values.extend(usage(id));
                 return Some(DialogReadback {
                     kind: "DeleteAccount",
-                    values: vec![("confirm", form.confirm_input.text().to_string())],
+                    values,
                 });
             }
         };
-        Some(DialogReadback {
+        let mut readback = DialogReadback {
             kind,
             values: vec![
                 ("focused", format!("{:?}", form.focused)),
@@ -177,7 +190,9 @@ impl Dialog for AccountsDialog {
                 ("select_open", form.any_select_open().to_string()),
                 ("valid", form.is_valid().to_string()),
             ],
-        })
+        };
+        readback.values.extend(counts.into_iter().flatten());
+        Some(readback)
     }
 }
 

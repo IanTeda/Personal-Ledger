@@ -3,8 +3,8 @@
 //! unit dialog: the consequences are named and the account's own name must be typed back exactly
 //! (`form::DeleteAccountForm::is_valid`, case-sensitive) before **Delete account** enables.
 //!
-//! The balance is the account's own; the transaction and budget counts are its stub figures
-//! (nothing real backs them in this map). Transfer-on-delete, which the TUI design makes the
+//! The balance is the account's own; the Transaction and Budget counts are read through
+//! `lib-accounts`' `AccountUsage`, from the rows that name the account. Transfer-on-delete, which the TUI design makes the
 //! primary path, is out of scope here: the desktop design has the transactions deleted with the
 //! account, and says so.
 
@@ -12,13 +12,14 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
-use lib_accounts::Account;
+use lib_accounts::{Account, AccountUse};
 
 use super::WIDTH;
 use crate::{dialog, form::dialog_fields::text_field, settings::accounts::form::DeleteAccountForm};
 
 pub fn render(
     account: &Account,
+    usage: AccountUse,
     unit_code: &str,
     form: &DeleteAccountForm,
     on_cancel: dialog::OnClick,
@@ -34,8 +35,8 @@ pub fn render(
             cx,
         ))
         .child(dialog::body([
-            warning_copy(account, unit_code),
-            dialog::info_panel(reference_notice(account), cx).into_any_element(),
+            warning_copy(account, usage, unit_code),
+            dialog::info_panel(reference_notice(usage), cx).into_any_element(),
             text_field(
                 "delete-account-confirm-input",
                 confirm_label(&account.name),
@@ -75,16 +76,16 @@ fn balance_text(account: &Account, unit_code: &str) -> String {
 }
 
 /// `204 transactions will be permanently deleted · referenced in 2 budgets`.
-fn reference_notice(account: &Account) -> String {
+fn reference_notice(usage: AccountUse) -> String {
     crate::msg::desktop_accounts_delete_reference(
-        i64::from(account.transaction_count),
-        i64::from(account.budget_count),
+        i64::try_from(usage.transactions).unwrap_or(i64::MAX),
+        i64::try_from(usage.budgets).unwrap_or(i64::MAX),
     )
 }
 
 /// `This account has a balance of **−2,318.44 aud** and **204 transactions**. Deleting it cannot
 /// be undone.` -- the two figures bold, as in the mockup.
-fn warning_copy(account: &Account, unit_code: &str) -> AnyElement {
+fn warning_copy(account: &Account, usage: AccountUse, unit_code: &str) -> AnyElement {
     div()
         .flex()
         .flex_wrap()
@@ -92,7 +93,7 @@ fn warning_copy(account: &Account, unit_code: &str) -> AnyElement {
         .children(
             crate::msg::desktop_accounts_delete_warning(
                 &balance_text(account, unit_code),
-                i64::from(account.transaction_count),
+                i64::try_from(usage.transactions).unwrap_or(i64::MAX),
             )
             .into_iter()
             .map(|segment| match segment.tag.as_deref() {
@@ -130,7 +131,10 @@ mod tests {
     fn the_reference_notice_names_the_transactions_and_budgets() {
         crate::locale::init_for_tests();
         assert_eq!(
-            reference_notice(&seeded("Amex Platinum")),
+            reference_notice(AccountUse {
+                transactions: 204,
+                budgets: 2,
+            }),
             "204 transactions will be permanently deleted \u{b7} referenced in 2 budgets"
         );
     }
@@ -138,15 +142,16 @@ mod tests {
     #[test]
     fn the_reference_notice_handles_singular_and_none() {
         crate::locale::init_for_tests();
-        let mut account = seeded("Amex Platinum");
-        account.transaction_count = 1;
-        account.budget_count = 1;
+        let mut usage = AccountUse {
+            transactions: 1,
+            budgets: 1,
+        };
         assert_eq!(
-            reference_notice(&account),
+            reference_notice(usage),
             "1 transaction will be permanently deleted \u{b7} referenced in 1 budget"
         );
-        account.budget_count = 0;
-        assert!(reference_notice(&account).ends_with("not referenced by any budget"));
+        usage.budgets = 0;
+        assert!(reference_notice(usage).ends_with("not referenced by any budget"));
     }
 
     #[test]
@@ -176,8 +181,7 @@ mod tests {
     fn the_accounts_messages_render_in_the_pseudo_locale() {
         crate::locale::init_for_tests();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
-            let account = seeded("Amex Platinum");
-            assert!(reference_notice(&account).starts_with('['));
+            assert!(reference_notice(AccountUse::default()).starts_with('['));
             assert!(crate::msg::desktop_accounts_delete_title("x").starts_with('['));
             assert!(
                 crate::msg::desktop_accounts_delete_warning("1", 2)

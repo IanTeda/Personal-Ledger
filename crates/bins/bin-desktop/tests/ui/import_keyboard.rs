@@ -175,3 +175,52 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
         .expect("the Import commit's new Payee is listed");
     assert_eq!(page.payee_rules[row], "1 rule");
 }
+
+/// The Transactions count ANZ Everyday's Edit and Delete Dialogs show, `(edit, delete)`, opening
+/// each from its row on Settings › Accounts and cancelling it. Settings reopens on the page it
+/// was left on, so the index is walked only the first time.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a Dialog that doesn't read back its count should fail the test loudly"
+)]
+fn everyday_dialog_counts(ui: &mut Harness<'_>) -> (usize, usize) {
+    ui.press("g s");
+    if ui.settings().page != "Accounts" {
+        ui.press("j j j j");
+    }
+    assert_eq!(ui.settings().page, "Accounts");
+    ui.press("l");
+    ui.press("g g j");
+    assert_eq!(
+        ui.settings_accounts().selected_account.as_deref(),
+        Some("ANZ Everyday")
+    );
+    let mut count = |key: &str, dialog: &str| {
+        ui.press(key);
+        assert_eq!(ui.dialog(), Some(dialog));
+        let transactions = ui
+            .dialog_value("transactions")
+            .expect("the Dialog reads back its count")
+            .parse()
+            .expect("a count");
+        ui.press("escape");
+        transactions
+    };
+    let edit = count("e", "EditAccount");
+    let delete = count("d", "DeleteAccount");
+    ui.press("h");
+    (edit, delete)
+}
+
+/// An Import's Transactions show in their Account's Edit and Delete Dialogs, counted from the
+/// Transactions with nothing writing the Account: the commit is one write, the booking (#852).
+#[gpui::test]
+fn an_imports_transactions_show_in_their_accounts_edit_and_delete_counts(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let (edit, delete) = everyday_dialog_counts(&mut ui);
+    assert_eq!(edit, delete);
+
+    commit_the_candle_shop_as_a_new_payee(&mut ui);
+
+    assert_eq!(everyday_dialog_counts(&mut ui), (edit + 18, delete + 18));
+}

@@ -6,7 +6,7 @@
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{CategoryId, PayeeId, TagId};
+use lib_core::{AccountId, CategoryId, PayeeId, TagId};
 use lib_payees::{self as payees, Payee};
 use lib_tags::{self as tags, Tag};
 use lib_transactions::Transaction;
@@ -35,11 +35,47 @@ impl SeedNames for StubNames<'_> {
     }
 }
 
+/// How many Transactions the stub books to each stub Account that takes them. These were the
+/// Accounts' own stub counts until the Edit and Delete Dialogs counted the Transactions themselves
+/// (#852); Loan and Investment Accounts take none, so they aren't listed.
+const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
+    (AccountId::seed(1), 96),
+    (AccountId::seed(2), 312),
+    (AccountId::seed(3), 88),
+    (AccountId::seed(4), 204),
+];
+
+fn stub_transaction_count(id: AccountId) -> u32 {
+    STUB_TRANSACTION_COUNTS
+        .iter()
+        .find_map(|(account, count)| (*account == id).then_some(*count))
+        .unwrap_or(0)
+}
+
 /// The stub Transactions over these stubs: newest first, ids assigned oldest-first (a higher id is
-/// newer). Per-account counts equal each account's `transaction_count`; accounts that take no
-/// Transactions, and any account the seed has no profile for, get none.
+/// newer). Each stub Account gets its stub count; accounts that take no Transactions, any account
+/// the seed has no profile for, and any Account not in the stub get none.
 pub fn default_transactions(
     accounts: &[Account],
+    categories: &[Category],
+    payees: &[Payee],
+    tags: &[Tag],
+    today: NaiveDate,
+) -> Vec<Transaction> {
+    counted_transactions(
+        accounts,
+        stub_transaction_count,
+        categories,
+        payees,
+        tags,
+        today,
+    )
+}
+
+/// [`default_transactions`] with `count` giving each Account's number of Transactions.
+fn counted_transactions(
+    accounts: &[Account],
+    count: impl Fn(AccountId) -> u32,
     categories: &[Category],
     payees: &[Payee],
     tags: &[Tag],
@@ -51,7 +87,7 @@ pub fn default_transactions(
             id: account.id,
             name: account.name.clone(),
             account_type: account.account_type.clone(),
-            transaction_count: account.transaction_count,
+            transaction_count: count(account.id),
         })
         .collect();
     let names = StubNames {
@@ -361,27 +397,32 @@ mod tests {
 
     #[test]
     fn a_smaller_transaction_count_keeps_the_specials_first_and_the_total_exact() {
-        let mut accounts = default_accounts();
-        for account in &mut accounts {
-            if account.name == "ANZ Everyday" {
-                account.transaction_count = 3;
-            }
-        }
+        let accounts = default_accounts();
         let categories = default_categories();
         let payees = default_payees();
         let tags = default_tags();
-        let transactions = default_transactions(&accounts, &categories, &payees, &tags, today());
+        let transactions = counted_transactions(
+            &accounts,
+            |id| {
+                if id == AccountId::seed(2) {
+                    3
+                } else {
+                    stub_transaction_count(id)
+                }
+            },
+            &categories,
+            &payees,
+            &tags,
+            today(),
+        );
         assert_eq!(count_for(&transactions, &accounts, "ANZ Everyday"), 3);
     }
 
     #[test]
     fn an_account_with_no_transaction_count_gets_none() {
-        let mut accounts = default_accounts();
-        for account in &mut accounts {
-            account.transaction_count = 0;
-        }
-        let transactions = default_transactions(
-            &accounts,
+        let transactions = counted_transactions(
+            &default_accounts(),
+            |_| 0,
             &default_categories(),
             &default_payees(),
             &default_tags(),

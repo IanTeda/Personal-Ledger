@@ -11,7 +11,7 @@
 use chrono::Datelike;
 use gpui::{AnyElement, SharedString, div, prelude::*, px};
 
-use lib_accounts::{Account, NO_INSTITUTION};
+use lib_accounts::{Account, AccountUse, NO_INSTITUTION};
 
 use super::{
     WIDTH,
@@ -37,6 +37,7 @@ use crate::{
 pub fn render(
     form: &AccountForm,
     account: &Account,
+    usage: AccountUse,
     options: &AccountOptions,
     on_field_click: OnFieldClick,
     on_option_click: OnOptionClick,
@@ -144,7 +145,7 @@ pub fn render(
                 click(AccountField::AccountNumber),
                 cx,
             ),
-            dialog::info_panel(usage_notice(account), cx).into_any_element(),
+            dialog::info_panel(usage_notice(account, usage), cx).into_any_element(),
         ]))
         .child(dialog::action_row(
             [
@@ -166,11 +167,11 @@ pub fn render(
 }
 
 /// `Opened Mar 2019 · 312 transactions. Renaming is safe. ...` -- the usage notice, with the
-/// reason Unit and Opening balance can't be edited. Counts are the stub figures on the account.
-fn usage_notice(account: &Account) -> String {
+/// reason Unit and Opening balance can't be edited. The count is the Transactions booked to it.
+fn usage_notice(account: &Account, usage: AccountUse) -> String {
     crate::msg::desktop_accounts_edit_usage_notice(
         &lib_locale::format::format_year_month(account.opened_at.year(), account.opened_at.month()),
-        i64::from(account.transaction_count),
+        i64::try_from(usage.transactions).unwrap_or(i64::MAX),
     )
 }
 
@@ -209,18 +210,20 @@ mod tests {
     #[test]
     fn usage_notice_names_the_month_the_count_and_the_reason() {
         crate::locale::init_for_tests();
-        let mut account = lib_accounts::default_accounts()
+        let account = lib_accounts::default_accounts()
             .into_iter()
             .find(|a| a.name == "ANZ Everyday")
             .expect("seeded");
-        let notice = usage_notice(&account);
+        let usage = |transactions| AccountUse {
+            transactions,
+            budgets: 3,
+        };
+        let notice = usage_notice(&account, usage(312));
         assert!(notice.starts_with("Opened Mar 2019 \u{b7} 312 transactions."));
         assert!(notice.contains("Renaming is safe"));
         assert!(notice.contains("fixed once an account exists"));
 
-        account.transaction_count = 1;
-        assert!(usage_notice(&account).contains("1 transaction."));
-        account.transaction_count = 0;
-        assert!(usage_notice(&account).contains("0 transactions."));
+        assert!(usage_notice(&account, usage(1)).contains("1 transaction."));
+        assert!(usage_notice(&account, usage(0)).contains("0 transactions."));
     }
 }

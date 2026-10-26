@@ -811,8 +811,6 @@ mod tests {
         assert_eq!(account.unit, before.unit);
         assert_eq!(account.balance, before.balance);
         assert_eq!(account.opened_at, before.opened_at);
-        assert_eq!(account.transaction_count, before.transaction_count);
-        assert_eq!(account.budget_count, before.budget_count);
     }
 
     #[test]
