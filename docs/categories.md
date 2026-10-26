@@ -2,13 +2,16 @@
 
 Categories are how you answer the question "where does my money actually go?" Every transaction gets a category, like Groceries, Rent or Salary, and Personal Ledger uses them to add things up for you. You make up the names, so they work the way you think.
 
+> **Heads up:** in the desktop app, the categories you add, edit, move and delete are saved, so they are still there when you reopen it. The terminal app's Categories screen still works on sample data, and nothing you change there is saved. Archiving a category isn't built yet.
+
 ## What you can do
 
 - Create expense and income categories with names of your choice
 - Nest categories up to three levels deep to keep a tidy overview
 - Edit category names and budgets without losing transaction history
 - Set a budget limit on any category
-- Delete or archive categories
+- Delete a category, moving its transactions and bills to Uncategorised
+- Keep your categories after you close the desktop app
 - See category totals and budget status at a glance
 
 ## Terminology
@@ -33,7 +36,9 @@ To add a category, press `n` (or choose Add category) and fill in the name and t
 
 To edit a category, press `e` to rename it, move it to a different parent, or change its budget. The Monthly budget field shows this month's amount in the Personal spending budget. Changing it applies from this month onward, and clearing it stops budgeting the category from this month. Earlier months keep their amounts. On a category with sub-categories the field is read-only and shows the sum of its children, and it is read-only for every category while Personal spending is archived. The system updates your transactions and rollup totals automatically when you rename. Moving a category after you have transactions is allowed but changes how your past totals add up — think twice.
 
-To delete, press `d` and confirm by typing the category name. Your transactions stay but no longer roll up into a deleted parent. If a budget referred to it, you'll see that in the confirmation.
+To delete, press `d` and confirm by typing the category name. The delete box says how many transactions use the category and how many budgets are attached, and warns that it can't be undone. Its transactions and bills move to Uncategorised, and any payee that defaulted to the category loses that default. A category with sub-categories can't be deleted until you delete or move its children first, and Uncategorised can't be deleted while transactions or bills still use it.
+
+In the desktop app the add, edit and delete boxes save in one step with the rest of what you changed, and a name another category under the same parent already has is refused as you type.
 
 ## Worked example
 
@@ -53,7 +58,8 @@ The Categories screen lists everything as a tree, with expenses in one section a
 ## Scope
 
 - Cross-category totals and trends are available through Reports, not here — see Reports for more.
-- Archiving (hiding) a category is a future consideration; for now, deletion is the only way to remove one.
+- Archiving (hiding) a category isn't built; for now, deletion is the only way to remove one.
+- A Ledger file made before categories were saved can't be opened by this version; start a fresh Ledger (see the New Ledger workflow).
 - Splitting or merging categories after creation isn't built yet; work around it by creating a new one and reclassifying transactions manually.
 
 ## Related
@@ -75,13 +81,15 @@ For the full set of keys, see [Getting around](getting-around.md).
 
 Intended features for Categories. Ticked means built in at least one app; the tag says which.
 
-- [x] CAT-001 (TUI, desktop): Create a category with a code, name, description, type (Expense or Income), color and icon
-- [x] CAT-002 (TUI, desktop): List categories with filtering by type and/or active status
-- [x] CAT-003 (TUI, desktop): Edit a category's name, type, or active status
+- [x] CAT-001 (TUI, desktop): Create a category with a name, a type (Expense or Income) and, optionally, a parent
+- [x] CAT-002 (TUI, desktop): List categories as a tree, expenses in one section and income in another
+- [x] CAT-003 (TUI, desktop): Edit a category's name, type, parent or monthly budget
 - [x] CAT-004 (TUI, desktop): Delete a category
-- [x] CAT-005 (TUI, desktop): Create nested categories (parent/child hierarchy)
-- [x] CAT-006 (TUI, desktop): View rollup totals for parent categories
+- [x] CAT-005 (TUI, desktop): Create nested categories (parent/child hierarchy), up to three levels deep
+- [x] CAT-006 (TUI): View rollup totals for parent categories
 - [ ] CAT-007: Archive (hide) a category without deleting it
+- [x] CAT-008 (desktop): Keep categories after the app closes
+- [x] CAT-009 (desktop): Deleting a category moves its transactions and bills to Uncategorised and clears it as a payee's default category
 
 ## For developers
 

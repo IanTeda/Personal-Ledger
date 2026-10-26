@@ -4,7 +4,7 @@ End-user documentation: [Categories](../categories.md).
 
 ## Overview
 
-A Category is the required classification on every Split — what the money was for. `lib-categories` owns the Entity, its tree rules (a leaf takes Splits, three levels at most, a child takes its parent's type, no cycles), the add, rename and move Interactors and the `CategoryRepository` port; `lib-core` owns `CategoryId` and the `CategoryTypes` enum; `lib-database`'s Categories adapter persists the tree (#858). The Desktop's Categories page still writes through `lib-ledger`'s `LedgerCommand`s, which `LedgerStore` forwards to the adapter, until the page moves onto `lib-categories`' Presenters (#859). Category delete re-points other domains' rows, so it stays a `lib-ledger` command until `lib-reassign` (#813). The TUI renders its own stub.
+A Category is the required classification on every Split — what the money was for. `lib-categories` is a VIPER module (slice 5, #847): it owns the Entity, its tree rules (a leaf takes Splits, three levels at most, a child takes its parent's type, no cycles), the add, rename, move and edit Interactors, the `CategoryRepository` port and the Page, Add/Edit and Delete Presenters. It depends on no other feature crate. `lib-core` owns `CategoryId` and the `CategoryTypes` enum; `lib-database`'s Categories adapter persists the tree (#858). The Desktop's Categories page and Dialogs run on the Presenters (#859). Category delete re-points other domains' rows, so it goes through a reassign port the Desktop answers with a `lib-ledger` command until `lib-reassign` (#813), and the Monthly budget goes through a port answered from the Ledger's Budgets until they persist (#811). The TUI renders its own stub.
 
 ## Data model
 
@@ -37,12 +37,24 @@ Invariants the schema leaves to `lib-categories`: the three-level cap, a child t
 
 The stub seed is written after the Accounts and before the Payees, Transactions and Bills that name it, in the first-launch seed and `db-seed`. The old `src/categories/` module, and its FR.35 per-Category totals reader, went with the old table; nothing read them.
 
+## Interactors and ports
+
+`lib-categories` declares, and the bins or `lib-database` answer:
+
+- **`CategoryRepository`** — the persisted port, listed in tree order. Its contract suite (`contract-tests`) runs against `fake.rs` and the adapter.
+- **Interactors** — `AddCategory`, `RenameCategory`, `MoveCategory` and `EditCategory`. Edit is the one the Dialog uses: it runs the rename, the move and the top-level type cascade over the rows, checks every rule, then upserts each changed row, so a refused move leaves the rename unwritten. A move is refused when its subtree would pass three levels (#870).
+- **`CategoryBudget`** — the Monthly budget: read the field, `check_monthly_budget` on the tree as the save leaves it, then `set_monthly_budget`. `AddCategory` and `EditCategory` carry a `BudgetChange` and check before writing anything, so a refused budget writes no Category. The refusal is a typed `MonthlyBudgetRefusal` (not an expense leaf, read-only, unavailable).
+- **`CategoryReassign`** — delete, with `CategoryReassigned` and `ReassignRefusal`. Delete re-points Splits and Bill Plans to Uncategorised and clears Payee defaults, so it is no single-domain Interactor.
+- **`CategoryUsage`** — Splits and Budget Limits per Category, for the Dialogs' wording. Infallible (0 on nothing): the refusal comes from the reassign port.
+
+The three ports the Desktop answers through `LedgerStore` need the gpui context, so `categories::ports::LedgerPorts { ledger, today, cx }` is built around each call and lent to the Presenters, at open for reads and to a separate `confirm(port, router)` for writes, rather than held. The Presenters hold `SharedCategories = Rc<RefCell<dyn CategoryRepository>>`, the Desktop's existing `SharedCategoriesStore`, so `build`, `LedgerStore`, Bills and Payees didn't change.
+
 ## UI
 
-The Desktop reads Categories from `lib-database`; the TUI renders its own stub.
+The Desktop reads and writes Categories through `lib-database`; the TUI renders its own stub.
 
 - **TUI** — `crates/bins/bin-tui/src/category/` holds a `CategoryStore` seam over an in-memory tree, with `fixture.rs` supplying the data. The seam exists precisely so the screen and popups can be moved onto real persistence later by adding a second `impl CategoryStore`, with no UI rewrite. The screen itself is `view/categories.rs`. State that changes (tree shape, fold state, form drafts) lives in the owning `View`/popup and is mutated in its own `handle_key`/`update`, never routed through `view::Action` — `Action` only carries a `RowID` when signalling a transition across the `Shell` boundary. `docs/ux/tui-mockups/03-categories/README.md` is the authority on the model: two fixed, non-deletable roots (income and expenses), kind inherited from the root and never stored per node, unlimited depth, and each node carrying both a direct amount and a computed rollup.
-- **Desktop** — `crates/bins/bin-desktop/src/categories/` (`ports.rs`, `router.rs`, `view/page.rs` with `page/render.rs`, and `view/dialog.rs` with `dialog/category_form.rs` and `dialog/delete_category.rs`) draws `lib-categories`' Presenters (#859), built against `docs/ux/desktop-mockups/18-categories/`: the 5a landing page (tree, sections, folds), the 5b Add and 5c Edit Dialogs (one form: name, type, parent, Monthly budget, type-locking, usage notice) and the 5d Delete Dialog (typed-back name, destructive treatment). The page reads and writes the Categories store through the Interactors, committed with the input, and refreshes the Ledger's read copy after each event. The Monthly budget and Category delete (reassign) are `lib-categories` ports the Desktop answers from the Ledger (`ports::LedgerPorts`), delete by running `lib_ledger::DeleteCategory` through the forwarding shims until `lib-reassign` (#813). Only leaf Categories are assigned to Splits; a parent exists to roll up and to filter by.
+- **Desktop** — `crates/bins/bin-desktop/src/categories/` (`ports.rs`, `router.rs`, `view/page.rs` with `page/render.rs`, and `view/dialog.rs` with `dialog/category_form.rs` and `dialog/delete_category.rs`) draws `lib-categories`' Presenters (#859), built against `docs/ux/desktop-mockups/18-categories/`: the 5a landing page (tree, sections, folds), the 5b Add and 5c Edit Dialogs (one form: name, type, parent, Monthly budget, type-locking, usage notice) and the 5d Delete Dialog (typed-back name, destructive treatment). The page reads and writes the Categories store through the Interactors, committed with the input, and refreshes the Ledger's read copy before and after each event. The Parent category field is a working select, Enter no longer confirms a name a sibling already has (the message shows under Name as you type), and refusals show as Messages (`categories-` in `lib-categories`' catalogue) rather than `CategoryError`'s `Display`. The Monthly budget and Category delete (reassign) are `lib-categories` ports the Desktop answers from the Ledger (`ports::LedgerPorts`), delete by running `lib_ledger::DeleteCategory` through the forwarding shims until `lib-reassign` (#813). Only leaf Categories are assigned to Splits; a parent exists to roll up and to filter by.
 
 The two stubs are independent and do not share a model. Desktop differs from TUI in depth (3 vs. unlimited), structure (flat keys vs. semantic roots), and data (12 fixed vs. dynamic fixture).
 
@@ -50,7 +62,16 @@ The two stubs are independent and do not share a model. Desktop differs from TUI
 
 ## Traceability
 
-Omitted: [categories.md](../categories.md) carries no requirement checklist yet, so there is nothing ticked to trace. Add the table here when `CAT-` requirements are written.
+| Requirement | Code | Test |
+| --- | --- | --- |
+| CAT-001 | `lib_categories::AddCategory`, `categories/view/dialog/category_form.rs` | `settings_categories_keyboard.rs` |
+| CAT-002 | `lib_categories::tree_order`, `categories/view/page.rs` | `settings_categories_keyboard.rs` |
+| CAT-003 | `lib_categories::EditCategory` | `settings_categories_keyboard.rs` |
+| CAT-004 | `lib_categories::CategoryReassign`, `categories/view/dialog/delete_category.rs` | `settings_categories_keyboard.rs` |
+| CAT-005 | `lib_categories::insert_category`, `move_exceeds_depth` | `lib-categories` unit tests |
+| CAT-006 | `bin-tui/src/view/categories.rs` (the TUI's stub; the Desktop tree shows names and actions only) | |
+| CAT-008 | `lib-database`'s `adapter/categories.rs` | `smoke_categories_persist.rs` |
+| CAT-009 | `categories::ports::LedgerPorts`, `lib_ledger::DeleteCategory` | `settings_categories_keyboard.rs` |
 
 ## Decisions
 
@@ -62,4 +83,8 @@ Omitted: [categories.md](../categories.md) carries no requirement checklist yet,
 
 - **The TUI isn't wired to `lib-database`.** Its stub disagrees with the Desktop's tree — two fixed roots and unlimited depth against 12 nodes three levels deep — until its redesign (#805).
 - **Per-Category totals (FR.35) have no reader.** The old module's `totals.rs` went with the old table.
+- **A Ledger file made before #858 can't migrate.** `create_categories_table.sql` was rewritten in place, so its checksum changed and an old file needs a fresh Ledger (viper-architecture.md, Migrating a domain, step 15).
+- **Delete is a store write, not a port write.** `CategoryRepository` has no delete, so `CategoriesStore::delete_category` is a store-level method the forwarding shim calls, after the Payees, Transactions and Bills writes whose foreign keys name the Category. `lib-reassign` (#813) decides whether it becomes a port write.
+- **Order changed from added order to tree order.** The Ledger's read copy, `BillCategories` and `PayeeCategories` come in the store's tree order, so a child added later under an early parent lists among its siblings in the Bills and Payees selects.
+- **Where the rules live twice.** `lib-ledger` still runs the same entity rules over its own rows for Category `LedgerCommand`s (reassign's Uncategorised and delete). The `docs/diagrams/workspace-dependencies.html` diagram is pinned at 2ef177e and still draws `lib-categories`' old edges to `lib-accounts` and `lib-transactions`; it is redrawn at the slice's close.
 - **No Change Set emission.** Like every other entity, Categories writes do not emit Change Sets, so nothing here syncs yet.
