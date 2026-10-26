@@ -217,7 +217,11 @@ mod tests {
     fn a_merge_reports_both_names_and_toasts_them(cx: &mut TestAppContext) {
         let ledger = ledger(cx);
         let rows = tags(&ledger, cx);
-        let options = merge_options(&rows, &[], |name, _| name.to_string());
+        let options = merge_options(
+            &rows,
+            &lib_tags::fake::InMemoryTagUsage::default(),
+            |name, _| name.to_string(),
+        );
         let mut dialog = TagsDialog::Merge(MergeTagsForm::new(
             options,
             Some(rows[1].id),

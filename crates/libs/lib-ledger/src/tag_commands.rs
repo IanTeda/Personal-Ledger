@@ -7,12 +7,53 @@
 //! as written too.
 
 use lib_core::TagId;
-use lib_tags::{
-    Tag, TagDraft, TagError, edit_tag, get, insert_tag, merge_tags, remove_tag, set_active,
-    transaction_count,
-};
+use lib_tags::{Tag, TagDraft, TagError, edit_tag, get, insert_tag, set_active};
+use lib_transactions::Transaction;
 
+use crate::tag_usage::transaction_count;
 use crate::{Ledger, LedgerChange, LedgerCommand};
+
+/// Untags every Split carrying Tag `id` and deletes it, used or not. Amounts, Categories and
+/// Payees are untouched.
+fn remove_tag(
+    tags: &mut Vec<Tag>,
+    transactions: &mut [Transaction],
+    id: TagId,
+) -> Result<(), TagError> {
+    get(tags, id).ok_or(TagError::NotFound)?;
+    for split in transactions.iter_mut().flat_map(|t| &mut t.splits) {
+        split.tag_ids.retain(|tag| *tag != id);
+    }
+    tags.retain(|t| t.id != id);
+    Ok(())
+}
+
+/// Folds `source` into `target` as one operation: each Split carrying the source carries the
+/// target instead (once, if it already had it), then the source is deleted. The target keeps its
+/// name, colour and `is_active`; either may be inactive.
+fn merge_tags(
+    tags: &mut Vec<Tag>,
+    transactions: &mut [Transaction],
+    source: TagId,
+    target: TagId,
+) -> Result<(), TagError> {
+    if source == target {
+        return Err(TagError::MergeIntoItself);
+    }
+    get(tags, source).ok_or(TagError::NotFound)?;
+    get(tags, target).ok_or(TagError::NotFound)?;
+    for split in transactions.iter_mut().flat_map(|t| &mut t.splits) {
+        if let Some(index) = split.tag_ids.iter().position(|tag| *tag == source) {
+            if split.tag_ids.contains(&target) {
+                split.tag_ids.remove(index);
+            } else {
+                split.tag_ids[index] = target;
+            }
+        }
+    }
+    tags.retain(|t| t.id != source);
+    Ok(())
+}
 
 impl Ledger {
     /// Adds a new, active Tag and returns its id.
@@ -65,7 +106,7 @@ impl Ledger {
     }
 
     /// Swaps in `transactions`, recording an upsert for each one that differs.
-    fn replace_transactions(&mut self, transactions: Vec<lib_transactions::Transaction>) {
+    fn replace_transactions(&mut self, transactions: Vec<Transaction>) {
         for (after, before) in transactions.iter().zip(&self.transactions) {
             if after != before {
                 self.pending
@@ -298,5 +339,95 @@ mod tests {
         assert_eq!(ledger.tags(), tags);
         assert_eq!(ledger.transactions(), transactions);
         assert!(ledger.drain_changes().is_empty());
+    }
+
+    #[test]
+    fn remove_untags_every_split_and_keeps_the_transactions() {
+        let ledger = Ledger::stub();
+        let mut tags = ledger.tags().to_vec();
+        let mut transactions = ledger.transactions().to_vec();
+        let before = transactions.clone();
+        let shared = id_of(&ledger, "shared");
+
+        remove_tag(&mut tags, &mut transactions, shared).unwrap();
+
+        assert!(get(&tags, shared).is_none());
+        assert_eq!(transaction_count(&transactions, shared), 0);
+        assert_eq!(transactions.len(), before.len());
+        for (after, before) in transactions.iter().zip(&before) {
+            assert_eq!(after.total(), before.total());
+            for (a, b) in after.splits.iter().zip(&before.splits) {
+                assert_eq!((a.category_id, a.payee_id), (b.category_id, b.payee_id));
+            }
+        }
+        assert_eq!(
+            remove_tag(&mut tags, &mut transactions, shared),
+            Err(TagError::NotFound)
+        );
+    }
+
+    #[test]
+    fn remove_deletes_an_unused_tag_too() {
+        let ledger = Ledger::stub();
+        let mut tags = ledger.tags().to_vec();
+        let mut transactions = ledger.transactions().to_vec();
+        let new = insert_tag(&mut tags, &draft("unused")).unwrap();
+
+        remove_tag(&mut tags, &mut transactions, new).unwrap();
+
+        assert!(get(&tags, new).is_none());
+    }
+
+    #[test]
+    fn merge_retags_without_doubling_a_split_that_already_carries_the_target() {
+        let ledger = Ledger::stub();
+        let mut tags = ledger.tags().to_vec();
+        let (source, target, other) = (
+            id_of(&ledger, "Work Trip"),
+            id_of(&ledger, "work-trip"),
+            TagId::seed(1),
+        );
+        let mut transactions = ledger.transactions()[..3].to_vec();
+        let split = |tag_ids: &[TagId]| {
+            let mut split = transactions[0].splits[0].clone();
+            split.tag_ids = tag_ids.to_vec();
+            split
+        };
+        let splits = [
+            vec![split(&[source])],
+            vec![split(&[source, target]), split(&[other])],
+            vec![split(&[target])],
+        ];
+        for (transaction, splits) in transactions.iter_mut().zip(splits) {
+            transaction.splits = splits;
+        }
+
+        merge_tags(&mut tags, &mut transactions, source, target).unwrap();
+
+        assert!(get(&tags, source).is_none());
+        assert_eq!(transactions[0].splits[0].tag_ids, vec![target]);
+        assert_eq!(transactions[1].splits[0].tag_ids, vec![target]);
+        assert_eq!(transactions[1].splits[1].tag_ids, vec![other]);
+        assert_eq!(transaction_count(&transactions, target), 3);
+        // The target keeps its own name and colour.
+        let kept = get(&tags, target).unwrap();
+        assert_eq!(kept.name, "work-trip");
+        assert_eq!(kept.color, Some(lib_tags::swatches()[4].clone()));
+    }
+
+    #[test]
+    fn merge_allows_an_inactive_source_and_keeps_the_targets_active_flag() {
+        let ledger = Ledger::stub();
+        let mut tags = ledger.tags().to_vec();
+        let mut transactions = ledger.transactions().to_vec();
+        let gift = id_of(&ledger, "gift");
+        let bali = id_of(&ledger, "Bali 2025");
+        let expected =
+            transaction_count(&transactions, gift) + transaction_count(&transactions, bali);
+
+        merge_tags(&mut tags, &mut transactions, bali, gift).unwrap();
+
+        assert_eq!(transaction_count(&transactions, gift), expected);
+        assert!(get(&tags, gift).unwrap().is_active);
     }
 }

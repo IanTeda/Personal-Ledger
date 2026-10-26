@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App};
 use lib_core::TagId;
-use lib_tags::{Tag, get, transaction_count};
+use lib_tags::{Tag, TagUsage, get};
 
 use super::form::{MergeTagsForm, RemoveTagForm, TagForm};
 use crate::{
@@ -23,7 +23,6 @@ use crate::{
     shell::view::dialog_host::{
         Dialog, DialogActions, DialogKey, DialogOutcome, DialogReadback, DialogScope,
     },
-    transactions::Transaction,
 };
 use add::OnFieldClick;
 use merge::{OnFieldClick as OnMergeFieldClick, OnOptionClick};
@@ -160,11 +159,11 @@ impl TagsDialog {
     }
 
     /// Draws the open Dialog. Edit and Remove read their Tag from `tags` and count its Splits in
-    /// `transactions`; a Tag that has gone draws nothing rather than panicking mid-render.
+    /// `usage`; a Tag that has gone draws nothing rather than panicking mid-render.
     fn draw(
         &self,
         tags: &[Tag],
-        transactions: &[Transaction],
+        usage: &dyn TagUsage,
         handlers: TagsDialogHandlers,
         cx: &App,
     ) -> Option<AnyElement> {
@@ -184,7 +183,7 @@ impl TagsDialog {
                         form,
                         name_error: form.name_error(),
                         valid: form.is_valid(),
-                        transactions: transaction_count(transactions, *id),
+                        transactions: usage.tag_usage(*id).transactions,
                         on_toggle_active: handlers.on_toggle_active.clone(),
                     },
                     handlers.name_dialog(),
@@ -197,7 +196,7 @@ impl TagsDialog {
                     remove::RemoveTagProps {
                         tag,
                         form,
-                        transactions: transaction_count(transactions, *id),
+                        transactions: usage.tag_usage(*id).transactions,
                         on_cancel: handlers.on_cancel.clone(),
                         on_confirm: handlers.on_confirm.clone(),
                     },
@@ -211,7 +210,7 @@ impl TagsDialog {
                         form,
                         source: source.and_then(|id| get(tags, id)),
                         target: form.target_id().and_then(|id| get(tags, id)),
-                        transactions: source.map_or(0, |id| transaction_count(transactions, id)),
+                        transactions: source.map_or(0, |id| usage.tag_usage(id).transactions),
                         on_field_click: handlers.on_merge_field_click,
                         on_option_click: handlers.on_merge_option_click,
                         on_cancel: handlers.on_cancel,
@@ -256,12 +255,7 @@ impl Dialog for TagsDialog {
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
         let ledger = scope.ledger.read(cx).ledger();
-        self.draw(
-            ledger.tags(),
-            ledger.transactions(),
-            TagsDialogHandlers::new(actions),
-            cx,
-        )
+        self.draw(ledger.tags(), ledger, TagsDialogHandlers::new(actions), cx)
     }
 
     /// Add and Edit read back their Name, Remove its typed-back name, and Merge the names of the

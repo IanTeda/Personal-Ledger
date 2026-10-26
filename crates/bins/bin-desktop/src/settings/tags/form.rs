@@ -3,13 +3,12 @@
 //! holds it while it is open.
 
 use lib_core::{HexColor, TagId};
-use lib_tags::{Tag, TagDraft, TagError, name_error, sorted_by_usage, swatches, transaction_count};
+use lib_tags::{Tag, TagDraft, TagError, TagUsage, name_error, sorted_by_usage, swatches};
 
 use crate::{
     form::field::TextField,
     form::select::SelectState,
     shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    transactions::Transaction,
 };
 
 /// The Add and Edit tag dialogs' fields, in `Tab` order.
@@ -261,14 +260,14 @@ impl Dialog for RemoveTagForm {
 /// The 7e selects' options in usage order, each labelled by `label(name, transactions)`.
 pub fn merge_options(
     tags: &[Tag],
-    transactions: &[Transaction],
+    usage: &dyn TagUsage,
     label: impl Fn(&str, usize) -> String,
 ) -> Vec<MergeOption> {
-    sorted_by_usage(tags, transactions)
+    sorted_by_usage(tags, usage)
         .into_iter()
         .map(|tag| MergeOption {
             id: tag.id,
-            label: label(&tag.name, transaction_count(transactions, tag.id)),
+            label: label(&tag.name, usage.tag_usage(tag.id).transactions),
         })
         .collect()
 }
@@ -470,7 +469,10 @@ impl Dialog for MergeTagsForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::tags::{dialogs::TagsDialog, tests::seeded};
+    use crate::settings::tags::{
+        dialogs::TagsDialog,
+        tests::{rows, seeded},
+    };
     use lib_tags::{default_tags, find_by_name, get};
 
     #[test]
@@ -650,11 +652,10 @@ mod tests {
 
     #[test]
     fn merge_options_follow_usage_order_with_their_counts() {
-        let (_, tags, transactions) = seeded();
-        let options = merge_options(&tags, &transactions, |name, count| {
-            format!("{name} ({count})")
-        });
-        let sorted = sorted_by_usage(&tags, &transactions);
+        let (accounts, tags, transactions) = seeded();
+        let usage = rows(&accounts, &transactions);
+        let options = merge_options(&tags, &usage, |name, count| format!("{name} ({count})"));
+        let sorted = sorted_by_usage(&tags, &usage);
         assert_eq!(options.len(), tags.len());
         for (option, tag) in options.iter().zip(sorted) {
             assert_eq!(option.id, tag.id);
@@ -663,7 +664,7 @@ mod tests {
                 format!(
                     "{} ({})",
                     tag.name,
-                    transaction_count(&transactions, tag.id)
+                    lib_ledger::transaction_count(&transactions, tag.id)
                 )
             );
         }
