@@ -71,7 +71,7 @@ pub fn usage(
 
 #[cfg(test)]
 mod tests {
-    use lib_core::TransactionId;
+    use lib_core::TagId;
 
     use super::*;
 
@@ -83,7 +83,7 @@ mod tests {
         wallet.name = "Purse".into();
         let changes = [
             LedgerChange::UpsertAccount(wallet.clone()),
-            LedgerChange::DeleteTransaction(TransactionId::seed(1)),
+            LedgerChange::DeleteTag(TagId::seed(1)),
         ];
 
         assert!(forward(&mut *store.borrow_mut(), &changes));

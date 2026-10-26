@@ -10,18 +10,15 @@
 use lib_database::TransactionsStore;
 use lib_ledger::LedgerChange;
 
-/// Sends each Transaction row in `changes` to `store`, in the order recorded. The writers it
-/// carries: Account delete, Import commit, Tag delete and merge, and Category reassign. Every
+/// Sends each Transaction row `changes` upserts to `store`, in the order recorded. The writers it
+/// carries: Import commit, Tag delete and merge, and Category reassign; none deletes a
+/// Transaction, since Account delete writes through `lib-account-deletion`'s port (#854). Every
 /// other change is another domain's, which nothing persists yet.
 pub fn forward(store: &mut dyn TransactionsStore, changes: &[LedgerChange]) {
     let port = store.transactions_mut();
     for change in changes {
-        match change {
-            LedgerChange::UpsertTransaction(transaction) => {
-                port.upsert_transaction(transaction.clone());
-            }
-            LedgerChange::DeleteTransaction(id) => port.delete_transaction(*id),
-            _ => {}
+        if let LedgerChange::UpsertTransaction(transaction) = change {
+            port.upsert_transaction(transaction.clone());
         }
     }
 }

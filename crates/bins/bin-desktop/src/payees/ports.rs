@@ -147,7 +147,7 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
 
 #[cfg(test)]
 mod tests {
-    use lib_core::{CategoryId, PayeeId, TransactionId};
+    use lib_core::{CategoryId, PayeeId, TagId, TransactionId};
     use lib_payees::fake::InMemoryPorts;
 
     use super::*;
@@ -164,7 +164,7 @@ mod tests {
         ));
         assert!(!forward(
             &mut store,
-            &[LedgerChange::DeleteTransaction(TransactionId::seed(1))]
+            &[LedgerChange::DeleteTag(TagId::seed(1))]
         ));
 
         assert_eq!(store.payees.payee(coles.id), Some(coles));
