@@ -252,3 +252,22 @@ fn the_edit_type_change_is_held_until_enter_and_dropped_by_escape(app: &mut Test
     assert_eq!(ui.dialog(), None);
     assert_ne!(ui.settings_categories().category_types, before);
 }
+
+#[gpui::test]
+fn the_edit_dialog_hides_parents_that_would_nest_the_subtree_past_three_levels(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+
+    // Housing (height 2) can't go under Transport; its Utilities (height 1) can.
+    ui.press("j e");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Housing"));
+    let parents = ui.dialog_value("parents").expect("the offered parents");
+    assert!(!parents.split(',').any(|name| name == "Transport"));
+    ui.press("escape");
+
+    ui.press("j j e");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Utilities"));
+    let parents = ui.dialog_value("parents").expect("the offered parents");
+    assert!(parents.split(',').any(|name| name == "Transport"));
+}

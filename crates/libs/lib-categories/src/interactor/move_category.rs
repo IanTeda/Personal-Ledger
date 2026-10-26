@@ -76,4 +76,20 @@ mod tests {
         );
         assert_eq!(categories, before);
     }
+
+    #[test]
+    fn a_move_that_nests_the_subtree_past_three_levels_is_refused_and_nothing_is_written() {
+        let mut categories = InMemoryCategories::stub();
+        let before = categories.clone();
+
+        assert_eq!(
+            MoveCategory {
+                id: CategoryId::seed(1),
+                parent_id: Some(CategoryId::seed(9)),
+            }
+            .run(&mut categories),
+            Err(CategoryError::DepthExceeded)
+        );
+        assert_eq!(categories, before);
+    }
 }

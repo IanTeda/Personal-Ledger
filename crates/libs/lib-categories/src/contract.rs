@@ -291,6 +291,14 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
     );
     assert_eq!(
         MoveCategory {
+            id: HOUSING,
+            parent_id: Some(TRANSPORT),
+        }
+        .run(ports.categories()),
+        Err(CategoryError::DepthExceeded)
+    );
+    assert_eq!(
+        MoveCategory {
             id: TRANSPORT,
             parent_id: Some(SALARY),
         }

@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Entity, div, prelude::*};
 use lib_budgets::Budgets;
-use lib_categories::{Category, depth, descendants_inclusive, is_leaf, path};
+use lib_categories::{Category, depth, descendants_inclusive, is_leaf, move_exceeds_depth, path};
 use lib_core::{CategoryId, CategoryTypes};
 use lib_transactions::Transaction;
 
@@ -203,13 +203,22 @@ impl Dialog for CategoriesDialog {
                 let name = ("name", form.name.text().to_string());
                 ("AddCategory", std::iter::once(name).chain(parent).collect())
             }
-            Self::Edit(_, form) => (
-                "EditCategory",
-                vec![
-                    ("name", form.name.text().to_string()),
-                    ("type", format!("{:?}", form.category_type)),
-                ],
-            ),
+            Self::Edit(category_id, form) => {
+                let categories = scope.ledger.read(cx).ledger().categories();
+                let parents = edit_parents(categories, *category_id)
+                    .into_iter()
+                    .map(|c| c.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                (
+                    "EditCategory",
+                    vec![
+                        ("name", form.name.text().to_string()),
+                        ("type", format!("{:?}", form.category_type)),
+                        ("parents", parents),
+                    ],
+                )
+            }
             Self::Delete(_, form) => (
                 "DeleteCategory",
                 vec![("confirm", form.confirmation_name.text().to_string())],
@@ -244,17 +253,8 @@ impl CategoriesDialog {
                 add::render(form, &parent_options, categories, handlers, cx)
             }
             Self::Edit(category_id, form) => {
-                let descendants = categories
-                    .iter()
-                    .find(|c| c.id == *category_id)
-                    .map(|_| descendants_inclusive(categories, *category_id))
-                    .unwrap_or_default();
-                let parent_options: Vec<_> = categories
-                    .iter()
-                    // Exclude the category itself and its descendants (to prevent cycles)
-                    .filter(|c| c.id != *category_id && !descendants.contains(&c.id))
-                    // Check depth: can't be at depth 2 or deeper
-                    .filter(|c| depth(categories, c.id) < 2)
+                let parent_options: Vec<_> = edit_parents(categories, *category_id)
+                    .into_iter()
                     .map(|c| edit::ParentOption {
                         id: Some(c.id),
                         label: path(categories, c.id).unwrap_or_else(|| c.name.clone()),
@@ -305,4 +305,14 @@ fn split_count(
                 .flat_map(move |t| t.splits.iter().filter(move |s| s.category_id == *cat_id))
         })
         .count()
+}
+
+/// The parents the Edit Dialog offers for `id`: not the Category itself or its subtree (a cycle),
+/// and none that would nest the subtree past three levels.
+fn edit_parents(categories: &[Category], id: CategoryId) -> Vec<&Category> {
+    let descendants = descendants_inclusive(categories, id);
+    categories
+        .iter()
+        .filter(|c| !descendants.contains(&c.id) && !move_exceeds_depth(categories, id, c.id))
+        .collect()
 }

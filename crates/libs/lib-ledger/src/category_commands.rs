@@ -524,6 +524,23 @@ mod tests {
         assert!(ledger.drain_changes().is_empty());
     }
 
+    #[test]
+    fn a_move_that_nests_the_subtree_past_three_levels_is_refused_and_leaves_the_ledger() {
+        let mut ledger = ledger();
+        let housing = category_id(&ledger, "Housing");
+        let transport = category_id(&ledger, "Transport");
+        let before = snapshot(&ledger);
+
+        let refusal = ledger.edit_category(housing, "Housing".into(), Some(transport), None, None);
+
+        assert_eq!(
+            refusal,
+            Err(SaveCategoryRefusal::Category(CategoryError::DepthExceeded))
+        );
+        assert_eq!(snapshot(&ledger), before);
+        assert!(ledger.drain_changes().is_empty());
+    }
+
     fn recorded_categories(ledger: &mut Ledger) -> Vec<CategoryId> {
         let mut ids: Vec<CategoryId> = ledger
             .drain_changes()

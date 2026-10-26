@@ -179,6 +179,33 @@ pub fn depth(categories: &[Category], id: CategoryId) -> u32 {
     d
 }
 
+/// How many levels sit below a category (0 for a leaf), so a move can check the whole subtree fits.
+pub fn height(categories: &[Category], id: CategoryId) -> u32 {
+    categories
+        .iter()
+        .filter(|c| c.parent == Some(id) && c.id != id)
+        .map(|c| 1 + height_bounded(categories, c.id, 3))
+        .max()
+        .unwrap_or(0)
+}
+
+fn height_bounded(categories: &[Category], id: CategoryId, budget: u32) -> u32 {
+    if budget == 0 {
+        return 0;
+    }
+    categories
+        .iter()
+        .filter(|c| c.parent == Some(id) && c.id != id)
+        .map(|c| 1 + height_bounded(categories, c.id, budget - 1))
+        .max()
+        .unwrap_or(0)
+}
+
+/// Whether moving `id` under `parent_id` would nest its subtree past three levels (depth 0 to 2).
+pub fn move_exceeds_depth(categories: &[Category], id: CategoryId, parent_id: CategoryId) -> bool {
+    depth(categories, parent_id) + 1 + height(categories, id) > 2
+}
+
 /// Find or create an Uncategorised category for a type. Returns the id if found or created.
 pub fn get_or_create_uncategorised(
     categories: &mut Vec<Category>,
@@ -309,8 +336,8 @@ pub fn move_category(
         if is_descendant(categories, id, parent_id) {
             return Err(CategoryError::CycleDetected);
         }
-        // Depth check
-        if depth(categories, parent_id) >= 2 {
+        // Depth check, for the whole subtree being moved
+        if move_exceeds_depth(categories, id, parent_id) {
             return Err(CategoryError::DepthExceeded);
         }
     }
@@ -682,6 +709,24 @@ mod tests {
         let result = move_category(&mut categories, transport, Some(food));
         assert!(result.is_ok());
         assert_eq!(get(&categories, transport).unwrap().parent, Some(food));
+    }
+
+    #[test]
+    fn move_category_rejects_a_subtree_that_would_pass_three_levels() {
+        let mut categories = default_categories();
+        let housing = find_by_name(&categories, "Housing").unwrap();
+        let transport = find_by_name(&categories, "Transport").unwrap();
+        let utilities = find_by_name(&categories, "Utilities").unwrap();
+        let before = categories.clone();
+
+        assert_eq!(height(&categories, housing), 2);
+        assert_eq!(height(&categories, utilities), 1);
+        assert_eq!(
+            move_category(&mut categories, housing, Some(transport)),
+            Err(CategoryError::DepthExceeded)
+        );
+        assert_eq!(categories, before);
+        assert!(move_category(&mut categories, utilities, Some(transport)).is_ok());
     }
 
     #[test]
