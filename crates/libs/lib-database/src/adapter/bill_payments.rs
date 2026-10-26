@@ -61,12 +61,10 @@ mod tests {
     use super::*;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
-    use crate::{
-        BillsAdapter, PayeesAdapter, PendingWrites, TransactionsAdapter, UnitsAdapter, Writer,
-    };
+    use crate::{BillsAdapter, PayeesAdapter, PendingWrites, TransactionsAdapter, Writer};
 
     /// Both adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units and Payees are stored first, which a Bill Plan and a Split name.
+    /// stub's Units, Accounts and Payees are stored first, which a Bill Plan and a Split name.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -76,11 +74,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            UnitsAdapter::seed_from(
-                &writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
-            )
-            .expect("the stub Units are written");
+            crate::test_support::store_stub_accounts(&writer);
             PayeesAdapter::seed(&writer, crate::seed::stub_payees())
                 .expect("the stub Payees are written");
             Self {

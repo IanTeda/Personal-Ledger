@@ -4,17 +4,18 @@
 -- every Bill Schedule entry keeps its Plan. generate_from is the earliest due date generation may
 -- create, so an edit or a reactivation never backfills due dates already past (ADR-0019).
 --
--- unit_id and payee_id are the foreign keys, payee_id with no cascade: a Payee a Bill Plan names
--- can only be deactivated (ADR-0012), and the key is the backstop to that rule. category_id and
--- account_id have none yet, since Categories and Accounts aren't persisted, so no row would back
--- them (#774). Each becomes a REFERENCES when its domain persists.
+-- unit_id, account_id and payee_id are the foreign keys, account_id and payee_id with no cascade:
+-- a Payee a Bill Plan names can only be deactivated (ADR-0012), and the key is the backstop to that
+-- rule; an Account a Bill Plan names can't be deleted out from under it (#853). category_id has
+-- none yet, since Categories aren't persisted, so no row would back it (#774). It becomes a
+-- REFERENCES when Categories persist.
 
 CREATE TABLE IF NOT EXISTS bill_plans (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     category_id UUID NOT NULL,
     unit_id UUID NOT NULL REFERENCES units(id),
-    account_id UUID NOT NULL,
+    account_id UUID NOT NULL REFERENCES accounts(id),
     payee_id UUID REFERENCES payees(id),
     planned_amount TEXT NOT NULL,
     amount_kind TEXT NOT NULL CHECK (amount_kind IN ('fixed', 'estimated')),
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS bill_plans (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bill_plans_unit_id ON bill_plans(unit_id);
+CREATE INDEX IF NOT EXISTS idx_bill_plans_account_id ON bill_plans(account_id);
 CREATE INDEX IF NOT EXISTS idx_bill_plans_payee_id ON bill_plans(payee_id);
 
 -- Trigger to update updated_on on every Bill Plan row change

@@ -29,14 +29,16 @@ use gpui::{
     App, Bounds, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
+use lib_accounts::fake::{InMemoryAccountUsage, InMemoryAccounts};
+use lib_accounts::{Account, AccountRepository};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
-use lib_core::{PayeeId, PriceSourceId, UnitId};
+use lib_core::{AccountId, PayeeId, PriceSourceId, UnitId};
 use lib_database::{
-    BillsStore, Commit, CountingCommit, Domain, InstitutionsStore, PayeesStore, Stores,
-    TransactionsStore, UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, Commit, CountingCommit, Domain, InstitutionsStore, PayeesStore,
+    Stores, TransactionsStore, UnitsStore, WriteFailure,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
@@ -183,6 +185,54 @@ impl InstitutionsStore for FailingInstitutions {
 
     fn reload(&mut self) -> lib_database::Result<()> {
         self.institutions.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
+impl<T: AccountRepository> AccountRepository for Marked<T> {
+    fn accounts(&self) -> Vec<Account> {
+        self.inner.accounts()
+    }
+
+    fn upsert_account(&mut self, account: Account) {
+        self.written.set(true);
+        self.inner.upsert_account(account);
+    }
+
+    fn delete_account(&mut self, id: AccountId) {
+        self.written.set(true);
+        self.inner.delete_account(id);
+    }
+}
+
+/// An Accounts store whose writes never reach `stored`, the rows as they are on disk: a reload
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`]. Its usage is
+/// in memory, recounted from the Ledger by its holder.
+struct FailingAccounts {
+    accounts: Marked<InMemoryAccounts>,
+    usage: InMemoryAccountUsage,
+    stored: InMemoryAccounts,
+}
+
+impl AccountsStore for FailingAccounts {
+    fn accounts(&self) -> &dyn AccountRepository {
+        &self.accounts
+    }
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
+        &mut self.accounts
+    }
+
+    fn usage(&self) -> &dyn lib_accounts::AccountUsage {
+        &self.usage
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut InMemoryAccountUsage> {
+        Some(&mut self.usage)
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.accounts.inner = self.stored.clone();
         Ok(())
     }
 }
@@ -509,6 +559,7 @@ impl<'a> Harness<'a> {
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
+                lib_accounts::fake::InMemoryPorts::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -528,6 +579,7 @@ impl<'a> Harness<'a> {
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
+                lib_accounts::fake::InMemoryPorts::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -559,6 +611,7 @@ impl<'a> Harness<'a> {
             Stores::fake(
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
+                lib_accounts::fake::InMemoryPorts::stub(),
                 payees,
                 stub_transactions(),
                 stub_bills(),
@@ -603,6 +656,7 @@ impl<'a> Harness<'a> {
                     reload_fails,
                 )),
                 institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -636,11 +690,47 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Institutions],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on an Accounts store whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_accounts(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = InMemoryAccounts::stub();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(FailingAccounts {
+                    accounts: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    usage: InMemoryAccountUsage::default(),
+                    stored,
+                }),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Accounts],
                     written,
                     report,
                 }),
@@ -663,6 +753,7 @@ impl<'a> Harness<'a> {
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(FailingPayees {
                     payees: Marked {
                         inner: stored.clone(),
@@ -697,6 +788,7 @@ impl<'a> Harness<'a> {
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
@@ -730,6 +822,7 @@ impl<'a> Harness<'a> {
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(FailingBills {
@@ -763,6 +856,7 @@ impl<'a> Harness<'a> {
             counted(Stores {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {

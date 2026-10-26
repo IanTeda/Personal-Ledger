@@ -1,7 +1,8 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
-//! the Client migrations, then the Units, Institutions, Payees, Transactions and Bills adapters on
-//! the pending batch every adapter shares. The Desktop and the TUI both open it here, so they read and write
-//! the same rows (ADR-0046), and both build their Shell on the [`Stores`] made from it.
+//! the Client migrations, then the Units, Institutions, Accounts, Payees, Transactions and Bills
+//! adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
+//! so they read and write the same rows (ADR-0046), and both build their Shell on the [`Stores`]
+//! made from it.
 
 use std::path::Path;
 use std::rc::Rc;
@@ -11,8 +12,8 @@ use chrono::{NaiveDate, Utc};
 use lib_units::fake::InMemoryPorts;
 
 use crate::{
-    BillsAdapter, Error, InstitutionsAdapter, PayeesAdapter, PendingWrites, Result,
-    TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, adapter::store, seed,
+    AccountsAdapter, BillsAdapter, Error, InstitutionsAdapter, PayeesAdapter, PendingWrites,
+    Result, TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -20,6 +21,7 @@ use crate::{
 pub struct Storage {
     pub units: UnitsAdapter,
     pub institutions: InstitutionsAdapter,
+    pub accounts: AccountsAdapter,
     pub payees: PayeesAdapter,
     pub transactions: TransactionsAdapter,
     pub bills: BillsAdapter,
@@ -37,6 +39,7 @@ pub struct Storage {
 pub struct Stores {
     pub units: Box<dyn store::UnitsStore>,
     pub institutions: Box<dyn store::InstitutionsStore>,
+    pub accounts: Box<dyn store::AccountsStore>,
     pub payees: Box<dyn store::PayeesStore>,
     pub transactions: Box<dyn store::TransactionsStore>,
     pub bills: Box<dyn store::BillsStore>,
@@ -49,6 +52,7 @@ impl From<Storage> for Stores {
         Self {
             units: Box::new(storage.units),
             institutions: Box::new(storage.institutions),
+            accounts: Box::new(storage.accounts),
             payees: Box::new(storage.payees),
             transactions: Box::new(storage.transactions),
             bills: Box::new(storage.bills),
@@ -61,10 +65,11 @@ impl From<Storage> for Stores {
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,
 /// blocking. A Ledger with no base Unit is new, so it is seeded first with the stub's Units, Price
 /// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), the
-/// stub's Institutions, which its Accounts name (#849), the stub's Payees, which its Splits and
-/// Bill Plans name, and the stub Ledger's Transactions and
-/// Bills as of `today`, whose Paid entries and Documents name those Transactions (#774). The
-/// first-launch seed is removed once every domain persists.
+/// stub's Institutions, which its Accounts name (#849), the stub's Accounts, which its
+/// Transactions and Bill Plans name (#853), the stub's Payees, which its Splits and Bill Plans
+/// name, and the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and
+/// Documents name those Transactions (#774). The first-launch seed is removed once every domain
+/// persists.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the file.
@@ -76,6 +81,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
         Err(Error::NotFound(_)) => {
             UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))?;
             InstitutionsAdapter::seed(&writer, seed::stub_institutions())?;
+            AccountsAdapter::seed(&writer, seed::stub_accounts())?;
             PayeesAdapter::seed(&writer, seed::stub_payees())?;
             TransactionsAdapter::seed(&writer, seed::stub_ledger_transactions(today))?;
             let bills = seed::stub_ledger_bills(today);
@@ -86,12 +92,14 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
         loaded => loaded?,
     };
     let institutions = InstitutionsAdapter::load(pending.clone())?;
+    let accounts = AccountsAdapter::load(pending.clone())?;
     let payees = PayeesAdapter::load(pending.clone())?;
     let transactions = TransactionsAdapter::load(pending.clone())?;
     let bills = BillsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
         institutions,
+        accounts,
         payees,
         transactions,
         bills,
@@ -163,6 +171,37 @@ mod tests {
         let mut expected = seed::stub_institutions();
         expected.push(bank);
         assert_eq!(reopened.institutions.institutions(), expected);
+    }
+
+    #[test]
+    fn a_new_ledger_opens_with_the_stub_accounts_and_an_added_one_survives_a_restart() {
+        use lib_accounts::Account;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        assert_eq!(
+            storage.accounts.accounts().accounts(),
+            seed::stub_accounts()
+        );
+        let savings = Account {
+            id: lib_core::AccountId::new(),
+            name: "Holiday Fund".into(),
+            ..seed::stub_accounts()[1].clone()
+        };
+
+        storage
+            .accounts
+            .accounts_mut()
+            .upsert_account(savings.clone());
+        storage.pending.commit();
+        storage.writer.flush().expect("the writer is running");
+        drop(storage);
+        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+
+        let mut expected = seed::stub_accounts();
+        expected.push(savings);
+        assert_eq!(reopened.accounts.accounts().accounts(), expected);
     }
 
     #[test]

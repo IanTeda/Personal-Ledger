@@ -5,6 +5,9 @@
 //! [`Commit`](crate::Commit), once per input. [`Stores::fake`] builds the bundle on in-memory
 //! stores with a [`CountingCommit`], so a test asserts that once.
 //!
+//! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
+//! the Accounts writers to it, and the Units and Bills read its rows (#853).
+//!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
 //! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
@@ -18,8 +21,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc;
 
+use lib_accounts::{AccountRepository, AccountUsage};
 use lib_bills::fake::InMemoryBills;
-use lib_bills::{BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_bills::{BillAccount, BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_core::UnitId;
 use lib_institutions::InstitutionRepository;
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_payees::{PayeeRepository, PayeeUsage};
@@ -27,13 +32,15 @@ use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
-    BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage, UnitsPorts,
+    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage,
+    UnitsPorts,
 };
 
+use crate::adapter::accounts;
 use crate::adapter::payees::bill_payees;
 use crate::{
-    BillsAdapter, Commit, InMemoryCommit, InstitutionsAdapter, PayeesAdapter, Result, Stores,
-    TransactionsAdapter, UnitsAdapter, WriteFailure,
+    AccountsAdapter, BillsAdapter, Commit, InMemoryCommit, InstitutionsAdapter, PayeesAdapter,
+    Result, Stores, TransactionsAdapter, UnitsAdapter, WriteFailure,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -140,6 +147,144 @@ impl InstitutionsStore for InMemoryInstitutions {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
         self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// An Accounts store shared by the Ledger's forwarding shim and the Units and Bills reads.
+/// Single-threaded, as the ports are.
+pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
+
+/// The Accounts repository and usage ports, wherever they are kept, and the rows as the Units and
+/// Bills read them. The reads are the store's to answer, since the orphan rule stops
+/// `lib-database` implementing `lib-units`' and `lib-bills`' ports for `lib-accounts`' fake.
+pub trait AccountsStore {
+    fn accounts(&self) -> &dyn AccountRepository;
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
+
+    /// The Transactions booked to each Account. Its Budgets count is the holder's to add from the
+    /// `Ledger` until Budgets persist (#811).
+    fn usage(&self) -> &dyn AccountUsage;
+
+    /// The usage a store holds in memory rather than counts, for its holder to recount from the
+    /// Transactions it can see before each ask. `None` for the adapter, which counts in the file
+    /// on each ask.
+    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
+        None
+    }
+
+    /// The Accounts whose Unit is `unit`, in order, as `lib-units`' `UnitHoldings` reads them.
+    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
+        let usage = self.usage();
+        accounts::holdings(&self.accounts().accounts(), unit, |id| {
+            usage.account_usage(id).transactions
+        })
+    }
+
+    /// How many Accounts count in `unit`: the Accounts half of `lib-units`' `UnitUsage`.
+    fn unit_accounts(&self, unit: UnitId) -> usize {
+        accounts::unit_accounts(&self.accounts().accounts(), unit)
+    }
+
+    /// Every Account as `lib-bills`' `BillAccounts` reads it.
+    fn bill_accounts(&self) -> Vec<BillAccount> {
+        accounts::bill_accounts(&self.accounts().accounts())
+    }
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl AccountsStore for AccountsAdapter {
+    fn accounts(&self) -> &dyn AccountRepository {
+        AccountsAdapter::accounts(self)
+    }
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
+        AccountsAdapter::accounts_mut(self)
+    }
+
+    fn usage(&self) -> &dyn AccountUsage {
+        AccountsAdapter::usage(self)
+    }
+
+    /// One count of the file for every Account, rather than one per Account.
+    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
+        lib_units::UnitHoldings::holdings(self, unit)
+    }
+
+    fn unit_accounts(&self, unit: UnitId) -> usize {
+        UnitUsage::unit_usage(self, unit).accounts
+    }
+
+    fn bill_accounts(&self) -> Vec<BillAccount> {
+        lib_bills::BillAccounts::bill_accounts(self)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        AccountsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedAccountsStore`]).
+impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
+    fn accounts(&self) -> &dyn AccountRepository {
+        (**self).accounts()
+    }
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
+        (**self).accounts_mut()
+    }
+
+    fn usage(&self) -> &dyn AccountUsage {
+        (**self).usage()
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
+        (**self).usage_to_count()
+    }
+
+    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
+        (**self).holdings(unit)
+    }
+
+    fn unit_accounts(&self, unit: UnitId) -> usize {
+        (**self).unit_accounts(unit)
+    }
+
+    fn bill_accounts(&self) -> Vec<BillAccount> {
+        (**self).bill_accounts()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read, and the usage is whatever its holder
+/// last counted.
+impl AccountsStore for lib_accounts::fake::InMemoryPorts {
+    fn accounts(&self) -> &dyn AccountRepository {
+        &self.accounts
+    }
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
+        &mut self.accounts
+    }
+
+    fn usage(&self) -> &dyn AccountUsage {
+        &self.usage
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
+        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -455,12 +600,13 @@ impl Commit for CountingCommit {
 }
 
 impl Stores {
-    /// `units`, `institutions`, `payees`, `transactions` and `bills` in memory, committed through
-    /// a [`CountingCommit`] whose count is returned, on a failure channel nothing reports on, since
-    /// there is no writer.
+    /// `units`, `institutions`, `accounts`, `payees`, `transactions` and `bills` in memory,
+    /// committed through a [`CountingCommit`] whose count is returned, on a failure channel nothing
+    /// reports on, since there is no writer.
     pub fn fake(
         units: InMemoryPorts,
         institutions: InMemoryInstitutions,
+        accounts: lib_accounts::fake::InMemoryPorts,
         payees: lib_payees::fake::InMemoryPorts,
         transactions: InMemoryTransactions,
         bills: InMemoryBills,
@@ -470,6 +616,7 @@ impl Stores {
         let stores = Self {
             units: Box::new(units),
             institutions: Box::new(institutions),
+            accounts: Box::new(accounts),
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
@@ -490,6 +637,7 @@ impl Stores {
         Self {
             units,
             institutions: Box::new(InMemoryInstitutions::default()),
+            accounts: Box::new(lib_accounts::fake::InMemoryPorts::default()),
             payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
             transactions: Box::new(InMemoryTransactions::default()),
             bills: Box::new(InMemoryBills::default()),
@@ -508,6 +656,7 @@ mod tests {
         let (stores, count) = Stores::fake(
             InMemoryPorts::stub(chrono::Utc::now()),
             InMemoryInstitutions::stub(),
+            lib_accounts::fake::InMemoryPorts::stub(),
             lib_payees::fake::InMemoryPorts::stub(),
             InMemoryTransactions::default(),
             InMemoryBills::default(),

@@ -1,7 +1,8 @@
-//! `lib-accounts`' [`AccountUsage`] answered from the Ledger (#852), a halfway shim: the Account
-//! Edit and Delete Dialogs count an Account's Transactions and Budgets from the rows themselves,
-//! so an Import can't leave the figure wrong. The Transactions count moves to `lib-database` once
-//! Accounts persist (#853); the Budgets count stays here until Budgets persist (#811).
+//! `lib-accounts`' [`AccountUsage`] answered from the Ledger (#852), a halfway shim counting an
+//! Account's Transactions and Budgets from the rows themselves, so an Import can't leave the
+//! figure wrong. The Desktop counts the Transactions in `lib-database` since Accounts persist
+//! (#853) and reads only the Budgets count here, until Budgets persist (#811); the TUI's Units
+//! ports still read the Transactions count through `UnitHoldings` for `Ledger` (Q24).
 
 use lib_accounts::{AccountUsage, AccountUse};
 use lib_core::AccountId;

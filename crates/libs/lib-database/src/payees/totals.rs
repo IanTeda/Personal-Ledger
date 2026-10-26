@@ -92,8 +92,8 @@ mod tests {
 
     async fn seed_unit_and_account(pool: &SqlitePool) -> (lib_core::RowID, lib_core::RowID) {
         let unit = crate::Units::mock().insert(pool).await.unwrap();
-        let account = crate::Accounts::mock(unit.id).insert(pool).await.unwrap();
-        (unit.id, account.id)
+        let account = crate::test_support::insert_account(pool, unit.id).await;
+        (unit.id, account)
     }
 
     async fn seed_category(pool: &SqlitePool) -> lib_core::RowID {
@@ -239,13 +239,13 @@ mod tests {
     async fn account_scope_excludes_other_accounts_in_the_same_unit(pool: SqlitePool) {
         let category_id = seed_category(&pool).await;
         let (unit_id, account_id) = seed_unit_and_account(&pool).await;
-        let other_account = crate::Accounts::mock(unit_id).insert(&pool).await.unwrap();
+        let other_account = crate::test_support::insert_account(&pool, unit_id).await;
         let payee_id = seed_payee(&pool, true).await;
 
         crate::test_support::OneSplit {
             payee_id: Some(payee_id),
             ..crate::test_support::OneSplit::new(
-                other_account.id,
+                other_account,
                 category_id,
                 "-100",
                 date(2026, 1, 15),

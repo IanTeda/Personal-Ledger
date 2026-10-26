@@ -4,10 +4,13 @@
 --
 -- No uniqueness constraint on (account_id, date): nothing in the FRs asks for one, and a
 -- future CSV import may legitimately want more than one entry for the same day.
+--
+-- account_id cascades: a Balance Check is an assertion about one Account, so deleting the Account
+-- takes its Balance Checks with it (#853).
 
 CREATE TABLE IF NOT EXISTS balance_checks (
     id UUID PRIMARY KEY,
-    account_id UUID NOT NULL REFERENCES accounts(id),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     date TEXT NOT NULL,
     asserted_balance TEXT NOT NULL,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),

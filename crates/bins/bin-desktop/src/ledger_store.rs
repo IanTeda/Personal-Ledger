@@ -2,12 +2,12 @@
 //! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
-//! The Ledger's Institutions, Payees, Transactions, Bill Plans and Bill Schedule are read copies of
-//! their ports (#774, #831, #849, #850): `apply` forwards a command's Payee, Transaction and Bills
-//! changes to the ports and refreshes the copies from them. The Institutions, Payees and Bills
-//! ports are shared with their modules, which write them through their Interactors and refresh the
-//! copy after each event ([`LedgerStore::refresh_institutions`], [`LedgerStore::refresh_payees`],
-//! [`LedgerStore::refresh_bills`]).
+//! The Ledger's Institutions, Accounts, Payees, Transactions, Bill Plans and Bill Schedule are read
+//! copies of their ports (#774, #831, #849, #850, #853): `apply` forwards a command's Account,
+//! Payee, Transaction and Bills changes to the ports and refreshes the copies from them. The
+//! Institutions, Payees and Bills ports are shared with their modules, which write them through
+//! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
+//! [`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
 //!
 //! The store holds no commit: what `apply` forwards is committed by the input it ran in
 //! (`crate::input::send`). A View not yet a module runs `apply` from its own click, outside any
@@ -19,8 +19,10 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
+use lib_accounts::AccountUse;
 use lib_bills::BillsPorts as _;
-use lib_database::{PayeesStore, SharedTransactionsStore};
+use lib_core::AccountId;
+use lib_database::{PayeesStore, SharedAccountsStore, SharedTransactionsStore};
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
@@ -29,28 +31,32 @@ use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
 /// What `shell::router::build` hands the Ledger: the Institutions ports it shares with the
-/// Institutions module, the Payees ports it shares with the Payees module and the Bills reads, where its Transactions are kept, shared with the Bill Payments module, and
-/// the Bills ports it shares with the Bills module.
+/// Institutions module, the Accounts store it shares with the Units and Bills reads, the Payees
+/// ports it shares with the Payees module and the Bills reads, where its Transactions are kept,
+/// shared with the Bill Payments module, and the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
     pub institutions: DesktopInstitutionsPorts,
+    pub accounts: SharedAccountsStore,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
 }
 
 impl LedgerSetup {
-    /// The stub Ledger's Institutions, Payees, Transactions and Bills as of `today`, in memory, for
-    /// a test that builds `Root` directly.
+    /// The stub Ledger's Institutions, Accounts, Payees, Transactions and Bills as of `today`, in
+    /// memory, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
+        let accounts = crate::settings::accounts::ports::in_memory(&ledger);
         Self {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             })),
-            bills: LedgerBackedPorts::in_memory(&ledger, payees.clone()),
+            bills: LedgerBackedPorts::in_memory(&ledger, payees.clone(), accounts.clone()),
+            accounts,
             payees,
         }
     }
@@ -70,6 +76,7 @@ pub struct LegacyApplied;
 pub struct LedgerStore {
     ledger: Ledger,
     institutions: DesktopInstitutionsPorts,
+    accounts: SharedAccountsStore,
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
@@ -79,16 +86,18 @@ impl EventEmitter<LedgerChanged> for LedgerStore {}
 impl EventEmitter<LegacyApplied> for LedgerStore {}
 
 impl LedgerStore {
-    /// `ledger` with its own Institutions, Payees, Transactions and Bills in memory as the ports,
-    /// for a test that needs no storage.
+    /// `ledger` with its own Institutions, Accounts, Payees, Transactions and Bills in memory as
+    /// the ports, for a test that needs no storage.
     pub fn new(ledger: Ledger) -> Self {
         let transactions = lib_transactions::fake::InMemoryTransactions {
             transactions: ledger.transactions().to_vec(),
         };
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
-        let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone());
+        let accounts = crate::settings::accounts::ports::in_memory(&ledger);
+        let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone(), accounts.clone());
         Self {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
+            accounts,
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -96,17 +105,19 @@ impl LedgerStore {
         }
     }
 
-    /// `ledger` with its Institutions, Payees, Transactions and Bills read from `setup`'s stores,
-    /// which its writes then go to.
+    /// `ledger` with its Institutions, Accounts, Payees, Transactions and Bills read from `setup`'s
+    /// stores, which its writes then go to.
     pub fn with_storage(ledger: Ledger, setup: LedgerSetup) -> Self {
         let mut store = Self {
             ledger,
             institutions: setup.institutions,
+            accounts: setup.accounts,
             payees: setup.payees,
             transactions: setup.transactions,
             bills: setup.bills,
         };
         store.copy_institutions();
+        store.copy_accounts();
         store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
@@ -117,10 +128,22 @@ impl LedgerStore {
         &self.ledger
     }
 
-    /// Leaves no Unit in use, so a test can delete a seeded one.
+    /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
+    /// the Accounts store, the Budgets by the Ledger until Budgets persist (#811).
+    pub fn account_usage(&self, id: AccountId) -> AccountUse {
+        crate::settings::accounts::ports::usage(&self.accounts, &self.ledger, id)
+    }
+
+    /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts store's rows too,
+    /// since the Units count their Accounts from it.
     #[doc(hidden)]
     pub fn drop_unit_users_for_test(&mut self, cx: &mut Context<'_, Self>) {
         self.ledger.drop_unit_users_for_test();
+        let mut accounts = self.accounts.borrow_mut();
+        for account in accounts.accounts().accounts() {
+            accounts.accounts_mut().delete_account(account.id);
+        }
+        drop(accounts);
         cx.emit(LedgerChanged {
             what: BTreeSet::from([
                 Domain::Units,
@@ -148,11 +171,12 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Payee, Transaction and Bills changes go to the ports (the
-    /// forwarding shims, #774, #831), with the Unmatch a deleted Transaction's entries need, for the input's one
-    /// commit; run outside any input, it emits [`LegacyApplied`] to be committed. The Payees go
-    /// first, since the Splits an Import books name the Payees it creates. The other domains'
-    /// changes aren't persisted yet (#636), so they're dropped here.
+    /// touched. Its Account, Payee, Transaction and Bills changes go to the ports (the forwarding
+    /// shims, #774, #831, #853), with the Unmatch a deleted Transaction's entries need, for the
+    /// input's one commit; run outside any input, it emits [`LegacyApplied`] to be committed. The
+    /// Account upserts and the Payees go first, since the Splits an Import books name the Payees it
+    /// creates, and the Account deletes last, after the Transactions booked to them. The other
+    /// domains' changes aren't persisted yet (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -161,14 +185,25 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
+            let accounts_upserted = crate::settings::accounts::ports::forward(
+                &mut *self.accounts.borrow_mut(),
+                &changes,
+            );
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
+            let accounts_deleted = crate::settings::accounts::ports::forward_deletes(
+                &mut *self.accounts.borrow_mut(),
+                &changes,
+            );
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
+            if accounts_upserted || accounts_deleted {
+                self.copy_accounts();
+            }
             if payees_written {
                 self.copy_payees();
             }
@@ -192,6 +227,18 @@ impl LedgerStore {
         self.institutions.borrow_mut().reload()?;
         self.copy_institutions();
         self.announce(cx, BTreeSet::from([Domain::Institutions]));
+        Ok(())
+    }
+
+    /// Puts the Accounts back as stored, after a write that named them failed, and overwrites the
+    /// read copy, announcing `Domain::Accounts` so every reader redraws (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the store and the read copy are left as they were.
+    pub fn reload_accounts(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
+        self.accounts.borrow_mut().reload()?;
+        self.copy_accounts();
+        self.announce(cx, BTreeSet::from([Domain::Accounts]));
         Ok(())
     }
 
@@ -268,6 +315,12 @@ impl LedgerStore {
     fn copy_institutions(&mut self) -> bool {
         let institutions = self.institutions.borrow().institutions().institutions();
         self.ledger.refresh_institutions(institutions)
+    }
+
+    /// Brings the Accounts read copy in line with the store, returning whether it changed.
+    fn copy_accounts(&mut self) -> bool {
+        let accounts = self.accounts.borrow().accounts().accounts();
+        self.ledger.refresh_accounts(accounts)
     }
 
     /// Brings the Payees read copy in line with the port, returning whether it changed.
@@ -453,7 +506,12 @@ mod tests {
         let institutions =
             crate::institutions::LedgerBackedPorts::shared(Box::new(storage.institutions));
         let payees = crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees));
-        let bills = LedgerBackedPorts::shared(Rc::new(RefCell::new(storage.bills)), payees.clone());
+        let accounts: SharedAccountsStore = Rc::new(RefCell::new(storage.accounts));
+        let bills = LedgerBackedPorts::shared(
+            Rc::new(RefCell::new(storage.bills)),
+            payees.clone(),
+            accounts.clone(),
+        );
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let store = cx.new(|_| {
@@ -461,6 +519,7 @@ mod tests {
                 Ledger::stub_on(today),
                 LedgerSetup {
                     institutions,
+                    accounts,
                     payees,
                     transactions,
                     bills: bills.clone(),
@@ -576,7 +635,7 @@ mod tests {
     fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAppContext) {
         use lib_bill_payments::interactor::PayBill;
         use lib_bills::interactor::{EditBillPlan, MatchBill, SkipBill};
-        use lib_bills::{BillAccounts as _, BillCategories as _, BillPlanDraft, Resolution};
+        use lib_bills::{BillCategories as _, BillPlanDraft, Resolution};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
@@ -584,6 +643,7 @@ mod tests {
         let writer = storage.writer.clone();
         let (store, bills, payments, pending) = on_storage_with_bills(cx, storage);
         let (plans, entries) = bills_of(cx, &store);
+        let bill_accounts = bills.borrow().accounts().bill_accounts();
         let (matched, split) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             entries
@@ -594,7 +654,7 @@ mod tests {
                         ledger.bill_plans(),
                         ledger.bill_entries(),
                         &ledger.bill_splits(),
-                        &ledger.bill_accounts(),
+                        &bill_accounts,
                         &ledger.bill_categories(),
                         entry.id(),
                     )
@@ -704,7 +764,7 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, pending) = on_storage(cx, storage);
+        let (store, bills, _, pending) = on_storage_with_bills(cx, storage);
         let (entry, account) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             ledger
@@ -727,6 +787,27 @@ mod tests {
             })
         };
 
+        // The file refuses deleting an Account a Bill Plan names (#853), so its Plans move to
+        // another Account first: what's tested is the Unmatch.
+        let other = store.read_with(cx, |store, _| {
+            store
+                .ledger()
+                .accounts()
+                .iter()
+                .find(|a| a.id != account)
+                .expect("a second Account")
+                .id
+        });
+        {
+            let mut ports = bills.borrow_mut();
+            let plans = ports.bills().bill_plans();
+            for mut plan in plans.into_iter().filter(|plan| plan.account_id == account) {
+                plan.account_id = other;
+                ports.split_mut().bills.upsert_bill_plan(plan);
+            }
+        }
+        cx.update(|cx| crate::bills::ports::refresh(&bills, &store, cx));
+
         store.update(cx, |store, cx| {
             store
                 .apply(cx, DeleteAccount(account))
@@ -737,5 +818,50 @@ mod tests {
         let reopened = restart(cx, (store, pending), writer, dir.path(), today);
 
         assert_eq!(resolution(cx, &reopened), Some(Resolution::Unresolved));
+    }
+
+    /// The halfway state until `lib-account-deletion` (#854): the file refuses deleting an Account
+    /// a Bill Plan names, so the whole input is lost and a restart finds the Account and its
+    /// Transactions as they were.
+    #[gpui::test]
+    fn deleting_an_account_a_bill_plan_names_is_refused_by_the_file(cx: &mut TestAppContext) {
+        use lib_ledger::DeleteAccount;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+        let storage = storage_in(dir.path(), today);
+        let writer = storage.writer.clone();
+        let (store, pending) = on_storage(cx, storage);
+        let (account, booked) = store.read_with(cx, |store, _| {
+            let ledger = store.ledger();
+            let plan = &ledger.bill_plans()[0];
+            let booked = ledger
+                .transactions()
+                .iter()
+                .filter(|t| t.account_id == plan.account_id)
+                .count();
+            (plan.account_id, booked)
+        });
+        assert!(booked > 0, "the stub books to a Bill Plan's Account");
+
+        store.update(cx, |store, cx| {
+            store
+                .apply(cx, DeleteAccount(account))
+                .expect("the Ledger deletes it");
+        });
+
+        let reopened = restart(cx, (store, pending), writer, dir.path(), today);
+        reopened.read_with(cx, |store, _| {
+            let ledger = store.ledger();
+            assert!(ledger.accounts().iter().any(|a| a.id == account));
+            assert_eq!(
+                ledger
+                    .transactions()
+                    .iter()
+                    .filter(|t| t.account_id == account)
+                    .count(),
+                booked
+            );
+        });
     }
 }

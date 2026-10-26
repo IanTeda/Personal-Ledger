@@ -49,11 +49,7 @@ mod tests {
 
     async fn seed_account(pool: &SqlitePool) -> lib_core::RowID {
         let unit = crate::Units::mock().insert(pool).await.unwrap();
-        crate::Accounts::mock(unit.id)
-            .insert(pool)
-            .await
-            .unwrap()
-            .id
+        crate::test_support::insert_account(pool, unit.id).await
     }
 
     #[sqlx::test(migrations = "migrations/client")]

@@ -1,7 +1,7 @@
 //! # Budgets Builder
 //!
 //! Provides a fluent API for constructing [`Budgets`] records, mirroring
-//! [`crate::accounts::AccountsBuilder`]'s shape.
+//! the builder shape the other legacy entity modules share.
 
 use super::Budgets;
 use crate::Error;

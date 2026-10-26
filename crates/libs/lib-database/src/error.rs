@@ -67,13 +67,6 @@ pub enum Error {
     #[error("Error building Unit: {0}")]
     UnitsBuilder(String),
 
-    /// Accounts Builder Error
-    ///
-    /// Occurs when constructing an Account fails due to invalid input or missing
-    /// required fields.
-    #[error("Error building Account: {0}")]
-    AccountsBuilder(String),
-
     /// Payees Builder Error
     ///
     /// Occurs when constructing a Payee fails due to invalid input or missing required

@@ -4,13 +4,13 @@
 -- FR.21 says the UUIDv7 id itself determines creation date, the same convention Units already
 -- uses.
 --
--- account_id has no foreign key yet: Accounts aren't persisted, so no accounts row would back it
--- (#774). It becomes REFERENCES accounts(id) when the Accounts domain persists.
+-- account_id references the Account it is booked to, with no cascade (#853): deleting an Account
+-- deletes its Transactions first, and the key is the backstop to that.
 
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY,
     date TEXT NOT NULL,
-    account_id UUID NOT NULL,
+    account_id UUID NOT NULL REFERENCES accounts(id),
     description TEXT,
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'cleared', 'reconciled')),
     is_flagged BOOLEAN NOT NULL DEFAULT FALSE,

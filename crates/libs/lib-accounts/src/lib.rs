@@ -3,11 +3,10 @@
 //! #847): the Entity with its rules and stub seed (`entity`), one Interactor per intent
 //! (`interactor`) and the ports (`protocols`): the repository and [`AccountUsage`], the Transactions
 //! and Budgets naming an Account. `fake` holds the in-memory ports and the stub seed; `contract`
-//! the checks both they and, once Accounts persist (#853), `lib-database`'s adapter keep. The
-//! page's Presenters, keymap and Messages arrive with the page (#855); until then the Desktop's
-//! Settings › Accounts page reads them from the `LedgerStore` and writes them through
-//! `LedgerCommand`s, and `lib-ledger` answers [`AccountUsage`] from the `Ledger`. No UI toolkit
-//! and no I/O.
+//! the checks both they and `lib-database`'s adapter keep (#853). The page's Presenters, keymap
+//! and Messages arrive with the page (#855); until then the Desktop's Settings › Accounts page
+//! reads them from the `LedgerStore`'s read copy and writes them through `LedgerCommand`s, which
+//! the Desktop forwards to the adapter. No UI toolkit and no I/O.
 
 #[cfg(feature = "contract-tests")]
 #[expect(

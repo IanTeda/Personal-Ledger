@@ -23,6 +23,7 @@ lib_transactions = { path = "../../../crates/libs/lib-transactions" }
 lib_bills = { path = "../../../crates/libs/lib-bills" }
 lib_payees = { path = "../../../crates/libs/lib-payees" }
 lib_institutions = { path = "../../../crates/libs/lib-institutions" }
+lib_accounts = { path = "../../../crates/libs/lib-accounts" }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments" }
 ## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
 ## Documents stubs add to, and its Bills, so they take them from the joined stub (#774, removed
@@ -53,6 +54,7 @@ lib_transactions = { path = "../../../crates/libs/lib-transactions", features = 
 lib_bills = { path = "../../../crates/libs/lib-bills", features = ["contract-tests"] }
 lib_payees = { path = "../../../crates/libs/lib-payees", features = ["contract-tests"] }
 lib_institutions = { path = "../../../crates/libs/lib-institutions", features = ["contract-tests"] }
+lib_accounts = { path = "../../../crates/libs/lib-accounts", features = ["contract-tests"] }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments", features = ["contract-tests"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

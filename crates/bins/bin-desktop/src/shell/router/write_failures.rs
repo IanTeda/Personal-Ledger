@@ -88,6 +88,12 @@ pub(super) fn roll_back(
                 restored: crate::msg::desktop_toast_write_failed_institutions,
                 unsaved: crate::msg::desktop_toast_write_failed_institutions_unsaved,
             },
+            Domain::Accounts => Reload {
+                name: "Accounts",
+                reloaded: ledger.update(cx, |store, cx| store.reload_accounts(cx)),
+                restored: crate::msg::desktop_toast_write_failed_accounts,
+                unsaved: crate::msg::desktop_toast_write_failed_accounts_unsaved,
+            },
             Domain::Payees => Reload {
                 name: "Payees",
                 reloaded: ledger.update(cx, |store, cx| store.reload_payees(cx)),

@@ -322,9 +322,10 @@ mod tests {
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
-    /// The adapter on one test database, with its pending batch. The stub's Payees are stored
-    /// first, which a Split names. A reload commits, loads afresh, and fails the check if the
-    /// writer reported a failure, so a write SQLite refuses can't pass unseen.
+    /// The adapter on one test database, with its pending batch. The stub's Accounts and Payees are
+    /// stored first, which a Transaction and a Split name. A reload commits, loads afresh, and
+    /// fails the check if the writer reported a failure, so a write SQLite refuses can't pass
+    /// unseen.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -334,6 +335,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
+            crate::test_support::store_stub_accounts(&writer);
             PayeesAdapter::seed(&writer, crate::seed::stub_payees())
                 .expect("the stub Payees are written");
             Self {

@@ -1,8 +1,39 @@
-//! Rows the legacy readers' tests total ([`crate::Accounts::balance`],
-//! [`crate::Categories::totals`], [`crate::Payees::totals`], [`crate::Budgets::current_progress`]),
-//! written straight to the tables since the Transactions adapter takes `lib-transactions`' ids.
+//! Rows the legacy readers' tests total ([`crate::Categories::totals`], [`crate::Payees::totals`],
+//! [`crate::Budgets::current_progress`]) and the Balance Checks name, written straight to the
+//! tables since the Transactions and Accounts adapters take their domain crates' ids.
 
 use sqlx::SqlitePool;
+
+use crate::writer::Writer;
+
+/// Stores the stub's Units, Institutions and Accounts, which an adapter test's Transactions and
+/// Bill Plans name by foreign key (#853).
+pub(crate) fn store_stub_accounts(writer: &Writer) {
+    crate::UnitsAdapter::seed_from(
+        writer,
+        lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+    )
+    .expect("the stub Units are written");
+    crate::InstitutionsAdapter::seed(writer, crate::seed::stub_institutions())
+        .expect("the stub Institutions are written");
+    crate::AccountsAdapter::seed(writer, crate::seed::stub_accounts())
+        .expect("the stub Accounts are written");
+}
+
+/// Stores a Bank Account in Unit `unit_id` with no Institution, returning its id.
+pub(crate) async fn insert_account(pool: &SqlitePool, unit_id: lib_core::RowID) -> lib_core::RowID {
+    let id = lib_core::RowID::new();
+    sqlx::query(
+        "INSERT INTO accounts (id, name, account_type, unit_id, balance, opened_at)
+         VALUES (?, 'Test account', 'bank', ?, '0', '2026-01-01')",
+    )
+    .bind(id)
+    .bind(unit_id)
+    .execute(pool)
+    .await
+    .expect("the Account is written");
+    id
+}
 
 /// One stored Transaction with a single Split.
 pub(crate) struct OneSplit {

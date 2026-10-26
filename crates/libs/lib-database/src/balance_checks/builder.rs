@@ -1,7 +1,7 @@
 //! # Balance Checks Builder
 //!
 //! Provides a fluent API for constructing [`BalanceChecks`] records, mirroring
-//! [`crate::accounts::AccountsBuilder`]'s shape.
+//! the builder shape the other legacy entity modules share.
 
 use super::BalanceChecks;
 use crate::Error;

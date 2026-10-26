@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO accounts\n             (id, name, institution_id, account_type, unit_id, balance, opened_at, account_number)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             institution_id = excluded.institution_id,\n             account_type = excluded.account_type,\n             unit_id = excluded.unit_id,\n             balance = excluded.balance,\n             opened_at = excluded.opened_at,\n             account_number = excluded.account_number",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "2ee83dc71ac66938f2141afc51a515261621efbfdfb16a3b732a846d9e45a05f"
+}

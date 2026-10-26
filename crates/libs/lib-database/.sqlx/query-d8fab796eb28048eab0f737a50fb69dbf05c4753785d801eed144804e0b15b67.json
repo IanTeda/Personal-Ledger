@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT COUNT(*) AS \"count!: i64\" FROM accounts",
+  "query": "SELECT COUNT(*) AS \"count!: i64\" FROM transactions WHERE account_id = ?",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       false
     ]
   },
-  "hash": "d6bc5260fa9206a961276b5c63c6db7903cc63d9e5473137ecd12d12aab5b5ab"
+  "hash": "d8fab796eb28048eab0f737a50fb69dbf05c4753785d801eed144804e0b15b67"
 }

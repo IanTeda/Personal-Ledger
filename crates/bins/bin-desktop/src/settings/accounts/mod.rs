@@ -9,6 +9,7 @@ pub mod apply;
 pub mod dialogs;
 pub mod form;
 pub(crate) mod hints;
+pub mod ports;
 mod render;
 pub mod snapshot;
 

@@ -124,9 +124,10 @@ pub struct ShellLogs {
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
-/// off. `stores` is where the Units, the Institutions, the Payees, the Transactions and the Bills
-/// are kept, the app's SQLite adapters or a test's in-memory ports, with the commit every input ends in
-/// (`crate::input::send`) and the writer's failure channel, on which a failed write rolls back.
+/// off. `stores` is where the Units, the Institutions, the Accounts, the Payees, the Transactions
+/// and the Bills are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
+/// every input ends in (`crate::input::send`) and the writer's failure channel, on which a failed
+/// write rolls back.
 pub fn build(
     persisted: PersistedState,
     bindings: ShellBindings,
@@ -139,6 +140,7 @@ pub fn build(
     let Stores {
         units,
         institutions,
+        accounts,
         payees,
         transactions,
         bills,
@@ -168,6 +170,9 @@ pub fn build(
     // reads (#831, #832).
     let payees = crate::payees::LedgerBackedPorts::shared(payees);
     let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
+    // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
+    // (#853).
+    let accounts: lib_database::SharedAccountsStore = Rc::new(std::cell::RefCell::new(accounts));
     let institutions_setup =
         crate::institutions::InstitutionsSetup::new(institutions.clone(), &bindings.keybindings);
     let transactions: lib_database::SharedTransactionsStore =
@@ -175,17 +180,19 @@ pub fn build(
     let bills = crate::bills::LedgerBackedPorts::shared(
         Rc::new(std::cell::RefCell::new(bills)),
         payees.clone(),
+        accounts.clone(),
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
+    let units = crate::units::UnitsSetup::new(units, accounts.clone(), &bindings.keybindings);
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
+        accounts,
         payees,
         transactions,
         bills: bills.clone(),
     };
     let bills = crate::bills::BillsSetup::new(bills, payments, &bindings.keybindings);
-    let units = crate::units::UnitsSetup::new(units, &bindings.keybindings);
     let settings = crate::settings::pages::SettingsSetup {
         units,
         institutions: institutions_setup,

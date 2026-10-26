@@ -1,25 +1,32 @@
 -- Migration: create accounts table -- the domain Account entity (Cash/Bank/Credit
--- Card/Investment/Loan, FR.10-15, CC-TUI-008). Not to be confused with the Sync Server's
--- own auth credential, which is named sync_users to keep this name free (see GLOSSARY.md's
+-- Card/Investment/Loan, FR.10-15, GLOSSARY.md's Account, #853). Not to be confused with the Sync
+-- Server's own auth credential, which is named sync_users to keep this name free (see GLOSSARY.md's
 -- SyncUser entry).
 --
--- unit_id is the first real foreign key in the schema: an Account's Unit is fixed at
--- creation (FR.10) and must reference a real Unit. Enforced by SQLite's foreign_keys
--- pragma, turned on for every connection in lib-database's DatabaseConnection::new.
+-- unit_id references the Unit the Account counts in, fixed at creation (FR.10). institution_id
+-- references the Institution holding it, with no cascade: an Institution is never deleted while an
+-- Account names it. It is NULL for a Cash Account, which lib-accounts' NO_INSTITUTION placeholder
+-- stands for in code; the placeholder has no row, so the Accounts adapter maps it to and from NULL.
+-- balance is the opening balance as a decimal string in the Unit's precision, so no precision is
+-- lost to a float; opened_at is a calendar date. account_number is the form's optional field.
+-- Rows read back in rowid order, the order they were added in. Enforced by SQLite's foreign_keys
+-- pragma, turned on for every connection.
 
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
-    account_type TEXT NOT NULL,
+    institution_id UUID REFERENCES institutions(id),
+    account_type TEXT NOT NULL
+        CHECK (account_type IN ('cash', 'bank', 'credit_card', 'investment', 'loan')),
     unit_id UUID NOT NULL REFERENCES units(id),
-    starting_balance TEXT NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    balance TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    account_number TEXT,
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_accounts_unit_id ON accounts(unit_id);
-
+CREATE INDEX IF NOT EXISTS idx_accounts_institution_id ON accounts(institution_id);
 
 -- Trigger to update updated_on on every account row change
 CREATE TRIGGER IF NOT EXISTS trg_accounts_domain_set_updated_on

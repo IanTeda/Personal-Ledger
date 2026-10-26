@@ -33,11 +33,6 @@ pub use categories::Categories;
 pub mod units;
 pub use units::Units;
 
-/// The domain Account entity — Cash/Bank/Credit Card/Investment/Loan (CC-TUI-008). Not the
-/// Sync Server's own auth credential; see `sync_users` for that.
-pub mod accounts;
-pub use accounts::Accounts;
-
 /// What a per-entity totals report scopes its Transactions to: a Unit or an Account.
 mod transaction_scope;
 pub use transaction_scope::TransactionScope;
@@ -76,13 +71,14 @@ pub use change_sets::ChangeSet;
 
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
+pub use adapter::accounts::AccountsAdapter;
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
-    BillsStore, CountingCommit, InstitutionsStore, PayeesStore, SharedBillsStore,
-    SharedPayeesStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
+    AccountsStore, BillsStore, CountingCommit, InstitutionsStore, PayeesStore, SharedAccountsStore,
+    SharedBillsStore, SharedPayeesStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;

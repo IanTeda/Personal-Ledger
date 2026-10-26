@@ -411,11 +411,12 @@ mod tests {
     use super::*;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
-    use crate::{PayeesAdapter, TransactionsAdapter, UnitsAdapter};
+    use crate::{PayeesAdapter, TransactionsAdapter};
 
-    /// The adapter on one test database, with its pending batch. The stub's Units and Payees are
-    /// stored first, which a Bill Plan and a Split name. A reload commits, loads afresh, and fails
-    /// the check if the writer reported a failure, so a write SQLite refuses can't pass unseen.
+    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts and
+    /// Payees are stored first, which a Bill Plan and a Split name. A reload commits, loads afresh,
+    /// and fails the check if the writer reported a failure, so a write SQLite refuses can't pass
+    /// unseen.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -425,11 +426,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            UnitsAdapter::seed_from(
-                &writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
-            )
-            .expect("the stub Units are written");
+            crate::test_support::store_stub_accounts(&writer);
             PayeesAdapter::seed(&writer, crate::seed::stub_payees())
                 .expect("the stub Payees are written");
             Self {

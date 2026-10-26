@@ -4781,6 +4781,7 @@ dependencies = [
  "chrono",
  "csv",
  "fake",
+ "lib_accounts",
  "lib_bill_payments",
  "lib_bills",
  "lib_config",

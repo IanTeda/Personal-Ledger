@@ -120,7 +120,7 @@ mod tests {
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
                 crate::settings::pages::SettingsSetup {
-                    units: crate::units::UnitsSetup::stub(),
+                    units: crate::units::UnitsSetup::stub(storage.accounts.clone()),
                     institutions: crate::institutions::InstitutionsSetup::stub(&storage),
                     payees: crate::payees::PayeesSetup::stub(&storage),
                 },
@@ -192,7 +192,7 @@ mod tests {
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
                 crate::settings::pages::SettingsSetup {
-                    units: crate::units::UnitsSetup::stub(),
+                    units: crate::units::UnitsSetup::stub(storage.accounts.clone()),
                     institutions: crate::institutions::InstitutionsSetup::stub(&storage),
                     payees: crate::payees::PayeesSetup::stub(&storage),
                 },

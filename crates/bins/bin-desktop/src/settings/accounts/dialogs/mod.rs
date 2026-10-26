@@ -10,7 +10,6 @@ pub mod edit;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*};
-use lib_accounts::AccountUsage;
 use lib_core::AccountId;
 
 use super::{
@@ -120,7 +119,7 @@ impl Dialog for AccountsDialog {
                 Some(account) => edit::render(
                     form,
                     account,
-                    ledger.account_usage(account.id),
+                    scope.ledger.read(cx).account_usage(account.id),
                     &dialog_options(&scope.ledger, Some(account.unit), cx),
                     on_field_click,
                     on_option_click,
@@ -134,7 +133,7 @@ impl Dialog for AccountsDialog {
             Self::Delete(id, form) => match account(id) {
                 Some(account) => delete::render(
                     account,
-                    ledger.account_usage(account.id),
+                    scope.ledger.read(cx).account_usage(account.id),
                     ledger.unit_code(account.unit),
                     form,
                     actions.cancel.clone(),
@@ -152,7 +151,7 @@ impl Dialog for AccountsDialog {
     /// read back the `transactions` and `budgets` counts they show.
     fn readback(&self, scope: &DialogScope, cx: &App) -> Option<DialogReadback> {
         let usage = |id: &AccountId| {
-            let usage = scope.ledger.read(cx).ledger().account_usage(*id);
+            let usage = scope.ledger.read(cx).account_usage(*id);
             [
                 ("transactions", usage.transactions.to_string()),
                 ("budgets", usage.budgets.to_string()),

@@ -2,8 +2,10 @@
 //!
 //! - **`UnitUsage` and `UnitHoldings` for `Ledger`.** `lib-units`' read ports answered from the
 //!   stub's Accounts, Bill Plans and Budgets, so the Units Interactors can refuse deleting a Unit
-//!   in use and the Units page can list a Unit's Accounts before those domains persist. Each count
-//!   moves to `lib-database` as its domain migrates, and these go when the last one has.
+//!   in use and the Units page can list a Unit's Accounts before those domains persist. The
+//!   Desktop reads the holdings and the Accounts count from `lib-database`'s Accounts adapter since
+//!   Accounts persist (#853), and only the Bill Plans and Budgets counts here; the TUI's Units
+//!   ports read all of it here until its redesign (#805, Q24). They go with the last reader.
 //! - **The Units read copy ([`Ledger::refresh_units`]).** The Units ports are the truth; the
 //!   Ledger keeps a copy for Bills, Budgets, Transactions, the Dashboard and the Bill and Budget
 //!   forms. It goes when the last of them reads Units through its own domain's read port.

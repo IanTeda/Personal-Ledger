@@ -4,8 +4,8 @@
 //! memory.
 //!
 //! The page's Presenters and its Router trait arrive with the page (#855). Until then the Desktop
-//! writes Accounts through `LedgerCommand`s, and `lib-ledger` answers [`AccountUsage`] from the
-//! `Ledger`.
+//! writes Accounts through `LedgerCommand`s it forwards to the adapter, whose [`AccountUsage`]
+//! counts the Transactions; the Budgets count is `lib-ledger`'s until Budgets persist (#811).
 
 use lib_core::AccountId;
 

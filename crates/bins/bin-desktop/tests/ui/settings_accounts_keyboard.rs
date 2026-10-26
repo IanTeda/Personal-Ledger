@@ -287,3 +287,49 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
     assert!(offered.split('|').any(|code| code == "aud"));
 }
+
+#[gpui::test]
+fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_accounts(app);
+    ui.press("g s");
+    ui.press("j j j j");
+    ui.press("l");
+    let stored = ui.settings_accounts().account_names;
+
+    ui.press("n");
+    ui.press("r a i n y");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_accounts().account_names.len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_accounts().account_names, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to accounts, so they are back as last saved"
+    }));
+}
+
+/// The legacy Add Dialog writes through the Accounts forwarding shim, so its confirm commits once
+/// with the input it ran in, and the page reads the Account back from the store.
+#[gpui::test]
+fn adding_an_account_commits_once_through_the_shim(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    ui.press("n");
+    ui.press("r a i n y");
+    let before = ui.commits();
+
+    ui.press("enter");
+
+    assert_eq!(ui.commits(), before + 1);
+    assert!(
+        ui.settings_accounts()
+            .account_names
+            .iter()
+            .any(|name| name == "rainy")
+    );
+}

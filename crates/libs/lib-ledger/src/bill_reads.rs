@@ -1,10 +1,11 @@
 //! Halfway shims (#774, #832) between the migrated modules and the domains that still live on the
 //! Ledger:
 //!
-//! - **`BillAccounts` and `BillCategories` for `Ledger`.** `lib-bills`' read ports answered from
-//!   the stub's Accounts and Categories, which aren't persisted, mapped onto Bills' own read types.
-//!   `BillPayees` is `lib-database`'s Payees adapter's now (#831); [`bill_payees`] stays for the
-//!   stub's own Bills seed. Each flag is filled by its owning domain's rule, so the rule lives once
+//! - **`BillCategories` for `Ledger`.** `lib-bills`' read port answered from the stub's
+//!   Categories, which aren't persisted, mapped onto Bills' own read type. `BillPayees` is
+//!   `lib-database`'s Payees adapter's now (#831), and `BillAccounts` its Accounts adapter's
+//!   (#853); [`bill_payees`] and [`bill_accounts`] stay for the stub's own Bills seed. Each flag
+//!   is filled by its owning domain's rule, so the rule lives once
 //!   (`docs/development/viper-architecture.md`, Rules > Dependencies). Each mapping moves to
 //!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s;
 //!   [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for a Client that copies
@@ -17,8 +18,8 @@
 
 use lib_accounts::Account;
 use lib_bills::{
-    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPlan,
-    BillScheduleEntry, BillSplit, SplitRef,
+    BillAccount, BillCategories, BillCategory, BillPayee, BillPlan, BillScheduleEntry, BillSplit,
+    SplitRef,
 };
 use lib_categories::Category;
 use lib_core::CategoryTypes;
@@ -79,7 +80,8 @@ pub(crate) fn bill_splits(transactions: &[Transaction]) -> Vec<BillSplit> {
         .collect()
 }
 
-/// `accounts` as Bills reads them.
+/// `accounts` as Bills reads them, for the stub's own Bills seed. `lib-database`'s Accounts adapter
+/// answers `BillAccounts` for a Client (#853), mapping its rows by the same rule.
 pub(crate) fn bill_accounts(accounts: &[Account]) -> Vec<BillAccount> {
     accounts
         .iter()
@@ -117,12 +119,6 @@ pub(crate) fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
             is_active: payee.is_active,
         })
         .collect()
-}
-
-impl BillAccounts for Ledger {
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        bill_accounts(&self.accounts)
-    }
 }
 
 impl BillCategories for Ledger {
@@ -182,7 +178,7 @@ mod tests {
         let ledger = Ledger::stub_on(today());
         let ids = |accounts: Vec<BillAccount>| accounts.iter().map(|a| a.id).collect::<Vec<_>>();
         assert_eq!(
-            ids(ledger.bill_accounts()),
+            ids(bill_accounts(ledger.accounts())),
             ledger.accounts().iter().map(|a| a.id).collect::<Vec<_>>()
         );
         assert_eq!(ledger.bill_categories().len(), ledger.categories().len());
@@ -207,8 +203,7 @@ mod tests {
         assert_eq!(second.category_id, split.splits[1].category_id);
         assert_eq!(second.payee_id, split.splits[1].payee_id);
 
-        let home_loan = ledger
-            .bill_accounts()
+        let home_loan = bill_accounts(ledger.accounts())
             .into_iter()
             .find(|a| a.name == "Home Loan")
             .expect("the stub has a Home Loan");
@@ -264,7 +259,10 @@ mod tests {
     #[test]
     fn the_bills_fake_stub_is_the_ledgers() {
         let ledger = Ledger::stub_on(today());
-        assert_eq!(ledger.bill_accounts(), lib_bills::fake::stub_accounts());
+        assert_eq!(
+            bill_accounts(ledger.accounts()),
+            lib_bills::fake::stub_accounts()
+        );
         assert_eq!(ledger.bill_categories(), lib_bills::fake::stub_categories());
         let payees = bill_payees(ledger.payees());
         for payee in lib_bills::fake::stub_payees() {
@@ -275,7 +273,7 @@ mod tests {
         let mut transactions = Vec::new();
         let booked = crate::bills_seed::book_stub_bills(
             lib_bills::default_bills(
-                &ledger.bill_accounts(),
+                &bill_accounts(ledger.accounts()),
                 &ledger.bill_categories(),
                 &payees,
                 today(),

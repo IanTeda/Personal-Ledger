@@ -1,7 +1,7 @@
 //! # Payees Builder
 //!
 //! Provides a fluent API for constructing [`Payees`] records, mirroring
-//! [`crate::accounts::AccountsBuilder`]'s shape.
+//! the builder shape the other legacy entity modules share.
 
 use super::Payees;
 use crate::Error;

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id AS \"account_id!: AccountId\", COUNT(*) AS \"count!: i64\"\n           FROM transactions\n           GROUP BY account_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!: AccountId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c2f2353dcda5f37ea8e4db6c6f13643ec3e494c06713f6e67e4ddde3531e52c7"
+}

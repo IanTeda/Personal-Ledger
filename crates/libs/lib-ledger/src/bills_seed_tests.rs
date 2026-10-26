@@ -34,7 +34,7 @@ struct World {
 fn world() -> World {
     let ledger = Ledger::stub_on(today());
     World {
-        accounts: ledger.bill_accounts(),
+        accounts: crate::bill_reads::bill_accounts(ledger.accounts()),
         categories: ledger.bill_categories(),
         splits: ledger.bill_splits(),
         plans: ledger.bill_plans().to_vec(),

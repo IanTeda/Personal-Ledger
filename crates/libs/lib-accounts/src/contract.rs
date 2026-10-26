@@ -1,6 +1,5 @@
 //! The contract every stored Accounts port set keeps (ADR-0046), run against the in-memory ports
-//! here and, once Accounts persist (#853), the `lib-database` adapter, so the fakes the tests use
-//! can be trusted.
+//! here and the `lib-database` adapter (#853), so the fakes the tests use can be trusted.
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
