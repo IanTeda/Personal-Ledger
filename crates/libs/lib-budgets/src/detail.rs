@@ -124,7 +124,7 @@ pub fn category_detail(
     let mut lines: Vec<DetailLine> = ledger
         .transactions
         .iter()
-        .filter(|t| budget.account_ids.contains(&t.account_id) && month.contains(t.date))
+        .filter(|t| budget.counts(ledger.accounts, t.account_id) && month.contains(t.date))
         .flat_map(|t| {
             let leaves = &leaves;
             t.splits
@@ -145,7 +145,7 @@ pub fn category_detail(
         .iter()
         .filter(|plan| {
             plan.is_active
-                && budget.account_ids.contains(&plan.account_id)
+                && budget.counts(ledger.accounts, plan.account_id)
                 && categories::descendants_inclusive(ledger.categories, category_id)
                     .contains(&plan.category_id)
         })

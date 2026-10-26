@@ -171,12 +171,10 @@ mod tests {
     #[test]
     fn changes_are_recorded_but_not_replayed() {
         let repository = StubRepository::new();
-        let before = repository.load().unwrap().accounts().len();
-        let id = repository.load().unwrap().accounts()[0].id;
-        repository
-            .apply(&[LedgerChange::DeleteAccount(id)])
-            .unwrap();
-        assert_eq!(repository.load().unwrap().accounts().len(), before);
+        let before = repository.load().unwrap().tags().len();
+        let id = repository.load().unwrap().tags()[0].id;
+        repository.apply(&[LedgerChange::DeleteTag(id)]).unwrap();
+        assert_eq!(repository.load().unwrap().tags().len(), before);
         assert_eq!(repository.applied().len(), 1);
     }
 }

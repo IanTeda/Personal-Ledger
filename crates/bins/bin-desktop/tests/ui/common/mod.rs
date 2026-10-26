@@ -1085,6 +1085,16 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Moves every Bill Plan to pay from Account `to`, so the Accounts they paid from can be
+    /// deleted rather than refused.
+    pub fn move_bill_plans_to(&mut self, to: AccountId) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.move_bill_plans_for_test(to, cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// Leaves no Unit quoted in another, so the base Unit can be deleted rather than refused.
     pub fn unquote_units(&mut self) {
         self.shell.update(self.cx, |shell, cx| {

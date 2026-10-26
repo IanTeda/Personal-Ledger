@@ -478,6 +478,64 @@ fn spent_is_signed_and_counts_only_on_budget_accounts() {
     assert_eq!(dining.map(|r| r.spent.clone()), Some(money("318.40")));
 }
 
+/// A Budget keeps the id of an Account deleted since it named it, until Budgets persist with a
+/// cascading link (#811): that id counts nothing, so the Budget counts only its other Accounts.
+#[test]
+fn a_budget_naming_a_missing_account_counts_only_its_other_accounts() {
+    let (mut world, budgets, id) = september();
+    let offset = world.account("ANZ Offset");
+    world.accounts.retain(|account| account.id != offset);
+    let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+    assert!(
+        budget.account_ids.contains(&offset),
+        "the Budget keeps the id"
+    );
+
+    let figures = period_figures(&budget, &world.ledger(), sep(), today());
+
+    // Everyday's 200 alone: Offset's 118.40 isn't counted, though a row still names it.
+    let dining = row(&figures, world.category("Dining"));
+    assert_eq!(dining.map(|r| r.spent.clone()), Some(money("200.00")));
+    assert!(!budget.counts(&world.accounts, offset));
+    assert!(budget.counts(&world.accounts, world.account("ANZ Everyday")));
+}
+
+/// A Budget left with no Account compares nothing.
+#[test]
+fn a_budget_whose_accounts_are_all_missing_compares_nothing() {
+    let (mut world, budgets, id) = september();
+    let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+    world
+        .accounts
+        .retain(|account| !budget.account_ids.contains(&account.id));
+
+    let figures = period_figures(&budget, &world.ledger(), sep(), today());
+
+    assert_eq!(figures.spent, money("0"));
+}
+
+/// Editing a Budget that names a deleted Account drops the id rather than refusing the edit.
+#[test]
+fn editing_a_budget_drops_an_account_since_deleted() {
+    let (mut world, mut budgets, id) = september();
+    let offset = world.account("ANZ Offset");
+    world.accounts.retain(|account| account.id != offset);
+    let account_ids = budgets
+        .get(id)
+        .map(|budget| budget.account_ids.clone())
+        .unwrap_or_default();
+
+    assert_eq!(
+        budgets.edit(id, "Renamed", account_ids, &world.accounts),
+        Ok(())
+    );
+
+    assert_eq!(
+        budgets.get(id).map(|budget| budget.account_ids.clone()),
+        Some(vec![world.account("ANZ Everyday")])
+    );
+}
+
 #[test]
 fn a_leaf_over_its_budget_counts_and_carries_the_negative_left() {
     let (world, budgets, id) = september();

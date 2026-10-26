@@ -46,6 +46,7 @@ use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
+use lib_accounts::Account;
 use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
@@ -111,7 +112,9 @@ pub struct Budget {
     pub method: Method,
     /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
     pub unit: UnitId,
-    /// The [`Account::id`]s whose Splits this Budget counts.
+    /// The [`Account::id`]s whose Splits this Budget counts. An id whose Account was deleted stays
+    /// until Budgets persist with a link that cascades (#811), and is ignored: see
+    /// [`Budget::counts`].
     pub account_ids: Vec<AccountId>,
     pub is_default: bool,
     /// Archived is computed and viewable but read-only; `None` while active.
@@ -121,6 +124,15 @@ pub struct Budget {
     /// Public only so the Desktop's seeded-data tests can build a chain directly; everything else
     /// goes through [`Budgets`] and keeps the chain sorted.
     pub limits: BTreeMap<CategoryId, Vec<LimitRecord>>,
+}
+
+impl Budget {
+    /// Whether the Budget counts Account `id`: one of its [`Budget::account_ids`] that names one
+    /// of `accounts`. An id with no Account counts nothing, so a Budget left with none compares
+    /// nothing (#854).
+    pub fn counts(&self, accounts: &[Account], id: AccountId) -> bool {
+        self.account_ids.contains(&id) && accounts.iter().any(|account| account.id == id)
+    }
 }
 
 impl Budget {

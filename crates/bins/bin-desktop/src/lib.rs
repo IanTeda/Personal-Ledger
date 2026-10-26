@@ -5,6 +5,7 @@
 //! `docs/ux/desktop-mockups/README.md` specifies, in place of the feasibility cycle's flat `TabBar`
 //! screen-cycling (ADR-0016).
 
+mod account_deletion;
 mod assets;
 mod bill_payments;
 mod bills;

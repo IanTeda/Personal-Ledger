@@ -7,9 +7,10 @@
 //!
 //! The reads are copied before each Bills event, since a port can't reach the `LedgerStore`
 //! Entity without a gpui context; each goes when its domain answers through its own port.
-//! `LedgerStore` writes the store too, through [`forward`]: the Bills writers not yet migrated
-//! (Category reassign and Account delete's Unmatch) still run as `LedgerCommand`s. The store is
-//! shared with the Bill Payments module too, whose Pay it directly writes an entry.
+//! `LedgerStore` writes the store too, through [`forward`]: the Bills writer not yet migrated,
+//! Category reassign, still runs as a `LedgerCommand`. The store is shared with the Bill Payments
+//! module too, whose Pay it directly writes an entry, and the Account Deletion module, whose delete
+//! Unmatches the entries an Account's Transactions paid (#854).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,7 +21,6 @@ use lib_bills::interactor::PopulateSchedule;
 use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
     BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
-    unmatch_transaction,
 };
 use lib_database::{SharedAccountsStore, SharedBillsStore, SharedPayeesStore};
 use lib_ledger::{Ledger, LedgerChange};
@@ -182,10 +182,9 @@ impl BillsPorts for LedgerBackedPorts {
     }
 }
 
-/// Sends each Bill Plan and entry in `changes` to the store, in the order recorded, and Unmatches
-/// the entries a deleted Transaction paid, since deleting it deletes the Splits their Matches are
-/// on (ADR-0019). The writers it carries: Category reassign, and Account delete's Unmatch.
-/// Returns whether it wrote anything, so the caller refreshes the read copy.
+/// Sends each Bill Plan and entry in `changes` to the store, in the order recorded. The writer it
+/// carries: Category reassign. Returns whether it wrote anything, so the caller refreshes the read
+/// copy.
 pub fn forward(ports: &DesktopPorts, changes: &[LedgerChange]) -> bool {
     let mut ports = ports.borrow_mut();
     let store = &mut ports.store;
@@ -199,15 +198,6 @@ pub fn forward(ports: &DesktopPorts, changes: &[LedgerChange]) -> bool {
             LedgerChange::UpsertBillEntry(entry) => {
                 store.upsert_entry(entry.clone());
                 wrote = true;
-            }
-            LedgerChange::DeleteTransaction(id) => {
-                let before = store.entries();
-                let mut entries = before.clone();
-                unmatch_transaction(&mut entries, *id);
-                for entry in entries.into_iter().filter(|entry| !before.contains(entry)) {
-                    store.upsert_entry(entry);
-                    wrote = true;
-                }
             }
             _ => {}
         }
@@ -252,7 +242,7 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use lib_bills::{BillScheduleEntry, Resolution};
+    use lib_bills::BillScheduleEntry;
 
     use super::*;
 
@@ -268,45 +258,6 @@ mod tests {
 
     fn entries(ports: &DesktopPorts) -> Vec<BillScheduleEntry> {
         ports.borrow().bills().entries()
-    }
-
-    #[test]
-    fn a_deleted_transaction_unmatches_the_entries_it_paid() {
-        let (_ledger, ports) = stub();
-        let (entry_id, transaction_id) = entries(&ports)
-            .iter()
-            .find_map(|entry| match entry.resolution {
-                Resolution::Paid(split) => Some((entry.id(), split.transaction_id)),
-                _ => None,
-            })
-            .expect("the stub pays an entry");
-
-        assert!(forward(
-            &ports,
-            &[LedgerChange::DeleteTransaction(transaction_id)]
-        ));
-
-        assert_eq!(
-            lib_bills::entry(&entries(&ports), entry_id).map(|entry| entry.resolution.clone()),
-            Some(Resolution::Unresolved)
-        );
-    }
-
-    #[test]
-    fn a_deleted_transaction_that_paid_nothing_writes_nothing() {
-        let (ledger, ports) = stub();
-        let before = entries(&ports);
-        let unpaid = ledger
-            .transactions()
-            .iter()
-            .find(|t| !lib_bills::carries_bill(&before, t.id))
-            .expect("the stub has a Transaction no entry names");
-
-        assert!(!forward(
-            &ports,
-            &[LedgerChange::DeleteTransaction(unpaid.id)]
-        ));
-        assert_eq!(entries(&ports), before);
     }
 
     #[test]

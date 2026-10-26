@@ -77,7 +77,7 @@ Desktop locations for the ticked requirements.
 ## Open questions and known gaps
 
 - **Unmatch and Unskip have no UI.** The `UnmatchBill` and `UnskipBill` Interactors exist and are tested, but the handoff gives them no key or control, so no Presenter sends them yet.
-- **Deleting a Matched Split Unmatches only through Account delete**, the one Desktop path that deletes a Transaction: the forwarding shim applies `bills::unmatch_transaction` in the same commit.
+- **Deleting a Matched Split Unmatches only through Account delete**, the one Desktop path that deletes a Transaction: `lib-account-deletion`'s Interactor applies `bills::unmatch_transaction` and its port writes the Unmatch with the delete, in the same commit (#854).
 - **The Pay Dialog's Match list doesn't scroll the chosen row into view** ([#791](https://github.com/IanTeda/Personal-Ledger/issues/791)): its body scrolls, but `j`/`k` past the fold choose a row the person can't see.
 - **No "carries a Bill" marker on the Transactions list.** `bills::carries_bill` exists; nothing draws it.
 - **BIL-002 and BIL-010 are partial.** The Planner has no active/recurrence filter, and the Schedule has no Payee filter.

@@ -184,6 +184,11 @@ pub fn build(
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
+    // Account delete writes the Accounts, Transactions and Bills stores together (#854).
+    let account_deletion = crate::account_deletion::DeletionStores {
+        deletion: crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills),
+        bills: bills.clone(),
+    };
     let units = crate::units::UnitsSetup::new(units, accounts.clone(), &bindings.keybindings);
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
@@ -197,6 +202,7 @@ pub fn build(
         units,
         institutions: institutions_setup,
         payees: payees_setup,
+        account_deletion,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
@@ -564,6 +570,22 @@ impl Root {
     pub fn drop_unit_users_for_test(&mut self, cx: &mut App) {
         self.ledger
             .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
+    }
+
+    /// Moves every Bill Plan to pay from Account `to`, so a test can delete the Account another Plan
+    /// paid from instead of meeting the Bill Plans refusal.
+    #[doc(hidden)]
+    pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
+        {
+            let mut ports = self.bills.borrow_mut();
+            for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
+                plan.account_id = to;
+                lib_bills::BillsPorts::split_mut(&mut *ports)
+                    .bills
+                    .upsert_bill_plan(plan);
+            }
+        }
+        crate::bills::ports::refresh(&self.bills, &self.ledger, cx);
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the

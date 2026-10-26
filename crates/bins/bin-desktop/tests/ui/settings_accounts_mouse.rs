@@ -152,3 +152,22 @@ fn an_account_on_a_deactivated_unit_still_edits_with_its_unit(app: &mut TestAppC
     assert_eq!(ui.dialog(), Some("EditAccount"));
     assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
 }
+
+/// A click on the Delete Dialog's confirm, once the name is typed back, deletes in one commit.
+#[gpui::test]
+fn a_delete_confirmed_by_click_commits_once(app: &mut TestAppContext) {
+    let mut ui = on_accounts(app);
+    let before = ui.settings_accounts().account_names.len();
+
+    ui.click(&format!("settings-accounts-delete-{}", AccountId::seed(1)));
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
+    ui.press("W a l l e t");
+    let commits = ui.commits();
+    ui.click("delete-account-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.commits(), commits + 1);
+    let names = ui.settings_accounts().account_names;
+    assert_eq!(names.len(), before - 1);
+    assert!(!names.iter().any(|name| name == "Wallet"));
+}

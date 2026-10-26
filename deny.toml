@@ -75,6 +75,7 @@ deny = [
   { crate = "crossterm", wrappers = ["bin_tui", "ratatui-crossterm"], reason = "UI toolkit: only bin-tui may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_database", wrappers = ["bin_desktop", "bin_tui", "bin_sync_server"], reason = "persistence adapter: only bins may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_shell", wrappers = ["bin_desktop"], reason = "the Shell module hosts every other module: only the bins may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_account_deletion", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database", "lib_ledger"], reason = "cross-domain module: only the bins, its adapter and the stub Ledger, which books the Bills seed's payments through it, may depend on it (VIPER Dependencies rule)" },
 ]
 

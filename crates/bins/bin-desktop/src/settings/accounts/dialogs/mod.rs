@@ -1,10 +1,10 @@
-//! The Accounts page's Dialogs: Add, Edit and Delete account. [`AccountsDialog`] is the value the
-//! Dialog host holds while one is open (`OpenDialog::Accounts`). It draws itself through `add`,
-//! `edit` and `delete` (`Dialog::render`), every click reaching the form through the host's one
-//! edit callback, reads itself back for the UI tests and confirms itself through `apply.rs`.
+//! The Accounts page's legacy Dialogs: Add and Edit account. [`AccountsDialog`] is the value the
+//! Dialog host holds while one is open (`OpenDialog::Accounts`). It draws itself through `add` and
+//! `edit` (`Dialog::render`), every click reaching the form through the host's one edit callback,
+//! reads itself back for the UI tests and confirms itself through `apply.rs`. Delete account is
+//! `lib-account-deletion`'s Dialog on the Entity host (`crate::account_deletion`, #854).
 
 pub mod add;
-pub mod delete;
 pub mod edit;
 
 use std::rc::Rc;
@@ -14,7 +14,7 @@ use lib_core::AccountId;
 
 use super::{
     dialog_options,
-    form::{AccountField, AccountForm, DeleteAccountForm},
+    form::{AccountField, AccountForm},
 };
 use crate::{
     form::field::TextField,
@@ -34,23 +34,19 @@ pub enum AccountsDialog {
     Add(AccountForm),
     /// Editing the account with this [`Account::id`].
     Edit(AccountId, AccountForm),
-    /// Deleting the account with this [`Account::id`], once its name has been typed back.
-    Delete(AccountId, DeleteAccountForm),
 }
 
 impl AccountsDialog {
-    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
+    /// The form behind the Add and Edit dialogs.
     pub fn form(&self) -> Option<&AccountForm> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(..) => None,
         }
     }
 
     pub fn form_mut(&mut self) -> Option<&mut AccountForm> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(..) => None,
         }
     }
 }
@@ -63,7 +59,6 @@ impl Dialog for AccountsDialog {
     fn focused_text(&mut self) -> Option<&mut TextField> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => form.focused_text(),
-            Self::Delete(_, form) => Some(&mut form.confirm_input),
         }
     }
 
@@ -76,7 +71,6 @@ impl Dialog for AccountsDialog {
     fn is_valid(&self) -> bool {
         match self {
             Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
-            Self::Delete(_, form) => form.is_valid(),
         }
     }
 
@@ -130,25 +124,12 @@ impl Dialog for AccountsDialog {
                 // Defensive only: the id comes from a live row when the dialog opens.
                 None => div().into_any_element(),
             },
-            Self::Delete(id, form) => match account(id) {
-                Some(account) => delete::render(
-                    account,
-                    scope.ledger.read(cx).account_usage(account.id),
-                    ledger.unit_code(account.unit),
-                    form,
-                    actions.cancel.clone(),
-                    actions.confirm.clone(),
-                    cx,
-                ),
-                // Defensive only: the id comes from a live row when the dialog opens.
-                None => div().into_any_element(),
-            },
         })
     }
 
     /// Reads back an Add or Edit form's focused field (its `AccountField` variant name), drafts,
-    /// selects and whether it would confirm; a Delete's typed-back `confirm`. Edit and Delete also
-    /// read back the `transactions` and `budgets` counts they show.
+    /// selects and whether it would confirm. Edit also reads back the `transactions` and `budgets`
+    /// counts it shows.
     fn readback(&self, scope: &DialogScope, cx: &App) -> Option<DialogReadback> {
         let usage = |id: &AccountId| {
             let usage = scope.ledger.read(cx).account_usage(*id);
@@ -160,14 +141,6 @@ impl Dialog for AccountsDialog {
         let (kind, form, counts) = match self {
             Self::Add(form) => ("AddAccount", form, None),
             Self::Edit(id, form) => ("EditAccount", form, Some(usage(id))),
-            Self::Delete(id, form) => {
-                let mut values = vec![("confirm", form.confirm_input.text().to_string())];
-                values.extend(usage(id));
-                return Some(DialogReadback {
-                    kind: "DeleteAccount",
-                    values,
-                });
-            }
         };
         let mut readback = DialogReadback {
             kind,

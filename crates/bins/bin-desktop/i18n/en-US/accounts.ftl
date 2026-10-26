@@ -39,25 +39,3 @@ desktop-accounts-edit-usage-notice = Opened { $opened } · { $count ->
    *[other] { $count } transactions
 }. Renaming is safe. Unit and opening balance are fixed once an account exists.
 
-## The Delete dialog. `$balance` is the balance with its Unit and `$name` the account's name. The
-## `<strong>` spans are the emphasised figures.
-
-desktop-accounts-delete =
-    .title = Delete account — { $name }
-    .submit = Delete account
-
-desktop-accounts-delete-warning = This account has a balance of <strong>{ $balance }</strong> and <strong>{ $count ->
-    [one] { $count } transaction
-   *[other] { $count } transactions
-}.</strong> Deleting it cannot be undone.
-
-desktop-accounts-delete-reference = { $transactions ->
-    [one] { $transactions } transaction
-   *[other] { $transactions } transactions
-} will be permanently deleted · { $budgets ->
-    [0] not referenced by any budget
-    [one] referenced in { $budgets } budget
-   *[other] referenced in { $budgets } budgets
-}
-
-desktop-accounts-delete-confirm-label = Type { $name } to confirm

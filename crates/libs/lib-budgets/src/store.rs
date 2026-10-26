@@ -194,7 +194,8 @@ impl Budgets {
     }
 
     /// 11c's edit mode: the one place to rename a Budget or change its Accounts (Unit and Method
-    /// stay locked).
+    /// stay locked). An id with no Account, one deleted since the Budget named it, is dropped
+    /// rather than refused (#854).
     pub fn edit(
         &mut self,
         id: BudgetId,
@@ -210,6 +211,10 @@ impl Budgets {
             return Err(BudgetError::NameTaken);
         }
         let budget = self.editable_mut(id)?;
+        let account_ids: Vec<AccountId> = account_ids
+            .into_iter()
+            .filter(|id| accounts.iter().any(|account| account.id == *id))
+            .collect();
         check_accounts(accounts, budget.unit, &account_ids)?;
         budget.name = name.to_string();
         budget.account_ids = account_ids;

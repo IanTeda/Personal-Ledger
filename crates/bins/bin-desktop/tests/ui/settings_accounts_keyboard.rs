@@ -1,7 +1,8 @@
 //! The Settings Accounts page driven by keys: row selection, `enter` opening an Account's ledger,
 //! the add, edit and delete dialogs with what confirming each one does, the status line, and the
-//! `accounts` command. The dialogs' own forms are in `accounts_keyboard.rs`. State is read back
-//! from `Root`.
+//! `accounts` command. The dialogs' own forms are in `accounts_keyboard.rs`; the Delete Dialog is
+//! `lib-account-deletion`'s on the Entity host, whose rules its Presenter tests cover. State is
+//! read back from `Root`.
 
 use super::common;
 
@@ -190,8 +191,9 @@ fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
 fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     let names = ui.settings_accounts().account_names;
-    ui.press("j");
-    let name = names[1].clone();
+    // ANZ Offset: no Bill Plan pays from it.
+    ui.press("j j");
+    let name = names[2].clone();
 
     ui.press("d");
     type_text(&mut ui, &name);
@@ -199,7 +201,7 @@ fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.settings_accounts().selected_account.as_ref(),
-        names.get(2),
+        names.get(3),
         "the next account slid into the deleted row"
     );
     assert!(
@@ -332,4 +334,66 @@ fn adding_an_account_commits_once_through_the_shim(app: &mut TestAppContext) {
             .iter()
             .any(|name| name == "rainy")
     );
+}
+
+/// The Delete Dialog is on the Entity host: it quotes the counts it reads when it opens, and its
+/// confirm writes the Account, its Transactions and the Unmatch in the one commit of its input.
+#[gpui::test]
+fn deleting_an_account_quotes_its_counts_and_commits_once(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
+
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
+    let transactions: usize = ui
+        .dialog_value("transactions")
+        .and_then(|count| count.parse().ok())
+        .expect("the Dialog quotes a count");
+    assert!(transactions > 0, "the stub books to {name}");
+    assert_eq!(
+        ui.dialog_value("title").as_deref(),
+        Some(format!("Delete account \u{2014} {name}").as_str())
+    );
+    type_text(&mut ui, &name);
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    let before = ui.commits();
+
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.commits(), before + 1);
+    assert!(!ui.settings_accounts().account_names.contains(&name));
+    assert!(ui.toasts().history.first().is_some_and(|toast| toast.text
+        == format!("Deleted account {name} \u{b7} {transactions} transactions deleted")));
+}
+
+/// An Account a Bill Plan pays from says how many and never confirms, so `enter` writes nothing.
+#[gpui::test]
+fn an_account_a_bill_plan_pays_from_cannot_be_deleted(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    ui.press("j");
+    let name = ui
+        .settings_accounts()
+        .selected_account
+        .expect("seeded accounts");
+    assert_eq!(name, "ANZ Everyday");
+
+    ui.press("d");
+    type_text(&mut ui, &name);
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    assert!(
+        ui.dialog_value("blocked")
+            .is_some_and(|text| text.starts_with("6 bills are paid from this account")),
+        "{:?}",
+        ui.dialog_value("blocked")
+    );
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+    assert!(ui.settings_accounts().account_names.contains(&name));
 }

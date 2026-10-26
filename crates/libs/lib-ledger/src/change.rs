@@ -12,9 +12,7 @@ use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
-use lib_core::{
-    AccountId, AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId, TransactionId,
-};
+use lib_core::{AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId, TransactionId};
 use lib_documents::{Document, types::DocumentTypeRow};
 use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
@@ -48,7 +46,6 @@ pub enum Domain {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
     UpsertAccount(Account),
-    DeleteAccount(AccountId),
     /// From Import commit and Category reassign; the Payees module writes its own port (#832).
     UpsertPayee(Payee),
     UpsertCategory(Category),
@@ -79,7 +76,7 @@ impl LedgerChange {
     pub fn domain(&self) -> Domain {
         match self {
             Self::UpsertPayee(_) => Domain::Payees,
-            Self::UpsertAccount(_) | Self::DeleteAccount(_) => Domain::Accounts,
+            Self::UpsertAccount(_) => Domain::Accounts,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
             Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) | Self::DeleteTransaction(_) => Domain::Transactions,

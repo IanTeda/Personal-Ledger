@@ -716,6 +716,7 @@ dependencies = [
  "fake",
  "gpui",
  "gpui-component",
+ "lib_account_deletion",
  "lib_accounts",
  "lib_bill_payments",
  "lib_bills",
@@ -4661,6 +4662,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
+name = "lib_account_deletion"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_accounts",
+ "lib_bills",
+ "lib_core",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_toast",
+ "lib_transactions",
+ "lib_viper",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "lib_accounts"
 version = "0.1.0"
 dependencies = [
@@ -4781,6 +4800,7 @@ dependencies = [
  "chrono",
  "csv",
  "fake",
+ "lib_account_deletion",
  "lib_accounts",
  "lib_bill_payments",
  "lib_bills",

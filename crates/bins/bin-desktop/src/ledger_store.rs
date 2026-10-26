@@ -172,11 +172,10 @@ impl LedgerStore {
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
     /// touched. Its Account, Payee, Transaction and Bills changes go to the ports (the forwarding
-    /// shims, #774, #831, #853), with the Unmatch a deleted Transaction's entries need, for the
-    /// input's one commit; run outside any input, it emits [`LegacyApplied`] to be committed. The
-    /// Account upserts and the Payees go first, since the Splits an Import books name the Payees it
-    /// creates, and the Account deletes last, after the Transactions booked to them. The other
-    /// domains' changes aren't persisted yet (#636), so they're dropped here.
+    /// shims, #774, #831, #853), for the input's one commit; run outside any input, it emits
+    /// [`LegacyApplied`] to be committed. The Account upserts and the Payees go first, since the
+    /// Splits an Import books name the Payees it creates. The other domains' changes aren't
+    /// persisted yet (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -193,15 +192,11 @@ impl LedgerStore {
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
-            let accounts_deleted = crate::settings::accounts::ports::forward_deletes(
-                &mut *self.accounts.borrow_mut(),
-                &changes,
-            );
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
-            if accounts_upserted || accounts_deleted {
+            if accounts_upserted {
                 self.copy_accounts();
             }
             if payees_written {
@@ -292,6 +287,14 @@ impl LedgerStore {
     pub fn refresh_payees(&mut self, cx: &mut Context<'_, Self>) {
         if self.copy_payees() {
             self.announce(cx, BTreeSet::from([Domain::Payees]));
+        }
+    }
+
+    /// Brings the Accounts read copy in line with the store after the Account Deletion module
+    /// wrote it, announcing `Domain::Accounts` only when it changed.
+    pub fn refresh_accounts(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_accounts() {
+            self.announce(cx, BTreeSet::from([Domain::Accounts]));
         }
     }
 
@@ -486,21 +489,25 @@ mod tests {
         cx: &mut TestAppContext,
         storage: lib_database::Storage,
     ) -> (Entity<LedgerStore>, PendingWrites) {
-        let (store, _, _, pending) = on_storage_with_bills(cx, storage);
-        (store, pending)
+        let on = on_storage_with_bills(cx, storage);
+        (on.store, on.pending)
     }
 
-    /// [`on_storage`] with the Bills ports the store shares, which the Bills module writes, and
-    /// the payments port over both stores, which the Bill Payments module writes.
-    fn on_storage_with_bills(
-        cx: &mut TestAppContext,
-        storage: lib_database::Storage,
-    ) -> (
-        Entity<LedgerStore>,
-        DesktopBillsPorts,
-        lib_bill_payments::SharedPayments,
-        PendingWrites,
-    ) {
+    /// A store on the Ledger file, with the ports the modules that write beside it hold.
+    struct OnStorage {
+        store: Entity<LedgerStore>,
+        /// The Bills ports the store shares, which the Bills module writes.
+        bills: DesktopBillsPorts,
+        /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
+        payments: lib_bill_payments::SharedPayments,
+        /// The deletion port over the Accounts, Transactions and Bills stores, the Account
+        /// Deletion module's.
+        deletion: lib_account_deletion::SharedDeletion,
+        pending: PendingWrites,
+    }
+
+    /// [`on_storage`] with the ports the Bills, Bill Payments and Account Deletion modules write.
+    fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
         let institutions =
@@ -514,6 +521,8 @@ mod tests {
         );
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
+        let deletion =
+            crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills);
         let store = cx.new(|_| {
             LedgerStore::with_storage(
                 Ledger::stub_on(today),
@@ -526,18 +535,39 @@ mod tests {
                 },
             )
         });
-        (store, bills, payments, pending)
+        OnStorage {
+            store,
+            bills,
+            payments,
+            deletion,
+            pending,
+        }
+    }
+
+    /// Deletes Account `id` through the Account Deletion module's port, then brings the read
+    /// copies in line, as its Dialog's confirm does.
+    fn delete_account(
+        cx: &mut TestAppContext,
+        on: &OnStorage,
+        id: AccountId,
+    ) -> Result<lib_account_deletion::AccountDeleted, lib_account_deletion::AccountDeletionError>
+    {
+        let deleted = lib_account_deletion::interactor::DeleteAccount { id }
+            .run(&mut *on.deletion.borrow_mut());
+        cx.update(|cx| crate::account_deletion::refresh(&on.bills, &on.store, cx));
+        deleted
     }
 
     #[gpui::test]
     fn an_import_and_a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
-        use lib_ledger::{BookingPayee, CommitImport, DeleteAccount, ImportBooking};
+        use lib_ledger::{BookingPayee, CommitImport, ImportBooking};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, pending) = on_storage(cx, storage);
+        let on = on_storage_with_bills(cx, storage);
+        let store = on.store.clone();
         let (wallet, everyday, groceries) = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             let account = |name: &str| {
@@ -572,14 +602,14 @@ mod tests {
                     },
                 )
                 .expect("the import books");
-            store
-                .apply(cx, DeleteAccount(wallet))
-                .expect("the Wallet is deleted");
         });
-        pending.commit();
+        on.pending.commit();
+        delete_account(cx, &on, wallet).expect("nothing pays from the Wallet");
+        on.pending.commit();
         let before = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
         crate::quit(&writer);
         drop(store);
+        drop(on);
         drop(writer);
 
         // The next day, so a re-seed would show as shifted dates.
@@ -641,7 +671,13 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, bills, payments, pending) = on_storage_with_bills(cx, storage);
+        let OnStorage {
+            store,
+            bills,
+            payments,
+            pending,
+            ..
+        } = on_storage_with_bills(cx, storage);
         let (plans, entries) = bills_of(cx, &store);
         let bill_accounts = bills.borrow().accounts().bill_accounts();
         let (matched, split) = store.read_with(cx, |store, _| {
@@ -758,14 +794,13 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         use lib_bills::Resolution;
-        use lib_ledger::DeleteAccount;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, bills, _, pending) = on_storage_with_bills(cx, storage);
-        let (entry, account) = store.read_with(cx, |store, _| {
+        let on = on_storage_with_bills(cx, storage);
+        let (entry, account) = on.store.read_with(cx, |store, _| {
             let ledger = store.ledger();
             ledger
                 .bill_entries()
@@ -787,9 +822,9 @@ mod tests {
             })
         };
 
-        // The file refuses deleting an Account a Bill Plan names (#853), so its Plans move to
-        // another Account first: what's tested is the Unmatch.
-        let other = store.read_with(cx, |store, _| {
+        // An Account a Bill Plan pays from can't be deleted, so its Plans move to another Account
+        // first: what's tested is the Unmatch.
+        let other = on.store.read_with(cx, |store, _| {
             store
                 .ledger()
                 .accounts()
@@ -799,57 +834,85 @@ mod tests {
                 .id
         });
         {
-            let mut ports = bills.borrow_mut();
+            let mut ports = on.bills.borrow_mut();
             let plans = ports.bills().bill_plans();
             for mut plan in plans.into_iter().filter(|plan| plan.account_id == account) {
                 plan.account_id = other;
                 ports.split_mut().bills.upsert_bill_plan(plan);
             }
         }
-        cx.update(|cx| crate::bills::ports::refresh(&bills, &store, cx));
+        cx.update(|cx| crate::bills::ports::refresh(&on.bills, &on.store, cx));
+        on.pending.commit();
+        let budgets = on
+            .store
+            .read_with(cx, |store, _| store.ledger().budgets().clone());
+        assert!(
+            budgets
+                .all()
+                .iter()
+                .any(|b| b.account_ids.contains(&account)),
+            "a stub Budget counts the Account"
+        );
 
-        store.update(cx, |store, cx| {
-            store
-                .apply(cx, DeleteAccount(account))
-                .expect("the Account is deleted");
+        delete_account(cx, &on, account).expect("no Plan pays from it now");
+        assert_eq!(resolution(cx, &on.store), Some(Resolution::Unresolved));
+        on.store.read_with(cx, |store, _| {
+            let ledger = store.ledger();
+            assert!(ledger.accounts().iter().all(|a| a.id != account));
+            assert!(
+                ledger
+                    .transactions()
+                    .iter()
+                    .all(|t| t.account_id != account)
+            );
+            assert_eq!(
+                ledger.budgets(),
+                &budgets,
+                "Budgets keep the Account's id until #811"
+            );
         });
-        assert_eq!(resolution(cx, &store), Some(Resolution::Unresolved));
 
+        let OnStorage { store, pending, .. } = on;
         let reopened = restart(cx, (store, pending), writer, dir.path(), today);
 
         assert_eq!(resolution(cx, &reopened), Some(Resolution::Unresolved));
+        reopened.read_with(cx, |store, _| {
+            assert!(store.ledger().accounts().iter().all(|a| a.id != account));
+        });
     }
 
-    /// The halfway state until `lib-account-deletion` (#854): the file refuses deleting an Account
-    /// a Bill Plan names, so the whole input is lost and a restart finds the Account and its
-    /// Transactions as they were.
+    /// An Account a Bill Plan pays from is refused by `lib-account-deletion` before anything is
+    /// written, so a restart finds the Account and its Transactions as they were.
     #[gpui::test]
-    fn deleting_an_account_a_bill_plan_names_is_refused_by_the_file(cx: &mut TestAppContext) {
-        use lib_ledger::DeleteAccount;
-
+    fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, pending) = on_storage(cx, storage);
-        let (account, booked) = store.read_with(cx, |store, _| {
+        let on = on_storage_with_bills(cx, storage);
+        let (account, plans, booked) = on.store.read_with(cx, |store, _| {
             let ledger = store.ledger();
-            let plan = &ledger.bill_plans()[0];
+            let account = ledger.bill_plans()[0].account_id;
+            let plans = ledger
+                .bill_plans()
+                .iter()
+                .filter(|plan| plan.account_id == account)
+                .count();
             let booked = ledger
                 .transactions()
                 .iter()
-                .filter(|t| t.account_id == plan.account_id)
+                .filter(|t| t.account_id == account)
                 .count();
-            (plan.account_id, booked)
+            (account, plans, booked)
         });
         assert!(booked > 0, "the stub books to a Bill Plan's Account");
 
-        store.update(cx, |store, cx| {
-            store
-                .apply(cx, DeleteAccount(account))
-                .expect("the Ledger deletes it");
-        });
+        assert_eq!(
+            delete_account(cx, &on, account),
+            Err(lib_account_deletion::AccountDeletionError::PaidFromByBillPlans { plans })
+        );
 
+        let OnStorage { store, pending, .. } = on;
         let reopened = restart(cx, (store, pending), writer, dir.path(), today);
         reopened.read_with(cx, |store, _| {
             let ledger = store.ledger();

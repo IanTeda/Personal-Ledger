@@ -3,9 +3,9 @@
 //! Accounts half of `UnitUsage`) and the Bills ports (`BillAccounts`). The writes are committed by
 //! the input they were made in (`crate::input::send`), not here.
 //!
-//! Every Accounts writer is still a `LedgerCommand`: the legacy Accounts page's Add and Edit, and
-//! Account delete, until the page (#855) and `lib-account-deletion` (#854) write the port
-//! themselves. [`forward`] and [`forward_deletes`] carry them to the store.
+//! The legacy Accounts page's Add and Edit are still `LedgerCommand`s until the page writes the
+//! port itself (#855), and [`forward`] carries them to the store. Account delete writes it through
+//! `lib-account-deletion`'s port (#854, `crate::account_deletion`).
 //!
 //! An in-memory store's Transactions count is recounted from the Ledger before each read
 //! ([`recount`]), since it has no file to count in; the adapter counts in the file. The Budgets
@@ -28,32 +28,15 @@ pub fn in_memory(ledger: &Ledger) -> SharedAccountsStore {
     store
 }
 
-/// The forwarding shim's first half (#853): sends each Account row `changes` upserts to `store`,
-/// in the order recorded, returning whether it wrote anything. Run before the Transactions, which
-/// may name a new Account. Writers carried: the legacy Accounts page's Add and Edit.
+/// The forwarding shim (#853): sends each Account row `changes` upserts to `store`, in the order
+/// recorded, returning whether it wrote anything. Run before the Transactions, which may name a new
+/// Account. Writers carried: the legacy Accounts page's Add and Edit.
 pub fn forward(store: &mut dyn AccountsStore, changes: &[LedgerChange]) -> bool {
     let port = store.accounts_mut();
     let mut wrote = false;
     for change in changes {
         if let LedgerChange::UpsertAccount(account) = change {
             port.upsert_account(account.clone());
-            wrote = true;
-        }
-    }
-    wrote
-}
-
-/// The forwarding shim's second half: sends each Account `changes` deletes to `store`, returning
-/// whether it wrote anything. Run after the Transactions and Bills, since the Account's
-/// Transactions must go before it (their foreign key). Writer carried: Account delete, until
-/// `lib-account-deletion` (#854). The file refuses deleting an Account a Bill Plan names, and the
-/// whole input rolls back.
-pub fn forward_deletes(store: &mut dyn AccountsStore, changes: &[LedgerChange]) -> bool {
-    let port = store.accounts_mut();
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::DeleteAccount(id) = change {
-            port.delete_account(*id);
             wrote = true;
         }
     }
@@ -93,28 +76,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn account_upserts_and_deletes_reach_the_store_in_their_own_halves() {
+    fn account_upserts_reach_the_store() {
         let ledger = Ledger::stub();
         let store = in_memory(&ledger);
         let mut wallet = ledger.accounts()[0].clone();
         wallet.name = "Purse".into();
-        let gone = ledger.accounts()[2].id;
         let changes = [
             LedgerChange::UpsertAccount(wallet.clone()),
-            LedgerChange::DeleteAccount(gone),
             LedgerChange::DeleteTransaction(TransactionId::seed(1)),
         ];
 
         assert!(forward(&mut *store.borrow_mut(), &changes));
-        assert!(store.borrow().accounts().account(gone).is_some(), "not yet");
-        assert!(forward_deletes(&mut *store.borrow_mut(), &changes));
 
-        let store = store.borrow();
-        assert_eq!(store.accounts().account(wallet.id), Some(wallet));
-        assert!(store.accounts().account(gone).is_none());
+        assert_eq!(store.borrow().accounts().account(wallet.id), Some(wallet));
         assert!(!forward(
             &mut lib_accounts::fake::InMemoryPorts::default(),
-            &changes[2..]
+            &changes[1..]
         ));
     }
 

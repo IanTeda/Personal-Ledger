@@ -32,6 +32,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             lib_payees::msg::LAYER,
             lib_institutions::msg::LAYER,
             lib_bill_payments::msg::LAYER,
+            lib_account_deletion::msg::LAYER,
         ],
     );
     let _ = INFO.set(LocaleInfo {
@@ -56,6 +57,7 @@ pub fn init_for_tests() {
             lib_payees::msg::LAYER,
             lib_institutions::msg::LAYER,
             lib_bill_payments::msg::LAYER,
+            lib_account_deletion::msg::LAYER,
         ],
     );
 }

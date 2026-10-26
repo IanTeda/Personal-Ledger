@@ -1,12 +1,12 @@
-//! The Accounts Dialogs' confirm cycle (ADR-0037): the page command each form describes, a
-//! `lib_ledger` command in each variant, confirmed through [`confirm_ledger`].
+//! The Add and Edit account Dialogs' confirm cycle (ADR-0037): the page command each form
+//! describes, a `lib_ledger` command in each variant, confirmed through [`confirm_ledger`]. Delete
+//! is `lib-account-deletion`'s Dialog (#854).
 
 use chrono::Local;
 use gpui::App;
 use lib_accounts::{AccountDraft, AccountError};
 use lib_core::AccountId;
-use lib_ledger::{AddAccount, DeleteAccount, EditAccount, Ledger, LedgerCommand};
-use lib_toast::ToastKind;
+use lib_ledger::{AddAccount, EditAccount, Ledger, LedgerCommand};
 
 use super::{dialogs::AccountsDialog, form::AccountForm};
 use crate::shell::view::{
@@ -21,32 +21,19 @@ pub enum AccountCommand {
     /// can't know, so the padding happens in `run`, where the Ledger's Units are in reach.
     Add(Box<AccountForm>),
     Edit(EditAccount),
-    /// Delete the account and the Transactions booked to it.
-    Delete(DeleteAccount),
 }
 
-/// What a landed [`AccountCommand`] did, for the selection and Toast that follow it.
+/// What a landed [`AccountCommand`] did, for the selection that follows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountOutcome {
     /// Added or edited: the account to select.
     Saved(AccountId),
-    /// Deleted: the name, and how many Transactions went with it.
-    Deleted { name: String, transactions: usize },
 }
 
-/// A delete raises the Toast naming the account and how many Transactions went with it.
+/// An add or an edit raises no Toast.
 impl OutcomeToast for AccountOutcome {
     fn toast(&self) -> Option<DialogToast> {
-        match self {
-            Self::Saved(_) => None,
-            Self::Deleted { name, transactions } => Some((
-                ToastKind::Success,
-                lib_locale::msg::toast_account_deleted(
-                    name,
-                    i64::try_from(*transactions).unwrap_or(i64::MAX),
-                ),
-            )),
-        }
+        None
     }
 }
 
@@ -71,13 +58,6 @@ impl LedgerCommand for AccountCommand {
                 let id = edit.id;
                 edit.run(ledger).map(|()| AccountOutcome::Saved(id))
             }
-            Self::Delete(delete) => {
-                let deleted = delete.run(ledger)?;
-                Ok(AccountOutcome::Deleted {
-                    name: deleted.name,
-                    transactions: deleted.transactions,
-                })
-            }
         }
     }
 }
@@ -93,9 +73,6 @@ impl DialogForm for AccountsDialog {
                 .draft()
                 .map(|draft: AccountDraft| AccountCommand::Edit(EditAccount { id: *id, draft }))
                 .ok_or(FormError),
-            Self::Delete(id, form) if form.is_valid() => {
-                Ok(AccountCommand::Delete(DeleteAccount(*id)))
-            }
             _ => Err(FormError),
         }
     }
@@ -122,7 +99,7 @@ mod tests {
     use crate::{
         form::field::TextField,
         ledger_store::{LedgerStore, test_ledger},
-        settings::accounts::form::{AccountOptions, DeleteAccountForm},
+        settings::accounts::form::AccountOptions,
     };
 
     fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
@@ -134,13 +111,6 @@ mod tests {
                 ..LedgerParts::default()
             },
         )
-    }
-
-    fn first_account(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> (AccountId, String) {
-        ledger.read_with(cx, |store, _| {
-            let account = &store.ledger().accounts()[0];
-            (account.id, account.name.clone())
-        })
     }
 
     fn account_count(ledger: &Entity<LedgerStore>, cx: &TestAppContext) -> usize {
@@ -166,38 +136,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_delete_not_yet_confirmed_by_name_stays_open_and_deletes_nothing(cx: &mut TestAppContext) {
-        let ledger = ledger(cx);
-        let before = account_count(&ledger, cx);
-        let (id, name) = first_account(&ledger, cx);
-        let mut dialog = AccountsDialog::Delete(id, DeleteAccountForm::new(name));
-
-        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
-
-        assert!(landed.is_none());
-        assert_eq!(account_count(&ledger, cx), before);
-    }
-
-    #[gpui::test]
     fn an_add_without_a_name_stays_open_and_adds_nothing(cx: &mut TestAppContext) {
         let ledger = ledger(cx);
         let before = account_count(&ledger, cx);
         let mut dialog = add_dialog(&ledger, cx);
-
-        let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
-
-        assert!(landed.is_none());
-        assert_eq!(account_count(&ledger, cx), before);
-    }
-
-    #[gpui::test]
-    fn a_delete_of_a_vanished_account_is_refused_and_stays_open(cx: &mut TestAppContext) {
-        let ledger = ledger(cx);
-        let before = account_count(&ledger, cx);
-        let mut dialog = AccountsDialog::Delete(AccountId::new(), DeleteAccountForm::new("Gone"));
-        if let AccountsDialog::Delete(_, form) = &mut dialog {
-            form.confirm_input = TextField::new("Gone");
-        }
 
         let landed = cx.update(|cx| confirm_ledger(&mut dialog, &ledger, cx));
 
@@ -221,9 +163,7 @@ mod tests {
 
         assert_eq!(landed.toast, None);
         assert_eq!(account_count(&ledger, cx), before + 1);
-        let AccountOutcome::Saved(id) = landed.outcome else {
-            panic!("an add saves, got {:?}", landed.outcome);
-        };
+        let AccountOutcome::Saved(id) = landed.outcome;
         ledger.read_with(cx, |store, _| {
             let added = store
                 .ledger()
@@ -232,38 +172,6 @@ mod tests {
                 .find(|account| account.id == id)
                 .expect("the selected id is the added row");
             assert_eq!(added.name, "Rainy Day");
-        });
-    }
-
-    #[gpui::test]
-    fn a_confirmed_delete_removes_the_account_and_toasts_its_name(cx: &mut TestAppContext) {
-        let ledger = ledger(cx);
-        let (id, name) = first_account(&ledger, cx);
-        let mut dialog = AccountsDialog::Delete(id, DeleteAccountForm::new(name.as_str()));
-        if let AccountsDialog::Delete(_, form) = &mut dialog {
-            form.confirm_input = TextField::new(name.as_str());
-        }
-
-        let landed = cx
-            .update(|cx| confirm_ledger(&mut dialog, &ledger, cx))
-            .expect("a name typed back deletes");
-
-        assert_eq!(
-            landed.outcome,
-            AccountOutcome::Deleted {
-                name: name.clone(),
-                transactions: 0
-            }
-        );
-        assert_eq!(
-            landed.toast,
-            Some((
-                ToastKind::Success,
-                lib_locale::msg::toast_account_deleted(&name, 0)
-            ))
-        );
-        ledger.read_with(cx, |store, _| {
-            assert!(store.ledger().accounts().iter().all(|a| a.id != id));
         });
     }
 }

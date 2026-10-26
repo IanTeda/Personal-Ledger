@@ -23,7 +23,7 @@ mod tag_commands;
 mod transaction_commands;
 mod unit_usage;
 
-pub use account_commands::{AccountDeleted, AddAccount, DeleteAccount, EditAccount};
+pub use account_commands::{AddAccount, EditAccount};
 pub use budget_commands::{
     AddBudget, ArchiveBudget, CycleBudgetRollover, DuplicateBudget, EditBudget, FillBudget,
     RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,

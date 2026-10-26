@@ -415,3 +415,43 @@ fn the_cheat_sheet_shows_a_rebound_bills_key(app: &mut TestAppContext) {
 
     ui.assert_cheat_sheet_matches_status("Bills keys");
 }
+
+/// Deleting the Account whose Transaction paid an entry takes the Transaction with it, and the
+/// Schedule shows the entry Unmatched (`lib-account-deletion`, #854).
+#[gpui::test]
+fn a_deleted_accounts_paid_entry_shows_unmatched(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    let paid = ui.bills().rows.last().cloned().expect("a Schedule row");
+    assert_eq!(paid.status, "Paid", "the last row is the Paid one");
+    ui.move_bill_plans_to(lib_core::AccountId::seed(1));
+
+    ui.press(":");
+    for ch in "accounts delete Amex Platinum".chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("DeleteAccount"));
+    for ch in "Amex Platinum".chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+
+    ui.press("g w");
+    let row = ui
+        .bills()
+        .rows
+        .into_iter()
+        .find(|row| row.plan == paid.plan)
+        .expect("the Plan's entry still shows");
+    assert_ne!(row.status, "Paid");
+    assert!(row.actionable, "an Unmatched entry can be paid again");
+}

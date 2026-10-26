@@ -179,7 +179,7 @@ pub fn average_income(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveD
     for transaction in ledger
         .transactions
         .iter()
-        .filter(|t| budget.account_ids.contains(&t.account_id))
+        .filter(|t| budget.counts(ledger.accounts, t.account_id))
         .filter(|t| last_three.contains(&Period::of(t.date)))
     {
         for split in transaction

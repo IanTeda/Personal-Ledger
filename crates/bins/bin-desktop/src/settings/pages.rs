@@ -47,6 +47,8 @@ pub struct SettingsSetup {
     pub units: UnitsSetup,
     pub institutions: InstitutionsSetup,
     pub payees: PayeesSetup,
+    /// The Accounts page's Delete Dialog writes through `lib-account-deletion`'s port (#854).
+    pub account_deletion: crate::account_deletion::DeletionStores,
 }
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
@@ -284,6 +286,7 @@ impl SettingsPages {
             units,
             institutions,
             payees,
+            account_deletion,
         } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
@@ -295,7 +298,7 @@ impl SettingsPages {
                 institutions.keymap,
                 cx,
             ),
-            accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), cx)),
+            accounts: cx.new(|cx| AccountsPage::new(ledger.clone(), account_deletion, cx)),
             categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), clock, cx)),
             tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),
             payees: payees_page(payees.ports, ledger.clone(), payees.keymap, cx),

@@ -25,7 +25,7 @@ use lib_locale::Label;
 
 use apply::AccountOutcome;
 use dialogs::AccountsDialog;
-use form::{AccountForm, AccountOptions, DeleteAccountForm};
+use form::{AccountForm, AccountOptions};
 use hints::accounts_hints;
 
 use crate::{
@@ -113,6 +113,8 @@ impl EventEmitter<ViewEvent> for AccountsPage {}
 /// rows, because the page groups accounts by type.
 pub struct AccountsPage {
     ledger: Entity<LedgerStore>,
+    /// What the Delete Dialog writes through, `lib-account-deletion`'s (#854).
+    deletion: crate::account_deletion::DeletionStores,
     selected: usize,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -123,11 +125,16 @@ pub struct AccountsPage {
 }
 
 impl AccountsPage {
-    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        ledger: Entity<LedgerStore>,
+        deletion: crate::account_deletion::DeletionStores,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
         let _accounts_changed = notify_on(&ledger, Domain::Accounts, cx);
         let _units_changed = notify_on(&ledger, Domain::Units, cx);
         Self {
             ledger,
+            deletion,
             selected: 0,
             page_focused: false,
             _accounts_changed,
@@ -245,14 +252,11 @@ impl AccountsPage {
         }
     }
 
-    /// Lands a confirmed Dialog. Add and Edit select the account (an Edit regroups it if its Type
-    /// changed); Delete keeps the selection in range, so it lands on the account that slid into the
-    /// deleted row's place (or the last one). The Toast is the host's.
+    /// Lands a confirmed Add or Edit Dialog: selects the account (an Edit regroups it if its Type
+    /// changed).
     fn land(&mut self, outcome: AccountOutcome, cx: &mut Context<'_, Self>) {
-        match outcome {
-            AccountOutcome::Saved(id) => self.select_id(id, cx),
-            AccountOutcome::Deleted { .. } => self.clamp_selection(cx),
-        }
+        let AccountOutcome::Saved(id) = outcome;
+        self.select_id(id, cx);
     }
 
     /// Keeps the selection in range after rows are removed, so it lands on the account that
@@ -322,13 +326,20 @@ impl AccountsPage {
         open_dialog(AccountsDialog::Edit(id, form), Self::land, cx);
     }
 
-    /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
+    /// Opens `lib-account-deletion`'s Delete account Dialog on `id` through its entry point. A
+    /// confirmed delete keeps the selection in range, so it lands on the account that slid into
+    /// the deleted row's place (or the last one); the Dialog raises its own Toast. A no-op if the
+    /// account is gone.
     fn open_delete_dialog(&mut self, id: AccountId, cx: &mut Context<'_, Self>) {
-        let Some(account) = self.accounts(cx).iter().find(|account| account.id == id) else {
-            return;
-        };
-        let form = DeleteAccountForm::new(account.name.as_str());
-        open_dialog(AccountsDialog::Delete(id, form), Self::land, cx);
+        let deletion = self.deletion.clone();
+        let ledger = self.ledger.clone();
+        crate::account_deletion::router::open_delete(
+            cx,
+            &deletion,
+            &ledger,
+            id,
+            |page: &mut Self, _deleted, cx| page.clamp_selection(cx),
+        );
     }
 
     /// `accounts new|edit|delete [<account name>]`, once `Root` has opened the page: opens the

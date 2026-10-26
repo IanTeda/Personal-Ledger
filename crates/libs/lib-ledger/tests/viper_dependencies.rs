@@ -49,8 +49,13 @@ const FEATURE_CRATES: &[&str] = &[
 
 /// Each cross-domain module and the feature crates it writes, the only feature crates it may
 /// depend on. No feature crate may depend on a cross-domain module.
-const CROSS_DOMAIN: &[(&str, &[&str])] =
-    &[("lib_bill_payments", &["lib_bills", "lib_transactions"])];
+const CROSS_DOMAIN: &[(&str, &[&str])] = &[
+    ("lib_bill_payments", &["lib_bills", "lib_transactions"]),
+    (
+        "lib_account_deletion",
+        &["lib_accounts", "lib_transactions", "lib_bills"],
+    ),
+];
 
 /// The Shell module, which hosts every other module: only the bins may depend on it, so no
 /// module, cross-domain module or shared crate may.

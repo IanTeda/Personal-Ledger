@@ -1,5 +1,5 @@
-//! The Accounts dialogs' form state: the Add, Edit and Delete account forms and the select
-//! options behind them. `gpui`-free, like the rest of this domain; the page and its Dialogs render it.
+//! The Accounts dialogs' form state: the Add and Edit account forms and the select options behind
+//! them. `gpui`-free, like the rest of this domain; the page and its Dialogs render it.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
@@ -14,31 +14,6 @@ use crate::{
     },
     shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
-
-/// The Delete account dialog's live form state -- pure, `gpui`-free. Just the typed-back
-/// confirmation: there is nothing to `Tab` between, so the input is implicitly always focused
-/// (the same shape as the Settings `DeleteUnitForm`). The account's name is copied in at open so
-/// the form validates without `Root`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeleteAccountForm {
-    pub confirm_input: TextField,
-    name: String,
-}
-
-impl DeleteAccountForm {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            confirm_input: TextField::default(),
-            name: name.into(),
-        }
-    }
-
-    /// The README's "disabled until the typed value matches the account name exactly": a plain
-    /// case-sensitive `==`, no trimming or case folding, so it can't be confirmed by habit.
-    pub fn is_valid(&self) -> bool {
-        self.confirm_input.text() == self.name
-    }
-}
 
 /// The Add account dialog's fields, in `Tab` order (the mockup's reading order: Name,
 /// Institution / Type, Unit / Opening balance, Account number).
@@ -859,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn the_dialog_exposes_its_form_for_add_and_edit_but_not_delete() {
+    fn the_dialog_exposes_its_form_for_add_and_edit() {
         let options = add_options();
         let form = AccountForm::new(&options, None);
         assert!(AccountsDialog::Add(form.clone()).form().is_some());
@@ -867,11 +842,6 @@ mod tests {
             AccountsDialog::Edit(AccountId::seed(1), form)
                 .form()
                 .is_some()
-        );
-        assert!(
-            AccountsDialog::Delete(AccountId::seed(1), DeleteAccountForm::new("Wallet"))
-                .form()
-                .is_none()
         );
     }
 
@@ -970,32 +940,5 @@ mod tests {
         assert!(account_form(&dialog).institution.is_open());
         assert!(dialog.close_open_select(), "first Esc closes the list");
         assert!(!dialog.close_open_select(), "second Esc closes the Dialog");
-    }
-
-    #[test]
-    fn delete_account_confirms_only_on_the_exact_case_sensitive_name() {
-        let mut dialog = OpenDialog::Accounts(AccountsDialog::Delete(
-            AccountId::seed(1),
-            DeleteAccountForm::new("Amex Platinum"),
-        ));
-        type_text(&mut dialog, "amex platinum");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Handled
-        );
-        for _ in 0.."amex platinum".len() {
-            handle_key(&mut dialog, DialogKey::Backspace);
-        }
-        type_text(&mut dialog, "Amex Platinum");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
-        type_text(&mut dialog, " ");
-        assert!(!dialog.is_valid(), "no trimming");
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Tab),
-            DialogOutcome::Handled
-        );
     }
 }

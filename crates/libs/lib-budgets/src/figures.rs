@@ -34,7 +34,7 @@ impl SpentIndex {
         for transaction in ledger
             .transactions
             .iter()
-            .filter(|t| budget.account_ids.contains(&t.account_id))
+            .filter(|t| budget.counts(ledger.accounts, t.account_id))
         {
             let month = Period::of(transaction.date);
             for split in &transaction.splits {
@@ -155,7 +155,7 @@ pub(super) fn known_costs(
         let Some(plan) = lib_bills::get(ledger.plans, entry.plan_id) else {
             continue;
         };
-        if plan.category_id != category_id || !budget.account_ids.contains(&plan.account_id) {
+        if plan.category_id != category_id || !budget.counts(ledger.accounts, plan.account_id) {
             continue;
         }
         let due = Period::of(entry.due);
