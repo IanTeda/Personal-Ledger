@@ -26,7 +26,7 @@ Each Split carries:
 `lib-transactions` is a ports-only VIPER module so far (`docs/development/viper-architecture.md`, [#776](https://github.com/IanTeda/Personal-Ledger/issues/776)): the `Transaction` and `Split` types, the repository port, its in-memory twin and the stub seed. It has no Interactors, Presenters or Router trait until the Transactions View migrates; the View and every writer of Transactions are still today's code.
 
 - **`protocols.rs`** — `TransactionRepository`: every Transaction, one by id, `upsert_transaction` (the Transaction with its Splits, whole) and `delete_transaction`.
-- **`fake.rs`** — `InMemoryTransactions`, and the stub seed (`fake::stub_transactions`, behind a `SeedNames` lookup, since `lib-categories`, `lib-payees` and `lib-tags` depend on `lib-transactions`). `lib_ledger::default_transactions` joins it to the other stubs.
+- **`fake.rs`** — `InMemoryTransactions`, and the stub seed (`fake::stub_transactions`, behind a `SeedNames` lookup, since `lib-tags` depends on `lib-transactions`). `lib_ledger::default_transactions` joins it to the other stubs.
 - **`contract.rs`** (behind `contract-tests`) — the suite the fake and the adapter both pass: Splits and Tags round-trip, delete, a failed write.
 
 ## Persistence
