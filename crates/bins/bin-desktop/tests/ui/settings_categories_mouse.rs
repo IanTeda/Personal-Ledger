@@ -161,7 +161,7 @@ fn changing_the_type_then_cancel_leaves_the_category_and_its_descendants(app: &m
     // Food (id 6) is a top-level Expense with children.
     ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     ui.click("edit-type-income");
-    assert_eq!(ui.dialog_value("type").as_deref(), Some("Some(Income)"));
+    assert_eq!(ui.dialog_value("type").as_deref(), Some("Income"));
     assert_eq!(ui.settings_categories().category_types, before);
     ui.click("edit-category-cancel");
     assert_eq!(ui.dialog(), None);

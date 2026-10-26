@@ -1,6 +1,6 @@
 //! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while
 //! open, and the keyboard handling they share. A module's Dialog (Units, Bills, Pay, Payees) is an
-//! Entity in `shell::view::dialog_entity` instead; these nine move there with their slices
+//! Entity in `shell::view::dialog_entity` instead; these eight move there with their slices
 //! (#820). The key handling needs no window, so a Dialog's keys are unit-tested without one.
 //!
 //! `Root` holds `Option<OpenDialog>` and opens and closes it only through `Root::open_dialog`
@@ -29,7 +29,6 @@ use chrono::NaiveDate;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, WeakEntity};
 use lib_toast::ToastKind;
 
-use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
     budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
     form::field::TextField, ledger_store::LedgerStore,
@@ -272,7 +271,7 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open legacy Dialog, one variant per feature: the nine not yet on a module's Presenter.
+/// The open legacy Dialog, one variant per feature: the eight not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[expect(
     clippy::large_enum_variant,
@@ -280,7 +279,6 @@ impl Dialog for ToastHistoryDialog {
 )]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    Categories(CategoriesDialog),
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
     Tags(TagsDialog),
@@ -295,7 +293,6 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
@@ -309,7 +306,6 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
@@ -356,7 +352,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Categories, CategoriesDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Inventory, InventoryDialog);
 dialog_variant!(Tags, TagsDialog);

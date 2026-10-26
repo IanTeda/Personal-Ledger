@@ -10,6 +10,7 @@ use gpui::{
 
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
+    categories::{CategoriesPage, CategoriesSetup, categories_page},
     institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
     ledger_store::LedgerStore,
     navigation::movement::Movement,
@@ -17,7 +18,6 @@ use crate::{
     settings::{
         SettingsPage,
         about::AboutPage,
-        categories::CategoriesPage,
         data_backup::DataBackupPage,
         display::DisplayPage,
         documents::DocumentsPage,
@@ -42,12 +42,13 @@ use crate::{
 };
 
 /// What `shell::router::build` hands the Settings pages that are modules' Views: the Units,
-/// Institutions, Accounts and Payees modules' ports and keymaps.
+/// Institutions, Accounts, Categories and Payees modules' ports and keymaps.
 pub struct SettingsSetup {
     pub units: UnitsSetup,
     pub institutions: InstitutionsSetup,
     pub payees: PayeesSetup,
     pub accounts: AccountsSetup,
+    pub categories: CategoriesSetup,
 }
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
@@ -286,6 +287,7 @@ impl SettingsPages {
             institutions,
             payees,
             accounts,
+            categories,
         } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
@@ -298,7 +300,7 @@ impl SettingsPages {
                 cx,
             ),
             accounts: accounts_page(accounts, ledger.clone(), clock.clone(), cx),
-            categories: cx.new(|cx| CategoriesPage::new(ledger.clone(), clock, cx)),
+            categories: categories_page(categories, ledger.clone(), clock, cx),
             tags: cx.new(|cx| TagsPage::new(ledger.clone(), cx)),
             payees: payees_page(payees.ports, ledger.clone(), payees.keymap, cx),
             documents: cx.new(|cx| DocumentsPage::new(ledger.clone(), cx)),

@@ -9,8 +9,8 @@
 
 use lib_core::{CategoryId, CategoryTypes};
 
-use crate::fake::InMemoryCategories;
-use crate::interactor::{AddCategory, MoveCategory, RenameCategory};
+use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
+use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
 use crate::{Category, CategoryError, CategoryRepository, default_categories};
 
 /// A stored Categories port.
@@ -101,6 +101,7 @@ fn add(name: &str, parent_id: Option<CategoryId>, category_type: CategoryTypes) 
         name: name.into(),
         parent_id,
         category_type,
+        monthly: BudgetChange::Keep,
     }
 }
 
@@ -119,15 +120,15 @@ pub fn added_categories_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_categories());
 
     let dividends = add("Dividends", None, CategoryTypes::Income)
-        .run(ports.categories())
+        .run(ports.categories(), &mut InMemoryCategoryBudget::default())
         .expect("a top-level Category");
     factory.commit(&mut ports);
     let franked = add("Franked", Some(dividends.id), CategoryTypes::Income)
-        .run(ports.categories())
+        .run(ports.categories(), &mut InMemoryCategoryBudget::default())
         .expect("Dividends takes children");
     factory.commit(&mut ports);
     let gas = add("Gas", Some(UTILITIES), CategoryTypes::Expense)
-        .run(ports.categories())
+        .run(ports.categories(), &mut InMemoryCategoryBudget::default())
         .expect("Utilities sits one level down");
     factory.commit(&mut ports);
 
@@ -234,7 +235,7 @@ pub fn categories_list_in_tree_order<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_categories());
 
     add("Insurance", Some(HOUSING), CategoryTypes::Expense)
-        .run(ports.categories())
+        .run(ports.categories(), &mut InMemoryCategoryBudget::default())
         .expect("Housing takes children");
     factory.commit(&mut ports);
     MoveCategory {
@@ -273,12 +274,14 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
     let stored = ports.categories().categories();
 
     assert_eq!(
-        add("Peak", Some(ELECTRICITY), CategoryTypes::Expense).run(ports.categories()),
-        Err(CategoryError::DepthExceeded)
+        add("Peak", Some(ELECTRICITY), CategoryTypes::Expense)
+            .run(ports.categories(), &mut InMemoryCategoryBudget::default()),
+        Err(CategoryError::DepthExceeded.into())
     );
     assert_eq!(
-        add("Bonus", Some(SALARY), CategoryTypes::Expense).run(ports.categories()),
-        Err(CategoryError::TypeMismatch)
+        add("Bonus", Some(SALARY), CategoryTypes::Expense)
+            .run(ports.categories(), &mut InMemoryCategoryBudget::default()),
+        Err(CategoryError::TypeMismatch.into())
     );
     assert_eq!(
         MoveCategory {
@@ -334,7 +337,7 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
 
     factory.break_writes(&mut ports);
     add("Dividends", None, CategoryTypes::Income)
-        .run(ports.categories())
+        .run(ports.categories(), &mut InMemoryCategoryBudget::default())
         .expect("a top-level Category");
     factory.commit(&mut ports);
 

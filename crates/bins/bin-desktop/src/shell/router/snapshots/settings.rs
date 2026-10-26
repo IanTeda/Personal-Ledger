@@ -23,7 +23,7 @@ use crate::shell::router::Root;
 #[doc(hidden)]
 pub use crate::units::SettingsUnitsSnapshot;
 
-pub use crate::settings::categories::SettingsCategoriesSnapshot;
+pub use crate::categories::SettingsCategoriesSnapshot;
 
 impl Root {
     /// The Settings shell for a test: the page on show, as the View builds it, and the open

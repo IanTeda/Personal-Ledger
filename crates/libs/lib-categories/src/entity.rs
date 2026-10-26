@@ -3,9 +3,8 @@
 //! Interest and their children: 12 categories, three levels deep).
 //!
 //! The rules take the rows rather than the repository, because `lib-ledger` still runs them on
-//! its own rows for the Category Dialogs' `LedgerCommand`s and for delete (reassign), which stays
-//! there (#847, Q6); the Interactors read the rows from the repository, run the same rule and
-//! write what changed.
+//! its own rows for delete (reassign), which stays there until `lib-reassign` (#847, Q6, #813);
+//! the Interactors read the rows from the repository, run the same rule and write what changed.
 
 use lib_core::{CategoryId, CategoryTypes};
 
@@ -246,6 +245,15 @@ pub enum CategoryError {
     /// Parent category not found.
     #[error("parent category not found")]
     ParentNotFound,
+}
+
+/// Why an Add or Edit of a Category was refused: the tree rules, or the Monthly budget it carried.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SaveCategoryRefusal {
+    #[error(transparent)]
+    Category(#[from] CategoryError),
+    #[error(transparent)]
+    Budget(#[from] crate::protocols::MonthlyBudgetRefusal),
 }
 
 /// Whether `child_id` is a descendant of `parent_id` (cycle detection).

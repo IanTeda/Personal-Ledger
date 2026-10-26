@@ -160,15 +160,3 @@ pub(crate) fn confirm_dialog_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_confirm()),
     ]
 }
-
-/// The Settings Categories page's status-line legend (2i's keys), as `(key, action)`.
-pub(crate) fn settings_categories_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("\u{2192}/\u{2190}", crate::msg::desktop_hint_expand()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("d", crate::msg::desktop_hint_delete()),
-        ("n", crate::msg::desktop_hint_new()),
-        ("N", crate::msg::desktop_hint_sub()),
-    ]
-}

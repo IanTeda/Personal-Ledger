@@ -295,3 +295,83 @@ fn the_edit_dialog_hides_parents_that_would_nest_the_subtree_past_three_levels(
     let parents = ui.dialog_value("parents").expect("the offered parents");
     assert!(parents.split(',').any(|name| name == "Transport"));
 }
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+/// Woolworths' Default category, as its Edit Dialog on the Payees page shows it. Settings is on
+/// Categories, two above Payees, and goes back there.
+fn woolworths_default(ui: &mut Harness<'_>) -> Option<String> {
+    ui.press("g s");
+    ui.press("j j");
+    assert_eq!(ui.settings().page, "Payees");
+    ui.click(&format!(
+        "settings-payees-edit-{}",
+        lib_core::PayeeId::seed(1)
+    ));
+    let category = ui.dialog_value("category");
+    ui.press("escape");
+    ui.press("g s");
+    ui.press("k k");
+    assert_eq!(ui.settings().page, "Categories");
+    ui.press("l");
+    category
+}
+
+#[gpui::test]
+fn a_delete_lands_in_one_commit_and_clears_its_payees_default(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    assert_eq!(woolworths_default(&mut ui).as_deref(), Some("Groceries"));
+    for _ in 0..10 {
+        if ui.settings_categories().selected_category.as_deref() == Some("Groceries") {
+            break;
+        }
+        ui.press("j");
+    }
+    ui.press("d");
+    ui.press("shift-g r o c e r i e s");
+    assert_eq!(ui.dialog_value("confirm").as_deref(), Some("Groceries"));
+
+    let before = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "the delete and its re-pointing in one commit"
+    );
+    assert!(
+        !ui.settings_categories()
+            .category_names
+            .iter()
+            .any(|name| name == "Groceries")
+    );
+    assert_ne!(woolworths_default(&mut ui).as_deref(), Some("Groceries"));
+}
+
+#[gpui::test]
+fn tab_reaches_the_parent_select_and_down_picks_a_parent_whose_type_it_takes(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+
+    ui.press("n tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Parent"));
+    assert_eq!(ui.dialog_value("parent"), None);
+    ui.press("down");
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
+    // Salary is the first Income parent the list offers.
+    for _ in 0..12 {
+        if ui.dialog_value("parent").as_deref() == Some("Salary") {
+            break;
+        }
+        ui.press("down");
+    }
+    assert_eq!(ui.dialog_value("type").as_deref(), Some("Income"));
+    ui.press("escape");
+}

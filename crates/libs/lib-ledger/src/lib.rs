@@ -28,8 +28,7 @@ pub use budget_commands::{
     RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,
 };
 pub use category_commands::{
-    AddCategory, CategoryDeleted, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal,
-    EditCategory, MonthlyBudget, MoveCategory, RenameCategory, SaveCategoryRefusal,
+    CategoryDeleted, DeleteCategory, DeleteCategoryRefusal, MonthlyBudget, SetCategoryMonthlyLimit,
 };
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use document_commands::{

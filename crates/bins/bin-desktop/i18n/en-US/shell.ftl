@@ -24,7 +24,6 @@ desktop-hint-row = row
 desktop-hint-open = open
 desktop-hint-edit = edit
 desktop-hint-confirm = confirm
-desktop-hint-delete = delete
 desktop-hint-remove = remove
 desktop-hint-merge = merge
 desktop-hint-new = new
@@ -59,7 +58,6 @@ desktop-status-close-file-explorer = { $key } close file explorer
 
 desktop-status-not-a-jump = { $keys } is not a jump
 desktop-status-command-not-yet-built = :{ $command } — not yet built
-desktop-status-delete-children-first = delete or move its children first
 
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 

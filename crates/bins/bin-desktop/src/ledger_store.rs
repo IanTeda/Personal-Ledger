@@ -54,7 +54,7 @@ impl LedgerSetup {
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
-        let categories = crate::settings::categories::ports::in_memory(&ledger);
+        let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         Self {
@@ -106,7 +106,7 @@ impl LedgerStore {
         let transactions = lib_transactions::fake::InMemoryTransactions {
             transactions: ledger.transactions().to_vec(),
         };
-        let categories = crate::settings::categories::ports::in_memory(&ledger);
+        let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         let bills = LedgerBackedPorts::in_memory(
@@ -214,15 +214,13 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
-            let categories_upserted = crate::settings::categories::ports::forward(
-                &mut *self.categories.borrow_mut(),
-                &changes,
-            );
+            let categories_upserted =
+                crate::categories::ports::forward(&mut *self.categories.borrow_mut(), &changes);
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
-            let categories_deleted = crate::settings::categories::ports::forward_deletes(
+            let categories_deleted = crate::categories::ports::forward_deletes(
                 &mut *self.categories.borrow_mut(),
                 &changes,
             );
@@ -333,6 +331,14 @@ impl LedgerStore {
     pub fn refresh_payees(&mut self, cx: &mut Context<'_, Self>) {
         if self.copy_payees() {
             self.announce(cx, BTreeSet::from([Domain::Payees]));
+        }
+    }
+
+    /// Brings the Categories read copy in line with the store after the Categories module wrote
+    /// it, announcing `Domain::Categories` only when it changed.
+    pub fn refresh_categories(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_categories() {
+            self.announce(cx, BTreeSet::from([Domain::Categories]));
         }
     }
 

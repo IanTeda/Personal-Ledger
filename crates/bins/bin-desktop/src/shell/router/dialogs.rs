@@ -136,7 +136,6 @@ impl Root {
             Some(
                 OpenDialog::Tracing(_)
                 | OpenDialog::Tags(_)
-                | OpenDialog::Categories(_)
                 | OpenDialog::DocumentTypes(_)
                 | OpenDialog::Inventory(_),
             )

@@ -11,11 +11,11 @@
 use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
     accounts::AccountsPage,
+    categories::CategoriesPage,
     institutions::InstitutionsPage,
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     payees::PayeesPage,
-    settings::categories::CategoriesPage,
     settings::display::{DisplayPage, DisplayPreferences},
     settings::documents::DocumentsPage,
     settings::general::GeneralPage,

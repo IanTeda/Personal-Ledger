@@ -168,8 +168,8 @@ pub fn build(
 
     // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
     // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
-    // reads (#831, #832). The Categories store is shared by the Ledger's forwarding shim and the
-    // Bills and Payees reads (#858).
+    // reads (#831, #832). The Categories store is shared by the Categories module, the Ledger's
+    // forwarding shim and the Bills and Payees reads (#858, #859).
     let categories: lib_database::SharedCategoriesStore =
         Rc::new(std::cell::RefCell::new(categories));
     let payees = crate::payees::LedgerBackedPorts::shared(payees, categories.clone());
@@ -188,6 +188,8 @@ pub fn build(
         categories.clone(),
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
+    let categories_setup =
+        crate::categories::CategoriesSetup::new(categories.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
     // Account delete writes the Accounts, Transactions and Bills stores together (#854).
     let account_deletion = crate::account_deletion::DeletionStores {
@@ -214,6 +216,7 @@ pub fn build(
         institutions: institutions_setup,
         payees: payees_setup,
         accounts: accounts_setup,
+        categories: categories_setup,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);

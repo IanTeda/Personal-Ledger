@@ -11,6 +11,7 @@ mod assets;
 mod bill_payments;
 mod bills;
 mod budgets;
+mod categories;
 mod dialog;
 mod documents;
 mod error;

@@ -184,10 +184,8 @@ mod tests {
     #[test]
     fn in_memory_ports_count_the_ledgers_use_and_offer_its_leaves() {
         let ledger = Ledger::stub();
-        let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            crate::settings::categories::ports::in_memory(&ledger),
-        );
+        let ports =
+            LedgerBackedPorts::in_memory(&ledger, crate::categories::ports::in_memory(&ledger));
         let ports = ports.borrow();
 
         let woolworths = PayeesPorts::usage(&*ports)
@@ -210,10 +208,8 @@ mod tests {
     fn a_split_written_after_the_ports_are_built_is_counted_at_the_next_copy() {
         let mut ledger = Ledger::stub();
         let woolworths = PayeeId::seed(1);
-        let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            crate::settings::categories::ports::in_memory(&ledger),
-        );
+        let ports =
+            LedgerBackedPorts::in_memory(&ledger, crate::categories::ports::in_memory(&ledger));
         let before = PayeesPorts::usage(&*ports.borrow())
             .payee_usage(woolworths)
             .expect("memory always counts");

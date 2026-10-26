@@ -276,7 +276,7 @@ mod tests {
     }
 
     fn categories(ledger: &Ledger) -> SharedCategoriesStore {
-        crate::settings::categories::ports::in_memory(ledger)
+        crate::categories::ports::in_memory(ledger)
     }
 
     fn payees(ledger: &Ledger) -> SharedPayeesStore {

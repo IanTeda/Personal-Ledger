@@ -4,7 +4,6 @@
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 
 pub mod about;
-pub mod categories;
 pub mod data_backup;
 pub mod display;
 pub mod documents;

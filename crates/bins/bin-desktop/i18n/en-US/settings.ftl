@@ -150,3 +150,7 @@ desktop-settings-about-built-with = Built with Rust + GPUI + SQLite
 ## The pages that moved in from the primary rail, until each is rebuilt to the handoff.
 
 desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.
+
+## The status-line legend's fold key on a tree page (Inventory).
+
+desktop-hint-expand = expand
