@@ -30,9 +30,7 @@ mod tests {
     use sqlx::SqlitePool;
 
     async fn seed_expense_category(pool: &SqlitePool) -> lib_core::RowID {
-        let mut category = crate::Categories::mock();
-        category.category_type = lib_core::CategoryTypes::Expense;
-        category.insert(pool).await.unwrap().id
+        crate::test_support::insert_category(pool, lib_core::CategoryTypes::Expense).await
     }
 
     async fn seed_unit(pool: &SqlitePool) -> lib_core::RowID {

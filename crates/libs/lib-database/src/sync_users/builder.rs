@@ -1,7 +1,6 @@
 //! # SyncUser Builder
 //!
-//! Provides a fluent API for constructing [`SyncUser`] records, mirroring
-//! [`crate::categories::CategoriesBuilder`]'s shape.
+//! Provides a fluent API for constructing [`SyncUser`] records.
 
 use super::SyncUser;
 use crate::Error;

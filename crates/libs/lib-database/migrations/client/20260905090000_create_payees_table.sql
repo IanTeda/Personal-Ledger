@@ -2,14 +2,14 @@
 -- rename aliases (ADR-0012). Created before `splits` and `bill_plans`, which reference
 -- `payees(id)`.
 --
--- default_category_id is the leaf Category that pre-fills a new Split for the Payee. It has no
--- foreign key yet: Categories aren't persisted, so no row would back it (#774). It becomes a
--- REFERENCES when Categories persist.
+-- default_category_id is the leaf Category that pre-fills a new Split for the Payee. It references
+-- the Category with no cascade: Category delete clears the defaults naming it first, and the key
+-- is the backstop to that (#858).
 
 CREATE TABLE IF NOT EXISTS payees (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    default_category_id UUID,
+    default_category_id UUID REFERENCES categories(id),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))

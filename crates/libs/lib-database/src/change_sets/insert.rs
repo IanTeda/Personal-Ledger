@@ -32,8 +32,7 @@ impl crate::ChangeSet {
         );
 
         // SQLite doesn't reliably support `RETURNING *` with sqlx's compile-time checked
-        // macros -- insert first, then read the row back explicitly (same two-step
-        // pattern as `categories/insert.rs`).
+        // macros -- insert first, then read the row back explicitly.
         let hlc_text = self.hlc.to_string();
         let insert_result = sqlx::query!(
             r#"

@@ -33,12 +33,14 @@ use lib_accounts::fake::{InMemoryAccountUsage, InMemoryAccounts};
 use lib_accounts::{Account, AccountRepository};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
+use lib_categories::fake::InMemoryCategories;
+use lib_categories::{Category, CategoryRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
-use lib_core::{AccountId, PayeeId, PriceSourceId, UnitId};
+use lib_core::{AccountId, CategoryId, PayeeId, PriceSourceId, UnitId};
 use lib_database::{
-    AccountsStore, BillsStore, Commit, CountingCommit, Domain, InstitutionsStore, PayeesStore,
-    Stores, TransactionsStore, UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, InstitutionsStore,
+    PayeesStore, Stores, TransactionsStore, UnitsStore, WriteFailure,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
@@ -270,6 +272,44 @@ impl PayeesStore for CountedUnusedPayees {
 
     fn reload(&mut self) -> lib_database::Result<()> {
         self.inner.reload()
+    }
+}
+
+impl<T: CategoryRepository> CategoryRepository for Marked<T> {
+    fn categories(&self) -> Vec<Category> {
+        self.inner.categories()
+    }
+
+    fn upsert_category(&mut self, category: Category) {
+        self.written.set(true);
+        self.inner.upsert_category(category);
+    }
+}
+
+/// A Categories store whose writes never reach `stored`, the rows as they are on disk: a reload
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingCategories {
+    categories: Marked<InMemoryCategories>,
+    stored: InMemoryCategories,
+}
+
+impl CategoriesStore for FailingCategories {
+    fn categories(&self) -> &dyn CategoryRepository {
+        &self.categories
+    }
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
+        &mut self.categories
+    }
+
+    fn delete_category(&mut self, id: CategoryId) {
+        self.categories.written.set(true);
+        self.categories.inner.delete_category(id);
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.categories.inner = self.stored.clone();
+        Ok(())
     }
 }
 
@@ -560,6 +600,7 @@ impl<'a> Harness<'a> {
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
+                InMemoryCategories::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -580,6 +621,7 @@ impl<'a> Harness<'a> {
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
+                InMemoryCategories::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -612,6 +654,7 @@ impl<'a> Harness<'a> {
                 InMemoryPorts::stub(chrono::Utc::now()),
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
+                InMemoryCategories::stub(),
                 payees,
                 stub_transactions(),
                 stub_bills(),
@@ -657,6 +700,7 @@ impl<'a> Harness<'a> {
                 )),
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -691,6 +735,7 @@ impl<'a> Harness<'a> {
                     stored,
                 }),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -726,11 +771,47 @@ impl<'a> Harness<'a> {
                     usage: InMemoryAccountUsage::default(),
                     stored,
                 }),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Accounts],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on a Categories store whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_categories(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = InMemoryCategories::stub();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(FailingCategories {
+                    categories: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    stored,
+                }),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Categories],
                     written,
                     report,
                 }),
@@ -754,6 +835,7 @@ impl<'a> Harness<'a> {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(FailingPayees {
                     payees: Marked {
                         inner: stored.clone(),
@@ -789,6 +871,7 @@ impl<'a> Harness<'a> {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
@@ -823,6 +906,7 @@ impl<'a> Harness<'a> {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(FailingBills {
@@ -857,6 +941,7 @@ impl<'a> Harness<'a> {
                 units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {

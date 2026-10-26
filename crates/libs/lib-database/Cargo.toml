@@ -24,6 +24,7 @@ lib_bills = { path = "../../../crates/libs/lib-bills" }
 lib_payees = { path = "../../../crates/libs/lib-payees" }
 lib_institutions = { path = "../../../crates/libs/lib-institutions" }
 lib_accounts = { path = "../../../crates/libs/lib-accounts" }
+lib_categories = { path = "../../../crates/libs/lib-categories" }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments" }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion" }
 ## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
@@ -56,6 +57,7 @@ lib_bills = { path = "../../../crates/libs/lib-bills", features = ["contract-tes
 lib_payees = { path = "../../../crates/libs/lib-payees", features = ["contract-tests"] }
 lib_institutions = { path = "../../../crates/libs/lib-institutions", features = ["contract-tests"] }
 lib_accounts = { path = "../../../crates/libs/lib-accounts", features = ["contract-tests"] }
+lib_categories = { path = "../../../crates/libs/lib-categories", features = ["contract-tests"] }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments", features = ["contract-tests"] }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion", features = ["contract-tests"] }
 serde_json = { workspace = true }

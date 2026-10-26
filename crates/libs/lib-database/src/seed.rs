@@ -25,6 +25,7 @@ use lib_units::{LastPrice, PriceLink, UnitRow};
 use crate::Result;
 use crate::adapter::accounts::AccountsAdapter;
 use crate::adapter::bills::BillsAdapter;
+use crate::adapter::categories::CategoriesAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
 use crate::adapter::payees::PayeesAdapter;
 use crate::adapter::transactions::TransactionsAdapter;
@@ -33,7 +34,8 @@ use crate::writer::Writer;
 
 /// Writes every persisted domain's stub seed, blocking until it lands: Units, Price Sources and
 /// the base Unit, the Institutions, which the Accounts name, the Accounts, which the Transactions
-/// and Bill Plans name, the Payees, which the Splits and Bill Plans name, then the Transactions and
+/// and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans name, the Payees,
+/// which the Splits and Bill Plans name, then the Transactions and
 /// the Bills dated from `now`'s local day. Each later domain adds its seed as it migrates, in the
 /// order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory.
 ///
@@ -45,6 +47,7 @@ pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
     UnitsAdapter::seed_from(writer, InMemoryPorts::stub(now))?;
     InstitutionsAdapter::seed(writer, stub_institutions())?;
     AccountsAdapter::seed(writer, stub_accounts())?;
+    CategoriesAdapter::seed(writer, stub_categories())?;
     PayeesAdapter::seed(writer, stub_payees())?;
     TransactionsAdapter::seed(writer, stub_ledger_transactions(today))?;
     let bills = stub_ledger_bills(today);
@@ -60,6 +63,12 @@ pub fn stub_institutions() -> Vec<lib_institutions::Institution> {
 /// and Budgets name.
 pub fn stub_accounts() -> Vec<lib_accounts::Account> {
     lib_accounts::fake::InMemoryAccounts::stub().accounts
+}
+
+/// `lib-categories`' stub seed, the stub Ledger's Categories, with the ids its Splits, Bill Plans,
+/// Payees and Budgets name.
+pub fn stub_categories() -> Vec<lib_categories::Category> {
+    lib_categories::fake::InMemoryCategories::stub().categories
 }
 
 /// `lib-payees`' stub seed, the stub Ledger's Payees, with the ids its Splits and Bill Plans name.

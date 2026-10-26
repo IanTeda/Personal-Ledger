@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: CategoryId\",\n                  name,\n                  parent_id AS \"parent_id: CategoryId\",\n                  category_type AS \"category_type!: CategoryTypes\"\n           FROM categories\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: CategoryId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_id: CategoryId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "category_type!: CategoryTypes",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "a4d1a459f45c2928de756cdc035d5c00ab417332efa98dd18a84104cfc104131"
+}

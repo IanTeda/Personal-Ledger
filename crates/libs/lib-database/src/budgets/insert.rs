@@ -15,12 +15,17 @@ impl crate::Budgets {
         fields(id = %self.id, category_id = %self.category_id),
     )]
     pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
-        let category = crate::Categories::find_by_id(self.category_id, pool)
-            .await?
-            .ok_or_else(|| {
-                crate::Error::NotFound(format!("Category {} not found", self.category_id))
-            })?;
-        if category.category_type != lib_core::CategoryTypes::Expense {
+        let category_type = sqlx::query_scalar!(
+            r#"SELECT category_type AS "category_type!: lib_core::CategoryTypes"
+               FROM categories WHERE id = ?"#,
+            self.category_id,
+        )
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| {
+            crate::Error::NotFound(format!("Category {} not found", self.category_id))
+        })?;
+        if category_type != lib_core::CategoryTypes::Expense {
             return Err(crate::Error::BudgetCategoryNotExpense(
                 self.category_id.to_string(),
             ));
@@ -70,9 +75,7 @@ mod tests {
     use sqlx::SqlitePool;
 
     async fn seed_expense_category(pool: &SqlitePool) -> lib_core::RowID {
-        let mut category = crate::Categories::mock();
-        category.category_type = lib_core::CategoryTypes::Expense;
-        category.insert(pool).await.unwrap().id
+        crate::test_support::insert_category(pool, lib_core::CategoryTypes::Expense).await
     }
 
     async fn seed_unit(pool: &SqlitePool) -> lib_core::RowID {
@@ -93,11 +96,10 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn insert_rejects_a_non_expense_category(pool: SqlitePool) {
-        let mut category = crate::Categories::mock();
-        category.category_type = lib_core::CategoryTypes::Income;
-        let category = category.insert(&pool).await.unwrap();
+        let category_id =
+            crate::test_support::insert_category(&pool, lib_core::CategoryTypes::Income).await;
         let unit_id = seed_unit(&pool).await;
-        let budget = crate::Budgets::mock(category.id, unit_id);
+        let budget = crate::Budgets::mock(category_id, unit_id);
 
         let result = budget.insert(&pool).await;
 

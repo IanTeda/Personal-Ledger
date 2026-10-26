@@ -1,7 +1,6 @@
 //! # Units Builder
 //!
-//! Provides a fluent API for constructing [`Units`] records, mirroring
-//! [`crate::categories::CategoriesBuilder`]'s shape.
+//! Provides a fluent API for constructing [`Units`] records.
 
 use super::Units;
 use crate::Error;

@@ -4807,6 +4807,7 @@ dependencies = [
  "lib_accounts",
  "lib_bill_payments",
  "lib_bills",
+ "lib_categories",
  "lib_config",
  "lib_core",
  "lib_institutions",

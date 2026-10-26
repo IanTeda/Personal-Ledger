@@ -111,31 +111,22 @@ async fn client_pool(db_path: &std::path::Path) -> SqlitePool {
     pool
 }
 
-/// Decompose a `Categories` row into its field-level Change Sets -- the demo-only stand-in
+/// Decompose a demo Category row into its field-level Change Sets -- the demo-only stand-in
 /// for a future Client write-path's change capture (out of scope here; see the ticket's
 /// Non-goals). Every field is stringified explicitly rather than attempting a generic
 /// to-string conversion, since the receiving side's `apply_category_field_change` must
 /// parse each one back with the matching logic.
 fn categories_row_to_change_sets(
-    category: &lib_database::Categories,
+    category: &DemoCategory,
     client_id: RowID,
     clock: &mut HlcClock,
 ) -> Vec<ChangeSet> {
     let fields: Vec<(&str, Option<String>)> = vec![
-        ("code", Some(category.code.clone())),
         ("name", Some(category.name.clone())),
-        ("description", category.description.clone()),
-        (
-            "url_slug",
-            category.url_slug.as_ref().map(|s| s.to_string()),
-        ),
         (
             "category_type",
             Some(category.category_type.as_str().to_string()),
         ),
-        ("color", category.color.as_ref().map(|c| c.to_string())),
-        ("icon", category.icon.clone()),
-        ("is_active", Some(category.is_active.to_string())),
     ];
 
     fields
@@ -166,42 +157,26 @@ async fn apply_category_field_change(
     value: Option<&str>,
 ) {
     let row_id_str = row_id.to_string();
-    let now = chrono::Utc::now().to_rfc3339();
 
     // Materialise a placeholder row on first sight of this row_id, satisfying the
-    // `categories` table's NOT NULL/UNIQUE constraints with values unique-by-construction
-    // (the row_id itself) -- the same problem a real Client applying a brand-new row's
+    // `categories` table's NOT NULL constraints (the row_id itself as the name) -- the same
+    // problem a real Client applying a brand-new row's
     // Change Sets one field at a time would need to solve.
     sqlx::query(
         r#"
-            INSERT INTO categories (id, code, name, category_type, is_active, created_on, updated_on)
-            VALUES (?, ?, ?, 'expense', TRUE, ?, ?)
+            INSERT INTO categories (id, name, category_type)
+            VALUES (?, ?, 'expense')
             ON CONFLICT(id) DO NOTHING
         "#,
     )
     .bind(&row_id_str)
     .bind(&row_id_str)
-    .bind(&row_id_str)
-    .bind(&now)
-    .bind(&now)
     .execute(pool)
     .await
     .expect("placeholder row insert should succeed");
 
     let column = match field_name {
-        "code" | "name" | "description" | "url_slug" | "icon" | "color" | "category_type" => {
-            field_name
-        }
-        "is_active" => {
-            let is_active = value == Some("true");
-            sqlx::query("UPDATE categories SET is_active = ? WHERE id = ?")
-                .bind(is_active)
-                .bind(&row_id_str)
-                .execute(pool)
-                .await
-                .expect("is_active update should succeed");
-            return;
-        }
+        "name" | "category_type" => field_name,
         other => panic!(
             "apply_category_field_change: unsupported field '{other}' -- this demo is scoped to categories' known columns"
         ),
@@ -216,23 +191,49 @@ async fn apply_category_field_change(
         .expect("field update should succeed");
 }
 
-/// Build a `Categories` row directly via struct literal -- `CategoriesBuilder` isn't
-/// exposed outside `lib_database`, so this mirrors how `bin-desktop`'s own embedded-SQLite
-/// demo constructs one.
-fn new_demo_category(code: &str, name: &str) -> lib_database::Categories {
-    let now = chrono::Utc::now();
-    lib_database::Categories {
+/// The demo's Category row: the `categories` columns it syncs, `name` and `category_type`, on a
+/// top-level row. `lib-database`'s Categories adapter takes `lib-categories`' ids and writes
+/// through the shared writer (#858), so the demo reads and writes its rows itself, with
+/// runtime-bound queries so this test crate needs no `.sqlx` offline cache.
+#[derive(Debug, Clone, PartialEq)]
+struct DemoCategory {
+    id: RowID,
+    name: String,
+    category_type: lib_core::CategoryTypes,
+}
+
+impl DemoCategory {
+    async fn insert(&self, pool: &SqlitePool) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT INTO categories (id, name, category_type) VALUES (?, ?, ?)")
+            .bind(self.id)
+            .bind(&self.name)
+            .bind(self.category_type.as_str())
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn find_by_id(id: RowID, pool: &SqlitePool) -> Result<Option<Self>, sqlx::Error> {
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT name, category_type FROM categories WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+        Ok(row.map(|(name, category_type)| Self {
+            id,
+            name,
+            category_type: category_type
+                .parse()
+                .expect("the table's check allows only a known type"),
+        }))
+    }
+}
+
+fn new_demo_category(name: &str) -> DemoCategory {
+    DemoCategory {
         id: RowID::new(),
-        code: code.to_string(),
         name: name.to_string(),
-        description: None,
-        url_slug: None,
         category_type: lib_core::CategoryTypes::Expense,
-        color: None,
-        icon: None,
-        is_active: true,
-        created_on: now,
-        updated_on: now,
     }
 }
 
@@ -257,7 +258,7 @@ async fn push_pull_sync_with_offline_catch_up() {
     let mut client_a_clock = HlcClock::new();
 
     // -- Client A: create a category locally, and push its Change Sets --
-    let category_one = new_demo_category("FOO.BAR.001", "Groceries");
+    let category_one = new_demo_category("Groceries");
     category_one.insert(&client_a_pool).await.unwrap();
 
     let change_sets_one =
@@ -280,7 +281,7 @@ async fn push_pull_sync_with_offline_catch_up() {
 
     // -- Offline catch-up: Client A creates a second category and pushes more Change
     // Sets while Client B does nothing -- simulating changes queued while B was down --
-    let category_two = new_demo_category("FOO.BAR.002", "Rent");
+    let category_two = new_demo_category("Rent");
     category_two.insert(&client_a_pool).await.unwrap();
 
     let change_sets_two =
@@ -332,21 +333,17 @@ async fn push_pull_sync_with_offline_catch_up() {
     }
 
     // -- Assert: Client B now has both categories, matching Client A's field values --
-    let synced_one = lib_database::Categories::find_by_id(category_one.id, &client_b_pool)
+    let synced_one = DemoCategory::find_by_id(category_one.id, &client_b_pool)
         .await
         .unwrap()
         .expect("category one should have synced to Client B");
-    assert_eq!(synced_one.code, category_one.code);
-    assert_eq!(synced_one.name, category_one.name);
-    assert_eq!(synced_one.category_type, category_one.category_type);
-    assert!(synced_one.is_active);
+    assert_eq!(synced_one, category_one);
 
-    let synced_two = lib_database::Categories::find_by_id(category_two.id, &client_b_pool)
+    let synced_two = DemoCategory::find_by_id(category_two.id, &client_b_pool)
         .await
         .unwrap()
         .expect("category two should have synced to Client B");
-    assert_eq!(synced_two.code, category_two.code);
-    assert_eq!(synced_two.name, category_two.name);
+    assert_eq!(synced_two, category_two);
 
     // -- Durability: reopen the Sync Server's Change Set log from a fresh connection
     // (not the still-running server's own pool) and confirm the log survived --

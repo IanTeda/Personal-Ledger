@@ -81,6 +81,30 @@ fn typing_a_name_and_pressing_enter_adds_the_category(app: &mut TestAppContext) 
 }
 
 #[gpui::test]
+fn a_failed_write_puts_the_categories_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_categories(app);
+    ui.press("g s");
+    ui.press("j j j j j");
+    ui.press("l");
+    let stored = ui.settings_categories().category_names;
+
+    ui.press("n p e t s enter");
+    assert_eq!(
+        ui.settings_categories().category_names.len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_categories().category_names, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text
+                == "Couldn't save the change to categories, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
 fn shift_n_opens_add_under_the_selected_row(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 

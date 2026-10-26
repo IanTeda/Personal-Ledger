@@ -41,6 +41,7 @@ pub enum Domain {
     Units,
     Institutions,
     Accounts,
+    Categories,
     Payees,
     Transactions,
     Bills,

@@ -112,7 +112,8 @@ mod tests {
     use crate::{AccountsAdapter, BillsAdapter, PendingWrites, TransactionsAdapter, Writer};
 
     /// The three adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units are stored first, which the Accounts and the Bill Plan name.
+    /// stub's Units and Categories are stored first, which the Accounts, Splits and the Bill Plan
+    /// name.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -127,6 +128,8 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
+            crate::CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
+                .expect("the stub Categories are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

@@ -35,7 +35,7 @@ fn world() -> World {
     let ledger = Ledger::stub_on(today());
     World {
         accounts: crate::bill_reads::bill_accounts(ledger.accounts()),
-        categories: ledger.bill_categories(),
+        categories: crate::bill_reads::bill_categories(ledger.categories()),
         splits: ledger.bill_splits(),
         plans: ledger.bill_plans().to_vec(),
         entries: ledger.bill_entries().to_vec(),

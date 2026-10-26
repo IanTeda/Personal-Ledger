@@ -124,8 +124,8 @@ pub struct ShellLogs {
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
-/// off. `stores` is where the Units, the Institutions, the Accounts, the Payees, the Transactions
-/// and the Bills are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
+/// off. `stores` is where the Units, the Institutions, the Accounts, the Categories, the Payees, the
+/// Transactions and the Bills are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
 /// every input ends in (`crate::input::send`) and the writer's failure channel, on which a failed
 /// write rolls back.
 pub fn build(
@@ -141,6 +141,7 @@ pub fn build(
         units,
         institutions,
         accounts,
+        categories,
         payees,
         transactions,
         bills,
@@ -167,8 +168,11 @@ pub fn build(
 
     // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
     // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
-    // reads (#831, #832).
-    let payees = crate::payees::LedgerBackedPorts::shared(payees);
+    // reads (#831, #832). The Categories store is shared by the Ledger's forwarding shim and the
+    // Bills and Payees reads (#858).
+    let categories: lib_database::SharedCategoriesStore =
+        Rc::new(std::cell::RefCell::new(categories));
+    let payees = crate::payees::LedgerBackedPorts::shared(payees, categories.clone());
     let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
     // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
     // (#853).
@@ -181,6 +185,7 @@ pub fn build(
         Rc::new(std::cell::RefCell::new(bills)),
         payees.clone(),
         accounts.clone(),
+        categories.clone(),
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
@@ -198,6 +203,7 @@ pub fn build(
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
         accounts,
+        categories,
         payees,
         transactions,
         bills: bills.clone(),

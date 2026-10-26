@@ -1,7 +1,8 @@
 //! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by
-//! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831) and the
-//! Accounts store it reads its Accounts from (#853), with the Categories, Splits and Units Bills
-//! reads copied from the Ledger (#778's halfway shims), and the step that keeps the Ledger's read
+//! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831), the
+//! Accounts store it reads its Accounts from (#853) and the Categories store it reads its
+//! Categories from (#858), with the Splits and Units Bills reads copied from the Ledger (#778's
+//! halfway shims), and the step that keeps the Ledger's read
 //! copy in line after a Bills write. The write is committed by the input it was made in
 //! (`crate::input::send`), not here.
 //!
@@ -22,7 +23,9 @@ use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
     BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
 };
-use lib_database::{SharedAccountsStore, SharedBillsStore, SharedPayeesStore};
+use lib_database::{
+    SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
+};
 use lib_ledger::{Ledger, LedgerChange};
 
 use crate::ledger_store::LedgerStore;
@@ -73,12 +76,23 @@ impl BillAccounts for Accounts {
     }
 }
 
-/// `store`'s Bill Plans and Bill Schedule, `payees`' Payees and `accounts`' Accounts, with what
-/// else Bills reads of the other domains copied from the Ledger.
+/// The Categories store as Bills reads it, borrowed for each read for the reason [`Store`] is.
+struct Categories(SharedCategoriesStore);
+
+impl BillCategories for Categories {
+    fn bill_categories(&self) -> Vec<lib_bills::BillCategory> {
+        self.0.borrow().bill_categories()
+    }
+}
+
+/// `store`'s Bill Plans and Bill Schedule, `payees`' Payees, `accounts`' Accounts and
+/// `categories`' Categories, with what else Bills reads of the other domains copied from the
+/// Ledger.
 pub struct LedgerBackedPorts {
     store: Store,
     payees: Payees,
     accounts: Accounts,
+    categories: Categories,
     reads: InMemoryBillReads,
     units: InMemoryBillUnits,
 }
@@ -88,28 +102,31 @@ impl LedgerBackedPorts {
         store: SharedBillsStore,
         payees: SharedPayeesStore,
         accounts: SharedAccountsStore,
+        categories: SharedCategoriesStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store: Store(store),
             payees: Payees(payees),
             accounts: Accounts(accounts),
+            categories: Categories(categories),
             reads: InMemoryBillReads::default(),
             units: InMemoryBillUnits::default(),
         }))
     }
 
-    /// `ledger`'s own Bill Plans and Bill Schedule in memory, reading `payees` and `accounts`, for
-    /// a test that needs no storage.
+    /// `ledger`'s own Bill Plans and Bill Schedule in memory, reading `payees`, `accounts` and
+    /// `categories`, for a test that needs no storage.
     pub fn in_memory(
         ledger: &Ledger,
         payees: SharedPayeesStore,
         accounts: SharedAccountsStore,
+        categories: SharedCategoriesStore,
     ) -> DesktopPorts {
         let bills = Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
             plans: ledger.bill_plans().to_vec(),
             entries: ledger.bill_entries().to_vec(),
         }));
-        let ports = Self::shared(bills, payees, accounts);
+        let ports = Self::shared(bills, payees, accounts, categories);
         ports.borrow_mut().copy_reads(ledger);
         ports
     }
@@ -132,7 +149,7 @@ impl LedgerBackedPorts {
     fn copy_reads(&mut self, ledger: &Ledger) {
         self.reads = InMemoryBillReads {
             accounts: Vec::new(),
-            categories: ledger.bill_categories(),
+            categories: Vec::new(),
             payees: Vec::new(),
             splits: ledger.bill_splits(),
         };
@@ -161,7 +178,7 @@ impl BillsPorts for LedgerBackedPorts {
     }
 
     fn categories(&self) -> &dyn BillCategories {
-        &self.reads
+        &self.categories
     }
 
     fn payees(&self) -> &dyn BillPayees {
@@ -177,7 +194,7 @@ impl BillsPorts for LedgerBackedPorts {
             bills: &mut self.store,
             transactions: &self.reads,
             accounts: &self.accounts,
-            categories: &self.reads,
+            categories: &self.categories,
         }
     }
 }
@@ -251,10 +268,19 @@ mod tests {
         let ledger = Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
-            crate::payees::LedgerBackedPorts::in_memory(&ledger),
+            payees(&ledger),
             crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            categories(&ledger),
         );
         (ledger, ports)
+    }
+
+    fn categories(ledger: &Ledger) -> SharedCategoriesStore {
+        crate::settings::categories::ports::in_memory(ledger)
+    }
+
+    fn payees(ledger: &Ledger) -> SharedPayeesStore {
+        crate::payees::LedgerBackedPorts::in_memory(ledger, categories(ledger))
     }
 
     fn entries(ports: &DesktopPorts) -> Vec<BillScheduleEntry> {
@@ -286,11 +312,12 @@ mod tests {
     #[test]
     fn the_payees_are_read_from_the_payees_store_not_copied_from_the_ledger() {
         let (mut ledger, _) = stub();
-        let store: SharedPayeesStore = crate::payees::LedgerBackedPorts::in_memory(&ledger);
+        let store = payees(&ledger);
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             store.clone(),
             crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            categories(&ledger),
         );
         let mut renamed = ledger.payees()[0].clone();
         renamed.name = "Renamed in the store".into();
@@ -309,8 +336,9 @@ mod tests {
         let store = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
-            crate::payees::LedgerBackedPorts::in_memory(&ledger),
+            payees(&ledger),
             store.clone(),
+            categories(&ledger),
         );
         let mut renamed = ledger.accounts()[1].clone();
         renamed.name = "Renamed in the store".into();
@@ -324,6 +352,30 @@ mod tests {
         let read = ports.borrow().accounts().bill_accounts();
         assert_eq!(read.len(), store.borrow().accounts().accounts().len());
         assert!(read.iter().any(|account| account.name == renamed.name));
+    }
+
+    #[test]
+    fn the_categories_are_read_from_the_categories_store_not_copied_from_the_ledger() {
+        let (mut ledger, _) = stub();
+        let store = categories(&ledger);
+        let ports = LedgerBackedPorts::in_memory(
+            &ledger,
+            payees(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            store.clone(),
+        );
+        let mut renamed = ledger.categories()[6].clone();
+        renamed.name = "Renamed in the store".into();
+        store
+            .borrow_mut()
+            .categories_mut()
+            .upsert_category(renamed.clone());
+        ledger.refresh_categories(Vec::new());
+        copy_reads(&ports, &ledger);
+
+        let read = ports.borrow().categories().bill_categories();
+        assert_eq!(read.len(), store.borrow().categories().categories().len());
+        assert!(read.iter().any(|category| category.name == renamed.name));
     }
 
     #[test]

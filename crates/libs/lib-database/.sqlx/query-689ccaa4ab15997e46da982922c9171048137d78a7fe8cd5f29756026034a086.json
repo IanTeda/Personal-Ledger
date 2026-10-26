@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO categories (id, name, parent_id, category_type)\n         VALUES (?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             parent_id = excluded.parent_id,\n             category_type = excluded.category_type",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "689ccaa4ab15997e46da982922c9171048137d78a7fe8cd5f29756026034a086"
+}

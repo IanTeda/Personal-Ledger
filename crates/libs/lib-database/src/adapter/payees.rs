@@ -311,8 +311,8 @@ mod tests {
         }
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units and Accounts are
-    /// stored first, which a Bill Plan or Split naming a Payee names too. A reload commits, loads
+    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts and
+    /// Categories are stored first, which a Bill Plan, a Split or a Payee's default names too. A reload commits, loads
     /// afresh, and fails the check if the writer reported a failure, so a write SQLite refuses
     /// can't pass unseen.
     struct AdapterFactory {
@@ -324,7 +324,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_accounts(&writer);
+            crate::test_support::store_stub_references(&writer);
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

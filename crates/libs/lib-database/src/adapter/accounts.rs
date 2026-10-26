@@ -395,8 +395,9 @@ mod tests {
         }
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units and
-    /// Institutions are stored first, which the stub Accounts name. A reload commits, loads
+    /// The adapter on one test database, with its pending batch. The stub's Units,
+    /// Institutions and Categories are stored first, which the stub Accounts and a test's Splits
+    /// and Bill Plans name. A reload commits, loads
     /// afresh, and fails the check if the writer reported a failure, so a write SQLite refuses
     /// can't pass unseen.
     struct AdapterFactory {
@@ -416,6 +417,8 @@ mod tests {
             .expect("the stub Units are written");
             InstitutionsAdapter::seed(&writer, crate::seed::stub_institutions())
                 .expect("the stub Institutions are written");
+            crate::CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
+                .expect("the stub Categories are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

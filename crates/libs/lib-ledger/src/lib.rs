@@ -10,6 +10,7 @@ mod budget_commands;
 #[cfg(test)]
 mod budgets_seed_tests;
 mod category_commands;
+mod category_reads;
 mod change;
 mod document_commands;
 mod institution_reads;

@@ -14,7 +14,7 @@
 //!   `[Sync-Server] database_uri` (see `lib_config`); pool settings themselves are fixed
 //!   (see `connection`'s `MAX_CONNECTIONS` etc)
 //! - **Error Handling** ([`DatabaseError`], [`DatabaseResult`]): Domain-specific error types
-//! - **Data Models**: Domain-specific types for financial entities ([`Categories`], [`SyncUser`], [`ChangeSet`])
+//! - **Data Models**: Domain-specific types for financial entities ([`SyncUser`], [`ChangeSet`])
 //!
 //! ## Key Features
 //!
@@ -23,10 +23,6 @@
 //! - **Type Safety**: Strong typing for database operations and error handling
 //! - **Async-First**: Non-blocking operations for high-performance applications
 //! - **Health Monitoring**: Built-in connection health checks and validation
-
-/// Database entity categories for organising financial records.
-mod categories;
-pub use categories::Categories;
 
 /// Currencies, cryptocurrencies, stocks, and other tradeable instruments Accounts and
 /// Transactions are denominated in (CC-TUI-005).
@@ -75,11 +71,13 @@ pub use adapter::account_deletion::AccountDeletionAdapter;
 pub use adapter::accounts::AccountsAdapter;
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
+pub use adapter::categories::CategoriesAdapter;
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
-    AccountsStore, BillsStore, CountingCommit, InstitutionsStore, PayeesStore, SharedAccountsStore,
-    SharedBillsStore, SharedPayeesStore, SharedTransactionsStore, TransactionsStore, UnitsStore,
+    AccountsStore, BillsStore, CategoriesStore, CountingCommit, InstitutionsStore, PayeesStore,
+    SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
+    SharedTransactionsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;

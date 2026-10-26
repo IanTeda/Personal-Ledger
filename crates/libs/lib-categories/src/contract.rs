@@ -1,6 +1,5 @@
 //! The contract every stored Categories port keeps (ADR-0046), run against the in-memory port
-//! here and, once Categories persist (#858), the `lib-database` adapter, so the fake the tests use
-//! can be trusted.
+//! here and the `lib-database` adapter (#858), so the fake the tests use can be trusted.
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through

@@ -8,6 +8,7 @@
 pub mod apply;
 pub mod dialogs;
 pub mod form;
+pub mod ports;
 mod render;
 
 use crate::settings::SettingsPage;

@@ -6,7 +6,9 @@
 //! stores with a [`CountingCommit`], so a test asserts that once.
 //!
 //! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
-//! the Accounts writers to it, and the Units and Bills read its rows (#853).
+//! the Accounts writers to it, and the Units and Bills read its rows (#853). So is the Categories
+//! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
+//! and the Bills and Payees read its rows (#858).
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
@@ -23,11 +25,13 @@ use std::sync::mpsc;
 
 use lib_accounts::{AccountRepository, AccountUsage};
 use lib_bills::fake::InMemoryBills;
-use lib_bills::{BillAccount, BillPayee, BillPlanRepository, BillScheduleRepository};
-use lib_core::UnitId;
+use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_categories::CategoryRepository;
+use lib_categories::fake::InMemoryCategories;
+use lib_core::{CategoryId, UnitId};
 use lib_institutions::InstitutionRepository;
 use lib_institutions::fake::InMemoryInstitutions;
-use lib_payees::{PayeeRepository, PayeeUsage};
+use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
@@ -36,11 +40,11 @@ use lib_units::{
     UnitsPorts,
 };
 
-use crate::adapter::accounts;
 use crate::adapter::payees::bill_payees;
+use crate::adapter::{accounts, categories};
 use crate::{
-    AccountsAdapter, BillsAdapter, Commit, InMemoryCommit, InstitutionsAdapter, PayeesAdapter,
-    Result, Stores, TransactionsAdapter, UnitsAdapter, WriteFailure,
+    AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
+    PayeesAdapter, Result, Stores, TransactionsAdapter, UnitsAdapter, WriteFailure,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -285,6 +289,105 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
 
     fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
         Some(&mut self.usage)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// A Categories store shared by the Ledger's forwarding shim and the Bills and Payees reads.
+/// Single-threaded, as the ports are.
+pub type SharedCategoriesStore = Rc<RefCell<dyn CategoriesStore>>;
+
+/// The Categories repository port, wherever it is kept, the delete Category reassign sends until
+/// `lib-reassign` (#813), and the rows as the Bills and Payees read them. The reads are the
+/// store's to answer, since the orphan rule stops `lib-database` implementing `lib-bills`' and
+/// `lib-payees`' ports for `lib-categories`' fake.
+pub trait CategoriesStore {
+    fn categories(&self) -> &dyn CategoryRepository;
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository;
+
+    /// Removes Category `id`, once nothing names it: Category reassign's delete, which the
+    /// Desktop's forwarding shim sends. Not a port write, since the delete re-points other
+    /// domains' rows (#813).
+    fn delete_category(&mut self, id: CategoryId);
+
+    /// Every Category as `lib-bills`' `BillCategories` reads it, in tree order.
+    fn bill_categories(&self) -> Vec<BillCategory> {
+        categories::bill_categories(&self.categories().categories())
+    }
+
+    /// The leaves as `lib-payees`' `PayeeCategories` reads them, in tree order.
+    fn payee_categories(&self) -> Vec<PayeeCategory> {
+        categories::payee_categories(&self.categories().categories())
+    }
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl CategoriesStore for CategoriesAdapter {
+    fn categories(&self) -> &dyn CategoryRepository {
+        self
+    }
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
+        self
+    }
+
+    fn delete_category(&mut self, id: CategoryId) {
+        CategoriesAdapter::delete_category(self, id);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        CategoriesAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedCategoriesStore`]).
+impl<T: CategoriesStore + ?Sized> CategoriesStore for Box<T> {
+    fn categories(&self) -> &dyn CategoryRepository {
+        (**self).categories()
+    }
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
+        (**self).categories_mut()
+    }
+
+    fn delete_category(&mut self, id: CategoryId) {
+        (**self).delete_category(id);
+    }
+
+    fn bill_categories(&self) -> Vec<BillCategory> {
+        (**self).bill_categories()
+    }
+
+    fn payee_categories(&self) -> Vec<PayeeCategory> {
+        (**self).payee_categories()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl CategoriesStore for InMemoryCategories {
+    fn categories(&self) -> &dyn CategoryRepository {
+        self
+    }
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
+        self
+    }
+
+    fn delete_category(&mut self, id: CategoryId) {
+        self.categories.retain(|category| category.id != id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -600,13 +703,15 @@ impl Commit for CountingCommit {
 }
 
 impl Stores {
-    /// `units`, `institutions`, `accounts`, `payees`, `transactions` and `bills` in memory,
+    /// `units`, `institutions`, `accounts`, `categories`, `payees`, `transactions` and `bills` in
+    /// memory,
     /// committed through a [`CountingCommit`] whose count is returned, on a failure channel nothing
     /// reports on, since there is no writer.
     pub fn fake(
         units: InMemoryPorts,
         institutions: InMemoryInstitutions,
         accounts: lib_accounts::fake::InMemoryPorts,
+        categories: InMemoryCategories,
         payees: lib_payees::fake::InMemoryPorts,
         transactions: InMemoryTransactions,
         bills: InMemoryBills,
@@ -617,6 +722,7 @@ impl Stores {
             units: Box::new(units),
             institutions: Box::new(institutions),
             accounts: Box::new(accounts),
+            categories: Box::new(categories),
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
@@ -638,6 +744,7 @@ impl Stores {
             units,
             institutions: Box::new(InMemoryInstitutions::default()),
             accounts: Box::new(lib_accounts::fake::InMemoryPorts::default()),
+            categories: Box::new(InMemoryCategories::default()),
             payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
             transactions: Box::new(InMemoryTransactions::default()),
             bills: Box::new(InMemoryBills::default()),
@@ -657,6 +764,7 @@ mod tests {
             InMemoryPorts::stub(chrono::Utc::now()),
             InMemoryInstitutions::stub(),
             lib_accounts::fake::InMemoryPorts::stub(),
+            InMemoryCategories::stub(),
             lib_payees::fake::InMemoryPorts::stub(),
             InMemoryTransactions::default(),
             InMemoryBills::default(),

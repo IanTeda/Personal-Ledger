@@ -100,38 +100,65 @@ async fn client_pool(db_path: &std::path::Path) -> SqlitePool {
     pool
 }
 
-fn new_demo_category(code: &str, name: &str) -> lib_database::Categories {
-    let now = chrono::Utc::now();
-    lib_database::Categories {
-        id: RowID::new(),
-        code: code.to_string(),
-        name: name.to_string(),
-        description: None,
-        url_slug: None,
-        category_type: lib_core::CategoryTypes::Expense,
-        color: None,
-        icon: None,
-        is_active: true,
-        created_on: now,
-        updated_on: now,
+/// The demo's Category row: the `categories` columns it syncs, `name` and `category_type`, on a
+/// top-level row. `lib-database`'s Categories adapter takes `lib-categories`' ids and writes
+/// through the shared writer (#858), so the demo reads and writes its rows itself, with
+/// runtime-bound queries so this test crate needs no `.sqlx` offline cache.
+#[derive(Debug, Clone, PartialEq)]
+struct DemoCategory {
+    id: RowID,
+    name: String,
+    category_type: lib_core::CategoryTypes,
+}
+
+impl DemoCategory {
+    async fn insert(&self, pool: &SqlitePool) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT INTO categories (id, name, category_type) VALUES (?, ?, ?)")
+            .bind(self.id)
+            .bind(&self.name)
+            .bind(self.category_type.as_str())
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn find_by_id(id: RowID, pool: &SqlitePool) -> Result<Option<Self>, sqlx::Error> {
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT name, category_type FROM categories WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+        Ok(row.map(|(name, category_type)| Self {
+            id,
+            name,
+            category_type: category_type
+                .parse()
+                .expect("the table's check allows only a known type"),
+        }))
     }
 }
 
-/// Decompose a `Categories` row into its field-level Change Sets -- demo-only stand-in
+fn new_demo_category(name: &str) -> DemoCategory {
+    DemoCategory {
+        id: RowID::new(),
+        name: name.to_string(),
+        category_type: lib_core::CategoryTypes::Expense,
+    }
+}
+
+/// Decompose a demo Category row into its field-level Change Sets -- demo-only stand-in
 /// for a future Client write-path's change capture, same as #46's helper.
 fn categories_row_to_change_sets(
-    category: &lib_database::Categories,
+    category: &DemoCategory,
     client_id: RowID,
     clock: &mut HlcClock,
 ) -> Vec<lib_database::ChangeSet> {
     let fields: Vec<(&str, Option<String>)> = vec![
-        ("code", Some(category.code.clone())),
         ("name", Some(category.name.clone())),
         (
             "category_type",
             Some(category.category_type.as_str().to_string()),
         ),
-        ("is_active", Some(category.is_active.to_string())),
     ];
 
     fields
@@ -160,37 +187,25 @@ async fn apply_category_field_change(
     value: Option<&str>,
 ) {
     let row_id_str = row_id.to_string();
-    let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-            INSERT INTO categories (id, code, name, category_type, is_active, created_on, updated_on)
-            VALUES (?, ?, ?, 'expense', TRUE, ?, ?)
+            INSERT INTO categories (id, name, category_type)
+            VALUES (?, ?, 'expense')
             ON CONFLICT(id) DO NOTHING
         "#,
     )
     .bind(&row_id_str)
     .bind(&row_id_str)
-    .bind(&row_id_str)
-    .bind(&now)
-    .bind(&now)
     .execute(pool)
     .await
     .expect("placeholder row insert should succeed");
 
     let column = match field_name {
-        "code" | "name" | "category_type" => field_name,
-        "is_active" => {
-            let is_active = value == Some("true");
-            sqlx::query("UPDATE categories SET is_active = ? WHERE id = ?")
-                .bind(is_active)
-                .bind(&row_id_str)
-                .execute(pool)
-                .await
-                .expect("is_active update should succeed");
-            return;
-        }
-        other => panic!("apply_category_field_change: unsupported field '{other}' for this demo"),
+        "name" | "category_type" => field_name,
+        other => panic!(
+            "apply_category_field_change: unsupported field '{other}' -- this demo is scoped to categories' known columns"
+        ),
     };
 
     let sql = format!("UPDATE categories SET {column} = ? WHERE id = ?");
@@ -207,7 +222,7 @@ async fn apply_category_field_change(
 async fn push_category_in_a_fresh_session(
     server_addr: std::net::SocketAddr,
     access_token: &str,
-    category: &lib_database::Categories,
+    category: &DemoCategory,
     client_id: RowID,
     clock: &mut HlcClock,
 ) {
@@ -284,7 +299,7 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
     let mut tui_b_clock = HlcClock::new();
 
     // -- 1. Desktop Client launches, creates a category, pushes it, and quits --
-    let groceries = new_demo_category("FOO.BAR.001", "Groceries");
+    let groceries = new_demo_category("Groceries");
     groceries.insert(&desktop_pool).await.unwrap();
     push_category_in_a_fresh_session(
         server_addr,
@@ -304,7 +319,7 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
     let tui_a_cursor =
         pull_and_apply_in_a_fresh_session(server_addr, &access_token, &tui_a_pool, None).await;
     assert!(
-        lib_database::Categories::find_by_id(groceries.id, &tui_a_pool)
+        DemoCategory::find_by_id(groceries.id, &tui_a_pool)
             .await
             .unwrap()
             .is_some(),
@@ -314,7 +329,7 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
     // -- 3. TUI Client B launches, also catches up on Desktop's category, then
     // creates its own category and pushes it -- then quits --
     pull_and_apply_in_a_fresh_session(server_addr, &access_token, &tui_b_pool, None).await;
-    let rent = new_demo_category("FOO.BAR.002", "Rent");
+    let rent = new_demo_category("Rent");
     rent.insert(&tui_b_pool).await.unwrap();
     push_category_in_a_fresh_session(
         server_addr,
@@ -331,7 +346,7 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
     pull_and_apply_in_a_fresh_session(server_addr, &access_token, &desktop_pool, desktop_cursor)
         .await;
     assert!(
-        lib_database::Categories::find_by_id(rent.id, &desktop_pool)
+        DemoCategory::find_by_id(rent.id, &desktop_pool)
             .await
             .unwrap()
             .is_some(),
@@ -342,7 +357,7 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
     // online with TUI Client B --
     pull_and_apply_in_a_fresh_session(server_addr, &access_token, &tui_a_pool, tui_a_cursor).await;
     assert!(
-        lib_database::Categories::find_by_id(rent.id, &tui_a_pool)
+        DemoCategory::find_by_id(rent.id, &tui_a_pool)
             .await
             .unwrap()
             .is_some(),
@@ -357,11 +372,11 @@ async fn sync_server_acts_as_an_always_on_hub_for_staggered_clients() {
         ("TUI A", &tui_a_pool),
         ("TUI B", &tui_b_pool),
     ] {
-        let has_groceries = lib_database::Categories::find_by_id(groceries.id, pool)
+        let has_groceries = DemoCategory::find_by_id(groceries.id, pool)
             .await
             .unwrap()
             .is_some();
-        let has_rent = lib_database::Categories::find_by_id(rent.id, pool)
+        let has_rent = DemoCategory::find_by_id(rent.id, pool)
             .await
             .unwrap()
             .is_some();

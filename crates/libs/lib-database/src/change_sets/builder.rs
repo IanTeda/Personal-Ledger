@@ -1,7 +1,6 @@
 //! # Change Set Builder
 //!
-//! Provides a fluent API for constructing [`ChangeSet`] records, mirroring
-//! [`crate::categories::CategoriesBuilder`]'s shape. Useful for tests, fixtures, and
+//! Provides a fluent API for constructing [`ChangeSet`] records. Useful for tests, fixtures, and
 //! Client-side code assembling Change Sets from a local edit before pushing them.
 
 use super::ChangeSet;

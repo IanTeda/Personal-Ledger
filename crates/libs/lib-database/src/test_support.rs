@@ -1,14 +1,15 @@
-//! Rows the legacy readers' tests total ([`crate::Categories::totals`], [`crate::Payees::totals`],
-//! [`crate::Budgets::current_progress`]) and the Balance Checks name, written straight to the
-//! tables since the Transactions and Accounts adapters take their domain crates' ids.
+//! Rows the legacy readers' tests total ([`crate::Payees::totals`],
+//! [`crate::Budgets::current_progress`]) and the Balance Checks and Budgets name, written straight
+//! to the tables since the Transactions, Accounts and Categories adapters take their domain crates'
+//! ids.
 
 use sqlx::SqlitePool;
 
 use crate::writer::Writer;
 
-/// Stores the stub's Units, Institutions and Accounts, which an adapter test's Transactions and
-/// Bill Plans name by foreign key (#853).
-pub(crate) fn store_stub_accounts(writer: &Writer) {
+/// Stores the stub's Units, Institutions, Accounts and Categories, which an adapter test's
+/// Transactions, Bill Plans and Payees name by foreign key (#853, #858).
+pub(crate) fn store_stub_references(writer: &Writer) {
     crate::UnitsAdapter::seed_from(
         writer,
         lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
@@ -18,6 +19,23 @@ pub(crate) fn store_stub_accounts(writer: &Writer) {
         .expect("the stub Institutions are written");
     crate::AccountsAdapter::seed(writer, crate::seed::stub_accounts())
         .expect("the stub Accounts are written");
+    crate::CategoriesAdapter::seed(writer, crate::seed::stub_categories())
+        .expect("the stub Categories are written");
+}
+
+/// Stores a top-level Category of `category_type`, returning its id.
+pub(crate) async fn insert_category(
+    pool: &SqlitePool,
+    category_type: lib_core::CategoryTypes,
+) -> lib_core::RowID {
+    let id = lib_core::RowID::new();
+    sqlx::query("INSERT INTO categories (id, name, category_type) VALUES (?, 'Test category', ?)")
+        .bind(id)
+        .bind(category_type)
+        .execute(pool)
+        .await
+        .expect("the Category is written");
+    id
 }
 
 /// Stores a Bank Account in Unit `unit_id` with no Institution, returning its id.

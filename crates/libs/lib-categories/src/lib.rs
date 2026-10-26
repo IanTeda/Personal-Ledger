@@ -5,10 +5,10 @@
 //! A VIPER module being migrated (`docs/development/viper-architecture.md`, #847): the Entity with
 //! its tree rules and stub seed (`entity`), one Interactor per intent (`interactor`) and the
 //! repository port (`protocols`). `fake` holds the in-memory port and the stub seed; `contract`
-//! the checks both it and, once Categories persist (#858), `lib-database`'s adapter keep. The
-//! page's Presenters, keymap and Messages arrive with the page (#859); until then the Desktop
-//! writes Categories through `LedgerCommand`s and nothing persists them. Delete (reassign) stays
-//! in `lib-ledger`, since it re-points other domains' rows (Q6). No UI toolkit and no I/O.
+//! the checks both it and `lib-database`'s adapter keep (#858). The page's Presenters, keymap and
+//! Messages arrive with the page (#859); until then the Desktop writes Categories through
+//! `LedgerCommand`s, which it forwards to the adapter. Delete (reassign) stays in `lib-ledger`,
+//! since it re-points other domains' rows (Q6). No UI toolkit and no I/O.
 
 #[cfg(feature = "contract-tests")]
 #[expect(

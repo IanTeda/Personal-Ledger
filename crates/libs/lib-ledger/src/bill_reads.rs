@@ -1,29 +1,24 @@
 //! Halfway shims (#774, #832) between the migrated modules and the domains that still live on the
 //! Ledger:
 //!
-//! - **`BillCategories` for `Ledger`.** `lib-bills`' read port answered from the stub's
-//!   Categories, which aren't persisted, mapped onto Bills' own read type. `BillPayees` is
-//!   `lib-database`'s Payees adapter's now (#831), and `BillAccounts` its Accounts adapter's
-//!   (#853); [`bill_payees`] and [`bill_accounts`] stay for the stub's own Bills seed. Each flag
-//!   is filled by its owning domain's rule, so the rule lives once
-//!   (`docs/development/viper-architecture.md`, Rules > Dependencies). Each mapping moves to
-//!   `lib-database` as its domain migrates. The Transactions read port is `lib-database`'s;
-//!   [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for a Client that copies
-//!   Bills' reads from the Ledger.
-//! - **`PayeeCategories` for `Ledger`.** The Default category select's leaves, from the stub's
-//!   Categories by `lib-categories`' leaf rule, until Categories migrate (#808).
+//! - **The stub's own Bills seed.** `BillPayees` is `lib-database`'s Payees adapter's now (#831),
+//!   `BillAccounts` its Accounts adapter's (#853), and `BillCategories` and `PayeeCategories` its
+//!   Categories adapter's (#858); [`bill_payees`], [`bill_accounts`] and [`bill_categories`] stay
+//!   for the stub's own Bills seed, each flag filled by its owning domain's rule, so the rule lives
+//!   once (`docs/development/viper-architecture.md`, Rules > Dependencies). The Transactions read
+//!   port is `lib-database`'s; [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for
+//!   a Client that copies Bills' reads from the Ledger.
 //! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
 //!   Ledger keeps a copy for the Dashboard, the rail badge, Budgets and Documents. It goes when
 //!   the last of them reads Bills through `lib-bills`.
 
 use lib_accounts::Account;
 use lib_bills::{
-    BillAccount, BillCategories, BillCategory, BillPayee, BillPlan, BillScheduleEntry, BillSplit,
-    SplitRef,
+    BillAccount, BillCategory, BillPayee, BillPlan, BillScheduleEntry, BillSplit, SplitRef,
 };
 use lib_categories::Category;
 use lib_core::CategoryTypes;
-use lib_payees::{Payee, PayeeCategories, PayeeCategory};
+use lib_payees::Payee;
 use lib_transactions::Transaction;
 
 use crate::Ledger;
@@ -94,7 +89,8 @@ pub(crate) fn bill_accounts(accounts: &[Account]) -> Vec<BillAccount> {
         .collect()
 }
 
-/// `categories` as Bills reads them.
+/// `categories` as Bills reads them, for the stub's own Bills seed. `lib-database`'s Categories
+/// adapter answers `BillCategories` for a Client (#858), mapping its rows by the same rule.
 pub(crate) fn bill_categories(categories: &[Category]) -> Vec<BillCategory> {
     categories
         .iter()
@@ -121,48 +117,6 @@ pub(crate) fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
         .collect()
 }
 
-impl BillCategories for Ledger {
-    fn bill_categories(&self) -> Vec<BillCategory> {
-        bill_categories(&self.categories)
-    }
-}
-
-/// `categories`' leaves as a Payee's Default category reads them, in order. A leaf whose name
-/// another leaf shares is labelled under its parent (`Parent › Leaf`), so a label always names
-/// exactly one Category.
-pub(crate) fn payee_categories(categories: &[Category]) -> Vec<PayeeCategory> {
-    let leaves: Vec<&Category> = categories
-        .iter()
-        .filter(|category| lib_categories::is_leaf(categories, category.id))
-        .collect();
-    leaves
-        .iter()
-        .map(|leaf| {
-            let shared = leaves
-                .iter()
-                .filter(|other| other.name == leaf.name)
-                .count()
-                > 1;
-            let parent = leaf
-                .parent
-                .and_then(|id| categories.iter().find(|c| c.id == id));
-            PayeeCategory {
-                id: leaf.id,
-                label: match parent {
-                    Some(parent) if shared => format!("{} \u{203a} {}", parent.name, leaf.name),
-                    _ => leaf.name.clone(),
-                },
-            }
-        })
-        .collect()
-}
-
-impl PayeeCategories for Ledger {
-    fn payee_categories(&self) -> Vec<PayeeCategory> {
-        payee_categories(&self.categories)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
@@ -181,7 +135,10 @@ mod tests {
             ids(bill_accounts(ledger.accounts())),
             ledger.accounts().iter().map(|a| a.id).collect::<Vec<_>>()
         );
-        assert_eq!(ledger.bill_categories().len(), ledger.categories().len());
+        assert_eq!(
+            bill_categories(ledger.categories()).len(),
+            ledger.categories().len()
+        );
         assert_eq!(bill_payees(ledger.payees()).len(), ledger.payees().len());
         let splits: usize = ledger.transactions().iter().map(|t| t.splits.len()).sum();
         assert_eq!(ledger.bill_splits().len(), splits);
@@ -208,50 +165,18 @@ mod tests {
             .find(|a| a.name == "Home Loan")
             .expect("the stub has a Home Loan");
         assert!(!home_loan.takes_transactions);
-        let water = ledger
-            .bill_categories()
+        let water = bill_categories(ledger.categories())
             .into_iter()
             .find(|c| c.name == "Water")
             .expect("the stub has Water");
         assert_eq!(water.path, "Housing \u{203a} Utilities \u{203a} Water");
         assert!(water.is_expense && water.is_leaf);
-        let utilities = ledger
-            .bill_categories()
+        let utilities = bill_categories(ledger.categories())
             .into_iter()
             .find(|c| c.name == "Utilities")
             .expect("the stub has Utilities");
         assert!(!utilities.is_leaf);
         assert!(bill_payees(ledger.payees()).iter().any(|p| !p.is_active));
-    }
-
-    #[test]
-    fn payee_categories_are_the_leaves_and_a_shared_name_is_labelled_under_its_parent() {
-        let mut ledger = Ledger::stub();
-        let stub = payee_categories(&ledger.categories);
-        assert_eq!(
-            stub,
-            lib_payees::fake::stub_categories(),
-            "the Payees fake is the stub's"
-        );
-
-        let housing = ledger.categories[0].id;
-        let mut other = ledger.categories[0].clone();
-        other.id = lib_core::CategoryId::new();
-        other.name = "Groceries".into();
-        other.parent = Some(housing);
-        ledger.categories.push(other);
-
-        let labels: Vec<String> = ledger
-            .payee_categories()
-            .into_iter()
-            .map(|category| category.label)
-            .collect();
-        assert!(labels.contains(&"Food \u{203a} Groceries".to_string()));
-        assert!(labels.contains(&"Housing \u{203a} Groceries".to_string()));
-        assert!(
-            !labels.contains(&"Housing".to_string()),
-            "a parent isn't offered"
-        );
     }
 
     /// `lib-bills`' fake stub stands in for these mappings and for `PayBill`, so its tests run on
@@ -263,7 +188,10 @@ mod tests {
             bill_accounts(ledger.accounts()),
             lib_bills::fake::stub_accounts()
         );
-        assert_eq!(ledger.bill_categories(), lib_bills::fake::stub_categories());
+        assert_eq!(
+            bill_categories(ledger.categories()),
+            lib_bills::fake::stub_categories()
+        );
         let payees = bill_payees(ledger.payees());
         for payee in lib_bills::fake::stub_payees() {
             assert!(payees.contains(&payee), "{payee:?}");
@@ -274,7 +202,7 @@ mod tests {
         let booked = crate::bills_seed::book_stub_bills(
             lib_bills::default_bills(
                 &bill_accounts(ledger.accounts()),
-                &ledger.bill_categories(),
+                &bill_categories(ledger.categories()),
                 &payees,
                 today(),
             ),

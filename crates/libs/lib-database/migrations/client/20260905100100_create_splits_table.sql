@@ -9,15 +9,15 @@
 -- is paid by at most one Split.
 --
 -- payee_id references the Payee, with no cascade: a Payee a Split names can only be deactivated
--- (ADR-0012), and the key is the backstop to that rule. category_id has no foreign key yet:
--- Categories aren't persisted, so no row would back it (#774). It becomes a REFERENCES when
--- Categories persist.
+-- (ADR-0012), and the key is the backstop to that rule. category_id references the Category, with
+-- no cascade: Category delete re-points a Split to Uncategorised first, and the key backstops that
+-- (#858).
 
 CREATE TABLE IF NOT EXISTS splits (
     transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     position INTEGER NOT NULL CHECK (position >= 0),
     amount TEXT NOT NULL,
-    category_id UUID NOT NULL,
+    category_id UUID NOT NULL REFERENCES categories(id),
     payee_id UUID REFERENCES payees(id),
     bill_schedule_entry_id UUID UNIQUE REFERENCES bill_schedule_entries(id),
     PRIMARY KEY (transaction_id, position)

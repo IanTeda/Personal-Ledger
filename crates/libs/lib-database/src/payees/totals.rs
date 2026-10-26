@@ -2,8 +2,7 @@
 //!
 //! FR.36: the sum of Split amounts per Payee over a date range, scoped to a single
 //! Unit (aggregating every Account denominated in it) or a single Account, at a time.
-//! Unlike [`crate::Categories::totals`], which iterates every active Category first (a
-//! small, curated set), this is driven by the matching Transactions themselves: Payees can
+//! It is driven by the matching Transactions themselves: Payees can
 //! number in the dozens or hundreds (often auto-created from typed text, see ADR-0012), so
 //! only a Payee with at least one matching Transaction in range appears — no zero-sum rows.
 //! An inactive Payee still appears if it has a matching Transaction: `is_active` governs
@@ -97,7 +96,7 @@ mod tests {
     }
 
     async fn seed_category(pool: &SqlitePool) -> lib_core::RowID {
-        crate::Categories::mock().insert(pool).await.unwrap().id
+        crate::test_support::insert_category(pool, lib_core::CategoryTypes::Expense).await
     }
 
     async fn seed_payee(pool: &SqlitePool, is_active: bool) -> lib_core::RowID {
