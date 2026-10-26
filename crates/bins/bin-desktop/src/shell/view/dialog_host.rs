@@ -1,6 +1,6 @@
 //! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while
 //! open, and the keyboard handling they share. A module's Dialog (Units, Bills, Pay, Payees) is an
-//! Entity in `shell::view::dialog_entity` instead; these ten move there with their slices
+//! Entity in `shell::view::dialog_entity` instead; these nine move there with their slices
 //! (#820). The key handling needs no window, so a Dialog's keys are unit-tested without one.
 //!
 //! `Root` holds `Option<OpenDialog>` and opens and closes it only through `Root::open_dialog`
@@ -32,7 +32,7 @@ use lib_toast::ToastKind;
 use crate::settings::categories::dialogs::CategoriesDialog;
 use crate::{
     budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
-    form::field::TextField, ledger_store::LedgerStore, settings::accounts::dialogs::AccountsDialog,
+    form::field::TextField, ledger_store::LedgerStore,
     settings::documents::dialogs::DocumentTypesDialog,
     settings::inventory::dialogs::InventoryDialog, settings::tags::dialogs::TagsDialog,
     settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
@@ -272,11 +272,14 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open legacy Dialog, one variant per feature: the ten not yet on a module's Presenter.
+/// The open legacy Dialog, one variant per feature: the nine not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the Inventory Dialog is the one large legacy form, and the enum goes with the last legacy Dialog (#820)"
+)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    Accounts(AccountsDialog),
     Categories(CategoriesDialog),
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
@@ -292,7 +295,6 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
@@ -307,7 +309,6 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
@@ -355,7 +356,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Accounts, AccountsDialog);
 dialog_variant!(Categories, CategoriesDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Inventory, InventoryDialog);
@@ -486,8 +486,8 @@ mod tests {
         let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
         assert!(TracingDialog::from_open(&dialog).is_some());
         assert!(TracingDialog::from_open_mut(&mut dialog).is_some());
-        assert!(AccountsDialog::from_open(&dialog).is_none());
-        assert!(AccountsDialog::from_open_mut(&mut dialog).is_none());
+        assert!(TagsDialog::from_open(&dialog).is_none());
+        assert!(TagsDialog::from_open_mut(&mut dialog).is_none());
     }
 
     #[test]

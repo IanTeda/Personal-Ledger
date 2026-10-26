@@ -8,7 +8,6 @@
 
 use std::collections::BTreeSet;
 
-use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
@@ -45,7 +44,6 @@ pub enum Domain {
 /// prototype's commands write so far; each domain adds its own as its writes move onto commands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
-    UpsertAccount(Account),
     /// From Import commit and Category reassign; the Payees module writes its own port (#832).
     UpsertPayee(Payee),
     UpsertCategory(Category),
@@ -75,7 +73,6 @@ impl LedgerChange {
     pub fn domain(&self) -> Domain {
         match self {
             Self::UpsertPayee(_) => Domain::Payees,
-            Self::UpsertAccount(_) => Domain::Accounts,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
             Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) => Domain::Transactions,

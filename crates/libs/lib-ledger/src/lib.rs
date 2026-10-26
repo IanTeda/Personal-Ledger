@@ -1,6 +1,5 @@
 //! The Ledger aggregate: every domain collection, joined into one stub dataset.
 
-mod account_commands;
 mod account_reads;
 mod account_usage;
 mod bill_reads;
@@ -23,7 +22,6 @@ mod tag_commands;
 mod transaction_commands;
 mod unit_usage;
 
-pub use account_commands::{AddAccount, EditAccount};
 pub use budget_commands::{
     AddBudget, ArchiveBudget, CycleBudgetRollover, DuplicateBudget, EditBudget, FillBudget,
     RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,

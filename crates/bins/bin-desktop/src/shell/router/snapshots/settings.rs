@@ -2,11 +2,11 @@
 //! snapshot shape and its accessor sit together.
 
 #[doc(hidden)]
+pub use crate::accounts::SettingsAccountsSnapshot;
+#[doc(hidden)]
 pub use crate::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::payees::SettingsPayeesSnapshot;
-#[doc(hidden)]
-pub use crate::settings::accounts::snapshot::SettingsAccountsSnapshot;
 #[doc(hidden)]
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]

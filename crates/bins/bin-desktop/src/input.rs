@@ -265,10 +265,14 @@ mod tests {
         let institutions = lib_institutions::keymap::INSTITUTIONS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let accounts = lib_accounts::keymap::ACCOUNTS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         units
             .chain(bills)
             .chain(payees)
             .chain(institutions)
+            .chain(accounts)
             .collect()
     }
 

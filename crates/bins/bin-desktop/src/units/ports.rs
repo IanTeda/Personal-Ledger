@@ -49,7 +49,7 @@ impl LedgerBackedPorts {
     /// Copies what names each Unit from the Accounts store and `ledger`, so the next Interactor and
     /// view model read it.
     fn copy_usage(&mut self, ledger: &Ledger) {
-        crate::settings::accounts::ports::recount(&self.accounts, ledger);
+        crate::accounts::ports::recount(&self.accounts, ledger);
         let accounts = self.accounts.borrow();
         let ids: Vec<UnitId> = self
             .store

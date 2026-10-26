@@ -397,3 +397,39 @@ fn an_account_a_bill_plan_pays_from_cannot_be_deleted(app: &mut TestAppContext) 
     assert_eq!(ui.dialog(), None);
     assert!(ui.settings_accounts().account_names.contains(&name));
 }
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+#[gpui::test]
+fn the_cheat_sheet_and_the_legend_show_a_rebound_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    ui.press("g s");
+    ui.press("j j j j");
+    ui.press("l");
+    let keys: Vec<String> = ui
+        .status()
+        .map(|status| status.hints.into_iter().map(|(key, _)| key).collect())
+        .unwrap_or_default();
+    assert_eq!(keys, ["j/k", "enter", "e", "d", "ctrl+n"]);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+    ui.press("escape");
+    ui.press("ctrl-n");
+    assert_eq!(ui.dialog(), Some("AddAccount"));
+}
+
+#[gpui::test]
+fn the_accounts_new_command_prefills_the_name(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press(":");
+    type_text(&mut ui, "accounts new Rainy Day");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("AddAccount"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Rainy Day"));
+}

@@ -393,10 +393,8 @@ fn describe(
         }
         DocumentLink::Account(id) => {
             let account = lookups.accounts.iter().find(|account| account.id == id)?;
-            let institution = crate::settings::accounts::institution_label(
-                account.institution,
-                lookups.institutions,
-            );
+            let institution =
+                crate::accounts::institution_label(account.institution, lookups.institutions);
             let text = format!("{} \u{b7} {institution}", account.name);
             Some((
                 crate::msg::desktop_documents_link_account(),

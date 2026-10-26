@@ -3,11 +3,15 @@
 //! write never fails here; a failed save is the adapter's to report. `fake` implements them in
 //! memory.
 //!
-//! The page's Presenters and its Router trait arrive with the page (#855). Until then the Desktop
-//! writes Accounts through `LedgerCommand`s it forwards to the adapter, whose [`AccountUsage`]
-//! counts the Transactions; the Budgets count is `lib-ledger`'s until Budgets persist (#811).
+//! The adapter's [`AccountUsage`] counts the Transactions; the Budgets count is `lib-ledger`'s until
+//! Budgets persist (#811). The Presenters reach every port together, through [`AccountsPorts`], and
+//! ask for navigation through [`AccountsRouter`], which each Client implements (#855).
 
-use lib_core::AccountId;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use lib_core::{AccountId, InstitutionId, UnitId};
+use lib_toast::Notify;
 
 use crate::Account;
 
@@ -42,4 +46,102 @@ pub struct AccountUse {
 pub trait AccountUsage {
     /// What names Account `id`; an Account nothing names, or one that doesn't exist, has none.
     fn account_usage(&self, id: AccountId) -> AccountUse;
+}
+
+/// An Institution an Account may be at, as Accounts reads it: the id the Account keeps and the name
+/// the Institution select shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountInstitution {
+    pub id: InstitutionId,
+    pub name: String,
+}
+
+/// The Institutions on the Ledger. A read port, so `lib-accounts` needn't depend on the
+/// Institutions crate.
+pub trait AccountInstitutions {
+    /// Every Institution, in the Institutions' order.
+    fn account_institutions(&self) -> Vec<AccountInstitution>;
+}
+
+/// A Unit an Account may count in, as Accounts reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountUnit {
+    pub id: UnitId,
+    pub code: String,
+    /// A deactivated Unit takes no new Account, though one already on it keeps showing its code.
+    pub is_active: bool,
+    /// A currency's opening balance is padded to two places; any other Unit keeps what was typed.
+    pub is_currency: bool,
+}
+
+/// The Units on the Ledger and the base Unit. A read port, so `lib-accounts` needn't depend on the
+/// Units crate.
+pub trait AccountUnits {
+    /// Every Unit, in the Units' order.
+    fn account_units(&self) -> Vec<AccountUnit>;
+
+    /// The Unit the net worth is summed in and a new Account starts on; `None` when none is set.
+    fn base_unit(&self) -> Option<UnitId>;
+}
+
+/// Every Accounts port, as one value the Presenters share.
+pub trait AccountsPorts {
+    fn accounts(&self) -> &dyn AccountRepository;
+
+    fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
+
+    fn usage(&self) -> &dyn AccountUsage;
+
+    fn institutions(&self) -> &dyn AccountInstitutions;
+
+    fn units(&self) -> &dyn AccountUnits;
+}
+
+/// The ports as the page and its Dialogs hold them: one set, shared, so an Account a Dialog adds is
+/// on the page as soon as the Dialog closes. Single-threaded, as both Clients' UI threads are.
+pub type SharedPorts = Rc<RefCell<dyn AccountsPorts>>;
+
+/// An Accounts Dialog, as the page asks the Router to open it. Delete is not here: it is
+/// `lib-account-deletion`'s, which the Router opens ([`AccountsRouter::open_delete`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountsDialog {
+    /// A fresh form, its Name starting on `name`: empty from the page, the typed argument from
+    /// `accounts new <account name>`.
+    AddAccount {
+        name: String,
+    },
+    EditAccount(AccountId),
+}
+
+/// What a confirmed Accounts Dialog did to an Account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountsOutcome {
+    /// The Account added or edited, for the page to select.
+    pub id: AccountId,
+}
+
+/// Navigation out of the Accounts Presenters, implemented by each Client. The Client passes it into
+/// each `handle` call rather than the Presenter holding it, since the Desktop can only open a
+/// Dialog with the gpui context that call runs in. A Toast or status-line message goes to the
+/// Shell through [`Notify`] (ADR-0048).
+pub trait AccountsRouter: Notify {
+    /// Builds `dialog`'s Presenter on the shared ports and hosts its View. Returns whether it
+    /// opened: a Dialog on an Account removed since it was asked for has no Presenter to build.
+    fn open_dialog(&mut self, dialog: AccountsDialog) -> bool;
+
+    /// Opens the Account Deletion module's Delete Dialog on Account `id`. Returns whether it
+    /// opened. The page selects the row that slides into the deleted one's place when the
+    /// Dialog lands ([`AccountsPageEvent::Deleted`]).
+    ///
+    /// [`AccountsPageEvent::Deleted`]: crate::presenter::AccountsPageEvent::Deleted
+    fn open_delete(&mut self, id: AccountId) -> bool;
+
+    /// Shows Account `id`'s ledger: the Transactions filtered to it.
+    fn open_ledger(&mut self, id: AccountId);
+
+    /// Closes the open Accounts Dialog. `outcome` is what its confirm did, `None` when it was
+    /// cancelled; the Client hands it to the page as [`AccountsPageEvent::DialogClosed`].
+    ///
+    /// [`AccountsPageEvent::DialogClosed`]: crate::presenter::AccountsPageEvent::DialogClosed
+    fn close_dialog(&mut self, outcome: Option<AccountsOutcome>);
 }

@@ -172,7 +172,7 @@ pub fn build(
     let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
     // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
     // (#853).
-    let accounts: lib_database::SharedAccountsStore = Rc::new(std::cell::RefCell::new(accounts));
+    let accounts = crate::accounts::LedgerBackedPorts::shared(accounts);
     let institutions_setup =
         crate::institutions::InstitutionsSetup::new(institutions.clone(), &bindings.keybindings);
     let transactions: lib_database::SharedTransactionsStore =
@@ -189,6 +189,11 @@ pub fn build(
         deletion: crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills),
         bills: bills.clone(),
     };
+    let accounts_setup = crate::accounts::AccountsSetup::new(
+        accounts.clone(),
+        account_deletion,
+        &bindings.keybindings,
+    );
     let units = crate::units::UnitsSetup::new(units, accounts.clone(), &bindings.keybindings);
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
@@ -202,7 +207,7 @@ pub fn build(
         units,
         institutions: institutions_setup,
         payees: payees_setup,
-        account_deletion,
+        accounts: accounts_setup,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
@@ -671,7 +676,6 @@ impl Focusable for Root {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::accounts::hints::accounts_hints;
     use crate::settings::hints::{
         settings_colour_grid_hints, settings_display_hints, settings_index_hints,
         settings_plain_page_hints,
@@ -755,14 +759,6 @@ mod tests {
     }
 
     #[test]
-    fn the_accounts_count_is_a_plural_selector() {
-        crate::locale::init_for_tests();
-        assert_eq!(crate::msg::desktop_accounts_count(1), "1 account");
-        assert_eq!(crate::msg::desktop_accounts_count(0), "0 accounts");
-        assert_eq!(crate::msg::desktop_accounts_count(7), "7 accounts");
-    }
-
-    #[test]
     fn the_empty_state_hint_tags_both_commands_as_clickable_spans() {
         crate::locale::init_for_tests();
         let tagged: Vec<(Option<String>, String)> =
@@ -788,7 +784,7 @@ mod tests {
             let hint = crate::msg::desktop_empty_state_hint(":open", ":new");
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
-            for (_, action) in accounts_hints()
+            for (_, action) in settings_plain_page_hints()
                 .into_iter()
                 .chain(filter_hints())
                 .chain(transactions_hints())
@@ -796,26 +792,5 @@ mod tests {
                 assert!(action.starts_with('['), "{action}");
             }
         });
-    }
-
-    #[test]
-    fn command_flashes_carry_the_typed_command_and_name() {
-        crate::locale::init_for_tests();
-        assert_eq!(
-            crate::msg::desktop_status_no_accounts(":accounts edit"),
-            ":accounts edit \u{2014} no accounts"
-        );
-        assert_eq!(
-            crate::msg::desktop_status_no_account_named(":accounts edit", "Rainy"),
-            ":accounts edit \u{2014} no account named \"Rainy\""
-        );
-        assert_eq!(
-            crate::msg::desktop_status_account_ambiguous(
-                ":accounts edit",
-                "ANZ",
-                "ANZ Offset, ANZ Everyday"
-            ),
-            ":accounts edit \u{2014} \"ANZ\" matches ANZ Offset, ANZ Everyday"
-        );
     }
 }

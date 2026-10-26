@@ -6,7 +6,7 @@ use super::Root;
 use crate::settings::inventory::InventoryPage;
 use crate::view::help::{HelpDialog, HelpGroup};
 use crate::{
-    settings::accounts::AccountsPage,
+    accounts::AccountsPage,
     shell::view::dialog_host::{
         Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
     },
@@ -137,7 +137,6 @@ impl Root {
                 OpenDialog::Tracing(_)
                 | OpenDialog::Tags(_)
                 | OpenDialog::Categories(_)
-                | OpenDialog::Accounts(_)
                 | OpenDialog::DocumentTypes(_)
                 | OpenDialog::Inventory(_),
             )

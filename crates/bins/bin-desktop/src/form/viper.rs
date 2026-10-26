@@ -57,18 +57,18 @@ pub(crate) fn synced<T: PartialEq>(state: &SelectState, view: &SelectView<T>) ->
 }
 
 /// The value of the option labelled `label`.
-fn value_of<T: Copy>(view: &SelectView<T>, label: Option<&str>) -> Option<T> {
+fn value_of<T: Clone>(view: &SelectView<T>, label: Option<&str>) -> Option<T> {
     let label = label?;
     view.options
         .iter()
         .find(|choice| choice.label == label)
-        .map(|choice| choice.value)
+        .map(|choice| choice.value.clone())
 }
 
 /// A select's keys: `Up`/`Down` step a closed list's value or move an open list's highlight,
 /// `Enter`/`Space` open a closed list or commit an open one. Returns the value to send when the
 /// chosen option changed, and whether the key was a select key at all.
-pub(crate) fn select_key<T: Copy + PartialEq>(
+pub(crate) fn select_key<T: Clone + PartialEq>(
     state: &mut SelectState,
     view: &SelectView<T>,
     key: DialogKey,
@@ -112,7 +112,7 @@ pub(crate) fn toggle_select<T: PartialEq>(state: &mut SelectState, view: &Select
 }
 
 /// A click on row `index` of a select's open list: the value to send.
-pub(crate) fn choose_option<T: Copy + PartialEq>(
+pub(crate) fn choose_option<T: Clone + PartialEq>(
     state: &mut SelectState,
     view: &SelectView<T>,
     index: usize,

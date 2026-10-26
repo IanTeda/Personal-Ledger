@@ -150,7 +150,3 @@ desktop-settings-about-built-with = Built with Rust + GPUI + SQLite
 ## The pages that moved in from the primary rail, until each is rebuilt to the handoff.
 
 desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.
-
-## The Accounts page's kicker over its tables, uppercased where drawn.
-
-desktop-settings-accounts-kicker = by type

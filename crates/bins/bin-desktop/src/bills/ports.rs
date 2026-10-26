@@ -243,6 +243,7 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
 mod tests {
     use chrono::NaiveDate;
     use lib_bills::BillScheduleEntry;
+    use lib_database::AccountsStore as _;
 
     use super::*;
 
@@ -251,7 +252,7 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             crate::payees::LedgerBackedPorts::in_memory(&ledger),
-            crate::settings::accounts::ports::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
         );
         (ledger, ports)
     }
@@ -289,7 +290,7 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             store.clone(),
-            crate::settings::accounts::ports::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
         );
         let mut renamed = ledger.payees()[0].clone();
         renamed.name = "Renamed in the store".into();
@@ -305,7 +306,7 @@ mod tests {
     #[test]
     fn the_accounts_are_read_from_the_accounts_store_not_copied_from_the_ledger() {
         let (mut ledger, _) = stub();
-        let store = crate::settings::accounts::ports::in_memory(&ledger);
+        let store = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             crate::payees::LedgerBackedPorts::in_memory(&ledger),

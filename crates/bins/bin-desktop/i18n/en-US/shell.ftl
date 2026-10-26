@@ -21,7 +21,6 @@ desktop-hint-toggle-sidebar = toggle sidebar
 ## A page's own hint strip, beside its keys.
 
 desktop-hint-row = row
-desktop-hint-open-ledger = open ledger
 desktop-hint-open = open
 desktop-hint-edit = edit
 desktop-hint-confirm = confirm
@@ -59,9 +58,6 @@ desktop-status-close-file-explorer = { $key } close file explorer
 ## delete`), `$name` what the user typed after it and `$matches` the names it matched.
 
 desktop-status-not-a-jump = { $keys } is not a jump
-desktop-status-no-accounts = { $command } — no accounts
-desktop-status-no-account-named = { $command } — no account named "{ $name }"
-desktop-status-account-ambiguous = { $command } — "{ $name }" matches { $matches }
 desktop-status-command-not-yet-built = :{ $command } — not yet built
 desktop-status-delete-children-first = delete or move its children first
 

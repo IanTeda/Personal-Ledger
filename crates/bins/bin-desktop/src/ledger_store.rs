@@ -26,6 +26,7 @@ use lib_database::{PayeesStore, SharedAccountsStore, SharedTransactionsStore};
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
 
+use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
@@ -36,7 +37,7 @@ use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 /// shared with the Bill Payments module, and the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
     pub institutions: DesktopInstitutionsPorts,
-    pub accounts: SharedAccountsStore,
+    pub accounts: DesktopAccountsPorts,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
@@ -49,7 +50,7 @@ impl LedgerSetup {
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
-        let accounts = crate::settings::accounts::ports::in_memory(&ledger);
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         Self {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
@@ -93,7 +94,7 @@ impl LedgerStore {
             transactions: ledger.transactions().to_vec(),
         };
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger);
-        let accounts = crate::settings::accounts::ports::in_memory(&ledger);
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         let bills = LedgerBackedPorts::in_memory(&ledger, payees.clone(), accounts.clone());
         Self {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
@@ -131,7 +132,7 @@ impl LedgerStore {
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
     /// the Accounts store, the Budgets by the Ledger until Budgets persist (#811).
     pub fn account_usage(&self, id: AccountId) -> AccountUse {
-        crate::settings::accounts::ports::usage(&self.accounts, &self.ledger, id)
+        crate::accounts::ports::usage(&self.accounts, &self.ledger, id)
     }
 
     /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts store's rows too,
@@ -171,9 +172,9 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Account, Payee, Transaction and Bills changes go to the ports (the forwarding
-    /// shims, #774, #831, #853), for the input's one commit; run outside any input, it emits
-    /// [`LegacyApplied`] to be committed. The Account upserts and the Payees go first, since the
+    /// touched. Its Payee, Transaction and Bills changes go to the ports (the forwarding
+    /// shims, #774, #831), for the input's one commit; run outside any input, it emits
+    /// [`LegacyApplied`] to be committed. The Payees go first, since the
     /// Splits an Import books name the Payees it creates. The other domains' changes aren't
     /// persisted yet (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
@@ -184,10 +185,6 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
-            let accounts_upserted = crate::settings::accounts::ports::forward(
-                &mut *self.accounts.borrow_mut(),
-                &changes,
-            );
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
@@ -196,9 +193,6 @@ impl LedgerStore {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
-            if accounts_upserted {
-                self.copy_accounts();
-            }
             if payees_written {
                 self.copy_payees();
             }
@@ -513,7 +507,7 @@ mod tests {
         let institutions =
             crate::institutions::LedgerBackedPorts::shared(Box::new(storage.institutions));
         let payees = crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees));
-        let accounts: SharedAccountsStore = Rc::new(RefCell::new(storage.accounts));
+        let accounts = crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts));
         let bills = LedgerBackedPorts::shared(
             Rc::new(RefCell::new(storage.bills)),
             payees.clone(),

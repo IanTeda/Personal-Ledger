@@ -77,17 +77,21 @@ mod tests {
     #[test]
     fn a_new_account_has_no_usage_until_something_names_it() {
         let mut ledger = Ledger::stub();
-        let id = ledger.add_account(NewAccount {
-            draft: AccountDraft {
-                name: "Fresh".into(),
-                institution: InstitutionId::SEED_ANZ,
-                account_type: AccountType::Bank,
-                account_number: None,
+        let id = lib_accounts::insert_account(
+            &mut ledger.accounts,
+            NewAccount {
+                draft: AccountDraft {
+                    name: "Fresh".into(),
+                    institution: InstitutionId::SEED_ANZ,
+                    account_type: AccountType::Bank,
+                    account_number: None,
+                },
+                unit: UnitId::SEED_AUD,
+                balance: "0".parse().expect("a decimal"),
+                opened_at: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("a date"),
             },
-            unit: UnitId::SEED_AUD,
-            balance: "0".parse().expect("a decimal"),
-            opened_at: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("a date"),
-        });
+        )
+        .id;
 
         assert_eq!(ledger.account_usage(id), AccountUse::default());
     }

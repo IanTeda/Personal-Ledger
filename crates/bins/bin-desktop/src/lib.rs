@@ -6,6 +6,7 @@
 //! screen-cycling (ADR-0016).
 
 mod account_deletion;
+mod accounts;
 mod assets;
 mod bill_payments;
 mod bills;
