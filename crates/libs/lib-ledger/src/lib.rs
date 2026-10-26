@@ -20,6 +20,7 @@ pub mod query;
 mod repository;
 pub mod seed;
 mod tag_commands;
+mod tag_reads;
 mod tag_usage;
 mod transaction_commands;
 mod unit_usage;

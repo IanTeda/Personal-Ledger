@@ -28,15 +28,16 @@ use crate::adapter::bills::BillsAdapter;
 use crate::adapter::categories::CategoriesAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
 use crate::adapter::payees::PayeesAdapter;
+use crate::adapter::tags::TagsAdapter;
 use crate::adapter::transactions::TransactionsAdapter;
 use crate::adapter::units::UnitsAdapter;
 use crate::writer::Writer;
 
 /// Writes every persisted domain's stub seed, blocking until it lands: Units, Price Sources and
 /// the base Unit, the Institutions, which the Accounts name, the Accounts, which the Transactions
-/// and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans name, the Payees,
-/// which the Splits and Bill Plans name, then the Transactions and
-/// the Bills dated from `now`'s local day. Each later domain adds its seed as it migrates, in the
+/// and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans name, the Tags,
+/// which the Splits name (#862), the Payees, which the Splits and Bill Plans name, then the
+/// Transactions and the Bills dated from `now`'s local day. Each later domain adds its seed as it migrates, in the
 /// order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory.
 ///
 /// # Errors
@@ -48,6 +49,7 @@ pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
     InstitutionsAdapter::seed(writer, stub_institutions())?;
     AccountsAdapter::seed(writer, stub_accounts())?;
     CategoriesAdapter::seed(writer, stub_categories())?;
+    TagsAdapter::seed(writer, stub_tags())?;
     PayeesAdapter::seed(writer, stub_payees())?;
     TransactionsAdapter::seed(writer, stub_ledger_transactions(today))?;
     let bills = stub_ledger_bills(today);
@@ -69,6 +71,11 @@ pub fn stub_accounts() -> Vec<lib_accounts::Account> {
 /// Payees and Budgets name.
 pub fn stub_categories() -> Vec<lib_categories::Category> {
     lib_categories::fake::InMemoryCategories::stub().categories
+}
+
+/// `lib-tags`' stub seed, the stub Ledger's Tags, with the ids its Splits carry.
+pub fn stub_tags() -> Vec<lib_tags::Tag> {
+    lib_tags::fake::InMemoryTags::stub().tags
 }
 
 /// `lib-payees`' stub seed, the stub Ledger's Payees, with the ids its Splits and Bill Plans name.
@@ -312,6 +319,22 @@ mod tests {
         assert_eq!(
             stored.accounts().accounts(),
             lib_ledger::Ledger::stub().accounts()
+        );
+    }
+
+    /// The Tags are the stub Ledger's, by id, so the Splits written after them carry stored rows.
+    #[test]
+    fn the_stub_seed_writes_the_stub_ledgers_tags_twice_over_the_same_rows() {
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+
+        stub(&writer, now).expect("the first seed lands");
+        stub(&writer, now).expect("the second seed lands");
+
+        let stored = TagsAdapter::load(PendingWrites::new(writer.clone())).expect("the Tags load");
+        assert_eq!(
+            stored.tags().tags(),
+            lib_ledger::Ledger::stub().tags().to_vec()
         );
     }
 

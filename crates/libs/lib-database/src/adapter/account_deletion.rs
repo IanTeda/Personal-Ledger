@@ -130,6 +130,8 @@ mod tests {
             .expect("the stub Units are written");
             crate::CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
                 .expect("the stub Categories are written");
+            crate::TagsAdapter::seed(&writer, crate::seed::stub_tags())
+                .expect("the stub Tags are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

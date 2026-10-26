@@ -8,7 +8,9 @@
 //! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
 //! the Accounts writers to it, and the Units and Bills read its rows (#853). So is the Categories
 //! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
-//! and the Bills and Payees read its rows (#858).
+//! and the Bills and Payees read its rows (#858). So is the Tags store ([`SharedTagsStore`]): the
+//! Desktop's Ledger forwards the Tags writers to it, and the Tags page and Dialogs read its
+//! usage (#862).
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
@@ -28,10 +30,12 @@ use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{CategoryId, UnitId};
+use lib_core::{CategoryId, TagId, UnitId};
 use lib_institutions::InstitutionRepository;
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
+use lib_tags::fake::InMemoryTagUsage;
+use lib_tags::{TagRepository, TagUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
@@ -44,7 +48,7 @@ use crate::adapter::payees::bill_payees;
 use crate::adapter::{accounts, categories};
 use crate::{
     AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
-    PayeesAdapter, Result, Stores, TransactionsAdapter, UnitsAdapter, WriteFailure,
+    PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter, UnitsAdapter, WriteFailure,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -395,6 +399,113 @@ impl CategoriesStore for InMemoryCategories {
     }
 }
 
+/// A Tags store shared by the Ledger's forwarding shim and the Tags page. Single-threaded, as the
+/// ports are.
+pub type SharedTagsStore = Rc<RefCell<dyn TagsStore>>;
+
+/// The Tags repository and usage ports, wherever they are kept, and the delete Tag delete and
+/// merge send until `lib-reassign` (#813).
+pub trait TagsStore {
+    fn tags(&self) -> &dyn TagRepository;
+
+    fn tags_mut(&mut self) -> &mut dyn TagRepository;
+
+    fn usage(&self) -> &dyn TagUsage;
+
+    /// Removes Tag `id`, once no Split carries it: Tag delete's and merge's delete, which the
+    /// Desktop's forwarding shim sends. Not a port write, since the delete untags other
+    /// domains' rows (#813).
+    fn delete_tag(&mut self, id: TagId);
+
+    /// The in-memory usage a test or the stub counts into, if the store keeps its usage in
+    /// memory: `None` for an adapter, which counts in the file.
+    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
+        None
+    }
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl TagsStore for TagsAdapter {
+    fn tags(&self) -> &dyn TagRepository {
+        TagsAdapter::tags(self)
+    }
+
+    fn tags_mut(&mut self) -> &mut dyn TagRepository {
+        TagsAdapter::tags_mut(self)
+    }
+
+    fn usage(&self) -> &dyn TagUsage {
+        TagsAdapter::usage(self)
+    }
+
+    fn delete_tag(&mut self, id: TagId) {
+        TagsAdapter::delete_tag(self, id);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        TagsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedTagsStore`]).
+impl<T: TagsStore + ?Sized> TagsStore for Box<T> {
+    fn tags(&self) -> &dyn TagRepository {
+        (**self).tags()
+    }
+
+    fn tags_mut(&mut self) -> &mut dyn TagRepository {
+        (**self).tags_mut()
+    }
+
+    fn usage(&self) -> &dyn TagUsage {
+        (**self).usage()
+    }
+
+    fn delete_tag(&mut self, id: TagId) {
+        (**self).delete_tag(id);
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
+        (**self).usage_to_count()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl TagsStore for lib_tags::fake::InMemoryPorts {
+    fn tags(&self) -> &dyn TagRepository {
+        &self.tags
+    }
+
+    fn tags_mut(&mut self) -> &mut dyn TagRepository {
+        &mut self.tags
+    }
+
+    fn usage(&self) -> &dyn TagUsage {
+        &self.usage
+    }
+
+    fn delete_tag(&mut self, id: TagId) {
+        self.tags.tags.retain(|tag| tag.id != id);
+    }
+
+    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
+        Some(&mut self.usage)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// A Transactions store shared by the modules that write it. Single-threaded, as the ports are.
 pub type SharedTransactionsStore = Rc<RefCell<dyn TransactionsStore>>;
 
@@ -703,15 +814,20 @@ impl Commit for CountingCommit {
 }
 
 impl Stores {
-    /// `units`, `institutions`, `accounts`, `categories`, `payees`, `transactions` and `bills` in
-    /// memory,
+    /// `units`, `institutions`, `accounts`, `categories`, `tags`, `payees`, `transactions` and
+    /// `bills` in memory,
     /// committed through a [`CountingCommit`] whose count is returned, on a failure channel nothing
     /// reports on, since there is no writer.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one in-memory port set per persisted domain, as `Stores` has one field each"
+    )]
     pub fn fake(
         units: InMemoryPorts,
         institutions: InMemoryInstitutions,
         accounts: lib_accounts::fake::InMemoryPorts,
         categories: InMemoryCategories,
+        tags: lib_tags::fake::InMemoryPorts,
         payees: lib_payees::fake::InMemoryPorts,
         transactions: InMemoryTransactions,
         bills: InMemoryBills,
@@ -723,6 +839,7 @@ impl Stores {
             institutions: Box::new(institutions),
             accounts: Box::new(accounts),
             categories: Box::new(categories),
+            tags: Box::new(tags),
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
@@ -745,6 +862,7 @@ impl Stores {
             institutions: Box::new(InMemoryInstitutions::default()),
             accounts: Box::new(lib_accounts::fake::InMemoryPorts::default()),
             categories: Box::new(InMemoryCategories::default()),
+            tags: Box::new(lib_tags::fake::InMemoryPorts::default()),
             payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
             transactions: Box::new(InMemoryTransactions::default()),
             bills: Box::new(InMemoryBills::default()),
@@ -765,6 +883,7 @@ mod tests {
             InMemoryInstitutions::stub(),
             lib_accounts::fake::InMemoryPorts::stub(),
             InMemoryCategories::stub(),
+            lib_tags::fake::InMemoryPorts::stub(),
             lib_payees::fake::InMemoryPorts::stub(),
             InMemoryTransactions::default(),
             InMemoryBills::default(),

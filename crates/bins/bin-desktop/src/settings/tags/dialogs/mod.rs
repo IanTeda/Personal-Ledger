@@ -254,8 +254,13 @@ impl Dialog for TagsDialog {
     }
 
     fn render(&self, scope: &DialogScope, actions: &DialogActions, cx: &App) -> Option<AnyElement> {
-        let ledger = scope.ledger.read(cx).ledger();
-        self.draw(ledger.tags(), ledger, TagsDialogHandlers::new(actions), cx)
+        let store = scope.ledger.read(cx);
+        self.draw(
+            store.ledger().tags(),
+            &store.tag_usage(),
+            TagsDialogHandlers::new(actions),
+            cx,
+        )
     }
 
     /// Add and Edit read back their Name, Remove its typed-back name, and Merge the names of the

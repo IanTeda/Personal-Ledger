@@ -9,6 +9,7 @@ pub mod bills;
 pub mod categories;
 pub mod institutions;
 pub mod payees;
+pub mod tags;
 pub mod transactions;
 pub mod units;
 

@@ -7,8 +7,8 @@ use sqlx::SqlitePool;
 
 use crate::writer::Writer;
 
-/// Stores the stub's Units, Institutions, Accounts and Categories, which an adapter test's
-/// Transactions, Bill Plans and Payees name by foreign key (#853, #858).
+/// Stores the stub's Units, Institutions, Accounts, Categories and Tags, which an adapter test's
+/// Transactions, Bill Plans and Payees name by foreign key (#853, #858, #862).
 pub(crate) fn store_stub_references(writer: &Writer) {
     crate::UnitsAdapter::seed_from(
         writer,
@@ -21,6 +21,7 @@ pub(crate) fn store_stub_references(writer: &Writer) {
         .expect("the stub Accounts are written");
     crate::CategoriesAdapter::seed(writer, crate::seed::stub_categories())
         .expect("the stub Categories are written");
+    crate::TagsAdapter::seed(writer, crate::seed::stub_tags()).expect("the stub Tags are written");
 }
 
 /// Stores a top-level Category of `category_type`, returning its id.

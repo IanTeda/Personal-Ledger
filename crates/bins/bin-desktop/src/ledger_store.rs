@@ -2,9 +2,9 @@
 //! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
-//! The Ledger's Institutions, Accounts, Categories, Payees, Transactions, Bill Plans and Bill
-//! Schedule are read copies of their ports (#774, #831, #849, #850, #853, #858): `apply` forwards a
-//! command's Category, Payee, Transaction and Bills changes to the ports and refreshes the copies
+//! The Ledger's Institutions, Accounts, Categories, Tags, Payees, Transactions, Bill Plans and Bill
+//! Schedule are read copies of their ports (#774, #831, #849, #850, #853, #858, #862): `apply`
+//! forwards a command's Category, Tag, Payee, Transaction and Bills changes to the ports and refreshes the copies
 //! from them. The
 //! Institutions, Payees and Bills ports are shared with their modules, which write them through
 //! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
@@ -24,7 +24,8 @@ use lib_accounts::AccountUse;
 use lib_bills::BillsPorts as _;
 use lib_core::AccountId;
 use lib_database::{
-    PayeesStore, SharedAccountsStore, SharedCategoriesStore, SharedTransactionsStore,
+    PayeesStore, SharedAccountsStore, SharedCategoriesStore, SharedTagsStore,
+    SharedTransactionsStore,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
@@ -36,13 +37,15 @@ use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
 /// What `shell::router::build` hands the Ledger: the Institutions ports it shares with the
 /// Institutions module, the Accounts store it shares with the Units and Bills reads, the
-/// Categories store it shares with the Bills and Payees reads, the Payees ports it shares with the
+/// Categories store it shares with the Bills and Payees reads, the Tags store it shares with the
+/// Tags page, the Payees ports it shares with the
 /// Payees module and the Bills reads, where its Transactions are kept,
 /// shared with the Bill Payments module, and the Bills ports it shares with the Bills module.
 pub struct LedgerSetup {
     pub institutions: DesktopInstitutionsPorts,
     pub accounts: DesktopAccountsPorts,
     pub categories: SharedCategoriesStore,
+    pub tags: SharedTagsStore,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
@@ -58,6 +61,7 @@ impl LedgerSetup {
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         Self {
+            tags: crate::settings::tags::ports::in_memory(&ledger),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
@@ -91,6 +95,7 @@ pub struct LedgerStore {
     institutions: DesktopInstitutionsPorts,
     accounts: SharedAccountsStore,
     categories: SharedCategoriesStore,
+    tags: SharedTagsStore,
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
@@ -119,6 +124,7 @@ impl LedgerStore {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             accounts,
             categories,
+            tags: crate::settings::tags::ports::in_memory(&ledger),
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -134,6 +140,7 @@ impl LedgerStore {
             institutions: setup.institutions,
             accounts: setup.accounts,
             categories: setup.categories,
+            tags: setup.tags,
             payees: setup.payees,
             transactions: setup.transactions,
             bills: setup.bills,
@@ -141,9 +148,11 @@ impl LedgerStore {
         store.copy_institutions();
         store.copy_accounts();
         store.copy_categories();
+        store.copy_tags();
         store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
+        store.count_tag_uses();
         store
     }
 
@@ -155,6 +164,12 @@ impl LedgerStore {
     /// the Categories store by `lib-payees`' `PayeeCategories` labelling (#858).
     pub fn payee_categories(&self) -> Vec<lib_payees::PayeeCategory> {
         self.categories.borrow().payee_categories()
+    }
+
+    /// What carries each Tag, as the Tags page and its Dialogs read it: the Tags store's own
+    /// figures, counted in the file when the Ledger is stored (#862).
+    pub fn tag_usage(&self) -> crate::settings::tags::ports::StoreUsage {
+        crate::settings::tags::ports::usage(&self.tags)
     }
 
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
@@ -216,6 +231,8 @@ impl LedgerStore {
         if !changes.is_empty() {
             let categories_upserted =
                 crate::categories::ports::forward(&mut *self.categories.borrow_mut(), &changes);
+            let tags_upserted =
+                crate::settings::tags::ports::forward(&mut *self.tags.borrow_mut(), &changes);
             let payees_written =
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
@@ -224,12 +241,19 @@ impl LedgerStore {
                 &mut *self.categories.borrow_mut(),
                 &changes,
             );
+            let tags_deleted = crate::settings::tags::ports::forward_deletes(
+                &mut *self.tags.borrow_mut(),
+                &changes,
+            );
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
             if categories_upserted || categories_deleted {
                 self.copy_categories();
+            }
+            if tags_upserted || tags_deleted {
+                self.copy_tags();
             }
             if payees_written {
                 self.copy_payees();
@@ -278,6 +302,18 @@ impl LedgerStore {
         self.categories.borrow_mut().reload()?;
         self.copy_categories();
         self.announce(cx, BTreeSet::from([Domain::Categories]));
+        Ok(())
+    }
+
+    /// Puts the Tags back as stored, after a write that named them failed, and overwrites the read
+    /// copy, announcing `Domain::Tags` so every reader redraws (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the store and the read copy are left as they were.
+    pub fn reload_tags(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
+        self.tags.borrow_mut().reload()?;
+        self.copy_tags();
+        self.announce(cx, BTreeSet::from([Domain::Tags]));
         Ok(())
     }
 
@@ -342,6 +378,14 @@ impl LedgerStore {
         }
     }
 
+    /// Brings the Tags read copy in line with the store, announcing `Domain::Tags` only when it
+    /// changed.
+    pub fn refresh_tags(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_tags() {
+            self.announce(cx, BTreeSet::from([Domain::Tags]));
+        }
+    }
+
     /// Brings the Accounts read copy in line with the store after the Account Deletion module
     /// wrote it, announcing `Domain::Accounts` only when it changed.
     pub fn refresh_accounts(&mut self, cx: &mut Context<'_, Self>) {
@@ -384,6 +428,20 @@ impl LedgerStore {
         self.ledger.refresh_categories(categories)
     }
 
+    /// Brings the Tags read copy in line with the store, returning whether it changed.
+    fn copy_tags(&mut self) -> bool {
+        let tags = self.tags.borrow().tags().tags();
+        self.ledger.refresh_tags(tags)
+    }
+
+    /// Recounts an in-memory Tags store's usage from the Transactions read copy; a stored one
+    /// counts in the file.
+    fn count_tag_uses(&mut self) {
+        if let Some(usage) = self.tags.borrow_mut().usage_to_count() {
+            usage.uses = self.ledger.tag_uses();
+        }
+    }
+
     /// Brings the Payees read copy in line with the port, returning whether it changed.
     fn copy_payees(&mut self) -> bool {
         let payees = PayeesStore::payees(&*self.payees.borrow()).payees();
@@ -393,7 +451,11 @@ impl LedgerStore {
     /// Brings the read copy in line with the port, returning whether it changed.
     fn copy_transactions(&mut self) -> bool {
         let transactions = self.transactions.borrow().all_transactions();
-        self.ledger.refresh_transactions(transactions)
+        let changed = self.ledger.refresh_transactions(transactions);
+        if changed {
+            self.count_tag_uses();
+        }
+        changed
     }
 
     /// Brings the Bills read copy in line with the ports, returning whether it changed.
@@ -591,6 +653,7 @@ mod tests {
                     institutions,
                     accounts,
                     categories,
+                    tags: Rc::new(RefCell::new(storage.tags)),
                     payees,
                     transactions,
                     bills: bills.clone(),

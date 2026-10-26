@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO tags (id, name, color, is_active)\n         VALUES (?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             color = excluded.color,\n             is_active = excluded.is_active",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "549e8dc0cd7a3985b96fc5e9e99c40b5278e9972fc550adae74fd8082d45b539"
+}

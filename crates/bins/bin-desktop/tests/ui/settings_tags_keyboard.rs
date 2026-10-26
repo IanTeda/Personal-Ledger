@@ -195,3 +195,26 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
     ui.assert_cheat_sheet_matches_status("Settings keys");
 }
+
+#[gpui::test]
+fn a_failed_write_puts_the_tags_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_tags(app);
+    ui.press("g s");
+    ui.press("j j j j j j");
+    ui.press("l");
+    let stored = ui.settings_tags().tag_names;
+
+    ui.press("n z e b r a enter");
+    assert_eq!(
+        ui.settings_tags().tag_names.len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_tags().tag_names, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to tags, so they are back as last saved"
+    }));
+}

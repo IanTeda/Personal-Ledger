@@ -100,6 +100,12 @@ pub(super) fn roll_back(
                 restored: crate::msg::desktop_toast_write_failed_categories,
                 unsaved: crate::msg::desktop_toast_write_failed_categories_unsaved,
             },
+            Domain::Tags => Reload {
+                name: "Tags",
+                reloaded: ledger.update(cx, |store, cx| store.reload_tags(cx)),
+                restored: crate::msg::desktop_toast_write_failed_tags,
+                unsaved: crate::msg::desktop_toast_write_failed_tags_unsaved,
+            },
             Domain::Payees => Reload {
                 name: "Payees",
                 reloaded: ledger.update(cx, |store, cx| store.reload_payees(cx)),

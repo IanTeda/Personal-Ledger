@@ -77,8 +77,9 @@ pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
     AccountsStore, BillsStore, CategoriesStore, CountingCommit, InstitutionsStore, PayeesStore,
     SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
-    SharedTransactionsStore, TransactionsStore, UnitsStore,
+    SharedTagsStore, SharedTransactionsStore, TagsStore, TransactionsStore, UnitsStore,
 };
+pub use adapter::tags::TagsAdapter;
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::units::UnitsAdapter;
 

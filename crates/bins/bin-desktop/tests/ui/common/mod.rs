@@ -37,14 +37,15 @@ use lib_categories::fake::InMemoryCategories;
 use lib_categories::{Category, CategoryRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
-use lib_core::{AccountId, CategoryId, PayeeId, PriceSourceId, UnitId};
+use lib_core::{AccountId, CategoryId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
     AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, InstitutionsStore,
-    PayeesStore, Stores, TransactionsStore, UnitsStore, WriteFailure,
+    PayeesStore, Stores, TagsStore, TransactionsStore, UnitsStore, WriteFailure,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
 use lib_payees::{Payee, PayeeRepository, PayeeUsage};
+use lib_tags::{Tag, TagRepository, TagUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
@@ -309,6 +310,49 @@ impl CategoriesStore for FailingCategories {
 
     fn reload(&mut self) -> lib_database::Result<()> {
         self.categories.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
+impl<T: TagRepository> TagRepository for Marked<T> {
+    fn tags(&self) -> Vec<Tag> {
+        self.inner.tags()
+    }
+
+    fn upsert_tag(&mut self, tag: Tag) {
+        self.written.set(true);
+        self.inner.upsert_tag(tag);
+    }
+}
+
+/// A Tags store whose writes never reach `stored`, the rows as they are on disk: a reload puts
+/// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingTags {
+    tags: Marked<lib_tags::fake::InMemoryTags>,
+    usage: lib_tags::fake::InMemoryTagUsage,
+    stored: lib_tags::fake::InMemoryTags,
+}
+
+impl TagsStore for FailingTags {
+    fn tags(&self) -> &dyn TagRepository {
+        &self.tags
+    }
+
+    fn tags_mut(&mut self) -> &mut dyn TagRepository {
+        &mut self.tags
+    }
+
+    fn usage(&self) -> &dyn TagUsage {
+        &self.usage
+    }
+
+    fn delete_tag(&mut self, id: TagId) {
+        self.tags.written.set(true);
+        self.tags.inner.tags.retain(|tag| tag.id != id);
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.tags.inner = self.stored.clone();
         Ok(())
     }
 }
@@ -601,6 +645,7 @@ impl<'a> Harness<'a> {
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
                 InMemoryCategories::stub(),
+                lib_tags::fake::InMemoryPorts::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -622,6 +667,7 @@ impl<'a> Harness<'a> {
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
                 InMemoryCategories::stub(),
+                lib_tags::fake::InMemoryPorts::stub(),
                 lib_payees::fake::InMemoryPorts::stub(),
                 stub_transactions(),
                 stub_bills(),
@@ -655,6 +701,7 @@ impl<'a> Harness<'a> {
                 InMemoryInstitutions::stub(),
                 lib_accounts::fake::InMemoryPorts::stub(),
                 InMemoryCategories::stub(),
+                lib_tags::fake::InMemoryPorts::stub(),
                 payees,
                 stub_transactions(),
                 stub_bills(),
@@ -701,6 +748,7 @@ impl<'a> Harness<'a> {
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -736,6 +784,7 @@ impl<'a> Harness<'a> {
                 }),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -772,6 +821,7 @@ impl<'a> Harness<'a> {
                     stored,
                 }),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
@@ -807,11 +857,49 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Categories],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on a Tags store whose every write fails, as SQLite refusing it would;
+    /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
+    /// hear of the failure.
+    pub fn with_failing_tags(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = lib_tags::fake::InMemoryTags::stub();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::stub()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(FailingTags {
+                    tags: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    usage: lib_tags::fake::InMemoryTagUsage::default(),
+                    stored,
+                }),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
+                transactions: Box::new(stub_transactions()),
+                bills: Box::new(stub_bills()),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Tags],
                     written,
                     report,
                 }),
@@ -836,6 +924,7 @@ impl<'a> Harness<'a> {
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(FailingPayees {
                     payees: Marked {
                         inner: stored.clone(),
@@ -872,6 +961,7 @@ impl<'a> Harness<'a> {
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
@@ -907,6 +997,7 @@ impl<'a> Harness<'a> {
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(FailingBills {
@@ -942,6 +1033,7 @@ impl<'a> Harness<'a> {
                 institutions: Box::new(InMemoryInstitutions::stub()),
                 accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
                 categories: Box::new(InMemoryCategories::stub()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {

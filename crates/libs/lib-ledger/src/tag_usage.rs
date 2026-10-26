@@ -1,7 +1,7 @@
-//! `lib-tags`' [`TagUsage`] answered from the Ledger (#861), a halfway shim counting a Tag's
-//! Transactions, total and last-used date from the Transactions themselves. Nothing persists Tags
-//! yet, so the Desktop's Tags page and Dialogs read it here until the Transactions View reads its
-//! Splits through its own domain.
+//! `lib-tags`' [`TagUsage`] counted over rows (#861): a Tag's Transactions, total and last-used
+//! date from the Transactions themselves. The Tags adapter answers the port from the file (#862);
+//! this is what an in-memory Client counts with ([`Ledger::tag_uses`]) until the Transactions View
+//! reads its Splits through its own domain.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
@@ -9,8 +9,6 @@ use lib_accounts::Account;
 use lib_core::{AccountId, Money, TagId, Total, UnitId};
 use lib_tags::{TagUsage, TagUse};
 use lib_transactions::Transaction;
-
-use crate::Ledger;
 
 /// Whether any Split on `transaction` carries Tag `id`.
 fn carries(transaction: &Transaction, id: TagId) -> bool {
@@ -79,17 +77,6 @@ impl TagUsage for TagRows<'_> {
             total,
             last_used,
         }
-    }
-}
-
-impl TagUsage for Ledger {
-    fn tag_usage(&self, id: TagId) -> TagUse {
-        TagRows {
-            transactions: &self.transactions,
-            accounts: &self.accounts,
-            unit_code: &|unit| self.unit_code(unit).to_string(),
-        }
-        .tag_usage(id)
     }
 }
 
@@ -245,22 +232,5 @@ mod tests {
         let used = usage_of(&transactions, &default_accounts(), TagId::seed(5));
 
         assert_eq!((used.transactions, used.total), (1, Total::Mixed));
-    }
-
-    #[test]
-    fn the_ledger_answers_the_port_from_its_transactions_and_names_the_unit_by_code() {
-        let ledger = Ledger::stub();
-        let shared = lib_tags::find_by_name(ledger.tags(), "shared").expect("a stub Tag");
-
-        let used = ledger.tag_usage(shared);
-
-        assert_eq!(
-            used.transactions,
-            transaction_count(ledger.transactions(), shared)
-        );
-        assert!(used.transactions > 0);
-        assert!(used.last_used.is_some());
-        assert!(matches!(used.total, Total::Single { .. } | Total::Mixed));
-        assert_eq!(ledger.tag_usage(TagId::seed(999)), TagUse::default());
     }
 }

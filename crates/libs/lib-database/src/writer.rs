@@ -42,6 +42,7 @@ pub enum Domain {
     Institutions,
     Accounts,
     Categories,
+    Tags,
     Payees,
     Transactions,
     Bills,

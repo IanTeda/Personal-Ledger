@@ -63,6 +63,7 @@ mod smoke_bills_persist;
 mod smoke_categories_persist;
 mod smoke_institutions_persist;
 mod smoke_payees_persist;
+mod smoke_tags_persist;
 mod smoke_units_persist;
 mod toasts_keyboard;
 mod toasts_mouse;

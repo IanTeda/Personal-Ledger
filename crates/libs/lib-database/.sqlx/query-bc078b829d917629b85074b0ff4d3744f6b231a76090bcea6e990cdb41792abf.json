@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               t.id        AS \"transaction_id!: TransactionId\",\n               t.date      AS \"date!: NaiveDate\",\n               a.unit_id   AS \"unit_id!: UnitId\",\n               u.code      AS \"unit_code!\",\n               s.amount    AS \"amount!: Money\"\n           FROM splits s\n           JOIN transactions t ON t.id = s.transaction_id\n           JOIN accounts a ON a.id = t.account_id\n           JOIN units u ON u.id = a.unit_id\n           WHERE EXISTS (\n               SELECT 1 FROM split_tags st\n               WHERE st.transaction_id = s.transaction_id\n                 AND st.position = s.position\n                 AND st.tag_id = ?\n           )\n           ORDER BY t.rowid, s.position",
+  "describe": {
+    "columns": [
+      {
+        "name": "transaction_id!: TransactionId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "date!: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_id!: UnitId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "unit_code!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "amount!: Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bc078b829d917629b85074b0ff4d3744f6b231a76090bcea6e990cdb41792abf"
+}

@@ -11,6 +11,7 @@
 pub mod apply;
 pub mod dialogs;
 pub mod form;
+pub mod ports;
 mod render;
 
 use crate::settings::SettingsPage;
@@ -76,14 +77,14 @@ impl TagsPage {
         self.ledger.read(cx).ledger().tags()
     }
 
-    /// What carries each Tag, counted from the Ledger's Transactions until Tags persist.
-    fn usage<'a>(&self, cx: &'a App) -> &'a dyn lib_tags::TagUsage {
-        self.ledger.read(cx).ledger()
+    /// What carries each Tag, from the Tags store: counted in the file when the Ledger is stored.
+    fn usage(&self, cx: &App) -> ports::StoreUsage {
+        self.ledger.read(cx).tag_usage()
     }
 
     /// The likely duplicates, which the rows and the heading flag.
     pub(crate) fn duplicate_groups(&self, cx: &App) -> Vec<DuplicateGroup> {
-        lib_tags::duplicate_groups(self.tags(cx), self.usage(cx))
+        lib_tags::duplicate_groups(self.tags(cx), &self.usage(cx))
     }
 }
 
@@ -238,7 +239,7 @@ impl TagsPage {
         };
         let form = RemoveTagForm::new(
             &tag.name,
-            lib_tags::TagUsage::tag_usage(self.usage(cx), id).transactions,
+            lib_tags::TagUsage::tag_usage(&self.usage(cx), id).transactions,
         );
         open_dialog(TagsDialog::Remove(id, form), Self::land, cx);
     }
@@ -265,7 +266,7 @@ impl TagsPage {
 
     /// The 7e selects' options, labelled `Shared (9 txns)`.
     fn merge_options(&self, cx: &App) -> Vec<form::MergeOption> {
-        merge_options(self.tags(cx), self.usage(cx), |name, count| {
+        merge_options(self.tags(cx), &self.usage(cx), |name, count| {
             crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
         })
     }

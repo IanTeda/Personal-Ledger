@@ -4819,6 +4819,7 @@ dependencies = [
  "lib_institutions",
  "lib_ledger",
  "lib_payees",
+ "lib_tags",
  "lib_transactions",
  "lib_units",
  "regex",

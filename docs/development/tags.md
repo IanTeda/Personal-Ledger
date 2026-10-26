@@ -6,11 +6,11 @@ End-user documentation: [Tags](../tags.md).
 
 A Tag is a freeform, cross-cutting label attached many-to-many directly to Transactions, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary and **deferred schema, UI and reporting to a future build effort**.
 
-That deferral is the thing to know before working here: there is **no `tags` table, no `lib-core` type and no `lib-database` module**. Everything that exists is UI built against in-memory stubs: a read-only screen in the TUI and a full management surface in the desktop. Nothing persists.
+That deferral ended with persistence ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)): there is a `tags` table and a `lib-database` adapter, still no `lib-core` Tag type. The Tags page and Dialogs are not yet a module's Presenters (#863), and the Transactions View still carries Tags on its Splits through the Ledger.
 
 ## Data model
 
-Not yet built. No migration exists in `migrations/client/`, and nothing in `lib-database` references Tags.
+`tags` (`id`, `name`, `color`, `is_active`) in `create_tags_table.sql`, and `split_tags.tag_id` references `tags(id)` with no cascade. `name` is not unique in the schema: the normalised-name rule stays an Interactor rule (`lib_tags::name_error`), and the stub seed holds `work-trip` and `Work Trip` on purpose. `color` is the canonical `#RRGGBB`, or null.
 
 ADR-0015 fixes these properties for whoever builds the schema:
 
@@ -28,7 +28,9 @@ None. There is no `lib_core::Tag`, and no `Label` implementation in `lib-locale`
 
 ## Persistence
 
-Not yet built.
+`lib-database`'s `adapter/tags.rs` ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)) loads every Tag into memory in the order added and queues each `TagRepository` write on the shared writer. `TagUsage` is answered there from the file: a Tag's distinct Transactions, the sum of its Splits when their Accounts share one Unit (`Total::Mixed` otherwise) and the newest date, from `split_tags`, `splits`, `transactions`, `accounts` and `units`. A read that fails is logged and answered as unused, since it only feeds figures the page shows.
+
+Tag delete and merge rewrite Splits, so they stay `lib-ledger` commands: the Desktop's forwarding shim (`settings/tags/ports.rs`) sends their Transaction changes first and `TagsStore::delete_tag` after them in the input's one commit, and `split_tags.tag_id`'s foreign key refuses a delete that skips that. A Ledger file made before this needs a fresh Ledger: `create_split_tags_table.sql` changed in place.
 
 ## UI
 
