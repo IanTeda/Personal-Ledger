@@ -197,8 +197,16 @@ _Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Chang
 this glossary's canonical term.
 
 **Institution**:
-The financial institution (e.g. a bank or broker) that an Account is held with — a first-class entity as of [ADR-0017](docs/adr/0017-loan-and-investment-as-entities-not-account-types.md), not a free-text field: every Account, of any Account Kind (see below), carries a mandatory link to exactly one Institution. A Cash-type Transaction Account (physical, on-hand cash — see Transaction Account, below) has no real-world institution, so it links to a system-seeded placeholder Institution rather than leaving the field empty; the link itself stays mandatory at the data-model level even where it's meaningless in the real world. See `docs/accounts.md`.
+The financial institution (e.g. a bank or broker) that an Account is held with — a first-class entity as of [ADR-0017](docs/adr/0017-loan-and-investment-as-entities-not-account-types.md), not a free-text field: every Account, of any Account Kind (see below), carries a mandatory link to exactly one Institution. A Cash-type Transaction Account (physical, on-hand cash — see Transaction Account, below) has no bank, so it names the Personal Institution (see below) rather than leaving the link empty. See `docs/accounts.md`.
 _Avoid_: Company, organization.
+
+**Personal Institution**:
+The Institution that stands for the person keeping the Ledger, which their Cash Accounts name by default. Every new Ledger starts with one, named "Personal" until the person renames it; beyond that it is an ordinary Institution, listed, edited and deleted under the same rules as any other, and a Cash Account may name a different Institution.
+_Avoid_: No institution, placeholder Institution, Self.
+
+**Products**:
+What an Institution offers, as a free-form label of one or more parts (e.g. savings · offset, credit card, crypto). Descriptive only: it never limits which Accounts may name the Institution.
+_Avoid_: Account type, offerings.
 
 **Account**:
 A place where value is held or owed. An umbrella term over four Account Kinds (see below) — Transaction Account, Credit Card Account, Loan Account, Investment Account — each with its own record shape, workflow, and view (see [ADR-0017](docs/adr/0017-loan-and-investment-as-entities-not-account-types.md), [ADR-0018](docs/adr/0018-account-kind-umbrella-and-credit-card-account.md)); the app may still group all four under one "Accounts" navigation area for browsing, but underneath they are not rows in one shared table with a type column. Every Account, regardless of Kind, is denominated in exactly one Unit and linked to exactly one Institution (see above). See `docs/accounts.md`.
