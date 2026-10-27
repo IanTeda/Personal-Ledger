@@ -2,6 +2,8 @@
 
 Tags are little labels you stick on transactions, for things that don't fit neatly into a category. Think "Japan trip", "tax deductible", or "shared". They let you find and add up spending across your whole ledger for a particular theme.
 
+> **Heads up:** in the desktop app, the tags you add, edit, deactivate, reactivate, remove and merge are saved, so they are still there when you reopen it. The terminal app's Tags screen still works on sample data, and nothing you change there is saved. The desktop app has no transaction form yet, so you can't add a tag to a transaction there.
+
 ## What you can do
 
 - Add as many tags as you like to a transaction
@@ -11,6 +13,7 @@ Tags are little labels you stick on transactions, for things that don't fit neat
 - Filter and report by tags alongside categories and payees
 - See every tag on one screen, with how many transactions use it, their total and when it was last used
 - Rename, recolour, deactivate or remove a tag, and merge two tags into one
+- Keep your tags after you close the desktop app
 
 ## Terminology
 
@@ -56,7 +59,7 @@ The Add and Edit dialogs ask for a name and an optional colour: pick none, one o
 - Nested tags (tags inside tags) are not supported — keep them flat.
 - The dedicated Tags screen is in the desktop app only; the terminal app's Tags screen doesn't manage tags yet. It does show and set a tag's colour: in its new and edit popups, press `space` on the colour field to step through the presets (and back to none), or type a hex colour.
 - The desktop app has no transaction form yet, so you can't add a tag to a transaction there.
-- Everything is sample data for now; changes aren't saved.
+- The terminal app's Tags screen is sample data; changes there aren't saved.
 
 ## Related
 
@@ -94,6 +97,7 @@ Intended features for Tags. Ticked means built in at least one app; the tag says
 - [x] TAG-009 (desktop): Remove a tag, untagging every transaction that carries it
 - [x] TAG-010 (desktop): Deactivate and reactivate a tag
 - [x] TAG-011 (desktop): Flag likely duplicate tags and offer to merge them
+- [x] TAG-012 (desktop): Keep your tags after you close the app
 
 ## For developers
 
