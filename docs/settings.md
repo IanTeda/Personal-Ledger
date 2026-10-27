@@ -247,7 +247,7 @@ A reminder only does something when the type tracks a date, and reminders don't 
 
 ### Inventory page
 
-The Inventory page is where you set up the things whose contents you keep a register of. A **Location** is one such thing, such as a house, a storage unit, a car or a boat, and each Location holds any number of **Areas**: a house's Kitchen and Garage, a ute's Cab, Tray and Toolbox. Each Location is one Inventory register, so its Areas become that register's area tabs, in the order shown here. Areas are one level deep: an Area never holds other Areas. Like the rest of Inventory, it runs on sample data for now, so nothing you change is saved.
+The Inventory page is where you set up the things whose contents you keep a register of. A **Location** is one such thing, such as a house, a storage unit, a car or a boat, and each Location holds any number of **Areas**: a house's Kitchen and Garage, a ute's Cab, Tray and Toolbox. Each Location is one Inventory register, so its Areas become that register's area tabs, in the order shown here. Areas are one level deep: an Area never holds other Areas. The Locations and Areas you set up here are saved, so they are still there when you reopen the app. See [Inventory](inventory.md).
 
 Settings sets up only a Location's name, its Unit and its Areas. A Location's address (for a vehicle, its registration) and its insurance cover are kept on its register in Inventory, and are edited there.
 
