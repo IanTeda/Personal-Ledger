@@ -40,10 +40,7 @@ pub use document_commands::{
     ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, SkipDocument,
     ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
-pub use inventory_commands::{
-    AddArea, AddLocation, EditArea, EditLocation, MoveArea, MoveAreaRefusal, RemoveArea,
-    RemoveLocation,
-};
+pub use inventory_commands::RemoveLocation;
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{MergeTags, RemoveTag};

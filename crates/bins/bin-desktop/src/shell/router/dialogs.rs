@@ -3,7 +3,7 @@
 //! and snapshots use. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
 
 use super::Root;
-use crate::settings::inventory::InventoryPage;
+use crate::inventory::InventoryPage;
 use crate::view::help::{HelpDialog, HelpGroup};
 use crate::{
     accounts::AccountsPage,
@@ -133,10 +133,7 @@ impl Root {
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
-            Some(
-                OpenDialog::Tracing(_) | OpenDialog::DocumentTypes(_) | OpenDialog::Inventory(_),
-            )
-            | None => {}
+            Some(OpenDialog::Tracing(_) | OpenDialog::DocumentTypes(_)) | None => {}
         }
     }
 

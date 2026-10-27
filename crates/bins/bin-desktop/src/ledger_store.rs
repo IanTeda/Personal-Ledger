@@ -64,7 +64,7 @@ impl LedgerSetup {
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
         Self {
             tags: crate::tags::ports::in_memory(&ledger),
-            inventory: crate::settings::inventory::ports::in_memory(&ledger),
+            inventory: crate::inventory::ports::in_memory(&ledger),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
@@ -129,7 +129,7 @@ impl LedgerStore {
             accounts,
             categories,
             tags: crate::tags::ports::in_memory(&ledger),
-            inventory: crate::settings::inventory::ports::in_memory(&ledger),
+            inventory: crate::inventory::ports::in_memory(&ledger),
             ledger,
             payees,
             transactions: Rc::new(RefCell::new(transactions)),
@@ -243,11 +243,8 @@ impl LedgerStore {
             );
             let tags_deleted =
                 crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
-            let inventory_written = crate::settings::inventory::ports::forward(
-                &mut *self.inventory.borrow_mut(),
-                &changes,
-                self.ledger.inventory(),
-            );
+            let inventory_written =
+                crate::inventory::ports::forward(&mut *self.inventory.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
@@ -401,6 +398,14 @@ impl LedgerStore {
     pub fn refresh_tags(&mut self, cx: &mut Context<'_, Self>) {
         if self.copy_tags() {
             self.announce(cx, BTreeSet::from([Domain::Tags]));
+        }
+    }
+
+    /// Brings the Inventory read copy in line with the store after the Inventory page wrote it,
+    /// announcing `Domain::Inventory` only when it changed.
+    pub fn refresh_inventory(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_inventory() {
+            self.announce(cx, BTreeSet::from([Domain::Inventory]));
         }
     }
 

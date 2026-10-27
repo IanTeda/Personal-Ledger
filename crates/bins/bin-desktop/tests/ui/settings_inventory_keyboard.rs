@@ -596,3 +596,59 @@ fn a_failed_write_puts_the_inventory_back_with_an_error_toast(app: &mut TestAppC
                 == "Couldn't save the change to the inventory, so it is back as last saved"
     }));
 }
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+    ui.press("escape");
+
+    // The legend follows the selected row: an Area adds `J/K` to it.
+    ui.press("right right");
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+/// Moves the Documents selection to `file` with `j`, which keeps it while away.
+fn focus_document(ui: &mut Harness<'_>, file: &str) {
+    for _ in 0..200 {
+        if ui.documents().selected_file.as_deref() == Some(file) {
+            return;
+        }
+        ui.press("j");
+    }
+    unreachable!("never reached `{file}`");
+}
+
+#[gpui::test]
+fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.click("primary-rail-Documents");
+    focus_document(&mut ui, "aami-car-policy.pdf");
+    assert_eq!(
+        ui.documents().selected_links,
+        3,
+        "a Payee, a Bill Plan and the Toyota Corolla in 12 Elm St"
+    );
+    ui.press("g s");
+    ui.press("j j j j j j j j j l");
+    assert_eq!(ui.settings().page, "Inventory");
+    ui.press("x");
+    ui.press("1 2 space shift-e l m space shift-s t space c o n t e n t s");
+
+    let before = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "the removal and the dropped Links land in one commit"
+    );
+    assert_eq!(names(&mut ui), ["Storage unit", "Hilux"]);
+    ui.click("primary-rail-Documents");
+    let page = ui.documents();
+    assert_eq!(page.selected_file.as_deref(), Some("aami-car-policy.pdf"));
+    assert_eq!(page.selected_links, 2, "the Item's Link is gone");
+}

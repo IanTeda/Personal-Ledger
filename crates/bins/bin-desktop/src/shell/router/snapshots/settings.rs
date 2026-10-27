@@ -6,13 +6,13 @@ pub use crate::accounts::SettingsAccountsSnapshot;
 #[doc(hidden)]
 pub use crate::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
+pub use crate::inventory::SettingsInventorySnapshot;
+#[doc(hidden)]
 pub use crate::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::general::SettingsGeneralSnapshot;
-#[doc(hidden)]
-pub use crate::settings::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::settings::snapshot::{SettingsDisplaySnapshot, SettingsSnapshot};
 #[doc(hidden)]

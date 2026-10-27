@@ -9,7 +9,6 @@ pub mod display;
 pub mod documents;
 pub mod general;
 pub(crate) mod hints;
-pub mod inventory;
 pub mod page;
 pub mod pages;
 pub mod picker;

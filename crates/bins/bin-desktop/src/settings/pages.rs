@@ -12,6 +12,7 @@ use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
     categories::{CategoriesPage, CategoriesSetup, categories_page},
     institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
+    inventory::{InventoryPage, InventorySetup, inventory_page},
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     payees::{PayeesPage, PayeesSetup, payees_page},
@@ -23,7 +24,6 @@ use crate::{
         documents::DocumentsPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
-        inventory::InventoryPage,
         page::PageRowClicked,
         state::SettingsView,
         sync_server::SyncServerPage,
@@ -50,6 +50,7 @@ pub struct SettingsSetup {
     pub accounts: AccountsSetup,
     pub categories: CategoriesSetup,
     pub tags: TagsSetup,
+    pub inventory: InventorySetup,
 }
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
@@ -290,6 +291,7 @@ impl SettingsPages {
             accounts,
             categories,
             tags,
+            inventory,
         } = setup;
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
@@ -306,7 +308,7 @@ impl SettingsPages {
             tags: tags_page(tags, ledger.clone(), cx),
             payees: payees_page(payees.ports, ledger.clone(), payees.keymap, cx),
             documents: cx.new(|cx| DocumentsPage::new(ledger.clone(), cx)),
-            inventory: cx.new(|cx| InventoryPage::new(ledger.clone(), cx)),
+            inventory: inventory_page(inventory, ledger.clone(), cx),
             sync_server: cx.new(|_| SyncServerPage),
             data_backup: cx.new(|_| DataBackupPage),
             // A private, empty capture until `set_log_capture` hands over the real one.

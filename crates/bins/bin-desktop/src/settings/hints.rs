@@ -1,8 +1,6 @@
 //! The status-line legends of the Settings pages and of the dialogs they open, as `(key, action)`
 //! pairs. They live beside the Settings Views that own the keys, not in `Root`.
 
-use crate::settings::inventory::InventoryRow;
-
 /// The Settings Documents page's status-line legend (16p's keys), as `(key, action)`.
 pub(crate) fn settings_documents_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -12,32 +10,6 @@ pub(crate) fn settings_documents_hints() -> Vec<(&'static str, String)> {
         ("x", crate::msg::desktop_hint_remove()),
         ("n", crate::msg::desktop_hint_new()),
     ]
-}
-
-/// The Settings Inventory page's status-line legend by the selected row (#491), as `(key, action)`.
-pub(crate) fn settings_inventory_hints(
-    selected: Option<InventoryRow>,
-) -> Vec<(&'static str, String)> {
-    match selected {
-        Some(InventoryRow::Location(_)) => vec![
-            ("j/k", crate::msg::desktop_inventory_hint_move()),
-            ("\u{2192}/\u{2190}", crate::msg::desktop_hint_expand()),
-            ("e", crate::msg::desktop_hint_edit()),
-            ("x", crate::msg::desktop_hint_remove()),
-            ("n", crate::msg::desktop_inventory_hint_new_location()),
-            ("a", crate::msg::desktop_inventory_hint_new_area()),
-        ],
-        Some(InventoryRow::Area(_)) => vec![
-            ("j/k", crate::msg::desktop_inventory_hint_move()),
-            ("\u{2190}", crate::msg::desktop_inventory_hint_location()),
-            ("J/K", crate::msg::desktop_hint_reorder()),
-            ("e", crate::msg::desktop_hint_edit()),
-            ("x", crate::msg::desktop_hint_remove()),
-            ("a", crate::msg::desktop_inventory_hint_new_area()),
-            ("n", crate::msg::desktop_inventory_hint_new_location()),
-        ],
-        None => vec![("n", crate::msg::desktop_inventory_hint_new_location())],
-    }
 }
 
 /// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,

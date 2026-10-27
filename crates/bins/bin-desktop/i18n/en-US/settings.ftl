@@ -153,4 +153,3 @@ desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.
 
 ## The status-line legend's fold key on a tree page (Inventory).
 
-desktop-hint-expand = expand

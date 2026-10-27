@@ -13,7 +13,6 @@ use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{AreaId, CategoryId, DocumentTypeId, ItemId, LocationId, TagId};
 use lib_documents::{Document, types::DocumentTypeRow};
-use lib_inventory::{Area, Item, Location};
 use lib_payees::Payee;
 use lib_transactions::Transaction;
 
@@ -55,15 +54,8 @@ pub enum LedgerChange {
     UpsertDocument(Document),
     UpsertDocumentType(DocumentTypeRow),
     DeleteDocumentType(DocumentTypeId),
-    UpsertLocation(Location),
     DeleteLocation(LocationId),
-    /// An Area names its Location, since an Area row is keyed by its own id.
-    UpsertArea {
-        location: LocationId,
-        area: Area,
-    },
     DeleteArea(AreaId),
-    UpsertItem(Item),
     DeleteItem(ItemId),
 }
 
@@ -78,12 +70,9 @@ impl LedgerChange {
             Self::UpsertBudget(_) => Domain::Budgets,
             Self::UpsertDocument(_) => Domain::Documents,
             Self::UpsertDocumentType(_) | Self::DeleteDocumentType(_) => Domain::DocumentTypes,
-            Self::UpsertLocation(_)
-            | Self::DeleteLocation(_)
-            | Self::UpsertArea { .. }
-            | Self::DeleteArea(_)
-            | Self::UpsertItem(_)
-            | Self::DeleteItem(_) => Domain::Inventory,
+            Self::DeleteLocation(_) | Self::DeleteArea(_) | Self::DeleteItem(_) => {
+                Domain::Inventory
+            }
         }
     }
 }

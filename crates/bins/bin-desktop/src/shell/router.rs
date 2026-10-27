@@ -178,8 +178,8 @@ pub fn build(
     // The Tags store is shared by the Ledger's forwarding shim and the Tags page's usage reads
     // (#862).
     let tags: lib_database::SharedTagsStore = Rc::new(std::cell::RefCell::new(tags));
-    // The Inventory store is the Ledger's forwarding shim's and read copy's alone until the
-    // Inventory page holds it (#866, #867).
+    // The Inventory store is shared by the Ledger's forwarding shim and read copy and the
+    // Inventory page (#866, #867).
     let inventory: lib_database::SharedInventoryStore = Rc::new(std::cell::RefCell::new(inventory));
     let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
     // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
@@ -197,6 +197,8 @@ pub fn build(
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let tags_setup = crate::tags::TagsSetup::new(tags.clone(), &bindings.keybindings);
+    let inventory_setup =
+        crate::inventory::InventorySetup::new(inventory.clone(), &bindings.keybindings);
     let categories_setup =
         crate::categories::CategoriesSetup::new(categories.clone(), &bindings.keybindings);
     let payments = crate::bill_payments::payments(transactions.clone(), &bills);
@@ -229,6 +231,7 @@ pub fn build(
         accounts: accounts_setup,
         categories: categories_setup,
         tags: tags_setup,
+        inventory: inventory_setup,
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
