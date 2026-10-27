@@ -60,6 +60,7 @@ lib_institutions = { path = "../../../crates/libs/lib-institutions", features = 
 lib_accounts = { path = "../../../crates/libs/lib-accounts", features = ["contract-tests"] }
 lib_categories = { path = "../../../crates/libs/lib-categories", features = ["contract-tests"] }
 lib_tags = { path = "../../../crates/libs/lib-tags", features = ["contract-tests"] }
+lib_inventory = { path = "../../../crates/libs/lib-inventory", features = ["contract-tests"] }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments", features = ["contract-tests"] }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion", features = ["contract-tests"] }
 serde_json = { workspace = true }

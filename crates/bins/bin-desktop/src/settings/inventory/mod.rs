@@ -29,7 +29,7 @@ use gpui::{AnyElement, IntoElement as _};
 use std::collections::HashSet;
 
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Pixels, Point, Subscription};
-use lib_core::{AreaId, LocationId, UnitKind};
+use lib_core::{AreaId, LocationId, UnitId, UnitKind};
 use lib_ledger::{Domain, MoveArea};
 use lib_toast::ToastKind;
 
@@ -517,7 +517,7 @@ impl InventoryPage {
     // -----------------------------------------------------------------------------------------
 
     /// The fiat Units a Location can be kept in, as option labels, with each one's code.
-    fn unit_choices(&self, cx: &App) -> Vec<(String, String)> {
+    fn unit_choices(&self, cx: &App) -> Vec<(String, UnitId)> {
         self.ledger
             .read(cx)
             .ledger()
@@ -530,7 +530,7 @@ impl InventoryPage {
                         &unit.code.to_uppercase(),
                         &unit.name,
                     ),
-                    unit.code.clone(),
+                    unit.id,
                 )
             })
             .collect()
@@ -566,7 +566,7 @@ impl InventoryPage {
         let preferred = self
             .selected_location(cx)
             .and_then(|id| self.inventory(cx).location(id))
-            .and_then(|location| choices.iter().find(|(_, code)| *code == location.unit))
+            .and_then(|location| choices.iter().find(|(_, id)| *id == location.unit))
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
         let form = LocationForm::for_add(preferred, self.location_context(cx));
@@ -697,7 +697,7 @@ impl InventoryPage {
                 .map(|p| {
                     (
                         p.name.clone(),
-                        p.unit.clone(),
+                        self.ledger.read(cx).ledger().unit_code(p.unit).to_string(),
                         p.cover.as_ref().map(|c| c.insurer.clone()),
                     )
                 })

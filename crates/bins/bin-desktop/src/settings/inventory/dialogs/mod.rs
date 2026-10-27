@@ -351,8 +351,9 @@ impl InventoryDialog {
             Self::Add(form) => Some(location_form(form, None)),
             Self::Edit(id, form) => {
                 let location = inventory.location(*id)?;
-                let fixed =
-                    crate::msg::desktop_inventory_field_unit_fixed(&location.unit.to_uppercase());
+                let fixed = crate::msg::desktop_inventory_field_unit_fixed(
+                    &ledger.unit_code(location.unit).to_uppercase(),
+                );
                 Some(location_form(form, Some(fixed)))
             }
             Self::Remove(id, form) => {

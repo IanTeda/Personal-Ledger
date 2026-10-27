@@ -10,7 +10,7 @@
 //! the Inventory surface, so Edit starts its draft from the Location as it is and changes only the
 //! name: nothing else is lost.
 
-use lib_core::{AreaId, LocationId};
+use lib_core::{AreaId, LocationId, UnitId};
 
 use crate::{
     form::field::TextField,
@@ -48,8 +48,8 @@ impl Problem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocationContext {
     pub inventory: Inventory,
-    /// The fiat Units a Location can be kept in: each one's option label, then its code.
-    pub unit_choices: Vec<(String, String)>,
+    /// The fiat Units a Location can be kept in: each one's option label, then its id.
+    pub unit_choices: Vec<(String, UnitId)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,7 +86,13 @@ impl LocationForm {
     pub fn from_location(location: &Location, context: LocationContext) -> Self {
         Self {
             name: TextField::new(location.name.clone()),
-            unit: SelectState::new(Some(location.unit.clone())),
+            unit: SelectState::new(
+                context
+                    .unit_choices
+                    .iter()
+                    .find(|(_, id)| *id == location.unit)
+                    .map(|(label, _)| label.clone()),
+            ),
             focused: LocationField::Name,
             adding: false,
             touched: false,
@@ -131,14 +137,14 @@ impl LocationForm {
             .collect()
     }
 
-    /// The Unit code the picker is on, if it has a Unit at all.
-    pub fn unit_code(&self) -> Option<&str> {
+    /// The Unit the picker is on, if it has a Unit at all.
+    pub fn unit_id(&self) -> Option<UnitId> {
         let label = self.unit.value()?;
         self.context
             .unit_choices
             .iter()
             .find(|(option, _)| option == label)
-            .map(|(_, code)| code.as_str())
+            .map(|(_, id)| *id)
     }
 
     /// A click on the Unit field: focuses it and toggles its list.
@@ -165,19 +171,18 @@ impl LocationForm {
 
     /// The first problem with the draft, in screen order.
     pub fn problem(&self) -> Option<Problem> {
-        let unit = self.unit_code();
+        let unit = self.unit_id();
         let draft = self.draft();
         let mut scratch = self.context.inventory.clone();
         let result = match self.own_id {
             Some(id) => scratch.edit_location(id, &draft),
             None => scratch
-                .add_location(&draft, unit.unwrap_or("-"))
+                .add_location(&draft, unit.unwrap_or_else(UnitId::new))
                 .map(|_| ()),
         };
         match result {
             Err(LocationError::Name(NameError::Empty)) => Some(Problem::NameEmpty),
             Err(LocationError::Name(NameError::Taken)) => Some(Problem::NameTaken),
-            Err(LocationError::UnitMissing) => Some(Problem::UnitMissing),
             // Settings never edits the cover, so a cover refusal can only be the Location's own.
             Ok(()) | Err(LocationError::Unknown | LocationError::Cover(_)) => {
                 (self.adding && unit.is_none()).then_some(Problem::UnitMissing)
@@ -456,8 +461,8 @@ mod tests {
         LocationContext {
             inventory: seed(),
             unit_choices: vec![
-                ("AUD".to_string(), "aud".to_string()),
-                ("NZD".to_string(), "nzd".to_string()),
+                ("AUD".to_string(), UnitId::SEED_AUD),
+                ("NZD".to_string(), UnitId::SEED_BTC),
             ],
         }
     }
@@ -590,7 +595,7 @@ mod tests {
             DialogOutcome::Handled
         );
         assert_eq!(form.unit.value(), Some("NZD"));
-        assert_eq!(form.unit_code(), Some("nzd"));
+        assert_eq!(form.unit_id(), Some(UnitId::SEED_BTC));
     }
 
     #[test]
@@ -717,8 +722,8 @@ mod tests {
         LocationContext {
             inventory: Inventory::default(),
             unit_choices: vec![
-                ("AUD".to_string(), "aud".to_string()),
-                ("NZD".to_string(), "nzd".to_string()),
+                ("AUD".to_string(), UnitId::SEED_AUD),
+                ("NZD".to_string(), UnitId::SEED_BTC),
             ],
         }
     }

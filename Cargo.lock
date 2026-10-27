@@ -4817,6 +4817,7 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_institutions",
+ "lib_inventory",
  "lib_ledger",
  "lib_payees",
  "lib_tags",
@@ -4871,6 +4872,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_core",
+ "tracing",
 ]
 
 [[package]]

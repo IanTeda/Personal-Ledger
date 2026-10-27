@@ -124,7 +124,7 @@ impl DialogForm for InventoryDialog {
         }
         match self {
             Self::Add(form) => {
-                let unit = form.unit_code().ok_or(FormError)?.to_string();
+                let unit = form.unit_id().ok_or(FormError)?;
                 let draft = form.draft();
                 Ok(InventoryCommand::AddLocation(AddLocation { draft, unit }))
             }

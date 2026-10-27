@@ -25,6 +25,7 @@ const MIGRATED: &[&str] = &[
     "lib_bills",
     "lib_categories",
     "lib_institutions",
+    "lib_inventory",
     "lib_payees",
     "lib_shell",
     "lib_tags",

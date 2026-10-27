@@ -17,6 +17,11 @@ lib_core = { path = "../lib-core" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# The port contract suite (`contract`), for `lib-database` to run against its adapter.
+contract-tests = []
 
 [lints]
 workspace = true

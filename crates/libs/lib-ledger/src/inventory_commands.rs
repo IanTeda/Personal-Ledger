@@ -5,7 +5,7 @@
 //! Single-entity rules stay in `lib_inventory`. What lives here is the rule that crosses domains: a
 //! removed Location drops the Document Links to its Items, since a Document names an Item by id.
 
-use lib_core::{AreaId, ItemId, LocationId};
+use lib_core::{AreaId, ItemId, LocationId, UnitId};
 use lib_inventory::{AreaError, LocationDraft, LocationError, RemovedArea, RemovedLocation};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
@@ -22,7 +22,7 @@ impl Ledger {
     pub fn add_location(
         &mut self,
         draft: &LocationDraft,
-        unit: &str,
+        unit: UnitId,
     ) -> Result<LocationId, LocationError> {
         let id = self.inventory.add_location(draft, unit)?;
         self.record_location(id);
@@ -121,14 +121,14 @@ impl Ledger {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddLocation {
     pub draft: LocationDraft,
-    pub unit: String,
+    pub unit: UnitId,
 }
 
 impl LedgerCommand for AddLocation {
     type Outcome = LocationId;
     type Refusal = LocationError;
     fn run(self, ledger: &mut Ledger) -> Result<LocationId, LocationError> {
-        ledger.add_location(&self.draft, &self.unit)
+        ledger.add_location(&self.draft, self.unit)
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
     fn add_location_records_the_new_location() {
         let mut ledger = ledger();
         let id = ledger
-            .add_location(&draft("Beach shack"), "nzd")
+            .add_location(&draft("Beach shack"), UnitId::SEED_BTC)
             .expect("a new name lands");
         let changes = ledger.drain_changes();
         assert_eq!(changes.len(), 1);
@@ -280,17 +280,38 @@ mod tests {
             LedgerChange::UpsertLocation(location) => {
                 assert_eq!(location.id, id);
                 assert_eq!(location.name, "Beach shack");
-                assert_eq!(location.unit, "nzd");
+                assert_eq!(location.unit, UnitId::SEED_BTC);
             }
             other => panic!("expected an upsert of the Location, got {other:?}"),
         }
     }
 
     #[test]
+    fn a_location_keeps_its_unit_when_the_units_code_is_renamed() {
+        let mut ledger = Ledger::stub_on(today());
+        let id = ledger
+            .add_location(&draft("Beach shack"), UnitId::SEED_AUD)
+            .expect("a new name lands");
+        let unit = ledger.inventory().location(id).expect("added").unit;
+        assert_eq!(ledger.unit_code(unit), "aud");
+
+        ledger
+            .units
+            .iter_mut()
+            .find(|row| row.id == UnitId::SEED_AUD)
+            .expect("the stub has aud")
+            .code = "aus".to_string();
+
+        let location = ledger.inventory().location(id).expect("still there");
+        assert_eq!(location.unit, UnitId::SEED_AUD);
+        assert_eq!(ledger.unit_code(location.unit), "aus");
+    }
+
+    #[test]
     fn a_refused_add_location_leaves_the_ledger_untouched() {
         let mut ledger = ledger();
         let before = ledger.inventory().clone();
-        let refused = ledger.add_location(&draft("  "), "aud");
+        let refused = ledger.add_location(&draft("  "), UnitId::SEED_AUD);
         assert_eq!(refused, Err(LocationError::Name(NameError::Empty)));
         assert_untouched(&mut ledger, &before);
     }
