@@ -1,5 +1,5 @@
 //! The Institutions Settings page (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
-//! state"): every Institution in the order added, with its Account type, and `edit · delete` per
+//! state"): every Institution in the order added, with its Products, and `edit · delete` per
 //! row. Edit and delete have no Dialog yet, so they say so on the status line.
 //!
 //! The selection is an Institution id. It may name an Institution that has since gone, so it is
@@ -50,7 +50,7 @@ pub struct InstitutionsPageViewModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionColumns {
     pub name: String,
-    pub account_types: String,
+    pub products: String,
     pub actions: String,
 }
 
@@ -58,7 +58,7 @@ pub struct InstitutionColumns {
 pub struct InstitutionLine {
     pub id: InstitutionId,
     pub name: String,
-    pub account_type: String,
+    pub products: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,7 +130,7 @@ impl InstitutionsPagePresenter {
             .map(|institution| InstitutionLine {
                 id: institution.id,
                 name: institution.name,
-                account_type: institution.account_type,
+                products: institution.products,
             })
             .collect();
         let selected = resolve(rows.iter().map(|row| row.id), self.selected);
@@ -139,7 +139,7 @@ impl InstitutionsPagePresenter {
             add_button: msg::institutions_add_button("+"),
             columns: InstitutionColumns {
                 name: lib_locale::msg::column_institution(),
-                account_types: msg::institutions_column_account_types(),
+                products: msg::institutions_column_products(),
                 actions: lib_locale::msg::column_actions(),
             },
             rows,
@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(view.scope, "6 institutions");
         assert_eq!(view.add_button, "+ Add institution");
         assert_eq!(view.rows[0].name, "ANZ Banking Group");
-        assert_eq!(view.rows[0].account_type, "savings \u{b7} offset");
+        assert_eq!(view.rows[0].products, "savings \u{b7} offset");
         assert_eq!(page.selected_name().as_deref(), Some("ANZ Banking Group"));
     }
 

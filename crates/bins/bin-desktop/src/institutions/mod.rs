@@ -22,7 +22,7 @@ pub use view::page::InstitutionsPage;
 
 use lib_institutions::presenter::InstitutionsPageEvent;
 
-/// The Institutions page: `(name, account type)` rows in table order, and the selected row's name
+/// The Institutions page: `(name, products)` rows in table order, and the selected row's name
 /// (ADR-0030).
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]

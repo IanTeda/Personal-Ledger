@@ -179,7 +179,7 @@ mod tests {
         let bank = Institution {
             id: lib_core::InstitutionId::new(),
             name: "Bank X".into(),
-            account_type: "savings".into(),
+            products: "savings".into(),
         };
 
         storage.institutions.add_institution(bank.clone());

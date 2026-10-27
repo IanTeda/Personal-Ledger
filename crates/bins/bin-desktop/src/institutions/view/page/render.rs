@@ -1,5 +1,5 @@
 //! Draws the Institutions page's view model (`docs/ux/desktop-mockups/16-settings/README.md`'s
-//! "2a resting state"): a table (INSTITUTION / ACCOUNT TYPE) with per-row edit/delete buttons and
+//! "2a resting state"): a table (INSTITUTION / PRODUCTS) with per-row edit/delete buttons and
 //! a "+ Add institution" button below it, the same shape as the Units page. Every click sends the
 //! Presenter the event its key does; a row click only selects.
 
@@ -16,7 +16,7 @@ use crate::theme::color;
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const ACCOUNT_TYPE_WIDTH: gpui::Pixels = px(140.0);
+const PRODUCTS_WIDTH: gpui::Pixels = px(140.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
 
 impl Render for InstitutionsPage {
@@ -77,11 +77,7 @@ fn table_header(view: &InstitutionsPageViewModel, cx: &App) -> impl IntoElement 
         .text_size(px(10.0))
         .text_color(color::muted(cx))
         .child(div().flex_1().child(upper(&columns.name)))
-        .child(
-            div()
-                .w(ACCOUNT_TYPE_WIDTH)
-                .child(upper(&columns.account_types)),
-        )
+        .child(div().w(PRODUCTS_WIDTH).child(upper(&columns.products)))
         .child(
             div()
                 .w(ACTIONS_WIDTH)
@@ -146,9 +142,9 @@ fn row(
         )
         .child(
             div()
-                .w(ACCOUNT_TYPE_WIDTH)
+                .w(PRODUCTS_WIDTH)
                 .text_color(faint)
-                .child(line.account_type.clone()),
+                .child(line.products.clone()),
         )
         .child(
             div()

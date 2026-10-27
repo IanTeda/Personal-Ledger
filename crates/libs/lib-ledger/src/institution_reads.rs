@@ -35,7 +35,7 @@ mod tests {
         institutions.push(Institution {
             id: InstitutionId::new(),
             name: "Bank X".into(),
-            account_type: "savings".into(),
+            products: "savings".into(),
         });
         assert!(ledger.refresh_institutions(institutions.clone()));
         assert_eq!(ledger.institutions(), institutions);

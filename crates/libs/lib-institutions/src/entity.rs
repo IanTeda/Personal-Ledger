@@ -4,24 +4,25 @@ use lib_core::InstitutionId;
 
 /// One Institution: a row of the **Institutions** section's table
 /// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state" markup: INSTITUTION /
-/// ACCOUNT TYPE columns).
+/// PRODUCTS columns).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Institution {
     pub id: InstitutionId,
     pub name: String,
-    /// The ACCOUNT TYPE column, e.g. `"savings \u{b7} offset"` -- the mockup joins multiple
-    /// types with the same `\u{b7}` separator the scope notes use, as one free-form label (not a
-    /// `Vec` of chips -- that multi-select shape belongs to the Add institution dialog's own
-    /// input, not this read-only table cell). The Desktop's Add institution form joins the same
-    /// way when it builds a draft.
-    pub account_type: String,
+    /// The PRODUCTS column, what the Institution offers (`GLOSSARY.md`'s Products), e.g.
+    /// `"savings \u{b7} offset"` -- the mockup joins several with the same `\u{b7}` separator the
+    /// scope notes use, as one free-form label (not a `Vec` of chips -- that multi-select shape
+    /// belongs to the Add institution dialog's own input, not this read-only table cell). The Add
+    /// institution form joins the same way when it builds a draft. Descriptive only: it never
+    /// limits which Accounts may name the Institution.
+    pub products: String,
 }
 
-/// What the Add institution dialog asks for: the name as typed and the joined Account type label.
+/// What the Add institution dialog asks for: the name as typed and the joined Products label.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionDraft {
     pub name: String,
-    pub account_type: String,
+    pub products: String,
 }
 
 /// Why an Institution write was refused.
@@ -64,10 +65,10 @@ pub fn default_institutions() -> Vec<Institution> {
         ),
     ]
     .into_iter()
-    .map(|(id, name, account_type)| Institution {
+    .map(|(id, name, products)| Institution {
         id,
         name: name.to_string(),
-        account_type: account_type.to_string(),
+        products: products.to_string(),
     })
     .collect()
 }
@@ -88,7 +89,7 @@ pub fn find_by_name<'a>(institutions: &'a [Institution], name: &str) -> Option<&
 
 /// Appends the Institution `draft` describes, with a fresh id, and returns it. The name is stored
 /// trimmed and must be set and case-insensitively unique, so persistence can keep `name` unique;
-/// `account_type` is the joined label the dialog built, stored as given. A refusal leaves
+/// `products` is the joined label the dialog built, stored as given. A refusal leaves
 /// `institutions` untouched.
 pub fn insert_institution(
     institutions: &mut Vec<Institution>,
@@ -104,7 +105,7 @@ pub fn insert_institution(
     let institution = Institution {
         id: InstitutionId::new(),
         name: name.to_string(),
-        account_type: draft.account_type.clone(),
+        products: draft.products.clone(),
     };
     institutions.push(institution.clone());
     Ok(institution)
@@ -117,7 +118,7 @@ mod tests {
     fn draft(name: &str) -> InstitutionDraft {
         InstitutionDraft {
             name: name.into(),
-            account_type: "savings \u{b7} offset".into(),
+            products: "savings \u{b7} offset".into(),
         }
     }
 
@@ -154,13 +155,13 @@ mod tests {
     }
 
     #[test]
-    fn an_added_institution_is_appended_trimmed_with_its_joined_account_types() {
+    fn an_added_institution_is_appended_trimmed_with_its_joined_products() {
         let mut institutions = default_institutions();
         let before = institutions.len();
         let added =
             insert_institution(&mut institutions, &draft("  Bank X ")).expect("a free name");
         assert_eq!(added.name, "Bank X");
-        assert_eq!(added.account_type, "savings \u{b7} offset");
+        assert_eq!(added.products, "savings \u{b7} offset");
         assert_eq!(institutions.len(), before + 1);
         assert_eq!(institutions.last(), Some(&added));
     }

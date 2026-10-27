@@ -30,20 +30,11 @@ pub trait InstitutionRepository {
     fn add_institution(&mut self, institution: Institution);
 }
 
-/// The Units the Add Dialog offers as a Default unit, by code, in the Units' order. A read port, so
-/// `lib-institutions` needn't depend on the Units crate. The choice is not saved: an Institution
-/// has no unit yet.
-pub trait InstitutionUnits {
-    fn unit_codes(&self) -> Vec<String>;
-}
-
 /// Every Institutions port, as one value the Presenters share.
 pub trait InstitutionsPorts {
     fn institutions(&self) -> &dyn InstitutionRepository;
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
-
-    fn units(&self) -> &dyn InstitutionUnits;
 }
 
 /// The ports as the page and its Dialog hold them: one set, shared, so an Institution the Dialog

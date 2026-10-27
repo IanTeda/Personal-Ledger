@@ -40,7 +40,7 @@ mod tests {
     fn draft(name: &str) -> InstitutionDraft {
         InstitutionDraft {
             name: name.to_string(),
-            account_type: "loan".to_string(),
+            products: "loan".to_string(),
         }
     }
 
@@ -53,7 +53,7 @@ mod tests {
             .expect("a free name");
 
         assert_eq!(added.name, "Bank X");
-        assert_eq!(added.account_type, "loan");
+        assert_eq!(added.products, "loan");
         assert_eq!(institutions.institutions().last(), Some(&added));
         assert_eq!(institutions.institution(added.id), Some(added));
     }

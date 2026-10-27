@@ -2,15 +2,12 @@
 //! dialog in this map whose own raw markup sets `width:460px` instead of the shared
 //! [`dialog::WIDTH`] (see that constant's own doc).
 //!
-//! Three field shapes, none reused verbatim from the Unit dialogs:
+//! Two field shapes, neither reused verbatim from the Unit dialogs:
 //! - **Institution name**: the dialog's only text field, so it always holds the typing and a click
 //!   into it does nothing.
-//! - **Account types**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s `.chip` role),
-//!   the first *multi*-select control in this crate; every other "pick one" control (segmented
+//! - **Products**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s `.chip` role), the
+//!   first *multi*-select control in this crate; every other "pick one" control (segmented
 //!   controls, dot radios) only ever holds one selection at a time.
-//! - **Default unit**: a single-select built from the Presenter's runtime list of Unit codes, so a
-//!   segmented-style row of its own rather than `form::fields::segmented_control`, whose
-//!   `&'static [T]` bound can't take a runtime slice.
 
 use std::rc::Rc;
 
@@ -54,10 +51,6 @@ fn click_product(dialog: &mut InstitutionsDialog, product: InstitutionProduct) {
     dialog.send(InstitutionFormEvent::ToggleProduct(product));
 }
 
-fn click_unit(dialog: &mut InstitutionsDialog, code: String) {
-    dialog.send(InstitutionFormEvent::Unit(code));
-}
-
 pub(super) fn render(view: &InstitutionFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()
         .flex()
@@ -80,7 +73,6 @@ pub(super) fn render(view: &InstitutionFormViewModel, actions: &Clicks, cx: &App
                 .children(view.name_error.clone().map(|error| error_line(error, cx)))
                 .into_any_element(),
             products_field(view, actions.choose(click_product), cx).into_any_element(),
-            default_unit_field(view, actions.choose(click_unit), cx).into_any_element(),
         ]))
         .child(dialog::action_row(
             [
@@ -147,52 +139,8 @@ fn products_field(
     )
 }
 
-/// The Default unit field: a segmented-style row of the Unit codes. Falls back to a plain "No
-/// units available" note when there are none, which also keeps the Add button disabled.
-fn default_unit_field(
-    view: &InstitutionFormViewModel,
-    on_click: crate::shell::view::dialog_entity::OnChoose<String>,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .child(field_label(view.unit_label.clone()))
-        .child(if view.units.is_empty() {
-            div()
-                .text_size(px(13.0))
-                .text_color(color::faint_text(cx))
-                .child(view.no_units.clone())
-                .into_any_element()
-        } else {
-            div()
-                .flex()
-                .border_1()
-                .border_color(color::divider(cx))
-                .children(view.units.iter().enumerate().map(|(index, code)| {
-                    let selected = view.chosen_unit.as_deref() == Some(code.as_str());
-                    let on_click = on_click.clone();
-                    let picked = code.clone();
-                    div()
-                        .id(SharedString::from(format!("add-institution-unit-{index}")))
-                        .debug_selector(move || format!("add-institution-unit-{index}"))
-                        .cursor_pointer()
-                        .py(px(7.0))
-                        .px(px(12.0))
-                        .text_size(px(13.0))
-                        .when(index > 0, |this| {
-                            this.border_l(px(1.0)).border_color(color::divider(cx))
-                        })
-                        .when(selected, |this| {
-                            this.bg(color::accent(cx)).text_color(color::background(cx))
-                        })
-                        .on_click(move |_event, window, cx| on_click(picked.clone(), window, cx))
-                        .child(code.clone())
-                }))
-                .into_any_element()
-        })
-}
-
-/// The form's fields, for a test: the Name draft, the checked products (comma-joined variant
-/// names) and the chosen Default unit code.
+/// The form's fields, for a test: the Name draft and the checked products (comma-joined variant
+/// names).
 pub(super) fn readback(view: &InstitutionFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("name", view.name.text.clone()),
@@ -205,7 +153,6 @@ pub(super) fn readback(view: &InstitutionFormViewModel) -> Vec<(&'static str, St
                 .collect::<Vec<_>>()
                 .join(","),
         ),
-        ("unit", view.chosen_unit.clone().unwrap_or_default()),
         ("error", view.name_error.clone().unwrap_or_default()),
     ]
 }

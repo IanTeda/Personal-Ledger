@@ -1,10 +1,9 @@
-//! The Add institution Dialog (2e): Name, Account types as a multi-select, and a Default unit.
+//! The Add institution Dialog (2e): Name, and Products as a multi-select.
 //!
 //! - Name is the only text field, so it is always the one typed into; there is nothing to `Tab`
 //!   between.
-//! - Confirming needs a name, at least one Account type and a Default unit. The Account types join
-//!   in the order picked, with the same separator the table's cells use. The Default unit is not
-//!   part of the Institution yet: it is asked for and kept out of the draft.
+//! - Confirming needs a name and at least one Product. The Products join in the order picked, with
+//!   the same separator the table's cells use.
 //! - A refusal from the Interactor shows under the name until the name is edited.
 //! - A confirm raises its own Toast before it closes the Dialog.
 
@@ -15,34 +14,44 @@ use crate::interactor::AddInstitution;
 use crate::protocols::{InstitutionsOutcome, InstitutionsRouter, SharedPorts};
 use crate::{InstitutionDraft, InstitutionError, msg};
 
-/// The Account types the Dialog offers (`docs/ux/desktop-mockups/16-settings/README.md`'s "2e":
-/// savings / credit card / offset / loan / investment). Not `lib_core::AccountType`, which classes
-/// an Account.
+/// The Products the Dialog offers (`GLOSSARY.md`'s Products), enough that every seeded
+/// Institution's label is made of them. Not `lib_core::AccountType`, which classes an Account:
+/// a Product never limits which Accounts may name the Institution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstitutionProduct {
     Savings,
-    CreditCard,
     Offset,
+    CreditCard,
     Loan,
     Investment,
+    Crypto,
+    Retirement,
+    Cash,
 }
 
 impl InstitutionProduct {
-    pub const ALL: [Self; 5] = [
+    /// In the order the Dialog draws them.
+    pub const ALL: [Self; 8] = [
         Self::Savings,
-        Self::CreditCard,
         Self::Offset,
+        Self::CreditCard,
         Self::Loan,
         Self::Investment,
+        Self::Crypto,
+        Self::Retirement,
+        Self::Cash,
     ];
 
     pub fn label(self) -> String {
         match self {
             Self::Savings => msg::institutions_product_savings(),
-            Self::CreditCard => lib_locale::msg::account_kind_credit_card(),
             Self::Offset => msg::institutions_product_offset(),
-            Self::Loan => lib_locale::msg::account_kind_loan(),
-            Self::Investment => lib_locale::msg::account_kind_investment(),
+            Self::CreditCard => msg::institutions_product_credit_card(),
+            Self::Loan => msg::institutions_product_loan(),
+            Self::Investment => msg::institutions_product_investment(),
+            Self::Crypto => msg::institutions_product_crypto(),
+            Self::Retirement => msg::institutions_product_retirement(),
+            Self::Cash => msg::institutions_product_cash(),
         }
     }
 }
@@ -53,13 +62,11 @@ pub enum InstitutionFormEvent {
     Name(String),
     /// A chip: checked becomes unchecked and back.
     ToggleProduct(InstitutionProduct),
-    /// A Default unit, by code.
-    Unit(String),
     Confirm,
     Cancel,
 }
 
-/// One Account type chip as drawn.
+/// One Product chip as drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductChip {
     pub product: InstitutionProduct,
@@ -75,32 +82,23 @@ pub struct InstitutionFormViewModel {
     pub name_error: Option<String>,
     pub products_label: String,
     pub products: Vec<ProductChip>,
-    pub unit_label: String,
-    /// The Units' codes, in order.
-    pub units: Vec<String>,
-    pub chosen_unit: Option<String>,
-    /// What shows in place of the Units while there are none.
-    pub no_units: String,
 }
 
 pub struct InstitutionFormPresenter {
     ports: SharedPorts,
     name: String,
     products: Vec<InstitutionProduct>,
-    unit: Option<String>,
     /// The last refusal, with the name it refused.
     refusal: Option<(String, InstitutionError)>,
 }
 
 impl InstitutionFormPresenter {
-    /// A fresh Add form: no name, Savings checked and the first Unit chosen.
+    /// A fresh Add form: no name and Savings checked.
     pub fn add(ports: SharedPorts) -> Self {
-        let unit = ports.borrow().units().unit_codes().into_iter().next();
         Self {
             ports,
             name: String::new(),
             products: vec![InstitutionProduct::Savings],
-            unit,
             refusal: None,
         }
     }
@@ -114,11 +112,6 @@ impl InstitutionFormPresenter {
                         self.products.remove(at);
                     }
                     None => self.products.push(product),
-                }
-            }
-            InstitutionFormEvent::Unit(code) => {
-                if self.ports.borrow().units().unit_codes().contains(&code) {
-                    self.unit = Some(code);
                 }
             }
             InstitutionFormEvent::Confirm => self.confirm(router),
@@ -145,7 +138,7 @@ impl InstitutionFormPresenter {
                 .as_ref()
                 .filter(|(refused, _)| *refused == self.name)
                 .map(|(_, refusal)| refusal_text(refusal)),
-            products_label: msg::institutions_account_types(),
+            products_label: msg::institutions_products(),
             products: InstitutionProduct::ALL
                 .into_iter()
                 .map(|product| ProductChip {
@@ -154,16 +147,12 @@ impl InstitutionFormPresenter {
                     checked: self.products.contains(&product),
                 })
                 .collect(),
-            unit_label: msg::institutions_default_unit(),
-            units: self.ports.borrow().units().unit_codes(),
-            chosen_unit: self.unit.clone(),
-            no_units: msg::institutions_no_units(),
         }
     }
 
-    /// A name, at least one Account type and a Default unit: all required.
+    /// A name and at least one Product: both required.
     fn is_valid(&self) -> bool {
-        !self.name.trim().is_empty() && !self.products.is_empty() && self.unit.is_some()
+        !self.name.trim().is_empty() && !self.products.is_empty()
     }
 
     fn confirm(&mut self, router: &mut dyn InstitutionsRouter) {
@@ -172,7 +161,7 @@ impl InstitutionFormPresenter {
         }
         let draft = InstitutionDraft {
             name: self.name.clone(),
-            account_type: self
+            products: self
                 .products
                 .iter()
                 .map(|product| product.label())
@@ -244,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_form_has_savings_and_the_first_unit_and_cannot_confirm() {
+    fn a_fresh_form_has_savings_and_cannot_confirm() {
         let form = Form::new();
         let view = form.view();
 
@@ -255,13 +244,55 @@ mod tests {
             .map(|chip| chip.product)
             .collect();
         assert_eq!(checked, [InstitutionProduct::Savings]);
-        assert_eq!(view.chosen_unit.as_deref(), Some("aud"));
         assert!(!view.frame.can_confirm);
         assert_eq!(view.frame.title, "Add institution");
     }
 
     #[test]
-    fn confirming_needs_a_name_a_type_and_a_unit() {
+    fn the_form_offers_the_eight_products_in_order() {
+        let labels: Vec<_> = Form::new()
+            .view()
+            .products
+            .into_iter()
+            .map(|chip| chip.label)
+            .collect();
+
+        assert_eq!(
+            labels,
+            [
+                "savings",
+                "offset",
+                "credit card",
+                "loan",
+                "investment",
+                "crypto",
+                "retirement",
+                "cash",
+            ]
+        );
+        assert_eq!(Form::new().view().products_label, "Products");
+    }
+
+    #[test]
+    fn every_seeded_institutions_products_are_chips() {
+        let labels: Vec<_> = InstitutionProduct::ALL
+            .into_iter()
+            .map(InstitutionProduct::label)
+            .collect();
+
+        for institution in crate::default_institutions() {
+            for product in institution.products.split(" \u{b7} ") {
+                assert!(
+                    labels.iter().any(|label| label == product),
+                    "{product} of {} is not a chip",
+                    institution.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn confirming_needs_a_name_and_a_product() {
         let mut form = Form::new();
         assert!(form.send(InstitutionFormEvent::Confirm).is_empty());
 
@@ -275,21 +306,6 @@ mod tests {
             InstitutionProduct::Savings,
         ));
         assert!(form.view().frame.can_confirm);
-
-        form.ports.borrow_mut().units.codes.clear();
-        let none = InstitutionFormPresenter::add(form.ports.clone());
-        assert!(!none.view_model().frame.can_confirm);
-        assert_eq!(none.view_model().chosen_unit, None);
-    }
-
-    #[test]
-    fn a_unit_not_offered_is_ignored() {
-        let mut form = Form::new();
-
-        form.send(InstitutionFormEvent::Unit("btc".into()));
-        assert_eq!(form.view().chosen_unit.as_deref(), Some("btc"));
-        form.send(InstitutionFormEvent::Unit("xyz".into()));
-        assert_eq!(form.view().chosen_unit.as_deref(), Some("btc"));
     }
 
     #[test]
@@ -311,7 +327,7 @@ mod tests {
             .cloned()
             .expect("the added row");
         assert_eq!(added.name, "Bank X");
-        assert_eq!(added.account_type, "savings \u{b7} offset");
+        assert_eq!(added.products, "savings \u{b7} offset");
         assert_eq!(
             calls,
             vec![

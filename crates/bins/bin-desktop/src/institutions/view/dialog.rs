@@ -115,9 +115,9 @@ impl HostedDialog for InstitutionsDialog {
     /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
     /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         let router = self.send(InstitutionFormEvent::Confirm);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

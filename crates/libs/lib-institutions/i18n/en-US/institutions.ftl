@@ -9,7 +9,7 @@ institutions-count = { $count ->
    *[other] { $count } institutions
 }
 institutions-add-button = { $glyph } Add institution
-institutions-column-account-types = Account type
+institutions-column-products = Products
 institutions-row-edit = edit
 institutions-row-delete = delete
 
@@ -32,11 +32,19 @@ institutions-add-submit = Add institution
 institutions-add-toast = Added { $name }
 institutions-name-label = Institution name
 institutions-name-placeholder = e.g. Commonwealth Bank
-institutions-account-types = Account types
+institutions-products = Products
+
+## The Products chips, in the order the Add institution Dialog offers them. Lower case, as the
+## table's Products cell joins them.
+
 institutions-product-savings = savings
 institutions-product-offset = offset
-institutions-default-unit = Default unit
-institutions-no-units = No units available
+institutions-product-credit-card = credit card
+institutions-product-loan = loan
+institutions-product-investment = investment
+institutions-product-crypto = crypto
+institutions-product-retirement = retirement
+institutions-product-cash = cash
 
 ## An Add refusal, under the name. `$name` is the Institution already holding the name, as it
 ## spells it; names are compared ignoring case and surrounding spaces.

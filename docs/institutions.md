@@ -6,15 +6,15 @@ An institution is the bank, lender or broker that holds one of your accounts: AN
 
 ## What you can do
 
-- See every institution in one list, in the order you added them, with its account types
-- Add an institution with a name and the account types it offers
+- See every institution in one list, in the order you added them, with its products
+- Add an institution with a name and the products it offers
 - Choose an institution when you create an account
 - Keep your institutions after you close the app
 
 ## Terminology
 
 - **Institution:** The bank, lender or broker an account is held with (for example ANZ Banking Group or Vanguard Investments).
-- **Account type:** A label for what the institution offers, such as savings, credit card, offset, loan or investment. The list shows the types you picked joined together.
+- **Products:** A label for what the institution offers: savings, offset, credit card, loan, investment, crypto, retirement or cash. The list shows the products you picked joined together.
 - **No institution:** A built-in entry for cash accounts, which have no bank. It never appears on the Institutions page.
 
 ## Institutions concept
@@ -29,7 +29,7 @@ In the desktop app, open the Institutions page in Settings (press `g` `s` and pi
 
 - Move up and down the list with `j` and `k` or the arrow keys, jump to the top or bottom with `g` `g` and `G` (or `Home` and `End`), and move half a page with `ctrl+d` and `ctrl+u` (or `Page Down` and `Page Up`). Clicking a row selects it.
 - Press `n`, or click Add institution, to add one. If you've changed these keys under `[keybindings]` in your settings, the page follows your keys.
-- In the add dialog, `Tab` and `Shift+Tab` move between the fields. Type the name, choose at least one account type, choose a default unit, then press `ctrl+Enter` to add it, or `Esc` to close without adding.
+- In the add dialog, type the name and click at least one product, then press `ctrl+Enter` to add it, or `Esc` to close without adding.
 - If the name is blank or already taken, the dialog says so under the name and won't add until you change it.
 - `e` and `d`, and each row's `edit` and `delete` links, say the action isn't built yet.
 
@@ -37,17 +37,16 @@ A message at the bottom of the window confirms each institution you add. If it c
 
 ## Worked example
 
-You're setting up your ledger and bank with Commonwealth Bank. You open Settings, choose Institutions and press `n`. You type "Commonwealth Bank", tick savings and offset, leave the default unit as AUD and press `ctrl+Enter`. The list now ends with Commonwealth Bank, shown as "savings · offset", and a message says it was added. You close the desktop app. When you open it again Commonwealth Bank is still there, and the account dialog offers it when you create your savings account.
+You're setting up your ledger and bank with Commonwealth Bank. You open Settings, choose Institutions and press `n`. You type "Commonwealth Bank", tick savings and offset and press `ctrl+Enter`. The list now ends with Commonwealth Bank, shown as "savings · offset", and a message says it was added. You close the desktop app. When you open it again Commonwealth Bank is still there, and the account dialog offers it when you create your savings account.
 
 ## Screens
 
-The desktop app's Institutions page lists every institution in the order you added them, with its name and account types. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. An Add institution button sits at the top.
+The desktop app's Institutions page lists every institution in the order you added them, with its name and products. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. An Add institution button sits at the top.
 
 ## Rules to know
 
 - A name must be set and can't match another institution's name, ignoring capitals.
-- The default unit in the add dialog helps you fill in the form, but it isn't saved with the institution yet.
-- The account types are a label for the list. They don't limit which accounts you can create with the institution.
+- The products are a label for the list. They don't limit which accounts you can create with the institution.
 
 ## Scope
 
@@ -60,7 +59,6 @@ The desktop app's Institutions page lists every institution in the order you add
 ## Related
 
 - **Accounts:** each account is held with one institution, chosen when you create it.
-- **Units:** the add dialog offers your units as a default unit.
 - **Setting up your ledger:** adding institutions is step 3 of the [new ledger workflow](new-ledger-workflow.md).
 
 ## Getting around
@@ -75,8 +73,8 @@ For the full set of keys, see [Getting around](getting-around.md).
 
 Intended features for Institutions. Ticked means built in at least one app; the tag says which.
 
-- [x] INS-001 (desktop): List institutions in the order they were added, with their account types
-- [x] INS-002 (desktop): Add an institution with a name and account types, refusing a blank or taken name
+- [x] INS-001 (desktop): List institutions in the order they were added, with their products
+- [x] INS-002 (desktop): Add an institution with a name and products, refusing a blank or taken name
 - [x] INS-003 (desktop): Keep institutions after the app closes
 - [x] INS-004 (desktop): Choose an institution when creating an account
 - [ ] INS-005: Edit an institution

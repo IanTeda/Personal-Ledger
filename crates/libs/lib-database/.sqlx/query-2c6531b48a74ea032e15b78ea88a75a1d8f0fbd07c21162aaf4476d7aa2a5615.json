@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: InstitutionId\", name, account_type\n           FROM institutions\n           ORDER BY rowid",
+  "query": "SELECT id AS \"id!: InstitutionId\", name, products\n           FROM institutions\n           ORDER BY rowid",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         "type_info": "Text"
       },
       {
-        "name": "account_type",
+        "name": "products",
         "ordinal": 2,
         "type_info": "Text"
       }
@@ -28,5 +28,5 @@
       false
     ]
   },
-  "hash": "b9cff5485df9a8c5799b1ab361143e7dfc0d22f50c3964e3ad2c17cd3b705fce"
+  "hash": "2c6531b48a74ea032e15b78ea88a75a1d8f0fbd07c21162aaf4476d7aa2a5615"
 }

@@ -8,8 +8,7 @@ use std::rc::Rc;
 use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
-    InstitutionUnits, InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts,
-    InstitutionsRouter, SharedPorts,
+    InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
 };
 use crate::{Institution, InstitutionRepository, default_institutions};
 
@@ -38,33 +37,17 @@ impl InstitutionRepository for InMemoryInstitutions {
     }
 }
 
-/// The Units a test offers as a Default unit, by code, in order.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct InMemoryInstitutionUnits {
-    pub codes: Vec<String>,
-}
-
-impl InstitutionUnits for InMemoryInstitutionUnits {
-    fn unit_codes(&self) -> Vec<String> {
-        self.codes.clone()
-    }
-}
-
 /// Every Institutions port in memory.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryPorts {
     pub institutions: InMemoryInstitutions,
-    pub units: InMemoryInstitutionUnits,
 }
 
 impl InMemoryPorts {
-    /// The stub Institutions, with `aud` and `btc` as the Units to choose from.
+    /// The stub Institutions.
     pub fn stub() -> Self {
         Self {
             institutions: InMemoryInstitutions::stub(),
-            units: InMemoryInstitutionUnits {
-                codes: vec!["aud".to_string(), "btc".to_string()],
-            },
         }
     }
 
@@ -84,10 +67,6 @@ impl InstitutionsPorts for InMemoryPorts {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
         &mut self.institutions
-    }
-
-    fn units(&self) -> &dyn InstitutionUnits {
-        &self.units
     }
 }
 

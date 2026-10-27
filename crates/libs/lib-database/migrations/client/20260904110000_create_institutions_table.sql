@@ -4,13 +4,13 @@
 --
 -- name is stored trimmed and unique ignoring case, as lib-institutions' add rule refuses a taken
 -- name before any write reaches this table; NOCASE folds ASCII only, which the rule's own folding
--- covers. account_type is the Account type label the Add institution dialog joins, stored as
+-- covers. products is the Products label (GLOSSARY.md) the Add institution dialog joins, stored as
 -- given. Rows read back in rowid order, the order they were added in.
 
 CREATE TABLE IF NOT EXISTS institutions (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    account_type TEXT NOT NULL,
+    products TEXT NOT NULL,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );

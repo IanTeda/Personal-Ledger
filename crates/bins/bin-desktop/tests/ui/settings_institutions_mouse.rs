@@ -1,5 +1,5 @@
 //! The Settings Institutions page driven by clicks: the Institutions row and add buttons, and the
-//! Add institution dialog's chips, unit choice and buttons. State is read back from `Root`.
+//! Add institution dialog's Products chips and buttons. State is read back from `Root`.
 
 use super::common;
 
@@ -46,17 +46,13 @@ fn institution_edit_and_delete_buttons_flash_a_not_yet_built_message(app: &mut T
 }
 
 #[gpui::test]
-fn the_add_institution_dialog_seeds_savings_and_the_first_unit(app: &mut TestAppContext) {
+fn the_add_institution_dialog_seeds_savings_and_asks_for_no_default_unit(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
 
     ui.click("settings-add-institution");
-    let unit_rows = ui.unit_rows();
     assert_eq!(ui.dialog(), Some("AddInstitution"));
     assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings"));
-    assert_eq!(
-        ui.dialog_value("unit").as_deref(),
-        unit_rows.first().map(|row| row.0.as_str())
-    );
+    assert_eq!(ui.dialog_value("unit"), None);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Dialog);
     ui.click("add-institution-cancel");
     assert_eq!(ui.dialog(), None);
@@ -64,7 +60,7 @@ fn the_add_institution_dialog_seeds_savings_and_the_first_unit(app: &mut TestApp
 }
 
 #[gpui::test]
-fn account_type_chips_toggle_and_the_unit_choice_changes(app: &mut TestAppContext) {
+fn products_chips_toggle_the_new_ones_among_them(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
 
     ui.click("settings-add-institution");
@@ -72,16 +68,18 @@ fn account_type_chips_toggle_and_the_unit_choice_changes(app: &mut TestAppContex
     assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings,Offset"));
     ui.click("add-institution-chip-savings");
     assert_eq!(ui.dialog_value("types").as_deref(), Some("Offset"));
-    ui.click("add-institution-unit-1");
-    let unit_rows = ui.unit_rows();
+    ui.click("add-institution-chip-cash");
+    ui.click("add-institution-chip-crypto");
     assert_eq!(
-        ui.dialog_value("unit").as_deref(),
-        Some(unit_rows[1].0.as_str())
+        ui.dialog_value("types").as_deref(),
+        Some("Offset,Crypto,Cash")
     );
 }
 
 #[gpui::test]
-fn the_add_institution_button_needs_a_name_and_a_type_then_adds_the_row(app: &mut TestAppContext) {
+fn the_add_institution_button_needs_a_name_and_a_product_then_adds_the_row(
+    app: &mut TestAppContext,
+) {
     let mut ui = on_page(app, "Institutions");
     let before = ui.settings_institutions().institutions.len();
 
@@ -101,7 +99,7 @@ fn the_add_institution_button_needs_a_name_and_a_type_then_adds_the_row(app: &mu
 }
 
 #[gpui::test]
-fn an_institution_with_no_account_type_cannot_be_added(app: &mut TestAppContext) {
+fn an_institution_with_no_product_cannot_be_added(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
     let before = ui.settings_institutions().institutions.len();
 

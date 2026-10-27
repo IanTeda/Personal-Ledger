@@ -94,14 +94,14 @@ impl Change for AddInstitution {
 
 async fn upsert(conn: &mut SqliteConnection, institution: &Institution) -> Result<()> {
     sqlx::query!(
-        "INSERT INTO institutions (id, name, account_type)
+        "INSERT INTO institutions (id, name, products)
          VALUES (?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              name = excluded.name,
-             account_type = excluded.account_type",
+             products = excluded.products",
         institution.id,
         institution.name,
-        institution.account_type,
+        institution.products,
     )
     .execute(&mut *conn)
     .await?;
@@ -110,7 +110,7 @@ async fn upsert(conn: &mut SqliteConnection, institution: &Institution) -> Resul
 
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Institution>> {
     let rows = sqlx::query!(
-        r#"SELECT id AS "id!: InstitutionId", name, account_type
+        r#"SELECT id AS "id!: InstitutionId", name, products
            FROM institutions
            ORDER BY rowid"#
     )
@@ -120,7 +120,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Institution>> {
     .map(|row| Institution {
         id: row.id,
         name: row.name,
-        account_type: row.account_type,
+        products: row.products,
     })
     .collect();
     Ok(rows)
@@ -258,7 +258,7 @@ mod tests {
         institutions.add_institution(Institution {
             id: InstitutionId::new(),
             name: "anz banking group".into(),
-            account_type: "savings".into(),
+            products: "savings".into(),
         });
         factory.pending.commit();
 

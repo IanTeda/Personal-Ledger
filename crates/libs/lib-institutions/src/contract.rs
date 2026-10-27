@@ -76,10 +76,10 @@ impl PortsFactory for InMemoryFactory {
     }
 }
 
-fn draft(name: &str, account_type: &str) -> InstitutionDraft {
+fn draft(name: &str, products: &str) -> InstitutionDraft {
     InstitutionDraft {
         name: name.into(),
-        account_type: account_type.into(),
+        products: products.into(),
     }
 }
 
@@ -87,7 +87,7 @@ fn add(ports: &mut dyn InstitutionRepository, draft: InstitutionDraft) -> Instit
     AddInstitution(draft).run(ports).expect("the name is free")
 }
 
-/// An added Institution reloads with its id, trimmed name and joined Account type label.
+/// An added Institution reloads with its id, trimmed name and joined Products label.
 pub fn an_added_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_institutions());
 
@@ -102,7 +102,7 @@ pub fn an_added_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
         Some(Institution {
             id: added.id,
             name: "Bank X".into(),
-            account_type: "savings \u{b7} offset".into(),
+            products: "savings \u{b7} offset".into(),
         })
     );
 }
