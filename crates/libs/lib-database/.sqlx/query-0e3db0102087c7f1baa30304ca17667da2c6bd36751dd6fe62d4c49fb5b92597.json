@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id                AS \"id!: LocationId\",\n               name,\n               address,\n               unit_id           AS \"unit_id!: UnitId\",\n               cover_insurer,\n               cover_policy_no,\n               cover_renews_on   AS \"cover_renews_on?: NaiveDate\",\n               cover_sum_insured AS \"cover_sum_insured?: Money\",\n               cover_item_limit  AS \"cover_item_limit?: Money\"\n           FROM locations\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: LocationId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "address",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_id!: UnitId",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "cover_insurer",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "cover_policy_no",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "cover_renews_on?: NaiveDate",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "cover_sum_insured?: Money",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "cover_item_limit?: Money",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "0e3db0102087c7f1baa30304ca17667da2c6bd36751dd6fe62d4c49fb5b92597"
+}

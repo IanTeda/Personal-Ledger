@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM areas WHERE location_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a2cd2d8b46d8530d8e60130979cce9c2776ecec65e0e85a9d41cffc1828846ec"
+}

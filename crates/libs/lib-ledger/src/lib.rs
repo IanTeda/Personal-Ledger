@@ -15,6 +15,7 @@ mod change;
 mod document_commands;
 mod institution_reads;
 mod inventory_commands;
+mod inventory_reads;
 mod payee_reads;
 pub mod query;
 mod repository;

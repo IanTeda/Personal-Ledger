@@ -10,13 +10,17 @@
 //! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
 //! and the Bills and Payees read its rows (#858). So is the Tags store ([`SharedTagsStore`]): the
 //! Desktop's Ledger forwards the Tags writers to it, and the Tags page and Dialogs read its
-//! usage (#862).
+//! usage (#862). So is the Inventory store ([`SharedInventoryStore`]): the Desktop's Ledger
+//! forwards the Inventory writers to it and keeps a read copy of it for Documents (#866).
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
 //! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
 //! ([`SharedPayeesStore`]): Bills reads its rows, and the Desktop's Ledger forwards the Payees
 //! writers not yet migrated to it.
+//!
+//! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
+//! bundle adds a field rather than an argument (#866).
 //!
 //! [`Stores::with_units`] fills every store but the Units with an empty in-memory one, for a Client
 //! test that drives only the Units: a domain joining the bundle then needs no edit there (#849).
@@ -30,9 +34,11 @@ use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{CategoryId, TagId, UnitId};
+use lib_core::{CategoryId, LocationId, TagId, UnitId};
 use lib_institutions::InstitutionRepository;
 use lib_institutions::fake::InMemoryInstitutions;
+use lib_inventory::InventoryRepository;
+use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
 use lib_tags::fake::InMemoryTagUsage;
 use lib_tags::{TagRepository, TagUsage};
@@ -48,7 +54,8 @@ use crate::adapter::payees::bill_payees;
 use crate::adapter::{accounts, categories};
 use crate::{
     AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
-    PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter, UnitsAdapter, WriteFailure,
+    InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter,
+    UnitsAdapter, WriteFailure,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -506,6 +513,86 @@ impl TagsStore for lib_tags::fake::InMemoryPorts {
     }
 }
 
+/// An Inventory store shared by the Ledger's forwarding shim and read copy. Single-threaded, as
+/// the ports are.
+pub type SharedInventoryStore = Rc<RefCell<dyn InventoryStore>>;
+
+/// The Inventory repository port, wherever it is kept, and the delete Remove Location sends until
+/// `lib-reassign` (#813).
+pub trait InventoryStore {
+    fn inventory(&self) -> &dyn InventoryRepository;
+
+    fn inventory_mut(&mut self) -> &mut dyn InventoryRepository;
+
+    /// Removes Location `id` with its Areas and Items: Remove Location's delete, which the
+    /// Desktop's forwarding shim sends. Not a port write, since the delete also drops the
+    /// Document Links to its Items (Q18, #813).
+    fn delete_location(&mut self, id: LocationId);
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl InventoryStore for InventoryAdapter {
+    fn inventory(&self) -> &dyn InventoryRepository {
+        InventoryAdapter::inventory(self)
+    }
+
+    fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
+        InventoryAdapter::inventory_mut(self)
+    }
+
+    fn delete_location(&mut self, id: LocationId) {
+        InventoryAdapter::delete_location(self, id);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        InventoryAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedInventoryStore`]).
+impl<T: InventoryStore + ?Sized> InventoryStore for Box<T> {
+    fn inventory(&self) -> &dyn InventoryRepository {
+        (**self).inventory()
+    }
+
+    fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
+        (**self).inventory_mut()
+    }
+
+    fn delete_location(&mut self, id: LocationId) {
+        (**self).delete_location(id);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl InventoryStore for InMemoryInventory {
+    fn inventory(&self) -> &dyn InventoryRepository {
+        self
+    }
+
+    fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
+        self
+    }
+
+    fn delete_location(&mut self, id: LocationId) {
+        self.locations.retain(|location| location.id != id);
+        self.items.retain(|item| item.location != id);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// A Transactions store shared by the modules that write it. Single-threaded, as the ports are.
 pub type SharedTransactionsStore = Rc<RefCell<dyn TransactionsStore>>;
 
@@ -813,25 +900,34 @@ impl Commit for CountingCommit {
     }
 }
 
+/// The in-memory stores [`Stores::fake`] bundles, one per persisted domain.
+pub struct FakeStores {
+    pub units: InMemoryPorts,
+    pub institutions: InMemoryInstitutions,
+    pub accounts: lib_accounts::fake::InMemoryPorts,
+    pub categories: InMemoryCategories,
+    pub tags: lib_tags::fake::InMemoryPorts,
+    pub payees: lib_payees::fake::InMemoryPorts,
+    pub transactions: InMemoryTransactions,
+    pub bills: InMemoryBills,
+    pub inventory: InMemoryInventory,
+}
+
 impl Stores {
-    /// `units`, `institutions`, `accounts`, `categories`, `tags`, `payees`, `transactions` and
-    /// `bills` in memory,
-    /// committed through a [`CountingCommit`] whose count is returned, on a failure channel nothing
-    /// reports on, since there is no writer.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one in-memory port set per persisted domain, as `Stores` has one field each"
-    )]
-    pub fn fake(
-        units: InMemoryPorts,
-        institutions: InMemoryInstitutions,
-        accounts: lib_accounts::fake::InMemoryPorts,
-        categories: InMemoryCategories,
-        tags: lib_tags::fake::InMemoryPorts,
-        payees: lib_payees::fake::InMemoryPorts,
-        transactions: InMemoryTransactions,
-        bills: InMemoryBills,
-    ) -> (Self, Rc<Cell<usize>>) {
+    /// `fakes` in memory, committed through a [`CountingCommit`] whose count is returned, on a
+    /// failure channel nothing reports on, since there is no writer.
+    pub fn fake(fakes: FakeStores) -> (Self, Rc<Cell<usize>>) {
+        let FakeStores {
+            units,
+            institutions,
+            accounts,
+            categories,
+            tags,
+            payees,
+            transactions,
+            bills,
+            inventory,
+        } = fakes;
         let commit = CountingCommit::new(Rc::new(InMemoryCommit));
         let count = commit.count();
         let stores = Self {
@@ -843,6 +939,7 @@ impl Stores {
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
+            inventory: Box::new(inventory),
             commit: Rc::new(commit),
             failures: mpsc::channel().1,
         };
@@ -866,6 +963,7 @@ impl Stores {
             payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
             transactions: Box::new(InMemoryTransactions::default()),
             bills: Box::new(InMemoryBills::default()),
+            inventory: Box::new(InMemoryInventory::default()),
             commit,
             failures,
         }
@@ -878,16 +976,17 @@ mod tests {
 
     #[test]
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
-        let (stores, count) = Stores::fake(
-            InMemoryPorts::stub(chrono::Utc::now()),
-            InMemoryInstitutions::stub(),
-            lib_accounts::fake::InMemoryPorts::stub(),
-            InMemoryCategories::stub(),
-            lib_tags::fake::InMemoryPorts::stub(),
-            lib_payees::fake::InMemoryPorts::stub(),
-            InMemoryTransactions::default(),
-            InMemoryBills::default(),
-        );
+        let (stores, count) = Stores::fake(FakeStores {
+            units: InMemoryPorts::stub(chrono::Utc::now()),
+            institutions: InMemoryInstitutions::stub(),
+            accounts: lib_accounts::fake::InMemoryPorts::stub(),
+            categories: InMemoryCategories::stub(),
+            tags: lib_tags::fake::InMemoryPorts::stub(),
+            payees: lib_payees::fake::InMemoryPorts::stub(),
+            transactions: InMemoryTransactions::default(),
+            bills: InMemoryBills::default(),
+            inventory: InMemoryInventory::default(),
+        });
 
         stores.commit.commit();
         stores.commit.commit();

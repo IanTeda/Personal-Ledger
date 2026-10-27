@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id          AS \"id!: ItemId\",\n               location_id AS \"location_id!: LocationId\",\n               area_id     AS \"area_id!: AreaId\",\n               name,\n               replacement AS \"replacement!: Money\"\n           FROM items\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: ItemId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "location_id!: LocationId",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "area_id!: AreaId",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "replacement!: Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8e64da5bc12a2c1576eee743ff776062d0d2d6306f6fbf948503e1f8cac1bc21"
+}

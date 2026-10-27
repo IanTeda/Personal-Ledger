@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: AreaId\", location_id AS \"location_id!: LocationId\", name\n           FROM areas\n           ORDER BY position, rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: AreaId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "location_id!: LocationId",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "0bf19478c12d05bd108c29cdfab0526b38eeb7b0cef36d995ccc963e3f64970f"
+}

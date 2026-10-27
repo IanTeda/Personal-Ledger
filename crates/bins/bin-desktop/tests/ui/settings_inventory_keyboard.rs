@@ -572,3 +572,27 @@ fn the_status_line_reads_the_live_counts_and_a_adds_an_area(app: &mut TestAppCon
     assert!(keys.contains(&"a"), "a adds an area: {keys:?}");
     assert!(!keys.contains(&"r"), "r no longer adds an area: {keys:?}");
 }
+
+#[gpui::test]
+fn a_failed_write_puts_the_inventory_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_inventory(app);
+    ui.press("g s");
+    ui.press("j j j j j j j j j");
+    ui.press("l");
+    let stored = names(&mut ui);
+
+    ui.press("n c a b i n enter");
+    assert_eq!(
+        names(&mut ui).len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(names(&mut ui), stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text
+                == "Couldn't save the change to the inventory, so it is back as last saved"
+    }));
+}

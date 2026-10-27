@@ -124,6 +124,12 @@ pub(super) fn roll_back(
                 restored: crate::msg::desktop_toast_write_failed_bills,
                 unsaved: crate::msg::desktop_toast_write_failed_bills_unsaved,
             },
+            Domain::Inventory => Reload {
+                name: "Inventory",
+                reloaded: ledger.update(cx, |store, cx| store.reload_inventory(cx)),
+                restored: crate::msg::desktop_toast_write_failed_inventory,
+                unsaved: crate::msg::desktop_toast_write_failed_inventory_unsaved,
+            },
         };
         let text = match reloaded {
             Ok(()) => restored(),

@@ -1,6 +1,6 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
 //! the Client migrations, then the Units, Institutions, Accounts, Categories, Tags, Payees,
-//! Transactions and Bills adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
+//! Transactions, Bills and Inventory adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
 //! so they read and write the same rows (ADR-0046), and both build their Shell on the [`Stores`]
 //! made from it.
 
@@ -12,9 +12,9 @@ use chrono::{NaiveDate, Utc};
 use lib_units::fake::InMemoryPorts;
 
 use crate::{
-    AccountsAdapter, BillsAdapter, CategoriesAdapter, Error, InstitutionsAdapter, PayeesAdapter,
-    PendingWrites, Result, TagsAdapter, TransactionsAdapter, UnitsAdapter, WriteFailure, Writer,
-    adapter::store, seed,
+    AccountsAdapter, BillsAdapter, CategoriesAdapter, Error, InstitutionsAdapter, InventoryAdapter,
+    PayeesAdapter, PendingWrites, Result, TagsAdapter, TransactionsAdapter, UnitsAdapter,
+    WriteFailure, Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -28,6 +28,7 @@ pub struct Storage {
     pub payees: PayeesAdapter,
     pub transactions: TransactionsAdapter,
     pub bills: BillsAdapter,
+    pub inventory: InventoryAdapter,
     pub pending: PendingWrites,
     /// Flushed when the Client quits, so the last writes land before the thread dies.
     pub writer: Writer,
@@ -48,6 +49,7 @@ pub struct Stores {
     pub payees: Box<dyn store::PayeesStore>,
     pub transactions: Box<dyn store::TransactionsStore>,
     pub bills: Box<dyn store::BillsStore>,
+    pub inventory: Box<dyn store::InventoryStore>,
     pub commit: Rc<dyn crate::Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
@@ -63,6 +65,7 @@ impl From<Storage> for Stores {
             payees: Box::new(storage.payees),
             transactions: Box::new(storage.transactions),
             bills: Box::new(storage.bills),
+            inventory: Box::new(storage.inventory),
             commit: Rc::new(storage.pending),
             failures: storage.failures,
         }
@@ -74,8 +77,9 @@ impl From<Storage> for Stores {
 /// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), the
 /// stub's Institutions, which its Accounts name (#849), the stub's Accounts, which its
 /// Transactions and Bill Plans name (#853), the stub's Categories, which its Payees, Splits and
-/// Bill Plans name (#858), the stub's Tags, which its Splits carry (#862), the stub's Payees, which its Splits and Bill Plans name, and the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and
-/// Documents name those Transactions (#774). The first-launch seed is removed once every domain
+/// Bill Plans name (#858), the stub's Tags, which its Splits carry (#862), the stub's Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and
+/// Documents name those Transactions (#774), and last the stub's Inventory as of `today`, whose
+/// Items the stub Documents link (#866). The first-launch seed is removed once every domain
 /// persists.
 ///
 /// # Errors
@@ -95,6 +99,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
             TransactionsAdapter::seed(&writer, seed::stub_ledger_transactions(today))?;
             let bills = seed::stub_ledger_bills(today);
             BillsAdapter::seed(&writer, bills.plans, bills.entries)?;
+            InventoryAdapter::seed(&writer, seed::stub_inventory(today))?;
             tracing::info!(path = %path.display(), "Seeded a new Ledger with the stub");
             UnitsAdapter::load(pending.clone())?
         }
@@ -107,6 +112,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
     let payees = PayeesAdapter::load(pending.clone())?;
     let transactions = TransactionsAdapter::load(pending.clone())?;
     let bills = BillsAdapter::load(pending.clone())?;
+    let inventory = InventoryAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
         institutions,
@@ -116,6 +122,7 @@ pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
         payees,
         transactions,
         bills,
+        inventory,
         pending,
         writer,
         failures,
@@ -271,6 +278,57 @@ mod tests {
             reopened.tags.tags().tags().len(),
             seed::stub_tags().len() + 1
         );
+    }
+
+    #[test]
+    fn a_new_ledger_opens_with_the_stub_inventory_and_an_added_location_survives_a_restart() {
+        use lib_inventory::interactor::{AddArea, AddItem, AddLocation};
+        use lib_inventory::{ItemDraft, LocationDraft};
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        assert_eq!(
+            storage.inventory.inventory().inventory(),
+            seed::stub_inventory(today())
+        );
+
+        let port = storage.inventory.inventory_mut();
+        let shack = AddLocation {
+            draft: LocationDraft {
+                name: "Beach shack".into(),
+                ..LocationDraft::default()
+            },
+            unit: lib_core::UnitId::SEED_AUD,
+        }
+        .run(port)
+        .expect("a new name");
+        let deck = AddArea {
+            location: shack,
+            name: "Deck".into(),
+        }
+        .run(port)
+        .expect("a new name");
+        let kayak = AddItem {
+            location: shack,
+            area: deck,
+            draft: ItemDraft {
+                name: "Kayak".into(),
+                replacement: lib_core::Money(900.into()),
+            },
+        }
+        .run(port)
+        .expect("the Area is the Location's");
+        storage.pending.commit();
+        storage.writer.flush().expect("the writer is running");
+        assert!(storage.failures.try_recv().is_err(), "the writes landed");
+        let written = storage.inventory.inventory().inventory();
+        drop(storage);
+        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+
+        let reread = reopened.inventory.inventory().inventory();
+        assert_eq!(reread, written);
+        assert_eq!(reread.item(kayak).map(|item| item.area), Some(deck));
     }
 
     #[test]

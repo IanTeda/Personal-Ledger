@@ -17,6 +17,7 @@
 pub mod apply;
 pub mod dialogs;
 pub mod form;
+pub mod ports;
 pub(crate) mod render;
 
 use crate::settings::SettingsPage;

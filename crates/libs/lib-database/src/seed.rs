@@ -27,6 +27,7 @@ use crate::adapter::accounts::AccountsAdapter;
 use crate::adapter::bills::BillsAdapter;
 use crate::adapter::categories::CategoriesAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
+use crate::adapter::inventory::InventoryAdapter;
 use crate::adapter::payees::PayeesAdapter;
 use crate::adapter::tags::TagsAdapter;
 use crate::adapter::transactions::TransactionsAdapter;
@@ -37,8 +38,9 @@ use crate::writer::Writer;
 /// the base Unit, the Institutions, which the Accounts name, the Accounts, which the Transactions
 /// and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans name, the Tags,
 /// which the Splits name (#862), the Payees, which the Splits and Bill Plans name, then the
-/// Transactions and the Bills dated from `now`'s local day. Each later domain adds its seed as it migrates, in the
-/// order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory.
+/// Transactions and the Bills dated from `now`'s local day, and last the Inventory as of that day
+/// (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions,
+/// Bills, Inventory (Q17).
 ///
 /// # Errors
 /// Returns the error of a write; nothing of that domain's is written then.
@@ -53,7 +55,8 @@ pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
     PayeesAdapter::seed(writer, stub_payees())?;
     TransactionsAdapter::seed(writer, stub_ledger_transactions(today))?;
     let bills = stub_ledger_bills(today);
-    BillsAdapter::seed(writer, bills.plans, bills.entries)
+    BillsAdapter::seed(writer, bills.plans, bills.entries)?;
+    InventoryAdapter::seed(writer, stub_inventory(today))
 }
 
 /// `lib-institutions`' stub seed, the stub Ledger's Institutions, with the ids its Accounts name.
@@ -76,6 +79,14 @@ pub fn stub_categories() -> Vec<lib_categories::Category> {
 /// `lib-tags`' stub seed, the stub Ledger's Tags, with the ids its Splits carry.
 pub fn stub_tags() -> Vec<lib_tags::Tag> {
     lib_tags::fake::InMemoryTags::stub().tags
+}
+
+/// `lib-inventory`'s stub seed as of `today`, the stub Ledger's Inventory, with the Item ids its
+/// Documents link.
+pub fn stub_inventory(today: NaiveDate) -> lib_inventory::Inventory {
+    let lib_inventory::fake::InMemoryInventory { locations, items } =
+        lib_inventory::fake::InMemoryInventory::stub(today);
+    lib_inventory::Inventory { locations, items }
 }
 
 /// `lib-payees`' stub seed, the stub Ledger's Payees, with the ids its Splits and Bill Plans name.
@@ -335,6 +346,25 @@ mod tests {
         assert_eq!(
             stored.tags().tags(),
             lib_ledger::Ledger::stub().tags().to_vec()
+        );
+    }
+
+    /// The Inventory is the stub Ledger's as of the seed's day, by id, so the stub Documents' Links
+    /// name stored Items, and it is written last, after the Bills.
+    #[test]
+    fn the_stub_seed_writes_the_stub_ledgers_inventory_twice_over_the_same_rows() {
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+
+        stub(&writer, now).expect("the first seed lands");
+        stub(&writer, now).expect("the second seed lands");
+
+        let stored = InventoryAdapter::load(PendingWrites::new(writer.clone()))
+            .expect("the Inventory loads");
+        let today = now.with_timezone(&Local).date_naive();
+        assert_eq!(
+            stored.inventory().inventory(),
+            *lib_ledger::Ledger::stub_on(today).inventory()
         );
     }
 

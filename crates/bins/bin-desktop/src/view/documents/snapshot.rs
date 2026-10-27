@@ -24,6 +24,9 @@ pub struct DocumentsSnapshot {
     pub selected_file: Option<String>,
     /// How many Links the selected Document has.
     pub selected_links: usize,
+    /// The names of the selected Document's Links that resolve to a record, as its row's chips
+    /// draw them: a Link whose record has gone draws none.
+    pub selected_chips: Vec<String>,
     /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, or
     /// `picker-link`, `picker-file`, `picker-follow`.
     pub dialog: Option<&'static str>,
@@ -63,6 +66,13 @@ impl DocumentsView {
             query: state.query.clone(),
             selected_file: selected.map(Document::file_name),
             selected_links: selected.map_or(0, |document| document.links.len()),
+            selected_chips: selected.map_or_else(Vec::new, |document| {
+                crate::documents::model::row(document, &self.lookups(cx))
+                    .chips
+                    .into_iter()
+                    .map(|chip| chip.label)
+                    .collect()
+            }),
             dialog: None,
             library_rows: self.library_rows(cx).len(),
             inbox_rows: self.inbox_rows(cx).len(),

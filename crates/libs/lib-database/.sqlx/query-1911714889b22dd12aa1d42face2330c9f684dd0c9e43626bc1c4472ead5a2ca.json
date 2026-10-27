@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO locations (id, name, address, unit_id, cover_insurer, cover_policy_no,\n                                cover_renews_on, cover_sum_insured, cover_item_limit)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             address = excluded.address,\n             unit_id = excluded.unit_id,\n             cover_insurer = excluded.cover_insurer,\n             cover_policy_no = excluded.cover_policy_no,\n             cover_renews_on = excluded.cover_renews_on,\n             cover_sum_insured = excluded.cover_sum_insured,\n             cover_item_limit = excluded.cover_item_limit",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "1911714889b22dd12aa1d42face2330c9f684dd0c9e43626bc1c4472ead5a2ca"
+}

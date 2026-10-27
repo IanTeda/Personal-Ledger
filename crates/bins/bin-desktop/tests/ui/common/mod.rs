@@ -39,11 +39,14 @@ use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{AccountId, CategoryId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
-    AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, InstitutionsStore,
-    PayeesStore, Stores, TagsStore, TransactionsStore, UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, FakeStores,
+    InstitutionsStore, InventoryStore, PayeesStore, Stores, TagsStore, TransactionsStore,
+    UnitsStore, WriteFailure,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
+use lib_inventory::fake::InMemoryInventory;
+use lib_inventory::{InventoryRepository, Item, Location};
 use lib_payees::{Payee, PayeeRepository, PayeeUsage};
 use lib_tags::{Tag, TagRepository, TagUsage};
 use lib_transactions::fake::InMemoryTransactions;
@@ -357,6 +360,58 @@ impl TagsStore for FailingTags {
     }
 }
 
+impl<T: InventoryRepository> InventoryRepository for Marked<T> {
+    fn locations(&self) -> Vec<Location> {
+        self.inner.locations()
+    }
+
+    fn items(&self) -> Vec<Item> {
+        self.inner.items()
+    }
+
+    fn upsert_location(&mut self, location: Location) {
+        self.written.set(true);
+        self.inner.upsert_location(location);
+    }
+
+    fn upsert_item(&mut self, item: Item) {
+        self.written.set(true);
+        self.inner.upsert_item(item);
+    }
+
+    fn delete_item(&mut self, id: lib_core::ItemId) {
+        self.written.set(true);
+        self.inner.delete_item(id);
+    }
+}
+
+/// An Inventory store whose writes never reach `stored`, the rows as they are on disk: a reload
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingInventory {
+    inventory: Marked<InMemoryInventory>,
+    stored: InMemoryInventory,
+}
+
+impl InventoryStore for FailingInventory {
+    fn inventory(&self) -> &dyn InventoryRepository {
+        &self.inventory
+    }
+
+    fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
+        &mut self.inventory
+    }
+
+    fn delete_location(&mut self, id: lib_core::LocationId) {
+        self.inventory.written.set(true);
+        InventoryStore::delete_location(&mut self.inventory.inner, id);
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.inventory.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
 /// A Payees port whose writes never reach `stored`, the rows as they are on disk: a reload puts
 /// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingPayees {
@@ -476,6 +531,26 @@ fn stub_bills() -> InMemoryBills {
     InMemoryBills {
         plans: ledger.bill_plans().to_vec(),
         entries: ledger.bill_entries().to_vec(),
+    }
+}
+
+/// The stub Ledger's Inventory as of the test date, as the in-memory port holds it.
+fn stub_inventory() -> InMemoryInventory {
+    InMemoryInventory::stub(today())
+}
+
+/// Every domain's stub in memory, as [`Harness::new`] runs on, for a test to override one of.
+fn stub_fakes() -> FakeStores {
+    FakeStores {
+        units: InMemoryPorts::stub(chrono::Utc::now()),
+        institutions: InMemoryInstitutions::stub(),
+        accounts: lib_accounts::fake::InMemoryPorts::stub(),
+        categories: InMemoryCategories::stub(),
+        tags: lib_tags::fake::InMemoryPorts::stub(),
+        payees: lib_payees::fake::InMemoryPorts::stub(),
+        transactions: stub_transactions(),
+        bills: stub_bills(),
+        inventory: stub_inventory(),
     }
 }
 
@@ -636,21 +711,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
     ) -> Self {
-        Self::build(
-            app,
-            logs,
-            configured_level,
-            Stores::fake(
-                InMemoryPorts::stub(chrono::Utc::now()),
-                InMemoryInstitutions::stub(),
-                lib_accounts::fake::InMemoryPorts::stub(),
-                InMemoryCategories::stub(),
-                lib_tags::fake::InMemoryPorts::stub(),
-                lib_payees::fake::InMemoryPorts::stub(),
-                stub_transactions(),
-                stub_bills(),
-            ),
-        )
+        Self::build(app, logs, configured_level, Stores::fake(stub_fakes()))
     }
 
     /// As [`Harness::new`], under `[keybindings]` overrides.
@@ -662,16 +723,7 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Stores::fake(
-                InMemoryPorts::stub(chrono::Utc::now()),
-                InMemoryInstitutions::stub(),
-                lib_accounts::fake::InMemoryPorts::stub(),
-                InMemoryCategories::stub(),
-                lib_tags::fake::InMemoryPorts::stub(),
-                lib_payees::fake::InMemoryPorts::stub(),
-                stub_transactions(),
-                stub_bills(),
-            ),
+            Stores::fake(stub_fakes()),
             keybindings,
         )
     }
@@ -696,16 +748,10 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Stores::fake(
-                InMemoryPorts::stub(chrono::Utc::now()),
-                InMemoryInstitutions::stub(),
-                lib_accounts::fake::InMemoryPorts::stub(),
-                InMemoryCategories::stub(),
-                lib_tags::fake::InMemoryPorts::stub(),
+            Stores::fake(FakeStores {
                 payees,
-                stub_transactions(),
-                stub_bills(),
-            ),
+                ..stub_fakes()
+            }),
         )
     }
 
@@ -752,6 +798,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Units],
                     written,
@@ -788,6 +835,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Institutions],
                     written,
@@ -825,6 +873,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Accounts],
                     written,
@@ -861,6 +910,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Categories],
                     written,
@@ -898,6 +948,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Tags],
                     written,
@@ -905,6 +956,35 @@ impl<'a> Harness<'a> {
                 }),
                 failures,
             }),
+        )
+    }
+
+    /// As [`Harness::new`], on an Inventory store whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_inventory(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_inventory();
+        let (mut stores, _) = Stores::fake(stub_fakes());
+        stores.inventory = Box::new(FailingInventory {
+            inventory: Marked {
+                inner: stored.clone(),
+                written: written.clone(),
+            },
+            stored,
+        });
+        stores.commit = Rc::new(FailingCommit {
+            domains: vec![Domain::Inventory],
+            written,
+            report,
+        });
+        stores.failures = failures;
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(stores),
         )
     }
 
@@ -935,6 +1015,7 @@ impl<'a> Harness<'a> {
                 }),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Payees],
                     written,
@@ -971,6 +1052,7 @@ impl<'a> Harness<'a> {
                     stored,
                 }),
                 bills: Box::new(stub_bills()),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions],
                     written,
@@ -1007,6 +1089,7 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Bills],
                     written,
@@ -1049,6 +1132,7 @@ impl<'a> Harness<'a> {
                     },
                     stored: bills,
                 }),
+                inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions, Domain::Bills],
                     written,

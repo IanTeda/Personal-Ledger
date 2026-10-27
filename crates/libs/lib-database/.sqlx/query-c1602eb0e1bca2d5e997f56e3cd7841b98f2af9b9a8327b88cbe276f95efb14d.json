@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO areas (id, location_id, name, position)\n             VALUES (?, ?, ?, ?)\n             ON CONFLICT (id) DO UPDATE SET\n                 name = excluded.name,\n                 position = excluded.position",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "c1602eb0e1bca2d5e997f56e3cd7841b98f2af9b9a8327b88cbe276f95efb14d"
+}

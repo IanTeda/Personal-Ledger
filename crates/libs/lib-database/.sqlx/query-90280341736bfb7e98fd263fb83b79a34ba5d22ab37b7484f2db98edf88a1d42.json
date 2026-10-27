@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: AreaId\" FROM areas WHERE location_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: AreaId",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "90280341736bfb7e98fd263fb83b79a34ba5d22ab37b7484f2db98edf88a1d42"
+}
