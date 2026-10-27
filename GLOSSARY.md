@@ -30,13 +30,22 @@ _Avoid_: feed, provider, exchange.
 **Ledger**:
 The complete set of Accounts, Institutions, Units, Categories, Payees, Tags,
 Transactions, Bills, Budgets, Documents, and Inventory owned by one self-hoster — a
-logical whole, physically replicated as a full local SQLite database on each Client
-and synced between them by the Sync Server. A change that crosses these (paying a
+logical whole, physically replicated as a Ledger file on each Client and synced
+between them by the Sync Server. A self-hoster may keep more than one Ledger (say,
+household and business), each wholly separate. A change that crosses these (paying a
 Bill, deleting a Payee) is a change to the Ledger, not to one of its parts.
 _Avoid_: Book, journal.
 
+**Ledger file**:
+The local SQLite database a Client keeps its copy of one Ledger in; what opening, creating and closing a Ledger act on.
+_Avoid_: database, book file.
+
+**Open Ledger**:
+The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, and help; "no Ledger open" names that state, not "empty state", which means a View with no rows.
+_Avoid_: loaded ledger, active ledger, current ledger; load (as the verb).
+
 **Client**:
-An app instance that holds its own full local copy of the Ledger and can create, read,
+An app instance that holds its own full local copy of a Ledger and can create, read,
 update, and delete against it entirely offline — Desktop or TUI.
 _Avoid_: Device, backend — "device" conflates the physical machine with the app
 instance running on it; "backend" implied a single authoritative server, which no

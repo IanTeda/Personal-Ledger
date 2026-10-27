@@ -7,7 +7,7 @@ Five states are specified, and together they are the entire navigation model:
 
 | id | state |
 | --- | --- |
-| `1a` | **Shell at rest, no ledger loaded** — status line, a centred note pointing at `:new` / `:open`, keybind hints |
+| `1a` | **Shell with no Ledger open** — status line, a centred note pointing at `:new` / `:open`, keybind hints |
 | `1b` | **Shell with a ledger loaded** — status line, full-bleed chart-led dashboard, keybind hints |
 | `2a` | **`:help` window** — search + the full command list, at rest |
 | `2b` | **`:help` window** — filtered by a search term |
@@ -32,10 +32,9 @@ Every px value in the HTML is an artifact of drawing. Read the geometry in **ter
 Drawn at a **96 × 30 cell** minimum (one cell ≈ 6.6 × 16.5 px in the HTML).
 
 ```
-row 0        status line       reversed Block — "Personal Ledger" (the View names itself in its own heading)   right: `✓ Synced HH:mm`
-rows 1..n-3  view region       exactly ONE view, full bleed — no tab strip, no sidebar, no tree
-row n-2      command line      shown only while typing a command (":" prompt); no idle hint
-row n-1      keybind hint bar   dim; contextual to the focused view
+row 0        status line       reversed Block — "Personal Ledger" (the View names itself in its own heading)   right: `✓ Synced HH:mm`, blank with no Ledger open
+rows 1..n-2  view region       exactly ONE view, full bleed — no tab strip, no sidebar, no tree
+row n-1      keybind hint bar   dim; contextual to the focused view. The only row under the view: no command-line row
 ```
 
 Everything is a `Layout` of `Constraint::Length` / `Percentage` / `Min`. No absolute positioning; no fixed heights on anything holding a table.
@@ -44,11 +43,11 @@ Degrade below 96 columns in this order: drop sparkline columns → drop the righ
 
 ---
 
-## 1a — Shell at rest, no ledger loaded
+## 1a — Shell with no Ledger open
 
-The state on cold start and after `:close`: status line (`Personal Ledger` on the left, `✓ Synced HH:mm` on the right) and, on the key-hint bar, the mode (`NORMAL`) at the far left and a right-aligned `no file` label at the far right, a single centred note in the view region and the key hints (`: command · ? help`). No dashboard, no other views.
+The state on cold start and after `:close`: no Ledger file is open until `:open` or `:new`. Status line (`Personal Ledger` on the left, the right side blank: there is nothing to have synced) and, on the key-hint bar, the mode (`NORMAL`) at the far left, the key hints (`: command · ? help`) and a right-aligned `No Ledger open` label at the far right, with a single centred note in the view region. No dashboard, no other views. Once a Ledger is open the label names its Ledger file.
 
-Note copy, two lines, centred horizontally and vertically in the view region: `No Personal Ledger file loaded.` then `Use :new to create a new ledger or :open to open an existing ledger.` Only `:new` and `:open` (and `:help`) are live commands until a ledger loads.
+Note copy, two lines, centred horizontally and vertically in the view region: `No Ledger open.` then `Use :new to create a Ledger or :open to open one.` Only `:new`, `:open`, `:help`, `?` and quit are live until a Ledger is open; anything else, `g` jumps and `:settings` included, answers `No Ledger open: :open or :new first` on the status line. `:open [path]` opens `path` or the configured `file`; `:new <path>` refuses a path that exists. Built in #871.
 
 ## 1b — Shell with a ledger loaded (dashboard / financial position)
 
@@ -79,7 +78,7 @@ Marker contrast matters: fill is dim, the marker is full-strength ink, so it sta
 
 **6. Needs attention** — 2–3 lines only, each naming the command that resolves it (`14 unreconciled transactions → :reconcile`). Deliberately last, and deliberately not a table.
 
-**Footer hints (1b):** `: command · / search · a add txn · ? help` plus the dim note `no persistent nav — ↑ recalls history`.
+**Footer hints (1b):** `: command · / search · a add txn · ? help`.
 
 ---
 
@@ -99,7 +98,6 @@ Contents, top to bottom:
 
 While the window is open:
 - the view behind it stays **visible and heavily dimmed** (`Modifier::DIM`), never hidden or cleared — context is the point
-- the app's `:` command line greys out and echoes the typed text
 - the app's own footer hints grey out too and gain `esc close command window`
 - the status line shows `COMMAND` as the mode
 

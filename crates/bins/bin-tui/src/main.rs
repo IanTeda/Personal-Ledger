@@ -32,16 +32,6 @@ async fn main() -> Result<()> {
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path, None)?;
     config.theme_config().warn_invalid();
 
-    // The Ledger opens before the terminal does: the TUI never runs on a file it can't save to.
-    let path = config.personal_ledger_config().file();
-    let storage = match lib_database::open_storage(path, chrono::Local::now().date_naive()) {
-        Ok(storage) => storage,
-        Err(error) => {
-            tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
-            return Err(error.into());
-        }
-    };
-
     // Resolved once, before the terminal enters raw mode; the Locale never changes at runtime.
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
     locale::init(requested_locale, locale_source);
@@ -65,17 +55,13 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    let writer = storage.writer.clone();
-    let ran = build_shell(
+    // No Ledger opens until `:open` or `:new`; the Shell flushes the Open Ledger's writes as it
+    // quits.
+    build_shell(
         config.keybindings_config().clone(),
         colours,
-        lib_database::Stores::from(storage),
+        Some(config.personal_ledger_config().file()),
     )
     .run()
-    .await;
-    // The writer's thread dies with the process, so the last writes land before it does.
-    if let Err(error) = writer.flush() {
-        tracing::error!(%error, "Failed to flush the Ledger's last writes");
-    }
-    ran
+    .await
 }

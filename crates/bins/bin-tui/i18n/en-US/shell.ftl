@@ -8,16 +8,14 @@
 tui-view-balance-checks-title = Balance checks
 tui-view-units-title = Units & prices
 
-## The status line: the ledger glyph, the product name, and the active view. `$glyph` is the glyph,
-## `$name` the product name and `$view` the active view's title. The second form adds the mode,
-## shown only when it is not the resting NORMAL state; `$mode` arrives already upper-cased.
+## The status line: the product name alone, or with the mode when it is not the resting NORMAL
+## state. `$name` is the product name; `$mode` arrives already upper-cased.
 
-## The status line's right side: only the time of the last sync (`$time`).
+tui-status-line-with-mode = { $name } · { $mode }
+
+## The status line's right side once a Ledger is open: only the time of the last sync (`$time`).
 
 tui-status-synced = Synced { $time }
-
-tui-status-line = { $glyph } { $name } | { $view }
-tui-status-line-with-mode = { $glyph } { $name } | { $view } · { $mode }
 
 ## The mode names, written in sentence case; the renderer upper-cases them.
 
@@ -33,15 +31,32 @@ tui-hint-command = command
 tui-hint-search = search
 tui-hint-help = help
 
-## The footer's right-hand label while no ledger is loaded.
+## The footer's right-hand label while no Ledger is open. Once one is, the label is its Ledger
+## file's name.
 
-tui-footer-no-file = no file
+tui-footer-no-ledger = No Ledger open
 
-## The Dashboard's place while no ledger is loaded: two lines, centred. `$new` and `$open` are the
+## The Dashboard's place while no Ledger is open: two lines, centred. `$new` and `$open` are the
 ## `:new` and `:open` command names, never translated; the renderer bolds the tagged spans.
 
-tui-empty-state-title = No Personal Ledger file loaded.
-tui-empty-state-hint = Use <new>{ $new }</new> to create a new ledger or <open>{ $open }</open> to open an existing ledger.
+tui-empty-state-title = No Ledger open.
+tui-empty-state-hint = Use <new>{ $new }</new> to create a Ledger or <open>{ $open }</open> to open one.
+
+## Status-line messages from the Ledger file commands. `$open` and `$new` are the `:open` and `:new`
+## command names, never translated, and `$path` the path as typed.
+
+tui-status-no-ledger-open = No Ledger open: { $open } or { $new } first
+tui-status-no-ledger-file = No Ledger file configured: { $open } needs a path
+tui-status-new-needs-path = { $new } needs a path for the new Ledger file
+tui-status-ledger-file-exists = { $path } already exists: { $open } it instead
+
+## The reason `toast-ledger-open-failed` gives when `:open` names a path with no file there.
+
+tui-ledger-file-missing = there's no file there
+
+## The reason `toast-ledger-open-failed` gives when a file is there but won't open as a Ledger file.
+
+tui-ledger-file-unreadable = it isn't a Ledger file, or can't be read
 
 ## The footer while an overlay is open: the same hints, plus one close hint for the overlay. `$key`
 ## is the configured back key and `$noun` the form's own noun.

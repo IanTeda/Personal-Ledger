@@ -16,7 +16,7 @@ fn g_u_draws_the_stub_units_and_price_sources() {
     press(&mut shell, "g u");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("Units & prices"), "{frame}");
+    assert!(frame.contains("UNITS"), "{frame}");
     for code in ["aud", "btc", "vas"] {
         assert!(frame.contains(code), "{code} missing:\n{frame}");
     }
@@ -157,7 +157,7 @@ fn esc_cancels_a_dialog_and_leaves_the_view_open() {
     press(&mut shell, "Esc");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("Units & prices"), "{frame}");
+    assert!(frame.contains("UNITS"), "{frame}");
     assert!(!frame.contains("zzz"), "nothing was added:\n{frame}");
 }
 

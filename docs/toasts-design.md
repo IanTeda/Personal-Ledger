@@ -66,8 +66,8 @@ Nothing on the status line today moves to a Toast. New Messages are namespaced `
 | Delete payee / tag / unit | both | Success | `toast-payee-deleted`, `toast-tag-deleted`, `toast-unit-deleted` |
 | Merge tags (source retagged into target, source deleted) | Desktop | Success | `toast-tag-merged` |
 | Store refusal now swallowed by `let _ =` / `.is_ok()` | TUI (Desktop once persisted) | Error | `toast-save-failed` |
-| Open ledger / new ledger | Desktop | Success | `toast-ledger-opened`, `toast-ledger-created` |
-| Open or create ledger fails (once wired) | both | Error | `toast-ledger-open-failed` |
+| Open ledger / new ledger | both | Success | `toast-ledger-opened`, `toast-ledger-created` |
+| Open or create ledger fails (TUI; Desktop once wired) | both | Error | `toast-ledger-open-failed` |
 | Base-unit change committed | TUI, later Desktop | Success | `toast-base-unit-changed` |
 | CSV import finished / partial / failed | both (future) | Success / Warning / Error | `toast-import-finished`, `toast-import-partial`, `toast-import-failed` |
 | Backup or export finished / failed | Desktop (future) | Success / Error | `toast-backup-*`, `toast-export-*` |

@@ -151,13 +151,7 @@ impl CommandPopup {
         let Some(command) = self.selected_command() else {
             return;
         };
-        let fill = command
-            .name
-            .split(['<', '['])
-            .next()
-            .unwrap_or(command.name)
-            .trim_end()
-            .to_string();
+        let fill = stem(command).to_string();
         if fill != self.input {
             self.input = fill;
             self.selected = 0;
@@ -214,6 +208,32 @@ impl CommandPopup {
             .map(|command| (command.id, command.name))
     }
 
+    /// What was typed after the highlighted command's name, if it takes arguments: `open
+    /// /data/household.pldb` gives `/data/household.pldb` for `open [path]`. `None` when nothing was, or
+    /// when the input still spells the placeholders out, as a recalled history entry does.
+    pub fn argument(&self) -> Option<&str> {
+        let (command, argument) = self.typed_argument()?;
+        let placeholders = command.name[stem(command).len()..].trim();
+        (!argument.is_empty() && argument != placeholders).then_some(argument)
+    }
+
+    /// The command whose name, up to its first placeholder, the input starts with and then goes
+    /// past by a space, with the trimmed text after it. The longest such name wins, so `unit new
+    /// abc` names `unit new <code>`, not a shorter `unit ...`. `None` while the input still begins
+    /// a command's name, so `payee match add` is that command, not `payee match` given `add`.
+    fn typed_argument(&self) -> Option<(&'static commands::Command, &str)> {
+        if commands::all().any(|(_, command)| command.name.starts_with(self.input.as_str())) {
+            return None;
+        }
+        commands::all()
+            .filter(|(_, command)| command.name.len() > stem(command).len())
+            .filter_map(|(_, command)| {
+                let rest = self.input.strip_prefix(stem(command))?.strip_prefix(' ')?;
+                Some((command, rest.trim()))
+            })
+            .max_by_key(|(command, _)| stem(command).len())
+    }
+
     /// The highlighted command's args, joined into one combined preview string (`"{placeholder}
     /// — {preview}"` per arg, `" · "`-separated) — `None` for a command with no args, per
     /// `Command::args`.
@@ -253,6 +273,12 @@ impl CommandPopup {
     /// <category> <limit>`, whose name only contains it mid-string), falling back to
     /// `commands::all`'s own fixed display order for ties within a tier.
     fn filtered(&self) -> Vec<(String, &'static commands::Command)> {
+        // Once an argument is being typed, the command it belongs to is the only match.
+        if let Some((typed, _)) = self.typed_argument() {
+            return commands::all()
+                .filter(|(_, command)| std::ptr::eq(*command, typed))
+                .collect();
+        }
         let needle = self.input.to_lowercase();
         let mut matches: Vec<_> = commands::all()
             .filter(|(domain, command)| {
@@ -537,6 +563,17 @@ fn match_rank(domain: &str, command: &commands::Command, needle: &str) -> u8 {
     }
 }
 
+/// A command's name up to its first `<`/`[` placeholder, trailing whitespace trimmed: what `Tab`
+/// completes to, and what an argument is typed after.
+fn stem(command: &commands::Command) -> &'static str {
+    command
+        .name
+        .split(['<', '['])
+        .next()
+        .unwrap_or(command.name)
+        .trim_end()
+}
+
 /// Width of the `:command` column: the longest command name (plus its leading `:`), plus a
 /// gap, across every domain — not just what's currently visible, so the columns don't jiggle
 /// as the list scrolls or filters.
@@ -686,6 +723,41 @@ mod tests {
         popup.push_char('u');
         popup.push_char('d');
         assert_eq!(popup.input, "bud");
+    }
+
+    fn typed(text: &str) -> CommandPopup {
+        let mut popup = CommandPopup::new();
+        for c in text.chars() {
+            popup.push_char(c);
+        }
+        popup
+    }
+
+    #[test]
+    fn text_typed_after_a_command_name_is_its_argument() {
+        let popup = typed("open ~/household.pldb ");
+
+        assert_eq!(
+            popup.selected(),
+            Some((CommandId::LedgerOpen, "open [path]"))
+        );
+        assert_eq!(popup.argument(), Some("~/household.pldb"));
+        assert_eq!(popup.selectable_count(), 1);
+    }
+
+    #[test]
+    fn a_command_name_alone_has_no_argument() {
+        assert_eq!(typed("open").argument(), None);
+        assert_eq!(typed("open ").argument(), None);
+    }
+
+    #[test]
+    fn a_recalled_usage_line_is_not_an_argument() {
+        let mut popup = CommandPopup::new();
+        popup.recall_history(&["new <path>".to_string()]);
+
+        assert_eq!(popup.selected(), Some((CommandId::LedgerNew, "new <path>")));
+        assert_eq!(popup.argument(), None);
     }
 
     #[test]

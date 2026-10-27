@@ -1,7 +1,8 @@
 //! Shared harness for the TUI's in-process keyboard tests (ADR-0035). Each test builds a
 //! hermetic `Shell`, feeds it key sequences the way the terminal would, and reads the drawn
-//! screen back from ratatui's `TestBackend`. Nothing here touches the database, the terminal
-//! or the user's config: the Units sit on `lib-units`' in-memory ports. What a test may assert on (screen text, Colour Roles, and when a
+//! screen back from ratatui's `TestBackend`. Nothing here touches the terminal or the user's
+//! config, and only a test that runs `:open` or `:new` touches a Ledger file: [`shell`]'s Units sit
+//! on `lib-units`' in-memory ports. What a test may assert on (screen text, Colour Roles, and when a
 //! `#[doc(hidden)]` accessor is allowed) is set out in ADR-0035.
 
 #![expect(
@@ -9,6 +10,7 @@
     reason = "test support: an unknown key token is a typo in the test and should fail it loudly"
 )]
 
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -23,8 +25,8 @@ use ratatui::{Terminal, backend::TestBackend};
 pub const WIDTH: u16 = 96;
 pub const HEIGHT: u16 = 30;
 
-/// A `Shell` on the default key bindings and Colours, with the Locale pinned to `en-US` and the
-/// Units on the stub seed in memory.
+/// A `Shell` on the default key bindings and Colours, with the Locale pinned to `en-US` and a
+/// Ledger open on the stub seed's Units in memory.
 pub fn shell() -> Shell {
     shell_with_failures().0
 }
@@ -37,19 +39,24 @@ pub fn shell_with_failures() -> (Shell, mpsc::Sender<WriteFailure>) {
     )
 }
 
-/// A `Shell` whose Units are kept in `units`, committed through `commit`.
+/// A `Shell` with a Ledger open whose Units are kept in `units`, committed through `commit`.
 pub fn shell_on(
     units: Box<dyn UnitsStore>,
     commit: Rc<dyn Commit>,
 ) -> (Shell, mpsc::Sender<WriteFailure>) {
-    locale::init_for_tests();
     let (report, failures) = mpsc::channel();
-    let shell = build_shell(
-        KeyBindingConfig::default(),
-        Colours::default(),
+    let shell = cold_shell(None).with_open_ledger(
+        "test.pldb",
         lib_database::Stores::with_units(units, commit, failures),
     );
     (shell, report)
+}
+
+/// A `Shell` as `main` starts it: no Ledger open, and `file` the configured Ledger file a bare
+/// `:open` opens, if any.
+pub fn cold_shell(file: Option<&Path>) -> Shell {
+    locale::init_for_tests();
+    build_shell(KeyBindingConfig::default(), Colours::default(), file)
 }
 
 /// Sends a whitespace-separated key sequence, one key per token: a single character is that
@@ -86,6 +93,13 @@ pub fn type_text(shell: &mut Shell, text: &str) {
             KeyModifiers::NONE,
         )));
     }
+}
+
+/// Runs `command` through the command popup: `:`, the command as typed, then `Enter`.
+pub fn run_command(shell: &mut Shell, command: &str) {
+    press(shell, ":");
+    type_text(shell, command);
+    press(shell, "Enter");
 }
 
 /// Every row of the frame as one string, drawn at [`WIDTH`] by [`HEIGHT`].

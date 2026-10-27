@@ -1,23 +1,29 @@
-//! The Ledger domain — loading and closing a ledger (`docs/ux/tui-mockups/01-shell/README.md`'s
-//! 1a resting state). All three only flip `Shell`'s `ledger_open` for now, mirroring
-//! `bin-desktop`'s `NavState::open_ledger`/`close_ledger`: real file I/O is later work.
+//! The Ledger domain — opening, creating and closing a Ledger file
+//! (`docs/ux/tui-mockups/01-shell/README.md`'s 1a). The path is the one argument the command popup
+//! reads as typed (`CommandPopup::argument`), since a file can't be picked from a list.
 
-use super::{Chord, Command, CommandId};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         id: CommandId::LedgerOpen,
-        name: "open",
+        name: "open [path]",
         chord: Chord::NONE,
         description: crate::msg::tui_command_open_description,
-        args: &[],
+        args: &[Arg {
+            placeholder: "[path]",
+            preview: crate::msg::tui_command_preview_open_path,
+        }],
     },
     Command {
         id: CommandId::LedgerNew,
-        name: "new",
+        name: "new <path>",
         chord: Chord::NONE,
         description: crate::msg::tui_command_new_description,
-        args: &[],
+        args: &[Arg {
+            placeholder: "<path>",
+            preview: crate::msg::tui_command_preview_new_path,
+        }],
     },
     Command {
         id: CommandId::LedgerClose,

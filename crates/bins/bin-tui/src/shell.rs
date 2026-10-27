@@ -4,13 +4,13 @@
 //! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-shell/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
-use std::rc::Rc;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{Commit, Domain, UnitsStore, WriteFailure};
+use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
@@ -18,7 +18,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 use tokio::sync::mpsc;
 
@@ -61,9 +61,10 @@ use crate::{
 /// How often an [`Action::Tick`] fires in the absence of input.
 const TICK_RATE: Duration = Duration::from_millis(250);
 
-/// The ledger glyph the status line opens with. Passed into the status-line Message as an
-/// argument rather than written into its text, so a Catalogue never carries the glyph.
-const LEDGER_GLYPH: &str = "\u{1f4d2}";
+/// The command names the Ledger file messages point to. Command syntax the user types, so passed
+/// into the Messages rather than translated (`popup::command::commands::ledger`).
+const OPEN_COMMAND: &str = ":open";
+const NEW_COMMAND: &str = ":new";
 
 /// What separates one hint item from the next in the footer bar.
 const HINT_SEPARATOR: &str = " \u{b7} ";
@@ -127,14 +128,12 @@ pub struct Shell {
     /// this entirely rather than pushing onto it (it's the app's one home view); re-opening
     /// the already-active view leaves it untouched (`Shell::open`).
     view_stack: Vec<Box<dyn View>>,
-    /// The noun a `g`-jump chord just landed on, when that noun's view is still a bare
-    /// placeholder (`budget`/`check`/`report`/`txn` today) -- `Some` replaces the footer's
-    /// resting hint with `:{noun} — not yet built` (issue #96), matching the command popup's
-    /// own message for the same situation (`docs/navigation-design.md`'s "every command with no real
-    /// behaviour yet says so explicitly" philosophy) instead of silently opening an empty box.
-    /// Cleared at the top of every subsequent keypress, mirroring `bin-desktop`'s own
-    /// `status_message` -- "any keypress clears it, not just a timer".
-    jump_not_yet_built: Option<&'static str>,
+    /// The status-line message, drawn in the hint bar's place: `:{noun} — not yet built` when a
+    /// `g`-jump chord lands on a placeholder noun (issue #96), matching the command popup's own
+    /// message, or why a Ledger command did nothing (#871). Cleared at the top of every
+    /// subsequent keypress, mirroring `bin-desktop`'s own `status_message` -- "any keypress
+    /// clears it, not just a timer".
+    status_message: Option<String>,
     /// The truly-global key set's own bindings (`quit`/`back`/`help`/open-command-popup) --
     /// `docs/navigation-design.md`'s "What's actually configurable", read once at startup via
     /// `LedgerConfig::keybindings_config()` (`quit` isn't in this set at all -- see the
@@ -151,15 +150,33 @@ pub struct Shell {
     /// Showing Toasts hide and their timers pause behind it. Mutually exclusive with every
     /// other popup field.
     toast_history: Option<ToastHistoryPopup>,
-    /// Whether a ledger is loaded (`docs/ux/tui-mockups/01-shell/README.md`'s 1a). `false` on cold
-    /// start and after `:close`, when the Dashboard's place shows the "no ledger loaded" note
-    /// instead; every other view still opens, as in `bin-desktop`'s `NavState::ledger_open`.
-    ledger_open: bool,
+    /// The Open Ledger (`docs/ux/tui-mockups/01-shell/README.md`'s 1a). `None` on cold start and
+    /// after `:close`, when the Dashboard's place shows the "no Ledger open" note and only `:new`,
+    /// `:open`, help and quit run.
+    ledger: Option<OpenLedger>,
+    /// The configured `file`, which a bare `:open` opens. `None` for a `Shell` built without one.
+    ledger_file: Option<PathBuf>,
+}
+
+/// The Open Ledger: its Ledger file, the Units built on the Stores opened from it, and the writer
+/// that saves to it.
+struct OpenLedger {
+    path: PathBuf,
     /// The Units ports and keymap every Units View is built on, so each one shows the same rows.
     units: UnitsSetup,
     /// The writer's failure reports, polled on each tick: a failed Units write puts the Units back
-    /// as stored (ADR-0046). `None` once the writer has gone, or for a `Shell` built without one.
-    write_failures: Option<std::sync::mpsc::Receiver<WriteFailure>>,
+    /// as stored (ADR-0046). `None` once the writer has gone.
+    failures: Option<std::sync::mpsc::Receiver<WriteFailure>>,
+    /// Flushed as the Ledger closes, so its last writes land. `None` for Stores opened without a
+    /// writer, a test's in-memory ones.
+    writer: Option<Writer>,
+}
+
+impl OpenLedger {
+    /// The Ledger file's name, as the hint bar and the Toasts name it.
+    fn name(&self) -> String {
+        file_name(&self.path)
+    }
 }
 
 impl Shell {
@@ -193,28 +210,33 @@ impl Shell {
             payee_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
-            jump_not_yet_built: None,
+            status_message: None,
             colours: Colours::default(),
             toasts: Toasts::default(),
             toast_history: None,
-            ledger_open: false,
-            units: UnitsSetup::stub(&keybindings),
-            write_failures: None,
+            ledger: None,
+            ledger_file: None,
             keybindings,
         }
     }
 
-    /// Puts the Units on `store`, under the key bindings already set, committing each Interactor
-    /// call through `commit`, and listens on `failures` for a write to roll back.
-    pub fn with_units(
-        mut self,
-        store: Box<dyn UnitsStore>,
-        commit: Rc<dyn Commit>,
-        failures: std::sync::mpsc::Receiver<WriteFailure>,
-    ) -> Self {
-        self.units = UnitsSetup::new(store, commit, &self.keybindings);
-        self.write_failures = Some(failures);
+    /// Sets the configured `file`, which a bare `:open` opens.
+    pub fn with_ledger_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.ledger_file = Some(path.into());
         self
+    }
+
+    /// Starts with a Ledger open on `stores`, named `path`, with no writer to flush: for a test that
+    /// needs an Open Ledger but not a Ledger file.
+    pub fn with_open_ledger(mut self, path: impl Into<PathBuf>, stores: Stores) -> Self {
+        self.ledger = Some(self.open_ledger_on(path.into(), stores, None));
+        self
+    }
+
+    /// Whether the Shell has stopped: a quit key or command ran.
+    #[doc(hidden)]
+    pub fn should_quit(&self) -> bool {
+        self.should_quit
     }
 
     /// Replaces the default `Colours` with ones built from Configuration.
@@ -228,11 +250,124 @@ impl Shell {
         self.toasts.raise(kind, text, Local::now());
     }
 
+    /// The Open Ledger on `stores`, its Units under the key bindings already set.
+    fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
+        OpenLedger {
+            path,
+            units: UnitsSetup::new(stores.units, stores.commit, &self.keybindings),
+            failures: Some(stores.failures),
+            writer,
+        }
+    }
+
+    /// `:open [path]`: opens the Ledger file at `path`, or the configured `file` with none. A path
+    /// with no file there raises the Error Toast without creating one.
+    fn open_ledger(&mut self, path: Option<PathBuf>) {
+        self.command_popup = None;
+        let Some(path) = path.or_else(|| self.ledger_file.clone()) else {
+            self.status_message = Some(crate::msg::tui_status_no_ledger_file(OPEN_COMMAND));
+            return;
+        };
+        if !path.is_file() {
+            tracing::warn!(path = %path.display(), "No Ledger file to open");
+            let reason = crate::msg::tui_ledger_file_missing();
+            self.raise_toast(
+                ToastKind::Error,
+                lib_locale::msg::toast_ledger_open_failed(&file_name(&path), &reason),
+            );
+            return;
+        }
+        if let Some(name) = self.open_ledger_file(path) {
+            self.raise_toast(
+                ToastKind::Success,
+                lib_locale::msg::toast_ledger_opened(&name),
+            );
+        }
+    }
+
+    /// `:new <path>`: creates and migrates a Ledger file at `path` and opens it. A path that
+    /// already exists is refused on the status line, and nothing is written to it.
+    fn new_ledger(&mut self, path: Option<PathBuf>) {
+        self.command_popup = None;
+        let Some(path) = path else {
+            self.status_message = Some(crate::msg::tui_status_new_needs_path(NEW_COMMAND));
+            return;
+        };
+        if path.exists() {
+            self.status_message = Some(crate::msg::tui_status_ledger_file_exists(
+                &path.display().to_string(),
+                OPEN_COMMAND,
+            ));
+            return;
+        }
+        if let Some(name) = self.open_ledger_file(path) {
+            self.raise_toast(
+                ToastKind::Success,
+                lib_locale::msg::toast_ledger_created(&name),
+            );
+        }
+    }
+
+    /// Opens the Ledger file at `path`, creating and migrating it if need be, in place of the Open
+    /// Ledger, and lands on the Dashboard. Returns the file's name, or `None` once the Error Toast
+    /// is raised for a file that won't open, which leaves the Open Ledger as it was.
+    fn open_ledger_file(&mut self, path: PathBuf) -> Option<String> {
+        let name = file_name(&path);
+        // The Open Ledger's writes land first, so reopening its own file reads them back.
+        self.flush_ledger();
+        match lib_database::open_storage(&path, Local::now().date_naive()) {
+            Ok(storage) => {
+                let writer = storage.writer.clone();
+                let ledger = self.open_ledger_on(path, Stores::from(storage), Some(writer));
+                self.close_ledger();
+                tracing::info!(path = %ledger.path.display(), "Opened the Ledger file");
+                self.ledger = Some(ledger);
+                Some(name)
+            }
+            Err(error) => {
+                tracing::error!(%error, path = %path.display(), "Failed to open the Ledger file");
+                // The error's own text is for the log, never spliced into a Message.
+                let reason = crate::msg::tui_ledger_file_unreadable();
+                self.raise_toast(
+                    ToastKind::Error,
+                    lib_locale::msg::toast_ledger_open_failed(&name, &reason),
+                );
+                None
+            }
+        }
+    }
+
+    /// Returns to the Dashboard, closing every view that shows the Open Ledger, then flushes the
+    /// Ledger's writes and drops it, so its last writes land and no Ledger is open.
+    fn close_ledger(&mut self) {
+        self.view_stack.clear();
+        self.open(DashboardView::new());
+        self.flush_ledger();
+        if let Some(ledger) = self.ledger.take() {
+            tracing::info!(path = %ledger.path.display(), "Closed the Ledger file");
+        }
+    }
+
+    /// Blocks until every write the Open Ledger has sent has landed or failed.
+    fn flush_ledger(&self) {
+        if let Some(writer) = self
+            .ledger
+            .as_ref()
+            .and_then(|ledger| ledger.writer.as_ref())
+            && let Err(error) = writer.flush()
+        {
+            tracing::error!(%error, "Failed to flush the Ledger's last writes");
+        }
+    }
+
     /// Puts the Units back as stored for each failed write that names them, and raises an error
     /// Toast saying so. If they can't be read back either, the rows in memory stand and the Toast
     /// says they aren't saved. The Units View redraws from the ports on the next frame.
     fn roll_back_failed_writes(&mut self) {
-        let Some(failures) = &self.write_failures else {
+        let Some(ledger) = &mut self.ledger else {
+            return;
+        };
+        let Some(failures) = &ledger.failures else {
             return;
         };
         let mut failed = Vec::new();
@@ -241,18 +376,19 @@ impl Shell {
                 Ok(failure) => failed.push(failure),
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.write_failures = None;
+                    ledger.failures = None;
                     break;
                 }
             }
         }
+        let units = ledger.units.ports.clone();
         // Units is the only domain an adapter saves so far; later ones join here.
         for failure in failed {
             if !failure.domains.contains(&Domain::Units) {
                 continue;
             }
             tracing::warn!(error = %failure.error, "A Units write failed; reloading the Units");
-            let text = match self.units.ports.borrow_mut().reload() {
+            let text = match units.borrow_mut().reload() {
                 Ok(()) => crate::msg::tui_toast_write_failed_units(),
                 Err(error) => {
                     tracing::error!(%error, "Failed to reload the Units after a failed write");
@@ -275,8 +411,15 @@ impl Shell {
             || self.toast_history.is_some()
     }
 
-    /// Runs the shell until the user quits.
+    /// Runs the shell until the user quits, then closes the Open Ledger.
     pub async fn run(&mut self) -> crate::Result<()> {
+        let ran = self.event_loop().await;
+        // The writer's thread dies with the process, so the last writes land before it does.
+        self.close_ledger();
+        ran
+    }
+
+    async fn event_loop(&mut self) -> crate::Result<()> {
         let mut tui = Tui::new()?;
         let mut events = EventHandler::new(TICK_RATE);
 
@@ -339,10 +482,10 @@ impl Shell {
         match event {
             Event::Tick => Some(Action::Tick),
             Event::Key(key) => {
-                // Any keypress clears a pending "not yet built" jump flash, not just a timer --
-                // mirrors `bin-desktop`'s own `status_message` precedent. Below, landing on a
+                // Any keypress clears a status-line message, not just a timer -- mirrors
+                // `bin-desktop`'s own `status_message` precedent. Below, landing on a
                 // still-placeholder noun sets it fresh within this same keypress.
-                self.jump_not_yet_built = None;
+                self.status_message = None;
                 if is_hard_quit(key) {
                     return Some(Action::Quit);
                 }
@@ -389,39 +532,15 @@ impl Shell {
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
-                    return match key.code {
-                        KeyCode::Char('a') => Some(Action::OpenAccounts),
-                        // `budget`/`balance_check`/`report`/`txn` (below) still have no real
-                        // view content (`view::budgets`/`balance_checks`/`reports`/
-                        // `transactions` are all bare placeholder boxes) -- flashing the same
-                        // "not yet built" message the command popup shows for these, rather
-                        // than silently opening an empty box, closes issue #96.
-                        KeyCode::Char('b') => {
-                            self.jump_not_yet_built = Some("budget");
+                    return match jump(key.code) {
+                        None => None,
+                        // With no Ledger open there's nothing to jump to.
+                        Some(_) if self.ledger.is_none() => Some(Action::NoLedgerOpen),
+                        Some(Jump::Open(action)) => Some(action),
+                        Some(Jump::NotYetBuilt(noun)) => {
+                            self.flash_not_yet_built(noun);
                             None
                         }
-                        KeyCode::Char('c') => Some(Action::OpenCategories),
-                        KeyCode::Char('d') => Some(Action::OpenDashboard),
-                        // `t` is already Transactions', so Tags gets the leader key doubled
-                        // instead — the one letter left unclaimed once every other domain had
-                        // already taken its own initial.
-                        KeyCode::Char('g') => Some(Action::OpenTags),
-                        KeyCode::Char('k') => {
-                            self.jump_not_yet_built = Some("check");
-                            None
-                        }
-                        KeyCode::Char('p') => Some(Action::OpenPayees),
-                        KeyCode::Char('r') => {
-                            self.jump_not_yet_built = Some("report");
-                            None
-                        }
-                        KeyCode::Char('s') => Some(Action::OpenSettings),
-                        KeyCode::Char('t') => {
-                            self.jump_not_yet_built = Some("txn");
-                            None
-                        }
-                        KeyCode::Char('u') => Some(Action::OpenUnits),
-                        _ => None,
                     };
                 }
                 match self.global_key(key) {
@@ -435,6 +554,11 @@ impl Shell {
             }
             Event::Resize => None,
         }
+    }
+
+    /// Shows `:{noun} — not yet built` on the status line, for a jump to a placeholder view.
+    fn flash_not_yet_built(&mut self, noun: &str) {
+        self.status_message = Some(crate::msg::tui_footer_not_yet_built(&format!(":{noun}")));
     }
 
     /// What the Shell's global keys make of `key` in NORMAL mode, ahead of the active view, or
@@ -510,13 +634,24 @@ impl Shell {
     /// A command with real content behind it opens it; one that needs a selection the active view
     /// cannot give, and every command not built yet, shows the "not yet built" message instead.
     fn command_action(&self, id: CommandId, name: &'static str) -> Option<Action> {
+        if self.ledger.is_none() && !runs_without_ledger(id) {
+            return Some(Action::NoLedgerOpen);
+        }
+        let path = || {
+            self.command_popup
+                .as_ref()
+                .and_then(CommandPopup::argument)
+                .map(PathBuf::from)
+        };
         match id {
             CommandId::Unit => Some(Action::OpenUnits),
             CommandId::UnitNew => Some(Action::OpenNewUnitPopup),
             CommandId::UnitEdit => Some(Action::OpenEditUnitPopup),
             CommandId::UnitDelete => Some(Action::OpenDeleteUnitPopup),
             CommandId::Dashboard => Some(Action::OpenDashboard),
-            CommandId::LedgerOpen | CommandId::LedgerNew => Some(Action::OpenLedger),
+            CommandId::LedgerOpen => Some(Action::OpenLedger(path())),
+            CommandId::LedgerNew => Some(Action::NewLedger(path())),
+            CommandId::Help => Some(Action::OpenHelp),
             CommandId::LedgerClose => Some(Action::CloseLedger),
             CommandId::Dismiss => Some(Action::DismissNewestToast),
             CommandId::DismissAll => Some(Action::DismissAllToasts),
@@ -714,8 +849,8 @@ impl Shell {
             self.key_token("open_command_popup", ":"),
             crate::msg::tui_hint_command(),
         )];
-        // Nothing to search with no ledger loaded, so 1a's hints are only `: command · ? help`.
-        if self.ledger_open {
+        // Nothing to search with no Ledger open, so 1a's hints are only `: command · ? help`.
+        if self.ledger.is_some() {
             hints.push((SEARCH_KEY, crate::msg::tui_hint_search()));
         }
         hints.push((self.key_token("help", "?"), crate::msg::tui_hint_help()));
@@ -1247,8 +1382,10 @@ impl Shell {
                 }
             }
             Action::OpenNewUnitPopup | Action::OpenEditUnitPopup | Action::OpenDeleteUnitPopup => {
-                self.open(UnitsView::new(&self.units));
-                self.view.update(&action);
+                if let Some(ledger) = &self.ledger {
+                    self.open(UnitsView::new(&ledger.units));
+                    self.view.update(&action);
+                }
             }
             Action::OpenEditSettingPopup => {
                 self.settings_popup = Some(SettingsPopup::Edit(EditSettingPopup::new()));
@@ -1282,17 +1419,23 @@ impl Shell {
                     self.set_colour_preference(popup.original());
                 }
             }
-            Action::OpenUnits => self.open(UnitsView::new(&self.units)),
-            Action::OpenDashboard => self.open(DashboardView::new()),
-            // Both land on the Dashboard, which is what the flag changes, and clear the view
-            // stack the way opening it always does.
-            Action::OpenLedger => {
-                self.ledger_open = true;
-                self.open(DashboardView::new());
+            Action::OpenUnits => {
+                if let Some(ledger) = &self.ledger {
+                    self.open(UnitsView::new(&ledger.units));
+                }
             }
-            Action::CloseLedger => {
-                self.ledger_open = false;
-                self.open(DashboardView::new());
+            Action::OpenDashboard => self.open(DashboardView::new()),
+            // Each lands on the Dashboard with the view stack cleared when it changes the Open
+            // Ledger, so no view shows a Ledger that has closed.
+            Action::OpenLedger(path) => self.open_ledger(path),
+            Action::NewLedger(path) => self.new_ledger(path),
+            Action::CloseLedger => self.close_ledger(),
+            Action::NoLedgerOpen => {
+                self.command_popup = None;
+                self.status_message = Some(crate::msg::tui_status_no_ledger_open(
+                    OPEN_COMMAND,
+                    NEW_COMMAND,
+                ));
             }
             Action::OpenAccounts => self.open(AccountsView::new()),
             Action::OpenBalanceChecks => self.open(BalanceChecksView::new()),
@@ -1807,8 +1950,8 @@ impl Shell {
         }
     }
 
-    /// Draws the shell chrome — status line, full-bleed view region, a rule, then the keybind
-    /// hint bar — around the active view, per `docs/ux/tui-mockups/01-shell/README.md`. `run`
+    /// Draws the shell chrome — status line, full-bleed view region, then the keybind hint bar —
+    /// around the active view, per `docs/ux/tui-mockups/01-shell/README.md`. `run`
     /// calls this on every change, and tests call it to read the frame back.
     pub fn draw(&mut self, frame: &mut Frame<'_>) {
         // The frame size is only known here, so this is where a view shrinking under 40×8
@@ -1827,8 +1970,7 @@ impl Shell {
             .constraints([
                 Constraint::Length(1), // status line
                 Constraint::Min(0),    // view
-                Constraint::Length(1), // rule, separating the view from the footer
-                Constraint::Length(1), // footer
+                Constraint::Length(1), // footer, the only row under the view
             ])
             .split(frame.area());
 
@@ -1870,15 +2012,17 @@ impl Shell {
             None
         };
         let name = lib_locale::msg::app_name();
-        let title = self.view.title();
         let status = match &mode {
-            Some(mode) => {
-                crate::msg::tui_status_line_with_mode(LEDGER_GLYPH, &name, &title, &upper(mode))
-            }
-            None => crate::msg::tui_status_line(LEDGER_GLYPH, &name, &title),
+            Some(mode) => crate::msg::tui_status_line_with_mode(&name, &upper(mode)),
+            None => name,
         };
-        // Representative content -- a real last-sync time lands with the sync ticket.
-        let synced = format!(" {} ", crate::msg::tui_status_synced("14:22"));
+        // Representative content -- a real last-sync time lands with the sync ticket. Blank with
+        // no Ledger open: there's nothing to have synced.
+        let synced = if self.ledger.is_some() {
+            format!(" {} ", crate::msg::tui_status_synced("14:22"))
+        } else {
+            String::new()
+        };
         let synced_width = u16::try_from(synced.chars().count()).unwrap_or(0);
         let [left, right] = Layout::horizontal([
             Constraint::Min(0),
@@ -1892,15 +2036,11 @@ impl Shell {
         frame.render_widget(Paragraph::new(synced).style(c.status_bar()), right);
 
         // Screen Frame / View — with no ledger loaded, the Dashboard's place holds the 1a note.
-        if !self.ledger_open && self.view.id() == ViewId::Dashboard {
+        if self.ledger.is_none() && self.view.id() == ViewId::Dashboard {
             crate::view::dashboard::render_no_ledger(frame, rows[1], c);
         } else {
             self.view.view(frame, rows[1], c);
         }
-
-        // Rule Frame — separates the view from the footer, replacing the footer's old
-        // background fill as the visual boundary between them.
-        frame.render_widget(Block::new().borders(Borders::TOP), rows[2]);
 
         // Footer Frame — each keybind's key is bolded to stand out from its label. While a
         // popup is open the whole bar greys out and gains its own close hint: §3a for the
@@ -1949,14 +2089,11 @@ impl Shell {
                 crate::msg::tui_footer_colour_popup(back_key)
             ))
             .style(dim)
-        } else if let Some(command) = self.jump_not_yet_built {
+        } else if let Some(message) = &self.status_message {
             // Plain (not dimmed) styling, matching the command popup's own "not yet built"
             // message treatment (`CommandPopup::render_info_row`) -- it reads as a real
             // message, not secondary chrome the way the popup-close hints above do.
-            Line::from(format!(
-                " {} ",
-                crate::msg::tui_footer_not_yet_built(&format!(":{command}"))
-            ))
+            Line::from(format!(" {message} "))
         } else if let Some(toast) = self.toasts.echo() {
             // The status-line echo (ADR-0027): below a status-line message, above the hints.
             Line::from(vec![
@@ -1967,11 +2104,8 @@ impl Shell {
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             let mut spans = vec![Span::raw(" ")];
-            // 1a names the mode at the far left while no ledger is loaded.
-            if !self.ledger_open {
-                spans.push(Span::styled(upper(&crate::msg::tui_mode_normal()), key));
-                spans.push(Span::raw(HINT_SEPARATOR));
-            }
+            spans.push(Span::styled(upper(&crate::msg::tui_mode_normal()), key));
+            spans.push(Span::raw(HINT_SEPARATOR));
             for (index, (token, label)) in self.footer_hints().into_iter().enumerate() {
                 if index > 0 {
                     spans.push(Span::raw(HINT_SEPARATOR));
@@ -1982,18 +2116,19 @@ impl Shell {
             spans.push(Span::raw(" "));
             Line::from(spans)
         };
-        frame.render_widget(Paragraph::new(footer), rows[3]);
-        // The right-aligned `no file` label, drawn after the hints so a narrow frame keeps it.
-        if !self.ledger_open {
-            let no_file = format!(" {} ", crate::msg::tui_footer_no_file());
-            let width = u16::try_from(no_file.chars().count()).unwrap_or(0);
-            let [_, right] = Layout::horizontal([
-                Constraint::Min(0),
-                Constraint::Length(width.min(rows[3].width)),
-            ])
-            .areas(rows[3]);
-            frame.render_widget(Paragraph::new(no_file).style(dim), right);
-        }
+        frame.render_widget(Paragraph::new(footer), rows[2]);
+        // The right-aligned Ledger file label, drawn after the hints so a narrow frame keeps it.
+        let label = match &self.ledger {
+            Some(ledger) => format!(" {} ", ledger.name()),
+            None => format!(" {} ", crate::msg::tui_footer_no_ledger()),
+        };
+        let width = u16::try_from(label.chars().count()).unwrap_or(0);
+        let [_, right] = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(width.min(rows[2].width)),
+        ])
+        .areas(rows[2]);
+        frame.render_widget(Paragraph::new(label).style(dim), right);
 
         // Popup overlays — dim the view behind them (never hide it) and float over the whole
         // frame, per §3a. Mutually exclusive: only one is ever `Some` at a time.
@@ -2042,6 +2177,14 @@ impl Shell {
     }
 }
 
+/// The name of the file at `path`, or the whole path if it names none.
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
 /// Joins hint items into one flat string, for the dimmed footer a popup shows (which styles the
 /// whole bar the same, so it needs no per-key spans).
 fn hint_text(hints: &[(&str, String)]) -> String {
@@ -2060,6 +2203,59 @@ fn map_toast_history_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Up | KeyCode::Char('k') => Some(Action::ToastHistoryScroll(false)),
         _ => None,
     }
+}
+
+/// Whether the command `id` runs with no Ledger open: opening or creating one, help, quit, and the
+/// Toasts, which are the Shell's own and not the Ledger's.
+fn runs_without_ledger(id: CommandId) -> bool {
+    matches!(
+        id,
+        CommandId::LedgerOpen
+            | CommandId::LedgerNew
+            | CommandId::Help
+            | CommandId::Quit
+            | CommandId::Dismiss
+            | CommandId::DismissAll
+            | CommandId::ToastsOn
+            | CommandId::ToastsOff
+            | CommandId::ToastHistory
+            | CommandId::ToastHistoryAlias
+    )
+}
+
+/// Where a `g <letter>` jump chord lands, per `docs/ux/tui-mockups/01-shell/README.md`'s "Jumps"
+/// table, or `None` for a letter that completes no chord.
+fn jump(code: KeyCode) -> Option<Jump> {
+    match code {
+        KeyCode::Char('a') => Some(Jump::Open(Action::OpenAccounts)),
+        // `budget`/`balance_check`/`report`/`txn` (below) still have no real
+        // view content (`view::budgets`/`balance_checks`/`reports`/
+        // `transactions` are all bare placeholder boxes) -- flashing the same
+        // "not yet built" message the command popup shows for these, rather
+        // than silently opening an empty box, closes issue #96.
+        KeyCode::Char('b') => Some(Jump::NotYetBuilt("budget")),
+        KeyCode::Char('c') => Some(Jump::Open(Action::OpenCategories)),
+        KeyCode::Char('d') => Some(Jump::Open(Action::OpenDashboard)),
+        // `t` is already Transactions', so Tags gets the leader key doubled
+        // instead — the one letter left unclaimed once every other domain had
+        // already taken its own initial.
+        KeyCode::Char('g') => Some(Jump::Open(Action::OpenTags)),
+        KeyCode::Char('k') => Some(Jump::NotYetBuilt("check")),
+        KeyCode::Char('p') => Some(Jump::Open(Action::OpenPayees)),
+        KeyCode::Char('r') => Some(Jump::NotYetBuilt("report")),
+        KeyCode::Char('s') => Some(Jump::Open(Action::OpenSettings)),
+        KeyCode::Char('t') => Some(Jump::NotYetBuilt("txn")),
+        KeyCode::Char('u') => Some(Jump::Open(Action::OpenUnits)),
+        _ => None,
+    }
+}
+
+/// Where a `g` jump chord lands ([`jump`]).
+enum Jump {
+    Open(Action),
+    /// A noun whose view is still a bare placeholder: the jump flashes `:{noun} — not yet built`
+    /// rather than silently opening an empty box (issue #96).
+    NotYetBuilt(&'static str),
 }
 
 /// A key the Shell keeps in NORMAL mode ([`Shell::global_key`]).
@@ -2192,6 +2388,21 @@ mod tests {
 
     use super::*;
 
+    /// A `Shell` with a Ledger open on the stub seed's Units in memory, as most tests need.
+    fn opened() -> Shell {
+        opened_with(KeyBindingConfig::default())
+    }
+
+    /// [`opened`], reading the global keys from `keybindings`.
+    fn opened_with(keybindings: KeyBindingConfig) -> Shell {
+        let stores = Stores::with_units(
+            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+            std::rc::Rc::new(lib_database::InMemoryCommit),
+            std::sync::mpsc::channel().1,
+        );
+        Shell::with_keybindings(keybindings).with_open_ledger("test.pldb", stores)
+    }
+
     /// The action a command runs, with the "not yet built" message's text ignored, so two
     /// routings compare equal whatever display text they were handed.
     fn routed(action: Option<Action>) -> Option<Action> {
@@ -2205,7 +2416,7 @@ mod tests {
 
     #[test]
     fn every_palette_command_dispatches_by_id() {
-        let shell = Shell::new();
+        let shell = opened();
         for domain in crate::popup::command::DOMAINS {
             for command in domain.commands {
                 assert!(
@@ -2220,7 +2431,7 @@ mod tests {
 
     #[test]
     fn routing_does_not_depend_on_the_usage_text() {
-        let shell = Shell::new();
+        let shell = opened();
         for domain in crate::popup::command::DOMAINS {
             for command in domain.commands {
                 assert_eq!(
@@ -2236,7 +2447,7 @@ mod tests {
 
     #[test]
     fn the_commands_with_content_behind_them_open_it() {
-        let shell = Shell::new();
+        let shell = opened();
         let cases = [
             (CommandId::Unit, Action::OpenUnits),
             (CommandId::UnitNew, Action::OpenNewUnitPopup),
@@ -2260,7 +2471,7 @@ mod tests {
 
     #[test]
     fn a_command_that_needs_a_selection_says_not_yet_built_without_one() {
-        let shell = Shell::new();
+        let shell = opened();
         assert_eq!(
             shell.command_action(CommandId::CategoryEdit, "category edit <cat>"),
             Some(Action::CommandPopupSetNotYetBuilt("category edit <cat>"))
@@ -2305,7 +2516,7 @@ mod tests {
     #[test]
     fn deleting_a_tag_raises_a_success_toast_naming_it() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let name = {
             let store = shell.view.tag_store().expect("the Tags view has a store");
@@ -2341,7 +2552,7 @@ mod tests {
     #[test]
     fn a_refused_account_write_raises_an_error_toast() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         shell.update(Action::SetAccountActive {
             id: lib_core::RowID::new(),
@@ -2358,70 +2569,70 @@ mod tests {
     }
 
     #[test]
-    fn one_toast_draws_bottom_right_above_the_footer_rule() {
+    fn one_toast_draws_bottom_right_above_the_footer() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Success, "Deleted tag Food");
         let text = drawn(&mut shell);
         let rows = lines(&text);
-        // Bottom up: footer, rule, the box's bottom border, then its content row.
-        let toast_row = rows[rows.len() - 4];
+        // Bottom up: footer, the box's bottom border, then its content row.
+        let toast_row = rows[rows.len() - 3];
         assert!(
             toast_row.ends_with("│▌ ✓ Deleted tag Food │"),
             "toast content row wrong:\n{text}"
         );
         assert!(
-            rows[rows.len() - 3].ends_with('┘'),
-            "bottom border not above the rule:\n{text}"
+            rows[rows.len() - 2].ends_with('┘'),
+            "bottom border not above the footer:\n{text}"
         );
         assert!(
-            !rows[rows.len() - 2].contains('┘'),
-            "toast drew over the rule:\n{text}"
+            !rows[rows.len() - 1].contains('┘'),
+            "toast drew over the footer:\n{text}"
         );
     }
 
     #[test]
     fn three_toasts_stack_newest_nearest_the_footer() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Info, "first");
         shell.raise_toast(ToastKind::Warning, "second");
         shell.raise_toast(ToastKind::Error, "third");
         let text = drawn(&mut shell);
         let rows = lines(&text);
         let n = rows.len();
-        assert!(rows[n - 4].contains("▌ ✗ third"), "{text}");
-        assert!(rows[n - 7].contains("▌ ! second"), "{text}");
-        assert!(rows[n - 10].contains("▌ i first"), "{text}");
+        assert!(rows[n - 3].contains("▌ ✗ third"), "{text}");
+        assert!(rows[n - 6].contains("▌ ! second"), "{text}");
+        assert!(rows[n - 9].contains("▌ i first"), "{text}");
         assert!(!text.contains("more"), "{text}");
     }
 
     #[test]
     fn held_back_errors_show_a_more_line_above_the_stack() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         for i in 0..5 {
             shell.raise_toast(ToastKind::Error, format!("failure {i}"));
         }
         let text = drawn(&mut shell);
         let rows = lines(&text);
         let n = rows.len();
-        assert!(rows[n - 4].contains("failure 4"), "{text}");
-        assert!(rows[n - 10].contains("failure 2"), "{text}");
-        assert!(rows[n - 12].trim_end().ends_with("+2 more"), "{text}");
+        assert!(rows[n - 3].contains("failure 4"), "{text}");
+        assert!(rows[n - 9].contains("failure 2"), "{text}");
+        assert!(rows[n - 11].trim_end().ends_with("+2 more"), "{text}");
         assert!(!text.contains("failure 1"), "{text}");
     }
 
     #[test]
     fn stacking_stops_at_what_fits_and_counts_the_rest() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         for i in 0..3 {
             shell.raise_toast(ToastKind::Error, format!("failure {i}"));
         }
-        // 12 rows: a 9-row view fits three boxes exactly, so no room for the more line; 11 rows
-        // leaves 7, which fits two and the line.
-        let text = drawn_at(&mut shell, 60, 11);
+        // 11 rows: a 9-row view fits three boxes exactly, so no room for the more line; 10 rows
+        // leaves 8, which fits two and the line.
+        let text = drawn_at(&mut shell, 60, 10);
         assert!(
             text.contains("failure 2") && text.contains("failure 1"),
             "{text}"
@@ -2433,12 +2644,12 @@ mod tests {
     #[test]
     fn long_text_truncates_and_keeps_its_badge() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let long = "Couldn't save account: the store refused it because the name is taken";
         shell.raise_toast(ToastKind::Error, long);
         shell.raise_toast(ToastKind::Error, long);
         let text = drawn(&mut shell);
-        let row = lines(&text)[lines(&text).len() - 4];
+        let row = lines(&text)[lines(&text).len() - 3];
         assert!(row.ends_with("… ×2 │"), "badge cut or no ellipsis:\n{text}");
         let start = row.find("│▌").unwrap_or(0);
         assert_eq!(
@@ -2451,7 +2662,7 @@ mod tests {
     #[test]
     fn under_a_forty_by_eight_view_the_toast_moves_to_the_footer_echo() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Error, "hidden");
         for (width, height) in [(39, 20), (60, 7)] {
             let text = drawn_at(&mut shell, width, height);
@@ -2471,7 +2682,7 @@ mod tests {
     #[test]
     fn toasts_off_echoes_on_the_footer_but_an_error_still_toasts() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell.command_action(CommandId::ToastsOff, "toasts off");
         assert_eq!(action, Some(Action::SetToasts(false)));
         shell.update(Action::SetToasts(false));
@@ -2490,7 +2701,7 @@ mod tests {
     #[test]
     fn turning_toasts_off_moves_the_newest_to_the_echo() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Info, "older");
         shell.raise_toast(ToastKind::Warning, "newer");
         shell.update(Action::SetToasts(false));
@@ -2503,7 +2714,7 @@ mod tests {
     #[test]
     fn a_status_line_message_outranks_the_echo_which_outranks_the_hints() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::SetToasts(false));
         let hints = crate::msg::tui_hint_help();
         assert!(footer(&mut shell).contains(&hints));
@@ -2515,7 +2726,7 @@ mod tests {
             "{line}"
         );
 
-        shell.jump_not_yet_built = Some("report");
+        shell.flash_not_yet_built("report");
         let line = footer(&mut shell);
         assert!(
             line.contains(":report") && !line.contains("echoed"),
@@ -2532,7 +2743,7 @@ mod tests {
 
     #[test]
     fn the_toasts_command_and_its_alias_open_the_history() {
-        let shell = Shell::new();
+        let shell = opened();
         assert_eq!(
             shell.command_action(CommandId::ToastHistory, "toasts"),
             Some(Action::OpenToastHistory)
@@ -2545,7 +2756,7 @@ mod tests {
 
     #[test]
     fn the_history_hides_showing_toasts_and_pauses_them_without_dismissing() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Error, "sticky failure");
         shell.raise_toast(ToastKind::Info, "timed note");
         shell.update(Action::OpenToastHistory);
@@ -2575,7 +2786,7 @@ mod tests {
     #[test]
     fn toasts_draw_above_an_open_popup() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         shell.raise_toast(ToastKind::Success, "Deleted tag Food");
         assert!(drawn(&mut shell).contains("✓ Deleted tag Food"));
@@ -2584,7 +2795,7 @@ mod tests {
     #[test]
     fn ticks_expire_timed_toasts_and_pause_while_a_popup_is_open() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Info, "info");
         shell.raise_toast(ToastKind::Error, "error");
         shell.update(Action::OpenCommandPopup);
@@ -2603,7 +2814,7 @@ mod tests {
     #[test]
     fn ctrl_l_dismisses_every_toast_in_normal_mode() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Error, "error");
         assert_eq!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
         shell.update(Action::DismissAllToasts);
@@ -2613,10 +2824,10 @@ mod tests {
     #[test]
     fn ctrl_l_is_inert_while_a_popup_is_open() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenNewUnitPopup);
         assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
     }
@@ -2627,7 +2838,7 @@ mod tests {
         keybindings
             .bindings
             .insert("dismiss_toasts".into(), "ctrl+k".into());
-        let mut shell = Shell::with_keybindings(keybindings);
+        let mut shell = opened_with(keybindings);
         assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
         let ctrl_k = Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
         assert_eq!(shell.map_event(ctrl_k), Some(Action::DismissAllToasts));
@@ -2636,7 +2847,7 @@ mod tests {
     #[test]
     fn the_dismiss_commands_dismiss_and_close_the_popup() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.raise_toast(ToastKind::Error, "older");
         shell.raise_toast(ToastKind::Error, "newer");
         assert_eq!(
@@ -2657,32 +2868,29 @@ mod tests {
     }
 
     #[test]
-    fn the_status_line_names_the_product_and_the_active_view() {
+    fn the_status_line_names_the_product_and_the_last_sync() {
         crate::locale::init_for_tests();
-        let text = drawn(&mut Shell::new());
-        // The glyph is double-width, so the buffer holds a blank continuation cell after it --
-        // the assertion starts at the product name rather than counting those cells.
+        let text = drawn(&mut opened());
+        let status = lines(&text)[0];
         assert!(
-            text.contains("Personal Ledger | Dashboard"),
+            status.starts_with(" Personal Ledger "),
             "status line missing:\n{text}"
         );
-        assert!(
-            text.contains("\u{1f4d2}"),
-            "the ledger glyph is missing:\n{text}"
-        );
+        assert!(!status.contains("Dashboard"), "{status}");
+        assert!(status.trim_end().ends_with("Synced 14:22"), "{status}");
     }
 
     #[test]
     fn the_status_line_names_the_mode_upper_cased_while_a_popup_is_open() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         assert!(
-            drawn(&mut shell).contains("| Dashboard \u{b7} COMMAND"),
+            drawn(&mut shell).contains(" Personal Ledger \u{b7} COMMAND"),
             "command mode missing from the status line"
         );
 
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenNewUnitPopup);
         assert!(
             drawn(&mut shell).contains("\u{b7} INSERT"),
@@ -2693,10 +2901,18 @@ mod tests {
     #[test]
     fn the_resting_footer_names_each_configured_key_with_its_label() {
         crate::locale::init_for_tests();
-        let text = drawn(&mut Shell::new());
+        let text = drawn(&mut opened());
         assert!(
-            text.contains(": command \u{b7} ? help"),
+            text.contains(" NORMAL \u{b7} : command \u{b7} / search \u{b7} ? help"),
             "resting hints missing:\n{text}"
+        );
+        assert!(
+            lines(&text)
+                .last()
+                .unwrap_or(&"")
+                .trim_end()
+                .ends_with("test.pldb"),
+            "the Ledger file isn't named:\n{text}"
         );
     }
 
@@ -2705,7 +2921,7 @@ mod tests {
         crate::locale::init_for_tests();
         let mut keybindings = KeyBindingConfig::default();
         keybindings.bindings.insert("help".into(), "F1".into());
-        let text = drawn(&mut Shell::with_keybindings(keybindings));
+        let text = drawn(&mut opened_with(keybindings));
         assert!(
             text.contains("F1 help"),
             "the hint should name the rebound key:\n{text}"
@@ -2722,7 +2938,7 @@ mod tests {
             (Action::OpenBaseUnitGuardPopup, "esc close dialog"),
         ];
         for (action, hint) in cases {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(action.clone());
             let text = drawn(&mut shell);
             assert!(text.contains(hint), "{hint} missing:\n{text}");
@@ -2732,8 +2948,8 @@ mod tests {
     #[test]
     fn a_jump_with_nothing_behind_it_flashes_the_command_it_names() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
-        shell.jump_not_yet_built = Some("report");
+        let mut shell = opened();
+        shell.flash_not_yet_built("report");
         assert!(
             drawn(&mut shell).contains(":report \u{2014} not yet built"),
             "the not-yet-built flash should name the command"
@@ -2746,7 +2962,7 @@ mod tests {
     fn the_chrome_is_fully_pseudo_localised() {
         crate::locale::init_for_tests();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             let text = drawn(&mut shell);
 
@@ -2769,7 +2985,7 @@ mod tests {
 
     #[test]
     fn renders_the_shell_layout_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
@@ -2780,7 +2996,7 @@ mod tests {
 
     #[test]
     fn the_colour_popup_previews_on_j_and_esc_restores_the_prior_theme_exactly() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::SetColourTheme(Some("gruvbox".to_string())));
         shell.update(Action::OpenColourThemePopup);
         shell.update(Action::ColourPopupDown);
@@ -2794,7 +3010,7 @@ mod tests {
 
     #[test]
     fn esc_restores_a_null_colour_theme_as_null() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenColourThemePopup);
         shell.update(Action::ColourPopupDown);
         assert!(shell.colours.colour_theme().is_some());
@@ -2804,7 +3020,7 @@ mod tests {
 
     #[test]
     fn enter_keeps_the_previewed_colour_appearance() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenColourAppearancePopup);
         shell.update(Action::ColourPopupUp);
         shell.update(Action::ColourPopupKeep);
@@ -2846,7 +3062,7 @@ mod tests {
                 .expect("drawing the shell should not error");
             terminal.backend().buffer()[(0, 0)].bg
         };
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let before = draw(&mut shell);
         shell.update(Action::SetColourTheme(Some("nord".to_string())));
         shell.update(Action::SetColourAppearance(Some(
@@ -2861,7 +3077,7 @@ mod tests {
     }
 
     #[test]
-    fn footer_has_no_background_and_a_rule_separates_it_from_the_view() {
+    fn footer_has_no_background_and_no_rule_above_it() {
         let mut shell = Shell::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
@@ -2871,16 +3087,16 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         let last = buffer.area.height - 1;
-        let rule_row = last - 1;
+        let above = last - 1;
 
-        let base = buffer[(0, rule_row)].bg;
+        let base = buffer[(0, above)].bg;
         assert!(
             (0..buffer.area.width).all(|x| buffer[(x, last)].bg == base),
             "footer row should carry no background fill beyond the Colour Theme's own"
         );
         assert!(
-            (0..buffer.area.width).all(|x| buffer[(x, rule_row)].symbol() == "─"),
-            "a rule should separate the view from the footer"
+            (0..buffer.area.width).all(|x| buffer[(x, above)].symbol() == " "),
+            "the footer is the only row under the view, with no rule above it"
         );
     }
 
@@ -2895,7 +3111,7 @@ mod tests {
 
     #[test]
     fn ctrl_c_quits_the_shell() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('c'),
@@ -2908,7 +3124,7 @@ mod tests {
 
     #[test]
     fn tick_reaches_the_active_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell
             .map_event(Event::Tick)
             .expect("a tick always maps to an action");
@@ -2922,7 +3138,7 @@ mod tests {
         // `run` intercepts `Event::Resize` directly to clear the terminal, before it would
         // ever reach `map_event` — this just documents that `map_event` itself treats it as
         // unmapped, keeping the match exhaustive without inventing a `Resize` action.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         assert_eq!(shell.map_event(Event::Resize), None);
     }
 
@@ -2989,7 +3205,7 @@ mod tests {
 
     #[test]
     fn bare_colon_opens_the_command_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         assert!(shell.command_popup.is_none());
 
         let action = shell
@@ -3008,7 +3224,7 @@ mod tests {
         // The old `Ctrl+;` toggle-closed on a second press; the new default (a bare,
         // printable `:`) must instead reach the input buffer as ordinary typed text once the
         // popup already has focus — see `map_command_popup_key`'s own doc.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -3031,7 +3247,7 @@ mod tests {
             },
             ..KeyBindingConfig::default()
         };
-        let mut shell = Shell::with_keybindings(keybindings);
+        let mut shell = opened_with(keybindings);
 
         // The old default (bare `:`) no longer opens it once remapped away.
         assert_eq!(
@@ -3053,7 +3269,7 @@ mod tests {
 
     #[test]
     fn esc_closes_an_open_command_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell
@@ -3066,7 +3282,7 @@ mod tests {
 
     #[test]
     fn typing_while_the_command_popup_is_open_never_reaches_the_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -3078,7 +3294,7 @@ mod tests {
 
     #[test]
     fn ctrl_c_still_quits_while_the_command_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell
@@ -3148,7 +3364,7 @@ mod tests {
 
     /// The defaults among `bindings` the Shell's global keys take, less the kept ones.
     fn clashes(bindings: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
-        let shell = Shell::new();
+        let shell = opened();
         bindings
             .iter()
             .copied()
@@ -3189,7 +3405,7 @@ mod tests {
 
     #[test]
     fn selecting_the_unit_command_and_pressing_enter_opens_the_units_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "unit".chars() {
             let action = shell
@@ -3219,7 +3435,7 @@ mod tests {
         // Reports screen's own picker (`popup/command/commands/reports.rs`) — which has no
         // dispatch of its own even though `report list` does. `Enter` should show the
         // "not yet built" message rather than open a view, and the popup should stay open.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "account-balance".chars() {
             let action = shell
@@ -3249,7 +3465,7 @@ mod tests {
 
     #[test]
     fn selecting_the_dashboard_command_and_pressing_enter_opens_the_dashboard_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view.id(), ViewId::Units);
 
@@ -3278,7 +3494,7 @@ mod tests {
 
     #[test]
     fn g_then_d_opens_the_dashboard_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view.id(), ViewId::Units);
 
@@ -3303,7 +3519,7 @@ mod tests {
 
     #[test]
     fn g_then_an_unknown_letter_aborts_the_chord_without_an_action() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let _ = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
             KeyModifiers::NONE,
@@ -3320,7 +3536,7 @@ mod tests {
 
     #[test]
     fn ctrl_c_still_quits_mid_chord() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let _ = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
             KeyModifiers::NONE,
@@ -3339,7 +3555,7 @@ mod tests {
 
     #[test]
     fn g_then_g_opens_the_tags_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view.id(), ViewId::Units);
 
@@ -3379,7 +3595,7 @@ mod tests {
         ];
 
         for (letter, expected_view) in cases {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             let armed = shell.map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('g'),
                 KeyModifiers::NONE,
@@ -3413,7 +3629,7 @@ mod tests {
         ];
 
         for (letter, noun) in cases {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             let armed = shell.map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('g'),
                 KeyModifiers::NONE,
@@ -3430,8 +3646,8 @@ mod tests {
                 "g {letter}: should not dispatch a navigation action"
             );
             assert_eq!(
-                shell.jump_not_yet_built,
-                Some(*noun),
+                shell.status_message,
+                Some(crate::msg::tui_footer_not_yet_built(&format!(":{noun}"))),
                 "g {letter}: should flash the not-yet-built message"
             );
             assert_eq!(
@@ -3444,8 +3660,8 @@ mod tests {
     }
 
     #[test]
-    fn jump_not_yet_built_flash_clears_on_the_next_keypress() {
-        let mut shell = Shell::new();
+    fn a_status_line_message_clears_on_the_next_keypress() {
+        let mut shell = opened();
         shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
             KeyModifiers::NONE,
@@ -3454,19 +3670,19 @@ mod tests {
             KeyCode::Char('b'),
             KeyModifiers::NONE,
         )));
-        assert_eq!(shell.jump_not_yet_built, Some("budget"));
+        assert!(shell.status_message.is_some());
 
         shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('x'),
             KeyModifiers::NONE,
         )));
 
-        assert_eq!(shell.jump_not_yet_built, None);
+        assert_eq!(shell.status_message, None);
     }
 
     #[test]
     fn question_mark_opens_the_help_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('?'),
@@ -3480,7 +3696,7 @@ mod tests {
 
     #[test]
     fn shift_q_quits_the_shell() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('Q'),
@@ -3494,7 +3710,7 @@ mod tests {
 
     #[test]
     fn shift_q_is_swallowed_while_the_command_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -3510,7 +3726,7 @@ mod tests {
         // `quit` isn't one of the 6 commands with real content behind them — Enter on it
         // shows the "not yet built" message rather than quitting; the app still quits via the
         // global `Q`/`q` keys or `Ctrl+C`, just not through the command popup.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "quit".chars() {
             let action = shell
@@ -3550,7 +3766,7 @@ mod tests {
 
     #[test]
     fn typing_into_the_popup_narrows_the_visible_results() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         let popup = shell.command_popup.as_ref().expect("just opened");
         let resting_count = popup.selectable_count();
@@ -3565,7 +3781,7 @@ mod tests {
 
     #[test]
     fn enter_on_a_selected_command_records_it_into_history() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         type_into_popup(&mut shell, "dashboard");
 
@@ -3582,7 +3798,7 @@ mod tests {
 
     #[test]
     fn ctrl_r_recall_changes_the_input_buffer() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         // Run `dashboard` once via the real Enter round trip so it lands in history, then
         // reopen a fresh popup (Enter on `dashboard` also closes it, see its own dispatch arm).
         shell.update(Action::OpenCommandPopup);
@@ -3612,7 +3828,7 @@ mod tests {
 
     #[test]
     fn question_mark_is_swallowed_while_the_command_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -3630,16 +3846,10 @@ mod tests {
         // `account list` (now `account`) and `payee list` (now bare `payee`) are no longer
         // among them — "Categories: :category command grammar", "Accounts: :acct command
         // grammar" and fixing the `:payee` command gave them real dispatch.
-        let cases: &[&str] = &[
-            "check list",
-            "budget list",
-            "help",
-            "report list",
-            "txn recent",
-        ];
+        let cases: &[&str] = &["check list", "budget list", "report list", "txn recent"];
 
         for filter in cases {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             for c in filter.chars() {
                 let action = shell
@@ -3666,7 +3876,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_command_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let backend = TestBackend::new(96, 30);
@@ -3680,7 +3890,7 @@ mod tests {
     #[test]
     fn n_on_the_units_view_opens_a_units_dialog() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert!(!shell.view.dialog_open());
 
@@ -3704,7 +3914,7 @@ mod tests {
             Action::OpenEditUnitPopup,
             Action::OpenDeleteUnitPopup,
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(open.clone());
             assert!(shell.view.dialog_open(), "{open:?} opens a Dialog");
 
@@ -3725,7 +3935,7 @@ mod tests {
     #[test]
     fn an_open_units_dialog_takes_the_shells_global_keys() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenNewUnitPopup);
 
         for key in ['q', ':', '?', 'g'] {
@@ -3743,7 +3953,7 @@ mod tests {
     #[test]
     fn opening_a_units_dialog_closes_an_open_command_popup() {
         crate::locale::init_for_tests();
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         assert!(shell.command_popup.is_some());
 
@@ -3755,7 +3965,7 @@ mod tests {
 
     #[test]
     fn e_on_the_settings_view_opens_the_edit_setting_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenSettings);
         assert!(shell.settings_popup.is_none());
 
@@ -3772,7 +3982,7 @@ mod tests {
 
     #[test]
     fn enter_on_the_settings_view_opens_the_base_unit_guard_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenSettings);
         assert!(shell.settings_popup.is_none());
 
@@ -3793,7 +4003,7 @@ mod tests {
     #[test]
     fn esc_closes_an_open_settings_popup() {
         for open in [Action::OpenEditSettingPopup, Action::OpenBaseUnitGuardPopup] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(open);
 
             let action = shell
@@ -3807,7 +4017,7 @@ mod tests {
 
     #[test]
     fn other_keys_are_swallowed_while_a_settings_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenEditSettingPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -3819,7 +4029,7 @@ mod tests {
 
     #[test]
     fn opening_a_settings_popup_closes_an_open_command_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         assert!(shell.command_popup.is_some());
 
@@ -3831,7 +4041,7 @@ mod tests {
 
     #[test]
     fn opening_a_settings_popup_replaces_any_other_open_settings_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenEditSettingPopup);
         assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
 
@@ -3845,7 +4055,7 @@ mod tests {
 
     #[test]
     fn leaving_the_settings_view_closes_an_open_settings_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenSettings);
         shell.update(Action::OpenEditSettingPopup);
         assert!(shell.settings_popup.is_some());
@@ -3857,7 +4067,7 @@ mod tests {
 
     #[test]
     fn status_line_and_footer_reflect_the_open_settings_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenSettings);
         shell.update(Action::OpenEditSettingPopup);
 
@@ -3903,7 +4113,7 @@ mod tests {
 
     #[test]
     fn selecting_the_unit_new_command_and_pressing_enter_opens_the_new_unit_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "unit new".chars() {
             let action = shell
@@ -3929,7 +4139,7 @@ mod tests {
 
     #[test]
     fn selecting_the_unit_edit_command_and_pressing_enter_opens_the_edit_unit_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "unit edit".chars() {
             let action = shell
@@ -3955,7 +4165,7 @@ mod tests {
 
     #[test]
     fn selecting_the_unit_delete_command_and_pressing_enter_opens_the_delete_unit_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "unit delete".chars() {
             let action = shell
@@ -3981,7 +4191,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_new_unit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenNewUnitPopup);
 
         let backend = TestBackend::new(96, 30);
@@ -3994,7 +4204,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_edit_unit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenEditUnitPopup);
 
         let backend = TestBackend::new(96, 30);
@@ -4007,7 +4217,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_delete_unit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenDeleteUnitPopup);
 
         let backend = TestBackend::new(96, 30);
@@ -4023,7 +4233,7 @@ mod tests {
         // `settings` is real, wireframe-stage content (`docs/ux/tui-mockups/05-settings/README.md` §4a),
         // so it's dispatched from `Enter` alongside `unit`/`dashboard`, unlike the 8 empty
         // placeholder boxes.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "settings".chars() {
             let action = shell
@@ -4049,7 +4259,7 @@ mod tests {
 
     #[test]
     fn selecting_a_command_with_args_shows_its_argument_preview_row() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "unit edit".chars() {
             let action = shell
@@ -4085,7 +4295,7 @@ mod tests {
 
     #[test]
     fn a_zero_arg_command_shows_no_argument_preview_row() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "dashboard".chars() {
             let action = shell
@@ -4104,7 +4314,7 @@ mod tests {
 
     #[test]
     fn typing_after_a_not_yet_built_message_clears_it() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "quit".chars() {
             let action = shell
@@ -4152,7 +4362,7 @@ mod tests {
 
     #[test]
     fn tab_clears_a_showing_not_yet_built_message() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "quit".chars() {
             let action = shell
@@ -4189,7 +4399,7 @@ mod tests {
 
     #[test]
     fn esc_at_rest_is_a_no_op_with_an_empty_view_stack() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         assert!(shell.view_stack.is_empty());
 
         let action = shell
@@ -4204,7 +4414,7 @@ mod tests {
 
     #[test]
     fn opening_a_new_view_pushes_the_outgoing_one_and_esc_pops_back_to_it() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view.id(), ViewId::Units);
         assert_eq!(shell.view_stack.len(), 1);
@@ -4224,7 +4434,7 @@ mod tests {
 
     #[test]
     fn opening_dashboard_clears_the_view_stack() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         shell.update(Action::OpenAccounts);
         assert_eq!(shell.view_stack.len(), 2);
@@ -4237,7 +4447,7 @@ mod tests {
 
     #[test]
     fn reopening_the_already_active_view_is_a_no_op() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view_stack.len(), 1);
 
@@ -4253,7 +4463,7 @@ mod tests {
 
     #[test]
     fn reopening_the_already_active_view_still_closes_an_open_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenUnits);
         shell.update(Action::OpenCommandPopup);
         assert!(shell.command_popup.is_some());
@@ -4265,7 +4475,7 @@ mod tests {
 
     #[test]
     fn lowercase_q_quits_the_shell_at_rest() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('q'),
@@ -4280,7 +4490,7 @@ mod tests {
 
     #[test]
     fn lowercase_q_is_ordinary_input_while_the_command_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -4371,7 +4581,7 @@ mod tests {
 
     #[test]
     fn m_on_the_categories_view_opens_the_move_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         assert!(shell.category_popup.is_none());
 
@@ -4388,7 +4598,7 @@ mod tests {
 
     #[test]
     fn esc_closes_an_open_category_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryMovePopup(groceries));
@@ -4404,7 +4614,7 @@ mod tests {
 
     #[test]
     fn other_keys_become_typed_input_while_the_move_popup_is_open() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryMovePopup(groceries));
@@ -4420,7 +4630,7 @@ mod tests {
 
     #[test]
     fn opening_the_move_popup_closes_an_open_command_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCommandPopup);
@@ -4434,7 +4644,7 @@ mod tests {
 
     #[test]
     fn typing_a_valid_path_and_ctrl_s_moves_the_category_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         let transport = category_id_by_name(&shell, "Transport");
@@ -4466,7 +4676,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_does_nothing_while_the_path_is_unresolved() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryMovePopup(groceries));
@@ -4487,7 +4697,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_refuses_a_cycle_even_when_the_path_resolves() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
         shell.update(Action::OpenCategoryMovePopup(food));
@@ -4512,7 +4722,7 @@ mod tests {
 
     #[test]
     fn ctrl_n_creates_the_missing_segment_then_ctrl_s_moves_into_it() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         let food = category_id_by_name(&shell, "Food");
@@ -4568,7 +4778,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_category_move_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryMovePopup(groceries));
@@ -4583,7 +4793,7 @@ mod tests {
 
     #[test]
     fn n_on_the_categories_view_opens_the_new_popup_for_a_child_of_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         assert!(shell.category_popup.is_none());
 
@@ -4602,7 +4812,7 @@ mod tests {
     fn shift_n_on_a_root_selection_does_nothing() {
         // The default selection is the Income root, which has no parent for a sibling to
         // attach under.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
@@ -4615,7 +4825,7 @@ mod tests {
 
     #[test]
     fn typing_a_name_and_ctrl_s_creates_the_category_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
         let original_count = shell.view.category_store().unwrap().nodes().len();
@@ -4649,7 +4859,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
         shell.update(Action::OpenCategoryNewPopup(food));
@@ -4664,7 +4874,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_does_nothing_on_a_case_insensitive_sibling_clash() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
         shell.update(Action::OpenCategoryNewPopup(food));
@@ -4682,7 +4892,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_creates_and_keeps_the_popup_open_reset_for_another_sibling() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
 
@@ -4730,7 +4940,7 @@ mod tests {
 
     #[test]
     fn n_on_the_accounts_view_opens_the_new_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         assert!(shell.account_popup.is_none());
 
@@ -4747,7 +4957,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_account_popup_without_creating_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let original_count = shell.view.account_store().unwrap().accounts().len();
 
@@ -4768,7 +4978,7 @@ mod tests {
 
     #[test]
     fn typing_a_name_and_unit_then_ctrl_s_creates_the_account_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let original_count = shell.view.account_store().unwrap().accounts().len();
 
@@ -4805,7 +5015,7 @@ mod tests {
 
     #[test]
     fn account_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         shell.update(Action::OpenAccountNewPopup);
         shell.update(Action::AccountNewPopupTab); // off `type`, onto `unit`
@@ -4823,7 +5033,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_does_nothing_while_the_unit_is_unresolved() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         shell.update(Action::OpenAccountNewPopup);
         shell.update(Action::AccountNewPopupTab); // type -> unit
@@ -4849,7 +5059,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_creates_and_keeps_the_popup_open_reset_for_another_account() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
 
         shell.update(Action::OpenAccountNewPopup);
@@ -4901,7 +5111,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_account_new_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         shell.update(Action::OpenAccountNewPopup);
 
@@ -4914,7 +5124,7 @@ mod tests {
 
     #[test]
     fn e_on_the_accounts_view_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         assert!(shell.account_popup.is_none());
 
@@ -4931,7 +5141,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_account_edit_popup_without_changing_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
 
@@ -4949,7 +5159,7 @@ mod tests {
 
     #[test]
     fn typing_a_new_name_and_ctrl_s_renames_the_account_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
 
@@ -4976,7 +5186,7 @@ mod tests {
 
     #[test]
     fn edit_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenAccountEditPopup(wallet));
@@ -4994,7 +5204,7 @@ mod tests {
 
     #[test]
     fn h_on_the_type_field_steps_the_account_type_pick() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let everyday = account_id_by_name(&shell, "Everyday Spending"); // Bank
         shell.update(Action::OpenAccountEditPopup(everyday));
@@ -5025,7 +5235,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_deactivates_the_account_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         assert!(
@@ -5054,7 +5264,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_account_edit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenAccountEditPopup(wallet));
@@ -5068,7 +5278,7 @@ mod tests {
 
     #[test]
     fn d_on_the_accounts_view_opens_the_delete_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         assert!(shell.account_popup.is_none());
 
@@ -5085,7 +5295,7 @@ mod tests {
 
     #[test]
     fn ctrl_d_from_the_edit_popup_swaps_to_the_delete_popup_for_the_same_account() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenAccountEditPopup(wallet));
@@ -5103,7 +5313,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_delete_popup_without_deleting_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenAccountDeletePopup(wallet));
@@ -5120,7 +5330,7 @@ mod tests {
 
     #[test]
     fn typing_the_exact_name_and_ctrl_s_deletes_an_empty_account() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         let original_count = shell.view.account_store().unwrap().accounts().len();
@@ -5145,7 +5355,7 @@ mod tests {
 
     #[test]
     fn delete_ctrl_s_does_nothing_on_a_non_empty_account_without_a_transfer_target() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let everyday = account_id_by_name(&shell, "Everyday Spending");
         shell.update(Action::OpenAccountDeletePopup(everyday));
@@ -5163,7 +5373,7 @@ mod tests {
 
     #[test]
     fn typing_a_target_and_the_exact_name_transfers_then_deletes_a_non_empty_account() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let everyday = account_id_by_name(&shell, "Everyday Spending");
         let mortgage_offset = account_id_by_name(&shell, "Mortgage Offset");
@@ -5194,7 +5404,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_from_the_delete_popup_deactivates_instead_of_deleting() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenAccountDeletePopup(wallet));
@@ -5215,7 +5425,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_account_delete_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let everyday = account_id_by_name(&shell, "Everyday Spending");
         shell.update(Action::OpenAccountDeletePopup(everyday));
@@ -5229,7 +5439,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_category_new_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let food = category_id_by_name(&shell, "Food");
         shell.update(Action::OpenCategoryNewPopup(food));
@@ -5244,7 +5454,7 @@ mod tests {
 
     #[test]
     fn e_on_the_categories_view_opens_the_edit_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         assert!(shell.category_popup.is_none());
 
@@ -5271,7 +5481,7 @@ mod tests {
 
     #[test]
     fn typing_a_new_name_and_ctrl_s_renames_the_category_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
 
@@ -5306,7 +5516,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_does_nothing_while_the_edit_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryEditPopup(groceries));
@@ -5324,7 +5534,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_archives_the_category_keeping_the_typed_name_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryEditPopup(groceries));
@@ -5354,7 +5564,7 @@ mod tests {
 
     #[test]
     fn capital_x_on_the_edit_popup_shows_a_not_yet_built_hint_and_does_not_mutate() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryEditPopup(groceries));
@@ -5377,7 +5587,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_category_edit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let groceries = category_id_by_name(&shell, "Groceries");
         shell.update(Action::OpenCategoryEditPopup(groceries));
@@ -5412,7 +5622,7 @@ mod tests {
 
     #[test]
     fn selecting_the_category_command_and_pressing_enter_opens_the_categories_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         // "category" alone is ambiguous (it also substring-matches e.g. `budget new
         // <category> <limit>`) — "categories" (the domain name) narrows to just this domain's
@@ -5423,7 +5633,7 @@ mod tests {
 
     #[test]
     fn selecting_category_new_while_categories_is_active_opens_the_new_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let income = category_id_by_name(&shell, "Income");
         shell.update(Action::OpenCommandPopup);
@@ -5434,7 +5644,7 @@ mod tests {
 
     #[test]
     fn selecting_category_edit_while_categories_is_active_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let income = category_id_by_name(&shell, "Income");
         shell.update(Action::OpenCommandPopup);
@@ -5445,7 +5655,7 @@ mod tests {
 
     #[test]
     fn selecting_category_move_while_categories_is_active_opens_the_move_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         let income = category_id_by_name(&shell, "Income");
         shell.update(Action::OpenCommandPopup);
@@ -5456,7 +5666,7 @@ mod tests {
 
     #[test]
     fn selecting_category_archive_while_categories_is_active_archives_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCategories);
         // Move the tree selection off the default Income root (`category archive` would just
         // refuse it, via `set_active`'s own `IsRoot` check) onto its first child.
@@ -5511,7 +5721,7 @@ mod tests {
             ("category move", "category move <cat> <parent>"),
             ("category archive", "category archive <cat>"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);
             assert_eq!(
@@ -5529,7 +5739,7 @@ mod tests {
             ("category merge", "category merge <from> <into>"),
             ("category tree", "category tree [root]"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCategories); // even with Categories active...
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);
@@ -5543,7 +5753,7 @@ mod tests {
 
     #[test]
     fn selecting_the_account_command_and_pressing_enter_opens_the_accounts_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         // "account" alone is ambiguous too (e.g. it substring-matches "account new <name>
         // <type> <unit>" before the bare "account" entry) — "accounts" narrows to just this
@@ -5554,7 +5764,7 @@ mod tests {
 
     #[test]
     fn selecting_account_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         shell.update(Action::OpenCommandPopup);
 
@@ -5564,7 +5774,7 @@ mod tests {
 
     #[test]
     fn selecting_account_edit_while_accounts_is_active_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenCommandPopup);
@@ -5576,7 +5786,7 @@ mod tests {
     #[test]
     fn selecting_account_delete_while_accounts_is_active_opens_the_delete_popup_for_the_selection()
     {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenCommandPopup);
@@ -5587,7 +5797,7 @@ mod tests {
 
     #[test]
     fn selecting_account_off_while_accounts_is_active_deactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         shell.update(Action::OpenCommandPopup);
@@ -5614,7 +5824,7 @@ mod tests {
 
     #[test]
     fn selecting_account_on_while_accounts_is_active_reactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts);
         let wallet = account_id_by_name(&shell, "Wallet");
         // `za` first, so deactivating Wallet below doesn't hide it and move the selection
@@ -5668,7 +5878,7 @@ mod tests {
             ("account off", "account off <acct>"),
             ("account on", "account on <acct>"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);
             assert_eq!(
@@ -5680,7 +5890,7 @@ mod tests {
 
         // "account new" is the one exception — it has no selection prerequisite, so it falls
         // back only when Accounts itself isn't active, which is exactly this case.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "account new");
         assert_eq!(
@@ -5691,7 +5901,7 @@ mod tests {
 
     #[test]
     fn account_check_always_shows_not_yet_built() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenAccounts); // even with Accounts active...
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "account check");
@@ -5704,7 +5914,7 @@ mod tests {
 
     #[test]
     fn n_on_the_tags_view_opens_the_new_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         assert!(shell.tag_popup.is_none());
 
@@ -5721,7 +5931,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_tag_popup_without_creating_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let original_count = shell.view.tag_store().unwrap().tags().len();
 
@@ -5739,7 +5949,7 @@ mod tests {
 
     #[test]
     fn typing_a_name_then_ctrl_s_creates_the_tag_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let original_count = shell.view.tag_store().unwrap().tags().len();
 
@@ -5764,7 +5974,7 @@ mod tests {
 
     #[test]
     fn tag_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         shell.update(Action::OpenTagNewPopup);
 
@@ -5778,7 +5988,7 @@ mod tests {
 
     #[test]
     fn tag_ctrl_s_does_nothing_while_the_name_clashes_case_insensitively() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         shell.update(Action::OpenTagNewPopup);
         // The fixture seeds "Japan Trip 2026" — a clash regardless of case.
@@ -5798,7 +6008,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_creates_and_keeps_the_tag_popup_open_reset_for_another_tag() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
 
         shell.update(Action::OpenTagNewPopup);
@@ -5837,7 +6047,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_tag_new_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         shell.update(Action::OpenTagNewPopup);
 
@@ -5850,7 +6060,7 @@ mod tests {
 
     #[test]
     fn e_on_the_tags_view_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         assert!(shell.tag_popup.is_none());
 
@@ -5867,7 +6077,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_tag_edit_popup_without_changing_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
 
@@ -5885,7 +6095,7 @@ mod tests {
 
     #[test]
     fn typing_a_new_name_and_ctrl_s_renames_the_tag_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
 
@@ -5912,7 +6122,7 @@ mod tests {
 
     #[test]
     fn tag_edit_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         shell.update(Action::OpenTagEditPopup(home_renovation));
@@ -5930,7 +6140,7 @@ mod tests {
 
     #[test]
     fn tag_edit_ctrl_s_does_nothing_while_the_rename_clashes_case_insensitively() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         shell.update(Action::OpenTagEditPopup(home_renovation));
@@ -5954,7 +6164,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_deactivates_the_tag_without_toggling_the_checkbox_first_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         assert!(
@@ -5983,7 +6193,7 @@ mod tests {
 
     #[test]
     fn renders_the_open_tag_edit_popup_without_panicking() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         shell.update(Action::OpenTagEditPopup(home_renovation));
@@ -5997,7 +6207,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_opens_the_tags_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "tag");
         assert_eq!(action, Action::OpenTags);
@@ -6005,7 +6215,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         shell.update(Action::OpenCommandPopup);
 
@@ -6015,7 +6225,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_edit_while_tags_is_active_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         shell.update(Action::OpenCommandPopup);
@@ -6026,7 +6236,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_off_while_tags_is_active_deactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         shell.update(Action::OpenCommandPopup);
@@ -6053,7 +6263,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_on_while_tags_is_active_reactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let home_renovation = tag_id_by_name(&shell, "Home Renovation");
         // `za` first, so deactivating Home Renovation below doesn't hide it and move the
@@ -6101,7 +6311,7 @@ mod tests {
 
     #[test]
     fn selecting_tag_delete_while_tags_is_active_arms_the_same_confirm_the_bare_d_key_does() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenTags);
         let before_count = shell.view.tag_store().unwrap().tags().len();
         shell.update(Action::OpenCommandPopup);
@@ -6122,7 +6332,7 @@ mod tests {
             ("tag on", "tag on <tag>"),
             ("tag delete", "tag delete <tag>"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);
             assert_eq!(
@@ -6134,7 +6344,7 @@ mod tests {
 
         // "tag new" is the one exception — it has no selection prerequisite, so it falls back
         // only when Tags itself isn't active, which is exactly this case.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "tag new");
         assert_eq!(action, Action::CommandPopupSetNotYetBuilt("tag new <name>"));
@@ -6142,7 +6352,7 @@ mod tests {
 
     #[test]
     fn n_on_the_payees_view_opens_the_new_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         assert!(shell.payee_popup.is_none());
 
@@ -6159,7 +6369,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_payee_popup_without_creating_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let original_count = shell.view.payee_store().unwrap().payees().len();
 
@@ -6180,7 +6390,7 @@ mod tests {
 
     #[test]
     fn typing_a_name_then_ctrl_s_creates_the_payee_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let original_count = shell.view.payee_store().unwrap().payees().len();
 
@@ -6208,7 +6418,7 @@ mod tests {
 
     #[test]
     fn payee_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         shell.update(Action::OpenPayeeNewPopup);
 
@@ -6222,7 +6432,7 @@ mod tests {
 
     #[test]
     fn payee_ctrl_s_does_nothing_while_the_name_collides() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         shell.update(Action::OpenPayeeNewPopup);
         // "Woolworths" is one of `PayeeFixture`'s own seeded payees.
@@ -6240,7 +6450,7 @@ mod tests {
 
     #[test]
     fn ctrl_a_creates_and_keeps_the_payee_popup_open_reset_for_another_payee() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
 
         shell.update(Action::OpenPayeeNewPopup);
@@ -6279,7 +6489,7 @@ mod tests {
 
     #[test]
     fn e_on_the_payees_view_opens_the_edit_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         assert!(shell.payee_popup.is_none());
 
@@ -6296,7 +6506,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_payee_edit_popup_without_saving_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
 
@@ -6314,7 +6524,7 @@ mod tests {
 
     #[test]
     fn typing_a_new_name_and_ctrl_s_renames_the_payee_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         let aliases_before = shell.view.payee_store().unwrap().aliases(woolworths).len();
@@ -6344,7 +6554,7 @@ mod tests {
 
     #[test]
     fn payee_edit_ctrl_s_does_nothing_while_the_name_is_empty() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeEditPopup(woolworths));
@@ -6362,7 +6572,7 @@ mod tests {
 
     #[test]
     fn payee_edit_ctrl_s_does_nothing_while_the_new_name_collides() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let coles_central = payee_id_by_name(&shell, "Coles Central");
         shell.update(Action::OpenPayeeEditPopup(coles_central));
@@ -6383,7 +6593,7 @@ mod tests {
 
     #[test]
     fn payee_edit_ctrl_a_deactivates_the_payee_and_closes_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeEditPopup(woolworths));
@@ -6403,7 +6613,7 @@ mod tests {
 
     #[test]
     fn m_on_the_payees_view_opens_the_matches_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         assert!(shell.payee_popup.is_none());
 
@@ -6420,7 +6630,7 @@ mod tests {
 
     #[test]
     fn m_on_the_payee_edit_popup_jumps_to_the_matches_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeEditPopup(woolworths));
@@ -6438,7 +6648,7 @@ mod tests {
 
     #[test]
     fn adding_a_fresh_pattern_saves_it_as_a_manual_alias_and_returns_to_the_list() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let coles_central = payee_id_by_name(&shell, "Coles Central");
         let aliases_before = shell
@@ -6476,7 +6686,7 @@ mod tests {
 
     #[test]
     fn adding_a_colliding_pattern_does_nothing() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let coles_central = payee_id_by_name(&shell, "Coles Central");
 
@@ -6495,7 +6705,7 @@ mod tests {
 
     #[test]
     fn d_removes_a_manual_alias_but_refuses_on_a_rename_sourced_one() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         let aliases_before = shell.view.payee_store().unwrap().aliases(woolworths).len();
@@ -6533,7 +6743,7 @@ mod tests {
 
     #[test]
     fn e_refuses_on_a_rename_sourced_alias_and_edits_a_manual_one() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
 
@@ -6561,7 +6771,7 @@ mod tests {
 
     #[test]
     fn esc_cancels_the_compose_draft_without_closing_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeMatchesPopup(woolworths));
@@ -6584,7 +6794,7 @@ mod tests {
 
     #[test]
     fn bare_a_on_the_payees_view_deactivates_the_selection_directly() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell
             .view
@@ -6622,7 +6832,7 @@ mod tests {
 
     #[test]
     fn d_on_the_payees_view_opens_the_delete_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         assert!(shell.payee_popup.is_none());
 
@@ -6639,7 +6849,7 @@ mod tests {
 
     #[test]
     fn ctrl_d_on_the_payee_edit_popup_jumps_to_the_delete_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeEditPopup(woolworths));
@@ -6657,7 +6867,7 @@ mod tests {
 
     #[test]
     fn ctrl_s_on_the_delete_popup_deactivates_by_default() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeDeletePopup(woolworths));
@@ -6684,7 +6894,7 @@ mod tests {
 
     #[test]
     fn a_referenced_payee_can_never_be_switched_to_delete_via_the_popup() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeDeletePopup(woolworths));
@@ -6717,7 +6927,7 @@ mod tests {
 
     #[test]
     fn deleting_an_unreferenced_payee_requires_the_exact_name_and_removes_it() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
 
         // "Old Vendor" is inactive and hidden by default — reveal it with `za` before it can
@@ -6759,7 +6969,7 @@ mod tests {
 
     #[test]
     fn m_on_the_delete_popup_jumps_to_the_matches_popup_but_not_while_typing_confirm() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeDeletePopup(woolworths));
@@ -6787,7 +6997,7 @@ mod tests {
 
     #[test]
     fn esc_closes_the_delete_popup_without_mutating_anything() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let woolworths = payee_id_by_name(&shell, "Woolworths");
         shell.update(Action::OpenPayeeDeletePopup(woolworths));
@@ -6809,7 +7019,7 @@ mod tests {
 
     #[test]
     fn selecting_the_payee_command_and_pressing_enter_opens_the_payees_view() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         // "payee" alone is ambiguous (it substring-matches "payee new <name>" etc. before the
         // bare "payee" entry) — "payees" narrows to just this domain's own commands, with the
@@ -6820,7 +7030,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         shell.update(Action::OpenCommandPopup);
 
@@ -6830,7 +7040,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_edit_while_payees_is_active_opens_the_edit_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell.view.payee_selection().unwrap();
         shell.update(Action::OpenCommandPopup);
@@ -6841,7 +7051,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_match_while_payees_is_active_opens_the_matches_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell.view.payee_selection().unwrap();
         shell.update(Action::OpenCommandPopup);
@@ -6852,7 +7062,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_delete_while_payees_is_active_opens_the_delete_popup_for_the_selection() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell.view.payee_selection().unwrap();
         shell.update(Action::OpenCommandPopup);
@@ -6863,7 +7073,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_off_while_payees_is_active_deactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell.view.payee_selection().unwrap();
         shell.update(Action::OpenCommandPopup);
@@ -6890,7 +7100,7 @@ mod tests {
 
     #[test]
     fn selecting_payee_on_while_payees_is_active_reactivates_the_selection_immediately() {
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenPayees);
         let selected = shell.view.payee_selection().unwrap();
         shell.update(Action::SetPayeeActive {
@@ -6929,7 +7139,7 @@ mod tests {
             ("payee on", "payee on <payee>"),
             ("payee delete", "payee delete <payee>"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);
             assert_eq!(
@@ -6941,7 +7151,7 @@ mod tests {
 
         // "payee new" is the one exception — it has no selection prerequisite, so it falls
         // back only when Payees itself isn't active, which is exactly this case.
-        let mut shell = Shell::new();
+        let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "payee new");
         assert_eq!(
@@ -6957,7 +7167,7 @@ mod tests {
             ("payee match add", "payee match add <payee> <text>"),
             ("payee default", "payee default <payee> <category>"),
         ] {
-            let mut shell = Shell::new();
+            let mut shell = opened();
             shell.update(Action::OpenPayees);
             shell.update(Action::OpenCommandPopup);
             let action = select_and_enter(&mut shell, filter);

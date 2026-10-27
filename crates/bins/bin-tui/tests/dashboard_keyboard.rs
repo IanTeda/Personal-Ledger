@@ -2,15 +2,15 @@
 
 mod common;
 
-use common::{press, screen, shell};
+use common::{cold_shell, press, screen, shell};
 
 #[test]
 fn cold_start_shows_the_no_ledger_note() {
-    let mut shell = shell();
+    let mut shell = cold_shell(None);
 
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("No Personal Ledger file loaded."), "{frame}");
+    assert!(frame.contains("No Ledger open."), "{frame}");
     assert!(frame.contains(":new") && frame.contains(":open"), "{frame}");
 }
 
@@ -26,5 +26,6 @@ fn colon_opens_the_command_popup_and_escape_closes_it() {
     press(&mut shell, "Esc");
     let closed = screen(&mut shell);
     assert!(closed.contains("NORMAL"), "{closed}");
-    assert!(!closed.contains("COMMAND"), "{closed}");
+    let status_line = closed.lines().next().unwrap_or_default();
+    assert!(!status_line.contains("COMMAND"), "{closed}");
 }

@@ -105,12 +105,17 @@ pub enum Action {
     /// `g d` (the `docs/ux/tui-mockups/01-shell/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
-    /// `Enter` on the command popup's `open` or `new` command — loads a ledger, leaving the
-    /// "no ledger loaded" resting state for the Dashboard. A stand-in: no file is read yet.
-    OpenLedger,
-    /// `Enter` on the command popup's `close` command — returns to the "no ledger loaded"
-    /// resting state, the same as cold start.
+    /// `Enter` on the command popup's `open [path]` command — opens the Ledger file at the path,
+    /// or the configured `file` with none, and lands on the Dashboard.
+    OpenLedger(Option<std::path::PathBuf>),
+    /// `Enter` on the command popup's `new <path>` command — creates and migrates a Ledger file at
+    /// the path, which must not exist yet, and opens it.
+    NewLedger(Option<std::path::PathBuf>),
+    /// `Enter` on the command popup's `close` command — flushes the Open Ledger's writes and
+    /// returns to no Ledger open, the same as cold start.
     CloseLedger,
+    /// A command or jump that needs an Open Ledger while none is: says so on the status line.
+    NoLedgerOpen,
     /// `g a`, or `Enter` on the command popup's `account list` command — opens the
     /// placeholder Accounts view.
     OpenAccounts,
