@@ -52,6 +52,15 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | TUI-046 | 4r | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
 | TUI-047 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
 | TUI-048 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-049 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-050 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-051 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-052 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-053 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-054 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-055 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-056 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-057 | — | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
 | DESKTOP-001 | 1a | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-002 | 1b | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-003 | 1c | `desktop-mockups/01-shell/Shell.dc.html` |

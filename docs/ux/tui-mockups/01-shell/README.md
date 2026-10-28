@@ -39,7 +39,7 @@ row n-1      keybind hint bar   dim; contextual to the focused view. The only ro
 
 Everything is a `Layout` of `Constraint::Length` / `Percentage` / `Min`. No absolute positioning; no fixed heights on anything holding a table.
 
-Degrade below 96 columns in this order: drop sparkline columns → drop the right-hand chart column and stack it under the main pane → single-column stack. Below 24 rows, show the headline row + net-worth chart only.
+The TUI arranges itself by the Desktop's Window Sizes, read in columns ([ADR-0050](../../../adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md)): Medium 96–159, Large 160–213, X-Large 214 and over. Below 96 columns or 24 rows the Shell draws a "terminal too small" screen, naming the current and minimum size, in place of the View; there is no narrower layout.
 
 ---
 

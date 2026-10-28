@@ -4,7 +4,7 @@
 
 The Settings destination for the `bin-tui` Client. It carries the **same sixteen pages, in the same order, with the same content** as Desktop Settings ([`../../desktop-mockups/16-settings/`](../../desktop-mockups/16-settings/README.md), DESKTOP-063–DESKTOP-083), re-hosted in the TUI's one-view shell and reinterpreted for a keyboard-only terminal.
 
-**Navigation is the Desktop's Medium navigation** ([`../../desktop-mockups/01-shell/README.md`](../../desktop-mockups/01-shell/README.md#medium-settings-navigation-turn-2), DESKTOP-119 and DESKTOP-120, decided in [#692](https://github.com/IanTeda/Personal-Ledger/issues/692)), at every terminal width: `g s` lands on a full-page **Settings index**, `enter` opens a page in its place, and on a page `esc` goes back to the index, `p` opens the page picker and `[` / `]` step through the pages in index order. There is no docked index.
+**Navigation follows the Desktop's, per Window Size** (see [Window Sizes](#window-sizes)). At **Medium** it is the Desktop's Medium navigation ([`../../desktop-mockups/01-shell/README.md`](../../desktop-mockups/01-shell/README.md#medium-settings-navigation-turn-2), DESKTOP-119 and DESKTOP-120, decided in [#692](https://github.com/IanTeda/Personal-Ledger/issues/692)): `g s` lands on a full-page **Settings index**, `enter` opens a page in its place, and on a page `esc` goes back to the index, `p` opens the page picker and `[` / `]` step through the pages in index order. At **Large** and **X-Large** the index is docked beside the page, and at X-Large a list page also docks a detail pane.
 
 This package replaces the earlier "database-backed settings" draft (a generic key/value `settings` table with defaults in a code registry). That model contradicted [ADR-0014](../../../adr/0014-preferences-table-and-leaner-sync-server-config.md), which chose typed Preference tables over a key/value store, and the Desktop design, so it is retired. Settings now follows the same Preference / Configuration split as the Desktop:
 
@@ -70,11 +70,62 @@ The index page and picker come first, then the pages in index order. The IDs are
 
 **List pages and the full views.** Units, Accounts, Categories, Tags and Payees already have their own full TUI views (`../02-accounts`, `../03-categories`, `../04-payees`, `../06-tags`, `../07-units`). Their Settings pages are the compact management lists Desktop shows, and they use **the same forms and keys** as those views (`n`/`e`/`d`, typed delete confirm). `o` opens the full view, and `esc` from it returns to the Settings page. Their existing `g` jumps stay as they are.
 
-**Considered:** keeping the earlier two-pane layout (a 20-col docked index beside the page, `j/k` swapping the page live, focus moving between index and page with `l` / `h`), and docking it only on wide terminals, like the Desktop's Large. One layout at every width was chosen so the TUI matches the Desktop's Medium, which the 96-col minimum is closest to. The index page has room to say what each page holds, every page gets the whole View, focus never has to move between panes, and the picker and `[` / `]` keep any page one step from any other. What it gives up is scanning pages without opening them; `[` / `]` is the replacement.
+**Earlier decision, superseded:** one layout at every width, the Desktop's Medium, was first chosen because the 96-col minimum is closest to it. It is now Medium's layout only: the TUI takes the Desktop's Breakpoints, so a terminal as wide as a Large window gets the Large layout ([Window Sizes](#window-sizes)). The Medium reasoning stands: the index page has room to say what each page holds, and the picker and `[` / `]` keep any page one step from any other.
+
+## Window Sizes
+
+The TUI uses the Desktop's three Window Sizes and Breakpoints ([ADR-0042](../../../adr/0042-window-size-from-window-width-with-a-medium-floor.md)), read in columns at **7.5 logical px per cell** (and 15px per row). The scale is chosen so the TUI's existing 96-column floor is exactly the Desktop's 720px minimum.
+
+| Window Size | Desktop width | Columns | Reference frame (cells) | Settings index | Detail pane |
+| --- | --- | --- | --- | --- | --- |
+| Medium | 720 – 1199 | 96 – 159 | 128 × 69 (960 × 1040) | the full-page index (TUI-047), breadcrumb heading, `p` picker | none |
+| Large | 1200 – 1599 | 160 – 213 | 171 × 53 (1280 × 800) | docked, 31 columns (232px) | none |
+| X-Large | ≥ 1600 | ≥ 214 | 256 × 72 (1920 × 1080) | docked, 31 columns | list pages dock a 53-column (400px) pane at the View's right edge |
+
+- **Width alone picks the size**, from `frame.area().width` on every draw, as the Desktop reads `viewport_size()`. Height never picks one; a short terminal scrolls or clips the page. Nothing stores the size, so a resize across a Breakpoint redraws in the new layout with the same page, selection and focus.
+- **Below 96 columns or 24 rows** is below the floor ([ADR-0050](../../../adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md)). A terminal can't be held to a minimum size, so the Shell draws a "terminal too small" message instead of the View; that screen belongs to the Shell package, not Settings.
+- **Content width:** a page caps its content at **112 columns** (840px) at every size, as on the Desktop. The rest of the View stays empty.
+- **Cards:** turn 5 of the deck draws TUI-049–057 at each size's reference frame. A card is as wide as its Desktop counterpart in px.
+
+| ID | Size | Card | Desktop equivalent |
+| --- | --- | --- | --- |
+| TUI-049 | Medium | General at 128 × 69 | DESKTOP-126 |
+| TUI-050 | Large | General, the page focused, index docked | DESKTOP-127 |
+| TUI-051 | Large | the index focused, Display shown beside it | DESKTOP-130 |
+| TUI-052 | X-Large | General, no detail pane | DESKTOP-128 |
+| TUI-053 | Medium | Units at 128 × 69 | Units Medium card |
+| TUI-054 | Large | Units, index docked | Units Large card |
+| TUI-055 | X-Large | Units with the detail pane and ACTIVITY | DESKTOP-125 |
+| TUI-056 | X-Large | Accounts with the detail pane | DESKTOP-142 |
+| TUI-057 | X-Large | History with the detail pane, no ACTIVITY | DESKTOP-151 |
+
+### Large and X-Large: the docked index
+
+The docked index is the index page's list in a 31-column column: the `Settings · 16 pages` heading, the page names with their scope glyphs (no descriptions) and the legend pinned to the bottom. Settings has two focus places at these sizes, and they are the Medium index page and page, drawn side by side, so the state is the same at every size (`showing: Index | Page` becomes which side has focus):
+
+| Key | Index focused (TUI-051) | Page focused (TUI-050) |
+| --- | --- | --- |
+| `j` / `k`, `g` / `G` | move the selection; the page beside it swaps live | the page's own rows or fields |
+| `enter` | focus the page | the page's own `enter` |
+| `esc` | leave Settings | focus the index, with this page selected |
+| `[` / `]` | — | previous / next page, focus stays on the page |
+| `p` | — | nothing: every page is in view, so there is no picker |
+
+`g s` lands with the index focused, the last page selected. The focused side draws the selection reversed; the unfocused index marks the open page with the accent bar (`cur`). The page heading is the page name alone, no breadcrumb. Each page's hint bar ends `[/] pages · esc index` instead of `[/] pages · p picker · esc settings`.
+
+`[` / `]` stay at Large and X-Large although the Desktop binds them at Medium only: a terminal has no click on the index, so they save an `esc`, `j`, `enter` round trip.
+
+### X-Large: the detail pane
+
+A list page (Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, AI connections, History) docks a 53-column detail pane for its selected row at the View's right edge, with the Desktop's groups (DESKTOP-125, DESKTOP-141–151). A form page (General, Display, Sync server, Backup, Logs, About) docks none. The pane:
+
+- follows the selection and has no focus of its own, so it adds no keys;
+- names the keys that act on the row under each group (`e edit unit · d delete unit · t test price source`), in place of the Desktop's buttons;
+- ends with **ACTIVITY**, the page's Success and Info outcomes, newest first, which then raise no Toast; errors still toast ([ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)). History has no ACTIVITY. Units gets this from `lib-units`' `UnitsPageEvent::SetDocked`, the same Presenter event the Desktop sends.
 
 ## Terminal geometry
 
-Drawn at the shell's **96 × 30 cell** minimum.
+Drawn at the shell's **96 × 30 cell** minimum, the floor of Medium. The Window Size cards (turn 5) are drawn at each size's reference frame.
 
 ```
 row 0        status line   Personal Ledger                          [MODE ·] ✓ Synced HH:MM
@@ -85,7 +136,7 @@ row n-1      hint bar      the index page's keys, or the page's keys then [/] pa
 - **Index page (TUI-047):** heading row (`Settings` bold on the left, `16 pages` dim on the right) over a strong rule, then 16 rows, then `Min(0)`, then the 1-row legend `● syncs with the ledger · ○ this device only` pinned to the bottom over a rule. A row is the page name (16 cols), its scope glyph (2 cols), the one-line description, dim, and a dim `›` at the right edge. The selected row is reversed. The descriptions are Messages; they clip with `…` rather than wrap.
 - **Page:** heading row (the breadcrumb `Settings › <Page>` on the left, `Settings ›` dim; the scope note dim on the right) over a strong rule, then the page body across the whole View. Bodies are `Length` blocks over a `Min(0)`. Pages that fill the height (Logs, History) give the `Min(0)` to their list.
 - **Page picker (TUI-048):** a popup centred in the View, 40 cols wide and 20 rows tall (`Clear` + bordered `Block`): a title row (`Go to Settings Page` bold, `16 pages` dim) over a strong rule, then all 16 pages in index order, each with its scope glyph and a `•` on the page you are on. The page beneath dims.
-- **Degrading below 96 columns:** drop the page's notes column, then the index page's descriptions, leaving names and glyphs. The picker keeps its size and stays centred.
+- **Below 96 columns** the Shell's "terminal too small" screen replaces the View (see [Window Sizes](#window-sizes)), so Settings has no narrower layout.
 
 ## Keyboard
 
@@ -207,9 +258,11 @@ Never rely on colour alone. The scope glyphs `●`/`○` are distinct shapes, fa
 1. **The Desktop mockup itself predates ADR-0021** on Display (it still shows date format and separators). The TUI follows the ADR. Raise the same correction on the Desktop package.
 2. **AI Connections and Git Backup** are decided in [ADR-0034](../../../adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md) and [ADR-0033](../../../adr/0033-git-backup-pushes-a-text-dump-and-documents-to-a-private-repository.md). The Desktop mockup still shows Read & write as selectable and says Git backup "commits the store"; build to the ADRs.
 3. **`bin-tui` still draws the retired two-pane groups layout** (`src/view/settings.rs`). Stage 1 of `CLAUDE_CODE.md` replaces it with the index page and page host.
+4. **Window Sizes are decided in [ADR-0050](../../../adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md)**, which also sets the 96 × 24 floor below which the Shell draws "terminal too small".
+5. **Only TUI-049–057 are drawn per size.** The other list pages follow TUI-056's pattern with the groups in the Desktop's DESKTOP-141–148 rows; the other form pages follow TUI-052.
 
 ## Files
 
-- `Ledger TUI Settings.dc.html` — TUI-047 and TUI-048, then TUI-019–021 and TUI-032–046 in index order. Open in a browser with `support.js` beside it.
+- `Ledger TUI Settings.dc.html` — turn 4: TUI-047 and TUI-048, then TUI-019–021 and TUI-032–046 in index order, at the 96-column floor. Turn 5: the Window Size cards TUI-049–057. Open through `mise run mockups`.
 - `support.js` — runtime for the HTML file, not part of the deliverable.
 - `CLAUDE_CODE.md` — the staged work plan for building this design in `bin-tui`.

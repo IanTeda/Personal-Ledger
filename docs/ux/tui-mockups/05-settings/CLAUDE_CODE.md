@@ -119,11 +119,25 @@ Done when:
 - Each page's hint bar is generated from the same key table its `handle_key` uses, so a key can't be shown without working, or work without being shown.
 - `docs/settings.md` describes the TUI Settings pages (run `/end-user-docs` if it needs restructuring).
 
+## Stage 6 — Window Sizes
+
+**Files:** `lib-shell`'s `WindowSize` (moved there by ADR-0050), `src/shell.rs`, `src/view/settings/{mod,index}.rs`, the list pages
+**Spec:** README § *Window Sizes*; cards TUI-049–057
+**Decided in:** [ADR-0050](../../../adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md). Stage 1 must have landed; the detail pane needs the Stage 3 page it docks beside.
+
+Done when:
+- `WindowSize::from_width(cols)` picks Medium (96–159), Large (160–213) or X-Large (≥ 214) from `frame.area().width` on each draw, never stored. Tests cover each Breakpoint's edges.
+- Below 96 columns the Shell draws the "terminal too small" screen in place of the View (a Shell change; take it in its own ticket if the Shell has none yet).
+- At Large and X-Large the index docks at 31 columns, with focus between index and page as in the README's key table; `p` does nothing; the hint bar ends `[/] pages · esc index`. Resizing across a Breakpoint keeps the page, selection and focus.
+- Page content stops at 112 columns at every size.
+- At X-Large each list page docks the 53-column detail pane; Units sends `UnitsPageEvent::SetDocked(true)` while docked, so its outcomes land in ACTIVITY instead of a Toast.
+- Render tests use `TestBackend` at each reference frame (128 × 69, 171 × 53, 256 × 72) and at the 96 × 30 floor.
+
 ## Throughout
 
 - **Theme roles, not hex.** See the README's Style table. Use `crate::colours::Colours`.
 - **Never rely on colour alone.** Scope is `●`/`○`, failures are `■` plus words, and disabled keys are drawn dim *and* named in the dialog's note.
-- **Cells clip, they don't wrap.** Row heights are fixed. Degrade below 96 columns in the README's order: drop the page's notes, then the index page's descriptions.
+- **Cells clip, they don't wrap.** Row heights are fixed. Below 96 columns the Shell's "terminal too small" screen takes over (README § *Window Sizes*).
 - **Wireframe honesty.** Any figure without a real query behind it lives in a clearly named fixture or carries a `// wireframe:` comment. The module doc says which parts are real.
 - **Tests:** unit tests beside each page module for rendering at 96×30, key handling and focus. Use deterministic `fake` data for list pages. There are no doctests.
 - No mouse support required.

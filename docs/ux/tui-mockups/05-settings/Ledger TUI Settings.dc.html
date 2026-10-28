@@ -133,6 +133,37 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 .pick .sel{margin:0 -9px;padding:0 9px}
 .dv-olabel{max-width:700px}
 .dv-olabel .dv-oid{flex:none;white-space:nowrap}
+
+/* ── window sizes (t5): one cell is 7.5 × 15px, so a card is as wide as the Desktop's ── */
+.ws .t{font-size:12.5px;line-height:15px}
+.ws .tbar,.ws .tk{font-size:12.5px;line-height:15px;padding:0 8px}
+.ws .tk{gap:2ch}
+.ws .row{padding:0;gap:1ch}
+.ws .hd{font-size:12.5px;line-height:15px;padding:0;margin:0}
+.ws .hd.tight{margin-top:15px}
+.ws .ph{font-size:12.5px;margin:0 0 15px;padding:0}
+.ws .ph span{font-size:12.5px}
+.ws .lab{font-size:12.5px;letter-spacing:.06em}
+.ws .chip{font-size:12.5px;line-height:13px}
+.ws .mark{font-size:12.5px;padding:0 1ch;margin:0}
+.ws .ixf{font-size:12.5px}
+.ws .pane{padding:0 1ch}
+.ws .sel{margin:0 -1ch;padding:0 1ch}
+.ws .cur{margin:0 -1ch;padding:0 1ch}
+.ws .box{padding:0 1ch}
+.wsdock{flex:none;width:232px;display:flex;flex-direction:column;border-right:1px solid #bab6b6}
+.wsdock .ph{border-bottom-color:#bab6b6}
+.wsdock.foc .ph{border-bottom-color:#201e1d}
+.wsix{grid-template-columns:1fr 2ch}
+.wspage{flex:1;min-width:0}
+.wscap{max-width:840px}
+.wsdetail{flex:none;width:400px;margin-left:auto;border-left:2px solid #201e1d;background:#f3f2f2}
+.wsdetail .hd:first-child{margin-top:0}
+.wskeys{display:flex;flex-wrap:wrap;gap:0 2ch;margin-top:3px;color:#605d5d}
+.dk .wsdock{border-right-color:#444141}
+.dk .wsdock.foc .ph{border-bottom-color:#eae7e7}
+.dk .wsdetail{background:#201e1d;border-left-color:#eae7e7}
+.dk .wskeys{color:#9b9797}
 </style></helmet>
 
 <section class="dv-turn {{ themeClass }}" id="t4">
@@ -783,6 +814,271 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 </div>
 <p class="dv-next" style="display:none">Dialogs: add/edit/delete unit and add institution reuse the TUI unit forms (TUI-028–031); set up Git backup and add/edit provider follow TUI-034.</p>
+</section>
+
+<section class="dv-turn ws {{ themeClass }}" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">window sizes</a><span class="dv-tname">Settings at Medium, Large and X-Large</span></div>
+<p class="dv-sub">The TUI picks its Window Size by the Desktop's Breakpoints (ADR-0042), read as cells at 7.5 logical px per column: <b>Medium</b> 96–159 columns (720–1199px), <b>Large</b> 160–213 (1200–1599px), <b>X-Large</b> 214 and over (1600px and over). The 96-column floor is the Desktop's 720px. Height never picks a size. Each card is drawn at its size's reference frame, the Desktop's 960 × 1040, 1280 × 800 and 1920 × 1080 at 7.5 × 15px a cell, so a card is exactly as wide as its Desktop counterpart. Medium is the drill-down drawn above; Large docks the index; X-Large adds a detail pane on list pages.</p>
+<div class="dv-opts">
+
+<!-- ═════════ TUI-049 Medium · General ═════════ -->
+<div class="dv-opt" id="TUI-049">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-049">TUI-049</a><span><b>Medium · 128 × 69.</b> General at Medium's reference frame. The same drill-down as at the 96-column floor (TUI-047, TUI-019): no docked index, the breadcrumb heading, <code>esc</code> back to the index page and <code>p</code> for the picker. The page stops at 112 columns, the Desktop's 840px, and the rest of the View stays empty.</span></div>
+<div class="dv-card" style="width:960px">
+<div class="t" style="height:1035px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>preferences · synced · ledger identity</span></div>
+      <div class="row sel" style="grid-template-columns:24ch 1fr"><span class="mut">ledger name</span><span>Teda household</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">owner</span><span>Ian Teda</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">financial year starts</span><span>july <span class="mut">&nbsp;· january · april</span></span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">base unit</span><span>aud <span class="mut">— Australian Dollar</span></span></div>
+      <div class="hd tight">this ledger</div>
+      <div class="box"><div class="row" style="grid-template-columns:repeat(4,1fr)"><span class="mut">accounts</span><span class="mut">transactions</span><span class="mut">units</span><span class="mut">institutions</span></div><div class="row" style="grid-template-columns:repeat(4,1fr)"><b>7</b><b>680</b><b>3</b><b>6</b></div></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">General settings are ledger-scoped Preferences. They travel with the ledger as Change Sets.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">Settings for this device are under Display.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">u</span>undo</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-050 Large · General ═════════ -->
+<div class="dv-opt" id="TUI-050">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-050">TUI-050</a><span><b>Large · 171 × 53.</b> General with the index docked, 31 columns, the Desktop's 232px. The page has focus, so the index marks the open page with the accent bar rather than the selection. The heading is <b>General</b> alone. <code>esc</code> moves focus to the index; there is no picker, since every page is in view.</span></div>
+<div class="dv-card" style="width:1282px">
+<div class="t" style="height:795px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix cur"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>General</b><span>preferences · synced · ledger identity</span></div>
+      <div class="row sel" style="grid-template-columns:24ch 1fr"><span class="mut">ledger name</span><span>Teda household</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">owner</span><span>Ian Teda</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">financial year starts</span><span>july <span class="mut">&nbsp;· january · april</span></span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">base unit</span><span>aud <span class="mut">— Australian Dollar</span></span></div>
+      <div class="hd tight">this ledger</div>
+      <div class="box"><div class="row" style="grid-template-columns:repeat(4,1fr)"><span class="mut">accounts</span><span class="mut">transactions</span><span class="mut">units</span><span class="mut">institutions</span></div><div class="row" style="grid-template-columns:repeat(4,1fr)"><b>7</b><b>680</b><b>3</b><b>6</b></div></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">General settings are ledger-scoped Preferences. They travel with the ledger as Change Sets.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">Settings for this device are under Display.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">u</span>undo</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-051 Large · Display ═════════ -->
+<div class="dv-opt" id="TUI-051">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-051">TUI-051</a><span><b>Large · 171 × 53.</b> The index has focus (<code>g s</code> lands here, or <code>esc</code> from a page). <code>j/k</code> moves the selection and the page beside it swaps live, as a click on the Desktop's docked index does. <code>enter</code> moves focus into the page; <code>esc</code> leaves Settings.</span></div>
+<div class="dv-card" style="width:1282px">
+<div class="t" style="height:795px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock foc"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix"><span>General</span><span class="mut">●</span></div><div class="row wsix sel"><span>Display</span><span class="mut">○</span></div><div class="row wsix"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>Display</b><span>configuration · local · theme syncs</span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">●</span><span class="mut">appearance</span><span>light &nbsp;dark &nbsp;<span class="seg">system</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">●</span><span class="mut">colour theme</span><span>Modernist <span class="mut">· enter opens the theme list</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">date style</span><span><span class="seg">locale</span> <span class="mut">· short · medium · long · iso</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">terminal colours</span><span>theme rgb <span class="mut">· terminal palette</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">status glyphs</span><span>unicode <span class="mut">○ ◐ ● ⚑ &nbsp;· ascii o / x !</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">toasts</span><span>[x] show toasts <span class="mut">· errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">hint bar</span><span>[x] show key hints <span class="mut">· also shows g-jumps</span></span></div>
+      <div class="hd tight">preview <span>date · payee · amount</span></div>
+      <div class="box"><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>●</span><span>12 sep 2026</span><span>Woolworths Metro</span><span class="n neg">−86.40</span></div><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>◐</span><span>10 sep 2026</span><span>Telstra</span><span class="n neg">−99.00</span></div><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>⚑</span><span>09 sep 2026</span><span>Dept of Education</span><span class="n">+4,210.00</span></div></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">Read from personal-ledger.conf at start-up and written back here.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">● rows sync with the ledger. The locale changes only in the file, then a restart.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">g/G</span>first/last</span><span><span class="k">enter</span>focus page</span><span><span class="k">esc</span>back</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-052 X-Large · General ═════════ -->
+<div class="dv-opt" id="TUI-052">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-052">TUI-052</a><span><b>X-Large · 256 × 72.</b> General at X-Large: the same Chrome as Large. A form page has no row to follow, so it docks no detail pane and the View right of the 112-column page stays empty.</span></div>
+<div class="dv-card" style="width:1920px">
+<div class="t" style="height:1080px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix cur"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>General</b><span>preferences · synced · ledger identity</span></div>
+      <div class="row sel" style="grid-template-columns:24ch 1fr"><span class="mut">ledger name</span><span>Teda household</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">owner</span><span>Ian Teda</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">financial year starts</span><span>july <span class="mut">&nbsp;· january · april</span></span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr"><span class="mut">base unit</span><span>aud <span class="mut">— Australian Dollar</span></span></div>
+      <div class="hd tight">this ledger</div>
+      <div class="box"><div class="row" style="grid-template-columns:repeat(4,1fr)"><span class="mut">accounts</span><span class="mut">transactions</span><span class="mut">units</span><span class="mut">institutions</span></div><div class="row" style="grid-template-columns:repeat(4,1fr)"><b>7</b><b>680</b><b>3</b><b>6</b></div></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">General settings are ledger-scoped Preferences. They travel with the ledger as Change Sets.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">Settings for this device are under Display.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">u</span>undo</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-053 Medium · Units ═════════ -->
+<div class="dv-opt" id="TUI-053">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-053">TUI-053</a><span><b>Medium · 128 × 69.</b> Units at Medium's reference frame: TUI-033 with the room to show its columns in full. Outcomes toast.</span></div>
+<div class="dv-card" style="width:960px">
+<div class="t" style="height:1035px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b><span class="mut">Settings ›</span> Units</b><span>ledger data · synced · 3 units</span></div>
+      <div class="hd">units <span><span class="k">n</span>add unit</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span class="mut">CODE</span><span class="mut">NAME</span><span class="mut">FLAGS</span><span class="mut">SOURCE</span><span class="mut">TYPE</span></div>
+      <div class="row sel" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>aud</span><span>Australian Dollar</span><span><span class="chip a">base</span> <span class="chip">default</span></span><span>—</span><span>currency</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>btc</span><span>Bitcoin</span><span></span><span class="mut">CoinGecko</span><span>crypto</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>vas</span><span>Vanguard Aus Shares</span><span></span><span class="mut">manual</span><span>etf</span></div>
+      <div class="hd tight">price sources <span><span class="k">n</span>add source</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span class="mut">NAME</span><span class="mut">SOURCE</span><span class="mut">LAST UPDATED</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Bitcoin</span><span>CoinGecko <span class="mut">· auto, every 15 min</span></span><span class="mut">5 minutes ago</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Vanguard Aus Shares</span><span>manual entry</span><span class="mut">—</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">aud is used by 4 accounts and 604 transactions. Renaming it is safe.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">Changing its code changes every reference. Deleting asks you to type the code.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">tab</span>units↔sources</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">t</span>test source</span><span><span class="k">o</span>open units view</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-054 Large · Units ═════════ -->
+<div class="dv-opt" id="TUI-054">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-054">TUI-054</a><span><b>Large · 171 × 53.</b> Units with the index docked. Nothing on the page changes; outcomes still toast.</span></div>
+<div class="dv-card" style="width:1282px">
+<div class="t" style="height:795px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix cur"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>Units</b><span>ledger data · synced · 3 units</span></div>
+      <div class="hd">units <span><span class="k">n</span>add unit</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span class="mut">CODE</span><span class="mut">NAME</span><span class="mut">FLAGS</span><span class="mut">SOURCE</span><span class="mut">TYPE</span></div>
+      <div class="row sel" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>aud</span><span>Australian Dollar</span><span><span class="chip a">base</span> <span class="chip">default</span></span><span>—</span><span>currency</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>btc</span><span>Bitcoin</span><span></span><span class="mut">CoinGecko</span><span>crypto</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>vas</span><span>Vanguard Aus Shares</span><span></span><span class="mut">manual</span><span>etf</span></div>
+      <div class="hd tight">price sources <span><span class="k">n</span>add source</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span class="mut">NAME</span><span class="mut">SOURCE</span><span class="mut">LAST UPDATED</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Bitcoin</span><span>CoinGecko <span class="mut">· auto, every 15 min</span></span><span class="mut">5 minutes ago</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Vanguard Aus Shares</span><span>manual entry</span><span class="mut">—</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">aud is used by 4 accounts and 604 transactions. Renaming it is safe.</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">Changing its code changes every reference. Deleting asks you to type the code.</span></div>
+    </div></div>
+    
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">tab</span>units↔sources</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">t</span>test source</span><span><span class="k">o</span>open units view</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-055 X-Large · Units ═════════ -->
+<div class="dv-opt" id="TUI-055">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-055">TUI-055</a><span><b>X-Large · 256 × 72.</b> Units docks a 53-column detail pane, the Desktop's 400px, at the View's right edge (DESKTOP-125). It follows the selected row, btc, and names every key that acts on it. ACTIVITY takes the page's Success and Info outcomes in place of Toasts, through <code>lib-units</code>' <code>SetDocked</code>; errors still toast (ADR-0027).</span></div>
+<div class="dv-card" style="width:1920px">
+<div class="t" style="height:1080px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix cur"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>Units</b><span>ledger data · synced · 3 units</span></div>
+      <div class="hd">units <span><span class="k">n</span>add unit</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span class="mut">CODE</span><span class="mut">NAME</span><span class="mut">FLAGS</span><span class="mut">SOURCE</span><span class="mut">TYPE</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>aud</span><span>Australian Dollar</span><span><span class="chip a">base</span> <span class="chip">default</span></span><span class="mut">—</span><span>currency</span></div>
+      <div class="row sel" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>btc</span><span>Bitcoin</span><span></span><span>CoinGecko</span><span>crypto</span></div>
+      <div class="row" style="grid-template-columns:6ch 24ch 1fr 14ch 10ch"><span>vas</span><span>Vanguard Aus Shares</span><span></span><span class="mut">manual</span><span>etf</span></div>
+      <div class="hd tight">price sources <span><span class="k">n</span>add source</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span class="mut">NAME</span><span class="mut">SOURCE</span><span class="mut">LAST UPDATED</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Bitcoin</span><span>CoinGecko <span class="mut">· auto, every 15 min</span></span><span class="mut">5 minutes ago</span></div>
+      <div class="row" style="grid-template-columns:24ch 1fr 16ch"><span>Vanguard Aus Shares</span><span>manual entry</span><span class="mut">—</span></div>
+    </div></div>
+    <div class="pane wsdetail"><div class="hd tight">unit</div><div class="row" style="grid-template-columns:1fr"><span><b>btc</b> &nbsp;Bitcoin</span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">crypto · 8 decimal places</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">price</span><span>148,212.40 aud</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">as at</span><span>today 14:20</span></div><div class="wskeys"><span><span class="k">e</span>edit unit</span> <span><span class="k">d</span>delete unit</span> <span><span class="k">t</span>test price source</span></div><div class="hd tight">price source</div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">source</span><span>CoinGecko</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">updates</span><span>auto, every 15 min</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">last test</span><span><span class="pos">● ok · 312 ms</span></span></div><div class="wskeys"><span><span class="k">tab</span>price sources</span></div><div class="hd tight">accounts</div><div class="row" style="grid-template-columns:1fr 14ch"><span>Bitcoin</span><span class="n">0.4120 u</span></div><div class="row" style="grid-template-columns:1fr 14ch"><span class="mut">Used by 1 account · 18 transactions</span><span></span></div><div class="hd tight">activity</div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">14:20</span><span>Tested CoinGecko price source<br><span class="mut">btc · 312 ms · 148,212.40 aud</span></span></div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">14:12</span><span>Deleted unit eth<br><span class="mut">no accounts used it</span></span></div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">13:58</span><span>Saved unit vas<br><span class="mut">Vanguard Aus Shares · etf</span></span></div><div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="mut">This session's Units outcomes, newest first. Errors still toast.</span></div></div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">tab</span>units↔sources</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">t</span>test source</span><span><span class="k">o</span>open units view</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-056 X-Large · Accounts ═════════ -->
+<div class="dv-opt" id="TUI-056">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-056">TUI-056</a><span><b>X-Large · 256 × 72.</b> Accounts with its detail pane (DESKTOP-142): ACCOUNT, RECENT TRANSACTIONS and ACTIVITY for ANZ Offset. Every list page docks the same pane: Institutions, Categories, Tags, Payees, Documents, Inventory and AI connections follow DESKTOP-141–148's groups.</span></div>
+<div class="dv-card" style="width:1920px">
+<div class="t" style="height:1080px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix cur"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>Accounts</b><span>ledger data · synced · 7 accounts · net worth <b class="pos">−113,943.13 aud</b></span></div>
+      <div class="hd">by type <span><span class="k">n</span>add account</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span class="mut">NAME</span><span class="mut">INSTITUTION</span><span class="mut">UNIT</span><span class="mut n">BALANCE</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="lab">bank · 3</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>ANZ Everyday</span><span>ANZ</span><span>aud</span><span class="n">4,182.55</span></div>
+      <div class="row sel" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>ANZ Offset</span><span>ANZ</span><span>aud</span><span class="n">61,204.10</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>Westpac Savings</span><span>Westpac</span><span>aud</span><span class="n">18,500.00</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="lab">credit card · 1</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>Amex Platinum</span><span>American Express</span><span>aud</span><span class="n neg">−2,318.44</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="lab">loan · 1</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>Home Loan</span><span>ANZ</span><span>aud</span><span class="n neg">−381,311.34</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="lab">investment · 2</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>Vanguard VAS</span><span>Vanguard</span><span>vas</span><span class="n">1,240 u</span></div>
+      <div class="row" style="grid-template-columns:1fr 18ch 6ch 14ch"><span>Bitcoin</span><span>Crypto.com</span><span>btc</span><span class="n">0.4120 u</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">Unit balances convert to aud for net worth at the latest weekly close.</span></div>
+    </div></div>
+    <div class="pane wsdetail"><div class="hd tight">account</div><div class="row" style="grid-template-columns:1fr"><span><b>ANZ Offset</b></span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">bank · ANZ Banking Group · aud</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">balance</span><span>61,204.10 aud</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">offsets</span><span>Home Loan</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">transactions</span><span>212</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">last transaction</span><span>12 sep 2026</span></div><div class="wskeys"><span><span class="k">enter</span>open ledger</span> <span><span class="k">e</span>edit</span> <span><span class="k">d</span>delete</span></div><div class="hd tight">recent transactions</div><div class="row" style="grid-template-columns:12ch 1fr 12ch"><span class="mut">12 sep</span><span>Interest</span><span class="n">+84.12</span></div><div class="row" style="grid-template-columns:12ch 1fr 12ch"><span class="mut">10 sep</span><span>Transfer from Everyday</span><span class="n">+2,000.00</span></div><div class="row" style="grid-template-columns:12ch 1fr 12ch"><span class="mut">01 sep</span><span>Home Loan repayment</span><span class="n neg">−3,412.00</span></div><div class="row" style="grid-template-columns:12ch 1fr 12ch"><span class="mut">28 aug</span><span>Transfer from Everyday</span><span class="n">+2,000.00</span></div><div class="row" style="grid-template-columns:1fr;margin-top:3px"><span class="mut"><span class="k">enter</span> open ledger shows them all.</span></div><div class="hd tight">activity</div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">14:02</span><span>Saved account ANZ Offset<br><span class="mut">offsets Home Loan</span></span></div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">13:40</span><span>Added account Bitcoin<br><span class="mut">Crypto.com · btc</span></span></div><div class="row" style="grid-template-columns:1fr;margin-top:6px"><span class="mut">This session's Accounts outcomes, newest first. Errors still toast.</span></div></div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>open ledger</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">o</span>open accounts view</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-057 X-Large · History ═════════ -->
+<div class="dv-opt" id="TUI-057">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-057">TUI-057</a><span><b>X-Large · 256 × 72.</b> History's pane (DESKTOP-151): CHANGE, BEFORE → AFTER and what restoring here undoes. It has no ACTIVITY, since History is the record.</span></div>
+<div class="dv-card" style="width:1920px">
+<div class="t" style="height:1080px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>16 pages</span></div><div class="row wsix"><span>General</span><span class="mut">●</span></div><div class="row wsix"><span>Display</span><span class="mut">○</span></div><div class="row wsix"><span>Units</span><span class="mut">●</span></div><div class="row wsix"><span>Institutions</span><span class="mut">●</span></div><div class="row wsix"><span>Accounts</span><span class="mut">●</span></div><div class="row wsix"><span>Categories</span><span class="mut">●</span></div><div class="row wsix"><span>Tags</span><span class="mut">●</span></div><div class="row wsix"><span>Payees</span><span class="mut">●</span></div><div class="row wsix"><span>Documents</span><span class="mut">●</span></div><div class="row wsix"><span>Inventory</span><span class="mut">●</span></div><div class="row wsix"><span>AI connections</span><span class="mut">○</span></div><div class="row wsix"><span>Sync server</span><span class="mut">○</span></div><div class="row wsix"><span>Backup</span><span class="mut">○</span></div><div class="row wsix cur"><span>History</span><span class="mut">●</span></div><div class="row wsix"><span>Logs</span><span class="mut">○</span></div><div class="row wsix"><span>About</span><span class="mut"></span></div><div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>History</b><span>all devices · last 30 days · 214 changes</span></div>
+      <div class="row" style="grid-template-columns:1fr auto;margin-bottom:6px"><span class="mut">next undo &nbsp;<b class="pos">Added Camera House −4,380.00</b></span><span class="mut">area <span class="seg">all</span> txn budget settings</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span class="mut">TIME</span><span class="mut">AREA</span><span class="mut">CHANGE</span><span class="mut">DEVICE</span></div>
+      <div class="row mut" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>14:21</span><span>txn</span><span class="strike">Recategorised Woolworths −86.40 → Groceries</span><span>this device</span></div>
+      <div class="row mut" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>14:19</span><span>budgets</span><span class="strike">Dining limit 400.00 → 350.00</span><span>this device</span></div>
+      <div class="mark"><b>▸ CURRENT STATE</b><span class="mut">2 changes can be redone · a new edit clears them</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>14:12</span><span class="mut">txn</span><span>Added Camera House −4,380.00 · Everyday</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>14:05</span><span class="mut">tags</span><span>Renamed tag holiday → travel</span><span class="mut">this device</span></div>
+      <div class="row sel" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>13:58</span><span>bills</span><span>Marked Rates Q1 paid · 612.00</span><span>laptop</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>13:51</span><span class="mut">txn</span><span>Split Bunnings −142.75 three ways</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>13:44</span><span class="mut">inventory</span><span>Added room Garage · 12 Elm St</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>13:30</span><span class="mut">txn</span><span>Imported 6 rows · anz-sep.qif</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>12:02</span><span class="mut">accounts</span><span>Created ANZ Offset · aud</span><span class="mut">laptop</span></div>
+      <div class="row" style="grid-template-columns:6ch 11ch 1fr 13ch"><span>11:47</span><span class="mut">txn</span><span>Deleted duplicate Netflix −22.99</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">Synced changes undo on every device.</span></div>
+    </div></div>
+    <div class="pane wsdetail"><div class="hd tight">change</div><div class="row" style="grid-template-columns:1fr"><span><b>Marked Rates Q1 paid</b></span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">Bills · laptop · today 13:58</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">area</span><span>bills</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">device</span><span>laptop</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">synced</span><span>13:59</span></div><div class="wskeys"><span><span class="k">enter</span>restore to here</span></div><div class="hd tight">before → after</div><div class="row" style="grid-template-columns:12ch 1fr"><span class="mut">status</span><span>due → <b>paid</b></span></div><div class="row" style="grid-template-columns:12ch 1fr"><span class="mut">paid on</span><span>— → <b>12 sep 2026</b></span></div><div class="row" style="grid-template-columns:12ch 1fr"><span class="mut">transaction</span><span>— → <b>Rates Q1 −612.00</b></span></div><div class="hd tight">restoring here undoes</div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">14:12</span><span>Added Camera House −4,380.00</span></div><div class="row" style="grid-template-columns:6ch 1fr"><span class="mut">14:05</span><span>Renamed tag holiday → travel</span></div><div class="row" style="grid-template-columns:1fr;margin-top:3px"><span class="mut">They stay greyed above the marker until a new edit clears them.</span></div></div>
+  </div>
+  <div class="tk"><span><span class="k">u</span>undo</span><span><span class="k">^r</span>redo</span><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>restore to here</span><span><span class="k">f</span>area filter</span><span><span class="k">[/]</span>pages</span><span><span class="k">esc</span>index</span></div>
+</div>
+</div>
+</div>
+
+</div>
 </section>
 
 </x-dc>

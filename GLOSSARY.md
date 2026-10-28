@@ -125,7 +125,7 @@ The content the Desktop Client shows inside the Shell for where the user is: one
 _Avoid_: screen, page (alone), tab.
 
 **Window Size**:
-Which of Medium, Large or X-Large the Desktop Client's window width falls in; the Shell and each View arrange themselves by it. It is the window that counts, not the monitor, so a tiled window on a large monitor can be Medium. Height never changes the Window Size: a short window scrolls. The window cannot be made narrower than Medium.
+Which of Medium, Large or X-Large a Client's width falls in; the Shell and each View arrange themselves by it. The Desktop reads its window's width in logical pixels; the TUI reads its terminal's width in columns, at 7.5px a column, against the same Breakpoints (ADR-0050). It is the window that counts, not the monitor, so a tiled window on a large monitor can be Medium. Height never changes the Window Size. The Desktop's window cannot be made narrower than Medium; a terminal narrower than Medium shows a "terminal too small" screen instead of a View.
 _Avoid_: screen size, device size, size class.
 
 **Breakpoint**:
