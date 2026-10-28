@@ -14,7 +14,7 @@ use crate::{
     navigation::nav::InputMode,
     shell::view::{
         text_fit::{hints_that_fit, text_width},
-        window_size::WindowSize,
+        window_size::{WindowSize, WindowSizeExt},
     },
     theme::color,
 };

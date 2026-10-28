@@ -24,7 +24,7 @@ use crate::{
     shell::view::statusline::{self, StatusLine},
     shell::view::toast::history as toast_history_view,
     shell::view::topbar::{self, TopBar},
-    shell::view::window_size::WindowSize,
+    shell::view::window_size::{WindowSize, WindowSizeExt},
     theme::{color, type_scale},
     view::{
         active::{ActiveViewEntity, ShellView},

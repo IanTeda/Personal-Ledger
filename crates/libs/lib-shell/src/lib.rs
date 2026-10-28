@@ -22,6 +22,7 @@ pub mod nav;
 pub mod navigation;
 pub mod presenter;
 pub mod protocols;
+pub mod window_size;
 
 pub use dialog::{DialogCommand, dialog_keymap};
 pub use keymap::{ShellCommand, global_keymap};
@@ -32,3 +33,4 @@ pub use presenter::{
     ToastInput,
 };
 pub use protocols::ShellRouter;
+pub use window_size::WindowSize;

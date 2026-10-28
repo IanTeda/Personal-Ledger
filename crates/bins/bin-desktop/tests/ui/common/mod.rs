@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    WindowSize,
+    WindowSize, WindowSizeExt,
     locale::init_for_tests,
     navigation::nav::{Noun, RailMode},
     persistence::PersistedState,

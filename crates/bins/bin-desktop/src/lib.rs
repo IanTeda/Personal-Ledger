@@ -52,7 +52,7 @@ use gpui::{
 pub use error::Error;
 use lib_database::{Storage, Stores, open_storage};
 use persistence::{PersistedState, WindowGeometry};
-pub use shell::view::window_size::WindowSize;
+pub use shell::view::window_size::{WindowSize, WindowSizeExt};
 
 /// Crate Result type alias used across the Desktop binary.
 ///

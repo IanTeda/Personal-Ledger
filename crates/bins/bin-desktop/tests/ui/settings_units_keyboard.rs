@@ -6,7 +6,7 @@
 use super::common;
 
 use bin_desktop::{
-    WindowSize,
+    WindowSize, WindowSizeExt,
     navigation::nav::{FocusZone, InputMode, Noun},
 };
 use common::Harness;

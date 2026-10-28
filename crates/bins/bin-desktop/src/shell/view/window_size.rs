@@ -1,14 +1,9 @@
-//! The Window Size (ADR-0042): Medium, Large or X-Large, picked from the window's width alone. The
-//! The Shell and each View read it from the viewport while they draw, so nothing keeps a copy that
-//! could go stale on a resize.
+//! The Desktop's side of the Window Size (ADR-0042, ADR-0050): `lib_shell` owns the enum and its
+//! Breakpoints, and this adapter reads it from the viewport while a View draws, so nothing keeps a
+//! copy that could go stale on a resize. The window-only sizes live here, since they use gpui types.
 
 use gpui::{Pixels, Size, Window, px, size};
-
-/// The narrowest window Large is drawn at; anything narrower is Medium.
-pub const LARGE_BREAKPOINT: Pixels = px(1200.0);
-
-/// The narrowest window X-Large is drawn at.
-pub const X_LARGE_BREAKPOINT: Pixels = px(1600.0);
+pub use lib_shell::WindowSize;
 
 /// The smallest the window can be made. Medium is the floor, so no layout is designed below it.
 pub const MIN_WINDOW: Size<Pixels> = size(px(720.0), px(480.0));
@@ -25,61 +20,30 @@ pub fn overlay_width(width: Pixels, viewport_width: Pixels) -> Pixels {
         .max(px(0.0))
 }
 
-/// What the window's width makes room for. Height never picks one: a short window scrolls.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowSize {
-    Medium,
-    Large,
-    XLarge,
-}
-
-impl WindowSize {
-    /// The Window Size for a window this wide. Below the floor is still Medium, since the window
-    /// can't be made narrower than [`MIN_WINDOW`].
-    pub fn from_width(width: Pixels) -> Self {
-        if width >= X_LARGE_BREAKPOINT {
-            Self::XLarge
-        } else if width >= LARGE_BREAKPOINT {
-            Self::Large
-        } else {
-            Self::Medium
-        }
-    }
-
+/// What gpui adds to [`WindowSize`]: reading it from a window, and the frame in gpui's types.
+pub trait WindowSizeExt {
     /// The Window Size the window is drawn at right now.
-    pub fn of(window: &Window) -> Self {
-        Self::from_width(window.viewport_size().width)
-    }
+    fn of(window: &Window) -> Self;
 
     /// The frame each Window Size's mockups are drawn at (ADR-0042's table), which the UI tests
     /// resize to.
-    pub fn reference_frame(self) -> Size<Pixels> {
-        match self {
-            Self::Medium => size(px(960.0), px(1040.0)),
-            Self::Large => size(px(1280.0), px(800.0)),
-            Self::XLarge => size(px(1920.0), px(1080.0)),
-        }
+    fn reference_frame(self) -> Size<Pixels>;
+}
+
+impl WindowSizeExt for WindowSize {
+    fn of(window: &Window) -> Self {
+        Self::from_logical_px(f32::from(window.viewport_size().width))
+    }
+
+    fn reference_frame(self) -> Size<Pixels> {
+        let (width, height) = self.reference_frame_px();
+        size(px(width), px(height))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn from_width_picks_by_the_breakpoints() {
-        let cases = [
-            (719.0, WindowSize::Medium),
-            (720.0, WindowSize::Medium),
-            (1199.0, WindowSize::Medium),
-            (1200.0, WindowSize::Large),
-            (1599.0, WindowSize::Large),
-            (1600.0, WindowSize::XLarge),
-        ];
-        for (width, expected) in cases {
-            assert_eq!(WindowSize::from_width(px(width)), expected, "at {width}px");
-        }
-    }
 
     #[test]
     fn an_overlay_keeps_its_width_until_the_window_is_too_narrow_for_it() {
@@ -93,7 +57,7 @@ mod tests {
     fn each_reference_frame_is_its_own_window_size() {
         for window_size in [WindowSize::Medium, WindowSize::Large, WindowSize::XLarge] {
             assert_eq!(
-                WindowSize::from_width(window_size.reference_frame().width),
+                WindowSize::from_logical_px(f32::from(window_size.reference_frame().width)),
                 window_size
             );
         }
