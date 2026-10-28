@@ -1992,6 +1992,7 @@ impl Shell {
         }
 
         self.view.set_toasts_on(self.toasts.display().toasts_on);
+        self.view.set_window_size(size);
 
         let c = &self.colours;
         let rows = Layout::default()
@@ -4299,6 +4300,28 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn settings_docks_its_index_at_large_and_keeps_the_page_and_focus_across_a_resize() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+
+        let text = drawn_at(&mut shell, 171, 53);
+        assert!(!text.contains("Settings ›"), "{text}");
+        assert!(text.contains("○ this device only"), "{text}");
+        let footer = lines(&text).last().copied().unwrap_or_default().to_string();
+        assert!(footer.contains("[/] pages · esc index"), "{footer}");
+
+        // Docked, `p` does nothing: no picker opens.
+        press(&mut shell, &[KeyCode::Char('p')]);
+        assert!(!drawn_at(&mut shell, 171, 53).contains("Go to Settings Page"));
+
+        // Back at Medium the same page shows under its breadcrumb, and `p` is the picker again.
+        assert!(drawn_at(&mut shell, 128, 69).contains("Settings › Display"));
+        press(&mut shell, &[KeyCode::Char('p')]);
+        assert!(drawn_at(&mut shell, 128, 69).contains("Go to Settings Page"));
     }
 
     #[test]

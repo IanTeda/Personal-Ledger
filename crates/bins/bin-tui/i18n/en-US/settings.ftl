@@ -7,6 +7,9 @@ tui-settings-page-count = { $count ->
 }
 tui-settings-legend = ● syncs with the ledger · ○ this device only
 tui-settings-picker-title = Go to Settings Page
+# The legend's two halves, one to a row under the docked index (TUI-050), which is too narrow for the one-line legend.
+tui-settings-legend-synced = ● syncs with the ledger
+tui-settings-legend-this-device = ○ this device only
 
 ## A page's breadcrumb heading, before the page's name.
 
@@ -74,6 +77,9 @@ tui-settings-hint-edit = edit
 tui-settings-hint-pages = pages
 tui-settings-hint-picker = picker
 tui-settings-hint-settings = settings
+# At Large and X-Large, where the index is docked beside the page (TUI-050, TUI-051).
+tui-settings-hint-focus-page = focus page
+tui-settings-hint-index = index
 
 ## Settings › General's field labels.
 

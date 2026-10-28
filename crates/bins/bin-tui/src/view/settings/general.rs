@@ -40,8 +40,9 @@ impl GeneralPage {
         Some(Action::NoOp)
     }
 
-    pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-        render_fields(frame, area, &fields(), self.selected, c);
+    /// `focused`, the selected field is reversed.
+    pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+        render_fields(frame, area, &fields(), focused.then_some(self.selected), c);
     }
 }
 

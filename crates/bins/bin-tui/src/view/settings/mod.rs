@@ -1,7 +1,14 @@
 //! The Settings `View`, hosted by `Shell` (ADR-0013): the paged design of
-//! `docs/ux/tui-mockups/05-settings/README.md`, at Medium (ADR-0050). Settings shows one of two
-//! places in the View: the full-page index (TUI-047, [`index`]) or one page under its breadcrumb
-//! heading, and on a page `p` opens the page picker (TUI-048, [`picker`]) over it.
+//! `docs/ux/tui-mockups/05-settings/README.md`, per Window Size (ADR-0050). Settings has two
+//! places, the index ([`index`]) and one page. At Medium they show one at a time: the full-page
+//! index (TUI-047), or the page under its breadcrumb heading, where `p` opens the page picker
+//! (TUI-048, [`picker`]) over it. At Large and X-Large they show side by side, the index docked
+//! at 31 columns (TUI-050, TUI-051), and which one shows becomes which one has focus; the page's
+//! heading is its name alone, and `p` does nothing, since every page is in view.
+//!
+//! The Window Size is read from the width on every draw ([`View::set_window_size`]), so a resize
+//! across a Breakpoint keeps the page, its selection and the focus. A page's content stops at
+//! 112 columns, the Desktop's 840px, at every size.
 //!
 //! The index selection and the open page are one value, [`SettingsView::selected`], shared with
 //! `Shell` so it is remembered for the session: `g s` and `:settings` land on the index with the
@@ -245,9 +252,15 @@ enum Showing {
     Page,
 }
 
+/// A page's content width at most, the Desktop's 840px at 7.5px a column.
+const CONTENT_WIDTH: u16 = 112;
+
 /// The Settings View: the index page or one page, the picker, and each built page's own state.
 pub struct SettingsView {
+    /// At Medium the place showing; at Large and X-Large, where both show, the one with focus.
     showing: Showing,
+    /// The Window Size `Shell` last drew at, which picks the layout the keys and hints act on.
+    size: WindowSize,
     /// The index selection and the open page, one value shared with `Shell` for the session.
     selected: Rc<Cell<SettingsPage>>,
     /// `Some` while the page picker is open.
@@ -267,6 +280,7 @@ impl SettingsView {
     pub fn remembering(selected: Rc<Cell<SettingsPage>>) -> Self {
         Self {
             showing: Showing::Index,
+            size: WindowSize::Medium,
             selected,
             picker: None,
             general: general::GeneralPage::default(),
@@ -276,6 +290,11 @@ impl SettingsView {
 
     fn selected(&self) -> SettingsPage {
         self.selected.get()
+    }
+
+    /// Whether the index docks beside the page: at Large and X-Large.
+    fn docked(&self) -> bool {
+        self.size != WindowSize::Medium
     }
 
     /// Shows `page` in place of whatever was showing, closing the picker.
@@ -313,8 +332,12 @@ impl SettingsView {
                 self.selected.set(self.selected().step(Step::Next));
                 Some(Action::NoOp)
             }
+            // Docked, every page is in view, so there is no picker; `p` is still taken, so it
+            // does nothing rather than reach the Shell.
             KeyCode::Char('p') => {
-                self.picker = Some(Picker::new(self.selected()));
+                if !self.docked() {
+                    self.picker = Some(Picker::new(self.selected()));
+                }
                 Some(Action::NoOp)
             }
             _ => match self.selected() {
@@ -395,14 +418,18 @@ impl View for SettingsView {
             picker::hints(back)
         } else {
             match self.showing {
-                Showing::Index => index::hints(back),
+                Showing::Index => index::hints(back, self.docked()),
                 Showing::Page => {
                     let mut hints = self.page_hints();
-                    hints.extend([
-                        ("[/]".into(), msg::tui_settings_hint_pages()),
-                        ("p".into(), msg::tui_settings_hint_picker()),
-                        (back.to_string(), msg::tui_settings_hint_settings()),
-                    ]);
+                    hints.push(("[/]".into(), msg::tui_settings_hint_pages()));
+                    if self.docked() {
+                        hints.push((back.to_string(), msg::tui_settings_hint_index()));
+                    } else {
+                        hints.extend([
+                            ("p".into(), msg::tui_settings_hint_picker()),
+                            (back.to_string(), msg::tui_settings_hint_settings()),
+                        ]);
+                    }
                     hints
                 }
             }
@@ -414,11 +441,31 @@ impl View for SettingsView {
         self.display.set_toasts_on(on);
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
+    /// Docking closes the picker, which only Medium has; the page and the focus stay.
+    fn set_window_size(&mut self, size: WindowSize) {
+        self.size = size;
+        if self.docked() {
+            self.picker = None;
+        }
+    }
+
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, size: WindowSize, c: &Colours) {
         let inner = area.inner(Margin::new(1, 0));
-        match self.showing {
-            Showing::Index => index::render(frame, inner, self.selected(), c),
-            Showing::Page => self.render_page(frame, inner, c),
+        if size == WindowSize::Medium {
+            match self.showing {
+                Showing::Index => index::render(frame, inner, self.selected(), c),
+                Showing::Page => self.render_page(frame, inner, false, true, c),
+            }
+        } else {
+            let index_focused = self.showing == Showing::Index;
+            let [dock, _, page] = Layout::horizontal([
+                Constraint::Length(index::DOCKED_WIDTH),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .areas(inner);
+            index::render_docked(frame, dock, self.selected(), index_focused, c);
+            self.render_page(frame, page, true, !index_focused, c);
         }
         if let Some(picker) = &self.picker {
             frame.render_widget(crate::popup::Dim, area);
@@ -436,22 +483,40 @@ impl View for SettingsView {
 }
 
 impl SettingsView {
-    /// A page: the breadcrumb heading over a strong rule, then the whole View below it for the
-    /// page's body. A page not built yet draws its heading over an empty body.
-    fn render_page(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    /// A page, at most [`CONTENT_WIDTH`] wide from the left of `area`: its heading over a strong
+    /// rule, then the rest below it for the page's body. The heading is the breadcrumb, or,
+    /// `docked` beside the index, the page's name alone. Unless `focused`, the page draws no
+    /// selection. A page not built yet draws its heading over an empty body.
+    fn render_page(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        docked: bool,
+        focused: bool,
+        c: &Colours,
+    ) {
         let page = self.selected();
+        let area = Rect {
+            width: area.width.min(CONTENT_WIDTH),
+            ..area
+        };
         let [heading, body] =
             Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(area);
-        let title = Line::from(vec![
-            Span::styled(msg::tui_settings_breadcrumb_parent(), c.muted()),
-            Span::raw(" "),
-            Span::styled(page.label(), Style::default().add_modifier(Modifier::BOLD)),
-        ]);
+        let name = Span::styled(page.label(), Style::default().add_modifier(Modifier::BOLD));
+        let title = if docked {
+            Line::from(name)
+        } else {
+            Line::from(vec![
+                Span::styled(msg::tui_settings_breadcrumb_parent(), c.muted()),
+                Span::raw(" "),
+                name,
+            ])
+        };
         render_heading(frame, heading, title, &page.scope_note(), c);
         let body = body.inner(Margin::new(0, 1));
         match page {
-            SettingsPage::General => self.general.render(frame, body, c),
-            SettingsPage::Display => self.display.render(frame, body, c),
+            SettingsPage::General => self.general.render(frame, body, focused, c),
+            SettingsPage::Display => self.display.render(frame, body, focused, c),
             _ => {}
         }
     }
@@ -460,9 +525,20 @@ impl SettingsView {
 /// A heading row, `title` on the left and `note` dim on the right, over a strong rule: the index
 /// page's, the picker's and every page's.
 fn render_heading(frame: &mut Frame<'_>, area: Rect, title: Line<'_>, note: &str, c: &Colours) {
-    let block = Block::new()
-        .borders(Borders::BOTTOM)
-        .border_type(BorderType::Thick);
+    render_ruled_heading(frame, area, title, note, BorderType::Thick, c);
+}
+
+/// [`render_heading`] over a `rule` of the given weight: the docked index's is light while the
+/// page beside it has focus.
+fn render_ruled_heading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    title: Line<'_>,
+    note: &str,
+    rule: BorderType,
+    c: &Colours,
+) {
+    let block = Block::new().borders(Borders::BOTTOM).border_type(rule);
     let row = block.inner(area);
     frame.render_widget(block, area);
     let note_width = u16::try_from(note.chars().count()).unwrap_or(u16::MAX);
@@ -487,17 +563,18 @@ struct FieldRow {
     note: String,
 }
 
-/// A form page's field rows from the top of `area`, the `selected` row reversed.
+/// A form page's field rows from the top of `area`, the `selected` row reversed; `None` while the
+/// page doesn't have focus.
 fn render_fields(
     frame: &mut Frame<'_>,
     area: Rect,
     rows: &[FieldRow],
-    selected: usize,
+    selected: Option<usize>,
     c: &Colours,
 ) {
     let areas = Layout::vertical(vec![Constraint::Length(1); rows.len()]).split(area);
     for (index, (row, row_area)) in rows.iter().zip(areas.iter()).enumerate() {
-        let selected = index == selected;
+        let selected = Some(index) == selected;
         if selected {
             frame.render_widget(Block::new().style(c.selection()), *row_area);
         }
@@ -561,7 +638,10 @@ mod tests {
         let mut terminal =
             Terminal::new(TestBackend::new(width, height)).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
+            .draw(|frame| {
+                let size = WindowSize::from_columns(frame.area().width);
+                view.view(frame, frame.area(), size, c);
+            })
             .expect("drawing the settings view should not error");
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
@@ -576,6 +656,214 @@ mod tests {
 
     fn render(view: &SettingsView) -> String {
         render_at(view, 96, 28)
+    }
+
+    /// A view on `page` with the Shell's draw at `size` told it, as `Shell::draw` does.
+    fn at(size: WindowSize, page: Option<SettingsPage>) -> SettingsView {
+        let mut view = SettingsView::new();
+        if let Some(page) = page {
+            view.update(&Action::OpenSettingsPage(page));
+        }
+        view.set_window_size(size);
+        view
+    }
+
+    /// The symbol at column `x` of row `y` in rendered `text`.
+    fn cell(text: &str, x: usize, y: usize) -> String {
+        text.lines()
+            .nth(y)
+            .and_then(|row| row.chars().nth(x))
+            .map(String::from)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn the_index_docks_only_at_large_and_x_large_and_content_stops_at_112_columns() {
+        crate::locale::init_for_tests();
+        // TUI-049: Medium at its reference frame, the drill-down. The page starts at column 1,
+        // inside the View's margin, so its heading rule ends on column 112.
+        let text = render_at(
+            &at(WindowSize::Medium, Some(SettingsPage::General)),
+            128,
+            69,
+        );
+        assert!(
+            text.lines()
+                .next()
+                .unwrap_or_default()
+                .contains("Settings › General"),
+            "{text}"
+        );
+        assert!(!text.contains("○ this device only"), "{text}");
+        assert_eq!(cell(&text, 112, 1), "━", "{text}");
+        assert_eq!(cell(&text, 113, 1), " ", "{text}");
+
+        // TUI-050 and TUI-052: the index docks at 31 columns, then a gap, then the page from
+        // column 33, its heading the name alone, stopping 112 columns on.
+        for (width, height) in [(171, 53), (256, 72)] {
+            let size = WindowSize::from_columns(width);
+            let text = render_at(&at(size, Some(SettingsPage::General)), width, height);
+            let heading = text.lines().next().unwrap_or_default();
+            assert!(
+                heading.contains("Settings") && heading.contains("16 pages"),
+                "{text}"
+            );
+            assert!(!text.contains("Settings ›"), "{text}");
+            assert_eq!(
+                cell(&text, 31, 0),
+                "│",
+                "the dock's rule at {width}:\n{text}"
+            );
+            assert_eq!(
+                cell(&text, 33, 0),
+                "G",
+                "the page's heading at {width}:\n{text}"
+            );
+            assert_eq!(cell(&text, 144, 1), "━", "{width}:\n{text}");
+            assert_eq!(cell(&text, 145, 1), " ", "{width}:\n{text}");
+            for page in SettingsPage::ALL {
+                assert!(text.contains(&page.label()), "{page:?} at {width}:\n{text}");
+            }
+            assert!(text.contains("● syncs with the ledger"), "{text}");
+            assert!(text.contains("○ this device only"), "{text}");
+            assert!(text.contains("ledger name"), "{text}");
+        }
+    }
+
+    #[test]
+    fn docked_the_focused_side_draws_the_selection_and_the_index_marks_the_open_page() {
+        crate::locale::init_for_tests();
+        // TUI-050: the page focused, its field reversed and the index's open page barred.
+        let view = at(WindowSize::Large, Some(SettingsPage::General));
+        let text = render_at(&view, 171, 53);
+        assert_eq!(cell(&text, 1, 2), "▌", "{text}");
+        let c = Colours::default();
+        let mut terminal =
+            Terminal::new(TestBackend::new(171, 53)).expect("test backend should initialise");
+        terminal
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Large, &c))
+            .expect("drawing the settings view should not error");
+        let buffer = terminal.backend().buffer();
+        // The index row for General is not reversed; the page's first field, three rows below
+        // its heading, is.
+        assert_ne!(buffer[(5, 2)].style().bg, c.selection().bg);
+        assert_eq!(buffer[(40, 3)].style().bg, c.selection().bg);
+
+        // TUI-051: the index focused, its selection reversed, no bar, and no field reversed.
+        let mut view = at(WindowSize::Large, None);
+        view.handle_key(key(KeyCode::Char('j')));
+        terminal
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Large, &c))
+            .expect("drawing the settings view should not error");
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(5, 3)].style().bg, c.selection().bg);
+        assert_ne!(buffer[(40, 3)].style().bg, c.selection().bg);
+        let text = render_at(&view, 171, 53);
+        assert!(!text.contains('▌'), "{text}");
+        assert!(text.contains("appearance"), "the page swaps live:\n{text}");
+    }
+
+    #[test]
+    fn docked_focus_round_trips_between_the_index_and_the_page() {
+        let mut view = at(WindowSize::Large, None);
+        press(&mut view, &[KeyCode::Char('j')]);
+        assert_eq!(
+            view.showing,
+            Showing::Index,
+            "j moves the index, not the focus"
+        );
+        assert_eq!(view.selected(), SettingsPage::Display);
+
+        press(&mut view, &[KeyCode::Enter]);
+        assert_eq!(view.showing, Showing::Page);
+        assert_eq!(view.selected(), SettingsPage::Display);
+
+        assert!(view.back(), "esc on the page focuses the index");
+        assert_eq!(view.showing, Showing::Index);
+        assert_eq!(view.selected(), SettingsPage::Display);
+        assert!(!view.back(), "esc on the index leaves Settings");
+    }
+
+    #[test]
+    fn docked_brackets_stop_at_both_ends_and_p_is_inert() {
+        let mut view = at(WindowSize::Large, Some(SettingsPage::General));
+        press(&mut view, &[KeyCode::Char('[')]);
+        assert_eq!(view.selected(), SettingsPage::General);
+        view.update(&Action::OpenSettingsPage(SettingsPage::About));
+        press(&mut view, &[KeyCode::Char(']')]);
+        assert_eq!(view.selected(), SettingsPage::About);
+        press(&mut view, &[KeyCode::Char('[')]);
+        assert_eq!(view.selected(), SettingsPage::Logs);
+        assert_eq!(view.showing, Showing::Page, "focus stays on the page");
+
+        assert_eq!(
+            view.handle_key(key(KeyCode::Char('p'))),
+            Some(Action::NoOp),
+            "p is taken, so it never reaches the Shell"
+        );
+        assert!(!view.popup_open());
+    }
+
+    #[test]
+    fn a_resize_across_160_columns_keeps_the_page_its_selection_and_the_focus() {
+        // The index page at Medium is the focused docked index at Large, and back.
+        let mut view = at(WindowSize::Medium, None);
+        press(&mut view, &[KeyCode::Char('j'), KeyCode::Char('j')]);
+        view.set_window_size(WindowSize::Large);
+        assert_eq!(
+            (view.showing, view.selected()),
+            (Showing::Index, SettingsPage::Units)
+        );
+        view.set_window_size(WindowSize::Medium);
+        assert_eq!(
+            (view.showing, view.selected()),
+            (Showing::Index, SettingsPage::Units)
+        );
+
+        // A page keeps its own field selection; docking closes the Medium-only picker.
+        let mut view = at(WindowSize::Medium, Some(SettingsPage::General));
+        press(&mut view, &[KeyCode::Char('j'), KeyCode::Char('p')]);
+        assert!(view.popup_open());
+        view.set_window_size(WindowSize::XLarge);
+        assert!(!view.popup_open());
+        assert_eq!(
+            (view.showing, view.selected()),
+            (Showing::Page, SettingsPage::General)
+        );
+        view.set_window_size(WindowSize::Medium);
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::OpenEditSettingPopup),
+            "owner, the field left selected, is still selected"
+        );
+        press(&mut view, &[KeyCode::Char('G')]);
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::OpenBaseUnitGuardPopup)
+        );
+    }
+
+    #[test]
+    fn docked_hints_end_pages_then_esc_index() {
+        crate::locale::init_for_tests();
+        let view = at(WindowSize::Large, None);
+        let index = view.hints("esc").unwrap_or_default();
+        assert!(
+            index.contains(&("enter".into(), "focus page".into())),
+            "{index:?}"
+        );
+
+        let view = at(WindowSize::XLarge, Some(SettingsPage::General));
+        let hints = view.hints("esc").unwrap_or_default();
+        let tail: Vec<_> = hints.iter().rev().take(2).rev().cloned().collect();
+        assert_eq!(
+            tail,
+            vec![
+                ("[/]".to_string(), "pages".to_string()),
+                ("esc".to_string(), "index".to_string()),
+            ]
+        );
+        assert!(!hints.iter().any(|(key, _)| key == "p"), "{hints:?}");
     }
 
     #[test]

@@ -73,9 +73,10 @@ impl DisplayPage {
         Some(Action::NoOp)
     }
 
-    pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    /// `focused`, the selected row is reversed.
+    pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
         let rows: Vec<FieldRow> = ROWS.iter().map(|row| self.field(*row, c)).collect();
-        render_fields(frame, area, &rows, self.selected, c);
+        render_fields(frame, area, &rows, focused.then_some(self.selected), c);
     }
 
     /// One row's glyph, label, value and note. The colour rows stay editable under

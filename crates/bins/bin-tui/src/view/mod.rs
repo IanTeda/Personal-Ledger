@@ -693,6 +693,10 @@ pub trait View {
     /// that shows it (Settings). `Shell` owns the Preference inside its `Toasts`.
     fn set_toasts_on(&mut self, _on: bool) {}
 
+    /// Tells the view the Window Size `Shell` is drawing at, on every draw, so its keys and
+    /// hints follow the layout on screen (Settings, whose index docks at Large and X-Large).
+    fn set_window_size(&mut self, _size: WindowSize) {}
+
     /// Read-only access to this view's Account list, if it has one — `Some` only for
     /// `view::accounts::AccountsView`. Mirrors `category_store`: lets `Shell` resolve the
     /// Account popup's completion/validation against the live fixture without downcasting the
