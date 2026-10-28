@@ -1352,7 +1352,7 @@ impl<'a> Harness<'a> {
     }
 
     /// Adds a Location priced in `unit`, which then names it.
-    pub fn add_location_in(&mut self, unit: lib_core::UnitId) {
+    pub fn add_location_in(&mut self, unit: UnitId) {
         self.shell.update(self.cx, |shell, cx| {
             shell.add_location_in_for_test(unit, cx);
             cx.notify();
