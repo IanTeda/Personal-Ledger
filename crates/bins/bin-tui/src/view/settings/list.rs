@@ -35,6 +35,8 @@ pub(super) enum Tone {
     Bold,
     /// A one-cell colour mark (`■`) in a Tag's colour.
     Swatch(Color),
+    /// Muted and struck through, as an undone History change is; it stays struck on a dim row.
+    Struck,
 }
 
 /// One cell: its spans, left to right.
@@ -91,6 +93,9 @@ pub(super) enum Row {
         /// Drawn muted throughout, as an inactive Unit is.
         dim: bool,
     },
+    /// A reversed band across the row with a bold label and a note after it (`▸ CURRENT STATE`);
+    /// never selected.
+    Band { label: String, note: String },
 }
 
 /// One block of a list page.
@@ -109,7 +114,12 @@ const TABLE_CHROME: u16 = 3;
 impl Table {
     /// The rows the table takes with every row in view.
     fn height(&self) -> u16 {
-        u16::try_from(self.rows.len())
+        self.height_with(0)
+    }
+
+    /// [`Self::height`] with `lead` fact lines under the rule.
+    pub(super) fn height_with(&self, lead: usize) -> u16 {
+        u16::try_from(self.rows.len() + lead)
             .unwrap_or(u16::MAX)
             .saturating_add(TABLE_CHROME)
     }
@@ -117,15 +127,30 @@ impl Table {
     /// The table in `area`, scrolled to keep the selected row in view. Unless `focused`, no row
     /// draws as selected.
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
-        let [heading, rule, header, body] = Layout::vertical([
+        self.render_with(&[], frame, area, focused, c);
+    }
+
+    /// [`Self::render`] with `lead` fact lines between the rule and the column header, as Assistant
+    /// access shows its server, access and approval.
+    pub(super) fn render_with(
+        &self,
+        lead: &[(String, Cell)],
+        frame: &mut Frame<'_>,
+        area: Rect,
+        focused: bool,
+        c: &Colours,
+    ) {
+        let [heading, rule, facts, header, body] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
+            Constraint::Length(u16::try_from(lead.len()).unwrap_or(u16::MAX)),
             Constraint::Length(1),
             Constraint::Min(0),
         ])
         .areas(area);
         self.render_heading(frame, heading, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
+        render_lines(frame, facts, lead, c);
 
         let widths: Vec<Constraint> = self.columns.iter().map(|column| column.width).collect();
         let columns = Layout::horizontal(widths.clone()).spacing(1).split(header);
@@ -153,6 +178,20 @@ impl Table {
                 Row::Group(label) => {
                     frame.render_widget(Paragraph::new(Span::styled(upper(label), c.muted())), area)
                 }
+                Row::Band { label, note } => {
+                    frame.render_widget(
+                        Paragraph::new(Line::from(vec![
+                            Span::styled(
+                                upper(label),
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ),
+                            Span::raw("  "),
+                            Span::raw(note.as_str()),
+                        ]))
+                        .style(c.selection()),
+                        area,
+                    );
+                }
                 Row::Item {
                     cells,
                     selected,
@@ -171,6 +210,7 @@ impl Table {
                                 .iter()
                                 .map(|(text, tone)| {
                                     let tone = match tone {
+                                        Tone::Struck => Tone::Struck,
                                         Tone::Chip(_) if *dim => Tone::Chip(false),
                                         _ if *dim => Tone::Muted,
                                         _ => *tone,
@@ -229,6 +269,10 @@ fn span(text: &str, tone: Tone, selected: bool, c: &Colours) -> Span<'static> {
             Style::default().add_modifier(Modifier::BOLD),
         ),
         Tone::Swatch(colour) => Span::styled(text.to_string(), Style::default().fg(colour)),
+        Tone::Struck => Span::styled(
+            text.to_string(),
+            c.muted().add_modifier(Modifier::CROSSED_OUT),
+        ),
         Tone::Chip(accent) => {
             let style = match (accent, selected) {
                 (true, true) => c.accent_selection(),
@@ -271,26 +315,30 @@ impl Detail {
             .title(Span::styled(format!(" {} ", self.title), c.muted()));
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        for (index, (label, value)) in self.lines.iter().enumerate() {
-            let row = Rect {
-                y: inner.y + u16::try_from(index).unwrap_or(0),
-                height: 1,
-                ..inner
-            };
-            let [label_area, value_area] =
-                Layout::horizontal([Constraint::Length(DETAIL_LABEL), Constraint::Min(0)])
-                    .areas(row);
-            frame.render_widget(
-                Paragraph::new(Span::styled(label.as_str(), c.muted())),
-                label_area,
-            );
-            let spans: Vec<Span<'static>> = value
-                .0
-                .iter()
-                .map(|(text, tone)| span(text, *tone, false, c))
-                .collect();
-            frame.render_widget(Paragraph::new(Line::from(spans)), value_area);
-        }
+        render_lines(frame, inner, &self.lines, c);
+    }
+}
+
+/// `lines` down `area`, one a row: each a dim label and its value.
+fn render_lines(frame: &mut Frame<'_>, area: Rect, lines: &[(String, Cell)], c: &Colours) {
+    for (index, (label, value)) in lines.iter().enumerate() {
+        let row = Rect {
+            y: area.y + u16::try_from(index).unwrap_or(0),
+            height: 1,
+            ..area
+        };
+        let [label_area, value_area] =
+            Layout::horizontal([Constraint::Length(DETAIL_LABEL), Constraint::Min(0)]).areas(row);
+        frame.render_widget(
+            Paragraph::new(Span::styled(label.as_str(), c.muted())),
+            label_area,
+        );
+        let spans: Vec<Span<'static>> = value
+            .0
+            .iter()
+            .map(|(text, tone)| span(text, *tone, false, c))
+            .collect();
+        frame.render_widget(Paragraph::new(Line::from(spans)), value_area);
     }
 }
 

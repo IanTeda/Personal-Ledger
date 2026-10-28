@@ -1,5 +1,6 @@
-//! The frame Settings' Edit overlays share (TUI-035): Sync Server's Edit ([`super::sync_server`])
-//! and Backup's Set up Git backup ([`super::git_backup`]). Each is its own popup, with its own
+//! The frame Settings' Edit overlays share (TUI-035): Sync Server's Edit ([`super::sync_server`]),
+//! Backup's Set up Git backup ([`super::git_backup`]) and AI Connections' model provider
+//! ([`super::provider`]). Each is its own popup, with its own
 //! fields, keys and test; this module draws them alike and holds the test step.
 //!
 //! The test gates Save: Save stays dim until a test of the values showing passes, and any change

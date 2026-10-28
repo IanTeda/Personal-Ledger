@@ -560,3 +560,94 @@ tui-settings-git-failed-lfs = refused · no Git LFS
 tui-settings-git-failed-lfs-detail = The remote doesn't support Git LFS, which Documents are pushed through. Turn LFS on, or use another host.
 tui-settings-git-passed = ready · repository is empty
 tui-settings-git-passed-detail = authenticated as { $user } · repository is private · supports LFS · dry-run push to { $branch } succeeded
+
+# Settings › AI Connections (TUI-034). Status is a glyph and a word, never colour alone.
+tui-settings-scope-ai-connections-counts = this device · { $providers ->
+    [one] { $providers } provider
+   *[other] { $providers } providers
+} · { $assistants ->
+    [one] { $assistants } assistant
+   *[other] { $assistants } assistants
+}
+tui-settings-ai-providers = model providers
+tui-settings-ai-add-provider = add provider
+tui-settings-ai-provider = provider
+tui-settings-ai-model = model
+tui-settings-ai-key = key
+tui-settings-ai-status = status
+tui-settings-ai-default = default
+tui-settings-ai-connected = ● connected
+tui-settings-ai-key-rejected = ■ key rejected
+tui-settings-ai-idle = ○ idle
+tui-settings-ai-providers-note = Keys stay in the OS keychain and never sync. Only the transactions you select are sent.
+tui-settings-ai-assistants = assistant access · mcp server
+tui-settings-ai-add-assistant = add assistant
+tui-settings-ai-assistant = assistant
+tui-settings-ai-access = access
+tui-settings-ai-last-seen = last seen
+tui-settings-ai-server = server
+tui-settings-ai-server-on = ● on
+tui-settings-ai-read-only = read only
+tui-settings-ai-read-write-not-offered = read & write · not yet offered
+tui-settings-ai-approval = approval
+tui-settings-ai-approval-value = ask before each change
+# `$time` is a formatted time of day.
+tui-settings-ai-seen-today = today { $time }
+tui-settings-ai-server-note = The server listens on this device only. Revoking ends the session at once.
+tui-settings-hint-ai-block = providers ↔ assistants
+tui-settings-hint-test = test
+tui-settings-hint-make-default = make default
+tui-settings-hint-remove-revoke = remove · revoke
+
+# Settings › AI Connections › Add / Edit model provider.
+tui-settings-provider-add-title = add model provider
+tui-settings-provider-edit-title = edit model provider
+tui-settings-provider-provider = provider
+tui-settings-provider-model = model
+tui-settings-provider-key = api key
+tui-settings-provider-key-note = Kept in the OS keychain. It never syncs and is never shown again.
+tui-settings-provider-save-note = Save unlocks after a passing test. Only the transactions you select are sent.
+tui-settings-provider-failed-model = can't test · no model
+tui-settings-provider-failed-model-detail = Name the model to use, for example claude-sonnet-5-5.
+tui-settings-provider-failed-key = can't test · no api key
+tui-settings-provider-failed-key-detail = Paste the key from the provider's console.
+tui-settings-provider-failed-rejected = refused · key rejected
+tui-settings-provider-failed-rejected-detail = { $provider } didn't accept the key. Check it was copied whole, then test again.
+tui-settings-provider-passed = connected · { $provider }
+tui-settings-provider-passed-detail = The key was accepted and { $model } answered. Save to keep the key in the keychain.
+
+# Settings › History (TUI-037). `$count` is the stack's size.
+tui-settings-scope-history-changes = all devices · last 30 days · { $count ->
+    [one] { $count } change
+   *[other] { $count } changes
+}
+tui-settings-history-next-undo = next undo
+tui-settings-history-area = area
+tui-settings-history-area-all = all
+tui-settings-history-area-transactions = txn
+tui-settings-history-area-budgets = budget
+tui-settings-history-area-settings = settings
+tui-settings-history-kind-transactions = txn
+tui-settings-history-kind-budgets = budgets
+tui-settings-history-kind-tags = tags
+tui-settings-history-kind-bills = bills
+tui-settings-history-kind-inventory = inventory
+tui-settings-history-kind-accounts = accounts
+tui-settings-history-newest-first = newest first
+tui-settings-history-time = time
+tui-settings-history-change = change
+tui-settings-history-device = device
+tui-settings-history-this-device = this device
+tui-settings-history-restore-to-here = enter restore to here
+tui-settings-history-redo-to-here = enter redo to here
+tui-settings-history-current-state = ▸ current state
+# `$count` is how many undone changes can be redone.
+tui-settings-history-redoable = { $count ->
+    [one] { $count } change can be redone · a new edit clears it
+   *[other] { $count } changes can be redone · a new edit clears them
+}
+tui-settings-history-synced-note = Synced changes undo on every device.
+tui-settings-hint-undo = undo
+tui-settings-hint-redo = redo
+tui-settings-hint-restore = restore to here
+tui-settings-hint-area-filter = area filter

@@ -37,17 +37,20 @@
 //! Backup are wireframes with nothing behind them yet ([`sync_server`], [`backup`]); each opens an
 //! Edit overlay on `e` (`popup::settings::overlay`), which the View draws over the dimmed page
 //! like the picker and which, like a field open in place, takes every key and shows `INSERT`.
-//! Every other page draws its heading and scope note over an empty body until the stage that
-//! builds it.
+//! AI Connections and History are wireframes too, on [`list::Page`] ([`ai_connections`],
+//! [`history`]): AI Connections opens the same overlay frame for a model provider's `n` and `e`,
+//! and History's undo keys only flash "not yet built", as `u` and `ctrl r` bind nowhere else.
 
 mod about;
 mod accounts;
+mod ai_connections;
 mod backup;
 mod categories;
 mod display;
 mod documents;
 pub mod field;
 mod general;
+mod history;
 mod index;
 mod institutions;
 mod inventory;
@@ -323,6 +326,8 @@ pub struct SettingsView {
     payees: payees::PayeesPage,
     documents: documents::DocumentsPage,
     inventory: inventory::InventoryPage,
+    ai_connections: ai_connections::AiConnectionsPage,
+    history: history::HistoryPage,
     sync_server: sync_server::SyncServerPage,
     backup: backup::BackupPage,
     logs: logs::LogsPage,
@@ -380,6 +385,8 @@ impl SettingsView {
             payees: payees::PayeesPage::new(),
             documents: documents::DocumentsPage::new(),
             inventory: inventory::InventoryPage::new(),
+            ai_connections: ai_connections::AiConnectionsPage::new(),
+            history: history::HistoryPage::new(),
             sync_server: sync_server::SyncServerPage::default(),
             backup: backup::BackupPage::default(),
             logs: logs::LogsPage::new(logs),
@@ -396,6 +403,8 @@ impl SettingsView {
             SettingsPage::Payees => &self.payees,
             SettingsPage::Documents => &self.documents,
             SettingsPage::Inventory => &self.inventory,
+            SettingsPage::AiConnections => &self.ai_connections,
+            SettingsPage::History => &self.history,
             _ => return None,
         })
     }
@@ -408,6 +417,8 @@ impl SettingsView {
             SettingsPage::Payees => &mut self.payees,
             SettingsPage::Documents => &mut self.documents,
             SettingsPage::Inventory => &mut self.inventory,
+            SettingsPage::AiConnections => &mut self.ai_connections,
+            SettingsPage::History => &mut self.history,
             _ => return None,
         })
     }
@@ -550,9 +561,11 @@ impl SettingsView {
         self.editor = Some(FieldEditor::new(field, draft, was));
     }
 
-    /// Whether a page's Edit overlay is open: Sync Server's or Backup's.
+    /// Whether a page's Edit overlay is open: Sync Server's, Backup's or AI Connections'.
     fn overlay_open(&self) -> bool {
-        self.sync_server.overlay_open() || self.backup.overlay_open()
+        self.sync_server.overlay_open()
+            || self.backup.overlay_open()
+            || self.ai_connections.overlay_open()
     }
 
     /// What a form page reads on this draw.
@@ -592,6 +605,9 @@ impl View for SettingsView {
         }
         if self.backup.overlay_open() {
             return self.backup.handle_key(key);
+        }
+        if self.ai_connections.overlay_open() {
+            return list::Page::handle_key(&mut self.ai_connections, key);
         }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
@@ -646,6 +662,7 @@ impl View for SettingsView {
             || self.logs.close_confirm()
             || self.sync_server.close_overlay()
             || self.backup.close_overlay()
+            || self.ai_connections.close_overlay()
         {
             return true;
         }
@@ -781,6 +798,7 @@ impl View for SettingsView {
             frame.render_widget(crate::popup::Dim, area);
             self.sync_server.render_overlay(frame, area, c);
             self.backup.render_overlay(frame, area, c);
+            self.ai_connections.render_overlay(frame, area, c);
         }
     }
 
