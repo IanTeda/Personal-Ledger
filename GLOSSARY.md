@@ -204,6 +204,10 @@ _Avoid_: Company, organization.
 The Institution that stands for the person keeping the Ledger, which their Cash Accounts name by default. Every new Ledger starts with one, named "Personal" until the person renames it; beyond that it is an ordinary Institution, listed, edited and deleted under the same rules as any other, and a Cash Account may name a different Institution.
 _Avoid_: No institution, placeholder Institution, Self.
 
+**Usual unit**:
+The Unit an Institution's Accounts are normally held in, optional on each Institution. It only prefills the Unit on a new Account with that Institution, until the person picks a Unit themselves; it never changes an existing Account, and with none (or while its Unit is deactivated) the new Account's Unit starts on the base Unit. It is not a second default: the base Unit stays the Ledger's one default. Deleting a Unit that Institutions name asks which Unit replaces it for each, or none.
+_Avoid_: Default unit — the base Unit is the default Unit, and there is no separate one.
+
 **Products**:
 What an Institution offers, as a free-form label of one or more parts (e.g. savings · offset, credit card, crypto). Descriptive only: it never limits which Accounts may name the Institution.
 _Avoid_: Account type, offerings.
