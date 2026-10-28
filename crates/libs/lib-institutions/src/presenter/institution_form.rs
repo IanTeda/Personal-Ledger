@@ -45,6 +45,21 @@ impl InstitutionProduct {
         Self::Cash,
     ];
 
+    /// The part stored in an Institution's label: the same in every Locale, so a Ledger made in one
+    /// Locale reads the same in another. The chip's own text is `label`.
+    pub const fn canonical(self) -> &'static str {
+        match self {
+            Self::Savings => "savings",
+            Self::Offset => "offset",
+            Self::CreditCard => "credit card",
+            Self::Loan => "loan",
+            Self::Investment => "investment",
+            Self::Crypto => "crypto",
+            Self::Retirement => "retirement",
+            Self::Cash => "cash",
+        }
+    }
+
     pub fn label(self) -> String {
         match self {
             Self::Savings => msg::institutions_product_savings(),
@@ -92,7 +107,9 @@ pub struct InstitutionFormPresenter {
     /// The Institution being edited, `None` when adding.
     editing: Option<InstitutionId>,
     name: String,
-    products: Vec<InstitutionProduct>,
+    /// The label's parts in stored order. A part that is no chip is kept as it was, so Edit never
+    /// drops or reorders what it cannot show.
+    products: Vec<String>,
     /// The last refusal, with the name it refused.
     refusal: Option<(String, InstitutionError)>,
 }
@@ -104,7 +121,7 @@ impl InstitutionFormPresenter {
             ports,
             editing: None,
             name: String::new(),
-            products: vec![InstitutionProduct::Savings],
+            products: vec![InstitutionProduct::Savings.canonical().to_string()],
             refusal: None,
         }
     }
@@ -113,10 +130,11 @@ impl InstitutionFormPresenter {
     /// longer on the Ledger.
     pub fn edit(ports: SharedPorts, id: InstitutionId) -> Option<Self> {
         let institution = ports.borrow().institutions().institution(id)?;
-        let labels: Vec<&str> = institution.products.split(PRODUCTS_SEPARATOR).collect();
-        let products = InstitutionProduct::ALL
-            .into_iter()
-            .filter(|product| labels.contains(&product.label().as_str()))
+        let products = institution
+            .products
+            .split(PRODUCTS_SEPARATOR)
+            .filter(|part| !part.is_empty())
+            .map(str::to_string)
             .collect();
         Some(Self {
             ports,
@@ -131,11 +149,15 @@ impl InstitutionFormPresenter {
         match event {
             InstitutionFormEvent::Name(text) => self.name = text,
             InstitutionFormEvent::ToggleProduct(product) => {
-                match self.products.iter().position(|chosen| *chosen == product) {
+                match self
+                    .products
+                    .iter()
+                    .position(|chosen| chosen == product.canonical())
+                {
                     Some(at) => {
                         self.products.remove(at);
                     }
-                    None => self.products.push(product),
+                    None => self.products.push(product.canonical().to_string()),
                 }
             }
             InstitutionFormEvent::Confirm => self.confirm(router),
@@ -176,7 +198,7 @@ impl InstitutionFormPresenter {
                 .map(|product| ProductChip {
                     product,
                     label: product.label(),
-                    checked: self.products.contains(&product),
+                    checked: self.products.iter().any(|part| part == product.canonical()),
                 })
                 .collect(),
         }
@@ -193,12 +215,7 @@ impl InstitutionFormPresenter {
         }
         let draft = InstitutionDraft {
             name: self.name.clone(),
-            products: self
-                .products
-                .iter()
-                .map(|product| product.label())
-                .collect::<Vec<_>>()
-                .join(PRODUCTS_SEPARATOR),
+            products: self.products.join(PRODUCTS_SEPARATOR),
         };
         let saved = {
             let mut ports = self.ports.borrow_mut();
@@ -220,6 +237,7 @@ impl InstitutionFormPresenter {
                 router.close_dialog(Some(InstitutionsOutcome {
                     id: institution.id,
                     name: institution.name,
+                    next: None,
                 }));
             }
             Err(refusal) => self.refusal = Some((self.name.clone(), refusal)),
@@ -320,13 +338,13 @@ mod tests {
     fn every_seeded_institutions_products_are_chips() {
         let labels: Vec<_> = InstitutionProduct::ALL
             .into_iter()
-            .map(InstitutionProduct::label)
+            .map(InstitutionProduct::canonical)
             .collect();
 
         for institution in crate::default_institutions() {
             for product in institution.products.split(" \u{b7} ") {
                 assert!(
-                    labels.iter().any(|label| label == product),
+                    labels.contains(&product),
                     "{product} of {} is not a chip",
                     institution.name
                 );
@@ -381,6 +399,7 @@ mod tests {
                 RouterCall::CloseDialog(Some(InstitutionsOutcome {
                     id: added.id,
                     name: "Bank X".to_string(),
+                    next: None,
                 })),
             ]
         );
@@ -434,6 +453,46 @@ mod tests {
     }
 
     #[test]
+    fn edit_keeps_a_part_that_is_no_chip_and_the_stored_order() {
+        let (ports, shared) = stub();
+        let id = InstitutionId::SEED_ANZ;
+        ports
+            .borrow_mut()
+            .institutions
+            .institutions
+            .iter_mut()
+            .find(|row| row.id == id)
+            .expect("the ANZ row")
+            .products = "wealth \u{b7} offset \u{b7} savings".to_string();
+        let mut form = Form {
+            presenter: InstitutionFormPresenter::edit(shared, id).expect("a stub Institution"),
+            ports,
+            router: RecordingRouter::default(),
+        };
+
+        form.send(InstitutionFormEvent::Confirm);
+        let saved = form.ports.borrow().institutions.institutions.clone();
+        let anz = saved.iter().find(|row| row.id == id).expect("the ANZ row");
+        assert_eq!(anz.products, "wealth \u{b7} offset \u{b7} savings");
+
+        form.send(InstitutionFormEvent::ToggleProduct(
+            InstitutionProduct::Cash,
+        ));
+        form.send(InstitutionFormEvent::Confirm);
+        let saved = form.ports.borrow().institutions.institutions.clone();
+        let anz = saved.iter().find(|row| row.id == id).expect("the ANZ row");
+        assert_eq!(
+            anz.products,
+            "wealth \u{b7} offset \u{b7} savings \u{b7} cash"
+        );
+    }
+
+    #[test]
+    fn the_stored_label_does_not_follow_the_locale_of_its_chips() {
+        assert_eq!(InstitutionProduct::CreditCard.canonical(), "credit card");
+    }
+
+    #[test]
     fn edit_of_an_institution_that_is_gone_does_not_open() {
         let (_, shared) = stub();
 
@@ -461,6 +520,7 @@ mod tests {
                 RouterCall::CloseDialog(Some(InstitutionsOutcome {
                     id: InstitutionId::SEED_AMEX,
                     name: "Amex".to_string(),
+                    next: None,
                 })),
             ]
         );

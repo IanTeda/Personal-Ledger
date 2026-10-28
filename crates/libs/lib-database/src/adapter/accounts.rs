@@ -209,12 +209,11 @@ impl UnitUsage for AccountsAdapter {
     }
 }
 
-/// The Accounts naming an Institution are this domain's rows, read from memory.
+/// The Accounts naming an Institution are this domain's rows, read from memory; the count is
+/// `AccountsStore`'s.
 impl InstitutionUsage for AccountsAdapter {
     fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
-        InstitutionUse {
-            accounts: institution_accounts(&self.accounts.rows, id),
-        }
+        crate::AccountsStore::institution_usage(self, id)
     }
 }
 

@@ -139,6 +139,22 @@ impl DeleteInstitutionPresenter {
         }
     }
 
+    /// The row after this Institution, else the one before it.
+    fn neighbour(&self) -> Option<InstitutionId> {
+        let ids: Vec<InstitutionId> = self
+            .ports
+            .borrow()
+            .institutions()
+            .institutions()
+            .into_iter()
+            .map(|institution| institution.id)
+            .collect();
+        let at = ids.iter().position(|row| *row == self.id)?;
+        ids.get(at + 1)
+            .or_else(|| at.checked_sub(1).and_then(|before| ids.get(before)))
+            .copied()
+    }
+
     /// The typed name must match exactly, case and all; a refusal never confirms.
     fn can_confirm(&self) -> bool {
         matches!(self.state, State::Unused) && self.confirm_text == self.name
@@ -152,6 +168,8 @@ impl DeleteInstitutionPresenter {
         if !self.can_confirm() {
             return;
         }
+        // Read before the row goes, from the list as it is now, not as it was when the Dialog opened.
+        let next = self.neighbour();
         let landed = DeleteInstitution { id: self.id }.run(&mut *self.ports.borrow_mut());
         match landed {
             Ok(deleted) => {
@@ -162,6 +180,7 @@ impl DeleteInstitutionPresenter {
                 router.close_dialog(Some(InstitutionsOutcome {
                     id: deleted.id,
                     name: deleted.name,
+                    next,
                 }));
             }
             Err(DeleteInstitutionRefusal::InUse(uses)) => self.state = State::InUse(uses),
@@ -280,6 +299,7 @@ mod tests {
                 RouterCall::CloseDialog(Some(InstitutionsOutcome {
                     id: InstitutionId::SEED_AMEX,
                     name: "American Express".into(),
+                    next: Some(InstitutionId::SEED_VANGUARD),
                 })),
             ]
         );
@@ -289,6 +309,28 @@ mod tests {
             ports.institutions.institution(InstitutionId::SEED_AMEX),
             None
         );
+    }
+
+    #[test]
+    fn the_row_to_select_next_is_read_when_the_delete_is_confirmed() {
+        let mut dialog = Dialog::open(InstitutionId::SEED_AMEX);
+        dialog.type_text("American Express");
+        dialog
+            .ports
+            .borrow_mut()
+            .institutions
+            .institutions
+            .retain(|row| row.id != InstitutionId::SEED_VANGUARD);
+
+        let calls = dialog.send(DeleteInstitutionEvent::Confirm);
+
+        assert!(matches!(
+            calls.last(),
+            Some(RouterCall::CloseDialog(Some(InstitutionsOutcome {
+                next: Some(InstitutionId::SEED_WESTPAC),
+                ..
+            })))
+        ));
     }
 
     #[test]

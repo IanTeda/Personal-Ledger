@@ -347,7 +347,12 @@ impl Shell {
             Err(error) => {
                 tracing::error!(%error, path = %path.display(), "Failed to open the Ledger file");
                 // The error's own text is for the log, never spliced into a Message.
-                let reason = crate::msg::tui_ledger_file_unreadable();
+                let reason = match error {
+                    lib_database::Error::LedgerOutOfDate(_) => {
+                        crate::msg::tui_ledger_file_out_of_date()
+                    }
+                    _ => crate::msg::tui_ledger_file_unreadable(),
+                };
                 self.raise_toast(
                     ToastKind::Error,
                     lib_locale::msg::toast_ledger_open_failed(&name, &reason),

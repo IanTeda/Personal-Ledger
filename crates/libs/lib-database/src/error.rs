@@ -122,6 +122,17 @@ pub enum Error {
     #[error("Database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
+    /// A Ledger file made under migrations since edited
+    ///
+    /// While the schema is in concept its migrations are edited in place, so a file made by an
+    /// earlier build no longer matches them and has no upgrade path. Opening one stops here,
+    /// rather than on whatever query first meets the old shape.
+    #[error(
+        "The Ledger file was made by an earlier version and can't be upgraded; \
+         start a new Ledger file ({0})"
+    )]
+    LedgerOutOfDate(sqlx::migrate::MigrateError),
+
     /// File system or thread error
     ///
     /// Occurs when the Ledger file's directory can't be made, or the writer's thread or runtime

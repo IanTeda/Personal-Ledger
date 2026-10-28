@@ -360,6 +360,39 @@ mod tests {
         );
     }
 
+    /// The Personal Institution is the person's once the Ledger exists, so `db-seed` leaves a name
+    /// they gave it, while the stub's other Institutions are still put back.
+    #[test]
+    fn seeding_again_keeps_a_renamed_personal_institution() {
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+        stub(&writer, now).expect("the first seed lands");
+        writer
+            .run(|pool| async move {
+                sqlx::query("UPDATE institutions SET name = 'Persönlich' WHERE id = ?")
+                    .bind(lib_core::InstitutionId::SEED_PERSONAL)
+                    .execute(&pool)
+                    .await?;
+                sqlx::query("UPDATE institutions SET name = 'Renamed' WHERE id = ?")
+                    .bind(lib_core::InstitutionId::SEED_ANZ)
+                    .execute(&pool)
+                    .await?;
+                Ok(())
+            })
+            .expect("the rows are renamed");
+
+        stub(&writer, now).expect("the second seed lands");
+
+        let stored = InstitutionsAdapter::load(PendingWrites::new(writer.clone()))
+            .expect("the Institutions load");
+        let name = |id| {
+            use lib_institutions::InstitutionRepository;
+            stored.institution(id).expect("a stub row").name
+        };
+        assert_eq!(name(lib_core::InstitutionId::SEED_PERSONAL), "Persönlich");
+        assert_eq!(name(lib_core::InstitutionId::SEED_ANZ), "ANZ Banking Group");
+    }
+
     /// The Accounts are the stub Ledger's, by id and in order, so the Transactions and Bill Plans
     /// naming them name stored rows.
     #[test]

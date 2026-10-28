@@ -70,7 +70,22 @@ impl InstitutionsAdapter {
         institutions: &[Institution],
     ) -> Result<()> {
         for institution in institutions {
-            upsert(conn, institution).await?;
+            if institution.id == InstitutionId::SEED_PERSONAL {
+                // The person's own row once the Ledger exists: the name they gave it stays,
+                // however often the seed runs. `open_storage` writes it on a new Ledger.
+                sqlx::query(
+                    "INSERT INTO institutions (id, name, products)
+                     VALUES (?, ?, ?)
+                     ON CONFLICT (id) DO NOTHING",
+                )
+                .bind(institution.id)
+                .bind(&institution.name)
+                .bind(&institution.products)
+                .execute(&mut *conn)
+                .await?;
+            } else {
+                upsert(conn, institution).await?;
+            }
         }
         Ok(())
     }

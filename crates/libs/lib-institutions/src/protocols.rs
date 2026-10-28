@@ -85,6 +85,9 @@ pub struct InstitutionsOutcome {
     pub id: InstitutionId,
     /// The Institution's name as written, or as it was when deleted.
     pub name: String,
+    /// Where the page's selection goes when `id` is gone: the row after it, else the one before,
+    /// read from the list when the delete was confirmed. `None` for a save.
+    pub next: Option<InstitutionId>,
 }
 
 /// Navigation out of the Institutions Presenters, implemented by each Client. The Client passes it

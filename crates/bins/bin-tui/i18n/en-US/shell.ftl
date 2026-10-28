@@ -64,6 +64,7 @@ tui-ledger-file-missing = there's no file there
 ## The reason `toast-ledger-open-failed` gives when a file is there but won't open as a Ledger file.
 
 tui-ledger-file-unreadable = it isn't a Ledger file, or can't be read
+tui-ledger-file-out-of-date = it was made by an earlier version and can't be upgraded; start a new Ledger file
 
 ## The footer while an overlay is open: the same hints, plus one close hint for the overlay. `$key`
 ## is the configured back key and `$noun` the form's own noun.

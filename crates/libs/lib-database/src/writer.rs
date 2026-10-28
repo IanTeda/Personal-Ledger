@@ -22,7 +22,7 @@ use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 
-use sqlx::migrate::Migrator;
+use sqlx::migrate::{MigrateError, Migrator};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{SqliteConnection, SqlitePool};
 use tokio::runtime::Runtime;
@@ -158,7 +158,18 @@ impl Writer {
             .filename(path)
             .create_if_missing(true);
         let (writer, failures) = Self::spawn(options)?;
-        writer.run(|pool| async move { Ok(CLIENT_MIGRATIONS.run(&pool).await?) })?;
+        writer.run(|pool| async move {
+            CLIENT_MIGRATIONS
+                .run(&pool)
+                .await
+                .map_err(|error| match error {
+                    // The file's applied migrations are not this build's: edited in place, or newer.
+                    MigrateError::VersionMismatch(_) | MigrateError::VersionMissing(_) => {
+                        Error::LedgerOutOfDate(error)
+                    }
+                    other => Error::Migration(other),
+                })
+        })?;
         Ok((writer, failures))
     }
 
@@ -404,6 +415,27 @@ mod tests {
         writer.flush().unwrap();
 
         assert_eq!(ran.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn opening_a_file_whose_migrations_were_edited_says_it_is_out_of_date() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ledger.pldb");
+        let (writer, _failures) = Writer::open_ledger(&path).unwrap();
+        writer
+            .run(|pool| async move {
+                sqlx::query("UPDATE _sqlx_migrations SET checksum = x'00' WHERE version = (SELECT MIN(version) FROM _sqlx_migrations)")
+                    .execute(&pool)
+                    .await?;
+                Ok(())
+            })
+            .unwrap();
+        drop(writer);
+
+        let error = Writer::open_ledger(&path).err().expect("the file is stale");
+
+        assert!(matches!(error, Error::LedgerOutOfDate(_)), "{error:?}");
+        assert!(error.to_string().contains("start a new Ledger file"));
     }
 
     #[test]

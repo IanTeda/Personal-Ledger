@@ -210,7 +210,8 @@ pub trait AccountsStore {
         accounts::bill_accounts(&self.accounts().accounts())
     }
 
-    /// The Accounts naming `institution`: `lib-institutions`' `InstitutionUsage`.
+    /// The Accounts naming `institution`: `lib-institutions`' `InstitutionUsage`. The one place this is
+    /// worked out: the adapter's `InstitutionUsage` impl, and every other store, answer through it.
     fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
         InstitutionUse {
             accounts: accounts::institution_accounts(&self.accounts().accounts(), institution),
@@ -250,10 +251,6 @@ impl AccountsStore for AccountsAdapter {
         lib_bills::BillAccounts::bill_accounts(self)
     }
 
-    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
-        lib_institutions::InstitutionUsage::institution_usage(self, institution)
-    }
-
     fn reload(&mut self) -> Result<()> {
         AccountsAdapter::reload(self)
     }
@@ -287,10 +284,6 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
 
     fn bill_accounts(&self) -> Vec<BillAccount> {
         (**self).bill_accounts()
-    }
-
-    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
-        (**self).institution_usage(institution)
     }
 
     fn reload(&mut self) -> Result<()> {

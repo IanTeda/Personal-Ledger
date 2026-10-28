@@ -212,15 +212,15 @@ impl AccountFormPresenter {
             });
         }
         form.account_type = account.account_type.clone();
-        form.institution_picked = form
+        // An Institution that is no longer a choice opens as no choice, never as the Type's default,
+        // so Save needs a pick instead of silently re-pointing the Account. It counts as picked so
+        // a change of Type doesn't fill it in either.
+        form.institution = form
             .institutions
             .iter()
-            .any(|choice| choice.value == account.institution);
-        form.institution = if form.institution_picked {
-            Some(account.institution)
-        } else {
-            form.default_institution()
-        };
+            .any(|choice| choice.value == account.institution)
+            .then_some(account.institution);
+        form.institution_picked = true;
         form.unit = Some(account.unit);
         form.account_number = account.account_number.clone().unwrap_or_default();
         form.editing = Some(Editing {
@@ -840,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_of_an_account_whose_institution_is_gone_starts_on_its_types_default() {
+    fn edit_of_an_account_whose_institution_is_gone_opens_on_no_choice_until_one_is_picked() {
         let (ports, shared) = stub();
         ports
             .borrow_mut()
@@ -851,18 +851,26 @@ mod tests {
             .expect("stub")
             .view_model();
 
-        assert_eq!(view.institution.chosen, None, "Cash has no default left");
+        assert_eq!(view.institution.chosen, None);
+        assert!(!view.frame.can_confirm, "an Institution is required");
         let (ports, shared) = stub();
         ports
             .borrow_mut()
             .institutions
             .institutions
             .retain(|row| row.id != InstitutionId::SEED_AMEX);
-        let view = AccountFormPresenter::edit(shared, AccountId::seed(4), today())
-            .expect("stub")
-            .view_model();
-        assert_eq!(view.institution.chosen, Some(InstitutionId::SEED_ANZ));
-        assert!(view.frame.can_confirm);
+        let mut form =
+            AccountFormPresenter::edit(shared, AccountId::seed(4), today()).expect("stub");
+        let view = form.view_model();
+        assert_eq!(view.institution.chosen, None, "not the Type's default");
+        assert!(!view.frame.can_confirm);
+        send(&mut form, vec![AccountFormEvent::Type(AccountType::Cash)]);
+        assert_eq!(form.view_model().institution.chosen, None);
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_ANZ)],
+        );
+        assert!(form.view_model().frame.can_confirm);
     }
 
     #[test]

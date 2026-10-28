@@ -130,9 +130,6 @@ pub struct InstitutionsPagePresenter {
     /// The row whose menu is open.
     menu: Option<InstitutionId>,
     open_dialog: Option<InstitutionsDialog>,
-    /// Where the selection goes if the open Delete Dialog removes its Institution: the row after
-    /// it, else the one before.
-    after_delete: Option<InstitutionId>,
 }
 
 impl InstitutionsPagePresenter {
@@ -144,7 +141,6 @@ impl InstitutionsPagePresenter {
             selected: None,
             menu: None,
             open_dialog: None,
-            after_delete: None,
         }
     }
 
@@ -195,12 +191,12 @@ impl InstitutionsPagePresenter {
             }
             InstitutionsPageEvent::DialogClosed(outcome) => {
                 self.open_dialog = None;
-                let after_delete = self.after_delete.take();
-                // A save selects its Institution; a delete, being gone, selects its neighbour.
-                if let Some(InstitutionsOutcome { id, .. }) = outcome {
+                // A save selects its Institution; a delete, being gone, selects the neighbour the
+                // Dialog read when it confirmed.
+                if let Some(InstitutionsOutcome { id, next, .. }) = outcome {
                     if self.ids().contains(&id) {
                         self.select(id);
-                    } else if let Some(neighbour) = after_delete {
+                    } else if let Some(neighbour) = next {
                         self.select(neighbour);
                     }
                 }
@@ -273,20 +269,7 @@ impl InstitutionsPagePresenter {
     fn open_dialog(&mut self, dialog: InstitutionsDialog, router: &mut dyn InstitutionsRouter) {
         if router.open_dialog(dialog) {
             self.open_dialog = Some(dialog);
-            self.after_delete = match dialog {
-                InstitutionsDialog::DeleteInstitution(id) => self.neighbour(id),
-                _ => None,
-            };
         }
-    }
-
-    /// The row after Institution `id`, else the one before it.
-    fn neighbour(&self, id: InstitutionId) -> Option<InstitutionId> {
-        let ids = self.ids();
-        let at = ids.iter().position(|row| *row == id)?;
-        ids.get(at + 1)
-            .or_else(|| at.checked_sub(1).and_then(|before| ids.get(before)))
-            .copied()
     }
 
     fn chord(&self, command: &str) -> &str {
@@ -461,12 +444,17 @@ mod tests {
     /// told.
     fn delete(page: &mut Page, ports: &Rc<RefCell<InMemoryPorts>>, at: usize) {
         let row = page.view().rows[at].clone();
+        let ids: Vec<_> = page.view().rows.iter().map(|row| row.id).collect();
         page.send(InstitutionsPageEvent::DeleteRow(row.id));
         ports.borrow_mut().institutions.institutions.remove(at);
         page.send(InstitutionsPageEvent::DialogClosed(Some(
             InstitutionsOutcome {
                 id: row.id,
                 name: row.name,
+                next: ids
+                    .get(at + 1)
+                    .or(at.checked_sub(1).and_then(|b| ids.get(b)))
+                    .copied(),
             },
         )));
     }
@@ -568,6 +556,7 @@ mod tests {
             InstitutionsOutcome {
                 id: westpac,
                 name: "Westpac Banking".into(),
+                next: None,
             },
         )));
         assert_eq!(page.selected_name().as_deref(), Some("Westpac Banking"));
