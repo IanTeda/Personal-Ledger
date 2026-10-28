@@ -305,6 +305,7 @@ mod tests {
             id: lib_core::InstitutionId::new(),
             name: "Bank X".into(),
             products: "savings".into(),
+            usual_unit: None,
         };
 
         storage.institutions.upsert_institution(bank.clone());

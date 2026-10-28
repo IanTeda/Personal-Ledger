@@ -6,14 +6,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
     InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
 };
 use crate::{
-    Institution, InstitutionRepository, InstitutionUsage, InstitutionUse, default_institutions,
+    Institution, InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage,
+    InstitutionUse, default_institutions,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -67,11 +68,42 @@ impl InstitutionUsage for InMemoryInstitutionUsage {
     }
 }
 
+/// The Units an Institution may name, set by the test.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InMemoryInstitutionUnits {
+    pub units: Vec<InstitutionUnit>,
+}
+
+impl InMemoryInstitutionUnits {
+    /// The stub Ledger's three Units (see `lib-units`' seed), all active.
+    pub fn stub() -> Self {
+        let unit = |id, code: &str| InstitutionUnit {
+            id,
+            code: code.to_string(),
+            is_active: true,
+        };
+        Self {
+            units: vec![
+                unit(UnitId::SEED_AUD, "aud"),
+                unit(UnitId::SEED_BTC, "btc"),
+                unit(UnitId::SEED_VAS, "vas"),
+            ],
+        }
+    }
+}
+
+impl InstitutionUnits for InMemoryInstitutionUnits {
+    fn institution_units(&self) -> Vec<InstitutionUnit> {
+        self.units.clone()
+    }
+}
+
 /// Every Institutions port in memory.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryPorts {
     pub institutions: InMemoryInstitutions,
     pub usage: InMemoryInstitutionUsage,
+    pub units: InMemoryInstitutionUnits,
 }
 
 impl InMemoryPorts {
@@ -80,6 +112,7 @@ impl InMemoryPorts {
         Self {
             institutions: InMemoryInstitutions::stub(),
             usage: InMemoryInstitutionUsage::default(),
+            units: InMemoryInstitutionUnits::stub(),
         }
     }
 
@@ -103,6 +136,10 @@ impl InstitutionsPorts for InMemoryPorts {
 
     fn usage(&self) -> &dyn InstitutionUsage {
         &self.usage
+    }
+
+    fn units(&self) -> &dyn InstitutionUnits {
+        &self.units
     }
 }
 

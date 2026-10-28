@@ -8,7 +8,7 @@
 //! Institution an Account names; the `accounts` foreign key (no cascade) backs it, so a delete that
 //! skips the rule fails in the file, is reported against the Institutions domain and is reloaded.
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 use lib_institutions::{Institution, InstitutionRepository};
 use sqlx::SqliteConnection;
 
@@ -74,13 +74,14 @@ impl InstitutionsAdapter {
                 // The person's own row once the Ledger exists: the name they gave it stays,
                 // however often the seed runs. `open_storage` writes it on a new Ledger.
                 sqlx::query(
-                    "INSERT INTO institutions (id, name, products)
-                     VALUES (?, ?, ?)
+                    "INSERT INTO institutions (id, name, products, usual_unit_id)
+                     VALUES (?, ?, ?, ?)
                      ON CONFLICT (id) DO NOTHING",
                 )
                 .bind(institution.id)
                 .bind(&institution.name)
                 .bind(&institution.products)
+                .bind(institution.usual_unit)
                 .execute(&mut *conn)
                 .await?;
             } else {
@@ -154,14 +155,16 @@ impl Change for DeleteInstitutionRow {
 
 async fn upsert(conn: &mut SqliteConnection, institution: &Institution) -> Result<()> {
     sqlx::query!(
-        "INSERT INTO institutions (id, name, products)
-         VALUES (?, ?, ?)
+        "INSERT INTO institutions (id, name, products, usual_unit_id)
+         VALUES (?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              name = excluded.name,
-             products = excluded.products",
+             products = excluded.products,
+             usual_unit_id = excluded.usual_unit_id",
         institution.id,
         institution.name,
         institution.products,
+        institution.usual_unit,
     )
     .execute(&mut *conn)
     .await?;
@@ -170,7 +173,8 @@ async fn upsert(conn: &mut SqliteConnection, institution: &Institution) -> Resul
 
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Institution>> {
     let rows = sqlx::query!(
-        r#"SELECT id AS "id!: InstitutionId", name, products
+        r#"SELECT id AS "id!: InstitutionId", name, products,
+                  usual_unit_id AS "usual_unit_id: UnitId"
            FROM institutions
            ORDER BY rowid"#
     )
@@ -181,6 +185,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Institution>> {
         id: row.id,
         name: row.name,
         products: row.products,
+        usual_unit: row.usual_unit_id,
     })
     .collect();
     Ok(rows)
@@ -210,6 +215,12 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
+            // The Units a seeded Usual unit names.
+            crate::UnitsAdapter::seed_from(
+                &writer,
+                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+            )
+            .expect("the stub Units are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -276,6 +287,30 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         contract::an_added_institution_reloads_the_same(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_usual_unit_reloads_and_clears(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        contract::a_usual_unit_reloads_and_clears(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_file_refuses_to_delete_a_unit_an_institution_names(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        factory.create(default_institutions());
+
+        let deleted = factory.writer.run(|pool| async move {
+            sqlx::query("DELETE FROM units WHERE id = ?")
+                .bind(UnitId::SEED_BTC)
+                .execute(&pool)
+                .await?;
+            Ok(())
+        });
+
+        assert!(deleted.is_err(), "the Usual unit's row is protected");
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -360,6 +395,7 @@ mod tests {
             id: InstitutionId::new(),
             name: "anz banking group".into(),
             products: "savings".into(),
+            usual_unit: None,
         });
         factory.pending.commit();
 

@@ -1,17 +1,20 @@
-//! The Add and Edit institution Dialog (2e, 16e): Name, and Products as a multi-select. Edit is the
-//! same form opened on one Institution, pre-filled, its Products split back into chips.
+//! The Add and Edit institution Dialog (2e, 16e): Name, Products as a multi-select and the Usual
+//! unit as a select. Edit is the same form opened on one Institution, pre-filled, its Products
+//! split back into chips.
 //!
-//! - Name is the only text field, so it is always the one typed into; there is nothing to `Tab`
-//!   between.
+//! - Name is the only text field, so it holds the typing; `Tab` moves between it and the Usual
+//!   unit select.
+//! - The Usual unit is optional: a None choice, then the active Units. An Institution already
+//!   naming a Unit since deactivated keeps it listed, so Edit never drops what it cannot show.
 //! - Confirming needs a name and at least one Product. The Products join in the order picked, with
 //!   the same separator the table's cells use.
 //! - A refusal from the Interactor shows under the name until the name is edited.
 //! - A confirm raises its own Toast before it closes the Dialog.
 
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 
 use crate::interactor::{AddInstitution, EditInstitution};
 use crate::protocols::{InstitutionsOutcome, InstitutionsRouter, SharedPorts};
@@ -74,10 +77,22 @@ impl InstitutionProduct {
     }
 }
 
+/// The fields that take focus, in `Tab` order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstitutionField {
+    Name,
+    UsualUnit,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstitutionFormEvent {
     /// The name field's whole new text, as its View's input holds it.
     Name(String),
+    /// The Usual unit picked, `None` for none. A Unit that is not an option is ignored.
+    UsualUnit(Option<UnitId>),
+    Focus(InstitutionField),
+    NextField,
+    PrevField,
     /// A chip: checked becomes unchecked and back.
     ToggleProduct(InstitutionProduct),
     Confirm,
@@ -96,6 +111,8 @@ pub struct ProductChip {
 pub struct InstitutionFormViewModel {
     pub frame: DialogFrame,
     pub name: TextFieldView,
+    pub usual_unit: SelectView<Option<UnitId>>,
+    pub focused: InstitutionField,
     /// Why the last confirm was refused, until the name changes.
     pub name_error: Option<String>,
     pub products_label: String,
@@ -110,6 +127,11 @@ pub struct InstitutionFormPresenter {
     /// The label's parts in stored order. A part that is no chip is kept as it was, so Edit never
     /// drops or reorders what it cannot show.
     products: Vec<String>,
+    /// The Usual unit picked, `None` for none.
+    usual_unit: Option<UnitId>,
+    /// The Usual unit's options, read when the Dialog opens: None, then the active Units.
+    units: Vec<Choice<Option<UnitId>>>,
+    focused: InstitutionField,
     /// The last refusal, with the name it refused.
     refusal: Option<(String, InstitutionError)>,
 }
@@ -117,11 +139,15 @@ pub struct InstitutionFormPresenter {
 impl InstitutionFormPresenter {
     /// A fresh Add form: no name and Savings checked.
     pub fn add(ports: SharedPorts) -> Self {
+        let units = unit_choices(&ports, None);
         Self {
             ports,
             editing: None,
             name: String::new(),
             products: vec![InstitutionProduct::Savings.canonical().to_string()],
+            usual_unit: None,
+            units,
+            focused: InstitutionField::Name,
             refusal: None,
         }
     }
@@ -136,11 +162,15 @@ impl InstitutionFormPresenter {
             .filter(|part| !part.is_empty())
             .map(str::to_string)
             .collect();
+        let units = unit_choices(&ports, institution.usual_unit);
         Some(Self {
             ports,
             editing: Some(id),
             name: institution.name,
             products,
+            usual_unit: institution.usual_unit,
+            units,
+            focused: InstitutionField::Name,
             refusal: None,
         })
     }
@@ -148,6 +178,18 @@ impl InstitutionFormPresenter {
     pub fn handle(&mut self, event: InstitutionFormEvent, router: &mut dyn InstitutionsRouter) {
         match event {
             InstitutionFormEvent::Name(text) => self.name = text,
+            InstitutionFormEvent::UsualUnit(unit) => {
+                if self.units.iter().any(|choice| choice.value == unit) {
+                    self.usual_unit = unit;
+                }
+            }
+            InstitutionFormEvent::Focus(field) => self.focused = field,
+            InstitutionFormEvent::NextField | InstitutionFormEvent::PrevField => {
+                self.focused = match self.focused {
+                    InstitutionField::Name => InstitutionField::UsualUnit,
+                    InstitutionField::UsualUnit => InstitutionField::Name,
+                };
+            }
             InstitutionFormEvent::ToggleProduct(product) => {
                 match self
                     .products
@@ -185,8 +227,15 @@ impl InstitutionFormPresenter {
                 label: msg::institutions_name_label(),
                 text: self.name.clone(),
                 placeholder: msg::institutions_name_placeholder(),
-                focused: true,
+                focused: self.focused == InstitutionField::Name,
             },
+            usual_unit: SelectView {
+                label: msg::institutions_usual_unit_label(),
+                options: self.units.clone(),
+                chosen: Some(self.usual_unit),
+                focused: self.focused == InstitutionField::UsualUnit,
+            },
+            focused: self.focused,
             name_error: self
                 .refusal
                 .as_ref()
@@ -216,6 +265,7 @@ impl InstitutionFormPresenter {
         let draft = InstitutionDraft {
             name: self.name.clone(),
             products: self.products.join(PRODUCTS_SEPARATOR),
+            usual_unit: self.usual_unit,
         };
         let saved = {
             let mut ports = self.ports.borrow_mut();
@@ -243,6 +293,26 @@ impl InstitutionFormPresenter {
             Err(refusal) => self.refusal = Some((self.name.clone(), refusal)),
         }
     }
+}
+
+/// The Usual unit's options: None, then each active Unit, then `named` if it is a deactivated Unit
+/// an Institution already names.
+fn unit_choices(ports: &SharedPorts, named: Option<UnitId>) -> Vec<Choice<Option<UnitId>>> {
+    let units = ports.borrow().units().institution_units();
+    std::iter::once(Choice {
+        value: None,
+        label: msg::institutions_usual_unit_none(),
+    })
+    .chain(
+        units
+            .into_iter()
+            .filter(|unit| unit.is_active || Some(unit.id) == named)
+            .map(|unit| Choice {
+                value: Some(unit.id),
+                label: unit.code,
+            }),
+    )
+    .collect()
 }
 
 /// What joins the Products into the one label the table's cell shows.
@@ -561,6 +631,112 @@ mod tests {
             form.ports.borrow().institutions.institutions[4].name,
             "Westpac Banking"
         );
+    }
+
+    fn usual_labels(form: &Form) -> Vec<String> {
+        form.view()
+            .usual_unit
+            .options
+            .into_iter()
+            .map(|choice| choice.label)
+            .collect()
+    }
+
+    #[test]
+    fn the_usual_unit_offers_none_then_the_active_units_and_starts_on_none() {
+        let form = Form::new();
+        form.ports.borrow_mut().units.units[1].is_active = false;
+        let form = Form {
+            presenter: InstitutionFormPresenter::add(form.ports.clone()),
+            ..form
+        };
+
+        assert_eq!(usual_labels(&form), ["None", "aud", "vas"]);
+        let view = form.view();
+        assert_eq!(view.usual_unit.label, "Usual unit");
+        assert_eq!(view.usual_unit.chosen, Some(None));
+    }
+
+    #[test]
+    fn tab_moves_focus_between_the_name_and_the_usual_unit() {
+        let mut form = Form::new();
+        assert!(form.view().name.focused);
+
+        form.send(InstitutionFormEvent::NextField);
+        assert!(form.view().usual_unit.focused);
+        assert!(!form.view().name.focused);
+
+        form.send(InstitutionFormEvent::PrevField);
+        assert_eq!(form.view().focused, InstitutionField::Name);
+    }
+
+    #[test]
+    fn a_picked_usual_unit_is_saved_with_a_new_institution() {
+        let mut form = Form::new();
+        form.type_name("Broker");
+        form.send(InstitutionFormEvent::UsualUnit(Some(UnitId::SEED_BTC)));
+        assert_eq!(form.view().usual_unit.chosen, Some(Some(UnitId::SEED_BTC)));
+
+        form.send(InstitutionFormEvent::Confirm);
+
+        let added = form
+            .ports
+            .borrow()
+            .institutions
+            .institutions
+            .last()
+            .cloned();
+        assert_eq!(
+            added.map(|institution| institution.usual_unit),
+            Some(Some(UnitId::SEED_BTC))
+        );
+    }
+
+    #[test]
+    fn a_unit_that_is_not_an_option_is_ignored() {
+        let mut form = Form::new();
+
+        form.send(InstitutionFormEvent::UsualUnit(Some(UnitId::new())));
+
+        assert_eq!(form.view().usual_unit.chosen, Some(None));
+    }
+
+    #[test]
+    fn edit_opens_on_the_usual_unit_and_clearing_it_to_none_is_saved() {
+        let mut form = edit_form(InstitutionId::SEED_CRYPTO_EXCHANGE);
+        assert_eq!(form.view().usual_unit.chosen, Some(Some(UnitId::SEED_BTC)));
+
+        form.send(InstitutionFormEvent::UsualUnit(None));
+        form.send(InstitutionFormEvent::Confirm);
+
+        let saved = form.ports.borrow().institutions.institutions.clone();
+        let exchange = saved
+            .iter()
+            .find(|row| row.id == InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .expect("the exchange row");
+        assert_eq!(exchange.usual_unit, None);
+    }
+
+    #[test]
+    fn edit_keeps_listing_a_usual_unit_since_deactivated_but_add_does_not() {
+        let (ports, shared) = stub();
+        ports.borrow_mut().units.units[1].is_active = false;
+        let edit =
+            InstitutionFormPresenter::edit(shared.clone(), InstitutionId::SEED_CRYPTO_EXCHANGE)
+                .expect("a stub Institution");
+        let add = InstitutionFormPresenter::add(shared);
+
+        let codes = |presenter: &InstitutionFormPresenter| -> Vec<String> {
+            presenter
+                .view_model()
+                .usual_unit
+                .options
+                .into_iter()
+                .map(|choice| choice.label)
+                .collect()
+        };
+        assert_eq!(codes(&edit), ["None", "aud", "btc", "vas"]);
+        assert_eq!(codes(&add), ["None", "aud", "vas"]);
     }
 
     #[test]

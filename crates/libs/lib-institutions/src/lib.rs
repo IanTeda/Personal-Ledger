@@ -27,6 +27,6 @@ pub mod protocols;
 
 pub use entity::*;
 pub use protocols::{
-    InstitutionRepository, InstitutionUsage, InstitutionUse, InstitutionsDialog,
-    InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
+    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionUse,
+    InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
 };

@@ -1,6 +1,6 @@
 //! The Institution Entity, its add rule and the stub seed.
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 
 /// One Institution: a row of the **Institutions** section's table
 /// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state" markup: INSTITUTION /
@@ -16,13 +16,18 @@ pub struct Institution {
     /// institution form joins the same way when it builds a draft. Descriptive only: it never
     /// limits which Accounts may name the Institution.
     pub products: String,
+    /// The Usual unit (`GLOSSARY.md`): the Unit its Accounts are normally held in, optional. A
+    /// prefill hint for a new Account only; the base Unit stays the Ledger's one default.
+    pub usual_unit: Option<UnitId>,
 }
 
-/// What the Add institution dialog asks for: the name as typed and the joined Products label.
+/// What the Add institution dialog asks for: the name as typed, the joined Products label and the
+/// Usual unit picked, if any.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionDraft {
     pub name: String,
     pub products: String,
+    pub usual_unit: Option<UnitId>,
 }
 
 /// Why an Institution write was refused.
@@ -51,6 +56,7 @@ pub fn personal_institution(name: &str) -> Institution {
         id: InstitutionId::SEED_PERSONAL,
         name: name.to_string(),
         products: PERSONAL_PRODUCTS.to_string(),
+        usual_unit: None,
     }
 }
 
@@ -89,6 +95,8 @@ pub fn default_institutions() -> Vec<Institution> {
                 id,
                 name: name.to_string(),
                 products: products.to_string(),
+                // The exchange holds its Accounts in BTC; the others have no Usual unit.
+                usual_unit: (id == InstitutionId::SEED_CRYPTO_EXCHANGE).then_some(UnitId::SEED_BTC),
             }),
         )
         .collect()
@@ -141,6 +149,7 @@ pub fn insert_institution(
         id: InstitutionId::new(),
         name: name.to_string(),
         products: draft.products.clone(),
+        usual_unit: draft.usual_unit,
     };
     institutions.push(institution.clone());
     Ok(institution)
@@ -164,6 +173,7 @@ pub fn edit_institution(
         .ok_or(InstitutionError::NotFound)?;
     institution.name = name;
     institution.products = draft.products.clone();
+    institution.usual_unit = draft.usual_unit;
     Ok(())
 }
 
@@ -175,6 +185,7 @@ mod tests {
         InstitutionDraft {
             name: name.into(),
             products: "savings \u{b7} offset".into(),
+            usual_unit: None,
         }
     }
 
@@ -209,6 +220,36 @@ mod tests {
         assert_eq!(
             get(&seeded, InstitutionId::SEED_WESTPAC).map(|i| i.name.as_str()),
             Some("Westpac Banking")
+        );
+    }
+
+    #[test]
+    fn the_stub_gives_one_institution_a_usual_unit_and_the_rest_none() {
+        let named: Vec<_> = default_institutions()
+            .into_iter()
+            .filter_map(|institution| institution.usual_unit.map(|unit| (institution.id, unit)))
+            .collect();
+        assert_eq!(
+            named,
+            [(InstitutionId::SEED_CRYPTO_EXCHANGE, UnitId::SEED_BTC)]
+        );
+    }
+
+    #[test]
+    fn an_add_and_an_edit_carry_the_usual_unit_and_an_edit_can_clear_it() {
+        let mut institutions = default_institutions();
+        let with_unit = InstitutionDraft {
+            usual_unit: Some(UnitId::SEED_VAS),
+            ..draft("Bank X")
+        };
+
+        let added = insert_institution(&mut institutions, &with_unit).expect("a free name");
+        assert_eq!(added.usual_unit, Some(UnitId::SEED_VAS));
+
+        edit_institution(&mut institutions, added.id, &draft("Bank X")).expect("its own name");
+        assert_eq!(
+            get(&institutions, added.id).and_then(|i| i.usual_unit),
+            None
         );
     }
 

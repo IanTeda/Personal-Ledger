@@ -51,6 +51,7 @@ mod tests {
         InstitutionDraft {
             name: name.to_string(),
             products: products.to_string(),
+            usual_unit: None,
         }
     }
 

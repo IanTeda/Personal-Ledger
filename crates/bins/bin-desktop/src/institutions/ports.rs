@@ -2,6 +2,8 @@
 //! and the step that keeps the Ledger's read copy of the Institutions in line after an Institutions
 //! write. The write is committed by the input it was made in (`crate::input::send`), not here.
 //!
+//! The Usual unit's options are the Ledger's Units, copied when the Ledger read copy is refreshed.
+//!
 //! A delete reads what names an Institution from the Accounts store, which the Units and Bills
 //! reads share.
 //!
@@ -15,8 +17,10 @@ use std::rc::Rc;
 use gpui::{App, Entity};
 use lib_core::InstitutionId;
 use lib_database::{InstitutionsStore, SharedAccountsStore};
+use lib_institutions::fake::InMemoryInstitutionUnits;
 use lib_institutions::{
-    InstitutionRepository, InstitutionUsage, InstitutionUse, InstitutionsPorts,
+    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionUse,
+    InstitutionsPorts,
 };
 use lib_ledger::Ledger;
 
@@ -29,6 +33,9 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 pub struct LedgerBackedPorts {
     store: Box<dyn InstitutionsStore>,
     usage: AccountsUsage,
+    /// The Units a Usual unit may name, copied from the Ledger (a halfway shim until Units answer
+    /// through their own port, as the Accounts' do).
+    units: InMemoryInstitutionUnits,
 }
 
 /// What names an Institution, answered from the Accounts store on each ask, so an Account added or
@@ -49,18 +56,34 @@ impl LedgerBackedPorts {
         Rc::new(RefCell::new(Self {
             store,
             usage: AccountsUsage(accounts),
+            units: InMemoryInstitutionUnits::default(),
         }))
+    }
+
+    /// Copies `ledger`'s Units, for the next Dialog to offer as the Usual unit's options.
+    pub fn copy_units(&mut self, ledger: &Ledger) {
+        self.units.units = ledger
+            .units()
+            .iter()
+            .map(|unit| InstitutionUnit {
+                id: unit.id,
+                code: unit.code.clone(),
+                is_active: unit.is_active,
+            })
+            .collect();
     }
 
     /// `ledger`'s own Institutions in memory, with the Accounts naming them read from `accounts`,
     /// for a test that needs no storage.
     pub fn in_memory(ledger: &Ledger, accounts: SharedAccountsStore) -> DesktopPorts {
-        Self::shared(
+        let ports = Self::shared(
             Box::new(lib_institutions::fake::InMemoryInstitutions {
                 institutions: ledger.institutions().to_vec(),
             }),
             accounts,
-        )
+        );
+        ports.borrow_mut().copy_units(ledger);
+        ports
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -83,6 +106,10 @@ impl InstitutionsPorts for LedgerBackedPorts {
 
     fn usage(&self) -> &dyn InstitutionUsage {
         &self.usage
+    }
+
+    fn units(&self) -> &dyn InstitutionUnits {
+        &self.units
     }
 }
 

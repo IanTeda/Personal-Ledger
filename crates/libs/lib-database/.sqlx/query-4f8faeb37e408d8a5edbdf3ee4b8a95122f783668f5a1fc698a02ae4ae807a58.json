@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO institutions (id, name, products, usual_unit_id)\n         VALUES (?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             products = excluded.products,\n             usual_unit_id = excluded.usual_unit_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "4f8faeb37e408d8a5edbdf3ee4b8a95122f783668f5a1fc698a02ae4ae807a58"
+}

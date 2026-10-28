@@ -16,8 +16,9 @@ use lib_institutions::presenter::{InstitutionFormEvent, InstitutionFormPresenter
 use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome, InstitutionsRouter};
 use lib_shell::DialogCommand;
 use lib_toast::{Notice, Notify};
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
+use crate::form::select::SelectState;
 use crate::institutions::ports::{self, DesktopPorts};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
@@ -36,6 +37,8 @@ pub struct InstitutionsDialog {
     /// The Ledger read copy a confirm brings in line with what it wrote.
     ledger: Entity<LedgerStore>,
     presenter: InstitutionFormPresenter,
+    /// The Usual unit select's open list and highlight, which the View owns.
+    usual_unit: SelectState,
     /// Which Dialog this is, for the test readback.
     which: Which,
     landed: Landed,
@@ -60,6 +63,7 @@ impl InstitutionsDialog {
             ports: ports.clone(),
             ledger: ledger.clone(),
             presenter,
+            usual_unit: SelectState::default(),
             which,
             landed,
         })
@@ -136,21 +140,23 @@ impl HostedDialog for InstitutionsDialog {
         self.closed(router, cx);
     }
 
-    /// There is no select list to close.
     fn close_open_select(&mut self) -> bool {
-        false
+        let was_open = self.usual_unit.is_open();
+        self.usual_unit.cancel();
+        was_open
     }
 
-    /// Cancel and confirm: there is no other field to move to.
+    /// Cancel and confirm, and the key that moves field.
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
             (key(BACK), crate::msg::desktop_hint_cancel()),
             (key(SELECT), crate::msg::desktop_hint_confirm()),
+            (key(NEXT_FIELD), crate::msg::desktop_hint_next_field()),
         ])
     }
 
-    /// The Name draft, the checked products (comma-joined variant names) and the chosen Default
+    /// The Name draft, the checked products (comma-joined variant names) and the chosen Usual
     /// unit code, for a test.
     fn readback(&self, _cx: &App) -> DialogReadback {
         let view = self.presenter.view_model();
@@ -171,6 +177,6 @@ impl HostedDialog for InstitutionsDialog {
 impl Render for InstitutionsDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        institution_form::render(&self.presenter.view_model(), &actions, cx)
+        institution_form::render(&self.presenter.view_model(), &self.usual_unit, &actions, cx)
     }
 }

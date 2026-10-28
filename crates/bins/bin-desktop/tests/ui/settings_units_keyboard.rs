@@ -682,6 +682,22 @@ fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
 }
 
 #[gpui::test]
+fn a_unit_an_institution_names_as_its_usual_unit_opens_delete_as_deactivate_naming_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.press("j d");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("in_use_text").as_deref(),
+        Some("btc is used by 1 institution as its usual unit, so it can't be deleted."),
+    );
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
 fn escape_closes_an_open_select_then_the_next_escape_cancels_the_dialog(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     let before = ui.unit_rows();

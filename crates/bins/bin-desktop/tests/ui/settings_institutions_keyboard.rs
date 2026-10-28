@@ -389,7 +389,6 @@ fn add_institution_types_a_name_and_enter_adds_the_row(app: &mut TestAppContext)
     assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
     ui.press("backspace");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("ban"));
-    ui.press("tab");
     ui.press("enter");
     let institutions_page = ui.settings_institutions();
     assert_eq!(ui.dialog(), None);
@@ -424,7 +423,7 @@ fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestA
     let stored = ui.settings_institutions().institutions;
 
     ui.click("settings-add-institution");
-    ui.press("b a n k tab enter");
+    ui.press("b a n k enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.settings_institutions().institutions.len(),
@@ -467,4 +466,66 @@ fn a_failed_delete_puts_the_institution_back_with_an_error_toast(app: &mut TestA
             && toast.text
                 == "Couldn't save the change to institutions, so they are back as last saved"
     }));
+}
+
+#[gpui::test]
+fn tab_moves_to_the_usual_unit_where_the_arrows_pick_and_tab_returns_to_the_name(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.click("settings-add-institution");
+    ui.press("b a n k");
+    assert_eq!(ui.dialog_value("focused").as_deref(), Some("Name"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("focused").as_deref(), Some("UsualUnit"));
+    ui.press("down");
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    ui.press("down");
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    ui.press("up");
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("focused").as_deref(), Some("Name"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
+}
+
+#[gpui::test]
+fn the_usual_unit_list_opens_on_enter_commits_on_enter_and_the_form_saves_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_institutions(app);
+
+    ui.press("n");
+    ui.press("b a n k");
+    ui.press("tab");
+    ui.press("enter");
+    ui.press("down down");
+    ui.press("enter");
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(
+        ui.dialog(),
+        Some("AddInstitution"),
+        "enter picked, it did not confirm"
+    );
+    ui.press("tab");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+
+    ui.press("e");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+}
+
+#[gpui::test]
+fn typing_on_the_usual_unit_select_does_not_reach_the_name_or_the_shell(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.click("settings-add-institution");
+    ui.press("b a n k");
+    ui.press("tab");
+    ui.press("x y z");
+
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
+    assert_eq!(ui.dialog(), Some("AddInstitution"));
 }

@@ -12,7 +12,8 @@ pub use delete_institution::{
     DeleteInstitutionEvent, DeleteInstitutionPresenter, DeleteInstitutionViewModel,
 };
 pub use institution_form::{
-    InstitutionFormEvent, InstitutionFormPresenter, InstitutionFormViewModel, InstitutionProduct,
+    InstitutionField, InstitutionFormEvent, InstitutionFormPresenter, InstitutionFormViewModel,
+    InstitutionProduct,
 };
 pub use institutions_page::{
     Hint, InstitutionColumns, InstitutionLine, InstitutionsPageEvent, InstitutionsPagePresenter,

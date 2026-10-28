@@ -410,6 +410,7 @@ impl LedgerStore {
     /// Brings the Institutions read copy in line with the ports after the Institutions module wrote
     /// them, announcing `Domain::Institutions` only when it changed.
     pub fn refresh_institutions(&mut self, cx: &mut Context<'_, Self>) {
+        self.institutions.borrow_mut().copy_units(&self.ledger);
         if self.copy_institutions() {
             self.announce(cx, BTreeSet::from([Domain::Institutions]));
         }

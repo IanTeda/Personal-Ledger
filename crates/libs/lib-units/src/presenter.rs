@@ -109,6 +109,7 @@ pub(super) fn uses_text(uses: UnitUse) -> String {
         (uses.bill_plans, msg::units_in_use_bill_plans),
         (uses.budgets, msg::units_in_use_budgets),
         (uses.locations, msg::units_in_use_locations),
+        (uses.institutions, msg::units_in_use_institutions),
     ]
     .into_iter()
     .filter(|(n, _)| *n > 0)

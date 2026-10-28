@@ -17,6 +17,7 @@ The table comes from `migrations/client/20260904110000_create_institutions_table
 | `id` | UUID | Primary key, an `InstitutionId` (UUIDv7) |
 | `name` | TEXT | Not null, unique `COLLATE NOCASE`, stored trimmed |
 | `products` | TEXT | Not null, the joined Products label (`GLOSSARY.md`'s Products), stored as given |
+| `usual_unit_id` | UUID | Nullable foreign key to `units(id)`, no cascade: the Usual unit (`GLOSSARY.md`) |
 | `created_on` | TEXT | ISO-8601 UTC, defaults to now |
 | `updated_on` | TEXT | ISO-8601 UTC, maintained by `trg_institutions_set_updated_on` |
 
@@ -24,12 +25,12 @@ Invariants and deliberate omissions:
 
 - **Rows read back in rowid order**, the order they were added in. There is no position column, since an Institution can't be moved.
 - **`name` is unique ignoring ASCII case.** The add rule refuses a blank or taken name before anything is written (`InstitutionError`), and the collation backs it for a write that skips the rule.
-- **`products` is one free-form label**, the Add Dialog's chips joined with ` · `, not a table of Products. It never limits which Accounts may name the Institution. An Institution has no Default unit (#877).
+- **`products` is one free-form label**, the Add Dialog's chips joined with ` · `, not a table of Products. It never limits which Accounts may name the Institution. An Institution may name a Usual unit (`GLOSSARY.md`, #877): a prefill hint, never a second default Unit.
 - **`accounts.institution_id` references it**, `NOT NULL` with no cascade, so the file refuses deleting an Institution an Account names. The `DeleteInstitution` Interactor refuses it first, with the Accounts' names; the key is the backstop.
 
 ## Domain types
 
-`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_PERSONAL`, then `SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the add and edit refusal (`NameRequired`, `DuplicateName`, `NotFound`), declared in `entity.rs` beside `insert_institution`, `edit_institution` (the same name rule, skipping the Institution's own id, so a change of capitals is accepted), `get`, `find_by_name`, `personal_institution` and `default_institutions`.
+`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_PERSONAL`, then `SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`, `usual_unit`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the add and edit refusal (`NameRequired`, `DuplicateName`, `NotFound`), declared in `entity.rs` beside `insert_institution`, `edit_institution` (the same name rule, skipping the Institution's own id, so a change of capitals is accepted), `get`, `find_by_name`, `personal_institution` and `default_institutions`.
 
 The Personal Institution (`GLOSSARY.md`, [ADR-0049](../adr/0049-a-cash-account-names-the-personal-institution.md)) is `personal_institution(name)`: `SEED_PERSONAL`, the name given and Products `cash`. It is an ordinary row, listed first by `default_institutions()` and shown, edited and deleted on the page like any other (refused while an Account names it, as any Institution is). The Account form defaults a new Cash Account to it when it is on the Ledger, by its id.
 
@@ -79,7 +80,7 @@ Desktop locations for the ticked requirements.
 
 - **Halfway states.** The Accounts page, its Institution select and the Documents picker's Account link labels read the Ledger's read copy of the Institutions, which stays until Accounts migrate (#853). It is a row in [During the transition](viper-architecture.md#during-the-transition).
 - **Delete reads usage, not the foreign key.** The Dialog and Interactor refuse from `InstitutionUsage`; a delete that gets past them (an Account added to a file the Desktop's Accounts copy doesn't yet hold) fails against the key and is rolled back with the Error Toast.
-- **No Default unit.** The Add Dialog's Default unit select was never saved and went in #873; saving one that prefills the Account form is backlog ([#877](https://github.com/IanTeda/Personal-Ledger/issues/877)).
+- **The Usual unit is saved, and nothing reads it yet.** `institutions.usual_unit_id` is a nullable foreign key to `units` with no cascade, so a Unit an Institution names can't be deleted: `UnitUse` counts the Institutions (from the Ledger read copy) and `DeleteUnit` refuses with the count, the file's key backing it. The Add and Edit Dialog's select (None, then the active Units; Edit keeps listing a since-deactivated Unit it already names) reads the Units through the `InstitutionUnits` port, which the Desktop copies from the Ledger on each Institutions refresh. The Account form's prefill is [#901](https://github.com/IanTeda/Personal-Ledger/issues/901) and the Unit delete Dialog that reassigns is [#902](https://github.com/IanTeda/Personal-Ledger/issues/902) and [#903](https://github.com/IanTeda/Personal-Ledger/issues/903) (parent [#877](https://github.com/IanTeda/Personal-Ledger/issues/877)). The stub gives the Cryptocurrency Exchange the BTC Unit.
 - **A file from before #849 has no Institutions.** The first-launch seed runs only on a new file, so #853 must decide between a fresh Ledger and seeding an empty table.
 - **The Add Dialog's Toast is new behaviour**, added with the Presenter (#850).
 - **The TUI doesn't persist Institutions.** It draws fixtures until its redesign (#805).

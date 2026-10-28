@@ -17,7 +17,7 @@ use lib_units::{Holding, PriceSourceRecord, UnitHoldings, UnitRow, UnitUsage, Un
 use crate::Ledger;
 
 impl Ledger {
-    /// How many Accounts, Bill Plans, Budgets and Locations name Unit `id`.
+    /// How many Accounts, Bill Plans, Budgets, Locations and Institutions (as their Usual unit) name Unit `id`.
     pub fn unit_use(&self, id: UnitId) -> UnitUse {
         UnitUse {
             accounts: self.accounts.iter().filter(|a| a.unit == id).count(),
@@ -28,6 +28,11 @@ impl Ledger {
                 .locations
                 .iter()
                 .filter(|l| l.unit == id)
+                .count(),
+            institutions: self
+                .institutions
+                .iter()
+                .filter(|i| i.usual_unit == Some(id))
                 .count(),
         }
     }
@@ -128,6 +133,15 @@ mod tests {
         }
         assert!(ledger.unit_usage(UnitId::SEED_AUD).is_used());
         assert_eq!(ledger.unit_usage(UnitId::new()), UnitUse::default());
+    }
+
+    #[test]
+    fn an_institutions_usual_unit_counts_as_the_units_use() {
+        let ledger = Ledger::stub();
+
+        assert_eq!(ledger.unit_usage(UnitId::SEED_BTC).institutions, 1);
+        assert_eq!(ledger.unit_usage(UnitId::SEED_AUD).institutions, 0);
+        assert!(ledger.unit_usage(UnitId::SEED_BTC).is_used());
     }
 
     #[test]

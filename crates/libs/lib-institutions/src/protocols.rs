@@ -10,7 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 use lib_toast::Notify;
 
 use crate::Institution;
@@ -54,6 +54,22 @@ pub trait InstitutionUsage {
     fn institution_usage(&self, id: InstitutionId) -> InstitutionUse;
 }
 
+/// A Unit an Institution may name as its Usual unit, as Institutions reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstitutionUnit {
+    pub id: UnitId,
+    pub code: String,
+    /// A deactivated Unit is not offered for a new pick, though an Institution already naming it
+    /// keeps showing its code.
+    pub is_active: bool,
+}
+
+/// The Units on the Ledger. A read port, so `lib-institutions` needn't depend on the Units crate.
+pub trait InstitutionUnits {
+    /// Every Unit, in the Units' order.
+    fn institution_units(&self) -> Vec<InstitutionUnit>;
+}
+
 /// Every Institutions port, as one value the Presenters share.
 pub trait InstitutionsPorts {
     fn institutions(&self) -> &dyn InstitutionRepository;
@@ -61,6 +77,8 @@ pub trait InstitutionsPorts {
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
 
     fn usage(&self) -> &dyn InstitutionUsage;
+
+    fn units(&self) -> &dyn InstitutionUnits;
 }
 
 /// The ports as the page and its Dialog hold them: one set, shared, so an Institution the Dialog

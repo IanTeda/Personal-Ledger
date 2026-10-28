@@ -49,18 +49,20 @@ Later you close your savings account at CBA and move your other accounts elsewhe
 
 ## Screens
 
-The desktop app's Institutions page lists every institution in the order you added them, with its name and products. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. Right-clicking a row selects it and opens its menu. An Add institution button sits at the top. The edit dialog is the add dialog, titled Edit institution, with a Save institution button. The delete dialog has a red frame, the name to type back and a Delete institution button; for an institution accounts use, it shows the refusal and a Close button instead.
+The desktop app's Institutions page lists every institution in the order you added them, with its name and products. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. Right-clicking a row selects it and opens its menu. An Add institution button sits at the top. The add dialog asks for a name, the products and, optionally, a usual unit. `Tab` moves between the name and the usual unit. The edit dialog is the add dialog, titled Edit institution, with a Save institution button. The delete dialog has a red frame, the name to type back and a Delete institution button; for an institution accounts use, it shows the refusal and a Close button instead.
 
 ## Rules to know
 
 - A name must be set and can't match another institution's name, ignoring capitals.
 - The products are a label for the list. They don't limit which accounts you can create with the institution.
+- An institution can have a usual unit, the unit its accounts are normally held in. Pick one from the active units, or None, which most institutions keep. It is only a hint for now: it doesn't change any account, and your base unit stays the one default unit.
+- A unit an institution names as its usual unit can't be deleted. The Delete unit dialog offers to deactivate it instead and says how many institutions name it. Clear or change those institutions' usual unit first (Edit institution), then delete it.
 - A new ledger starts with the Personal institution, named in your language. A cash account can name any institution; Personal is only where it starts.
 - An institution an account names can't be deleted, the Personal institution included. Deleting is permanent and can't be undone.
 
 ## Scope
 
-- Institutions don't carry a default unit, address or contact details.
+- Institutions don't carry an address or contact details.
 - Institutions aren't synced between devices yet.
 - The terminal app doesn't have an Institutions screen.
 

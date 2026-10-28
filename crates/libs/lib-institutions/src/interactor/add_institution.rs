@@ -41,6 +41,7 @@ mod tests {
         InstitutionDraft {
             name: name.to_string(),
             products: "loan".to_string(),
+            usual_unit: None,
         }
     }
 

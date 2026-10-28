@@ -6,15 +6,15 @@
 //! the Institutions Interactors, as a Client does, reloads as a restart would, and expects the same
 //! rows back, in the same order.
 
-use lib_core::InstitutionId;
+use lib_core::{InstitutionId, UnitId};
 
-use crate::fake::{InMemoryInstitutionUsage, InMemoryInstitutions};
+use crate::fake::{InMemoryInstitutionUnits, InMemoryInstitutionUsage, InMemoryInstitutions};
 use crate::interactor::{
     AddInstitution, DeleteInstitution, DeleteInstitutionRefusal, EditInstitution,
 };
 use crate::{
-    Institution, InstitutionDraft, InstitutionError, InstitutionRepository, InstitutionUsage,
-    InstitutionUse, InstitutionsPorts, default_institutions,
+    Institution, InstitutionDraft, InstitutionError, InstitutionRepository, InstitutionUnits,
+    InstitutionUsage, InstitutionUse, InstitutionsPorts, default_institutions,
 };
 
 /// Builds the port a contract check runs on.
@@ -85,6 +85,7 @@ fn draft(name: &str, products: &str) -> InstitutionDraft {
     InstitutionDraft {
         name: name.into(),
         products: products.into(),
+        usual_unit: None,
     }
 }
 
@@ -108,7 +109,47 @@ pub fn an_added_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
             id: added.id,
             name: "Bank X".into(),
             products: "savings \u{b7} offset".into(),
+            usual_unit: None,
         })
+    );
+}
+
+/// A Usual unit reloads with its Institution, and an edit back to none reloads as none.
+pub fn a_usual_unit_reloads_and_clears<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+    let named = add(
+        &mut ports,
+        InstitutionDraft {
+            usual_unit: Some(UnitId::SEED_AUD),
+            ..draft("Bank X", "savings")
+        },
+    );
+    factory.commit(&mut ports);
+
+    let mut ports = factory.reload(ports);
+    assert_eq!(
+        ports.institution(named.id).map(|row| row.usual_unit),
+        Some(Some(UnitId::SEED_AUD))
+    );
+    assert_eq!(
+        ports
+            .institution(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .map(|row| row.usual_unit),
+        Some(Some(UnitId::SEED_BTC)),
+        "the seed's Usual unit is stored"
+    );
+
+    EditInstitution {
+        id: named.id,
+        draft: draft("Bank X", "savings"),
+    }
+    .run(&mut ports)
+    .expect("its own name");
+    factory.commit(&mut ports);
+    let ports = factory.reload(ports);
+    assert_eq!(
+        ports.institution(named.id).map(|row| row.usual_unit),
+        Some(None)
     );
 }
 
@@ -242,6 +283,7 @@ pub fn a_case_only_rename_is_accepted<F: PortsFactory>(factory: &mut F) {
 struct WithUsage<'a, R> {
     repository: &'a mut R,
     usage: InMemoryInstitutionUsage,
+    units: InMemoryInstitutionUnits,
 }
 
 impl<R: InstitutionRepository> InstitutionsPorts for WithUsage<'_, R> {
@@ -256,6 +298,10 @@ impl<R: InstitutionRepository> InstitutionsPorts for WithUsage<'_, R> {
     fn usage(&self) -> &dyn InstitutionUsage {
         &self.usage
     }
+
+    fn units(&self) -> &dyn InstitutionUnits {
+        &self.units
+    }
 }
 
 /// A deleted Institution is gone after a reload, the rows after it keeping their order.
@@ -268,6 +314,7 @@ pub fn a_deleted_institution_is_gone_after_a_reload<F: PortsFactory>(factory: &m
     .run(&mut WithUsage {
         repository: &mut ports,
         usage: InMemoryInstitutionUsage::default(),
+        units: InMemoryInstitutionUnits::default(),
     })
     .expect("no Account names it");
     factory.commit(&mut ports);
@@ -302,6 +349,7 @@ pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factor
     .run(&mut WithUsage {
         repository: &mut ports,
         usage: usage.clone(),
+        units: InMemoryInstitutionUnits::default(),
     });
     factory.commit(&mut ports);
 
@@ -321,6 +369,7 @@ pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factor
     .run(&mut WithUsage {
         repository: &mut ports,
         usage,
+        units: InMemoryInstitutionUnits::default(),
     })
     .expect("no Account names Westpac");
     assert_eq!(ports.institutions().len(), before.len() - 1);
@@ -348,6 +397,11 @@ mod tests {
     #[test]
     fn in_memory_an_added_institution_reloads_the_same() {
         an_added_institution_reloads_the_same(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_usual_unit_reloads_and_clears() {
+        a_usual_unit_reloads_and_clears(&mut InMemoryFactory::default());
     }
 
     #[test]

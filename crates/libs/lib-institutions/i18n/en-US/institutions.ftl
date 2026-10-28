@@ -36,6 +36,8 @@ institutions-edit-toast = Saved { $name }
 institutions-name-label = Institution name
 institutions-name-placeholder = e.g. Commonwealth Bank
 institutions-products = Products
+institutions-usual-unit-label = Usual unit
+institutions-usual-unit-none = None
 
 ## The Products chips, in the order the Add institution Dialog offers them. Lower case, as the
 ## table's Products cell joins them.

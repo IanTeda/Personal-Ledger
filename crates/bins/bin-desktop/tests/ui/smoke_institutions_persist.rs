@@ -49,7 +49,7 @@ fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         let mut ui = Harness::with_storage(app, storage);
         institution_names(&mut ui);
         ui.click("settings-add-institution");
-        ui.press("B a n k space X tab enter");
+        ui.press("B a n k space X enter");
         assert_eq!(ui.dialog(), None, "the Add Dialog confirmed");
         let names = ui
             .settings_institutions()
@@ -138,4 +138,28 @@ fn a_deleted_institution_is_gone_after_a_restart(app: &mut TestAppContext) {
         !account_select_institutions(&mut ui).contains(&"Superannuation Fund".to_string()),
         "the Accounts page no longer offers it"
     );
+}
+
+#[gpui::test]
+fn a_usual_unit_is_there_after_a_restart(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = config_for(&dir.path().join("ledger.pldb"));
+
+    {
+        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let writer = storage.writer.clone();
+        let mut ui = Harness::with_storage(app, storage);
+        institution_names(&mut ui);
+        ui.click("institution-edit-1");
+        assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("None"));
+        ui.press("tab down tab enter");
+        assert_eq!(ui.dialog(), None, "the Edit Dialog confirmed");
+        bin_desktop::quit(&writer);
+    }
+
+    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let mut ui = Harness::with_storage(app, storage);
+    institution_names(&mut ui);
+    ui.click("institution-edit-1");
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
 }
