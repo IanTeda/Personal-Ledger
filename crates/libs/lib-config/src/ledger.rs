@@ -464,10 +464,7 @@ mod tests {
                 config.personal_ledger.data(),
                 crate::PersonalLedgerConfig::default().data()
             );
-            assert_eq!(
-                config.personal_ledger.file(),
-                crate::PersonalLedgerConfig::default().file()
-            );
+            assert_eq!(config.personal_ledger.file(), None);
             assert_eq!(
                 config.sync_server.bind_address(),
                 crate::SyncServerConfig::default().bind_address()
@@ -524,7 +521,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.personal_ledger.file(),
-            Path::new("/tmp/test-ledger.pldb")
+            Some(Path::new("/tmp/test-ledger.pldb"))
         );
         assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
     }
@@ -1084,13 +1081,16 @@ mod tests {
                 "[Personal-Ledger] log did not reach the config"
             );
 
-            // The file's `file` key is a literal tilde path -- `config` does no shell
+            // The file's `data` key is a literal tilde path -- `config` does no shell
             // expansion -- whereas the default is an expanded absolute path.
             assert_eq!(
-                config.personal_ledger.file(),
-                Path::new("~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"),
-                "[Personal-Ledger] file did not reach the config"
+                config.personal_ledger.data(),
+                Path::new("~/Documents/Personal-Ledger"),
+                "[Personal-Ledger] data did not reach the config"
             );
+
+            // `file` overrides On start, so the shipped file leaves it commented out.
+            assert_eq!(config.personal_ledger.file(), None);
 
             // `super_key` and the ten command bindings match the built-in defaults, so they
             // cannot discriminate -- but the file must at least not define an invalid

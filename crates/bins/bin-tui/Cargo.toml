@@ -40,9 +40,13 @@ base64 = { workspace = true }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+# The state directory `tui-state.json` lives in (`state`).
+dirs = { workspace = true }
 futures-util = { workspace = true }
 regex = { workspace = true }
 secrecy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

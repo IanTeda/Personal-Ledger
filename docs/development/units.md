@@ -66,7 +66,7 @@ The older per-entity queries:
 
 `crates/libs/lib-database/src/units/` — `model.rs`, `builder.rs`, `find.rs`, `insert.rs`, `update.rs`, `delete.rs`, `mod.rs`. No `totals.rs`: totals are always per-Account or per-Category within a Unit, never across Units.
 
-The one cross-domain behaviour worth knowing: `Preferences::get_or_create_default` (in `preferences/update.rs`) **seeds a default `USD` Unit row** the first time the preferences table is used, and reuses an existing `USD` row if one is already there. The seed happens in Rust rather than as an `INSERT` in the migration because a Unit's `id` must be a genuine UUIDv7, which plain SQL cannot generate. Three tests in `preferences/update.rs` cover this: the seeding itself, idempotency, and reuse of an existing `USD` row.
+The base Unit is the one-row `ledger` table's `base_unit_id` (ADR-0044); `Preferences::get_or_create_default` no longer seeds a Unit, and `preferences/update.rs` tests that it doesn't.
 
 ## UI
 

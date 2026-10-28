@@ -134,6 +134,18 @@ pub fn set_colour_appearance(colour_appearance: Option<ColourAppearance>, cx: &m
     update(cx, |colours| colours.colour_appearance = colour_appearance);
 }
 
+/// Applies the Colour Theme and Appearance kept on this device (ADR-0051), as the app starts. A
+/// stored appearance this release doesn't know falls back to System.
+pub fn set_client_preferences(preferences: &lib_core::ClientPreferences, cx: &mut App) {
+    update(cx, |colours| {
+        colours.colour_theme = preferences.colour_theme.clone();
+        colours.colour_appearance = preferences
+            .colour_appearance
+            .as_deref()
+            .and_then(ColourAppearance::from_key);
+    });
+}
+
 /// A Preference change picked in Settings or the command palette, carried out of `Root`'s
 /// key handling (which has no `App`) and applied once it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

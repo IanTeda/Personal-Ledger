@@ -46,7 +46,7 @@ impl ConfigArgs {
             config.personal_ledger.data = data.clone();
         }
         if let Some(file) = &self.file {
-            config.personal_ledger.file = file.clone();
+            config.personal_ledger.file = Some(file.clone());
         }
         if let Some(log) = self.log {
             config.personal_ledger.log = log;
@@ -93,8 +93,8 @@ mod tests {
             std::path::PathBuf::from("/tmp/data")
         );
         assert_eq!(
-            config.personal_ledger.file,
-            std::path::PathBuf::from("/tmp/data/ledger.pldb")
+            config.personal_ledger.file(),
+            Some(std::path::Path::new("/tmp/data/ledger.pldb"))
         );
         assert_eq!(config.personal_ledger.log, lib_tracing::Levels::TRACE);
         assert_eq!(config.personal_ledger.locale(), Some("en-GB"));

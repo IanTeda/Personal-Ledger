@@ -10,7 +10,7 @@
 
 mod detect;
 
-use bin_tui::{Result, build_shell, colours, locale};
+use bin_tui::{Result, build_shell, colours, locale, state};
 use clap::Parser;
 
 /// Personal Ledger TUI.
@@ -58,15 +58,27 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    // No Ledger opens until `:open` or `:new`; the Shell flushes the Open Ledger's writes as it
-    // quits.
-    build_shell(
-        config.keybindings_config().clone(),
-        colours,
-        Some(config.personal_ledger_config().file()),
-    )
-    .with_configuration(config.personal_ledger_config(), config.writer().clone())
-    .with_log_buffer(logs)
-    .run()
-    .await
+    // No Ledger opens until `:open` or `:new`, whatever On start names: opening it at start is
+    // #910's. The Shell flushes the Open Ledger's writes as it quits, and the file it had open is
+    // remembered for On start.
+    let kept = state::load();
+    let file = config.personal_ledger_config().file();
+    if let Some(path) =
+        lib_core::ledger_to_open(kept.preferences.on_start, file, kept.last_ledger.as_deref())
+    {
+        tracing::debug!(path = %path.display(), "On start names a Ledger; starting with none open");
+    }
+    let mut shell = build_shell(config.keybindings_config().clone(), colours, file)
+        .with_configuration(config.personal_ledger_config(), config.writer().clone())
+        .with_client_preferences(&kept.preferences)
+        .with_log_buffer(logs);
+    let ran = shell.run().await;
+    let quit = state::TuiState {
+        preferences: shell.client_preferences(kept.preferences.on_start),
+        last_ledger: shell.quit_ledger().map(std::path::Path::to_path_buf),
+    };
+    if let Err(error) = state::save(&quit) {
+        tracing::warn!(%error, "Failed to save the TUI's state");
+    }
+    ran
 }

@@ -14,6 +14,7 @@ pub mod locale;
 mod payee;
 mod popup;
 pub mod shell;
+pub mod state;
 mod tag;
 mod toast;
 mod tui;

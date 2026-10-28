@@ -102,7 +102,7 @@ personal_ledger --config/-c '~/.config/personal_ledger.conf'
 
 __data:__
 
-Use a specific directory as the default location for Personal Ledger database files.
+The folder `:open`'s file browser starts in, where you keep your Ledger files.
 
 * Type: String
 * CLI Flags: --data/-d 
@@ -122,11 +122,11 @@ personal_ledger --data/-d '~/Documents/Personal-Ledger/'
 
 __file:__
 
-Open to a specific Personal Ledger database file if no file is provided.
+An explicit override: open this Ledger file at start, whatever the On start Preference says. Leave it unset to let On start decide, which by default reopens the Ledger that was open when you last quit, or starts with no Ledger open if none was. Set it with `--file/-f` for a one-off run on another Ledger.
 
 * Type: String (Optional)
 * CLI Flags: --file/-f 
-* Default: <data-dir>/My-Personal-Ledger.pldb 
+* Default: none
 
 Example:
 
@@ -364,7 +364,7 @@ A field name or value that `set` doesn't know is refused on the status line, whi
 
 ### Heads up
 
-- Ledger name, owner, financial year and date style hold only until you close the app, until the Ledger saves its Preferences.
+- Ledger name, owner and financial year hold only until you close the app, until the Ledger saves its Preferences.
 - Status glyphs is saved and shown on its row, but the TUI still draws Unicode glyphs either way: it doesn't read the setting yet.
 - Turning Terminal colours off again while the app runs draws the Colour Theme, but System appearance can't follow your terminal's background until a restart: the TUI checks the background only at start-up, and skips the check while Terminal colours is on.
 - Undo and redo for History have no commands yet. On the History page, `u` and `ctrl`+`r` say they are not built yet.
@@ -384,7 +384,7 @@ See [Getting around](getting-around.md#toasts) for reading and dismissing Toasts
 
 ### Heads up
 
-- Whether Toasts are on is remembered only until you close the app, and only on this device.
+- Whether Toasts are on is remembered only on this device, and each app keeps its own.
 
 ## Colour Theme and Colour Appearance
 
@@ -393,7 +393,7 @@ You choose how Personal Ledger looks from Settings, not from a configuration fil
 - **Colour Theme**: the set of colours the app draws in. Five are built in: Modernist (the default), High Contrast, Catppuccin, Gruvbox and Nord. Each one has a light and a dark version.
 - **Colour Appearance**: which version you see. Light and Dark always use that version. System follows your computer's light or dark setting, and the picker tells you which one it found, for example "System (currently Dark)". If it can't find out, it uses Dark and says so: "System (not detected, using Dark)".
 
-A change applies straight away, with no Apply button. Both are meant to be Preferences that sync across your own devices.
+A change applies straight away, with no Apply button. Both belong to this device, like the date style: each app remembers its own choice when you close it, whichever Ledger is open or none, and they don't sync to your other devices.
 
 ### In the Desktop app
 
@@ -420,7 +420,7 @@ If a built-in Colour Theme is nearly right, you can change individual colours on
 
 ### Heads up
 
-- Your Colour Theme and Colour Appearance are remembered only until you close the app. Saving them to your ledger, and syncing them to your other devices, isn't built yet.
+- Your Colour Theme and Colour Appearance don't follow you to your other devices, or between the TUI and the Desktop app on one computer: each keeps its own.
 
 ## Theme Section
 
@@ -622,11 +622,12 @@ Example Configuration File
 # Points to a configuration file outside the normal search hierarchy. Usually left unset.
 # config = "~/.config/personal-ledger/personal-ledger.conf"
 
-# Client data directory
+# Client data directory: the folder `:open` starts in
 data = "~/Documents/Personal-Ledger"
 
-# Personal Ledger database file to open with
-file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
+# Optional: a Ledger file to open at start, overriding the On start Preference. Usually left
+# unset, so the Client reopens the last Ledger, or none, as On start says.
+# file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
 
 # Client tracing log level
 log = "debug"
@@ -694,7 +695,7 @@ This example is kept in sync with the file shipped at `config/personal-ledger.co
 
 References
 
-Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s `[Personal-Ledger] file`, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, decimal/thousands separator, default Unit — is a Preference instead, stored in the Ledger’s own database, not here.
+Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead: the base Unit is stored in the Ledger, and the colour theme, date style, Toasts and On start are kept by each Client on its own device (ADR-0051), not here.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.
 

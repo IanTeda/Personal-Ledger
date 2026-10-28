@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO preferences (id, created_on, updated_on)\n                VALUES (?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "19ff5a3a03c0338b058770cf570d570df4ed1786711be8186d9e35bea0ae47fb"
+}

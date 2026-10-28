@@ -188,6 +188,9 @@ pub struct Shell {
     ledger: Option<OpenLedger>,
     /// The configured `file`, which a bare `:open` opens. `None` for a `Shell` built without one.
     ledger_file: Option<PathBuf>,
+    /// The Open Ledger's file as the Shell quit, which `main` remembers for On start (ADR-0051).
+    /// `None` until then, and when no Ledger was open.
+    quit_ledger: Option<PathBuf>,
 }
 
 /// The Open Ledger: its Ledger file, the Units built on the Stores opened from it, and the writer
@@ -253,6 +256,7 @@ impl Shell {
             toast_history: None,
             ledger: None,
             ledger_file: None,
+            quit_ledger: None,
             keybindings,
         }
     }
@@ -268,6 +272,45 @@ impl Shell {
     pub fn with_open_ledger(mut self, path: impl Into<PathBuf>, stores: Stores) -> Self {
         self.ledger = Some(self.open_ledger_on(path.into(), stores, None));
         self
+    }
+
+    /// Applies the Client-scoped Preferences kept on this device (ADR-0051): Toasts, the Colour
+    /// Theme and Appearance, and the date style. A stored appearance this release doesn't know
+    /// falls back to System.
+    pub fn with_client_preferences(mut self, preferences: &lib_core::ClientPreferences) -> Self {
+        self.toasts.set_display(Display {
+            toasts_on: preferences.toasts_on,
+        });
+        self.colours
+            .set_colour_theme(preferences.colour_theme.clone());
+        self.colours.set_colour_appearance(
+            preferences
+                .colour_appearance
+                .as_deref()
+                .and_then(ColourAppearance::from_key),
+        );
+        self.settings_values.borrow_mut().date_style = preferences.date_style;
+        self
+    }
+
+    /// The Client-scoped Preferences as they stand, for the state file at quit. On start has no
+    /// control yet (#910), so it is kept as it was read.
+    pub fn client_preferences(&self, on_start: lib_core::OnStart) -> lib_core::ClientPreferences {
+        lib_core::ClientPreferences {
+            toasts_on: self.toasts.display().toasts_on,
+            colour_theme: self.colours.colour_theme().map(str::to_string),
+            colour_appearance: self
+                .colours
+                .colour_appearance()
+                .map(|appearance| appearance.key().to_string()),
+            date_style: self.settings_values.borrow().date_style,
+            on_start,
+        }
+    }
+
+    /// The Ledger file open as the Shell quit, or `None` when none was.
+    pub fn quit_ledger(&self) -> Option<&Path> {
+        self.quit_ledger.as_deref()
     }
 
     /// Whether the Shell has stopped: a quit key or command ran.
@@ -486,9 +529,15 @@ impl Shell {
     /// Runs the shell until the user quits, then closes the Open Ledger.
     pub async fn run(&mut self) -> crate::Result<()> {
         let ran = self.event_loop().await;
-        // The writer's thread dies with the process, so the last writes land before it does.
-        self.close_ledger();
+        self.quit();
         ran
+    }
+
+    /// Remembers the Open Ledger's file for On start, then closes it: the writer's thread dies
+    /// with the process, so the last writes land before it does.
+    fn quit(&mut self) {
+        self.quit_ledger = self.ledger.as_ref().map(|ledger| ledger.path.clone());
+        self.close_ledger();
     }
 
     async fn event_loop(&mut self) -> crate::Result<()> {
@@ -2720,6 +2769,45 @@ mod tests {
     /// A `Shell` with a Ledger open on the stub seed's Units in memory, as most tests need.
     fn opened() -> Shell {
         opened_with(KeyBindingConfig::default())
+    }
+
+    #[test]
+    fn quitting_remembers_the_open_ledger_and_close_then_quit_forgets_it() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.quit();
+        assert_eq!(shell.quit_ledger(), Some(Path::new("test.pldb")));
+
+        let mut shell = opened();
+        shell.update(Action::CloseLedger);
+        shell.quit();
+        assert_eq!(shell.quit_ledger(), None);
+    }
+
+    #[test]
+    fn client_preferences_apply_at_start_and_read_back_for_the_state_file() {
+        let preferences = lib_core::ClientPreferences {
+            toasts_on: false,
+            colour_theme: Some("nord".into()),
+            colour_appearance: Some("light".into()),
+            date_style: Some(lib_core::DateStyle::Iso),
+            on_start: lib_core::OnStart::NoLedger,
+        };
+        let shell = Shell::new().with_client_preferences(&preferences);
+        assert!(!shell.toasts.display().toasts_on);
+        assert_eq!(shell.colours.colour_theme(), Some("nord"));
+        assert_eq!(
+            shell.colours.colour_appearance(),
+            Some(ColourAppearance::Light)
+        );
+        assert_eq!(
+            shell.settings_values.borrow().date_style,
+            Some(lib_core::DateStyle::Iso)
+        );
+        assert_eq!(
+            shell.client_preferences(lib_core::OnStart::NoLedger),
+            preferences
+        );
     }
 
     /// [`opened`], reading the global keys from `keybindings`.

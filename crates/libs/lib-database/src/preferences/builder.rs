@@ -11,9 +11,6 @@ use super::Preferences;
 #[derive(Debug, Default, Clone)]
 pub struct PreferencesBuilder {
     id: Option<lib_core::RowID>,
-    colour_theme: Option<String>,
-    colour_appearance: Option<String>,
-    date_style: Option<lib_core::DateStyle>,
     created_on: Option<chrono::DateTime<chrono::Utc>>,
     updated_on: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -29,29 +26,6 @@ impl PreferencesBuilder {
     #[must_use]
     pub fn with_id(mut self, id: lib_core::RowID) -> Self {
         self.id = Some(id);
-        self
-    }
-
-    /// Set the Colour Theme id, such as `modernist` (or clear it, with `None`, to use the
-    /// default Colour Theme).
-    #[must_use]
-    pub fn with_colour_theme(mut self, colour_theme: Option<String>) -> Self {
-        self.colour_theme = colour_theme;
-        self
-    }
-
-    /// Set the Colour Appearance key, `light`, `dark` or `system` (or clear it, with `None`,
-    /// to follow the system).
-    #[must_use]
-    pub fn with_colour_appearance(mut self, colour_appearance: Option<String>) -> Self {
-        self.colour_appearance = colour_appearance;
-        self
-    }
-
-    /// Set the date style (or clear it, with `None`, to use the Locale's default).
-    #[must_use]
-    pub fn with_date_style(mut self, date_style: Option<lib_core::DateStyle>) -> Self {
-        self.date_style = date_style;
         self
     }
 
@@ -88,9 +62,6 @@ impl PreferencesBuilder {
                 reason = "RowID::default() is a nil UUID, not a usable row id"
             )]
             id: self.id.unwrap_or_else(lib_core::RowID::new),
-            colour_theme: self.colour_theme,
-            colour_appearance: self.colour_appearance,
-            date_style: self.date_style,
             created_on: self.created_on.unwrap_or_else(chrono::Utc::now),
             updated_on: self.updated_on.unwrap_or_else(chrono::Utc::now),
         }

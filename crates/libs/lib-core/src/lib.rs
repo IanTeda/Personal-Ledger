@@ -122,3 +122,11 @@ pub use clock::Clock;
 
 mod total;
 pub use total::Total;
+
+/// Which Ledger file a Client opens as it starts: the On start Preference and its resolver.
+mod on_start;
+pub use on_start::{OnStart, ledger_to_open};
+
+/// The Preferences a Client keeps for the device, never synced (ADR-0051).
+mod client_preferences;
+pub use client_preferences::ClientPreferences;

@@ -1,8 +1,8 @@
 //! # Preferences Database Module
 //!
 //! Data access for the `preferences` table -- Ledger-scoped settings a user edits from
-//! inside a running Client (ADR-0014): date style,
-//! Colour Theme and Colour Appearance. Singleton by convention (mirroring
+//! inside a running Client (ADR-0014). It holds no Preference yet: the date style, Colour Theme
+//! and Colour Appearance are Client-scoped (ADR-0051). Singleton by convention (mirroring
 //! `sync_users`), not a database constraint.
 //!
 //! | Submodule | Purpose |
@@ -10,7 +10,7 @@
 //! | [`model`](model) | Core [`Preferences`](Preferences) struct and mock data generation |
 //! | [`builder`](builder) | Fluent [`PreferencesBuilder`](PreferencesBuilder) for constructing Preferences |
 //! | [`find`](find) | [`Preferences::find_only`](Preferences::find_only) -- the singleton row, if it exists |
-//! | [`update`](update) | [`Preferences::get_or_create_default`](Preferences::get_or_create_default) and [`Preferences::update`](Preferences::update) |
+//! | [`update`](update) | [`Preferences::get_or_create_default`](Preferences::get_or_create_default) |
 //!
 //! No `delete.rs` -- the row is never deleted, only updated.
 //!

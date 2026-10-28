@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id               AS \"id!: domain::RowID\",\n                    created_on       AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on       AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM preferences\n                LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "fb70074efb5045c70ef502bd2cd8f4090a3635d907d5102463fcaab76097b930"
+}

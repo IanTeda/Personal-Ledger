@@ -3,6 +3,9 @@
 //! launch, per `docs/ux/desktop-mockups/README.md`'s "Persistence" note. A small dedicated JSON file,
 //! not `lib_config`'s layered INI config: that config is for static, user-editable settings,
 //! this is transient UI state a user never hand-edits.
+//!
+//! It is also where the Desktop keeps its Client-scoped Preferences and the Ledger open when it
+//! last quit (ADR-0051): both belong to this device, and both are read before any window opens.
 
 use std::{
     io,
@@ -60,6 +63,14 @@ pub struct PersistedState {
     #[serde(default)]
     pub documents_sort: Option<String>,
     pub window: Option<WindowGeometry>,
+    /// Toasts, the Colour Theme and Appearance, the date style and On start, kept on this device
+    /// and never synced (ADR-0051).
+    #[serde(default)]
+    pub preferences: lib_core::ClientPreferences,
+    /// The Ledger file open when the Desktop last quit, which On start's Reopen last Ledger
+    /// opens. `None` when none was.
+    #[serde(default)]
+    pub last_ledger: Option<PathBuf>,
 }
 
 /// Where the state file lives on this platform: `dirs::state_dir()` (Linux's
@@ -187,6 +198,14 @@ mod tests {
                 width: 1280.0,
                 height: 800.0,
             }),
+            preferences: lib_core::ClientPreferences {
+                toasts_on: false,
+                colour_theme: Some("nord".to_string()),
+                colour_appearance: Some("light".to_string()),
+                date_style: Some(lib_core::DateStyle::Iso),
+                on_start: lib_core::OnStart::NoLedger,
+            },
+            last_ledger: Some(PathBuf::from("/ledgers/household.pldb")),
         };
 
         save_to(&path, &state).expect("save should create the parent dir and write the file");
@@ -208,6 +227,8 @@ mod tests {
             documents_scope: None,
             documents_sort: None,
             window: None,
+            preferences: lib_core::ClientPreferences::default(),
+            last_ledger: None,
         };
 
         save_to(&path, &state).expect("save should succeed");
@@ -230,6 +251,19 @@ mod tests {
 
         assert!(loaded.explorer_filters.pldb_only);
         assert!(loaded.explorer_filters.hide_hidden);
+    }
+
+    #[test]
+    fn a_state_file_from_before_client_preferences_loads_their_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let path = dir.path().join(STATE_FILE_NAME);
+        std::fs::write(&path, r#"{"noun":"Bills","window":null}"#).expect("write should succeed");
+
+        let loaded = load_from(&path);
+
+        assert_eq!(loaded.noun, Noun::Bills);
+        assert_eq!(loaded.preferences, lib_core::ClientPreferences::default());
+        assert_eq!(loaded.last_ledger, None);
     }
 
     #[test]

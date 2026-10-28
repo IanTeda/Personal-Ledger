@@ -242,6 +242,7 @@ pub fn build(
     };
     let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
+    shell.set_client_preferences(&persisted.preferences, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
@@ -557,6 +558,44 @@ impl Root {
         self.views
             .settings
             .update(cx, |view, cx| view.set_display(display, cx));
+    }
+
+    /// Applies the date style and Toasts kept on this device (ADR-0051) to the Settings View and
+    /// the Views that draw with them, as the app starts.
+    pub fn set_client_preferences(
+        &mut self,
+        preferences: &lib_core::ClientPreferences,
+        cx: &mut App,
+    ) {
+        let display = DisplayPreferences {
+            date_style: preferences.date_style,
+            toasts_on: preferences.toasts_on,
+            ..self.display(cx)
+        };
+        self.views
+            .settings
+            .update(cx, |view, cx| view.set_display(display, cx));
+        self.push_display_preferences(display, cx);
+    }
+
+    /// The Client-scoped Preferences as they stand, for the state file at quit. On start has no
+    /// control yet (#911), so it is kept as it was read.
+    pub fn client_preferences(
+        &self,
+        on_start: lib_core::OnStart,
+        cx: &App,
+    ) -> lib_core::ClientPreferences {
+        let display = self.display(cx);
+        let colours = cx.global::<crate::theme::colours::Colours>();
+        lib_core::ClientPreferences {
+            toasts_on: display.toasts_on,
+            colour_theme: colours.colour_theme().map(str::to_string),
+            colour_appearance: colours
+                .colour_appearance()
+                .map(|appearance| appearance.key().to_string()),
+            date_style: display.date_style,
+            on_start,
+        }
     }
 
     /// The Display Preferences, which the Settings View owns (ADR-0037).

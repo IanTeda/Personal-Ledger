@@ -67,7 +67,23 @@ const ARCHIVO_REGULAR: &[u8] = include_bytes!("../assets/fonts/Archivo-Regular.t
 const ARCHIVO_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-SemiBold.ttf");
 const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraBold.ttf");
 
-/// The Desktop's start-up before any window: opens the Ledger file the configuration names,
+/// The Ledger file the Desktop opens with no other to open: it still opens a Ledger before its
+/// window until it can run with none (#911), so this keeps the file it opened before On start.
+const FALLBACK_FILE_NAME: &str = "My-Personal-Ledger.pldb";
+
+/// The Ledger file the Desktop opens at start: the one On start names, given the explicit `file`
+/// and the Ledger open at the last quit (ADR-0051), else `<data>/My-Personal-Ledger.pldb`.
+pub fn ledger_path(config: &lib_config::Config, persisted: &PersistedState) -> std::path::PathBuf {
+    let config = config.personal_ledger_config();
+    lib_core::ledger_to_open(
+        persisted.preferences.on_start,
+        config.file(),
+        persisted.last_ledger.as_deref(),
+    )
+    .unwrap_or_else(|| config.data().join(FALLBACK_FILE_NAME))
+}
+
+/// The Desktop's start-up before any window: opens the Ledger file [`ledger_path`] names,
 /// creating and seeding it when new, with the stub dated from today, then generates the Bill
 /// Schedule through the horizon and commits the new entries before the Shell is built
 /// (ADR-0019). The app never runs on a file it can't save to, so a failure is the caller's to
@@ -91,7 +107,7 @@ pub fn start_on(
     config: &lib_config::Config,
     today: chrono::NaiveDate,
 ) -> lib_database::Result<Storage> {
-    let path = config.personal_ledger_config().file();
+    let path = &ledger_path(config, &persistence::load());
     let mut storage = open_storage(path, today, &lib_locale::msg::institution_personal())
         .inspect_err(|error| {
             tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
@@ -119,6 +135,12 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
     let keybindings = config.keybindings_config().clone();
+    // `noun`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s "State
+    // machine"), as do the Client-scoped Preferences; everything else in `NavState` starts fresh
+    // every launch, so there's nothing else to seed here.
+    let persisted = persistence::load();
+    // The file `start` opened, remembered at quit for On start.
+    let ledger = ledger_path(config, &persisted);
 
     // Set once by `start`; the Locale never changes at runtime.
     let locale = locale::info().effective;
@@ -129,6 +151,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
             gpui_component::init(cx);
             gpui_component::set_locale(locale::gpui_component_tag(locale));
             theme::colours::init(theme_overrides, cx);
+            theme::colours::set_client_preferences(&persisted.preferences, cx);
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.
@@ -142,11 +165,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                 tracing::error!(%error, "Failed to register the bundled Archivo fonts");
             }
 
-            // `noun`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s
-            // "State machine"); everything else in `NavState` starts fresh every launch, so there's
-            // nothing else to seed here.
-            let persisted = persistence::load();
             let window_geometry = persisted.window;
+            let on_start = persisted.preferences.on_start;
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
             // own window size (`docs/ux/desktop-mockups/01-shell/README.md`, option 1a).
@@ -242,6 +262,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                             width: f32::from(bounds.size.width),
                             height: f32::from(bounds.size.height),
                         }),
+                        preferences: shell.client_preferences(on_start, cx),
+                        last_ledger: Some(ledger.clone()),
                     };
                     let _ = persistence::save(&state);
                 });
@@ -251,4 +273,62 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
 
             cx.activate(true);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+
+    fn config(file: Option<&str>) -> lib_config::Config {
+        let mut config = lib_config::Config::default();
+        lib_config::ConfigArgs {
+            data: Some(PathBuf::from("/data")),
+            file: file.map(PathBuf::from),
+            ..Default::default()
+        }
+        .apply_overrides(&mut config);
+        config
+    }
+
+    fn remembering(last_ledger: Option<&str>, on_start: lib_core::OnStart) -> PersistedState {
+        PersistedState {
+            preferences: lib_core::ClientPreferences {
+                on_start,
+                ..Default::default()
+            },
+            last_ledger: last_ledger.map(PathBuf::from),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_desktop_opens_the_ledger_on_start_names() {
+        let reopen = lib_core::OnStart::ReopenLastLedger;
+        assert_eq!(
+            ledger_path(
+                &config(Some("/x/explicit.pldb")),
+                &remembering(Some("/x/last.pldb"), reopen)
+            ),
+            Path::new("/x/explicit.pldb")
+        );
+        assert_eq!(
+            ledger_path(&config(None), &remembering(Some("/x/last.pldb"), reopen)),
+            Path::new("/x/last.pldb")
+        );
+    }
+
+    #[test]
+    fn with_no_ledger_to_open_the_desktop_falls_back_to_the_file_in_data() {
+        for state in [
+            remembering(None, lib_core::OnStart::ReopenLastLedger),
+            remembering(Some("/x/last.pldb"), lib_core::OnStart::NoLedger),
+        ] {
+            assert_eq!(
+                ledger_path(&config(None), &state),
+                Path::new("/data/My-Personal-Ledger.pldb")
+            );
+        }
+    }
 }

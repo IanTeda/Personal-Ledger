@@ -7,10 +7,6 @@
 /// Default logging level for the `[Personal-Ledger]` section.
 const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;
 
-/// The database filename appended to the resolved data directory when `file` isn't
-/// explicitly configured.
-const DEFAULT_FILE_NAME: &str = "My-Personal-Ledger.pldb";
-
 /// The Locale used when neither the configuration nor the operating system names a usable
 /// one. `lib-config` doesn't know which Locales are supported -- `lib-locale` negotiates
 /// that -- so this is only the last-resort request.
@@ -36,13 +32,13 @@ pub struct PersonalLedgerConfig {
     #[serde(default)]
     pub config: Option<std::path::PathBuf>,
 
-    /// The default location for Personal Ledger database files. Defaults to the user's
-    /// document folder.
+    /// The folder `:open`'s file browser starts in. Defaults to the user's document folder.
     pub data: std::path::PathBuf,
 
-    /// The Personal Ledger database file to open if none is given. Defaults to
-    /// `<data-dir>/My-Personal-Ledger.pldb`.
-    pub file: std::path::PathBuf,
+    /// A Ledger file to open at start, overriding the On start Preference. Optional, with no
+    /// default: unset, the Client opens the Ledger On start names, or none (ADR-0051).
+    #[serde(default)]
+    pub file: Option<std::path::PathBuf>,
 
     /// The tracing logging level for the application (see [`lib_tracing::Levels`]).
     pub log: lib_tracing::Levels,
@@ -113,13 +109,10 @@ fn shown() -> bool {
 
 impl Default for PersonalLedgerConfig {
     fn default() -> Self {
-        let data = Self::default_data_dir();
-        let file = data.join(DEFAULT_FILE_NAME);
-
         Self {
             config: None,
-            data,
-            file,
+            data: Self::default_data_dir(),
+            file: None,
             log: DEFAULT_LOG,
             log_file_path: None,
             locale: None,
@@ -142,9 +135,9 @@ impl PersonalLedgerConfig {
         &self.data
     }
 
-    /// Returns the configured Personal Ledger database file.
-    pub fn file(&self) -> &std::path::Path {
-        &self.file
+    /// Returns the Ledger file explicitly configured to open at start, if any.
+    pub fn file(&self) -> Option<&std::path::Path> {
+        self.file.as_deref()
     }
 
     /// Returns the configured logging level.
@@ -220,9 +213,9 @@ impl PersonalLedgerConfig {
     /// Get the default configuration values as key-value pairs, for seeding a layered
     /// configuration builder's defaults -- mirrors `SyncServerConfig::default_config_values()`.
     ///
-    /// `config`, `log_file_path` and `locale` are excluded: none has a meaningful default (see
-    /// [`Self::config`]/[`Self::log_file_path`]) -- all default to `None` when absent from
-    /// every configuration source. `locale` in particular must stay unset so the operating
+    /// `config`, `file`, `log_file_path` and `locale` are excluded: none has a meaningful
+    /// default (see [`Self::config`]/[`Self::file`]/[`Self::log_file_path`]) -- all default to
+    /// `None` when absent from every configuration source. `locale` in particular must stay unset so the operating
     /// system's Locale can outrank [`DEFAULT_LOCALE`] (see [`Self::resolved_locale`]).
     pub fn default_config_values() -> Vec<(&'static str, String)> {
         let default_config = Self::default();
@@ -230,10 +223,6 @@ impl PersonalLedgerConfig {
             (
                 "personal_ledger.data",
                 default_config.data().to_string_lossy().into_owned(),
-            ),
-            (
-                "personal_ledger.file",
-                default_config.file().to_string_lossy().into_owned(),
             ),
             ("personal_ledger.log", default_config.log().to_string()),
         ]
@@ -298,17 +287,17 @@ mod tests {
     }
 
     #[test]
-    fn default_file_is_named_correctly_inside_data_dir() {
+    fn default_config_has_no_file() {
         let config = PersonalLedgerConfig::default();
-        assert_eq!(config.file(), config.data().join(DEFAULT_FILE_NAME));
+        assert_eq!(config.file(), None);
     }
 
     #[test]
     fn default_config_values_returns_expected_pairs() {
         let defaults = PersonalLedgerConfig::default_config_values();
-        assert_eq!(defaults.len(), 3);
+        assert_eq!(defaults.len(), 2);
         assert!(defaults.iter().any(|(k, _)| *k == "personal_ledger.data"));
-        assert!(defaults.iter().any(|(k, _)| *k == "personal_ledger.file"));
+        assert!(!defaults.iter().any(|(k, _)| *k == "personal_ledger.file"));
         assert_eq!(
             defaults
                 .iter()
