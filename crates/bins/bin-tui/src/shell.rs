@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use lib_colour_theme::ColourAppearance;
 use lib_config::KeyBindingConfig;
 use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
@@ -66,7 +67,7 @@ use crate::{
         payees::PayeesView,
         reports::ReportsView,
         settings::{
-            SettingsPage, SettingsView,
+            BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
             field::{SettingField, SettingsValues},
         },
         tags::TagsView,
@@ -81,6 +82,7 @@ const TICK_RATE: Duration = Duration::from_millis(250);
 /// into the Messages rather than translated (`popup::command::commands::ledger`).
 const OPEN_COMMAND: &str = ":open";
 const NEW_COMMAND: &str = ":new";
+const SET_COMMAND: &str = ":set";
 
 /// What separates one hint item from the next in the footer bar.
 const HINT_SEPARATOR: &str = " \u{b7} ";
@@ -720,6 +722,24 @@ impl Shell {
                     .and_then(SettingsPage::from_command_name)
                     .map_or(Action::OpenSettings, Action::OpenSettingsPage),
             ),
+            CommandId::Set => Some(set_command(
+                self.command_popup.as_ref().and_then(CommandPopup::argument),
+            )),
+            CommandId::SyncNow => Some(Action::RunSettingsCommand(PageCommand::Sync(
+                SyncCommand::Now,
+            ))),
+            CommandId::SyncEdit => Some(Action::RunSettingsCommand(PageCommand::Sync(
+                SyncCommand::Edit,
+            ))),
+            CommandId::BackupNow => Some(Action::RunSettingsCommand(PageCommand::Backup(
+                BackupCommand::Now,
+            ))),
+            CommandId::BackupExport => Some(Action::RunSettingsCommand(PageCommand::Backup(
+                BackupCommand::Export,
+            ))),
+            CommandId::BackupGit => Some(Action::RunSettingsCommand(PageCommand::Backup(
+                BackupCommand::Git,
+            ))),
             CommandId::Category => Some(Action::OpenCategories),
             // The command popup has no real typed-argument resolution (`popup::command::
             // commands::categories`'s own module doc), so `<cat>`/`<parent>`/`<name>` all
@@ -1461,6 +1481,25 @@ impl Shell {
                 }
             }
             Action::SetSetting(field, value) => self.set_setting(field, value),
+            Action::UnknownSetting(name) => {
+                self.command_popup = None;
+                let fields = SettingField::ALL.map(SettingField::command_name).join(", ");
+                self.status_message = Some(match name {
+                    Some(name) => {
+                        crate::msg::tui_settings_set_unknown_field(&name, SET_COMMAND, &fields)
+                    }
+                    None => crate::msg::tui_settings_set_needs_field(SET_COMMAND, &fields),
+                });
+            }
+            Action::RunSettingsCommand(command) => {
+                self.command_popup = None;
+                if self.view.id() != ViewId::Settings {
+                    self.apply(Action::OpenSettingsPage(command.page()));
+                }
+                if let Some(action) = self.view.run_page_command(command) {
+                    self.apply(action);
+                }
+            }
             Action::BaseUnitGuardInput(ch) => {
                 if let Some(SettingsPopup::BaseUnitGuard(guard)) = &mut self.settings_popup {
                     guard.push(ch);
@@ -2037,6 +2076,15 @@ impl Shell {
             self.status_message = Some(reason);
             return;
         }
+        if let Some(value) = value.as_deref()
+            && !self.takes(field, value)
+        {
+            self.status_message = Some(crate::msg::tui_settings_set_bad_value(
+                value,
+                field.command_name(),
+            ));
+            return;
+        }
         if self.view.id() != ViewId::Settings {
             self.apply(Action::OpenSettingsPage(field.page()));
         }
@@ -2044,6 +2092,14 @@ impl Shell {
         match (field, value.as_deref()) {
             (SettingField::ColourTheme, None) => self.apply(Action::OpenColourThemePopup),
             (SettingField::Appearance, None) => self.apply(Action::OpenColourAppearancePopup),
+            (SettingField::ColourTheme, Some(id)) => {
+                self.apply(Action::SetColourTheme(
+                    colour_theme_id(id).map(str::to_string),
+                ));
+            }
+            (SettingField::Appearance, Some(key)) => {
+                self.apply(Action::SetColourAppearance(ColourAppearance::from_key(key)));
+            }
             (SettingField::Toasts, Some(on)) => {
                 self.view.update(&action);
                 match on {
@@ -2063,6 +2119,18 @@ impl Shell {
                 }
             }
             _ => self.view.update(&action),
+        }
+    }
+
+    /// Whether `field` takes `value`, so `:set` can refuse one it doesn't rather than drop it.
+    /// The base unit's guard checks its own code, as it does for the field's `enter`.
+    fn takes(&self, field: SettingField, value: &str) -> bool {
+        match field {
+            SettingField::ColourTheme => colour_theme_id(value).is_some(),
+            SettingField::Appearance => ColourAppearance::from_key(value).is_some(),
+            SettingField::Toasts => matches!(value, "on" | "off"),
+            SettingField::BaseUnit => true,
+            _ => self.settings_values.borrow().clone().set(field, value),
         }
     }
 
@@ -2383,6 +2451,32 @@ fn map_toast_history_key(key: KeyEvent) -> Option<Action> {
 
 /// Whether the command `id` runs with no Ledger open: opening or creating one, help, quit, and the
 /// Toasts, which are the Shell's own and not the Ledger's.
+/// `:set <field> [value]`: the field's [`Action::SetSetting`], with the rest of the line as its
+/// value, so a ledger name may have spaces; [`Action::UnknownSetting`] without a field it knows.
+fn set_command(argument: Option<&str>) -> Action {
+    let Some(argument) = argument else {
+        return Action::UnknownSetting(None);
+    };
+    let (name, value) = argument
+        .split_once(char::is_whitespace)
+        .map_or((argument, None), |(name, value)| (name, Some(value.trim())));
+    match SettingField::from_command_name(name) {
+        Some(field) => Action::SetSetting(
+            field,
+            value.filter(|value| !value.is_empty()).map(str::to_string),
+        ),
+        None => Action::UnknownSetting(Some(name.to_string())),
+    }
+}
+
+/// The built-in Colour Theme `id` names, ignoring case.
+fn colour_theme_id(id: &str) -> Option<&'static str> {
+    lib_colour_theme::ColourTheme::built_in()
+        .iter()
+        .map(|theme| theme.id)
+        .find(|known| known.eq_ignore_ascii_case(id))
+}
+
 fn runs_without_ledger(id: CommandId) -> bool {
     matches!(
         id,
@@ -3391,7 +3485,7 @@ mod tests {
         assert!(shell.settings_popup.is_none());
         assert_eq!(
             shell.colours.colour_appearance(),
-            Some(lib_colour_theme::ColourAppearance::Dark)
+            Some(ColourAppearance::Dark)
         );
     }
 
@@ -3429,9 +3523,7 @@ mod tests {
         let mut shell = opened();
         let before = draw(&mut shell);
         shell.update(Action::SetColourTheme(Some("nord".to_string())));
-        shell.update(Action::SetColourAppearance(Some(
-            lib_colour_theme::ColourAppearance::Light,
-        )));
+        shell.update(Action::SetColourAppearance(Some(ColourAppearance::Light)));
         assert_eq!(shell.colours.resolved().theme_id, "nord");
         assert_ne!(
             draw(&mut shell),
@@ -4754,6 +4846,196 @@ mod tests {
         press(&mut shell, &[KeyCode::Esc]);
         assert_eq!(shell.settings_page.get(), SettingsPage::SyncServer);
         assert_eq!(shell.view.id(), ViewId::Settings);
+    }
+
+    /// Opens the command popup and types `text` into it.
+    fn type_command(shell: &mut Shell, text: &str) {
+        shell.update(Action::OpenCommandPopup);
+        for c in text.chars() {
+            shell.update(Action::CommandPopupInput(c));
+        }
+    }
+
+    fn run_command(shell: &mut Shell, text: &str) {
+        type_command(shell, text);
+        press(shell, &[KeyCode::Enter]);
+    }
+
+    #[test]
+    fn set_date_style_and_the_rows_enter_land_on_the_same_preference() {
+        crate::locale::init_for_tests();
+        let mut by_command = opened();
+        run_command(&mut by_command, "set date-style iso");
+        assert_eq!(
+            by_command.settings_values.borrow().date_style,
+            Some(lib_core::DateStyle::Iso)
+        );
+        assert!(by_command.command_popup.is_none());
+        assert_eq!(by_command.settings_page.get(), SettingsPage::Display);
+
+        // The Date style row, opened with `enter`, moved one segment back from the Locale's
+        // default to iso, and saved with `enter`.
+        let mut by_key = opened();
+        by_key.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(
+            &mut by_key,
+            &[
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+                KeyCode::Enter,
+                KeyCode::Left,
+                KeyCode::Enter,
+            ],
+        );
+        assert_eq!(
+            *by_key.settings_values.borrow(),
+            *by_command.settings_values.borrow()
+        );
+    }
+
+    #[test]
+    fn set_with_no_value_opens_the_field_in_place_and_echoes_it_as_the_command() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        run_command(&mut shell, "set date-style");
+        assert!(shell.view.editing(), "the field is open in place");
+        let text = drawn(&mut shell);
+        assert!(lines(&text)[0].contains("INSERT"), "{text}");
+        assert!(
+            text.contains(":set date-style default▌  — the same edit as a command"),
+            "{text}"
+        );
+
+        press(&mut shell, &[KeyCode::Right]);
+        assert!(drawn(&mut shell).contains(":set date-style short▌"));
+        press(&mut shell, &[KeyCode::Esc]);
+        assert!(!drawn(&mut shell).contains(":set date-style"));
+    }
+
+    #[test]
+    fn set_refuses_an_unknown_field_a_value_it_doesnt_take_and_a_read_only_field() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        // The trailing space: a bare `set` still selects `settings [page]`, which it begins.
+        run_command(&mut shell, "set ");
+        assert!(
+            shell
+                .status_message
+                .as_deref()
+                .is_some_and(|message| message.starts_with(":set needs a field: ledger-name")),
+            "{:?}",
+            shell.status_message
+        );
+
+        run_command(&mut shell, "set nope 1");
+        assert!(
+            shell
+                .status_message
+                .as_deref()
+                .is_some_and(|message| message.starts_with("nope isn't a Settings field")),
+            "{:?}",
+            shell.status_message
+        );
+
+        run_command(&mut shell, "set fy-start march");
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("march isn't a value fy-start takes")
+        );
+        assert_eq!(shell.settings_values.borrow().financial_year_start, 7);
+
+        run_command(&mut shell, "set glyphs ascii");
+        assert!(
+            shell
+                .status_message
+                .as_deref()
+                .is_some_and(|message| message.contains("personal-ledger.conf")),
+            "{:?}",
+            shell.status_message
+        );
+    }
+
+    #[test]
+    fn set_saves_a_ledger_name_with_spaces_and_the_colour_preferences() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        run_command(&mut shell, "set ledger-name The Teda house");
+        assert_eq!(shell.settings_values.borrow().ledger_name, "The Teda house");
+
+        run_command(&mut shell, "set appearance light");
+        assert_eq!(
+            shell.colours.colour_appearance(),
+            Some(ColourAppearance::Light)
+        );
+        run_command(&mut shell, "set colour-theme NORD");
+        assert_eq!(shell.colours.colour_theme(), Some("nord"));
+    }
+
+    #[test]
+    fn tab_completes_the_field_and_the_sync_and_backup_subcommands() {
+        crate::locale::init_for_tests();
+        for (typed, completed) in [
+            ("set date", "set date-style"),
+            ("set FY", "set fy-start"),
+            ("sync e", "sync edit"),
+            ("sync n", "sync now"),
+            ("backup g", "backup git"),
+            ("backup ex", "backup export"),
+        ] {
+            let mut shell = opened();
+            type_command(&mut shell, typed);
+            shell.update(Action::CommandPopupTab);
+            assert_eq!(
+                shell.command_popup.as_ref().map(CommandPopup::input),
+                Some(completed),
+                "{typed}"
+            );
+        }
+    }
+
+    #[test]
+    fn sync_edit_opens_the_sync_server_page_with_its_edit_overlay() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        run_command(&mut shell, "sync edit");
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        assert_eq!(shell.settings_page.get(), SettingsPage::SyncServer);
+        let text = drawn(&mut shell);
+        assert!(text.contains("edit sync server"), "{text}");
+        assert!(lines(&text)[0].contains("INSERT"), "{text}");
+
+        // `esc` closes the overlay, then returns to the index with the page selected.
+        press(&mut shell, &[KeyCode::Esc, KeyCode::Esc]);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        assert!(!drawn(&mut shell).contains("Settings ›"));
+        assert_eq!(shell.settings_page.get(), SettingsPage::SyncServer);
+    }
+
+    #[test]
+    fn sync_now_and_backup_now_flash_not_yet_built_on_their_page() {
+        crate::locale::init_for_tests();
+        for (command, page, noun) in [
+            ("sync now", SettingsPage::SyncServer, ":sync"),
+            ("backup now", SettingsPage::Backup, ":backup"),
+            ("backup export", SettingsPage::Backup, ":export csv"),
+        ] {
+            let mut shell = opened();
+            run_command(&mut shell, command);
+            assert_eq!(shell.settings_page.get(), page, "{command}");
+            assert_eq!(
+                shell.status_message,
+                Some(crate::msg::tui_footer_not_yet_built(noun)),
+                "{command}"
+            );
+        }
+
+        // From a page of an open Settings, too, without stacking a second Settings.
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        let depth = shell.view_stack.len();
+        run_command(&mut shell, "backup git");
+        assert_eq!(shell.view_stack.len(), depth);
+        assert!(drawn(&mut shell).contains("set up git backup"));
     }
 
     #[test]

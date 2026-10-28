@@ -24,7 +24,8 @@ use ratatui::{
 };
 
 use super::field::{DATE_STYLES, SettingField};
-use super::{Context, FieldRow, Open, Scope, render_form};
+use super::keys::{self, Binding, Press};
+use super::{Context, FieldRow, Open, Scope, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::colour::{appearance_label, colour_theme_name, system_hint};
@@ -41,6 +42,35 @@ const ROWS: [SettingField; 8] = [
     SettingField::StatusGlyphs,
     SettingField::Toasts,
     SettingField::HintBar,
+];
+
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Open,
+    Toggle,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_field,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Enter)],
+        label: "enter",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Open,
+    },
+    Binding {
+        keys: &[Press::char(' ')],
+        label: "space",
+        hint: msg::tui_settings_hint_toggle,
+        command: Command::Toggle,
+    },
 ];
 
 /// Display's state: the selected row, and the Toasts Preference as `Shell` last reported it.
@@ -62,24 +92,24 @@ impl DisplayPage {
     }
 
     /// `enter` opens the selected row; on Toasts it, like `space`, flips the checkbox at once.
+    /// `space` on any other row does nothing.
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
         let field = ROWS[self.selected];
-        let step = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => Step::Next,
-            KeyCode::Char('k') | KeyCode::Up => Step::Prev,
-            KeyCode::Home => Step::First,
-            KeyCode::Char('G') | KeyCode::End => Step::Last,
-            KeyCode::Enter | KeyCode::Char(' ') if field == SettingField::Toasts => {
-                return Some(Action::SetSetting(
-                    field,
-                    Some(on_off(!self.toasts_on).to_string()),
-                ));
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                self.step(list::motion(key)?);
+                Action::NoOp
             }
-            KeyCode::Enter => return Some(Action::SetSetting(field, None)),
-            _ => return None,
-        };
-        self.step(step);
-        Some(Action::NoOp)
+            Command::Open | Command::Toggle if field == SettingField::Toasts => {
+                Action::SetSetting(field, Some(on_off(!self.toasts_on).to_string()))
+            }
+            Command::Open => Action::SetSetting(field, None),
+            Command::Toggle => Action::NoOp,
+        })
+    }
+
+    pub(super) fn hints() -> Vec<(String, String)> {
+        keys::hints(KEYS)
     }
 
     pub(super) fn step(&mut self, step: Step) {
@@ -305,7 +335,11 @@ mod tests {
             Some(Action::SetSetting(SettingField::Locale, None)),
             "the Shell refuses the read-only Locale with its reason"
         );
-        assert_eq!(page.handle_key(key(KeyCode::Char(' '))), None);
+        assert_eq!(
+            page.handle_key(key(KeyCode::Char(' '))),
+            Some(Action::NoOp),
+            "space only toggles Toasts"
+        );
     }
 
     #[test]
@@ -367,5 +401,12 @@ mod tests {
                 .value,
             "terminal palette"
         );
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, DisplayPage::hints(), |key| {
+            DisplayPage::new().handle_key(key)
+        });
     }
 }

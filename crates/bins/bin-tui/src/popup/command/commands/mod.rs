@@ -128,6 +128,12 @@ pub enum CommandId {
     ReportBalanceCheckVariance,
     // settings
     Settings,
+    Set,
+    SyncNow,
+    SyncEdit,
+    BackupNow,
+    BackupExport,
+    BackupGit,
     // tags
     Tag,
     TagNew,
@@ -279,6 +285,7 @@ pub const DOMAINS: &[Domain] = &[
 pub fn completions(id: CommandId) -> Vec<&'static str> {
     match id {
         CommandId::Settings => settings::pages(),
+        CommandId::Set => settings::fields(),
         _ => Vec::new(),
     }
 }

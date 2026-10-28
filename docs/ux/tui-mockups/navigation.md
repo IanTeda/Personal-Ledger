@@ -84,6 +84,16 @@ If a command has no real behaviour behind it yet, running it (`Enter`) replaces 
 
 `q` quits gracefully rather than reusing `Ctrl+C`'s hard-quit path, even though the two currently do the same thing: nothing in the app holds unsaved state yet, so there's nothing to confirm. Routing `q` through its own action now means that when a form eventually does hold dirty state, a confirm-before-quit check has one place to slot in — `q`'s own handler — without changing what key the user presses.
 
+## Settings: one key table per page
+
+Every Settings page except Units keeps one key table (`crates/bins/bin-tui/src/view/settings/keys.rs`): a row per hint, holding the keys it names, the hint's Message and the command those keys run. The page's key handling looks a key up in that table and its hint bar is built from it, so a hint can't name a key that does nothing, and a key can't work without a hint. Each page has a test that fails if the two drift. The paging tail (`[/] pages · p picker · esc settings`, or `[/] pages · esc index` when the index is docked) is the Settings View's own. Settings › Units keeps its `lib-units` Presenter's hints, which its `lib-viper` Keymap builds from the same keys the Presenter dispatches on.
+
+Settings' commands reach the same code as its keys (#898):
+
+- `set <field> [value]` sends the one `Action::SetSetting` the field's row sends: without a value it opens the field in place, as `Enter` does, and with one it saves, as `Enter` in the open field does. `<field>` completes on the form pages' field names. A read-only field, an unknown field and a value the field doesn't take are each refused on the status line. While a field is open, the line above the hint bar echoes the `:set` that makes the same edit (TUI-020).
+- `sync now|edit` and `backup now|export|git` are separate commands, so `Tab` completes them as it does any command name. Each opens its page first, as `settings <page>` does, then runs the same `run` the page's key runs; one with nothing behind it flashes "not yet built", as its key does.
+- `undo` and `redo` stay out until History's undo has its own design.
+
 ## Current implementation status
 
 Two views have real (if wireframe-stage) content: **Dashboard**, the default home view, and **Units**. The other eight domain views (Accounts, Balance Checks, Budgets, Categories, Payees, Reports, Transactions, Help) exist as bare, empty bordered boxes — real screens with real navigation paths to them, but no content yet. Only five commands have real behaviour behind `Enter` in the popup today: `unit`, `unit new/edit/delete`, and `dashboard`. Every other command in the registry — every mutation, every specific report, and, deliberately, every one of the eight placeholder-view list commands — shows the "not yet built" message described above rather than opening something empty.
@@ -97,7 +107,7 @@ Two views have real (if wireframe-stage) content: **Dashboard**, the default hom
 `README.md` in this directory is the original design reference and is treated as an idea inventory, not a binding spec — real implementation decisions have superseded a few of its specifics:
 
 - The popup opens on `Ctrl+;`, not a bare `:` — the handoff's own key.
-- The command list is grounded in this app's actual screens (Units, Accounts, Categories, and so on), not the handoff's aspirational grammar, which includes nouns (`sync`, `price`) nothing yet backs.
+- The command list is grounded in this app's actual screens (Units, Accounts, Categories, and so on), not the handoff's aspirational grammar, which includes nouns (`price`) nothing yet backs. `sync` has since joined, as the Settings › Sync Server page's commands.
 - `Esc` and `q` are assigned as described above — the handoff's own state notes describe a "view stack for `q`," an earlier framing this document's key assignments deliberately replace.
 
 Where the handoff and this document disagree, this document is current.

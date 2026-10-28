@@ -9,12 +9,12 @@
 
 mod fixture;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money};
-use lib_list_cursor::Step;
 use lib_locale::Label as _;
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
 use crate::colours::Colours;
 use crate::msg;
@@ -35,6 +35,56 @@ const INSTITUTION_WIDTH: u16 = 18;
 const UNIT_WIDTH: u16 = 6;
 const BALANCE_WIDTH: u16 = 15;
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Ledger,
+    New,
+    Edit,
+    Delete,
+    OpenView,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Enter)],
+        label: "enter",
+        hint: msg::tui_settings_hint_open_ledger,
+        command: Command::Ledger,
+    },
+    Binding {
+        keys: &[Press::char('n')],
+        label: "n",
+        hint: msg::tui_settings_hint_add,
+        command: Command::New,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Edit,
+    },
+    Binding {
+        keys: &[Press::char('d')],
+        label: "d",
+        hint: msg::tui_settings_hint_delete,
+        command: Command::Delete,
+    },
+    Binding {
+        keys: &[Press::char('o')],
+        label: "o",
+        hint: msg::tui_settings_hint_open_accounts_view,
+        command: Command::OpenView,
+    },
+];
+
 pub(super) struct AccountsPage {
     /// The Accounts in the page's order: by group, then the Ledger's.
     accounts: Vec<FixtureAccount>,
@@ -52,23 +102,18 @@ impl AccountsPage {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        if key.modifiers != KeyModifiers::NONE && key.modifiers != KeyModifiers::SHIFT {
-            return None;
-        }
-        let step = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => Step::Next,
-            KeyCode::Char('k') | KeyCode::Up => Step::Prev,
-            KeyCode::Home => Step::First,
-            KeyCode::Char('G') | KeyCode::End => Step::Last,
-            KeyCode::Char('n') => return Some(Action::FlashNotYetBuilt("account new")),
-            KeyCode::Char('e') => return Some(Action::FlashNotYetBuilt("account edit")),
-            KeyCode::Char('d') => return Some(Action::FlashNotYetBuilt("account delete")),
-            KeyCode::Enter => return Some(Action::FlashNotYetBuilt("account ledger")),
-            KeyCode::Char('o') => return Some(Action::OpenAccounts),
-            _ => return None,
-        };
-        self.selected = lib_list_cursor::step(self.selected, self.accounts.len(), step);
-        Some(Action::NoOp)
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, self.accounts.len(), step);
+                Action::NoOp
+            }
+            Command::Ledger => Action::FlashNotYetBuilt("account ledger"),
+            Command::New => Action::FlashNotYetBuilt("account new"),
+            Command::Edit => Action::FlashNotYetBuilt("account edit"),
+            Command::Delete => Action::FlashNotYetBuilt("account delete"),
+            Command::OpenView => Action::OpenAccounts,
+        })
     }
 
     /// The heading's note: the count and net worth, every balance in the base Unit.
@@ -85,14 +130,7 @@ impl AccountsPage {
     }
 
     pub(super) fn hints() -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("enter".into(), msg::tui_settings_hint_open_ledger()),
-            ("n".into(), msg::tui_settings_hint_add()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-            ("d".into(), msg::tui_settings_hint_delete()),
-            ("o".into(), msg::tui_settings_hint_open_accounts_view()),
-        ]
+        keys::hints(KEYS)
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -252,5 +290,12 @@ mod tests {
         assert_eq!(page.accounts[page.selected].name, "Bitcoin");
         page.handle_key(key(KeyCode::Char('k')));
         assert_eq!(page.accounts[page.selected].name, "Vanguard VAS");
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, AccountsPage::hints(), |key| {
+            AccountsPage::new().handle_key(key)
+        });
     }
 }

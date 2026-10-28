@@ -6,9 +6,10 @@
 //! `lib-documents`, so `n`, `e` and `x` show the Shell's "not yet built" flash; reordering is real
 //! but lasts only while the page does. The counts are derived from the rows on each draw.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Page, Row, Table};
 use crate::colours::Colours;
 use crate::msg;
@@ -69,6 +70,49 @@ fn fixture() -> Vec<FixtureType> {
     ]
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Move,
+    New,
+    Edit,
+    Remove,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::char('J'), Press::char('K')],
+        label: "J/K",
+        hint: msg::tui_settings_hint_move,
+        command: Command::Move,
+    },
+    Binding {
+        keys: &[Press::char('n')],
+        label: "n",
+        hint: msg::tui_settings_hint_add,
+        command: Command::New,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Edit,
+    },
+    Binding {
+        keys: &[Press::char('x')],
+        label: "x",
+        hint: msg::tui_settings_hint_remove,
+        command: Command::Remove,
+    },
+];
+
 pub(super) struct DocumentsPage {
     types: Vec<FixtureType>,
     selected: usize,
@@ -106,27 +150,20 @@ fn dash() -> Cell {
 
 impl Page for DocumentsPage {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        if let Some(step) = list::motion(key) {
-            self.selected = lib_list_cursor::step(self.selected, self.types.len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers != KeyModifiers::NONE && key.modifiers != KeyModifiers::SHIFT {
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('J') => {
-                self.shift(false);
-                Some(Action::NoOp)
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, self.types.len(), step);
+                Action::NoOp
             }
-            KeyCode::Char('K') => {
-                self.shift(true);
-                Some(Action::NoOp)
+            Command::Move => {
+                self.shift(key.code == KeyCode::Char('K'));
+                Action::NoOp
             }
-            KeyCode::Char('n') => Some(Action::FlashNotYetBuilt("document type new")),
-            KeyCode::Char('e') => Some(Action::FlashNotYetBuilt("document type edit")),
-            KeyCode::Char('x') => Some(Action::FlashNotYetBuilt("document type remove")),
-            _ => None,
-        }
+            Command::New => Action::FlashNotYetBuilt("document type new"),
+            Command::Edit => Action::FlashNotYetBuilt("document type edit"),
+            Command::Remove => Action::FlashNotYetBuilt("document type remove"),
+        })
     }
 
     fn scope_note(&self) -> String {
@@ -138,13 +175,7 @@ impl Page for DocumentsPage {
     }
 
     fn hints(&self) -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("J/K".into(), msg::tui_settings_hint_move()),
-            ("n".into(), msg::tui_settings_hint_add()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-            ("x".into(), msg::tui_settings_hint_remove()),
-        ]
+        keys::hints(KEYS)
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -220,6 +251,8 @@ impl Page for DocumentsPage {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -282,5 +315,12 @@ mod tests {
                 Some(Action::FlashNotYetBuilt(command))
             );
         }
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, DocumentsPage::new().hints(), |key| {
+            DocumentsPage::new().handle_key(key)
+        });
     }
 }

@@ -83,6 +83,12 @@ tui-command-toasts-on-description = show Toasts
 tui-command-toasts-off-description = send Toasts to the status line (Errors still show)
 tui-command-toasts-description = show this session's Toasts
 tui-command-settings-description = the Settings index, or one page by name
+tui-command-set-description = edit a Settings field in place, or save a value to it
+tui-command-sync-now-description = sync with the Sync Server now
+tui-command-sync-edit-description = edit the Sync Server's address and access token
+tui-command-backup-now-description = back up the Ledger now
+tui-command-backup-export-description = export the Ledger as CSV
+tui-command-backup-git-description = set up Git backup
 
 ## Payees.
 
@@ -137,6 +143,8 @@ tui-command-preview-list-selection-inactive = the list selection, with { $key } 
 tui-command-preview-tree-selection = the tree selection
 tui-command-preview-open-path = the Ledger file to open, or the configured file with none
 tui-command-preview-settings-page = a page, such as general, display or sync-server; tab completes it
+tui-command-preview-set-field = a field, such as fy-start, base, date-style or glyphs; tab completes it
+tui-command-preview-set-value = the value to save; without one the field opens in place
 tui-command-preview-new-path = where to create the Ledger file
 
 tui-command-preview-account-new = e.g. Everyday Spending, Mortgage Offset

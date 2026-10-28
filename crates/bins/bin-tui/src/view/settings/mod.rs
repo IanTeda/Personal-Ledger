@@ -40,6 +40,11 @@
 //! AI Connections and History are wireframes too, on [`list::Page`] ([`ai_connections`],
 //! [`history`]): AI Connections opens the same overlay frame for a model provider's `n` and `e`,
 //! and History's undo keys only flash "not yet built", as `u` and `ctrl r` bind nowhere else.
+//!
+//! Every page but Units reads its keys from one table ([`keys`]), which both its `handle_key`
+//! and its hint bar are built from, so the two can't drift; Units keeps its Presenter's hints.
+//! `:sync now|edit` and `:backup now|export|git` run a page's key by name ([`PageCommand`]), on
+//! the page opened first, through the same `run` the key takes.
 
 mod about;
 mod accounts;
@@ -54,6 +59,7 @@ mod history;
 mod index;
 mod institutions;
 mod inventory;
+mod keys;
 mod list;
 mod logs;
 mod payees;
@@ -75,7 +81,7 @@ use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
 use crate::colours::Colours;
@@ -86,6 +92,9 @@ use crate::view::{Action, View, ViewId};
 
 use field::{SettingField, SettingsValues};
 use picker::Picker;
+
+pub use backup::BackupCommand;
+pub use sync_server::SyncCommand;
 
 /// The sixteen Settings pages. [`SettingsPage::ALL`] is the one page order the index, the picker
 /// and `[` / `]` all read, so the three can't drift.
@@ -285,6 +294,24 @@ impl SettingsPage {
         Self::ALL
             .into_iter()
             .find(|page| page.command_name().eq_ignore_ascii_case(name))
+    }
+}
+
+/// A page's key run by name (#898): `:sync now|edit` and `:backup now|export|git`. Each reaches
+/// the same `run` as the page's key, on the page opened first, as `:settings <page>` opens it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageCommand {
+    Sync(SyncCommand),
+    Backup(BackupCommand),
+}
+
+impl PageCommand {
+    /// The page the command's key is on.
+    pub fn page(self) -> SettingsPage {
+        match self {
+            Self::Sync(_) => SettingsPage::SyncServer,
+            Self::Backup(_) => SettingsPage::Backup,
+        }
     }
 }
 
@@ -491,11 +518,9 @@ impl SettingsView {
 
     /// The page's own hints, before the paging hints every page ends with.
     fn page_hints(&self) -> Vec<(String, String)> {
-        let mut hints = match self.selected() {
-            SettingsPage::General | SettingsPage::Display => vec![
-                ("j/k".into(), msg::tui_settings_hint_field()),
-                ("enter".into(), msg::tui_settings_hint_edit()),
-            ],
+        match self.selected() {
+            SettingsPage::General => general::GeneralPage::hints(),
+            SettingsPage::Display => display::DisplayPage::hints(),
             SettingsPage::Units => self
                 .units_page
                 .as_ref()
@@ -510,11 +535,7 @@ impl SettingsView {
                 .ledger_page(page)
                 .map(list::Page::hints)
                 .unwrap_or_default(),
-        };
-        if self.selected() == SettingsPage::Display {
-            hints.push(("space".into(), msg::tui_settings_hint_toggle()));
         }
-        hints
     }
 
     /// Hands `key` to the open field: `enter` and `tab` save through [`Action::SetSetting`], which
@@ -559,6 +580,17 @@ impl SettingsView {
             _ => self.display.select(field),
         }
         self.editor = Some(FieldEditor::new(field, draft, was));
+    }
+
+    /// Closes whichever of a field open in place, the picker, the Clear logs confirm or an Edit
+    /// overlay is open (each takes every key, so at most one is); `false` when none was.
+    fn back_to_page(&mut self) -> bool {
+        self.editor.take().is_some()
+            || self.picker.take().is_some()
+            || self.logs.close_confirm()
+            || self.sync_server.close_overlay()
+            || self.backup.close_overlay()
+            || self.ai_connections.close_overlay()
     }
 
     /// Whether a page's Edit overlay is open: Sync Server's, Backup's or AI Connections'.
@@ -657,13 +689,7 @@ impl View for SettingsView {
     /// page steps back to the index with itself selected; on the index the Shell pops its view
     /// stack.
     fn back(&mut self) -> bool {
-        if self.editor.take().is_some()
-            || self.picker.take().is_some()
-            || self.logs.close_confirm()
-            || self.sync_server.close_overlay()
-            || self.backup.close_overlay()
-            || self.ai_connections.close_overlay()
-        {
+        if self.back_to_page() {
             return true;
         }
         match self.showing {
@@ -700,6 +726,16 @@ impl View for SettingsView {
         if let Some(page) = &self.units_page {
             page.render_dialog(frame, area, c);
         }
+    }
+
+    /// Opens the command's page, closing whatever was open over it, then runs its key.
+    fn run_page_command(&mut self, command: PageCommand) -> Option<Action> {
+        self.back_to_page();
+        self.open_page(command.page());
+        Some(match command {
+            PageCommand::Sync(command) => self.sync_server.run(command),
+            PageCommand::Backup(command) => self.backup.run(command),
+        })
     }
 
     fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
@@ -873,7 +909,30 @@ impl SettingsView {
                 }
             }
         }
+        if let Some(editor) = &self.editor {
+            let echo = Rect {
+                y: body.bottom().saturating_sub(1),
+                height: body.height.min(1),
+                ..body
+            };
+            frame.render_widget(Clear, echo);
+            frame.render_widget(Paragraph::new(set_echo(editor, c)), echo);
+        }
     }
+}
+
+/// The open field as the `:set` that makes the same edit (TUI-020), which is how the typed form
+/// is learnt: `:set fy-start january▌ — the same edit as a command`.
+fn set_echo(editor: &FieldEditor, c: &Colours) -> Line<'static> {
+    Line::from(vec![
+        Span::raw(format!(
+            ":set {} {}",
+            editor.field().command_name(),
+            editor.value()
+        )),
+        Span::styled("▌", c.accent()),
+        Span::styled(format!("  {}", msg::tui_settings_set_echo()), c.muted()),
+    ])
 }
 
 /// A heading row, `title` on the left and `note` dim on the right, over a strong rule: the index

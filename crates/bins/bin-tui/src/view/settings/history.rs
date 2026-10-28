@@ -11,7 +11,7 @@
 //! its own design first, so they do something here only to say so.
 
 use chrono::NaiveTime;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use lib_locale::format::format_time_minutes;
 use ratatui::{
     Frame,
@@ -21,6 +21,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
 use crate::colours::Colours;
 use crate::msg;
@@ -192,6 +193,49 @@ const APPLIED: [Change; 9] = [
     ),
 ];
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Undo,
+    Redo,
+    Row,
+    Restore,
+    Filter,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: &[Press::char('u')],
+        label: "u",
+        hint: msg::tui_settings_hint_undo,
+        command: Command::Undo,
+    },
+    Binding {
+        keys: &[Press::ctrl('r')],
+        label: "ctrl r",
+        hint: msg::tui_settings_hint_redo,
+        command: Command::Redo,
+    },
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Enter)],
+        label: "enter",
+        hint: msg::tui_settings_hint_restore,
+        command: Command::Restore,
+    },
+    Binding {
+        keys: &[Press::char('f')],
+        label: "f",
+        hint: msg::tui_settings_hint_area_filter,
+        command: Command::Filter,
+    },
+];
+
 pub(super) struct HistoryPage {
     area: Area,
     /// The selected row among those the filter shows: the undone ones, then the applied.
@@ -221,32 +265,28 @@ impl HistoryPage {
 impl list::Page for HistoryPage {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
         let (undone, applied) = self.visible();
-        if let Some(step) = list::motion(key) {
-            self.selected =
-                lib_list_cursor::step(self.selected, undone.len() + applied.len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('r') {
-            return Some(Action::FlashNotYetBuilt("history redo"));
-        }
-        if key.modifiers != KeyModifiers::NONE {
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('f') => {
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected =
+                    lib_list_cursor::step(self.selected, undone.len() + applied.len(), step);
+                Action::NoOp
+            }
+            Command::Filter => {
                 self.area = self.area.next();
                 self.selected = 0;
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('u') => Some(Action::FlashNotYetBuilt("history undo")),
-            KeyCode::Enter if self.selected < undone.len() => {
-                Some(Action::FlashNotYetBuilt("history redo to here"))
+            Command::Undo => Action::FlashNotYetBuilt("history undo"),
+            Command::Redo => Action::FlashNotYetBuilt("history redo"),
+            Command::Restore if self.selected < undone.len() => {
+                Action::FlashNotYetBuilt("history redo to here")
             }
-            KeyCode::Enter if self.selected < undone.len() + applied.len() => {
-                Some(Action::FlashNotYetBuilt("history restore to here"))
+            Command::Restore if self.selected < undone.len() + applied.len() => {
+                Action::FlashNotYetBuilt("history restore to here")
             }
-            _ => None,
-        }
+            Command::Restore => Action::NoOp,
+        })
     }
 
     fn scope_note(&self) -> String {
@@ -254,13 +294,7 @@ impl list::Page for HistoryPage {
     }
 
     fn hints(&self) -> Vec<(String, String)> {
-        vec![
-            ("u".into(), msg::tui_settings_hint_undo()),
-            ("ctrl r".into(), msg::tui_settings_hint_redo()),
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("enter".into(), msg::tui_settings_hint_restore()),
-            ("f".into(), msg::tui_settings_hint_area_filter()),
-        ]
+        keys::hints(KEYS)
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -383,6 +417,8 @@ fn render_toolbar(frame: &mut Frame<'_>, area: Rect, filter: Area, c: &Colours) 
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -517,5 +553,14 @@ mod tests {
                 "{other:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        use list::Page as _;
+
+        keys::tests::assert_the_hints_are_the_keys(KEYS, HistoryPage::new().hints(), |key| {
+            HistoryPage::new().handle_key(key)
+        });
     }
 }

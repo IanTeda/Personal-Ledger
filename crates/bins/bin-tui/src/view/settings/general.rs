@@ -24,7 +24,8 @@ use ratatui::{
 };
 
 use super::field::{FINANCIAL_YEAR_STARTS, SettingField, financial_year, month_label};
-use super::{Context, FieldRow, Open, render_form};
+use super::keys::{self, Binding, Press};
+use super::{Context, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::edit::{Draft, FieldEditor, Segment};
@@ -39,6 +40,28 @@ const FIELDS: [SettingField; 4] = [
     SettingField::BaseUnit,
 ];
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Open,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_field,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Enter)],
+        label: "enter",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Open,
+    },
+];
+
 /// General's state: the selected field.
 #[derive(Default)]
 pub(super) struct GeneralPage {
@@ -48,16 +71,17 @@ pub(super) struct GeneralPage {
 impl GeneralPage {
     /// `enter` opens the selected field in place.
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        let step = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => Step::Next,
-            KeyCode::Char('k') | KeyCode::Up => Step::Prev,
-            KeyCode::Home => Step::First,
-            KeyCode::Char('G') | KeyCode::End => Step::Last,
-            KeyCode::Enter => return Some(Action::SetSetting(FIELDS[self.selected], None)),
-            _ => return None,
-        };
-        self.step(step);
-        Some(Action::NoOp)
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                self.step(list::motion(key)?);
+                Action::NoOp
+            }
+            Command::Open => Action::SetSetting(FIELDS[self.selected], None),
+        })
+    }
+
+    pub(super) fn hints() -> Vec<(String, String)> {
+        keys::hints(KEYS)
     }
 
     pub(super) fn step(&mut self, step: Step) {
@@ -349,5 +373,12 @@ mod tests {
         ] {
             assert!(text.contains(needle), "{needle} missing:\n{text}");
         }
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, GeneralPage::hints(), |key| {
+            GeneralPage::default().handle_key(key)
+        });
     }
 }

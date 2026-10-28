@@ -279,6 +279,60 @@ The radios above the list choose how much to show: `error`, `warn`, `info` or `d
 
 With nothing captured yet the list says "No log entries yet." When entries exist but the level hides them all, it says how many are hidden and suggests a more detailed level.
 
+## The Settings screen in the TUI
+
+Settings in the TUI has the same two places as the Desktop: an index of pages and one page open. The sixteen pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, AI connections, Sync server, Backup, History, Logs and About. Each index entry has a glyph saying where its values live: `●` stored in the Ledger and synced, `○` on this device only.
+
+- Press `g` `s`, or run `settings`, to open the index with the page you last left selected. `j` and `k` move through it, and `Enter` or `l` opens the page.
+- Run `settings <page>` to open one page directly, for example `settings sync-server`. `Tab` completes the page's name.
+- On a page, `[` and `]` step to the page before or after it. `Esc` goes back to the index with that page still selected, and `Esc` again leaves Settings.
+- The hint bar at the bottom names every key the page takes, and only those.
+
+How much shows at once depends on how wide your terminal is:
+
+- **Under 160 columns**, the index and a page show one at a time. On a page, `p` opens a picker of every page over it.
+- **160 columns and wider**, the index stays docked on the left beside the open page. `Esc` on the page moves you back to the index, and `p` does nothing, because every page is already in view.
+
+Resizing keeps the page you are on, its selected row and where you were.
+
+### Editing a field
+
+General and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
+
+Some fields can't be changed here. The Locale is read from `personal-ledger.conf` when the app starts, and Terminal colours, Status glyphs and Hint bar are kept in that file, which Settings can't write yet. Trying to change one says why.
+
+### Commands
+
+Every Settings key can also be run by name from the command popup:
+
+| Command | What it does |
+| --- | --- |
+| `settings [page]` | Opens the index, or one page. |
+| `set <field>` | Opens the field in place, as `Enter` on its row does. |
+| `set <field> <value>` | Saves the value, as `Enter` in the open field does. |
+| `sync now` | Syncs with the Sync Server now (not built yet). |
+| `sync edit` | Opens the Sync Server's Edit dialog. |
+| `backup now` | Backs up the Ledger now (not built yet). |
+| `backup export` | Exports the Ledger as CSV (not built yet). |
+| `backup git` | Opens Set up Git backup. |
+
+`sync` and `backup` open their page first, so `Esc` afterwards takes you back to the index with that page selected.
+
+The fields `set` takes are `ledger-name`, `owner`, `fy-start`, `base`, `appearance`, `colour-theme`, `date-style`, `locale`, `terminal-colours`, `glyphs`, `toasts` and `hint-bar`, and `Tab` completes them. For example:
+
+- `set fy-start january`: the financial year starts in January (or `july` or `april`).
+- `set date-style iso`: dates are drawn as `2026-07-01` (or `default`, `short`, `medium` or `long`).
+- `set appearance dark` and `set colour-theme nord`: the same as choosing them from their lists.
+- `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.
+- `set base btc`: opens the confirmation that changing the base unit always asks for.
+
+A field name or value that `set` doesn't know is refused on the status line, which names what it takes.
+
+### Heads up
+
+- Ledger name, owner, financial year and date style hold only until you close the app, until the Ledger saves its Preferences.
+- Undo and redo for History have no commands yet. On the History page, `u` and `ctrl`+`r` say they are not built yet.
+
 ## Toasts
 
 A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings: go to Display, where the Toasts row sits above the Colour Theme settings. In the Desktop app it's an On / Off switch; in the TUI, move to the row and press `Enter` to flip it. From the command box you can also run `toasts on` or `toasts off`.
@@ -318,7 +372,7 @@ When your computer switches between light and dark, the Desktop follows it strai
 
 ### In the TUI
 
-Open Settings and press `Tab` to reach the Display group, where you'll find the colour theme and appearance rows. Press `Enter` on a row to open a list. Each Colour Theme in the list shows seven colour swatches. As you move with `j` and `k`, the screen previews that choice; press `Enter` to keep it or `Esc` to go back to what you had.
+Open Settings › Display (`settings display`), where you'll find the colour theme and appearance rows. Press `Enter` on a row to open a list. Each Colour Theme in the list shows seven colour swatches. As you move with `j` and `k`, the screen previews that choice; press `Enter` to keep it or `Esc` to go back to what you had.
 
 The TUI draws the Colour Theme's exact colours by default. If your terminal only supports 256 colours, it uses the closest ones it has. If it only supports 16 colours, or you set `terminal_colours = true` (see the Personal Ledger Section), it uses your terminal's own colours instead. You can still change the rows while `terminal_colours` is on, and a note under them explains why this TUI isn't using them.
 

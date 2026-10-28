@@ -11,7 +11,7 @@
 //! (`docs/localisation-design.md`).
 
 use chrono::{DateTime, Local};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use lib_toast::ToastKind;
 use lib_tracing::{LogBuffer, LogEntry};
 use ratatui::{
@@ -25,6 +25,7 @@ use ratatui::{
 };
 use tracing::Level;
 
+use super::keys::{self, Binding, Press};
 use super::list;
 use crate::colours::Colours;
 use crate::msg;
@@ -83,6 +84,57 @@ impl Filter {
 /// The confirm's width, and its rows inside the border.
 const CONFIRM_WIDTH: u16 = 64;
 const CONFIRM_ROWS: u16 = 6;
+
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Level,
+    Scroll,
+    Clear,
+    Copy,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: &[Press::key(KeyCode::Left), Press::key(KeyCode::Right)],
+        label: "←→",
+        hint: msg::tui_settings_hint_level,
+        command: Command::Level,
+    },
+    Binding {
+        keys: &[
+            Press::char('j'),
+            Press::char('k'),
+            Press::key(KeyCode::Down),
+            Press::key(KeyCode::Up),
+        ],
+        label: "j/k",
+        hint: msg::tui_settings_hint_scroll,
+        command: Command::Scroll,
+    },
+    Binding {
+        keys: &[
+            Press::key(KeyCode::Home),
+            Press::char('G'),
+            Press::key(KeyCode::End),
+        ],
+        label: "Home/G",
+        hint: msg::tui_settings_hint_newest_oldest,
+        command: Command::Scroll,
+    },
+    Binding {
+        keys: &[Press::char('C')],
+        label: "C",
+        hint: msg::tui_settings_hint_clear,
+        command: Command::Clear,
+    },
+    Binding {
+        keys: &[Press::char('y')],
+        label: "y",
+        hint: msg::tui_settings_hint_copy_line,
+        command: Command::Copy,
+    },
+];
 
 pub(super) struct LogsPage {
     buffer: LogBuffer,
@@ -145,40 +197,31 @@ impl LogsPage {
             // The confirm takes every key, as a popup does.
             return Some(Action::NoOp);
         }
-        if let Some(step) = list::motion(key) {
-            self.selected = lib_list_cursor::step(self.selected, self.visible().len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers != KeyModifiers::NONE && key.modifiers != KeyModifiers::SHIFT {
-            return None;
-        }
-        match key.code {
-            KeyCode::Left | KeyCode::Right => {
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Scroll => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, self.visible().len(), step);
+                Action::NoOp
+            }
+            Command::Level => {
                 self.filter = self.filter.step(key.code == KeyCode::Right);
                 self.selected = 0;
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('C') => {
+            Command::Clear => {
                 self.confirm = true;
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('y') => {
-                let visible = self.visible();
-                let entry = visible.get(self.selected)?;
-                Some(Action::CopyText(line(entry)))
-            }
-            _ => None,
-        }
+            // With no line showing there is nothing to copy.
+            Command::Copy => self
+                .visible()
+                .get(self.selected)
+                .map_or(Action::NoOp, |entry| Action::CopyText(line(entry))),
+        })
     }
 
     pub(super) fn hints() -> Vec<(String, String)> {
-        vec![
-            ("←→".into(), msg::tui_settings_hint_level()),
-            ("j/k".into(), msg::tui_settings_hint_scroll()),
-            ("Home/G".into(), msg::tui_settings_hint_newest_oldest()),
-            ("C".into(), msg::tui_settings_hint_clear()),
-            ("y".into(), msg::tui_settings_hint_copy_line()),
-        ]
+        keys::hints(KEYS)
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -381,6 +424,8 @@ mod tests {
     use std::borrow::Cow;
     use std::time::SystemTime;
 
+    use crossterm::event::KeyModifiers;
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -518,5 +563,12 @@ mod tests {
         assert_eq!(subsystem("bin_tui::shell::draw"), "shell");
         assert_eq!(subsystem("lib_locale"), "locale");
         assert_eq!(subsystem("sqlx::query"), "sqlx");
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, LogsPage::hints(), |key| {
+            LogsPage::new(LogBuffer::new(lib_tracing::LOG_CAPACITY)).handle_key(key)
+        });
     }
 }

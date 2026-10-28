@@ -9,9 +9,10 @@
 //! collapsing and reordering are real but last only while the page does. The counts are derived
 //! from the tree on each draw.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Page, Row, Table, Tone};
 use crate::colours::Colours;
 use crate::msg;
@@ -58,6 +59,68 @@ enum Line {
     Location(usize),
     Area(usize, usize),
 }
+
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Fold,
+    Move,
+    New,
+    NewArea,
+    Edit,
+    Remove,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[
+            Press::key(KeyCode::Right),
+            Press::char('l'),
+            Press::key(KeyCode::Left),
+            Press::char('h'),
+        ],
+        label: "→/←",
+        hint: msg::tui_settings_hint_expand_collapse,
+        command: Command::Fold,
+    },
+    Binding {
+        keys: &[Press::char('J'), Press::char('K')],
+        label: "J/K",
+        hint: msg::tui_settings_hint_move_area,
+        command: Command::Move,
+    },
+    Binding {
+        keys: &[Press::char('n')],
+        label: "n",
+        hint: msg::tui_settings_hint_add_location,
+        command: Command::New,
+    },
+    Binding {
+        keys: &[Press::char('a')],
+        label: "a",
+        hint: msg::tui_settings_hint_add_area,
+        command: Command::NewArea,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Edit,
+    },
+    Binding {
+        keys: &[Press::char('x')],
+        label: "x",
+        hint: msg::tui_settings_hint_remove,
+        command: Command::Remove,
+    },
+];
 
 pub(super) struct InventoryPage {
     locations: Vec<Location>,
@@ -125,36 +188,25 @@ impl InventoryPage {
 
 impl Page for InventoryPage {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        if let Some(step) = list::motion(key) {
-            self.selected = lib_list_cursor::step(self.selected, self.lines().len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers != KeyModifiers::NONE && key.modifiers != KeyModifiers::SHIFT {
-            return None;
-        }
-        match key.code {
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.set_open(true);
-                Some(Action::NoOp)
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, self.lines().len(), step);
+                Action::NoOp
             }
-            KeyCode::Left | KeyCode::Char('h') => {
-                self.set_open(false);
-                Some(Action::NoOp)
+            Command::Fold => {
+                self.set_open(matches!(key.code, KeyCode::Right | KeyCode::Char('l')));
+                Action::NoOp
             }
-            KeyCode::Char('J') => {
-                self.shift(false);
-                Some(Action::NoOp)
+            Command::Move => {
+                self.shift(key.code == KeyCode::Char('K'));
+                Action::NoOp
             }
-            KeyCode::Char('K') => {
-                self.shift(true);
-                Some(Action::NoOp)
-            }
-            KeyCode::Char('n') => Some(Action::FlashNotYetBuilt("location new")),
-            KeyCode::Char('a') => Some(Action::FlashNotYetBuilt("location area new")),
-            KeyCode::Char('e') => Some(Action::FlashNotYetBuilt("location edit")),
-            KeyCode::Char('x') => Some(Action::FlashNotYetBuilt("location remove")),
-            _ => None,
-        }
+            Command::New => Action::FlashNotYetBuilt("location new"),
+            Command::NewArea => Action::FlashNotYetBuilt("location area new"),
+            Command::Edit => Action::FlashNotYetBuilt("location edit"),
+            Command::Remove => Action::FlashNotYetBuilt("location remove"),
+        })
     }
 
     fn scope_note(&self) -> String {
@@ -166,15 +218,7 @@ impl Page for InventoryPage {
     }
 
     fn hints(&self) -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("→/←".into(), msg::tui_settings_hint_expand_collapse()),
-            ("J/K".into(), msg::tui_settings_hint_move_area()),
-            ("n".into(), msg::tui_settings_hint_add_location()),
-            ("a".into(), msg::tui_settings_hint_add_area()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-            ("x".into(), msg::tui_settings_hint_remove()),
-        ]
+        keys::hints(KEYS)
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -244,6 +288,8 @@ impl Page for InventoryPage {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -335,5 +381,12 @@ mod tests {
                 Some(Action::FlashNotYetBuilt(command))
             );
         }
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, InventoryPage::new().hints(), |key| {
+            InventoryPage::new().handle_key(key)
+        });
     }
 }

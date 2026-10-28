@@ -6,13 +6,14 @@
 //! the overlay's Save flash the Shell's "not yet built", and the overlay tests on a stub.
 
 use chrono::NaiveDate;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     text::{Line, Span},
 };
 
+use super::keys::{self, Binding, Press};
 use super::{moment, render_fact, render_keys};
 use crate::colours::Colours;
 use crate::msg;
@@ -25,6 +26,29 @@ const SERVER_URL: &str = "https://sync.ledger.localhost";
 
 /// wireframe: when it last synced.
 const LAST_SYNC: Option<NaiveDate> = NaiveDate::from_ymd_opt(2026, 9, 14);
+
+/// What Sync Server's keys do, which `:sync now|edit` names (#898).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncCommand {
+    Now,
+    Edit,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<SyncCommand>] = &[
+    Binding {
+        keys: &[Press::char('s')],
+        label: "s",
+        hint: msg::tui_settings_hint_sync_now,
+        command: SyncCommand::Now,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: SyncCommand::Edit,
+    },
+];
 
 #[derive(Default)]
 pub(super) struct SyncServerPage {
@@ -56,24 +80,22 @@ impl SyncServerPage {
                 }
             });
         }
-        if key.modifiers != KeyModifiers::NONE {
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('s') => Some(Action::FlashNotYetBuilt("sync")),
-            KeyCode::Char('e') => {
+        Some(self.run(keys::lookup(KEYS, key)?))
+    }
+
+    /// What a key, or `:sync now|edit`, does: the one path both take.
+    pub(super) fn run(&mut self, command: SyncCommand) -> Action {
+        match command {
+            SyncCommand::Now => Action::FlashNotYetBuilt("sync"),
+            SyncCommand::Edit => {
                 self.overlay = Some(SyncServerPopup::new(SERVER_URL));
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            _ => None,
         }
     }
 
     pub(super) fn hints() -> Vec<(String, String)> {
-        vec![
-            ("s".into(), msg::tui_settings_hint_sync_now()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-        ]
+        keys::hints(KEYS)
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -124,6 +146,8 @@ impl SyncServerPage {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -240,5 +264,12 @@ mod tests {
             view.handle_key(key(KeyCode::Char('s'))),
             Some(Action::FlashNotYetBuilt("sync"))
         );
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, SyncServerPage::hints(), |key| {
+            SyncServerPage::default().handle_key(key)
+        });
     }
 }

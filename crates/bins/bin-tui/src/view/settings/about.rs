@@ -5,7 +5,7 @@
 //! copyright is pinned to the bottom.
 
 use chrono::NaiveDate;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use lib_locale::format::upper;
 use ratatui::{
     Frame,
@@ -15,6 +15,7 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 
+use super::keys::{self, Binding, Press};
 use super::list;
 use crate::colours::Colours;
 use crate::msg;
@@ -59,6 +60,35 @@ const LINKS: [Link; 4] = [
 /// The fact labels' column.
 const LABEL_WIDTH: u16 = 18;
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Open,
+    Copy,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_link,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Enter)],
+        label: "enter",
+        hint: msg::tui_settings_hint_open_browser,
+        command: Command::Open,
+    },
+    Binding {
+        keys: &[Press::char('y')],
+        label: "y",
+        hint: msg::tui_settings_hint_copy_link,
+        command: Command::Copy,
+    },
+];
+
 #[derive(Default)]
 pub(super) struct AboutPage {
     /// The selected link in [`LINKS`].
@@ -67,27 +97,20 @@ pub(super) struct AboutPage {
 
 impl AboutPage {
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        if let Some(step) = list::motion(key) {
-            self.selected = lib_list_cursor::step(self.selected, LINKS.len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers != KeyModifiers::NONE {
-            return None;
-        }
         let url = LINKS[self.selected].url;
-        match key.code {
-            KeyCode::Enter => Some(Action::OpenLink(url)),
-            KeyCode::Char('y') => Some(Action::CopyText(url.to_string())),
-            _ => None,
-        }
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, LINKS.len(), step);
+                Action::NoOp
+            }
+            Command::Open => Action::OpenLink(url),
+            Command::Copy => Action::CopyText(url.to_string()),
+        })
     }
 
     pub(super) fn hints() -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_link()),
-            ("enter".into(), msg::tui_settings_hint_open_browser()),
-            ("y".into(), msg::tui_settings_hint_copy_link()),
-        ]
+        keys::hints(KEYS)
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -170,6 +193,8 @@ fn fact(frame: &mut Frame<'_>, area: Rect, label: &str, value: Span<'_>, c: &Col
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -235,5 +260,12 @@ mod tests {
                 "https://github.com/IanTeda/Personal-Ledger/blob/main/LICENSE"
             ))
         );
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, AboutPage::hints(), |key| {
+            AboutPage::default().handle_key(key)
+        });
     }
 }

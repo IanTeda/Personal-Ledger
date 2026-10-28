@@ -10,7 +10,7 @@
 //! stub.
 
 use chrono::{NaiveDate, NaiveTime};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 use lib_locale::format::{format_time_minutes, upper};
 use ratatui::{
     Frame,
@@ -20,6 +20,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use super::keys::{self, Binding, Press};
 use super::{moment, render_fact, render_keys};
 use crate::colours::Colours;
 use crate::msg;
@@ -42,6 +43,44 @@ const DOCUMENTS: i64 = 412;
 const CHECKED: Option<NaiveTime> = NaiveTime::from_hms_opt(14, 0, 0);
 /// The commit-message prefix is the push's time in a fixed form, not the Locale's (ADR-0033).
 const LAST_PUSH: &str = "2026-09-14 14:00 ·";
+
+/// What Backup's keys do, which `:backup now|export|git` names (#898). `Git` opens Set up Git
+/// backup; `Push` has a key but no command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupCommand {
+    Now,
+    Export,
+    Git,
+    Push,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<BackupCommand>] = &[
+    Binding {
+        keys: &[Press::char('b')],
+        label: "b",
+        hint: msg::tui_settings_hint_back_up,
+        command: BackupCommand::Now,
+    },
+    Binding {
+        keys: &[Press::char('X')],
+        label: "X",
+        hint: msg::tui_settings_hint_export_csv,
+        command: BackupCommand::Export,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit_git_backup,
+        command: BackupCommand::Git,
+    },
+    Binding {
+        keys: &[Press::char('P')],
+        label: "P",
+        hint: msg::tui_settings_hint_push,
+        command: BackupCommand::Push,
+    },
+];
 
 #[derive(Default)]
 pub(super) struct BackupPage {
@@ -73,28 +112,24 @@ impl BackupPage {
                 }
             });
         }
-        if !matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT) {
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('b') => Some(Action::FlashNotYetBuilt("backup")),
-            KeyCode::Char('X') => Some(Action::FlashNotYetBuilt("export csv")),
-            KeyCode::Char('P') => Some(Action::FlashNotYetBuilt("git-backup push")),
-            KeyCode::Char('e') => {
+        Some(self.run(keys::lookup(KEYS, key)?))
+    }
+
+    /// What a key, or `:backup now|export|git`, does: the one path both take.
+    pub(super) fn run(&mut self, command: BackupCommand) -> Action {
+        match command {
+            BackupCommand::Now => Action::FlashNotYetBuilt("backup"),
+            BackupCommand::Export => Action::FlashNotYetBuilt("export csv"),
+            BackupCommand::Push => Action::FlashNotYetBuilt("git-backup push"),
+            BackupCommand::Git => {
                 self.overlay = Some(GitBackupPopup::new(REMOTE, BRANCH, SIZE));
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            _ => None,
         }
     }
 
     pub(super) fn hints() -> Vec<(String, String)> {
-        vec![
-            ("b".into(), msg::tui_settings_hint_back_up()),
-            ("X".into(), msg::tui_settings_hint_export_csv()),
-            ("e".into(), msg::tui_settings_hint_edit_git_backup()),
-            ("P".into(), msg::tui_settings_hint_push()),
-        ]
+        keys::hints(KEYS)
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -211,6 +246,8 @@ fn render_block_heading(
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -300,5 +337,12 @@ mod tests {
         view.handle_key(key(KeyCode::Esc));
         assert!(!view.popup_open());
         assert!(view.back(), "the page steps back to the index");
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, BackupPage::hints(), |key| {
+            BackupPage::default().handle_key(key)
+        });
     }
 }

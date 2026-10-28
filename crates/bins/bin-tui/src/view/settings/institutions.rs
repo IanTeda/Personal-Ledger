@@ -7,12 +7,13 @@
 //! `lib_core::AccountType`, the one enum the Accounts page groups by, so the two pages cannot
 //! disagree. The counts are derived from the rows on each draw.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 use lib_core::AccountType;
 use lib_locale::Label as _;
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::accounts::GROUPS;
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Detail, Page, Row, Table, Tone};
 use crate::colours::Colours;
 use crate::msg;
@@ -69,6 +70,42 @@ const FIXTURE: [FixtureInstitution; 6] = [
     },
 ];
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    New,
+    Edit,
+    Delete,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::char('n')],
+        label: "n",
+        hint: msg::tui_settings_hint_add,
+        command: Command::New,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Edit,
+    },
+    Binding {
+        keys: &[Press::char('d')],
+        label: "d",
+        hint: msg::tui_settings_hint_delete,
+        command: Command::Delete,
+    },
+];
+
 pub(super) struct InstitutionsPage {
     selected: usize,
 }
@@ -90,19 +127,16 @@ fn joined(names: impl IntoIterator<Item = String>) -> String {
 
 impl Page for InstitutionsPage {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
-        if let Some(step) = list::motion(key) {
-            self.selected = lib_list_cursor::step(self.selected, FIXTURE.len(), step);
-            return Some(Action::NoOp);
-        }
-        if key.modifiers != KeyModifiers::NONE {
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('n') => Some(Action::FlashNotYetBuilt("institution new")),
-            KeyCode::Char('e') => Some(Action::FlashNotYetBuilt("institution edit")),
-            KeyCode::Char('d') => Some(Action::FlashNotYetBuilt("institution delete")),
-            _ => None,
-        }
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                self.selected = lib_list_cursor::step(self.selected, FIXTURE.len(), step);
+                Action::NoOp
+            }
+            Command::New => Action::FlashNotYetBuilt("institution new"),
+            Command::Edit => Action::FlashNotYetBuilt("institution edit"),
+            Command::Delete => Action::FlashNotYetBuilt("institution delete"),
+        })
     }
 
     fn scope_note(&self) -> String {
@@ -110,12 +144,7 @@ impl Page for InstitutionsPage {
     }
 
     fn hints(&self) -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("n".into(), msg::tui_settings_hint_add()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-            ("d".into(), msg::tui_settings_hint_delete()),
-        ]
+        keys::hints(KEYS)
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -195,6 +224,8 @@ impl Page for InstitutionsPage {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -257,5 +288,12 @@ mod tests {
                 Some(Action::FlashNotYetBuilt(command))
             );
         }
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        keys::tests::assert_the_hints_are_the_keys(KEYS, InstitutionsPage::new().hints(), |key| {
+            InstitutionsPage::new().handle_key(key)
+        });
     }
 }

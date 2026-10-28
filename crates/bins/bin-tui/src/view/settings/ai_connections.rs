@@ -13,7 +13,7 @@
 
 use chrono::NaiveDate;
 use chrono::NaiveTime;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use lib_locale::format::format_time_minutes;
 use ratatui::{
     Frame,
@@ -22,6 +22,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
 use crate::colours::Colours;
 use crate::msg;
@@ -130,6 +131,63 @@ enum Block {
     Assistants,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Row,
+    Block,
+    Edit,
+    Test,
+    New,
+    Default,
+    Remove,
+}
+
+/// The page's keys and its hint bar, one table (#898).
+const KEYS: &[Binding<Command>] = &[
+    Binding {
+        keys: keys::ROW_KEYS,
+        label: "j/k",
+        hint: msg::tui_settings_hint_row,
+        command: Command::Row,
+    },
+    Binding {
+        keys: &[Press::key(KeyCode::Tab)],
+        label: "tab",
+        hint: msg::tui_settings_hint_ai_block,
+        command: Command::Block,
+    },
+    Binding {
+        keys: &[Press::char('e')],
+        label: "e",
+        hint: msg::tui_settings_hint_edit,
+        command: Command::Edit,
+    },
+    Binding {
+        keys: &[Press::char('t')],
+        label: "t",
+        hint: msg::tui_settings_hint_test,
+        command: Command::Test,
+    },
+    Binding {
+        keys: &[Press::char('n')],
+        label: "n",
+        hint: msg::tui_settings_hint_add,
+        command: Command::New,
+    },
+    Binding {
+        keys: &[Press::char('D')],
+        label: "D",
+        hint: msg::tui_settings_hint_make_default,
+        command: Command::Default,
+    },
+    Binding {
+        keys: &[Press::char('x')],
+        label: "x",
+        hint: msg::tui_settings_hint_remove_revoke,
+        command: Command::Remove,
+    },
+];
+
 pub(super) struct AiConnectionsPage {
     block: Block,
     provider: usize,
@@ -184,48 +242,48 @@ impl list::Page for AiConnectionsPage {
         if self.overlay.is_some() {
             return self.handle_overlay_key(key);
         }
-        if let Some(step) = list::motion(key) {
-            match self.block {
-                Block::Providers => {
-                    self.provider = lib_list_cursor::step(self.provider, PROVIDERS.len(), step);
-                }
-                Block::Assistants => {
-                    self.assistant = lib_list_cursor::step(self.assistant, ASSISTANTS.len(), step);
-                }
-            }
-            return Some(Action::NoOp);
-        }
-        if !matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT) {
-            return None;
-        }
         let providers = self.block == Block::Providers;
-        match key.code {
-            KeyCode::Tab => {
+        Some(match keys::lookup(KEYS, key)? {
+            Command::Row => {
+                let step = list::motion(key)?;
+                match self.block {
+                    Block::Providers => {
+                        self.provider = lib_list_cursor::step(self.provider, PROVIDERS.len(), step);
+                    }
+                    Block::Assistants => {
+                        self.assistant =
+                            lib_list_cursor::step(self.assistant, ASSISTANTS.len(), step);
+                    }
+                }
+                Action::NoOp
+            }
+            Command::Block => {
                 self.block = if providers {
                     Block::Assistants
                 } else {
                     Block::Providers
                 };
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('n') if providers => {
+            Command::New if providers => {
                 self.overlay = Some(ProviderPopup::new(PROVIDERS[0].name, "", true));
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('e') if providers => {
+            Command::Edit if providers => {
                 let provider = &PROVIDERS[self.provider];
                 self.overlay = Some(ProviderPopup::new(provider.name, provider.model, false));
-                Some(Action::NoOp)
+                Action::NoOp
             }
-            KeyCode::Char('n') => Some(Action::FlashNotYetBuilt("assistant add")),
-            KeyCode::Char('e') => Some(Action::FlashNotYetBuilt("assistant edit")),
-            KeyCode::Char('t') if providers => Some(Action::FlashNotYetBuilt("provider test")),
-            KeyCode::Char('t') => Some(Action::FlashNotYetBuilt("assistant test")),
-            KeyCode::Char('D') if providers => Some(Action::FlashNotYetBuilt("provider default")),
-            KeyCode::Char('x') if providers => Some(Action::FlashNotYetBuilt("provider remove")),
-            KeyCode::Char('x') => Some(Action::FlashNotYetBuilt("assistant revoke")),
-            _ => None,
-        }
+            Command::New => Action::FlashNotYetBuilt("assistant add"),
+            Command::Edit => Action::FlashNotYetBuilt("assistant edit"),
+            Command::Test if providers => Action::FlashNotYetBuilt("provider test"),
+            Command::Test => Action::FlashNotYetBuilt("assistant test"),
+            Command::Default if providers => Action::FlashNotYetBuilt("provider default"),
+            // An assistant has no default to make.
+            Command::Default => Action::NoOp,
+            Command::Remove if providers => Action::FlashNotYetBuilt("provider remove"),
+            Command::Remove => Action::FlashNotYetBuilt("assistant revoke"),
+        })
     }
 
     fn scope_note(&self) -> String {
@@ -236,15 +294,7 @@ impl list::Page for AiConnectionsPage {
     }
 
     fn hints(&self) -> Vec<(String, String)> {
-        vec![
-            ("j/k".into(), msg::tui_settings_hint_row()),
-            ("tab".into(), msg::tui_settings_hint_ai_block()),
-            ("e".into(), msg::tui_settings_hint_edit()),
-            ("t".into(), msg::tui_settings_hint_test()),
-            ("n".into(), msg::tui_settings_hint_add()),
-            ("D".into(), msg::tui_settings_hint_make_default()),
-            ("x".into(), msg::tui_settings_hint_remove_revoke()),
-        ]
+        keys::hints(KEYS)
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
@@ -394,6 +444,8 @@ impl list::Page for AiConnectionsPage {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::view::View;
     use crate::view::settings::tests::render_at;
@@ -520,5 +572,14 @@ mod tests {
         view.handle_key(key(KeyCode::Esc));
         assert!(!view.popup_open());
         assert!(view.back(), "the page steps back to the index");
+    }
+
+    #[test]
+    fn the_hint_bar_is_the_keys_the_page_takes() {
+        use list::Page as _;
+
+        keys::tests::assert_the_hints_are_the_keys(KEYS, AiConnectionsPage::new().hints(), |key| {
+            AiConnectionsPage::new().handle_key(key)
+        });
     }
 }

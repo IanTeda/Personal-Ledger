@@ -142,6 +142,14 @@ tui-settings-display-note-scope = ● rows sync with the ledger. The locale chan
 tui-settings-read-only-locale = { $field } is read-only: change it in personal-ledger.conf, then restart
 tui-settings-read-only-config = { $field } is in personal-ledger.conf, which Settings can't write yet
 
+## `:set` refusals and the line echoing an open field as the command. `$set` is `:set` and
+## `$fields` the field names it takes: command syntax, so never translated.
+
+tui-settings-set-needs-field = { $set } needs a field: { $fields }
+tui-settings-set-unknown-field = { $field } isn't a Settings field: { $set } takes { $fields }
+tui-settings-set-bad-value = { $value } isn't a value { $field } takes
+tui-settings-set-echo = — the same edit as a command
+
 ## A field open in place: its sub-rows' labels and values.
 
 tui-settings-edit-this-year = this year runs

@@ -159,6 +159,10 @@ pub enum Action {
     /// `enter` on the field's row, then `enter` in the open field, and `:set <field> [value]`
     /// (#898). One `Action` for both, so a key and the command can't drift.
     SetSetting(settings::field::SettingField, Option<String>),
+    /// `:set` naming no field, or one Settings doesn't have: refused on the status line.
+    UnknownSetting(Option<String>),
+    /// `:sync now|edit` and `:backup now|export|git`: opens the page and runs its key (#898).
+    RunSettingsCommand(settings::PageCommand),
     /// A key typed into the base unit guard's confirmation.
     BaseUnitGuardInput(char),
     /// `Backspace` in the base unit guard's confirmation.
@@ -707,6 +711,12 @@ pub trait View {
     /// The view's own keys for the hint bar, as `(key, label)`, in place of the Shell's
     /// defaults; `None` keeps those. `back` is the Shell's configured back key.
     fn hints(&self, _back: &str) -> Option<Vec<(String, String)>> {
+        None
+    }
+
+    /// Runs a Settings page's key by name (`:sync`, `:backup`), returning what it does; `None`
+    /// for every view but Settings, which `Shell` opens on the page first.
+    fn run_page_command(&mut self, _command: settings::PageCommand) -> Option<Action> {
         None
     }
 

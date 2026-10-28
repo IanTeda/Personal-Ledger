@@ -350,4 +350,40 @@ mod tests {
             assert!(text.contains("Settings › Units"), "{text}");
         }
     }
+
+    /// Units keeps its Presenter's hints rather than a key table (#898): they are built from the
+    /// `lib-viper` Keymap the Presenter dispatches on. This holds the Settings side to it: every
+    /// key the hint bar names, on either table, is one the page takes.
+    #[test]
+    fn every_key_in_the_hint_bar_is_handled() {
+        crate::locale::init_for_tests();
+        for on_sources in [false, true] {
+            let fresh = || {
+                let mut view = units_page(96);
+                if on_sources {
+                    view.handle_key(key(KeyCode::Tab));
+                }
+                view
+            };
+            let hints = fresh().hints("esc").unwrap_or_default();
+            let page_hints = hints.iter().take_while(|(chord, _)| chord != "[/]");
+            assert!(page_hints.clone().count() >= 5, "{hints:?}");
+            for (chord, hint) in page_hints {
+                for part in chord.split('/') {
+                    let code = match part {
+                        "tab" => KeyCode::Tab,
+                        "enter" => KeyCode::Enter,
+                        single if single.chars().count() == 1 => {
+                            KeyCode::Char(single.chars().next().unwrap_or_default())
+                        }
+                        other => panic!("`{other}` ({hint}) isn't a key this test reads"),
+                    };
+                    assert!(
+                        fresh().handle_key(key(code)).is_some(),
+                        "`{part}` ({hint}) is in the hint bar but isn't handled"
+                    );
+                }
+            }
+        }
+    }
 }
