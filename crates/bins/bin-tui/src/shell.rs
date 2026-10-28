@@ -4,7 +4,7 @@
 //! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-shell/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -46,8 +46,7 @@ use crate::{
         settings::{
             SettingsPopup,
             colour::{ColourPopup, ColourPreference},
-            edit::EditSettingPopup,
-            guard::BaseUnitGuardPopup,
+            guard::{BaseUnitGuardPopup, Confirmed},
         },
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         toast_history::ToastHistoryPopup,
@@ -64,7 +63,10 @@ use crate::{
         help::HelpView,
         payees::PayeesView,
         reports::ReportsView,
-        settings::{SettingsPage, SettingsView},
+        settings::{
+            SettingsPage, SettingsView,
+            field::{SettingField, SettingsValues},
+        },
         tags::TagsView,
         transactions::TransactionsView,
     },
@@ -118,6 +120,9 @@ pub struct Shell {
     /// The Settings page selected on the index, or open, shared with every `SettingsView` this
     /// session opens, so `g s` lands on the index with the page last left selected.
     settings_page: Rc<Cell<SettingsPage>>,
+    /// The form values that hold for the session only, shared with every `SettingsView` as
+    /// `settings_page` is.
+    settings_values: Rc<RefCell<SettingsValues>>,
     /// The Account-domain popup (`crate::popup::account`) — `Some` while one is open. Owned
     /// here, mirroring `category_popup`: it acts on `AccountsView`'s own fixture, reached via
     /// `View::account_store`, not on anything `Shell` owns directly. Mutually exclusive with
@@ -221,6 +226,7 @@ impl Shell {
             category_popup: None,
             settings_popup: None,
             settings_page: Rc::default(),
+            settings_values: Rc::default(),
             account_popup: None,
             tag_popup: None,
             payee_popup: None,
@@ -1355,6 +1361,7 @@ impl Shell {
             Action::SetToasts(on) => {
                 self.command_popup = None;
                 self.toasts.set_display(Display { toasts_on: on });
+                self.view.set_toasts_on(on);
             }
             Action::OpenToastHistory => {
                 self.command_popup = None;
@@ -1418,14 +1425,18 @@ impl Shell {
                     self.view.update(&action);
                 }
             }
-            Action::OpenEditSettingPopup => {
-                self.settings_popup = Some(SettingsPopup::Edit(EditSettingPopup::new()));
-                self.command_popup = None;
+            Action::SetSetting(field, value) => self.set_setting(field, value),
+            Action::BaseUnitGuardInput(ch) => {
+                if let Some(SettingsPopup::BaseUnitGuard(guard)) = &mut self.settings_popup {
+                    guard.push(ch);
+                }
             }
-            Action::OpenBaseUnitGuardPopup => {
-                self.settings_popup = Some(SettingsPopup::BaseUnitGuard(BaseUnitGuardPopup::new()));
-                self.command_popup = None;
+            Action::BaseUnitGuardBackspace => {
+                if let Some(SettingsPopup::BaseUnitGuard(guard)) = &mut self.settings_popup {
+                    guard.backspace();
+                }
             }
+            Action::ConfirmBaseUnit => self.confirm_base_unit(),
             Action::CloseSettingsPopup => self.settings_popup = None,
             Action::OpenColourThemePopup => {
                 self.settings_popup =
@@ -1476,7 +1487,13 @@ impl Shell {
             Action::OpenPayees => self.open(PayeesView::new()),
             Action::OpenReports => self.open(ReportsView::new()),
             Action::OpenSettings | Action::OpenSettingsPage(_) => {
-                self.open(SettingsView::remembering(Rc::clone(&self.settings_page)));
+                self.open(SettingsView::remembering(
+                    Rc::clone(&self.settings_page),
+                    Rc::clone(&self.settings_values),
+                    self.ledger
+                        .as_ref()
+                        .map(|ledger| ledger.units.ports.clone()),
+                ));
                 self.view.update(&action);
             }
             Action::OpenTransactions => self.open(TransactionsView::new()),
@@ -1975,6 +1992,61 @@ impl Shell {
         self.payee_popup = None;
     }
 
+    /// Opens a Settings field in place, or saves a value to it ([`Action::SetSetting`]). A
+    /// read-only field is refused with its reason on the status line. What `Shell` owns it keeps:
+    /// the Toasts Preference, the colour Preferences' list popups and the base unit guard, which
+    /// a new base opens rather than saving. Everything else, opening a field and saving the
+    /// session's values, is the Settings View's, opened on the field's page first.
+    fn set_setting(&mut self, field: SettingField, value: Option<String>) {
+        self.command_popup = None;
+        if let Some(reason) = field.refusal() {
+            self.status_message = Some(reason);
+            return;
+        }
+        if self.view.id() != ViewId::Settings {
+            self.apply(Action::OpenSettingsPage(field.page()));
+        }
+        let action = Action::SetSetting(field, value.clone());
+        match (field, value.as_deref()) {
+            (SettingField::ColourTheme, None) => self.apply(Action::OpenColourThemePopup),
+            (SettingField::Appearance, None) => self.apply(Action::OpenColourAppearancePopup),
+            (SettingField::Toasts, Some(on)) => {
+                self.view.update(&action);
+                match on {
+                    "on" => self.apply(Action::SetToasts(true)),
+                    "off" => self.apply(Action::SetToasts(false)),
+                    _ => {}
+                }
+            }
+            (SettingField::BaseUnit, Some(code)) => {
+                self.view.update(&action);
+                let guard = self
+                    .ledger
+                    .as_ref()
+                    .and_then(|ledger| BaseUnitGuardPopup::open(&ledger.units.ports, code));
+                if let Some(guard) = guard {
+                    self.settings_popup = Some(SettingsPopup::BaseUnitGuard(guard));
+                }
+            }
+            _ => self.view.update(&action),
+        }
+    }
+
+    /// `enter` in the base unit guard: once the typed code matches, sets the base and closes it.
+    /// A refusal stays in the guard, which shows it.
+    fn confirm_base_unit(&mut self) {
+        let Some(SettingsPopup::BaseUnitGuard(guard)) = &mut self.settings_popup else {
+            return;
+        };
+        if let Confirmed::Set(code) = guard.confirm() {
+            self.settings_popup = None;
+            self.raise_toast(
+                ToastKind::Success,
+                crate::msg::tui_settings_toast_base_set(&code),
+            );
+        }
+    }
+
     fn set_colour_preference(&mut self, preference: ColourPreference) {
         match preference {
             ColourPreference::Theme(theme) => self.colours.set_colour_theme(theme),
@@ -2012,7 +2084,7 @@ impl Shell {
         let command_popup_open = self.command_popup.is_some();
         let unit_dialog_open = self.view.dialog_open();
         let category_popup_open = self.category_popup.is_some();
-        let edit_setting_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Edit(_)));
+        let editing = self.view.editing();
         let base_unit_guard_popup_open =
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
         let colour_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Colour(_)));
@@ -2025,11 +2097,9 @@ impl Shell {
         // NORMAL state, per `docs/ux/tui-mockups/01-shell/README.md`'s "show the mode ... whenever it is not
         // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form or the Category
         // popup (it has a text field too), per "Modal, vim-flavoured ... INSERT only inside
-        // forms ... COMMAND while the palette is open". `EDIT`/`CONFIRM` for the settings popups
-        // match `docs/ux/tui-mockups/05-settings/README.md` §4b's own "`EDIT · uncommitted`" and §4c's own
-        // "`confirm base unit`" status line text (the `uncommitted`/`base unit` half of each
-        // isn't reproduced here — the shell's status line is a flat title, not the design's own
-        // breadcrumb, the same simplification every other view already makes).
+        // forms ... COMMAND while the palette is open", and for a Settings field open in place
+        // (TUI-020). `EDIT` while a colour list previews, `CONFIRM` for the base unit guard
+        // (TUI-021).
         let mode = if command_popup_open {
             Some(crate::msg::tui_mode_command())
         } else if unit_dialog_open
@@ -2037,9 +2107,10 @@ impl Shell {
             || account_popup_open
             || tag_popup_open
             || payee_popup_open
+            || editing
         {
             Some(crate::msg::tui_mode_insert())
-        } else if edit_setting_popup_open || colour_popup_open {
+        } else if colour_popup_open {
             Some(crate::msg::tui_mode_edit())
         } else if base_unit_guard_popup_open {
             Some(crate::msg::tui_mode_confirm())
@@ -2089,8 +2160,6 @@ impl Shell {
             Some(crate::msg::tui_form_noun_unit())
         } else if category_popup_open {
             Some(crate::msg::tui_form_noun_category())
-        } else if edit_setting_popup_open {
-            Some(crate::msg::tui_form_noun_edit())
         } else if account_popup_open {
             Some(crate::msg::tui_form_noun_account())
         } else if tag_popup_open {
@@ -2139,7 +2208,12 @@ impl Shell {
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             let mut spans = vec![Span::raw(" ")];
-            spans.push(Span::styled(upper(&crate::msg::tui_mode_normal()), key));
+            let mode = if editing {
+                crate::msg::tui_mode_insert()
+            } else {
+                crate::msg::tui_mode_normal()
+            };
+            spans.push(Span::styled(upper(&mode), key));
             spans.push(Span::raw(HINT_SEPARATOR));
             // The view's own keys take the place of the Shell's resting hints.
             let hints = self.view.hints(back_key).unwrap_or_else(|| {
@@ -2421,12 +2495,16 @@ fn is_graceful_quit(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('q'))
 }
 
-/// Routes a key while a settings popup (the §4b editor or the §4c guard) is open. Only `Esc`
-/// does anything yet — no field is editable and nothing
-/// commits until the settings registry lands.
+/// Routes a key while the base unit guard is open: typing goes to its confirmation, `enter`
+/// confirms, `ctrl p` goes to Settings › Units' price sources instead, and `esc` cancels.
 fn map_settings_popup_key(key: KeyEvent) -> Option<Action> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Esc => Some(Action::CloseSettingsPopup),
+        KeyCode::Enter => Some(Action::ConfirmBaseUnit),
+        KeyCode::Backspace => Some(Action::BaseUnitGuardBackspace),
+        KeyCode::Char('p') if ctrl => Some(Action::OpenSettingsPage(SettingsPage::Units)),
+        KeyCode::Char(ch) if !ctrl => Some(Action::BaseUnitGuardInput(ch)),
         _ => None,
     }
 }
@@ -3009,8 +3087,10 @@ mod tests {
         let cases: &[(Action, &str)] = &[
             (Action::OpenCommandPopup, "esc close command window"),
             (Action::OpenNewUnitPopup, "esc close unit form"),
-            (Action::OpenEditSettingPopup, "esc close edit form"),
-            (Action::OpenBaseUnitGuardPopup, "esc close dialog"),
+            (
+                Action::SetSetting(SettingField::BaseUnit, Some("btc".into())),
+                "esc close dialog",
+            ),
         ];
         for (action, hint) in cases {
             let mut shell = opened();
@@ -4136,21 +4216,277 @@ mod tests {
         }
     }
 
-    #[test]
-    fn enter_on_a_general_field_opens_the_editor_and_on_the_base_unit_the_guard() {
-        let mut shell = opened();
-        shell.update(Action::OpenSettings);
-        press(&mut shell, &[KeyCode::Enter, KeyCode::Enter]);
-        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
+    /// The row of `text` holding `label`.
+    fn row_of<'a>(text: &'a str, label: &str) -> &'a str {
+        text.lines()
+            .find(|line| line.contains(label))
+            .unwrap_or_else(|| panic!("no {label} row:\n{text}"))
+    }
 
-        press(
-            &mut shell,
-            &[KeyCode::Esc, KeyCode::Char('G'), KeyCode::Enter],
-        );
+    fn type_text(shell: &mut Shell, text: &str) {
+        for ch in text.chars() {
+            press(shell, &[KeyCode::Char(ch)]);
+        }
+    }
+
+    /// The guard on making btc the base, opened as committing it on General does.
+    fn guarded() -> Shell {
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::SetSetting(
+            SettingField::BaseUnit,
+            Some("btc".into()),
+        ));
         assert!(matches!(
             shell.settings_popup,
             Some(SettingsPopup::BaseUnitGuard(_))
         ));
+        shell
+    }
+
+    #[test]
+    fn enter_opens_a_general_field_in_place_with_insert_showing_and_enter_saves_it() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
+        let text = drawn(&mut shell);
+        assert!(lines(&text)[0].contains("INSERT"), "{text}");
+        let footer = lines(&text).last().copied().unwrap_or_default();
+        assert!(
+            footer.contains("INSERT") && footer.contains("esc keep Ian Teda"),
+            "{text}"
+        );
+
+        // Every plain key is typed, the Shell's `g` and `q` included.
+        press(&mut shell, &[KeyCode::Backspace; 8]);
+        type_text(&mut shell, "gq Alex");
+        press(&mut shell, &[KeyCode::Enter]);
+        let text = drawn(&mut shell);
+        assert!(!lines(&text)[0].contains("INSERT"), "{text}");
+        assert!(row_of(&text, "owner").contains("gq Alex"), "{text}");
+        assert_eq!(shell.view.id(), ViewId::Settings);
+    }
+
+    #[test]
+    fn esc_closes_an_open_field_keeping_its_value_before_it_leaves_the_page() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        press(
+            &mut shell,
+            &[KeyCode::Enter, KeyCode::Char('x'), KeyCode::Esc],
+        );
+        let text = drawn(&mut shell);
+        assert!(
+            text.contains("Settings › General"),
+            "still on the page:\n{text}"
+        );
+        assert!(!lines(&text)[0].contains("INSERT"), "{text}");
+        assert!(
+            row_of(&text, "ledger name").contains("Teda household"),
+            "{text}"
+        );
+        assert!(!text.contains("Teda householdx"), "{text}");
+
+        press(&mut shell, &[KeyCode::Esc]);
+        assert!(
+            !drawn(&mut shell).contains("Settings ›"),
+            "back on the index"
+        );
+    }
+
+    #[test]
+    fn tab_saves_the_open_field_and_selects_the_next() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        press(
+            &mut shell,
+            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Enter],
+        );
+        press(&mut shell, &[KeyCode::Right, KeyCode::Tab]);
+        let text = drawn(&mut shell);
+        assert!(
+            row_of(&text, "financial year starts").contains("january"),
+            "{text}"
+        );
+        assert_eq!(
+            shell
+                .view
+                .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Some(Action::SetSetting(SettingField::BaseUnit, None)),
+            "the base unit, the next field, is selected"
+        );
+    }
+
+    #[test]
+    fn the_financial_year_shows_the_year_it_would_run_and_the_one_it_was() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::SetSetting(SettingField::FinancialYearStart, None));
+        press(&mut shell, &[KeyCode::Right]);
+        let text = drawn(&mut shell);
+        for needle in [
+            "this year runs",
+            "was",
+            "july ·",
+            "budget years",
+            "holds for this session",
+        ] {
+            assert!(text.contains(needle), "{needle} missing:\n{text}");
+        }
+        let footer = lines(&text).last().copied().unwrap_or_default();
+        assert!(
+            footer.contains("←→ choose") && footer.contains("esc keep july"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn date_style_cycles_through_all_five_choices_in_place_and_holds_for_the_session() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char('j')]);
+        for label in ["short", "medium", "long", "iso", "locale default", "short"] {
+            press(
+                &mut shell,
+                &[KeyCode::Enter, KeyCode::Right, KeyCode::Enter],
+            );
+            let text = drawn(&mut shell);
+            assert!(
+                row_of(&text, "date style").contains(label),
+                "{label}:\n{text}"
+            );
+        }
+
+        press(&mut shell, &[KeyCode::Char('g'), KeyCode::Char('d')]);
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        let text = drawn(&mut shell);
+        assert!(row_of(&text, "date style").contains("short"), "{text}");
+    }
+
+    #[test]
+    fn space_toggles_toasts_at_rest_and_in_place() {
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(
+            &mut shell,
+            &[KeyCode::End, KeyCode::Char('k'), KeyCode::Char(' ')],
+        );
+        assert!(!shell.toasts.display().toasts_on);
+
+        // Opened by its Action, as `:set toasts` will, it's a checkbox `enter` saves.
+        shell.update(Action::SetSetting(SettingField::Toasts, None));
+        assert!(shell.view.editing());
+        press(&mut shell, &[KeyCode::Char(' '), KeyCode::Enter]);
+        assert!(shell.toasts.display().toasts_on);
+        assert!(!shell.view.editing());
+    }
+
+    #[test]
+    fn a_read_only_field_says_why_on_the_status_line() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(
+            &mut shell,
+            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Char('j')],
+        );
+        press(&mut shell, &[KeyCode::Enter]);
+        assert!(!shell.view.editing());
+        assert!(
+            drawn(&mut shell).contains("locale is read-only"),
+            "the Locale names where it changes"
+        );
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
+        assert!(drawn(&mut shell).contains("which Settings can't write yet"));
+    }
+
+    #[test]
+    fn committing_a_new_base_unit_opens_the_guard_whose_confirm_sets_the_base() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        // The same base commits nothing, so no guard opens.
+        press(&mut shell, &[KeyCode::End, KeyCode::Enter, KeyCode::Enter]);
+        assert!(shell.settings_popup.is_none());
+        assert!(!shell.view.editing());
+
+        press(
+            &mut shell,
+            &[KeyCode::Enter, KeyCode::Right, KeyCode::Enter],
+        );
+        assert!(!shell.view.editing(), "the field closes as the guard opens");
+        let text = drawn(&mut shell);
+        assert!(lines(&text)[0].contains("CONFIRM"), "{text}");
+        assert!(text.contains("aud → btc"), "{text}");
+
+        type_text(&mut shell, "bt");
+        press(&mut shell, &[KeyCode::Enter]);
+        assert!(shell.settings_popup.is_some(), "bt isn't btc");
+        type_text(&mut shell, "c");
+        press(&mut shell, &[KeyCode::Enter]);
+        assert!(shell.settings_popup.is_none());
+        let text = drawn(&mut shell);
+        assert!(
+            row_of(&text, "base unit").contains("btc — Bitcoin"),
+            "{text}"
+        );
+        assert!(text.contains("btc is now the base unit"), "{text}");
+
+        shell.update(Action::OpenUnits);
+        let text = drawn(&mut shell);
+        assert!(row_of(&text, "btc    Crypto").contains("base"), "{text}");
+        assert!(!row_of(&text, "aud    Currency").contains("base"), "{text}");
+    }
+
+    #[test]
+    fn the_guard_takes_every_plain_key_and_esc_cancels_it() {
+        use lib_units::UnitsPorts;
+        let mut shell = guarded();
+        for (code, typed) in [('g', 'g'), (':', ':'), ('q', 'q')] {
+            let action = shell.map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char(code),
+                KeyModifiers::NONE,
+            )));
+            assert_eq!(action, Some(Action::BaseUnitGuardInput(typed)));
+        }
+        press(&mut shell, &[KeyCode::Esc]);
+        assert!(shell.settings_popup.is_none());
+        let base = shell
+            .ledger
+            .as_ref()
+            .map(|ledger| ledger.units.ports.borrow().base_unit().base_unit());
+        assert_eq!(base, Some(lib_core::UnitId::SEED_AUD), "cancelled");
+    }
+
+    #[test]
+    fn ctrl_p_in_the_guard_goes_to_settings_units() {
+        crate::locale::init_for_tests();
+        let mut shell = guarded();
+        shell.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('p'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(shell.settings_popup.is_none());
+        assert!(drawn(&mut shell).contains("Settings › Units"));
+    }
+
+    #[test]
+    fn opening_the_guard_closes_the_command_popup_and_leaving_settings_closes_the_guard() {
+        let mut shell = opened();
+        shell.update(Action::OpenCommandPopup);
+        shell.update(Action::SetSetting(
+            SettingField::BaseUnit,
+            Some("btc".into()),
+        ));
+        assert!(shell.settings_popup.is_some());
+        assert!(shell.command_popup.is_none());
+
+        shell.update(Action::OpenDashboard);
+        assert!(shell.settings_popup.is_none());
     }
 
     #[test]
@@ -4348,117 +4684,6 @@ mod tests {
         assert!(drawn_at(&mut shell, 256, 72).contains("Deactivated"));
 
         assert!(!drawn_at(&mut shell, 213, 53).contains("ACTIVITY"));
-    }
-
-    #[test]
-    fn esc_closes_an_open_settings_popup() {
-        for open in [Action::OpenEditSettingPopup, Action::OpenBaseUnitGuardPopup] {
-            let mut shell = opened();
-            shell.update(open);
-
-            let action = shell
-                .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
-                .expect("esc while open always maps to an action");
-            shell.update(action);
-
-            assert!(shell.settings_popup.is_none());
-        }
-    }
-
-    #[test]
-    fn other_keys_are_swallowed_while_a_settings_popup_is_open() {
-        let mut shell = opened();
-        shell.update(Action::OpenEditSettingPopup);
-
-        let action = shell.map_event(Event::Key(KeyEvent::new(
-            KeyCode::Char('e'),
-            KeyModifiers::NONE,
-        )));
-        assert_eq!(action, None);
-    }
-
-    #[test]
-    fn opening_a_settings_popup_closes_an_open_command_popup() {
-        let mut shell = opened();
-        shell.update(Action::OpenCommandPopup);
-        assert!(shell.command_popup.is_some());
-
-        shell.update(Action::OpenEditSettingPopup);
-
-        assert!(shell.settings_popup.is_some());
-        assert!(shell.command_popup.is_none());
-    }
-
-    #[test]
-    fn opening_a_settings_popup_replaces_any_other_open_settings_popup() {
-        let mut shell = opened();
-        shell.update(Action::OpenEditSettingPopup);
-        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
-
-        shell.update(Action::OpenBaseUnitGuardPopup);
-
-        assert!(matches!(
-            shell.settings_popup,
-            Some(SettingsPopup::BaseUnitGuard(_))
-        ));
-    }
-
-    #[test]
-    fn leaving_the_settings_view_closes_an_open_settings_popup() {
-        let mut shell = opened();
-        shell.update(Action::OpenSettings);
-        shell.update(Action::OpenEditSettingPopup);
-        assert!(shell.settings_popup.is_some());
-
-        shell.update(Action::OpenDashboard);
-
-        assert!(shell.settings_popup.is_none());
-    }
-
-    #[test]
-    fn status_line_and_footer_reflect_the_open_settings_popup() {
-        let mut shell = opened();
-        shell.update(Action::OpenSettings);
-        shell.update(Action::OpenEditSettingPopup);
-
-        let backend = TestBackend::new(96, 30);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| shell.draw(frame))
-            .expect("drawing the shell with the edit popup open should not error");
-
-        let buffer = terminal.backend().buffer();
-        let mut text = String::new();
-        for y in 0..buffer.area.height {
-            for x in 0..buffer.area.width {
-                text.push_str(buffer[(x, y)].symbol());
-            }
-        }
-        assert!(text.contains("· EDIT"), "expected the EDIT mode tag");
-        assert!(
-            text.contains("esc close edit form"),
-            "expected the edit popup's own footer hint"
-        );
-
-        shell.update(Action::OpenBaseUnitGuardPopup);
-        let backend = TestBackend::new(96, 30);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| shell.draw(frame))
-            .expect("drawing the shell with the guard popup open should not error");
-
-        let buffer = terminal.backend().buffer();
-        let mut text = String::new();
-        for y in 0..buffer.area.height {
-            for x in 0..buffer.area.width {
-                text.push_str(buffer[(x, y)].symbol());
-            }
-        }
-        assert!(text.contains("· CONFIRM"), "expected the CONFIRM mode tag");
-        assert!(
-            text.contains("esc close dialog"),
-            "expected the guard popup's own footer hint"
-        );
     }
 
     #[test]

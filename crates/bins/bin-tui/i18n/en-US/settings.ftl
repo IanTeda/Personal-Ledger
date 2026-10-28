@@ -88,19 +88,101 @@ tui-settings-general-owner = owner
 tui-settings-general-financial-year = financial year starts
 tui-settings-general-base-unit = base unit
 
-## Settings › Display's field labels.
+## The financial year's start months.
+
+tui-settings-month-july = july
+tui-settings-month-january = january
+tui-settings-month-april = april
+
+## Settings › General's THIS LEDGER box and its note.
+
+tui-settings-general-this-ledger = this ledger
+tui-settings-general-accounts = accounts
+tui-settings-general-transactions = transactions
+tui-settings-general-units = units
+tui-settings-general-institutions = institutions
+tui-settings-general-note = Ledger name, owner and financial year hold for this session until the Ledger saves Preferences. The base unit is the Units' own and saves at once.
+
+## Settings › Display's field labels, values and notes.
 
 tui-settings-setting-date-style = date style
 tui-settings-setting-locale = locale
+tui-settings-setting-terminal-colours = terminal colours
+tui-settings-setting-status-glyphs = status glyphs
+tui-settings-setting-hint-bar = hint bar
+tui-settings-terminal-colours-theme = theme rgb
+tui-settings-terminal-colours-palette = terminal palette
+tui-settings-status-glyphs-unicode = unicode
+tui-settings-hint-bar-shown = [x] show key hints
+# The note on a Configuration row Settings can't write yet.
+tui-settings-config-file-note = config file
+tui-settings-display-note-config = Config file rows are read from personal-ledger.conf at start-up; change them there.
+tui-settings-display-note-scope = ● rows sync with the ledger. The locale changes only in the file, then a restart.
 
-## The Edit Setting popup.
+## Why a field can't be set. `$field` is the name `:set` takes.
 
-tui-setting-edit-title = negatives
-tui-setting-edit-command = general.negatives
+tui-settings-read-only-locale = { $field } is read-only: change it in personal-ledger.conf, then restart
+tui-settings-read-only-config = { $field } is in personal-ledger.conf, which Settings can't write yet
 
-## The Base Unit Guard popup.
+## A field open in place: its sub-rows' labels and values.
 
-tui-setting-guard-prose = transactions are stored in their own units and are not touched. Every reported total is re-converted at the weekly USD close.
+tui-settings-edit-this-year = this year runs
+tui-settings-edit-was = was
+tui-settings-edit-changes = changes
+tui-settings-edit-on-enter = on enter
+tui-settings-edit-chosen = chosen
+# `$first` and `$last` are dates.
+tui-settings-edit-year-range = { $first } – { $last }
+# `$value` is the old value, `$range` its year's dates.
+tui-settings-edit-was-year = { $value } · { $range }
+tui-settings-edit-financial-year-changes = year-to-date · budget years · reports
+tui-settings-edit-holds-for-session = holds for this session
+tui-settings-edit-base-on-enter = asks you to type the code, then saves
+
+## The hint bar while a field is open. `$value` is the old value.
+
+tui-settings-hint-choose = choose
+tui-settings-hint-toggle = toggle
+tui-settings-hint-save = save
+tui-settings-hint-keep = keep { $value }
+tui-settings-hint-next-field = next field
+
+## The base unit guard (TUI-021). `$from` and `$to` are Unit codes.
+
+tui-settings-guard-title = base unit
+tui-settings-guard-change = { $from } → { $to }
+tui-settings-guard-prose-units = Transactions keep their own units and don't change.
+tui-settings-guard-prose-totals = Every reported total is converted again into { $to }.
+tui-settings-guard-transactions = transactions
+tui-settings-guard-accounts = accounts
+tui-settings-guard-converted = converted again
+tui-settings-guard-missing = missing prices
+tui-settings-guard-then = then
+# `$count` is a formatted count.
+tui-settings-guard-transactions-value = { $count } · unchanged
+# `$count` and `$already` are formatted counts.
+tui-settings-guard-accounts-value = { $count } · { $already } already in { $to }
+tui-settings-guard-converted-value = { $months ->
+    [one] { $months } month of totals
+   *[other] { $months } months of totals
+}
+# `$range` is the first and last month without prices.
+tui-settings-guard-missing-value = { $months ->
+    [one] { $months } month · { $range }
+   *[other] { $months } months · { $range }
+}
+tui-settings-guard-then-value = saves to this Ledger at once
+tui-settings-guard-gaps = { $months ->
+    [one] That { $months } month shows as a gap until it has prices.
+   *[other] Those { $months } months show as gaps until they have prices.
+}
+tui-settings-guard-price-sources = open price sources first — settings › units
+tui-settings-guard-type = type { $to } to confirm
+tui-settings-guard-hint-change = change base unit
+tui-settings-guard-hint-price-sources = price sources
+tui-settings-guard-hint-cancel = cancel
+# The Toast once the base unit is set.
+tui-settings-toast-base-set = { $to } is now the base unit
 
 ## Locale display descriptions (where the effective Locale came from).
 

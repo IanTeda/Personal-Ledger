@@ -52,7 +52,7 @@ pub enum Action {
     /// `:dismiss all`, or the `dismiss_toasts` binding (`Ctrl+L`) in NORMAL mode — removes
     /// every Toast.
     DismissAllToasts,
-    /// `toasts on` / `toasts off`, or `enter` on the Settings `toasts` row — sets the
+    /// `toasts on` / `toasts off`, or `enter` or `space` on the Settings `toasts` row — sets the
     /// Client-scoped Toasts Preference (ADR-0027).
     SetToasts(bool),
     /// `toasts` / `messages`, or the `toast_history` binding — opens the session Toast history.
@@ -145,16 +145,21 @@ pub enum Action {
     /// `Enter` on the command popup's `settings <page>` — opens the Settings view on that page,
     /// as if it had been opened from the index.
     OpenSettingsPage(settings::SettingsPage),
-    /// `enter` on a Settings › General field other than the base unit — opens the in-place
-    /// editor popup over its `general.negatives` worked example until Stage 2 of the Settings
-    /// work plan makes it edit the field (TUI-020).
-    OpenEditSettingPopup,
-    /// `enter` on the Settings › General base unit — opens the base-unit guard overlay over its
-    /// worked example (TUI-021). Stage 2 opens it on committing a new base unit instead.
-    OpenBaseUnitGuardPopup,
-    /// `Enter` on the Settings Display group's `colour theme` row — opens its list popup.
+    /// Opens a Settings form field in place without a value, or saves the value to it with one:
+    /// `enter` on the field's row, then `enter` in the open field, and `:set <field> [value]`
+    /// (#898). One `Action` for both, so a key and the command can't drift.
+    SetSetting(settings::field::SettingField, Option<String>),
+    /// A key typed into the base unit guard's confirmation.
+    BaseUnitGuardInput(char),
+    /// `Backspace` in the base unit guard's confirmation.
+    BaseUnitGuardBackspace,
+    /// `enter` in the base unit guard: sets the new base, once the typed code matches.
+    ConfirmBaseUnit,
+    /// `enter` on Settings › Display's `colour theme` row, through [`Action::SetSetting`] —
+    /// opens its list popup.
     OpenColourThemePopup,
-    /// `Enter` on the Settings Display group's `appearance` row — opens its list popup.
+    /// `enter` on Settings › Display's `appearance` row, through [`Action::SetSetting`] — opens
+    /// its list popup.
     OpenColourAppearancePopup,
     /// `j`/`Down` in the colour list popup — moves down a row and previews it.
     ColourPopupDown,
@@ -164,8 +169,7 @@ pub enum Action {
     ColourPopupKeep,
     /// `Esc` in the colour list popup — restores the Preference it opened on and closes.
     ColourPopupRevert,
-    /// `Esc` while a settings popup (the §4b editor or the §4c guard) is open — closes it
-    /// without committing anything.
+    /// `Esc` while the base unit guard is open — closes it without setting anything.
     CloseSettingsPopup,
     /// `g t`, or `Enter` on the command popup's `txn recent` command — opens the placeholder
     /// Transactions view.
@@ -680,6 +684,13 @@ pub trait View {
     /// hands it every key but `Ctrl+C` ahead of its global keys and pauses the Toasts, but,
     /// unlike [`View::dialog_open`], keeps the mode NORMAL and lets the view draw the popup.
     fn popup_open(&self) -> bool {
+        false
+    }
+
+    /// Whether the view has a field open for editing in place (a Settings form page's). `Shell`
+    /// then shows `INSERT`; the view also reports it through [`View::popup_open`], so it gets
+    /// every key.
+    fn editing(&self) -> bool {
         false
     }
 

@@ -16,16 +16,22 @@
 //! place; none of them push onto the Shell's view stack, so the back key on a page always returns
 //! to the index ([`View::back`]).
 //!
-//! What's real: [`display`]'s Toasts, Colour Theme, Appearance and Locale rows. [`general`] is a
-//! wireframe form until Stage 2 of the README's work plan (`CLAUDE_CODE.md`). Every other page
-//! draws its heading and scope note over an empty body until the stage that builds it.
+//! General and Display are form pages: rows of label, value and dim note, where `enter` opens a
+//! field in place (TUI-020, `popup::settings::edit`) and the status line shows `INSERT` while it
+//! is open. Opening and saving are one [`Action::SetSetting`] ([`field`]): the page returns it
+//! without a value to open the field, the open field returns it with one to save, and `Shell`
+//! routes it, keeping what it owns (Toasts, the Colour Theme and Appearance, the base unit guard)
+//! and handing the rest back to [`View::update`]. What holds for the session only lives in
+//! [`field::SettingsValues`], shared with `Shell` as the selection is. Every other page draws its
+//! heading and scope note over an empty body until the stage that builds it.
 
 mod display;
+pub mod field;
 mod general;
 mod index;
 mod picker;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -41,8 +47,11 @@ use ratatui::{
 
 use crate::colours::Colours;
 use crate::msg;
+use crate::popup::settings::edit::{FieldEditor, Outcome};
+use crate::units::TuiPorts;
 use crate::view::{Action, View, ViewId};
 
+use field::{SettingField, SettingsValues};
 use picker::Picker;
 
 /// The sixteen Settings pages. [`SettingsPage::ALL`] is the one page order the index, the picker
@@ -265,24 +274,45 @@ pub struct SettingsView {
     selected: Rc<Cell<SettingsPage>>,
     /// `Some` while the page picker is open.
     picker: Option<Picker>,
+    /// The values that hold for the session, shared with `Shell` as `selected` is.
+    values: Rc<RefCell<SettingsValues>>,
+    /// The Open Ledger's Units ports, for the base unit; `None` for a View built without one.
+    units: Option<TuiPorts>,
+    /// `Some` while a field is open in place.
+    editor: Option<FieldEditor>,
     general: general::GeneralPage,
     display: display::DisplayPage,
 }
 
 impl SettingsView {
-    /// A View on its own selection, starting at General. `Shell` uses [`Self::remembering`].
+    /// A View on its own selection and values, starting at General, with no Ledger's Units.
+    /// `Shell` uses [`Self::remembering`].
     #[cfg(test)]
     pub fn new() -> Self {
-        Self::remembering(Rc::default())
+        Self::remembering(Rc::default(), Rc::default(), None)
     }
 
-    /// A View on the session's selection, landing on the index with it selected.
-    pub fn remembering(selected: Rc<Cell<SettingsPage>>) -> Self {
+    /// [`Self::new`] on `units`.
+    #[cfg(test)]
+    pub fn with_units(units: TuiPorts) -> Self {
+        Self::remembering(Rc::default(), Rc::default(), Some(units))
+    }
+
+    /// A View on the session's selection and values, landing on the index with the selection
+    /// selected; `units` are the Open Ledger's.
+    pub fn remembering(
+        selected: Rc<Cell<SettingsPage>>,
+        values: Rc<RefCell<SettingsValues>>,
+        units: Option<TuiPorts>,
+    ) -> Self {
         Self {
             showing: Showing::Index,
             size: WindowSize::Medium,
             selected,
             picker: None,
+            values,
+            units,
+            editor: None,
             general: general::GeneralPage::default(),
             display: display::DisplayPage::new(),
         }
@@ -350,18 +380,87 @@ impl SettingsView {
 
     /// The page's own hints, before the paging hints every page ends with.
     fn page_hints(&self) -> Vec<(String, String)> {
-        match self.selected() {
+        let mut hints = match self.selected() {
             SettingsPage::General | SettingsPage::Display => vec![
                 ("j/k".into(), msg::tui_settings_hint_field()),
                 ("enter".into(), msg::tui_settings_hint_edit()),
             ],
             _ => Vec::new(),
+        };
+        if self.selected() == SettingsPage::Display {
+            hints.push(("space".into(), msg::tui_settings_hint_toggle()));
+        }
+        hints
+    }
+
+    /// Hands `key` to the open field: `enter` and `tab` save through [`Action::SetSetting`], which
+    /// comes back to [`View::update`] to close it, and `esc` closes it at once.
+    fn handle_editor_key(&mut self, key: KeyEvent) -> Option<Action> {
+        let editor = self.editor.as_mut()?;
+        let field = editor.field();
+        Some(match editor.handle_key(key) {
+            Outcome::Save(value) => Action::SetSetting(field, Some(value)),
+            Outcome::SaveAndNext(value) => {
+                match field.page() {
+                    SettingsPage::General => self.general.step(Step::Next),
+                    _ => self.display.step(Step::Next),
+                }
+                Action::SetSetting(field, Some(value))
+            }
+            Outcome::Keep => {
+                self.editor = None;
+                Action::NoOp
+            }
+            Outcome::Stay => Action::NoOp,
+        })
+    }
+
+    /// Opens `field` in place on its page, selecting its row; a field that doesn't open in place
+    /// (a popup's, or a read-only one) is left to `Shell`.
+    fn open_field(&mut self, field: SettingField) {
+        let opened = {
+            let values = self.values.borrow();
+            let context = self.context(&values);
+            match field.page() {
+                SettingsPage::General => general::draft(field, &context),
+                _ => self.display.draft(field, &context),
+            }
+        };
+        let Some((draft, was)) = opened else {
+            return;
+        };
+        self.open_page(field.page());
+        match field.page() {
+            SettingsPage::General => self.general.select(field),
+            _ => self.display.select(field),
+        }
+        self.editor = Some(FieldEditor::new(field, draft, was));
+    }
+
+    /// What a form page reads on this draw.
+    fn context<'a>(&'a self, values: &'a SettingsValues) -> Context<'a> {
+        Context {
+            values,
+            units: self.units.as_ref(),
+            editor: self.editor.as_ref(),
         }
     }
 }
 
+/// What General and Display read on each draw besides their own selection.
+struct Context<'a> {
+    values: &'a SettingsValues,
+    /// The Open Ledger's Units ports; `None` for a View built without them.
+    units: Option<&'a TuiPorts>,
+    /// The field open in place, if any.
+    editor: Option<&'a FieldEditor>,
+}
+
 impl View for SettingsView {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        if self.editor.is_some() {
+            return self.handle_editor_key(key);
+        }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
                 picker::Outcome::Open(page) => {
@@ -390,14 +489,26 @@ impl View for SettingsView {
                 self.picker = None;
             }
             Action::OpenSettingsPage(page) => self.open_page(*page),
+            Action::SetSetting(field, None) => self.open_field(*field),
+            Action::SetSetting(field, Some(value)) => {
+                if self
+                    .editor
+                    .as_ref()
+                    .is_some_and(|editor| editor.field() == *field)
+                {
+                    self.editor = None;
+                }
+                // Only the session's own fields land here; `Shell` keeps the rest.
+                self.values.borrow_mut().set(*field, value);
+            }
             _ => {}
         }
     }
 
-    /// The picker closes first, then a page steps back to the index with itself selected; on the
-    /// index the Shell pops its view stack.
+    /// An open field or the picker closes first, then a page steps back to the index with itself
+    /// selected; on the index the Shell pops its view stack.
     fn back(&mut self) -> bool {
-        if self.picker.take().is_some() {
+        if self.editor.take().is_some() || self.picker.take().is_some() {
             return true;
         }
         match self.showing {
@@ -409,12 +520,19 @@ impl View for SettingsView {
         }
     }
 
+    /// The picker, or a field open in place, which takes every key as a popup does.
     fn popup_open(&self) -> bool {
-        self.picker.is_some()
+        self.picker.is_some() || self.editor.is_some()
+    }
+
+    fn editing(&self) -> bool {
+        self.editor.is_some()
     }
 
     fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
-        let hints = if self.picker.is_some() {
+        let hints = if let Some(editor) = &self.editor {
+            editor.hints(back)
+        } else if self.picker.is_some() {
             picker::hints(back)
         } else {
             match self.showing {
@@ -514,9 +632,11 @@ impl SettingsView {
         };
         render_heading(frame, heading, title, &page.scope_note(), c);
         let body = body.inner(Margin::new(0, 1));
+        let values = self.values.borrow();
+        let context = self.context(&values);
         match page {
-            SettingsPage::General => self.general.render(frame, body, focused, c),
-            SettingsPage::Display => self.display.render(frame, body, focused, c),
+            SettingsPage::General => self.general.render(frame, body, focused, &context, c),
+            SettingsPage::Display => self.display.render(frame, body, focused, &context, c),
             _ => {}
         }
     }
@@ -555,26 +675,52 @@ const FIELD_LABEL_WIDTH: u16 = 22;
 const FIELD_VALUE_WIDTH: u16 = 28;
 
 /// One row of a form page: an optional scope glyph (Display marks each row, as it mixes scopes),
-/// the label, the value and a dim note.
+/// the field, whose label it shows, its value and a dim note.
 struct FieldRow {
     glyph: Option<Scope>,
-    label: String,
+    field: SettingField,
     value: String,
     note: String,
 }
 
+/// The field open in place, with the sub-rows its page gives it.
+struct Open<'a> {
+    editor: &'a FieldEditor,
+    sub_rows: Vec<(String, String)>,
+}
+
 /// A form page's field rows from the top of `area`, the `selected` row reversed; `None` while the
-/// page doesn't have focus.
-fn render_fields(
+/// page doesn't have focus. An `open` field draws its editor in its row's place, and every other
+/// row dims. Returns the area below the rows, for what the page draws under them.
+fn render_form(
     frame: &mut Frame<'_>,
     area: Rect,
     rows: &[FieldRow],
     selected: Option<usize>,
+    open: Option<Open<'_>>,
     c: &Colours,
-) {
-    let areas = Layout::vertical(vec![Constraint::Length(1); rows.len()]).split(area);
+) -> Rect {
+    let is_open = |row: &FieldRow| {
+        open.as_ref()
+            .is_some_and(|open| open.editor.field() == row.field)
+    };
+    let heights: Vec<Constraint> = rows
+        .iter()
+        .map(|row| match &open {
+            Some(open) if is_open(row) => {
+                Constraint::Length(FieldEditor::height(open.sub_rows.len()))
+            }
+            _ => Constraint::Length(1),
+        })
+        .chain([Constraint::Min(0)])
+        .collect();
+    let areas = Layout::vertical(heights).split(area);
     for (index, (row, row_area)) in rows.iter().zip(areas.iter()).enumerate() {
-        let selected = Some(index) == selected;
+        if let Some(open) = open.as_ref().filter(|_| is_open(row)) {
+            open.editor.render(frame, *row_area, &open.sub_rows, c);
+            continue;
+        }
+        let selected = open.is_none() && Some(index) == selected;
         if selected {
             frame.render_widget(Block::new().style(c.selection()), *row_area);
         }
@@ -582,6 +728,11 @@ fn render_fields(
             Style::default()
         } else {
             c.muted()
+        };
+        let value_style = if open.is_some() {
+            c.muted()
+        } else {
+            Style::default()
         };
         let glyph_width = if row.glyph.is_some() { 2 } else { 0 };
         let [glyph, label, value, note] = Layout::horizontal([
@@ -592,11 +743,17 @@ fn render_fields(
         ])
         .areas(*row_area);
         if let Some(scope) = row.glyph {
-            frame.render_widget(Paragraph::new(scope.glyph()), glyph);
+            frame.render_widget(
+                Paragraph::new(Span::styled(scope.glyph(), value_style)),
+                glyph,
+            );
         }
-        frame.render_widget(Paragraph::new(Span::styled(row.label.as_str(), dim)), label);
+        frame.render_widget(Paragraph::new(Span::styled(row.field.label(), dim)), label);
         frame.render_widget(
-            Paragraph::new(clip(&row.value, usize::from(value.width).saturating_sub(1))),
+            Paragraph::new(Span::styled(
+                clip(&row.value, usize::from(value.width).saturating_sub(1)),
+                value_style,
+            )),
             value,
         );
         frame.render_widget(
@@ -604,6 +761,7 @@ fn render_fields(
             note,
         );
     }
+    areas[rows.len()]
 }
 
 /// `text` cut to `width` cells, ending in `…` when it doesn't fit: cells clip, they don't wrap.
@@ -631,6 +789,11 @@ mod tests {
         for code in codes {
             view.handle_key(key(*code));
         }
+    }
+
+    /// The stub seed's Units on the stub Ledger, as an Open Ledger holds them.
+    pub(super) fn stub_units() -> TuiPorts {
+        crate::units::UnitsSetup::stub(&lib_config::KeyBindingConfig::default()).ports
     }
 
     pub(super) fn render_at(view: &SettingsView, width: u16, height: u16) -> String {
@@ -833,13 +996,8 @@ mod tests {
         view.set_window_size(WindowSize::Medium);
         assert_eq!(
             view.handle_key(key(KeyCode::Enter)),
-            Some(Action::OpenEditSettingPopup),
+            Some(Action::SetSetting(SettingField::Owner, None)),
             "owner, the field left selected, is still selected"
-        );
-        press(&mut view, &[KeyCode::Char('G')]);
-        assert_eq!(
-            view.handle_key(key(KeyCode::Enter)),
-            Some(Action::OpenBaseUnitGuardPopup)
         );
     }
 
@@ -1026,7 +1184,7 @@ mod tests {
     #[test]
     fn open_settings_returns_a_page_to_the_index_and_the_selection_is_shared() {
         let remembered: Rc<Cell<SettingsPage>> = Rc::default();
-        let mut view = SettingsView::remembering(Rc::clone(&remembered));
+        let mut view = SettingsView::remembering(Rc::clone(&remembered), Rc::default(), None);
         view.update(&Action::OpenSettingsPage(SettingsPage::History));
         press(&mut view, &[KeyCode::Char('p')]);
         view.update(&Action::OpenSettings);
@@ -1034,7 +1192,7 @@ mod tests {
         assert!(!view.popup_open());
         assert_eq!(remembered.get(), SettingsPage::History);
 
-        let again = SettingsView::remembering(remembered);
+        let again = SettingsView::remembering(remembered, Rc::default(), None);
         assert_eq!(again.selected(), SettingsPage::History);
         assert_eq!(again.showing, Showing::Index);
     }

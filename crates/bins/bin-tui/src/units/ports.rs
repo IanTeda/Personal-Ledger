@@ -34,6 +34,11 @@ impl LedgerBackedPorts {
         }))
     }
 
+    /// The Ledger usage and holdings are read from, which Settings › General counts rows in.
+    pub fn ledger(&self) -> &Ledger {
+        &self.ledger
+    }
+
     /// Ends the Interactor call just made, if any, as one transaction.
     pub fn commit(&mut self) {
         self.commit.commit();

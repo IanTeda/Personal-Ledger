@@ -1,308 +1,339 @@
-//! The base-unit guard overlay — `enter` on the Settings › General base unit
-//! (`docs/ux/tui-mockups/05-settings/README.md` §4c, "Base unit guard"). Wireframe stage, same as
-//! `popup::settings::edit`: every field renders §4c's own `AUD → USD` worked example verbatim
-//! — including the resolved impact figures and the typed confirmation — rather than a real
-//! query against the (not yet built) settings registry and database. `Shell` wires up opening
-//! and closing it (`Esc`) so the navigation path exists before the resolver and the commit
-//! itself are built out.
+//! The base unit guard (TUI-021): committing a new base unit on Settings › General opens it, since
+//! every reported total is converted again when the base changes. It states what changes and asks
+//! you to type the new Unit's code; `enter` stays dim until the text matches exactly, and
+//! `ctrl p` goes to Settings › Units for the price sources instead. (`p` is the card's key, but a
+//! code can hold a `p`, as `gbp` does, so the typed field keeps every plain letter.)
+//!
+//! The guard hosts `lib-units`' Set base unit Presenter on the Open Ledger's shared ports, so the
+//! Interactor, which Units can be the base, and the refusals are `lib-units`' alone: the editor
+//! offers the Presenter's choices, opening the guard chooses one, and the typed confirmation is
+//! the TUI's one extra step before the Presenter's confirm.
+//!
+//! Transactions and accounts are counted from the Ledger the Units ports read usage from. The
+//! months converted again and the missing prices need the conversion queries, which don't exist
+//! yet, so those stay worked examples, each marked `// wireframe:`.
 
+use lib_core::UnitId;
+use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter};
+use lib_units::{SharedPorts, UnitsPorts};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::colours::Colours;
 use crate::msg;
-
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::units::TuiPorts;
+use crate::units::router::Router;
 
-/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per §4c's own "~78% width" — matches
-/// the command popup's own width, distinct from a unit form's ~88%.
-const POPUP_WIDTH_PERCENT: u32 = 78;
+/// The popup's width: 78% of the reference terminal, the command popup's.
+const POPUP_WIDTH: u16 = REFERENCE_TERMINAL_WIDTH * 78 / 100;
 
-/// The popup's fixed width in terminal cells, computed once against the reference width rather
-/// than the live terminal, mirroring `popup::unit::edit`'s own `POPUP_WIDTH`.
-const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
+/// The fact label column, the longest label plus a gap.
+const LABEL_WIDTH: u16 = 17;
 
-/// Width of the fact label column (`transactions`, `missing rates`, …) — sized to the longest
-/// label, plus a gap.
-const LABEL_WIDTH: u16 = "missing rates".len() as u16 + 1;
+/// Content rows inside the border: title, rule, two prose lines, a gap, five facts, a gap, the
+/// 4-row price box, the 3-row confirmation box, the refusal, a rule and the keys.
+const CONTENT_ROWS: u16 = 1 + 1 + 2 + 1 + 5 + 1 + 4 + 3 + 1 + 1 + 1;
 
-/// Content rows inside the border: title, its rule, the 3-line prose, a blank spacer, the 6
-/// impact facts, a blank spacer, the 4-row missing-rates box, the 3-row typed confirmation box
-/// (directly beneath it — no blank spacer, to keep the popup shorter than the view's 96×30-cell
-/// minimum; see `popup_rect`'s own doc comment for what a taller popup would do to the shell
-/// chrome around it), a rule, then the footer hints.
-const CONTENT_ROWS: u16 = 1 + 1 + 3 + 1 + 6 + 1 + 4 + 3 + 1 + 1;
+// wireframe: TUI-021's worked figures, until the conversion queries exist.
+const CONVERTED_MONTHS: i64 = 18;
+const MISSING_MONTHS: i64 = 4;
+const MISSING_RANGE: &str = "mar 25 – jun 25";
 
-/// Total popup height: content plus its top/bottom border.
-const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
+/// What `enter` in the guard did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Confirmed {
+    /// The typed code doesn't match yet, so nothing was sent.
+    NotYet,
+    /// The base is now this Unit code.
+    Set(String),
+    /// The Presenter refused; the guard shows why and stays open.
+    Refused,
+}
 
-/// The base-unit guard: `docs/ux/tui-mockups/05-settings/README.md` §4c as a centred floating overlay,
-/// same window treatment as `popup::command` and `popup::unit`. No real resolver yet — every
-/// figure is the mockup's own placeholder content, not a query against the user's data.
-#[derive(Default)]
-pub struct BaseUnitGuardPopup;
+/// The guard on moving the base from `from` to `to`, the Unit codes.
+pub struct BaseUnitGuardPopup {
+    ports: TuiPorts,
+    presenter: SetBaseUnitPresenter,
+    from: String,
+    to: String,
+    typed: String,
+    transactions: usize,
+    accounts: usize,
+    already: usize,
+}
 
 impl BaseUnitGuardPopup {
-    /// Opens a fresh popup.
-    pub fn new() -> Self {
-        Self
+    /// The guard on making the Unit coded `to` the base, chosen on the Presenter. `None` when `to`
+    /// is the base already, or isn't one the Presenter offers.
+    pub fn open(ports: &TuiPorts, to: &str) -> Option<Self> {
+        let shared: SharedPorts = ports.clone();
+        let mut presenter = SetBaseUnitPresenter::new(shared.clone());
+        let (from, to_id, transactions, accounts, already) = {
+            let held = ports.borrow();
+            let code = |id: UnitId| held.units().unit(id).map(|unit| unit.code);
+            let from = code(held.base_unit().base_unit())?;
+            let to_id = presenter
+                .view_model()
+                .base
+                .options
+                .iter()
+                .map(|choice| choice.value)
+                .find(|id| code(*id).as_deref() == Some(to))?;
+            let ledger = held.ledger();
+            let accounts = ledger.accounts();
+            let already = accounts
+                .iter()
+                .filter(|account| account.unit == to_id)
+                .count();
+            (
+                from,
+                to_id,
+                ledger.transactions().len(),
+                accounts.len(),
+                already,
+            )
+        };
+        if from == to {
+            return None;
+        }
+        let mut toasts = Vec::new();
+        presenter.handle(
+            SetBaseUnitEvent::Choose(to_id),
+            &mut Router::new(shared, &mut toasts),
+        );
+        Some(Self {
+            ports: ports.clone(),
+            presenter,
+            from,
+            to: to.to_string(),
+            typed: String::new(),
+            transactions,
+            accounts,
+            already,
+        })
     }
 
-    /// Renders the floating overlay, anchored in the top third of `area` (the full terminal
-    /// area) per §4c's own "anchored in the top third" — distinct from `popup::unit`'s forms,
-    /// which centre vertically too but via the same `popup_rect` shape.
+    pub fn push(&mut self, ch: char) {
+        self.typed.push(ch);
+    }
+
+    pub fn backspace(&mut self) {
+        self.typed.pop();
+    }
+
+    /// Whether the typed text is the new code, exactly.
+    pub fn matches(&self) -> bool {
+        self.typed == self.to
+    }
+
+    /// Sends the Presenter's confirm, once the typed code matches, and commits what it wrote.
+    pub fn confirm(&mut self) -> Confirmed {
+        if !self.matches() {
+            return Confirmed::NotYet;
+        }
+        let mut toasts = Vec::new();
+        let closed = {
+            let mut router = Router::new(self.ports.clone(), &mut toasts);
+            self.presenter
+                .handle(SetBaseUnitEvent::Confirm, &mut router);
+            router.closed.take()
+        };
+        self.ports.borrow_mut().commit();
+        match closed {
+            Some(Some(_)) => Confirmed::Set(self.to.clone()),
+            _ => Confirmed::Refused,
+        }
+    }
+
+    /// The guard, anchored in the top third of `area`, the whole frame.
     pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
-
         frame.render_widget(Clear, popup);
         let block = Block::bordered();
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
 
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // title
-                Constraint::Length(1), // rule
-                Constraint::Length(3), // prose
-                Constraint::Length(1), // blank spacer
-                Constraint::Length(6), // impact facts
-                Constraint::Length(1), // blank spacer
-                Constraint::Length(4), // missing-rates box
-                Constraint::Length(3), // typed confirmation box
-                Constraint::Length(1), // rule
-                Constraint::Length(1), // footer hints
-            ])
-            .split(inner);
+        let [
+            title,
+            rule,
+            prose,
+            _,
+            facts,
+            _,
+            prices,
+            confirm,
+            refusal,
+            rule_2,
+            keys,
+        ] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(5),
+            Constraint::Length(1),
+            Constraint::Length(4),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
 
-        render_title(frame, rows[0], c);
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
-        render_prose(frame, rows[2]);
-        // rows[3] is left blank — breathing space above the impact facts.
-        render_impact_facts(frame, rows[4], c);
-        // rows[5] is left blank — breathing space above the missing-rates box.
-        render_missing_rates_box(frame, rows[6], c);
-        render_confirmation_box(frame, rows[7], c);
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[8]);
-        render_footer_hints(frame, rows[9], c);
+        self.render_title(frame, title, c);
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(msg::tui_settings_guard_prose_units()),
+                Line::from(msg::tui_settings_guard_prose_totals(&self.to)),
+            ]),
+            prose,
+        );
+        self.render_facts(frame, facts, c);
+        render_prices(frame, prices, c);
+        self.render_confirmation(frame, confirm, c);
+        if let Some(reason) = self.presenter.view_model().refusal {
+            frame.render_widget(Paragraph::new(Span::styled(reason, c.accent())), refusal);
+        }
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rule_2);
+        self.render_keys(frame, keys, c);
+    }
+
+    /// `base unit  aud → btc`, with the equivalent `:set base btc` dim on the right.
+    fn render_title(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        let command = format!(":set base {}", self.to);
+        let width = u16::try_from(command.chars().count()).unwrap_or(0);
+        let [left, right] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(width)]).areas(area);
+        let bold = Style::default().add_modifier(Modifier::BOLD);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(msg::tui_settings_guard_title(), bold),
+                Span::raw("  "),
+                Span::raw(msg::tui_settings_guard_change(&self.from, &self.to)),
+            ])),
+            left,
+        );
+        frame.render_widget(Paragraph::new(Span::styled(command, c.muted())), right);
+    }
+
+    fn render_facts(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        let count = |n: usize| crate::format::count(i64::try_from(n).unwrap_or(i64::MAX));
+        let facts = [
+            (
+                msg::tui_settings_guard_transactions(),
+                msg::tui_settings_guard_transactions_value(&count(self.transactions)),
+                false,
+            ),
+            (
+                msg::tui_settings_guard_accounts(),
+                msg::tui_settings_guard_accounts_value(
+                    &count(self.accounts),
+                    &count(self.already),
+                    &self.to,
+                ),
+                false,
+            ),
+            (
+                msg::tui_settings_guard_converted(),
+                msg::tui_settings_guard_converted_value(CONVERTED_MONTHS),
+                false,
+            ),
+            (
+                msg::tui_settings_guard_missing(),
+                msg::tui_settings_guard_missing_value(MISSING_MONTHS, MISSING_RANGE),
+                true,
+            ),
+            (
+                msg::tui_settings_guard_then(),
+                msg::tui_settings_guard_then_value(),
+                false,
+            ),
+        ];
+        let rows = Layout::vertical([Constraint::Length(1); 5]).split(area);
+        for ((label, value, accent), row) in facts.into_iter().zip(rows.iter()) {
+            let [label_area, value_area] =
+                Layout::horizontal([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
+                    .areas(*row);
+            frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), label_area);
+            let style = if accent { c.accent() } else { Style::default() };
+            frame.render_widget(Paragraph::new(Span::styled(value, style)), value_area);
+        }
+    }
+
+    /// The typed confirmation, in a `negative`-bordered box as the typed deletes are.
+    fn render_confirmation(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        let block = Block::bordered().border_style(c.negative());
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(msg::tui_settings_guard_type(&self.to), c.muted()),
+                Span::raw("  "),
+                Span::raw(self.typed.clone()),
+                Span::styled("▌", c.cursor()),
+            ])),
+            inner,
+        );
+    }
+
+    /// The guard's keys, `enter` dim until the typed code matches.
+    fn render_keys(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        let bold = Style::default().add_modifier(Modifier::BOLD);
+        let enter = if self.matches() { bold } else { c.muted() };
+        let enter_label = if self.matches() {
+            Style::default()
+        } else {
+            c.muted()
+        };
+        let spans = vec![
+            Span::styled("enter", enter),
+            Span::styled(
+                format!(" {}", msg::tui_settings_guard_hint_change()),
+                enter_label,
+            ),
+            Span::raw(" · "),
+            Span::styled("ctrl p", bold),
+            Span::raw(format!(" {}", msg::tui_settings_guard_hint_price_sources())),
+            Span::raw(" · "),
+            Span::styled("esc", bold),
+            Span::raw(format!(" {}", msg::tui_settings_guard_hint_cancel())),
+        ];
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 }
 
-/// The title row: `base unit  AUD → USD` flush left, `:set base` dim and right-aligned — §4c's
-/// own "Header: `base unit AUD → USD` with `:set base` right-aligned".
-fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let tag = ":set base";
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(tag.chars().count() as u16),
-        ])
-        .split(area);
-
-    frame.render_widget(Paragraph::new("base unit  AUD → USD"), columns[0]);
-    let dim = c.muted();
-    frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
-        columns[1],
-    );
-}
-
-/// The body's three prose lines, stating the cost before the facts do — §4c's own "prose
-/// first ... then the facts".
-fn render_prose(frame: &mut Frame<'_>, area: Rect) {
-    // One Message for the whole paragraph, wrapped across the three rows -- a sentence is never
-    // split into a Message per rendered line, so the widget does the wrapping.
-    frame.render_widget(
-        Paragraph::new(msg::tui_setting_guard_prose()).wrap(Wrap { trim: true }),
-        area,
-    );
-}
-
-/// One `label   value` fact row, the label dim and fixed-width; `accent` styles the value for
-/// the one fact §4c marks (`missing rates`).
-fn render_fact(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    label: &str,
-    value: Line<'static>,
-    accent: bool,
-    c: &Colours,
-) {
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
-        .split(area);
-
-    let dim = c.muted();
-    frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
-    let value = if accent {
-        value.style(c.accent())
-    } else {
-        value
-    };
-    frame.render_widget(Paragraph::new(value), columns[1]);
-}
-
-/// The six resolved impact figures — §4c's own worked example verbatim, each "resolved by
-/// query" against real data in the eventual build.
-fn render_impact_facts(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .split(area);
-
-    render_fact(
-        frame,
-        rows[0],
-        "transactions",
-        Line::from("412 · unchanged"),
-        false,
-        c,
-    );
-    render_fact(
-        frame,
-        rows[1],
-        "accounts",
-        Line::from("11 · 4 already in USD"),
-        false,
-        c,
-    );
-    render_fact(
-        frame,
-        rows[2],
-        "re-converted",
-        Line::from("18 months of totals"),
-        false,
-        c,
-    );
-    render_fact(
-        frame,
-        rows[3],
-        "missing rates",
-        Line::from("6 weeks · nov 25 – dec 25"),
-        true,
-        c,
-    );
-    render_fact(
-        frame,
-        rows[4],
-        "one write",
-        Line::from("general.base_unit = \"USD\""),
-        false,
-        c,
-    );
-    let dim = c.muted();
-    render_fact(
-        frame,
-        rows[5],
-        "then",
-        Line::from(vec![
-            Span::raw("clears the cached totals "),
-            Span::styled("· u undoes it", dim),
-        ]),
-        false,
-        c,
-    );
-}
-
-/// The missing-rates box — a plain bordered `Block` naming the gap this dialog exists to
-/// prevent and offering the fix as a first-class option, per §4c's own "name the count and the
-/// range, then offer the fix as a first-class option rather than an error".
-fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+/// The box naming the gap the guard exists to catch, with the fix offered as a choice.
+fn render_prices(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
-
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(inner);
-
-    frame.render_widget(
-        Paragraph::new("those 6 weeks report as gaps until priced."),
-        rows[0],
-    );
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = c.muted();
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("i", bold),
-            Span::raw(" "),
-            Span::styled("import USD closes first — :price import", dim),
-        ])),
-        rows[1],
-    );
-}
-
-/// The typed-confirmation box — a `negative`-bordered focused input, since re-converting
-/// every figure is destructive, matching the delete-confirmation convention on the unit forms
-/// per §4c's own "matching the delete-confirmation convention on the unit forms".
-fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let block = Block::bordered().border_style(c.negative());
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::raw("type the unit  "),
-            Span::raw("USD"),
-            Span::styled("▌", c.cursor()),
-        ])),
+        Paragraph::new(vec![
+            Line::from(msg::tui_settings_guard_gaps(MISSING_MONTHS)),
+            Line::from(vec![
+                Span::styled("ctrl p", bold),
+                Span::raw(" "),
+                Span::styled(msg::tui_settings_guard_price_sources(), c.muted()),
+            ]),
+        ]),
         inner,
     );
 }
 
-/// The window footer hint row: each key bold, its label dim — §4c's own "Keys: `enter` commit
-/// and re-convert · `i` import first · `esc` cancel".
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    const HINTS: &[(&str, &str)] = &[
-        ("enter", "commit and re-convert"),
-        ("i", "import first"),
-        ("esc", "cancel"),
-    ];
-
-    let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = c.muted();
-
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (idx, (key, label)) in HINTS.iter().enumerate() {
-        if idx > 0 {
-            spans.push(Span::raw("  "));
-        }
-        spans.push(Span::styled(*key, key_style));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
-    }
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
-}
-
-/// Computes a popup `Rect` anchored in the top third of `area`, per §4c's own "anchored in the
-/// top third" — otherwise mirrors `popup::unit::edit`'s own `popup_rect`. A popup taller than
-/// the available height shrinks to fit and its anchor clamps toward `y = 0`, covering the
-/// shell's own status line and footer (they render first, but a full-height `Clear` still
-/// wipes over them) — `CONTENT_ROWS` is kept well under the view's 96×30-cell minimum
-/// specifically to avoid that.
+/// The popup's `Rect`, anchored in the top third of `area` and clamped to fit.
 fn popup_rect(area: Rect) -> Rect {
     let width = POPUP_WIDTH.min(area.width);
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-
-    let height = POPUP_HEIGHT.min(area.height);
-    let anchor_y = area.y + (area.height / 6).max(1);
-    let y = anchor_y.min(area.y + area.height.saturating_sub(height));
-
+    let height = (CONTENT_ROWS + 2).min(area.height);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = (area.y + (area.height / 6).max(1)).min(area.y + area.height.saturating_sub(height));
     Rect {
         x,
         y,
@@ -317,13 +348,16 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &BaseUnitGuardPopup, c: &Colours) -> String {
-        let backend = TestBackend::new(96, 30);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| popup.render(frame, frame.area(), c))
-            .expect("rendering the popup should not error");
+    fn stub() -> TuiPorts {
+        crate::units::UnitsSetup::stub(&lib_config::KeyBindingConfig::default()).ports
+    }
 
+    fn render(guard: &BaseUnitGuardPopup) -> String {
+        let mut terminal =
+            Terminal::new(TestBackend::new(96, 30)).expect("test backend should initialise");
+        terminal
+            .draw(|frame| guard.render(frame, frame.area(), &Colours::default()))
+            .expect("drawing the guard should not error");
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
         for y in 0..buffer.area.height {
@@ -336,143 +370,82 @@ mod tests {
     }
 
     #[test]
-    fn renders_without_panicking() {
-        let c = &Colours::default();
-        render(&BaseUnitGuardPopup::new(), c);
-    }
-
-    #[test]
-    fn shows_the_title_and_command_tag() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
-        assert!(text.contains("base unit"), "title missing");
-        assert!(text.contains("AUD → USD"), "conversion arrow missing");
-        assert!(text.contains(":set base"), "command tag missing");
-    }
-
-    #[test]
-    fn shows_the_prose() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
+    fn it_opens_only_on_a_new_base_the_presenter_offers() {
+        let ports = stub();
         assert!(
-            text.contains("transactions are stored in their own units and are"),
-            "prose line 1 missing"
+            BaseUnitGuardPopup::open(&ports, "aud").is_none(),
+            "already the base"
         );
         assert!(
-            text.contains("at the weekly USD close."),
-            "prose line 3 missing"
+            BaseUnitGuardPopup::open(&ports, "zzz").is_none(),
+            "not a Unit"
         );
+        assert!(BaseUnitGuardPopup::open(&ports, "btc").is_some());
     }
 
     #[test]
-    fn shows_every_impact_fact() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
-        for (label, value) in [
-            ("transactions", "412 · unchanged"),
-            ("accounts", "11 · 4 already in USD"),
-            ("re-converted", "18 months of totals"),
-            ("missing rates", "6 weeks · nov 25 – dec 25"),
-            ("one write", "general.base_unit = \"USD\""),
-        ] {
-            assert!(text.contains(label), "{label} label missing");
-            assert!(text.contains(value), "{label}'s value missing");
-        }
-        assert!(text.contains("then"), "then label missing");
-        assert!(
-            text.contains("clears the cached totals"),
-            "then value missing"
-        );
-        assert!(text.contains("u undoes it"), "undo hint missing");
+    fn enter_does_nothing_until_the_typed_code_matches_then_sets_the_base() {
+        let ports = stub();
+        let mut guard = BaseUnitGuardPopup::open(&ports, "btc").expect("btc can be the base");
+        guard.push('b');
+        guard.push('t');
+        assert_eq!(guard.confirm(), Confirmed::NotYet);
+        guard.push('x');
+        guard.backspace();
+        guard.push('c');
+        assert!(guard.matches());
+        assert_eq!(guard.confirm(), Confirmed::Set("btc".into()));
+        let base = ports.borrow().base_unit().base_unit();
+        assert_eq!(base, UnitId::SEED_BTC);
     }
 
     #[test]
-    fn missing_rates_fact_renders_in_the_accent_colour() {
-        let c = &Colours::default();
-        let backend = TestBackend::new(96, 30);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| BaseUnitGuardPopup::new().render(frame, frame.area(), c))
-            .expect("rendering the popup should not error");
-
-        let buffer = terminal.backend().buffer();
-        let row_containing = |needle: &str| -> u16 {
-            (0..buffer.area.height)
-                .find(|&y| {
-                    let mut row = String::new();
-                    for x in 0..buffer.area.width {
-                        row.push_str(buffer[(x, y)].symbol());
-                    }
-                    row.contains(needle)
+    fn enter_is_drawn_dim_until_the_typed_code_matches() {
+        crate::locale::init_for_tests();
+        let c = Colours::default();
+        let enter_style = |guard: &BaseUnitGuardPopup| {
+            let mut terminal =
+                Terminal::new(TestBackend::new(96, 30)).expect("test backend should initialise");
+            terminal
+                .draw(|frame| guard.render(frame, frame.area(), &c))
+                .expect("drawing the guard should not error");
+            let buffer = terminal.backend().buffer().clone();
+            let (x, y) = (0..buffer.area.height)
+                .find_map(|y| {
+                    let row: String = (0..buffer.area.width)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect();
+                    row.find("enter change")
+                        .map(|byte| (row[..byte].chars().count(), y))
                 })
-                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+                .expect("the keys row is drawn");
+            buffer[(u16::try_from(x).unwrap_or_default(), y)].style()
         };
-        let row_has_accent = |y: u16| -> bool {
-            (0..buffer.area.width).any(|x| buffer[(x, y)].fg == Colours::default().accent_colour())
-        };
-
-        assert!(
-            row_has_accent(row_containing("missing rates")),
-            "missing rates fact should render in the accent colour"
-        );
+        let mut guard = BaseUnitGuardPopup::open(&stub(), "btc").expect("btc can be the base");
+        guard.push('b');
+        assert_eq!(enter_style(&guard).fg, c.muted().fg);
+        guard.push('t');
+        guard.push('c');
+        assert_ne!(enter_style(&guard).fg, c.muted().fg);
     }
 
     #[test]
-    fn shows_the_missing_rates_box_and_import_hint() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
-        assert!(
-            text.contains("those 6 weeks report as gaps until priced."),
-            "missing-rates box line missing"
-        );
-        assert!(
-            text.contains("import USD closes first — :price import"),
-            "import-first hint missing"
-        );
-    }
-
-    #[test]
-    fn shows_the_typed_confirmation_input() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
-        assert!(text.contains("type the unit"), "confirmation label missing");
-        assert!(text.contains("USD"), "typed unit missing");
-    }
-
-    #[test]
-    fn shows_the_footer_hints() {
-        let c = &Colours::default();
-        let text = render(&BaseUnitGuardPopup::new(), c);
-        assert!(text.contains("enter"), "enter hint missing");
-        assert!(
-            text.contains("commit and re-convert"),
-            "commit label missing"
-        );
-        assert!(text.contains("import first"), "import first label missing");
-        assert!(text.contains("cancel"), "cancel label missing");
-    }
-
-    #[test]
-    fn popup_rect_stays_within_the_terminal_area() {
-        let area = Rect::new(0, 0, 96, 30);
-        let popup = popup_rect(area);
-        assert!(popup.x + popup.width <= area.width);
-        assert!(popup.y + popup.height <= area.height);
-    }
-
-    #[test]
-    fn popup_shrinks_to_fit_a_shorter_terminal() {
-        let area = Rect::new(0, 0, 96, POPUP_HEIGHT - 2);
-        let popup = popup_rect(area);
-        assert_eq!(popup.height, area.height);
-    }
-
-    #[test]
-    fn popup_is_narrower_than_a_unit_form() {
-        // §4c's own "~78% width" is narrower than `popup::unit`'s ~88% — this is what keeps
-        // the guard visually distinct from an ordinary form.
-        let area = Rect::new(0, 0, 96, 30);
-        let popup = popup_rect(area);
-        assert!(popup.width < 88 * 96 / 100);
+    fn it_states_the_change_and_names_the_code_to_type() {
+        crate::locale::init_for_tests();
+        let guard = BaseUnitGuardPopup::open(&stub(), "btc").expect("btc can be the base");
+        let text = render(&guard);
+        for needle in [
+            "base unit  aud → btc",
+            ":set base btc",
+            "converted again into btc",
+            "· unchanged",
+            "already in btc",
+            "missing prices",
+            "type btc to confirm",
+            "enter change base unit",
+            "ctrl p price sources",
+        ] {
+            assert!(text.contains(needle), "{needle} missing:\n{text}");
+        }
     }
 }

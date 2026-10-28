@@ -1,519 +1,297 @@
-//! The in-place editor popup — `enter` on a Settings › General field, or `:set <key>` (`docs/ux/tui-mockups/
-//! settings/README.md` §4b, "Editing in place"). Wireframe stage, same as `popup::unit::edit`:
-//! every field renders §4b's own `general.negatives` worked example verbatim — including the
-//! candidate already chosen (`minus`) and its resolved preview/on-accept lines — rather than a
-//! real, editable draft against the (not yet built) settings registry. `Shell` wires up
-//! opening and closing it (`Esc`) so the navigation path exists before field editing and
-//! committing are built out.
+//! The in-place editor (TUI-020): `enter` on a form page's field opens it where it sits, as a
+//! bordered, accent-framed box holding the field's own sub-rows, while the rest of the page dims
+//! and the status line shows `INSERT`. Inside it `←→` chooses a segment, `space` toggles a
+//! checkbox, typing edits text, `enter` saves, `tab` saves and moves to the next field, and `esc`
+//! keeps the old value.
+//!
+//! The editor holds only the draft: what each field offers and what its sub-rows say are the
+//! page's (`view::settings::{general,display}`), and what saving does is the
+//! [`Action::SetSetting`] the page returns from [`Outcome::Save`].
+//!
+//! [`Action::SetSetting`]: crate::view::Action::SetSetting
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Clear, Paragraph},
 };
 
 use crate::colours::Colours;
 use crate::msg;
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::view::settings::field::SettingField;
 
-/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes. §4b itself calls for an in-place
-/// (non-floating) editor rather than a sized dialog, so this borrows `popup::unit`'s own ~88%
-/// form width instead — see this module's own doc comment.
-const POPUP_WIDTH_PERCENT: u32 = 88;
+/// The label column inside the box: the form pages', so the longest label keeps its gap.
+const LABEL_WIDTH: u16 = 22;
 
-/// The popup's fixed width in terminal cells, computed once against the reference width rather
-/// than the live terminal, mirroring `popup::unit::edit`'s own `POPUP_WIDTH`.
-const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
+/// One segment a choice field offers: the value `:set` takes, and its label.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    pub value: String,
+    pub label: String,
+}
 
-/// Width of the field label column (`preview`, `ledger row`, …) — sized to the longest label,
-/// plus a gap.
-const LABEL_WIDTH: u16 = "ledger row".len() as u16 + 2;
+/// What the open field holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Draft {
+    /// Segments, `←→` moving between them, wrapping at both ends.
+    Choice {
+        segments: Vec<Segment>,
+        chosen: usize,
+    },
+    /// Free text.
+    Text(String),
+    /// A checkbox, `space` toggling it.
+    Check(bool),
+}
 
-/// Content rows inside the border: title, its rule, the explain line, the 4-row value box,
-/// `preview`/`current`, the "applies to" heading and its 3 lines, a blank spacer, the 5-row
-/// on-accept box, the typed command line, a rule, then the footer hints. Trimmed from §4a's own
-/// blank-spaced, ruled layout — every optional blank/rule between sections dropped — to keep
-/// the popup shorter than the view's 96×30-cell minimum; see `popup_rect`'s own doc comment for
-/// what a taller popup would do to the shell chrome around it.
-const CONTENT_ROWS: u16 = 1 + 1 + 1 + 4 + 1 + 1 + 1 + 3 + 1 + 5 + 1 + 1 + 1;
+/// What a key did to the open field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// `enter`: save this value.
+    Save(String),
+    /// `tab`: save this value, then select the next field.
+    SaveAndNext(String),
+    /// `esc`: close, keeping the old value.
+    Keep,
+    /// The draft changed, or the key did nothing; either way the field stays open.
+    Stay,
+}
 
-/// Total popup height: content plus its top/bottom border.
-const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
+/// The open field: which it is, its draft, and the old value's label for `esc keep …`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldEditor {
+    field: SettingField,
+    draft: Draft,
+    was: String,
+}
 
-/// The in-place editor popup: `docs/ux/tui-mockups/05-settings/README.md` §4b as a centred floating
-/// overlay (see this module's own doc comment for why, over §4b's literal "in the row's
-/// position"). No draft state yet — every field is the mockup's own placeholder content, not a
-/// real candidate value.
-#[derive(Default)]
-pub struct EditSettingPopup;
-
-impl EditSettingPopup {
-    /// Opens a fresh popup.
-    pub fn new() -> Self {
-        Self
+impl FieldEditor {
+    pub fn new(field: SettingField, draft: Draft, was: String) -> Self {
+        Self { field, draft, was }
     }
 
-    /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
-    /// (the full terminal area, per `popup::unit::edit`'s own convention).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-        let popup = popup_rect(area);
-
-        frame.render_widget(Clear, popup);
-        let block = Block::bordered();
-        let inner = block.inner(popup);
-        frame.render_widget(block, popup);
-
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // title
-                Constraint::Length(1), // rule
-                Constraint::Length(1), // explain
-                Constraint::Length(4), // value box
-                Constraint::Length(1), // preview
-                Constraint::Length(1), // current
-                Constraint::Length(1), // applies to heading
-                Constraint::Length(3), // applies to lines
-                Constraint::Length(1), // blank spacer
-                Constraint::Length(5), // on accept box
-                Constraint::Length(1), // typed command line
-                Constraint::Length(1), // rule
-                Constraint::Length(1), // footer hints
-            ])
-            .split(inner);
-
-        render_title(frame, rows[0], c);
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
-        render_field(
-            frame,
-            rows[2],
-            "",
-            Line::from("how a negative amount prints everywhere"),
-            c,
-        );
-        render_value_box(frame, rows[3], c);
-        render_preview(frame, rows[4], c);
-        render_current(frame, rows[5], c);
-        render_applies_to_heading(frame, rows[6], c);
-        render_applies_to_lines(frame, rows[7], c);
-        // rows[8] is left blank — breathing space above the on-accept box.
-        render_on_accept_box(frame, rows[9], c);
-        render_typed_command(frame, rows[10], c);
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
-        render_footer_hints(frame, rows[12], c);
+    pub fn field(&self) -> SettingField {
+        self.field
     }
-}
 
-/// The title row: `negatives` flush left, `general.negatives` dim and right-aligned — matches
-/// `popup::unit::edit`'s own "title left, context right" convention.
-fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let tag = msg::tui_setting_edit_command();
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(tag.chars().count() as u16),
-        ])
-        .split(area);
+    /// The old value's label.
+    pub fn was(&self) -> &str {
+        &self.was
+    }
 
-    frame.render_widget(Paragraph::new(msg::tui_setting_edit_title()), columns[0]);
-    let dim = c.muted();
-    frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
-        columns[1],
-    );
-}
-
-/// One `label   value` row, the label dim and fixed-width — mirrors `popup::unit::edit`'s own
-/// `render_field`. `label` is `""` for the explain line, which has no label of its own.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
-        .split(area);
-
-    let dim = c.muted();
-    frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
-    frame.render_widget(Paragraph::new(value), columns[1]);
-}
-
-/// The `value` field's focused box — an accent-bordered `Block` around the enum's segmented
-/// row (the selected variant reversed, per §4b's "the selection is a reversed block") and its
-/// `←→` hint, mirroring `popup::unit::edit`'s own accent-bordered precision warning box.
-fn render_value_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let accent = c.accent();
-    let block = Block::bordered().border_style(accent);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let lines = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(inner);
-
-    let reversed = c.selection();
-    render_field(
-        frame,
-        lines[0],
-        "value",
-        Line::from(vec![
-            Span::styled("minus", reversed),
-            Span::raw(" brackets trailing"),
-        ]),
-        c,
-    );
-    let dim = c.muted();
-    render_field(
-        frame,
-        lines[1],
-        "",
-        Line::from(Span::styled("↔ choose · 3 options", dim)),
-        c,
-    );
-}
-
-/// The `preview` row: a real figure in the candidate format, per §4b's own "a real figure from
-/// the user's data ... not lorem" — styled `accent`, matching the design's own `← accent`
-/// marker on this row.
-fn render_preview(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let accent = c.accent();
-    render_field(
-        frame,
-        area,
-        "preview",
-        Line::from(Span::styled("−320 334.10", accent)),
-        c,
-    );
-}
-
-/// The `current` row: the value the row would fall back to if there were no override, and
-/// whether it is the default — §4b's own "names the current value *and* whether it is the
-/// default, in one line".
-fn render_current(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let dim = c.muted();
-    render_field(
-        frame,
-        area,
-        "current",
-        Line::from(vec![
-            Span::raw("(320 334.10) "),
-            Span::styled("· DEFAULT", dim),
-        ]),
-        c,
-    );
-}
-
-/// The "applies to" heading, tagged with §4b's own "everywhere an amount prints" — same dim
-/// label / dim tag pattern as `view::settings`'s own `render_heading`.
-fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let tag = "EVERYWHERE AN AMOUNT PRINTS";
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(tag.chars().count() as u16),
-        ])
-        .split(area);
-
-    let dim = c.muted();
-    frame.render_widget(Paragraph::new(Span::styled("APPLIES TO", dim)), columns[0]);
-    frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
-        columns[1],
-    );
-}
-
-/// The "applies to" box's three lines — net position, one ledger row and the csv-export note,
-/// §4b's own "the same candidate shown in the three places it lands, so scope is legible
-/// before committing".
-fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .split(area);
-
-    render_field(frame, rows[0], "net", Line::from("−320 334.10"), c);
-    render_field(
-        frame,
-        rows[1],
-        "ledger row",
-        Line::from("Woolworths −184.20"),
-        c,
-    );
-    let dim = c.muted();
-    frame.render_widget(
-        Paragraph::new(Span::styled("csv export unaffected · machine format", dim)),
-        rows[2],
-    );
-}
-
-/// The "on accept" box — a plain bordered `Block` spelling out the exact write §4b calls for
-/// ("`on accept` spells out the write") and the `r` drop-override hint beneath it. §4b's own
-/// two-line hint ("drop the override and fall back to the" / "shipped default instead of
-/// storing a row") is folded onto one line here to keep the box within this popup's trimmed
-/// height budget (`CONTENT_ROWS`'s own doc comment).
-fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let block = Block::bordered();
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // "on accept  upsert settings row"
-            Constraint::Length(1), // "general.negatives = "minus""
-            Constraint::Length(1), // "r  drop override, falling back to the shipped default"
-        ])
-        .split(inner);
-
-    render_field(
-        frame,
-        rows[0],
-        "on accept",
-        Line::from("upsert settings row"),
-        c,
-    );
-    frame.render_widget(Paragraph::new("general.negatives = \"minus\""), rows[1]);
-    let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = c.muted();
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("r", bold),
-            Span::raw("  "),
-            Span::styled("drop override, falling back to the shipped default", dim),
-        ])),
-        rows[2],
-    );
-}
-
-/// The typed-command echo — §4b's own "the command line echoes the equivalent command", with
-/// a `cursor` caret after the value and the dim "same edit, typed" note.
-fn render_typed_command(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let cursor = c.cursor();
-    let dim = c.muted();
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::raw(":set negatives minus"),
-            Span::styled("▌", cursor),
-            Span::raw(" "),
-            Span::styled("— same edit, typed", dim),
-        ])),
-        area,
-    );
-}
-
-/// The window footer hint row: each key bold, its label dim — matches §4b's own "Keys: `←→`
-/// choose · `enter` commit · `esc` revert · `r` drop override", `enter` folded into `commit`
-/// per `popup::unit::edit`'s own bold-key convention (`^s` there since a unit form has other
-/// text fields `enter` would otherwise submit early).
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    const HINTS: &[(&str, &str)] = &[
-        ("←→", "choose"),
-        ("^s", "commit"),
-        ("r", "drop override"),
-        ("esc", "cancel"),
-    ];
-
-    let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = c.muted();
-
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (idx, (key, label)) in HINTS.iter().enumerate() {
-        if idx > 0 {
-            spans.push(Span::raw("  "));
+    /// The draft as `:set` would take it.
+    pub fn value(&self) -> String {
+        match &self.draft {
+            Draft::Choice { segments, chosen } => segments
+                .get(*chosen)
+                .map(|segment| segment.value.clone())
+                .unwrap_or_default(),
+            Draft::Text(text) => text.clone(),
+            Draft::Check(on) => if *on { "on" } else { "off" }.to_string(),
         }
-        spans.push(Span::styled(*key, key_style));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
     }
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
-}
 
-/// Computes a centred popup `Rect` sized to `POPUP_HEIGHT`'s fixed field list — mirrors
-/// `popup::unit::edit`'s own `popup_rect`. A popup taller than the available height shrinks to
-/// fit and its anchor clamps toward `y = 0`, covering the shell's own status line and footer
-/// (they render first, but a full-height `Clear` still wipes over them) — `CONTENT_ROWS` is
-/// kept well under the view's 96×30-cell minimum specifically to avoid that.
-fn popup_rect(area: Rect) -> Rect {
-    let width = POPUP_WIDTH.min(area.width);
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    /// The chosen segment's label, or the text, for the page's sub-rows.
+    pub fn label(&self) -> String {
+        match &self.draft {
+            Draft::Choice { segments, chosen } => segments
+                .get(*chosen)
+                .map(|segment| segment.label.clone())
+                .unwrap_or_default(),
+            _ => self.value(),
+        }
+    }
 
-    let height = POPUP_HEIGHT.min(area.height);
-    let anchor_y = area.y + (area.height / 6).max(1);
-    let y = anchor_y.min(area.y + area.height.saturating_sub(height));
+    pub fn handle_key(&mut self, key: KeyEvent) -> Outcome {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match (&mut self.draft, key.code) {
+            (_, KeyCode::Enter) => return Outcome::Save(self.value()),
+            (_, KeyCode::Tab) => return Outcome::SaveAndNext(self.value()),
+            (_, KeyCode::Esc) => return Outcome::Keep,
+            (Draft::Choice { segments, chosen }, KeyCode::Left | KeyCode::Right) => {
+                let count = segments.len().max(1);
+                *chosen = if key.code == KeyCode::Right {
+                    (*chosen + 1) % count
+                } else {
+                    (*chosen + count - 1) % count
+                };
+            }
+            (Draft::Check(on), KeyCode::Char(' ')) => *on = !*on,
+            (Draft::Text(text), KeyCode::Backspace) => {
+                text.pop();
+            }
+            (Draft::Text(text), KeyCode::Char(ch)) if !ctrl => text.push(ch),
+            _ => {}
+        }
+        Outcome::Stay
+    }
 
-    Rect {
-        x,
-        y,
-        width,
-        height,
+    /// The box's height around `sub_rows` rows below the field's own.
+    pub fn height(sub_rows: usize) -> u16 {
+        u16::try_from(sub_rows).unwrap_or(0).saturating_add(3)
+    }
+
+    /// The box over `area`: the field's label and draft, then each `(label, value)` sub-row.
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        sub_rows: &[(String, String)],
+        c: &Colours,
+    ) {
+        frame.render_widget(Clear, area);
+        let block = Block::bordered().border_style(c.accent());
+        let inner = block.inner(area).inner(Margin::new(1, 0));
+        frame.render_widget(block, area);
+
+        let rows = Layout::vertical(vec![Constraint::Length(1); sub_rows.len() + 1]).split(inner);
+        let bold = Style::default().add_modifier(Modifier::BOLD);
+        if let Some(head) = rows.first() {
+            let [label, draft] =
+                Layout::horizontal([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
+                    .areas(*head);
+            frame.render_widget(
+                Paragraph::new(Span::styled(self.field.label(), bold)),
+                label,
+            );
+            frame.render_widget(Paragraph::new(self.draft_line(c)), draft);
+        }
+        for ((label, value), row) in sub_rows.iter().zip(rows.iter().skip(1)) {
+            let [label_area, value_area] =
+                Layout::horizontal([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
+                    .areas(*row);
+            frame.render_widget(
+                Paragraph::new(Span::styled(label.as_str(), c.muted())),
+                label_area,
+            );
+            frame.render_widget(Paragraph::new(value.as_str()), value_area);
+        }
+    }
+
+    /// The draft as drawn: the segments with the chosen one reversed, the text and its cursor, or
+    /// the checkbox, then a dim reminder of the key that changes it.
+    fn draft_line(&self, c: &Colours) -> Line<'static> {
+        let mut spans = Vec::new();
+        let key = match &self.draft {
+            Draft::Choice { segments, chosen } => {
+                for (index, segment) in segments.iter().enumerate() {
+                    if index > 0 {
+                        spans.push(Span::raw("  "));
+                    }
+                    let style = if index == *chosen {
+                        c.selection()
+                    } else {
+                        c.muted()
+                    };
+                    spans.push(Span::styled(format!(" {} ", segment.label), style));
+                }
+                "←→"
+            }
+            Draft::Text(text) => {
+                spans.push(Span::raw(text.clone()));
+                spans.push(Span::styled("▌", c.cursor()));
+                return Line::from(spans);
+            }
+            Draft::Check(on) => {
+                spans.push(Span::raw(if *on { "[x]" } else { "[ ]" }));
+                "space"
+            }
+        };
+        spans.push(Span::styled(format!("  · {key}"), c.muted()));
+        Line::from(spans)
+    }
+
+    /// The hint bar while the field is open; `back` is the Shell's back key.
+    pub fn hints(&self, back: &str) -> Vec<(String, String)> {
+        let mut hints = match self.draft {
+            Draft::Choice { .. } => vec![("←→".to_string(), msg::tui_settings_hint_choose())],
+            Draft::Check(_) => vec![("space".to_string(), msg::tui_settings_hint_toggle())],
+            Draft::Text(_) => Vec::new(),
+        };
+        hints.extend([
+            ("enter".to_string(), msg::tui_settings_hint_save()),
+            (back.to_string(), msg::tui_settings_hint_keep(&self.was)),
+            ("tab".to_string(), msg::tui_settings_hint_next_field()),
+        ]);
+        hints
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{Terminal, backend::TestBackend};
-
     use super::*;
 
-    fn render(popup: &EditSettingPopup, c: &Colours) -> String {
-        let backend = TestBackend::new(96, 34);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| popup.render(frame, frame.area(), c))
-            .expect("rendering the popup should not error");
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
 
-        let buffer = terminal.backend().buffer();
-        let mut text = String::new();
-        for y in 0..buffer.area.height {
-            for x in 0..buffer.area.width {
-                text.push_str(buffer[(x, y)].symbol());
-            }
-            text.push('\n');
+    fn choice(labels: &[&str]) -> FieldEditor {
+        let segments = labels
+            .iter()
+            .map(|label| Segment {
+                value: label.to_string(),
+                label: label.to_string(),
+            })
+            .collect();
+        FieldEditor::new(
+            SettingField::DateStyle,
+            Draft::Choice {
+                segments,
+                chosen: 0,
+            },
+            "a".into(),
+        )
+    }
+
+    #[test]
+    fn arrows_cycle_the_segments_and_enter_saves_the_chosen_one() {
+        let mut editor = choice(&["a", "b", "c"]);
+        assert_eq!(editor.handle_key(key(KeyCode::Left)), Outcome::Stay);
+        assert_eq!(editor.value(), "c", "← wraps to the last");
+        editor.handle_key(key(KeyCode::Right));
+        editor.handle_key(key(KeyCode::Right));
+        assert_eq!(editor.value(), "b");
+        assert_eq!(
+            editor.handle_key(key(KeyCode::Enter)),
+            Outcome::Save("b".into())
+        );
+        assert_eq!(
+            editor.handle_key(key(KeyCode::Tab)),
+            Outcome::SaveAndNext("b".into())
+        );
+        assert_eq!(editor.handle_key(key(KeyCode::Esc)), Outcome::Keep);
+    }
+
+    #[test]
+    fn space_toggles_a_checkbox_and_text_takes_typing() {
+        let mut check = FieldEditor::new(SettingField::Toasts, Draft::Check(true), "on".into());
+        check.handle_key(key(KeyCode::Char(' ')));
+        assert_eq!(check.value(), "off");
+
+        let mut text = FieldEditor::new(SettingField::Owner, Draft::Text("Ia".into()), "Ia".into());
+        text.handle_key(key(KeyCode::Backspace));
+        for ch in "lex".chars() {
+            text.handle_key(key(KeyCode::Char(ch)));
         }
-        text
+        assert_eq!(text.value(), "Ilex");
+        text.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(text.value(), "Ilex", "a control chord isn't typed");
     }
 
     #[test]
-    fn renders_without_panicking() {
-        let c = &Colours::default();
-        render(&EditSettingPopup::new(), c);
-    }
-
-    #[test]
-    fn shows_the_title_and_key() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        assert!(text.contains("negatives"), "title missing");
-        assert!(text.contains("general.negatives"), "dotted key missing");
-    }
-
-    #[test]
-    fn shows_the_value_choices_and_the_choose_hint() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        for variant in ["minus", "brackets", "trailing"] {
-            assert!(text.contains(variant), "{variant} option missing");
-        }
-        assert!(text.contains("↔ choose · 3 options"), "choose hint missing");
-    }
-
-    #[test]
-    fn the_selected_variant_renders_reversed() {
-        let c = &Colours::default();
-        let backend = TestBackend::new(96, 34);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-        terminal
-            .draw(|frame| EditSettingPopup::new().render(frame, frame.area(), c))
-            .expect("rendering the popup should not error");
-
-        let buffer = terminal.backend().buffer();
-        let row_containing = |needle: &str| -> u16 {
-            (0..buffer.area.height)
-                .find(|&y| {
-                    let mut row = String::new();
-                    for x in 0..buffer.area.width {
-                        row.push_str(buffer[(x, y)].symbol());
-                    }
-                    row.contains(needle)
-                })
-                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
-        };
-        let row_is_selected = |y: u16| -> bool {
-            (0..buffer.area.width)
-                .any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
-        };
-
-        assert!(
-            row_is_selected(row_containing("brackets trailing")),
-            "the value row should carry a reversed span on the selected variant"
+    fn the_hints_name_the_draft_s_key_and_the_value_esc_keeps() {
+        crate::locale::init_for_tests();
+        let hints: Vec<String> = choice(&["a", "b"])
+            .hints("esc")
+            .into_iter()
+            .map(|(key, label)| format!("{key} {label}"))
+            .collect();
+        assert_eq!(
+            hints,
+            ["←→ choose", "enter save", "esc keep a", "tab next field"]
         );
-    }
-
-    #[test]
-    fn shows_preview_current_and_applies_to() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        assert!(text.contains("preview"), "preview label missing");
-        assert!(text.contains("−320 334.10"), "preview value missing");
-        assert!(text.contains("current"), "current label missing");
-        assert!(text.contains("(320 334.10)"), "current value missing");
-        assert!(text.contains("DEFAULT"), "default marker missing");
-        assert!(text.contains("APPLIES TO"), "applies to heading missing");
-        assert!(text.contains("net"), "net line missing");
-        assert!(text.contains("Woolworths"), "ledger row line missing");
-        assert!(
-            text.contains("csv export unaffected · machine format"),
-            "csv export line missing"
-        );
-    }
-
-    #[test]
-    fn shows_the_on_accept_write_and_drop_override_hint() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        assert!(text.contains("on accept"), "on accept label missing");
-        assert!(
-            text.contains("upsert settings row"),
-            "on accept verb missing"
-        );
-        assert!(
-            text.contains("general.negatives = \"minus\""),
-            "the exact write missing"
-        );
-        assert!(
-            text.contains("drop override, falling back to the shipped default"),
-            "drop-override hint missing"
-        );
-    }
-
-    #[test]
-    fn shows_the_typed_command_echo() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        assert!(
-            text.contains(":set negatives minus"),
-            "typed command echo missing"
-        );
-        assert!(
-            text.contains("— same edit, typed"),
-            "same-edit note missing"
-        );
-    }
-
-    #[test]
-    fn shows_the_footer_hints() {
-        let c = &Colours::default();
-        let text = render(&EditSettingPopup::new(), c);
-        for key in ["←→", "^s", "esc"] {
-            assert!(text.contains(key), "{key} hint missing");
-        }
-        assert!(text.contains("choose"), "choose label missing");
-        assert!(text.contains("commit"), "commit label missing");
-        assert!(
-            text.contains("drop override"),
-            "drop override label missing"
-        );
-    }
-
-    #[test]
-    fn popup_rect_stays_within_the_terminal_area() {
-        let area = Rect::new(0, 0, 96, 34);
-        let popup = popup_rect(area);
-        assert!(popup.x + popup.width <= area.width);
-        assert!(popup.y + popup.height <= area.height);
-    }
-
-    #[test]
-    fn popup_shrinks_to_fit_a_shorter_terminal() {
-        let area = Rect::new(0, 0, 96, POPUP_HEIGHT - 2);
-        let popup = popup_rect(area);
-        assert_eq!(popup.height, area.height);
     }
 }

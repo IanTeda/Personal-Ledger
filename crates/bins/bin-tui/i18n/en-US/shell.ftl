@@ -77,7 +77,6 @@ tui-footer-close-dialog = { $key } close dialog
 
 tui-form-noun-unit = unit
 tui-form-noun-category = category
-tui-form-noun-edit = edit
 tui-form-noun-account = account
 tui-form-noun-tag = tag
 tui-form-noun-payee = payee

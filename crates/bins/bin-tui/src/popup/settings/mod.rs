@@ -1,16 +1,6 @@
-//! Settings-domain popups: the in-place editor (`docs/ux/tui-mockups/05-settings/README.md` §4b) and the
-//! base-unit guard (§4c), hosted by `Shell` the same way `crate::popup::unit` is. Wireframe
-//! stage, same fidelity as `view::settings`' General page and `popup::unit`: every field renders
-//! §4b/§4c's own worked examples verbatim rather than a real, editable draft against the
-//! (not yet built) settings registry.
-//!
-//! §4b's own text calls for the editor to open "in the row's position" — the list dims around
-//! it rather than a floating dialog. Implementing that would mean the settings list's row
-//! layout knowing about an open editor, which is a deeper change than this wireframe stage
-//! needs; Stage 2 of the Settings work plan (`CLAUDE_CODE.md`) makes the editor inline. Until
-//! then both popups here reuse `popup::unit`'s "centred floating overlay over a
-//! dimmed view" treatment, the same simplification the units screen's own forms already made
-//! against their design doc's more contextual language.
+//! Settings-domain popups and the in-place editor. `Shell` hosts the colour list popups and the
+//! base unit guard (TUI-021) over the dimmed Settings View; the in-place editor (TUI-020) isn't a
+//! popup, but a box the form page draws in the open field's row, so the Settings View holds it.
 
 pub mod colour;
 pub mod edit;
@@ -19,10 +9,8 @@ pub mod guard;
 use crate::colours::Colours;
 use ratatui::{Frame, layout::Rect};
 
-/// The one settings-domain popup `Shell` can have open at a time — mirrors `popup::unit::
-/// UnitPopup`'s own single-`Option` reasoning: only one form is ever up.
+/// The one settings-domain popup `Shell` can have open at a time.
 pub enum SettingsPopup {
-    Edit(edit::EditSettingPopup),
     BaseUnitGuard(guard::BaseUnitGuardPopup),
     Colour(colour::ColourPopup),
 }
@@ -31,7 +19,6 @@ impl SettingsPopup {
     /// Renders whichever popup is open — see each variant's own `render` for its layout.
     pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         match self {
-            SettingsPopup::Edit(popup) => popup.render(frame, area, c),
             SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area, c),
             SettingsPopup::Colour(popup) => popup.render(frame, area, c),
         }
