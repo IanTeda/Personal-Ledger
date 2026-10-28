@@ -8,6 +8,10 @@
 //! overrides reach them as on the Desktop. The arrows walk the tables and `Enter` edits, as the
 //! Desktop's router movements and double-click do. While a Dialog is open it takes every key
 //! ([`View::dialog_open`]) and draws over the frame ([`View::render_dialog`]).
+//!
+//! At X-Large the page docks the detail pane at the View's right edge (TUI-055, `pane.rs`). The
+//! View tells the page through `UnitsPageEvent::SetDocked` when the Window Size crosses into or
+//! out of X-Large, so its outcomes land in the pane's ACTIVITY instead of raising a Toast.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_list_cursor::Step;
@@ -16,7 +20,7 @@ use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use lib_units::SharedPorts;
 use lib_units::presenter::{
-    SourceLine, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel,
+    SourceLine, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
 };
 use lib_viper::keymap::Keymap;
 use ratatui::{
@@ -33,6 +37,7 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::units::router::Router;
 use crate::units::view::dialog::Dialog;
+use crate::units::view::pane::{self, PaneKeys};
 use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
@@ -70,7 +75,7 @@ const WEEKLY_CLOSE_HEIGHT: u16 = 12;
 const KEYBIND_HINTS_HEIGHT: u16 = 3 + 3;
 
 /// What separates one key hint from the next.
-const HINT_SEPARATOR: &str = "  \u{b7}  ";
+pub(super) const HINT_SEPARATOR: &str = "  \u{b7}  ";
 
 /// The Units page: its Presenter on the shared ports, and the Dialog open over it.
 pub struct UnitsView {
@@ -80,6 +85,9 @@ pub struct UnitsView {
     dialog: Option<Dialog>,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
+    /// Whether the page was last told it is docked: the one place the Window Size is remembered,
+    /// so crossing X-Large's Breakpoint sends `SetDocked` once rather than on every draw.
+    docked: bool,
 }
 
 impl UnitsView {
@@ -95,6 +103,7 @@ impl UnitsView {
             keymap: setup.keymap.clone(),
             dialog: None,
             toasts: Vec::new(),
+            docked: false,
         }
     }
 
@@ -202,14 +211,34 @@ impl View for UnitsView {
 
         // rows[0] is left blank — breathing space between the shell's title bar and the tables,
         // matching the dashboard's own spacer rows.
+        let mut widths = vec![Constraint::Length(LEFT_COLUMN_WIDTH), Constraint::Min(0)];
+        if view.pane.is_some() {
+            widths.push(Constraint::Length(pane::WIDTH));
+        }
         let columns = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(LEFT_COLUMN_WIDTH), Constraint::Min(0)])
+            .constraints(widths)
             .spacing(2)
             .split(rows[1]);
 
         render_left_column(frame, columns[0], &view, c);
         render_price_history(frame, columns[1], &view, c);
+        if let Some(detail) = &view.pane {
+            let keys = PaneKeys {
+                keymap: &self.keymap,
+                selected: selected_row(&view),
+                sources: &view.price_sources_heading,
+            };
+            pane::render(frame, columns[2], detail, &keys, c);
+        }
+    }
+
+    fn set_window_size(&mut self, size: WindowSize) {
+        let docked = size == WindowSize::XLarge;
+        if docked != self.docked {
+            self.docked = docked;
+            self.send(UnitsPageEvent::SetDocked(docked));
+        }
     }
 
     fn id(&self) -> ViewId {
@@ -233,6 +262,14 @@ impl View for UnitsView {
             dialog.render(frame, area, c);
         }
     }
+}
+
+/// The row the selection is on, in either table.
+fn selected_row(view: &UnitsPageViewModel) -> Option<UnitsRow> {
+    let unit = view.units.iter().find(|unit| unit.selected);
+    let source = view.price_sources.iter().find(|source| source.selected);
+    unit.map(|unit| UnitsRow::Unit(unit.id))
+        .or_else(|| source.map(|source| UnitsRow::Source(source.id)))
 }
 
 /// The left column: the two tables above the summary, which is sized to its content so the
@@ -731,6 +768,110 @@ mod tests {
         assert_eq!(scroll_offset(Some(2), 5), 0);
         assert_eq!(scroll_offset(Some(5), 5), 1);
         assert_eq!(scroll_offset(None, 5), 0);
+    }
+
+    /// The Units View docked at X-Large with btc selected, as TUI-055 draws it.
+    fn docked_on_btc() -> UnitsView {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::XLarge);
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
+            lib_units::UnitId::SEED_BTC,
+        )));
+        view
+    }
+
+    /// Selects btc, which an Account holds, and deactivates it through `d` and `enter`.
+    fn deactivate_btc(view: &mut UnitsView) {
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
+            lib_units::UnitId::SEED_BTC,
+        )));
+        view.handle_key(key(KeyCode::Char('d')));
+        view.handle_key(key(KeyCode::Enter));
+        assert!(!view.dialog_open(), "enter confirms the Deactivate Dialog");
+    }
+
+    #[test]
+    fn at_x_large_the_pane_docks_with_btcs_groups_then_activity() {
+        let view = docked_on_btc();
+        let text = render(&view, 256, 72);
+        for heading in ["UNIT", "PRICE SOURCES", "ACCOUNTS", "ACTIVITY"] {
+            assert!(text.contains(heading), "{heading} missing:\n{text}");
+        }
+        assert!(text.contains("btc · Bitcoin"), "the UNIT title:\n{text}");
+        assert!(text.contains("e Edit unit"), "the Unit's keys:\n{text}");
+        assert!(
+            text.contains("t Test"),
+            "t tests the linked source:\n{text}"
+        );
+        assert!(
+            text.contains("tab Price sources"),
+            "tab reaches the source:\n{text}"
+        );
+        assert!(
+            !text.contains("Edit source"),
+            "e on a Unit edits the Unit, so the pane doesn't offer it:\n{text}"
+        );
+        assert!(
+            text.contains("This session's Units outcomes"),
+            "ACTIVITY's note, wrapped:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_price_source_selected_swaps_the_groups() {
+        let mut view = docked_on_btc();
+        view.send(UnitsPageEvent::Select(UnitsRow::Source(
+            lib_units::COINGECKO,
+        )));
+        let text = render(&view, 256, 72);
+        assert!(text.contains("VALUES"), "{text}");
+        assert!(!text.contains("ACCOUNTS"), "{text}");
+        assert!(text.contains("ACTIVITY"), "{text}");
+    }
+
+    #[test]
+    fn below_x_large_nothing_docks() {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::Large);
+        assert!(view.view_model().pane.is_none());
+        assert!(!render(&view, 171, 53).contains("ACTIVITY"));
+    }
+
+    #[test]
+    fn crossing_x_large_tells_the_page_each_way() {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::XLarge);
+        view.set_window_size(WindowSize::XLarge);
+        assert!(view.view_model().docked);
+        view.set_window_size(WindowSize::Large);
+        assert!(!view.view_model().docked);
+        view.set_window_size(WindowSize::Medium);
+        assert!(!view.view_model().docked);
+    }
+
+    #[test]
+    fn at_x_large_an_outcome_lands_in_activity_and_raises_no_toast() {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::XLarge);
+        deactivate_btc(&mut view);
+
+        assert_eq!(view.take_toasts(), vec![]);
+        let activity = view.view_model().activity;
+        assert_eq!(activity.len(), 1, "{activity:?}");
+        let text = render(&view, 256, 72);
+        assert!(text.contains(&activity[0].text), "{text}");
+    }
+
+    #[test]
+    fn below_x_large_an_outcome_still_toasts() {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::Large);
+        deactivate_btc(&mut view);
+
+        let toasts = view.take_toasts();
+        assert_eq!(toasts.len(), 1, "{toasts:?}");
+        assert_eq!(toasts[0].0, ToastKind::Success);
+        assert!(view.view_model().activity.is_empty());
     }
 
     #[test]

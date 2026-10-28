@@ -4325,6 +4325,27 @@ mod tests {
     }
 
     #[test]
+    fn units_docks_its_detail_pane_at_x_large_and_an_outcome_raises_no_toast_there() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenUnits);
+
+        assert!(!drawn_at(&mut shell, 213, 53).contains("ACTIVITY"));
+        assert!(drawn_at(&mut shell, 256, 72).contains("ACTIVITY"));
+
+        // btc, the second Unit, is held by an Account, so `d` deactivates it on `enter`.
+        press(
+            &mut shell,
+            &[KeyCode::Char('j'), KeyCode::Char('d'), KeyCode::Enter],
+        );
+        assert!(!shell.view.dialog_open());
+        assert!(shell.toasts.visible().is_empty(), "it went to ACTIVITY");
+        assert!(drawn_at(&mut shell, 256, 72).contains("Deactivated"));
+
+        assert!(!drawn_at(&mut shell, 213, 53).contains("ACTIVITY"));
+    }
+
+    #[test]
     fn esc_closes_an_open_settings_popup() {
         for open in [Action::OpenEditSettingPopup, Action::OpenBaseUnitGuardPopup] {
             let mut shell = opened();
