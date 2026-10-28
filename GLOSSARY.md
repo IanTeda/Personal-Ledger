@@ -41,7 +41,7 @@ The local SQLite database a Client keeps its copy of one Ledger in; what opening
 _Avoid_: database, book file.
 
 **Open Ledger**:
-The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, and help; "no Ledger open" names that state, not "empty state", which means a View with no rows.
+The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, help, and the Settings pages for this device; everything else is shown but refused. "No Ledger open" names that state, not "empty state", which means a View with no rows. Which Ledger, if any, a Client opens as it starts is its On start Preference.
 _Avoid_: loaded ledger, active ledger, current ledger; load (as the verb).
 
 **Client**:
@@ -60,11 +60,10 @@ Client-scoped (stored locally, never synced); which kind a given Preference is g
 decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
 As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md) and
 [ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
-the Preferences are the base Unit (which new Accounts default to; there is no separate default Unit), Colour Theme, Colour Appearance and date style — all four Ledger-scoped, so they sync across a user's own Clients rather than being set separately on each one. The Colour Theme and Colour Appearance are nullable like the date style ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). The date style is nullable: no value means "use the Locale's
-default", and only an explicit choice is stored and synced. The Locale is not a Preference
-(see Locale, below). The first Client-scoped Preference is Toasts on/off, default on
+the Ledger-scoped Preference is the base Unit (which new Accounts default to; there is no separate default Unit), which syncs across a user's own Clients rather than being set separately on each one. The Client-scoped Preferences are Toasts on/off, default on
 ([ADR-0027](docs/adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)),
-because whether Toasts are welcome depends on the device, not the Ledger.
+because whether Toasts are welcome depends on the device, not the Ledger; Colour Theme, Colour Appearance and date style, which belong to the device and must apply with no Ledger open ([ADR-0051](docs/adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)); and On start, which Ledger a Client opens as it starts: Reopen last Ledger (the default; none if none was open when it last quit) or Start with no Ledger open. The Colour Theme, Colour Appearance and date style are nullable ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)): no date style means "use the Locale's default". The Locale is not a Preference
+(see Locale, below). Settings groups its pages by scope: This device and This Ledger.
 _Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
 deployment-time config (files/env vars, see `docs/settings.md`); a Preference is
 edited by the user from inside a running Client instead.

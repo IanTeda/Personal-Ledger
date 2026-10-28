@@ -1,5 +1,7 @@
 # Colour Theme and Colour Appearance are nullable Preferences, and `[theme]` overrides only Colour Roles
 
+> Partly superseded by [ADR-0051](0051-colour-theme-appearance-and-date-style-are-client-scoped.md): Colour Theme and Colour Appearance are Client-scoped Preferences, kept by each Client and never synced. The rest stands.
+
 ADR-0014 made "colour theme" a Ledger-scoped Preference, but the `preferences.colour_theme` column holds a single `HexColor` accent, not a Colour Theme. The Colour Themes map settled that the user picks a Colour Theme and a Colour Appearance, both synced, and that a `[theme]` Configuration section overrides colours on one Client (see Colour Theme, Colour Role, Colour Variant and Colour Appearance in `GLOSSARY.md`). This amends ADR-0014.
 
 We're replacing the `HexColor` column with two nullable Ledger-scoped Preferences: `colour_theme` (a built-in Colour Theme's id, such as `modernist`) and `colour_appearance` (`light`, `dark` or `system`). Null means the default (Modernist; System), and only an explicit choice is stored and synced, as the date style does under ADR-0021. There is no SQL `CHECK` on the id. A Client that does not know a synced id (one added in a later release) draws the default Colour Theme and logs a `warn`, but never writes the default back, so a newer Client still shows the choice.

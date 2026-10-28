@@ -1,6 +1,8 @@
 # User-editable settings become a synced Preferences table; Sync Server keeps a leaner Configuration search
 
 > Partly superseded by [ADR-0021](0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md): the date-format and decimal/thousands-separator Preferences are replaced by a Locale and a date style.
+>
+> Partly superseded by [ADR-0051](0051-colour-theme-appearance-and-date-style-are-client-scoped.md): the colour theme and the date style are Client-scoped, not Ledger-scoped.
 
 `GLOSSARY.md`'s Preference/Configuration split (from [Decide the application Settings / Preference model](https://github.com/IanTeda/Personal-Ledger/issues/63)) drew the line as "edited from inside a running Client" (Preference, database-stored) versus "deployment-time" (Configuration, `lib-config`'s layered INI files/env vars) — but only ever assigned one Preference (the default Unit for new Accounts), leaving colour theme, date format, and decimal/thousands separator classified as Configuration despite the same "user sets this" character, on the reasoning that the user set them once via the config file. Revisiting the approach ahead of CC-TUI-002/CC-DESKTOP-002 building out real Settings screens surfaced that this split needed sharpening, and that the Sync Server — sharing `lib-config` with the Clients today — has a different deployment shape (Docker-only, single persistent volume, homelab network, per ADR-0009) that the Client-oriented multi-directory config search doesn't fit.
 
