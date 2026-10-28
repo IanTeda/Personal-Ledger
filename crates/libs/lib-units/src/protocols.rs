@@ -86,6 +86,14 @@ impl UnitUse {
     }
 }
 
+/// One usage for every Unit: the usage a caller read for the one Unit it writes, copied out so no
+/// borrow of the store it came from is held across the write, or none for a write that reads none.
+impl UnitUsage for UnitUse {
+    fn unit_usage(&self, _id: UnitId) -> UnitUse {
+        *self
+    }
+}
+
 /// Every Units port, as one value the Presenters share. An Interactor writes through several ports
 /// at once, so [`Self::split_mut`] lends them out together rather than one `&mut` at a time.
 pub trait UnitsPorts {
@@ -201,4 +209,21 @@ pub trait UnitsRouter: Notify {
     ///
     /// [`UnitsPageEvent::DialogClosed`]: crate::presenter::UnitsPageEvent::DialogClosed
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_unit_use_answers_itself_for_every_unit() {
+        let uses = UnitUse {
+            accounts: 2,
+            ..UnitUse::default()
+        };
+
+        assert_eq!(uses.unit_usage(UnitId::SEED_BTC), uses);
+        assert_eq!(uses.unit_usage(UnitId::new()), uses);
+        assert!(!UnitUse::default().unit_usage(UnitId::SEED_AUD).is_used());
+    }
 }

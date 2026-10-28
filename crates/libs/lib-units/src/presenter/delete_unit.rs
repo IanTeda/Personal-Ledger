@@ -35,6 +35,46 @@ pub struct DeleteUnitViewModel {
     pub refusal: Option<String>,
 }
 
+impl DeleteUnitViewModel {
+    /// The Dialog while Unit `code` can still be deleted: the destructive frame, which confirms once
+    /// `confirm_text` [`confirms_delete`], the confirmation field, and the New base unit select
+    /// offering `candidates` on `new_base` when there are any, which is only for the base Unit.
+    /// `lib-unit-deletion`'s Dialog draws its Unit through this too.
+    pub fn deleting(
+        code: &str,
+        confirm_text: &str,
+        candidates: &[Choice<UnitId>],
+        new_base: Option<UnitId>,
+        refusal: Option<String>,
+    ) -> Self {
+        Self {
+            frame: DialogFrame {
+                title: msg::units_delete_title(code),
+                submit: msg::units_delete_submit(),
+                can_confirm: confirms_delete(confirm_text, code),
+                destructive: true,
+            },
+            confirm: Some(TextFieldView {
+                label: msg::units_delete_confirm_label(code),
+                text: confirm_text.to_owned(),
+                placeholder: code.to_owned(),
+                focused: true,
+            }),
+            new_base: (!candidates.is_empty()).then(|| NewBaseView {
+                select: SelectView {
+                    label: msg::units_delete_new_base_label(),
+                    options: candidates.to_vec(),
+                    chosen: new_base,
+                    focused: false,
+                },
+                help: msg::units_delete_new_base_help(code),
+            }),
+            in_use: None,
+            refusal,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBaseView {
     pub select: SelectView<UnitId>,
@@ -143,37 +183,18 @@ impl DeleteUnitPresenter {
                 }),
                 refusal: self.refusal.clone(),
             },
-            None => DeleteUnitViewModel {
-                frame: DialogFrame {
-                    title: msg::units_delete_title(code),
-                    submit: msg::units_delete_submit(),
-                    can_confirm: self.confirm_text == self.code,
-                    destructive: true,
-                },
-                confirm: Some(TextFieldView {
-                    label: msg::units_delete_confirm_label(code),
-                    text: self.confirm_text.clone(),
-                    placeholder: self.code.clone(),
-                    focused: true,
-                }),
-                new_base: (!self.candidates.is_empty()).then(|| NewBaseView {
-                    select: SelectView {
-                        label: msg::units_delete_new_base_label(),
-                        options: self.candidates.clone(),
-                        chosen: self.new_base,
-                        focused: false,
-                    },
-                    help: msg::units_delete_new_base_help(code),
-                }),
-                in_use: None,
-                refusal: self.refusal.clone(),
-            },
+            None => DeleteUnitViewModel::deleting(
+                code,
+                &self.confirm_text,
+                &self.candidates,
+                self.new_base,
+                self.refusal.clone(),
+            ),
         }
     }
 
-    /// The typed code must match exactly, case and all.
     fn delete(&mut self, router: &mut dyn UnitsRouter) {
-        if self.confirm_text != self.code {
+        if !confirms_delete(&self.confirm_text, &self.code) {
             return;
         }
         let deleted = {
@@ -237,6 +258,11 @@ pub fn active_unit_choices(units: &[UnitRow], except: UnitId) -> Vec<Choice<Unit
             label: msg::units_base_unit_option(&other.code, &other.name),
         })
         .collect()
+}
+
+/// Whether `typed` confirms deleting Unit `code`: it must match exactly, case and all.
+pub fn confirms_delete(typed: &str, code: &str) -> bool {
+    typed == code
 }
 
 /// Why deleting Unit `code` was refused, for every refusal but a Unit in use, which turns the

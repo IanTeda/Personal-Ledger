@@ -21,7 +21,14 @@ pub struct DeleteUnit {
     pub new_base: Option<UnitId>,
     /// The Usual unit each Institution naming Unit `id` takes instead. An Institution not listed
     /// is left with none; one listed that no longer names the Unit is left alone.
-    pub replacements: Vec<(InstitutionId, UnitId)>,
+    pub replacements: Vec<Replacement>,
+}
+
+/// The Usual unit an Institution naming the deleted Unit takes instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Replacement {
+    pub institution: InstitutionId,
+    pub unit: UnitId,
 }
 
 impl DeleteUnit {
@@ -70,8 +77,8 @@ impl DeleteUnit {
             institution.usual_unit = self
                 .replacements
                 .iter()
-                .find(|(named, _)| *named == institution.id)
-                .map(|(_, unit)| *unit);
+                .find(|replacement| replacement.institution == institution.id)
+                .map(|replacement| replacement.unit);
             if let Some(replacement) = institution.usual_unit {
                 let offered = units
                     .iter()
@@ -113,7 +120,7 @@ mod tests {
         deletion: &mut InMemoryUnitDeletion,
         id: UnitId,
         new_base: Option<UnitId>,
-        replacements: Vec<(InstitutionId, UnitId)>,
+        replacements: Vec<Replacement>,
     ) -> Result<UnitDeleted> {
         DeleteUnit {
             id,
@@ -128,7 +135,7 @@ mod tests {
         deletion: &mut InMemoryUnitDeletion,
         id: UnitId,
         new_base: Option<UnitId>,
-        replacements: Vec<(InstitutionId, UnitId)>,
+        replacements: Vec<Replacement>,
     ) -> Error {
         let before = deletion.clone();
         let refusal =
@@ -162,8 +169,16 @@ mod tests {
     fn a_named_unit_goes_with_its_institutions_reassigned_or_cleared() {
         let mut deletion = world();
 
-        let deleted = delete(&mut deletion, BTC, None, vec![(COINSPOT, VAS)])
-            .expect("only Institutions name btc");
+        let deleted = delete(
+            &mut deletion,
+            BTC,
+            None,
+            vec![Replacement {
+                institution: COINSPOT,
+                unit: VAS,
+            }],
+        )
+        .expect("only Institutions name btc");
 
         assert_eq!((deleted.reassigned, deleted.cleared), (1, 1));
         assert_eq!(deletion.units.unit(BTC), None);
@@ -215,7 +230,16 @@ mod tests {
     fn the_named_base_unit_goes_with_the_base_moved_and_its_institution_reassigned() {
         let mut deletion = world();
 
-        delete(&mut deletion, AUD, Some(VAS), vec![(WESTPAC, BTC)]).expect("Westpac names aud");
+        delete(
+            &mut deletion,
+            AUD,
+            Some(VAS),
+            vec![Replacement {
+                institution: WESTPAC,
+                unit: BTC,
+            }],
+        )
+        .expect("Westpac names aud");
 
         assert_eq!(deletion.units.unit(AUD), None);
         assert_eq!(deletion.base_unit.0, VAS);
@@ -227,7 +251,15 @@ mod tests {
     fn lib_units_rules_still_refuse_and_write_nothing() {
         let mut deletion = world();
         assert_eq!(
-            refused(&mut deletion, AUD, None, vec![(WESTPAC, BTC)]),
+            refused(
+                &mut deletion,
+                AUD,
+                None,
+                vec![Replacement {
+                    institution: WESTPAC,
+                    unit: BTC
+                }]
+            ),
             Error::Unit(lib_units::Error::BaseUnitNeeded)
         );
         assert_eq!(
@@ -285,7 +317,15 @@ mod tests {
         let mut deletion = world();
         for replacement in [BTC, UnitId::new()] {
             assert_eq!(
-                refused(&mut deletion, BTC, None, vec![(KRAKEN, replacement)]),
+                refused(
+                    &mut deletion,
+                    BTC,
+                    None,
+                    vec![Replacement {
+                        institution: KRAKEN,
+                        unit: replacement
+                    }]
+                ),
                 Error::ReplacementGone
             );
         }
@@ -293,7 +333,15 @@ mod tests {
         deletion.units.units[2].is_active = false;
         assert_eq!(deletion.units.units[2].id, VAS);
         assert_eq!(
-            refused(&mut deletion, BTC, None, vec![(KRAKEN, VAS)]),
+            refused(
+                &mut deletion,
+                BTC,
+                None,
+                vec![Replacement {
+                    institution: KRAKEN,
+                    unit: VAS
+                }]
+            ),
             Error::ReplacementGone
         );
     }
@@ -302,8 +350,22 @@ mod tests {
     fn a_replacement_for_an_institution_that_no_longer_names_the_unit_is_ignored() {
         let mut deletion = world();
 
-        delete(&mut deletion, BTC, None, vec![(ANZ, VAS), (WESTPAC, VAS)])
-            .expect("neither names btc");
+        delete(
+            &mut deletion,
+            BTC,
+            None,
+            vec![
+                Replacement {
+                    institution: ANZ,
+                    unit: VAS,
+                },
+                Replacement {
+                    institution: WESTPAC,
+                    unit: VAS,
+                },
+            ],
+        )
+        .expect("neither names btc");
 
         assert_eq!(usual_unit(&deletion, ANZ), None);
         assert_eq!(usual_unit(&deletion, WESTPAC), Some(AUD));

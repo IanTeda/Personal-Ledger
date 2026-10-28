@@ -17,14 +17,14 @@
 use lib_core::{InstitutionId, UnitId};
 use lib_units::presenter::{
     DeleteUnitEvent as UnitsDeleteEvent, DeleteUnitPresenter as UnitsDeletePresenter,
-    DeleteUnitViewModel as UnitsDeleteViewModel, NewBaseView, UnitChange, UnitsOutcome,
-    active_unit_choices, delete_refusal,
+    DeleteUnitViewModel as UnitsDeleteViewModel, UnitChange, UnitsOutcome, active_unit_choices,
+    confirms_delete, delete_refusal,
 };
-use lib_units::{SharedPorts, UnitUsage, UnitUse, UnitsRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_units::{SharedPorts, UnitUse, UnitsRouter};
+use lib_viper::view::{Choice, SelectView};
 
 use crate::error::Error;
-use crate::interactor::DeleteUnit;
+use crate::interactor::{DeleteUnit, Replacement};
 use crate::msg;
 use crate::protocols::SharedUnitDeletion;
 
@@ -224,31 +224,13 @@ impl Deleting {
 
     fn view_model(&self) -> DeleteUnitViewModel {
         let code = self.code.as_str();
-        let unit = UnitsDeleteViewModel {
-            frame: DialogFrame {
-                title: lib_units::msg::units_delete_title(code),
-                submit: lib_units::msg::units_delete_submit(),
-                can_confirm: self.confirm_text == self.code,
-                destructive: true,
-            },
-            confirm: Some(TextFieldView {
-                label: lib_units::msg::units_delete_confirm_label(code),
-                text: self.confirm_text.clone(),
-                placeholder: self.code.clone(),
-                focused: true,
-            }),
-            new_base: (!self.candidates.is_empty()).then(|| NewBaseView {
-                select: SelectView {
-                    label: lib_units::msg::units_delete_new_base_label(),
-                    options: self.candidates.clone(),
-                    chosen: self.new_base,
-                    focused: false,
-                },
-                help: lib_units::msg::units_delete_new_base_help(code),
-            }),
-            in_use: None,
-            refusal: self.refusal.clone(),
-        };
+        let unit = UnitsDeleteViewModel::deleting(
+            code,
+            &self.confirm_text,
+            &self.candidates,
+            self.new_base,
+            self.refusal.clone(),
+        );
         let usual_units = (!self.named.is_empty()).then(|| UsualUnitsView {
             help: msg::unit_deletion_institutions_help(count(self.named.len()), code),
             selects: self
@@ -268,21 +250,26 @@ impl Deleting {
         DeleteUnitViewModel { unit, usual_units }
     }
 
-    /// The typed code must match exactly, case and all.
     fn delete(&mut self, router: &mut dyn UnitsRouter) -> Option<UnitsDeletePresenter> {
-        if self.confirm_text != self.code {
+        if !confirms_delete(&self.confirm_text, &self.code) {
             return None;
         }
         // The usage is copied out before the write: a Client may share one store between `ports`
-        // and `deletion`, which a borrow of `ports` held across the write would borrow twice.
-        let usage = Usage(self.ports.borrow().usage().unit_usage(self.id));
+        // and `deletion`, which a borrow of `ports` held across the write would borrow twice. The
+        // Interactor asks of no Unit but this one.
+        let usage = self.ports.borrow().usage().unit_usage(self.id);
         let deleted = DeleteUnit {
             id: self.id,
             new_base: self.new_base,
             replacements: self
                 .named
                 .iter()
-                .filter_map(|named| Some((named.id, named.usual_unit?)))
+                .filter_map(|named| {
+                    Some(Replacement {
+                        institution: named.id,
+                        unit: named.usual_unit?,
+                    })
+                })
                 .collect(),
         }
         .run(&mut *self.deletion.borrow_mut(), &usage);
@@ -304,15 +291,6 @@ impl Deleting {
             Err(Error::ReplacementGone) => Some(msg::unit_deletion_refusal_replacement_gone()),
         };
         None
-    }
-}
-
-/// The deleted Unit's usage as read just before the write; the Interactor asks of no other Unit.
-struct Usage(UnitUse);
-
-impl UnitUsage for Usage {
-    fn unit_usage(&self, _id: UnitId) -> UnitUse {
-        self.0
     }
 }
 

@@ -13,7 +13,7 @@ use lib_units::fake::InMemoryUnitUsage;
 use crate::error::{Error, Result};
 use crate::fake::InMemoryUnitDeletion;
 use crate::fake::world::{AUD, BTC, COINSPOT, KRAKEN, VAS, WESTPAC, world};
-use crate::interactor::DeleteUnit;
+use crate::interactor::{DeleteUnit, Replacement};
 use crate::protocols::UnitDeletion;
 
 /// What a store holds, in an order two stores compare in: the Units' ids, the base, and the
@@ -124,7 +124,7 @@ fn delete(
     ports: &mut dyn UnitDeletion,
     id: UnitId,
     new_base: Option<UnitId>,
-    replacements: Vec<(InstitutionId, UnitId)>,
+    replacements: Vec<Replacement>,
 ) -> Result<crate::UnitDeleted, Error> {
     DeleteUnit {
         id,
@@ -143,7 +143,16 @@ pub fn a_delete_lands_the_unit_the_base_move_and_the_reassignment<F: DeletionFac
     let before = Stored::of(&world());
     let mut ports = factory.create(world());
 
-    delete(&mut ports, AUD, Some(VAS), vec![(WESTPAC, BTC)]).expect("Westpac names aud");
+    delete(
+        &mut ports,
+        AUD,
+        Some(VAS),
+        vec![Replacement {
+            institution: WESTPAC,
+            unit: BTC,
+        }],
+    )
+    .expect("Westpac names aud");
     let stored = factory.stored(ports);
 
     assert_eq!(stored.units, [BTC, VAS]);
@@ -173,7 +182,16 @@ pub fn a_failing_delete_lands_nothing<F: DeletionFactory>(factory: &mut F) {
     let mut ports = factory.create(world());
 
     factory.break_unit_deletes(&mut ports);
-    delete(&mut ports, AUD, Some(VAS), vec![(WESTPAC, BTC)]).expect("the port takes the write");
+    delete(
+        &mut ports,
+        AUD,
+        Some(VAS),
+        vec![Replacement {
+            institution: WESTPAC,
+            unit: BTC,
+        }],
+    )
+    .expect("the port takes the write");
     let (stored, failures) = factory.recover(ports);
 
     assert_eq!(stored, before);
@@ -185,7 +203,15 @@ pub fn a_refused_delete_writes_nothing<F: DeletionFactory>(factory: &mut F) {
     let mut ports = factory.create(world());
 
     assert_eq!(
-        delete(&mut ports, BTC, None, vec![(KRAKEN, BTC)]),
+        delete(
+            &mut ports,
+            BTC,
+            None,
+            vec![Replacement {
+                institution: KRAKEN,
+                unit: BTC
+            }]
+        ),
         Err(Error::ReplacementGone)
     );
 

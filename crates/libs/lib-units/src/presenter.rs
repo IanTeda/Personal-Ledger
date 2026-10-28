@@ -27,7 +27,7 @@ pub use delete_price_source::{
 };
 pub use delete_unit::{
     DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel, InUseView, NewBaseView,
-    active_unit_choices, delete_refusal,
+    active_unit_choices, confirms_delete, delete_refusal,
 };
 pub use price_source_form::{
     AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,

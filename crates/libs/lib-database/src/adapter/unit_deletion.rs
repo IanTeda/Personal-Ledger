@@ -11,7 +11,7 @@
 use lib_core::UnitId;
 use lib_institutions::Institution;
 use lib_unit_deletion::{UnitDeletion, UnitRemoval};
-use lib_units::{UnitRow, UnitUsage, UnitUse};
+use lib_units::{UnitRow, UnitUse};
 
 use super::store::{SharedInstitutionsStore, SharedUnitsStore};
 
@@ -27,16 +27,6 @@ impl UnitDeletionAdapter {
             units,
             institutions,
         }
-    }
-}
-
-/// The usage `split_mut` lends beside the write ports, which a delete's writes never read: the
-/// Interactor checked the usage before writing.
-struct Unread;
-
-impl UnitUsage for Unread {
-    fn unit_usage(&self, _id: UnitId) -> UnitUse {
-        UnitUse::default()
     }
 }
 
@@ -71,7 +61,10 @@ impl UnitDeletion for UnitDeletionAdapter {
             }
         }
         let mut store = self.units.borrow_mut();
-        let ports = store.split_mut(&Unread);
+        // The usage `split_mut` lends beside the write ports goes unread: the Interactor checked
+        // the usage before writing.
+        let unread = UnitUse::default();
+        let ports = store.split_mut(&unread);
         if let Some(new_base) = new_base {
             ports.base_unit.set_base_unit(new_base);
         }
