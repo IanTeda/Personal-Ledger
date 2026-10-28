@@ -342,7 +342,7 @@ fn form_key(key: KeyEvent) -> Option<FormKey> {
 }
 
 /// `text` after `key`: a printable character appended, or the last one removed by `Backspace`.
-fn edited(text: &str, key: KeyEvent) -> Option<String> {
+pub(crate) fn edited(text: &str, key: KeyEvent) -> Option<String> {
     let mut text = text.to_string();
     match key.code {
         KeyCode::Char(ch)

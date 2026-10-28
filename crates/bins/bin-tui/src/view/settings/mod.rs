@@ -33,11 +33,16 @@
 //!
 //! Logs and About are this-device pages with something real behind them: Logs reads the
 //! `LogBuffer` `main` hands `Shell`, which passes it to each Settings View it builds ([`logs`]),
-//! and About's links reach the browser and clipboard through `Shell` ([`about`]). Every other
-//! page draws its heading and scope note over an empty body until the stage that builds it.
+//! and About's links reach the browser and clipboard through `Shell` ([`about`]). Sync Server and
+//! Backup are wireframes with nothing behind them yet ([`sync_server`], [`backup`]); each opens an
+//! Edit overlay on `e` (`popup::settings::overlay`), which the View draws over the dimmed page
+//! like the picker and which, like a field open in place, takes every key and shows `INSERT`.
+//! Every other page draws its heading and scope note over an empty body until the stage that
+//! builds it.
 
 mod about;
 mod accounts;
+mod backup;
 mod categories;
 mod display;
 mod documents;
@@ -50,6 +55,7 @@ mod list;
 mod logs;
 mod payees;
 mod picker;
+mod sync_server;
 mod tags;
 mod units;
 
@@ -239,7 +245,7 @@ impl SettingsPage {
             | Self::Inventory => msg::tui_settings_scope_ledger_data(),
             Self::AiConnections => msg::tui_settings_scope_ai_connections(),
             Self::SyncServer => msg::tui_settings_scope_sync_server(),
-            Self::Backup => msg::tui_settings_scope_backup(),
+            Self::Backup => msg::tui_settings_scope_backup(backup::SIZE),
             Self::History => msg::tui_settings_scope_history(),
             Self::Logs => msg::tui_settings_scope_logs(&crate::format::count(
                 i64::try_from(lib_tracing::LOG_CAPACITY).unwrap_or(i64::MAX),
@@ -317,6 +323,8 @@ pub struct SettingsView {
     payees: payees::PayeesPage,
     documents: documents::DocumentsPage,
     inventory: inventory::InventoryPage,
+    sync_server: sync_server::SyncServerPage,
+    backup: backup::BackupPage,
     logs: logs::LogsPage,
     about: about::AboutPage,
 }
@@ -372,6 +380,8 @@ impl SettingsView {
             payees: payees::PayeesPage::new(),
             documents: documents::DocumentsPage::new(),
             inventory: inventory::InventoryPage::new(),
+            sync_server: sync_server::SyncServerPage::default(),
+            backup: backup::BackupPage::default(),
             logs: logs::LogsPage::new(logs),
             about: about::AboutPage::default(),
         }
@@ -459,6 +469,8 @@ impl SettingsView {
                 SettingsPage::Display => self.display.handle_key(key),
                 SettingsPage::Units => self.units_page.as_mut()?.handle_key(key),
                 SettingsPage::Accounts => self.accounts.handle_key(key),
+                SettingsPage::SyncServer => self.sync_server.handle_key(key),
+                SettingsPage::Backup => self.backup.handle_key(key),
                 SettingsPage::Logs => self.logs.handle_key(key),
                 SettingsPage::About => self.about.handle_key(key),
                 page => self.ledger_page_mut(page)?.handle_key(key),
@@ -479,6 +491,8 @@ impl SettingsView {
                 .map(units::UnitsPage::hints)
                 .unwrap_or_default(),
             SettingsPage::Accounts => accounts::AccountsPage::hints(),
+            SettingsPage::SyncServer => sync_server::SyncServerPage::hints(),
+            SettingsPage::Backup => backup::BackupPage::hints(),
             SettingsPage::Logs => logs::LogsPage::hints(),
             SettingsPage::About => about::AboutPage::hints(),
             page => self
@@ -536,6 +550,11 @@ impl SettingsView {
         self.editor = Some(FieldEditor::new(field, draft, was));
     }
 
+    /// Whether a page's Edit overlay is open: Sync Server's or Backup's.
+    fn overlay_open(&self) -> bool {
+        self.sync_server.overlay_open() || self.backup.overlay_open()
+    }
+
     /// What a form page reads on this draw.
     fn context<'a>(&'a self, values: &'a SettingsValues) -> Context<'a> {
         Context {
@@ -564,9 +583,15 @@ impl View for SettingsView {
         if let Some(page) = self.units_page.as_mut().filter(|page| page.dialog_open()) {
             return page.handle_key(key);
         }
-        // The Clear logs confirm takes every key, `[`, `]` and `p` included.
+        // The Clear logs confirm and an Edit overlay take every key, `[`, `]` and `p` included.
         if self.logs.confirm_open() {
             return self.logs.handle_key(key);
+        }
+        if self.sync_server.overlay_open() {
+            return self.sync_server.handle_key(key);
+        }
+        if self.backup.overlay_open() {
+            return self.backup.handle_key(key);
         }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
@@ -612,10 +637,15 @@ impl View for SettingsView {
         }
     }
 
-    /// An open field or the picker closes first, then a page steps back to the index with itself
-    /// selected; on the index the Shell pops its view stack.
+    /// An open field, the picker, the Clear logs confirm or an Edit overlay closes first, then a
+    /// page steps back to the index with itself selected; on the index the Shell pops its view
+    /// stack.
     fn back(&mut self) -> bool {
-        if self.editor.take().is_some() || self.picker.take().is_some() || self.logs.close_confirm()
+        if self.editor.take().is_some()
+            || self.picker.take().is_some()
+            || self.logs.close_confirm()
+            || self.sync_server.close_overlay()
+            || self.backup.close_overlay()
         {
             return true;
         }
@@ -628,14 +658,18 @@ impl View for SettingsView {
         }
     }
 
-    /// The picker, the Clear logs confirm, or a field open in place, which takes every key as a
-    /// popup does.
+    /// The picker, the Clear logs confirm, an Edit overlay, or a field open in place, which takes
+    /// every key as a popup does.
     fn popup_open(&self) -> bool {
-        self.picker.is_some() || self.editor.is_some() || self.logs.confirm_open()
+        self.picker.is_some()
+            || self.editor.is_some()
+            || self.logs.confirm_open()
+            || self.overlay_open()
     }
 
+    /// A field open in place, or an Edit overlay, whose fields take typing.
     fn editing(&self) -> bool {
-        self.editor.is_some()
+        self.editor.is_some() || self.overlay_open()
     }
 
     /// A Units Dialog opened from Settings › Units, which `Shell` draws over the frame.
@@ -666,6 +700,9 @@ impl View for SettingsView {
             editor.hints(back)
         } else if self.picker.is_some() {
             picker::hints(back)
+        } else if self.overlay_open() {
+            // The overlay draws its own keys; the bar names only the way out.
+            vec![(back.to_string(), msg::tui_settings_hint_close_dialog())]
         } else {
             match self.showing {
                 Showing::Index => index::hints(back, self.docked()),
@@ -740,6 +777,10 @@ impl View for SettingsView {
         } else if self.logs.confirm_open() {
             frame.render_widget(crate::popup::Dim, area);
             self.logs.render_confirm(frame, area, c);
+        } else if self.overlay_open() {
+            frame.render_widget(crate::popup::Dim, area);
+            self.sync_server.render_overlay(frame, area, c);
+            self.backup.render_overlay(frame, area, c);
         }
     }
 
@@ -804,6 +845,8 @@ impl SettingsView {
                 }
             }
             SettingsPage::Accounts => self.accounts.render(frame, body, focused, c),
+            SettingsPage::SyncServer => self.sync_server.render(frame, body, c),
+            SettingsPage::Backup => self.backup.render(frame, body, c),
             SettingsPage::Logs => self.logs.render(frame, body, focused, c),
             SettingsPage::About => self.about.render(frame, body, focused, c),
             page => {
@@ -935,6 +978,37 @@ fn render_form(
         );
     }
     areas[rows.len()]
+}
+
+/// A read-only row of a wireframe page (Sync Server, Backup): the label dim, then its value.
+fn render_fact(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>, c: &Colours) {
+    let [label_area, value_area] =
+        Layout::horizontal([Constraint::Length(FIELD_LABEL_WIDTH), Constraint::Min(0)]).areas(area);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), label_area);
+    frame.render_widget(Paragraph::new(value), value_area);
+}
+
+/// A row of a page's own keys under its facts, as the hint bar draws them: the key bold, its
+/// label after it.
+fn render_keys(frame: &mut Frame<'_>, area: Rect, keys: &[(&str, String)]) {
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let spans: Vec<Span<'_>> = keys
+        .iter()
+        .flat_map(|(key, label)| [Span::styled(*key, bold), Span::raw(format!(" {label}   "))])
+        .collect();
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// A wireframe moment, `date` at `hour:minute`, as the pages show one: `14 sept 2026 · 14:22`.
+fn moment(date: Option<chrono::NaiveDate>, hour: u32, minute: u32) -> String {
+    let (Some(date), Some(time)) = (date, chrono::NaiveTime::from_hms_opt(hour, minute, 0)) else {
+        return String::new();
+    };
+    format!(
+        "{} · {}",
+        crate::format::date(date),
+        lib_locale::format::format_time_minutes(time)
+    )
 }
 
 /// `text` cut to `width` cells, ending in `…` when it doesn't fit: cells clip, they don't wrap.

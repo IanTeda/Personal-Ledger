@@ -59,8 +59,8 @@ tui-settings-scope-general = preferences · synced · ledger identity
 tui-settings-scope-display = configuration · local · theme syncs
 tui-settings-scope-ledger-data = ledger data · synced
 tui-settings-scope-ai-connections = this device
-tui-settings-scope-sync-server = this device · synced
-tui-settings-scope-backup = this device · local files
+tui-settings-scope-sync-server = this device · synced · every 30 seconds
+tui-settings-scope-backup = this device · local files · { $size }
 tui-settings-scope-history = all devices
 # `$capacity` is a formatted count.
 tui-settings-scope-logs = this device · diagnostic · last { $capacity } entries
@@ -463,3 +463,100 @@ tui-settings-about-copyright = © 2025–2026 { $author }. All rights reserved.
 tui-settings-hint-link = link
 tui-settings-hint-open-browser = open in browser
 tui-settings-hint-copy-link = copy link
+
+## Edit overlays (Sync Server, Set up Git backup)
+
+tui-settings-overlay-hint-test = test
+tui-settings-overlay-hint-next = next field
+tui-settings-overlay-hint-save = save
+tui-settings-overlay-hint-cancel = cancel
+tui-settings-overlay-untested = untested
+tui-settings-overlay-passed = test passed
+tui-settings-overlay-failed = test failed
+tui-settings-overlay-untested-note = Not tested yet. ctrl t tests these values.
+tui-settings-hint-close-dialog = close dialog
+
+## Sync Server
+
+tui-settings-sync-url = server url
+tui-settings-sync-status = status
+tui-settings-sync-connected = connected
+tui-settings-sync-last-sync = last sync
+tui-settings-hint-sync-now = sync now
+tui-settings-sync-edit-title = edit sync server
+tui-settings-sync-url-note = https:// is required. Include the port if it isn't 443.
+tui-settings-sync-token = access token
+tui-settings-sync-token-note = From the server's admin page. Kept in the OS keychain, never synced.
+tui-settings-sync-save-note = Save unlocks after a passing test. Saving reconnects and syncs.
+tui-settings-sync-failed-https = can't test · not https
+tui-settings-sync-failed-https-detail = The server URL must start with https:// and name a host.
+tui-settings-sync-failed-token = can't test · no access token
+tui-settings-sync-failed-token-detail = Paste the access token from the server's admin page.
+tui-settings-sync-failed-refused = couldn't connect · connection refused
+tui-settings-sync-failed-refused-detail = { $host } didn't answer. Check the address and port, and that the server is running.
+tui-settings-sync-passed = connected · { $host }
+tui-settings-sync-passed-detail = The server answered and accepted the token. Save to reconnect and sync.
+
+## Backup
+
+tui-settings-backup-local = local
+tui-settings-backup-store = store location
+tui-settings-backup-last-snapshot = last snapshot
+tui-settings-backup-back-up-now = back up now
+tui-settings-backup-export = export ledger (csv)
+tui-settings-backup-git = git backup
+tui-settings-backup-visibility = visibility
+tui-settings-backup-private = private · checked { $time }
+tui-settings-backup-contents = contents
+tui-settings-backup-contents-value = ledger text dump · { $count ->
+    [one] { $count } document
+   *[other] { $count } documents
+} via LFS
+tui-settings-backup-schedule = schedule
+tui-settings-backup-schedule-value = after changes · at most hourly
+tui-settings-backup-push-now = push now
+tui-settings-hint-back-up = back up
+tui-settings-hint-export-csv = export csv
+tui-settings-hint-edit-git-backup = edit git backup
+tui-settings-hint-push = push
+
+## Set up Git backup
+
+tui-settings-git-setup-title = set up git backup
+tui-settings-git-remote = remote
+tui-settings-git-remote-note = Use a private repository. SSH (git@…) or HTTPS.
+tui-settings-git-branch = branch
+tui-settings-git-authentication = authentication
+tui-settings-git-auth-ssh = SSH key
+tui-settings-git-auth-token = Access token
+tui-settings-git-ssh-key = SSH key
+tui-settings-git-token = access token
+tui-settings-git-schedule = push schedule
+tui-settings-git-schedule-after-changes = after changes
+tui-settings-git-schedule-hourly = hourly
+tui-settings-git-schedule-daily = daily
+tui-settings-git-schedule-manual = manual
+tui-settings-git-schedule-note-after-changes = After changes waits for 5 minutes of quiet, then pushes at most hourly.
+tui-settings-git-schedule-note-hourly = Pushes at most once an hour, when something changed.
+tui-settings-git-schedule-note-daily = Pushes once a day, when something changed.
+tui-settings-git-schedule-note-manual = Pushes only when you press P on the Backup page.
+tui-settings-git-commit-message = commit message
+tui-settings-git-commit-prefix = yyyy-mm-dd hh:mm ·
+tui-settings-git-commit-default = ledger backup
+tui-settings-git-commit-note = The push's date and time go in front automatically.
+tui-settings-git-save = save & push
+tui-settings-git-save-note = Saving makes the first push ({ $size }).
+tui-settings-git-failed-remote = can't test · not a Git remote
+tui-settings-git-failed-remote-detail = Use an SSH (git@…) or HTTPS address.
+tui-settings-git-failed-branch = can't test · no branch
+tui-settings-git-failed-branch-detail = Name the branch to push to, for example main.
+tui-settings-git-failed-token = can't test · no access token
+tui-settings-git-failed-token-detail = Paste an access token with push rights to the repository.
+tui-settings-git-failed-unreachable = couldn't connect · the remote didn't answer
+tui-settings-git-failed-unreachable-detail = { $remote } didn't answer. Check the address, and your key or token.
+tui-settings-git-failed-public = refused · the repository is public
+tui-settings-git-failed-public-detail = Git backup only pushes to a private repository. Make it private on the host, then test again.
+tui-settings-git-failed-lfs = refused · no Git LFS
+tui-settings-git-failed-lfs-detail = The remote doesn't support Git LFS, which Documents are pushed through. Turn LFS on, or use another host.
+tui-settings-git-passed = ready · repository is empty
+tui-settings-git-passed-detail = authenticated as { $user } · repository is private · supports LFS · dry-run push to { $branch } succeeded
