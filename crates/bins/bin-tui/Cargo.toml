@@ -35,6 +35,8 @@ lib_units = { path = "../../libs/lib-units" }
 lib_viper = { path = "../../libs/lib-viper" }
 
 ## -- Workspace Dependencies --
+# OSC 52 carries clipboard text base64-encoded (`link`).
+base64 = { workspace = true }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }

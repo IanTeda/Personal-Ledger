@@ -29,7 +29,10 @@ async fn main() -> Result<()> {
     let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
-    let _log_guard = lib_tracing::init(telemetry_level, log_file_path, None)?;
+    // Settings › Logs reads this; the capture only fills the buffer, never the terminal the TUI
+    // owns in raw mode.
+    let logs = lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY);
+    let _log_guard = lib_tracing::init(telemetry_level, log_file_path, Some(logs.clone()))?;
     config.theme_config().warn_invalid();
 
     // Resolved once, before the terminal enters raw mode; the Locale never changes at runtime.
@@ -62,6 +65,7 @@ async fn main() -> Result<()> {
         colours,
         Some(config.personal_ledger_config().file()),
     )
+    .with_log_buffer(logs)
     .run()
     .await
 }

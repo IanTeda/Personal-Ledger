@@ -62,7 +62,8 @@ tui-settings-scope-ai-connections = this device
 tui-settings-scope-sync-server = this device · synced
 tui-settings-scope-backup = this device · local files
 tui-settings-scope-history = all devices
-tui-settings-scope-logs = this device · diagnostic
+# `$capacity` is a formatted count.
+tui-settings-scope-logs = this device · diagnostic · last { $capacity } entries
 tui-settings-scope-about = version info
 # A list page's note with its count, derived from its rows on each draw.
 tui-settings-scope-units = ledger data · synced · { $count ->
@@ -422,3 +423,43 @@ tui-settings-inventory-counts = { $areas ->
 } · { $items } items
 tui-settings-inventory-note-register = Address and cover live on the register in Inventory, not here.
 tui-settings-inventory-note-remove = Removing an area with items asks where to move them.
+
+## Logs
+
+tui-settings-logs-level = level
+tui-settings-logs-level-error = error
+tui-settings-logs-level-warn = warn
+tui-settings-logs-level-info = info
+tui-settings-logs-level-debug = debug
+tui-settings-logs-clear = clear logs
+tui-settings-logs-empty = No log entries yet.
+tui-settings-logs-all-hidden = No entries at { $level } or above. Choose a lower level to see { $count ->
+    [one] { $count } hidden entry
+   *[other] { $count } hidden entries
+}.
+tui-settings-logs-clear-title = Clear logs
+tui-settings-logs-clear-warning = Remove every captured log entry from this page? New entries keep arriving, and the console and log file keep their own copies.
+tui-settings-logs-clear-confirm = clear
+tui-settings-logs-clear-cancel = cancel
+tui-settings-logs-cleared = Logs cleared
+tui-settings-hint-level = level
+tui-settings-hint-scroll = scroll
+tui-settings-hint-newest-oldest = newest/oldest
+tui-settings-hint-clear = clear
+tui-settings-hint-copy-line = copy line
+
+## About
+
+tui-settings-about-description = A local-first personal ledger for expenses, investments and assets.
+tui-settings-about-version = Personal Ledger v{ $version }
+tui-settings-about-built-with = Built with Rust + ratatui + SQLite
+tui-settings-about-author = Author
+tui-settings-about-repository = Repository
+tui-settings-about-documentation = Documentation
+tui-settings-about-issues = Report an issue
+tui-settings-about-license = License
+tui-settings-about-license-text = Distributed under the GPL-3.0 License
+tui-settings-about-copyright = © 2025–2026 { $author }. All rights reserved.
+tui-settings-hint-link = link
+tui-settings-hint-open-browser = open in browser
+tui-settings-hint-copy-link = copy link

@@ -94,3 +94,9 @@ tui-toast-more = +{ $count } more
 
 tui-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
 tui-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved
+
+## Settings › About's links and Settings › Logs' lines, sent outside the terminal.
+
+tui-toast-copied = Copied to the clipboard
+tui-toast-not-copied = Couldn't copy to the clipboard
+tui-toast-link-not-opened = Couldn't open { $url } in the browser

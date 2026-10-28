@@ -17,6 +17,7 @@ use lib_locale::format::upper;
 use lib_shell::WindowSize;
 use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
 use lib_toast::{Display, ToastKind, Toasts};
+use lib_tracing::{LOG_CAPACITY, LogBuffer};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -26,6 +27,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
+use crate::link::{Outside, System};
 use crate::{
     colours::Colours,
     event::{Event, EventHandler},
@@ -123,6 +125,11 @@ pub struct Shell {
     /// The form values that hold for the session only, shared with every `SettingsView` as
     /// `settings_page` is.
     settings_values: Rc<RefCell<SettingsValues>>,
+    /// The recent `tracing` events `main` captures, which Settings › Logs shows. A `Shell` built
+    /// without one holds an empty buffer nothing feeds.
+    logs: LogBuffer,
+    /// The browser and clipboard Settings › About's links and Settings › Logs' lines go to.
+    outside: Box<dyn Outside>,
     /// The Account-domain popup (`crate::popup::account`) — `Some` while one is open. Owned
     /// here, mirroring `category_popup`: it acts on `AccountsView`'s own fixture, reached via
     /// `View::account_store`, not on anything `Shell` owns directly. Mutually exclusive with
@@ -227,6 +234,8 @@ impl Shell {
             settings_popup: None,
             settings_page: Rc::default(),
             settings_values: Rc::default(),
+            logs: LogBuffer::new(LOG_CAPACITY),
+            outside: Box::new(System),
             account_popup: None,
             tag_popup: None,
             payee_popup: None,
@@ -259,6 +268,18 @@ impl Shell {
     #[doc(hidden)]
     pub fn should_quit(&self) -> bool {
         self.should_quit
+    }
+
+    /// Shows `logs`, the buffer `lib_tracing::init` feeds, on Settings › Logs.
+    pub fn with_log_buffer(mut self, logs: LogBuffer) -> Self {
+        self.logs = logs;
+        self
+    }
+
+    /// Sends links and copied text to `outside` instead of the real browser and clipboard.
+    pub fn with_outside(mut self, outside: impl Outside + 'static) -> Self {
+        self.outside = Box::new(outside);
+        self
     }
 
     /// Replaces the default `Colours` with ones built from Configuration.
@@ -1407,6 +1428,19 @@ impl Shell {
                 }
             }
             Action::FlashNotYetBuilt(command) => self.flash_not_yet_built(command),
+            Action::OpenLink(url) => {
+                if let Err(error) = self.outside.open(url) {
+                    tracing::warn!(%error, url, "Could not open a link in the browser");
+                    self.raise_toast(ToastKind::Error, crate::msg::tui_toast_link_not_opened(url));
+                }
+            }
+            Action::CopyText(text) => match self.outside.copy(&text) {
+                Ok(()) => self.raise_toast(ToastKind::Success, crate::msg::tui_toast_copied()),
+                Err(error) => {
+                    tracing::warn!(%error, "Could not copy to the clipboard");
+                    self.raise_toast(ToastKind::Error, crate::msg::tui_toast_not_copied());
+                }
+            },
             Action::CommandPopupHistoryRecall => {
                 let history = &self.command_history;
                 if let Some(popup) = &mut self.command_popup {
@@ -1492,6 +1526,7 @@ impl Shell {
                     Rc::clone(&self.settings_page),
                     Rc::clone(&self.settings_values),
                     self.ledger.as_ref().map(|ledger| &ledger.units),
+                    self.logs.clone(),
                 ));
                 self.view.update(&action);
             }
@@ -2829,6 +2864,90 @@ mod tests {
 
     fn footer(shell: &mut Shell) -> String {
         drawn(shell).lines().last().unwrap_or_default().to_string()
+    }
+
+    /// An [`Outside`] that records what it was handed, or refuses everything.
+    #[derive(Clone, Default)]
+    struct Recorded {
+        sent: Rc<RefCell<Vec<String>>>,
+        refuse: bool,
+    }
+
+    impl Outside for Recorded {
+        fn open(&self, url: &str) -> std::io::Result<()> {
+            self.record(format!("open {url}"))
+        }
+
+        fn copy(&self, text: &str) -> std::io::Result<()> {
+            self.record(format!("copy {text}"))
+        }
+    }
+
+    impl Recorded {
+        fn record(&self, what: String) -> std::io::Result<()> {
+            if self.refuse {
+                return Err(std::io::Error::other("refused"));
+            }
+            self.sent.borrow_mut().push(what);
+            Ok(())
+        }
+    }
+
+    fn toasts(shell: &Shell) -> Vec<(ToastKind, String)> {
+        shell
+            .toasts
+            .visible()
+            .iter()
+            .map(|toast| (toast.kind(), toast.text().to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn links_open_and_text_copies_through_the_outside_seam() {
+        crate::locale::init_for_tests();
+        let outside = Recorded::default();
+        let mut shell = Shell::new().with_outside(outside.clone());
+        shell.update(Action::OpenLink("https://example.com"));
+        shell.update(Action::CopyText("a line".into()));
+        assert_eq!(
+            *outside.sent.borrow(),
+            ["open https://example.com", "copy a line"]
+        );
+        assert_eq!(
+            toasts(&shell),
+            [(ToastKind::Success, "Copied to the clipboard".to_string())],
+            "opening a link raises no Toast; copying does"
+        );
+    }
+
+    #[test]
+    fn a_link_or_copy_the_outside_refuses_raises_an_error_toast() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new().with_outside(Recorded {
+            refuse: true,
+            ..Recorded::default()
+        });
+        shell.update(Action::OpenLink("https://example.com"));
+        shell.update(Action::CopyText("a line".into()));
+        let kinds: Vec<ToastKind> = toasts(&shell).into_iter().map(|(kind, _)| kind).collect();
+        assert_eq!(kinds, [ToastKind::Error, ToastKind::Error]);
+    }
+
+    #[test]
+    fn settings_logs_shows_the_buffer_the_shell_was_handed() {
+        crate::locale::init_for_tests();
+        let logs = LogBuffer::new(8);
+        let mut shell = opened().with_log_buffer(logs.clone());
+        shell.update(Action::OpenSettingsPage(SettingsPage::Logs));
+        logs.push(lib_tracing::LogEntry {
+            seq: 0,
+            time: std::time::SystemTime::now(),
+            level: tracing::Level::INFO,
+            target: std::borrow::Cow::Borrowed("bin_tui::shell"),
+            message: "raised after start-up".into(),
+            fields: Vec::new(),
+        });
+        assert!(drawn(&mut shell).contains("shell: raised after start-up"));
     }
 
     #[test]

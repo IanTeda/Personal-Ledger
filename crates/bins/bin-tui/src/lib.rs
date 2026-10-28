@@ -9,6 +9,7 @@ pub mod error;
 pub mod event;
 mod fixture;
 mod format;
+pub mod link;
 pub mod locale;
 mod payee;
 mod popup;

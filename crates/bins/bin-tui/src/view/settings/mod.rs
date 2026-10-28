@@ -29,9 +29,14 @@
 //! Dialogs are `lib-units`'; Accounts reads a fixture until the TUI moves onto `lib-accounts`
 //! ([`accounts`]), and Institutions, Categories, Tags, Payees, Documents and Inventory do the same
 //! on [`list::Page`]. `o` opens the full View where there is one, which `Shell` pushes Settings
-//! under, so the back key there returns to the same page and row. Every other page draws its
-//! heading and scope note over an empty body until the stage that builds it.
+//! under, so the back key there returns to the same page and row.
+//!
+//! Logs and About are this-device pages with something real behind them: Logs reads the
+//! `LogBuffer` `main` hands `Shell`, which passes it to each Settings View it builds ([`logs`]),
+//! and About's links reach the browser and clipboard through `Shell` ([`about`]). Every other
+//! page draws its heading and scope note over an empty body until the stage that builds it.
 
+mod about;
 mod accounts;
 mod categories;
 mod display;
@@ -42,6 +47,7 @@ mod index;
 mod institutions;
 mod inventory;
 mod list;
+mod logs;
 mod payees;
 mod picker;
 mod tags;
@@ -54,6 +60,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use lib_list_cursor::Step;
 use lib_shell::WindowSize;
 use lib_toast::ToastKind;
+use lib_tracing::LogBuffer;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Margin, Rect},
@@ -234,7 +241,9 @@ impl SettingsPage {
             Self::SyncServer => msg::tui_settings_scope_sync_server(),
             Self::Backup => msg::tui_settings_scope_backup(),
             Self::History => msg::tui_settings_scope_history(),
-            Self::Logs => msg::tui_settings_scope_logs(),
+            Self::Logs => msg::tui_settings_scope_logs(&crate::format::count(
+                i64::try_from(lib_tracing::LOG_CAPACITY).unwrap_or(i64::MAX),
+            )),
             Self::About => msg::tui_settings_scope_about(),
         }
     }
@@ -308,6 +317,8 @@ pub struct SettingsView {
     payees: payees::PayeesPage,
     documents: documents::DocumentsPage,
     inventory: inventory::InventoryPage,
+    logs: logs::LogsPage,
+    about: about::AboutPage,
 }
 
 impl SettingsView {
@@ -315,21 +326,33 @@ impl SettingsView {
     /// `Shell` uses [`Self::remembering`].
     #[cfg(test)]
     pub fn new() -> Self {
-        Self::remembering(Rc::default(), Rc::default(), None)
+        Self::with_logs(LogBuffer::new(lib_tracing::LOG_CAPACITY))
     }
 
     /// [`Self::new`] on `units`.
     #[cfg(test)]
     pub fn with_units(units: &UnitsSetup) -> Self {
-        Self::remembering(Rc::default(), Rc::default(), Some(units))
+        Self::remembering(
+            Rc::default(),
+            Rc::default(),
+            Some(units),
+            LogBuffer::new(lib_tracing::LOG_CAPACITY),
+        )
+    }
+
+    /// [`Self::new`] showing `logs` on Settings › Logs.
+    #[cfg(test)]
+    pub fn with_logs(logs: LogBuffer) -> Self {
+        Self::remembering(Rc::default(), Rc::default(), None, logs)
     }
 
     /// A View on the session's selection and values, landing on the index with the selection
-    /// selected; `units` are the Open Ledger's.
+    /// selected; `units` are the Open Ledger's, and `logs` the events `main` captures.
     pub fn remembering(
         selected: Rc<Cell<SettingsPage>>,
         values: Rc<RefCell<SettingsValues>>,
         units: Option<&UnitsSetup>,
+        logs: LogBuffer,
     ) -> Self {
         Self {
             showing: Showing::Index,
@@ -349,6 +372,8 @@ impl SettingsView {
             payees: payees::PayeesPage::new(),
             documents: documents::DocumentsPage::new(),
             inventory: inventory::InventoryPage::new(),
+            logs: logs::LogsPage::new(logs),
+            about: about::AboutPage::default(),
         }
     }
 
@@ -434,6 +459,8 @@ impl SettingsView {
                 SettingsPage::Display => self.display.handle_key(key),
                 SettingsPage::Units => self.units_page.as_mut()?.handle_key(key),
                 SettingsPage::Accounts => self.accounts.handle_key(key),
+                SettingsPage::Logs => self.logs.handle_key(key),
+                SettingsPage::About => self.about.handle_key(key),
                 page => self.ledger_page_mut(page)?.handle_key(key),
             },
         }
@@ -452,6 +479,8 @@ impl SettingsView {
                 .map(units::UnitsPage::hints)
                 .unwrap_or_default(),
             SettingsPage::Accounts => accounts::AccountsPage::hints(),
+            SettingsPage::Logs => logs::LogsPage::hints(),
+            SettingsPage::About => about::AboutPage::hints(),
             page => self
                 .ledger_page(page)
                 .map(list::Page::hints)
@@ -535,6 +564,10 @@ impl View for SettingsView {
         if let Some(page) = self.units_page.as_mut().filter(|page| page.dialog_open()) {
             return page.handle_key(key);
         }
+        // The Clear logs confirm takes every key, `[`, `]` and `p` included.
+        if self.logs.confirm_open() {
+            return self.logs.handle_key(key);
+        }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
                 picker::Outcome::Open(page) => {
@@ -582,7 +615,8 @@ impl View for SettingsView {
     /// An open field or the picker closes first, then a page steps back to the index with itself
     /// selected; on the index the Shell pops its view stack.
     fn back(&mut self) -> bool {
-        if self.editor.take().is_some() || self.picker.take().is_some() {
+        if self.editor.take().is_some() || self.picker.take().is_some() || self.logs.close_confirm()
+        {
             return true;
         }
         match self.showing {
@@ -594,9 +628,10 @@ impl View for SettingsView {
         }
     }
 
-    /// The picker, or a field open in place, which takes every key as a popup does.
+    /// The picker, the Clear logs confirm, or a field open in place, which takes every key as a
+    /// popup does.
     fn popup_open(&self) -> bool {
-        self.picker.is_some() || self.editor.is_some()
+        self.picker.is_some() || self.editor.is_some() || self.logs.confirm_open()
     }
 
     fn editing(&self) -> bool {
@@ -617,10 +652,13 @@ impl View for SettingsView {
     }
 
     fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
-        self.units_page
+        let mut toasts = self
+            .units_page
             .as_mut()
             .map(units::UnitsPage::take_toasts)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        toasts.extend(self.logs.take_toasts());
+        toasts
     }
 
     fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
@@ -699,6 +737,9 @@ impl View for SettingsView {
         if let Some(picker) = &self.picker {
             frame.render_widget(crate::popup::Dim, area);
             picker.render(frame, area, self.selected(), c);
+        } else if self.logs.confirm_open() {
+            frame.render_widget(crate::popup::Dim, area);
+            self.logs.render_confirm(frame, area, c);
         }
     }
 
@@ -763,6 +804,8 @@ impl SettingsView {
                 }
             }
             SettingsPage::Accounts => self.accounts.render(frame, body, focused, c),
+            SettingsPage::Logs => self.logs.render(frame, body, focused, c),
+            SettingsPage::About => self.about.render(frame, body, focused, c),
             page => {
                 if let Some(page) = self.ledger_page(page) {
                     page.render(frame, body, focused, c);
@@ -1314,7 +1357,12 @@ mod tests {
     #[test]
     fn open_settings_returns_a_page_to_the_index_and_the_selection_is_shared() {
         let remembered: Rc<Cell<SettingsPage>> = Rc::default();
-        let mut view = SettingsView::remembering(Rc::clone(&remembered), Rc::default(), None);
+        let mut view = SettingsView::remembering(
+            Rc::clone(&remembered),
+            Rc::default(),
+            None,
+            LogBuffer::new(4),
+        );
         view.update(&Action::OpenSettingsPage(SettingsPage::History));
         press(&mut view, &[KeyCode::Char('p')]);
         view.update(&Action::OpenSettings);
@@ -1322,7 +1370,7 @@ mod tests {
         assert!(!view.popup_open());
         assert_eq!(remembered.get(), SettingsPage::History);
 
-        let again = SettingsView::remembering(remembered, Rc::default(), None);
+        let again = SettingsView::remembering(remembered, Rc::default(), None, LogBuffer::new(4));
         assert_eq!(again.selected(), SettingsPage::History);
         assert_eq!(again.showing, Showing::Index);
     }

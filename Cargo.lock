@@ -786,6 +786,7 @@ dependencies = [
 name = "bin_tui"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bigdecimal",
  "chrono",
  "clap",

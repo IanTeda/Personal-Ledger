@@ -90,6 +90,12 @@ pub enum Action {
     /// `enter`): shows `":{command} — not yet built"` on the status line, as a `g` jump to a
     /// placeholder view does.
     FlashNotYetBuilt(&'static str),
+    /// `enter` on a Settings › About link: `Shell` opens the URL in the browser through its
+    /// [`crate::link::Outside`].
+    OpenLink(&'static str),
+    /// `y` on a Settings › About link or a Settings › Logs line: `Shell` copies the text to the
+    /// clipboard through its [`crate::link::Outside`].
+    CopyText(String),
     /// `Ctrl+r` while the command popup is open — walks backward through `Shell`'s own
     /// `command_history`, replacing the input buffer with each entry in turn (see
     /// `crate::popup::command::CommandPopup::recall_history`'s doc for the cursor's own

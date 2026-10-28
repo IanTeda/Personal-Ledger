@@ -56,7 +56,7 @@ use crate::{
 ///   don't already exist. If `None`, telemetry is only written to the console.
 /// * `capture` - Optional [`LogBuffer`] to also feed with recent events, for an in-app log view.
 ///   It records everything the console shows, plus our own crates at `debug` even when the
-///   console is quieter, so the viewer can filter for itself. The Sync Server and TUI pass `None`.
+///   console is quieter, so the viewer can filter for itself. The Sync Server passes `None`.
 ///
 /// # Returns
 ///
