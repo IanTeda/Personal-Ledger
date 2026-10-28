@@ -208,7 +208,11 @@ pub fn active_count(tags: &[Tag]) -> usize {
 
 /// Every Tag in the page's order: most-used first (distinct Transactions), ties by name.
 pub fn sorted_by_usage<'a>(tags: &'a [Tag], usage: &dyn TagUsage) -> Vec<&'a Tag> {
-    let counts = counts(tags, usage);
+    sorted_by_counts(tags, &usage_counts(tags, usage))
+}
+
+/// [`sorted_by_usage`] over counts already read, for a caller that shows them too.
+pub fn sorted_by_counts<'a>(tags: &'a [Tag], counts: &HashMap<TagId, usize>) -> Vec<&'a Tag> {
     let mut sorted: Vec<&Tag> = tags.iter().collect();
     sorted.sort_by(|a, b| {
         counts[&b.id]
@@ -231,10 +235,10 @@ pub fn sorted_by_name(tags: &[Tag]) -> Vec<&Tag> {
     sorted
 }
 
-fn counts(tags: &[Tag], usage: &dyn TagUsage) -> HashMap<TagId, usize> {
-    tags.iter()
-        .map(|tag| (tag.id, usage.tag_usage(tag.id).transactions))
-        .collect()
+/// Each Tag's distinct Transactions, from one read of `usage`.
+pub fn usage_counts(tags: &[Tag], usage: &dyn TagUsage) -> HashMap<TagId, usize> {
+    let ids: Vec<TagId> = tags.iter().map(|tag| tag.id).collect();
+    usage.transactions_by_tag(&ids)
 }
 
 /// Tags whose names collide once normalised -- only possible in data that broke the rule. The
@@ -248,7 +252,6 @@ pub struct DuplicateGroup {
 
 /// Every group of two or more Tags sharing a normalised name, ordered by their lowest id.
 pub fn duplicate_groups(tags: &[Tag], usage: &dyn TagUsage) -> Vec<DuplicateGroup> {
-    let counts = counts(tags, usage);
     let mut by_name: Vec<(String, Vec<&Tag>)> = Vec::new();
     for tag in tags {
         let key = normalise(&tag.name);
@@ -257,9 +260,18 @@ pub fn duplicate_groups(tags: &[Tag], usage: &dyn TagUsage) -> Vec<DuplicateGrou
             None => by_name.push((key, vec![tag])),
         }
     }
+    by_name.retain(|(_, members)| members.len() > 1);
+    // Counts only break ties inside a group, so a page with none reads no usage at all.
+    if by_name.is_empty() {
+        return Vec::new();
+    }
+    let grouped: Vec<TagId> = by_name
+        .iter()
+        .flat_map(|(_, members)| members.iter().map(|tag| tag.id))
+        .collect();
+    let counts = usage.transactions_by_tag(&grouped);
     by_name
         .into_iter()
-        .filter(|(_, members)| members.len() > 1)
         .filter_map(|(_, mut members)| {
             // Suggested target first: active, then more Transactions, then older (lower id).
             members.sort_by(|a, b| {
@@ -375,6 +387,55 @@ mod tests {
             Err(TagError::DuplicateName("work-trip".to_string()))
         );
         assert_eq!(resolve_split_tag(&tags, "fresh"), Ok(SplitTag::New));
+    }
+
+    /// Counts the reads made of it, to show the page asks only when it must.
+    struct CountingUsage {
+        inner: InMemoryTagUsage,
+        reads: std::cell::Cell<usize>,
+    }
+
+    impl TagUsage for CountingUsage {
+        fn tag_usage(&self, id: TagId) -> TagUse {
+            self.reads.set(self.reads.get() + 1);
+            self.inner.tag_usage(id)
+        }
+
+        fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+            self.reads.set(self.reads.get() + 1);
+            self.inner.transactions_by_tag(ids)
+        }
+    }
+
+    fn counting(counts: &[(u32, usize)]) -> CountingUsage {
+        CountingUsage {
+            inner: used(counts),
+            reads: std::cell::Cell::new(0),
+        }
+    }
+
+    #[test]
+    fn no_duplicates_read_no_usage() {
+        let tags = vec![tag(TagId::seed(1), "a"), tag(TagId::seed(2), "b")];
+        let usage = counting(&[(1, 5)]);
+
+        assert!(duplicate_groups(&tags, &usage).is_empty());
+        assert_eq!(usage.reads.get(), 0);
+    }
+
+    #[test]
+    fn a_duplicate_group_reads_usage_once_for_only_its_members() {
+        let tags = vec![
+            tag(TagId::seed(1), "Shared"),
+            tag(TagId::seed(2), "shared"),
+            tag(TagId::seed(3), "other"),
+        ];
+        let usage = counting(&[(2, 1), (3, 9)]);
+
+        let groups = duplicate_groups(&tags, &usage);
+
+        assert_eq!(groups[0].target, TagId::seed(2));
+        assert_eq!(usage.reads.get(), 1);
     }
 
     #[test]

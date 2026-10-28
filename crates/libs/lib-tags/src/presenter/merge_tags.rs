@@ -19,7 +19,7 @@ use lib_viper::view::{Choice, DialogFrame, SelectView};
 use super::{count, refusal_text};
 use crate::msg;
 use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome, TagsRouter};
-use crate::{Tag, sorted_by_usage};
+use crate::{Tag, sorted_by_counts, usage_counts};
 
 /// The Dialog's selects, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -81,11 +81,12 @@ impl MergeTagsPresenter {
     pub fn new(ports: &SharedPorts, source: Option<TagId>, target: Option<TagId>) -> Self {
         let ports = ports.borrow();
         let tags = ports.tags();
-        let options: Vec<Offered> = sorted_by_usage(&tags, &*ports)
+        let counts = usage_counts(&tags, &*ports);
+        let options: Vec<Offered> = sorted_by_counts(&tags, &counts)
             .into_iter()
             .map(|tag| Offered {
                 tag: tag.clone(),
-                transactions: ports.tag_usage(tag.id).transactions,
+                transactions: counts[&tag.id],
             })
             .collect();
         let known = |id: &TagId| options.iter().any(|option| option.tag.id == *id);

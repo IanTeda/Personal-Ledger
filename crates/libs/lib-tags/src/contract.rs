@@ -309,6 +309,12 @@ pub fn usage_answers_the_figures_for_a_tag<F: PortsFactory>(factory: &mut F) {
         assert_eq!(ports.usage().tag_usage(gift), mixed);
         assert_eq!(ports.usage().tag_usage(TagId::seed(1)), TagUse::default());
         assert_eq!(ports.usage().tag_usage(TagId::seed(999)), TagUse::default());
+        let ids = [shared, gift, TagId::seed(1), TagId::seed(999)];
+        let counted = ports.usage().transactions_by_tag(&ids);
+        assert_eq!(counted.len(), ids.len(), "every id asked for is answered");
+        for id in ids {
+            assert_eq!(counted[&id], ports.usage().tag_usage(id).transactions);
+        }
         assert_eq!(TagUse::default().total, Total::Empty);
     };
     check(&ports);

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               tag_id                          AS \"tag_id!: TagId\",\n               COUNT(DISTINCT transaction_id)  AS \"transactions!: i64\"\n           FROM split_tags\n           GROUP BY tag_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "tag_id!: TagId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "transactions!: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "0bbc3ff9726230cb951a66c8be5566adb56f86b0ee04d175b9cd7dd3c543b67b"
+}

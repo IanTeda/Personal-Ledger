@@ -12,6 +12,7 @@
 //! [`TagsRouter`], which each Client implements.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
@@ -62,6 +63,11 @@ impl Default for TagUse {
 pub trait TagUsage {
     /// What carries Tag `id`; a Tag nothing carries, or one that doesn't exist, has none.
     fn tag_usage(&self, id: TagId) -> TagUse;
+
+    /// The distinct Transactions carrying each of `ids`, in one read: the figure the page ranks
+    /// and breaks ties by, without a read per Tag. Every id asked for is answered, `0` for a Tag
+    /// nothing carries or that doesn't exist, and it agrees with [`TagUse::transactions`].
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize>;
 }
 
 /// Every Tags read and the repository write, as one value the Presenters share. Reads answer

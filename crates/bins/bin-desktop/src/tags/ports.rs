@@ -13,6 +13,7 @@
 //! stored Desktop's usage is the adapter's, read from the file.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
@@ -56,6 +57,10 @@ impl TagRepository for StorePorts {
 impl TagUsage for StorePorts {
     fn tag_usage(&self, id: TagId) -> TagUse {
         self.0.borrow().usage().tag_usage(id)
+    }
+
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        self.0.borrow().usage().transactions_by_tag(ids)
     }
 }
 

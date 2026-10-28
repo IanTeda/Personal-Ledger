@@ -53,6 +53,12 @@ impl TagUsage for InMemoryTagUsage {
     fn tag_usage(&self, id: TagId) -> TagUse {
         self.uses.get(&id).cloned().unwrap_or_default()
     }
+
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        ids.iter()
+            .map(|id| (*id, self.tag_usage(*id).transactions))
+            .collect()
+    }
 }
 
 /// Every Tags port in memory, together, so a test can hand a write the ones it takes.
@@ -95,6 +101,10 @@ impl TagRepository for InMemoryPorts {
 impl TagUsage for InMemoryPorts {
     fn tag_usage(&self, id: TagId) -> TagUse {
         self.usage.tag_usage(id)
+    }
+
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        self.usage.transactions_by_tag(ids)
     }
 }
 

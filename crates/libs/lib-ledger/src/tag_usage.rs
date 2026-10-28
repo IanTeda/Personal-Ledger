@@ -3,6 +3,8 @@
 //! this is what an in-memory Client counts with ([`Ledger::tag_uses`]) until the Transactions View
 //! reads its Splits through its own domain.
 
+use std::collections::HashMap;
+
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_accounts::Account;
@@ -33,6 +35,12 @@ pub struct TagRows<'a> {
 }
 
 impl TagUsage for TagRows<'_> {
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        ids.iter()
+            .map(|id| (*id, transaction_count(self.transactions, *id)))
+            .collect()
+    }
+
     fn tag_usage(&self, id: TagId) -> TagUse {
         let unit_of = |account_id: AccountId| {
             self.accounts

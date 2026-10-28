@@ -15,6 +15,8 @@
 //! pending. It only feeds figures the page shows, so a read that can't be made is logged and
 //! answered as unused (#862).
 
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use lib_core::{HexColor, Money, TagId, Total, TransactionId, UnitId};
 use lib_tags::{Tag, TagRepository, TagUsage, TagUse};
@@ -155,6 +157,22 @@ impl TagUsage for StoredUsage {
             })
             .unwrap_or_default()
     }
+
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        let counted = self
+            .writer
+            .run(|pool| async move {
+                let mut conn = pool.acquire().await?;
+                count_transactions(&mut conn).await
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, "Failed to count the Transactions carrying each Tag");
+            })
+            .unwrap_or_default();
+        ids.iter()
+            .map(|id| (*id, counted.get(id).copied().unwrap_or(0)))
+            .collect()
+    }
 }
 
 impl Change for TagsChange {
@@ -196,6 +214,29 @@ async fn delete(conn: &mut SqliteConnection, id: TagId) -> Result<()> {
         .execute(&mut *conn)
         .await?;
     Ok(())
+}
+
+/// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read. A Tag
+/// nothing carries has no row.
+async fn count_transactions(conn: &mut SqliteConnection) -> Result<HashMap<TagId, usize>> {
+    let rows = sqlx::query!(
+        r#"SELECT
+               tag_id                          AS "tag_id!: TagId",
+               COUNT(DISTINCT transaction_id)  AS "transactions!: i64"
+           FROM split_tags
+           GROUP BY tag_id"#
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.tag_id,
+                usize::try_from(row.transactions).unwrap_or_default(),
+            )
+        })
+        .collect())
 }
 
 /// A Tag's figures from the Splits that carry it: distinct Transactions, the newest date, and the
@@ -565,6 +606,13 @@ mod tests {
 
         let used = tags.usage().tag_usage(shared);
         assert_eq!(used.transactions, 1);
+        let unused = TagId::seed(1);
+        let missing = TagId::seed(999);
+        assert_eq!(
+            tags.usage().transactions_by_tag(&[shared, unused, missing]),
+            HashMap::from([(shared, 1), (unused, 0), (missing, 0)]),
+            "the batch counts the Transaction once and answers every id asked"
+        );
         assert_eq!(used.last_used, Some(day()));
         assert_eq!(
             used.total,
