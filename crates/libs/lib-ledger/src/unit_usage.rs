@@ -1,10 +1,11 @@
 //! Halfway shims (#746) between `lib-units` and the domains that still live on the Ledger:
 //!
 //! - **`UnitUsage` and `UnitHoldings` for `Ledger`.** `lib-units`' read ports answered from the
-//!   stub's Accounts, Bill Plans and Budgets, so the Units Interactors can refuse deleting a Unit
+//!   stub's Accounts, Bill Plans, Budgets and Inventory Locations, so the Units Interactors can refuse deleting a Unit
 //!   in use and the Units page can list a Unit's Accounts before those domains persist. The
 //!   Desktop reads the holdings and the Accounts count from `lib-database`'s Accounts adapter since
-//!   Accounts persist (#853), and only the Bill Plans and Budgets counts here; the TUI's Units
+//!   Accounts persist (#853) and the Locations count from the Inventory store (#885), and only the
+//!   Bill Plans and Budgets counts here; the TUI's Units
 //!   ports read all of it here until its redesign (#805, Q24). They go with the last reader.
 //! - **The Units read copy ([`Ledger::refresh_units`]).** The Units ports are the truth; the
 //!   Ledger keeps a copy for Bills, Budgets, Transactions, the Dashboard and the Bill and Budget
@@ -16,12 +17,18 @@ use lib_units::{Holding, PriceSourceRecord, UnitHoldings, UnitRow, UnitUsage, Un
 use crate::Ledger;
 
 impl Ledger {
-    /// How many Accounts, Bill Plans and Budgets name Unit `id`.
+    /// How many Accounts, Bill Plans, Budgets and Locations name Unit `id`.
     pub fn unit_use(&self, id: UnitId) -> UnitUse {
         UnitUse {
             accounts: self.accounts.iter().filter(|a| a.unit == id).count(),
             bill_plans: self.bill_plans.iter().filter(|p| p.unit == id).count(),
             budgets: self.budgets.all().iter().filter(|b| b.unit == id).count(),
+            locations: self
+                .inventory
+                .locations
+                .iter()
+                .filter(|l| l.unit == id)
+                .count(),
         }
     }
 
@@ -101,9 +108,20 @@ mod tests {
                 .iter()
                 .filter(|b| b.unit == unit.id)
                 .count();
+            let locations = ledger
+                .inventory()
+                .locations
+                .iter()
+                .filter(|l| l.unit == unit.id)
+                .count();
             assert_eq!(
-                (usage.accounts, usage.bill_plans, usage.budgets),
-                (accounts, bill_plans, budgets),
+                (
+                    usage.accounts,
+                    usage.bill_plans,
+                    usage.budgets,
+                    usage.locations
+                ),
+                (accounts, bill_plans, budgets, locations),
                 "{}",
                 unit.code
             );

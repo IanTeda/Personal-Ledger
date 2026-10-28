@@ -1351,6 +1351,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Adds a Location priced in `unit`, which then names it.
+    pub fn add_location_in(&mut self, unit: lib_core::UnitId) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.add_location_in_for_test(unit, cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// Moves every Bill Plan to pay from Account `to`, so the Accounts they paid from can be
     /// deleted rather than refused.
     pub fn move_bill_plans_to(&mut self, to: AccountId) {

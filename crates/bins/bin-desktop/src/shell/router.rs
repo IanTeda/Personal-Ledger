@@ -213,7 +213,12 @@ pub fn build(
         account_deletion,
         &bindings.keybindings,
     );
-    let units = crate::units::UnitsSetup::new(units, accounts.clone(), &bindings.keybindings);
+    let units = crate::units::UnitsSetup::new(
+        units,
+        accounts.clone(),
+        inventory.clone(),
+        &bindings.keybindings,
+    );
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
         accounts,
@@ -600,6 +605,13 @@ impl Root {
     pub fn drop_unit_users_for_test(&mut self, cx: &mut App) {
         self.ledger
             .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
+    }
+
+    /// Adds a Location priced in `unit`, which then names it.
+    #[doc(hidden)]
+    pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
+        self.ledger
+            .update(cx, |store, cx| store.add_location_in_for_test(unit, cx));
     }
 
     /// Moves every Bill Plan to pay from Account `to`, so a test can delete the Account another Plan

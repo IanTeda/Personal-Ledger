@@ -99,7 +99,7 @@ fn count(n: usize) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets`.
+/// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets, 1 location`.
 pub(super) fn uses_text(uses: UnitUse) -> String {
     let parts: Vec<String> = [
         (
@@ -108,6 +108,7 @@ pub(super) fn uses_text(uses: UnitUse) -> String {
         ),
         (uses.bill_plans, msg::units_in_use_bill_plans),
         (uses.budgets, msg::units_in_use_budgets),
+        (uses.locations, msg::units_in_use_locations),
     ]
     .into_iter()
     .filter(|(n, _)| *n > 0)

@@ -36,10 +36,11 @@ impl UnitsSetup {
     pub fn new(
         ports: Box<dyn UnitsStore>,
         accounts: lib_database::SharedAccountsStore,
+        inventory: lib_database::SharedInventoryStore,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            ports: LedgerBackedPorts::shared(ports, accounts),
+            ports: LedgerBackedPorts::shared(ports, accounts, inventory),
             keymap: lib_units::keymap::units_page_keymap(config),
         }
     }
@@ -47,10 +48,14 @@ impl UnitsSetup {
     /// The stub seed in memory under the default keys, reading `accounts`' Accounts, for a test
     /// that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(accounts: lib_database::SharedAccountsStore) -> Self {
+    pub fn stub(
+        accounts: lib_database::SharedAccountsStore,
+        inventory: lib_database::SharedInventoryStore,
+    ) -> Self {
         Self::new(
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
             accounts,
+            inventory,
             &lib_config::KeyBindingConfig::default(),
         )
     }

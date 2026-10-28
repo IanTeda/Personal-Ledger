@@ -1,5 +1,6 @@
 //! The Units ports as the Desktop holds them: the store `shell::router::build` is given, with
 //! `UnitHoldings` and the Accounts half of `UnitUsage` answered from the Accounts store (#853), the
+//! Locations half from the Inventory store (#885), the
 //! Bill Plans and Budgets halves from the Ledger read copy (#746's halfway shims), and the step that
 //! keeps that read copy in line after a Units write. The write is committed by the input it was
 //! made in (`crate::input::send`), not here.
@@ -22,25 +23,31 @@ use lib_units::{
 };
 
 use crate::ledger_store::LedgerStore;
-use lib_database::{SharedAccountsStore, UnitsStore};
+use lib_database::{SharedAccountsStore, SharedInventoryStore, UnitsStore};
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// `store`'s Units, Price Sources and base Unit, with holdings and the Accounts naming each Unit
-/// copied from `accounts`, and the Bill Plans and Budgets naming it from the Ledger.
+/// copied from `accounts`, the Locations from `inventory`, and the Bill Plans and Budgets naming it from the Ledger.
 pub struct LedgerBackedPorts {
     store: Box<dyn UnitsStore>,
     accounts: SharedAccountsStore,
+    inventory: SharedInventoryStore,
     usage: InMemoryUnitUsage,
     holdings: InMemoryHoldings,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn UnitsStore>, accounts: SharedAccountsStore) -> DesktopPorts {
+    pub fn shared(
+        store: Box<dyn UnitsStore>,
+        accounts: SharedAccountsStore,
+        inventory: SharedInventoryStore,
+    ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store,
             accounts,
+            inventory,
             usage: InMemoryUnitUsage::default(),
             holdings: InMemoryHoldings::default(),
         }))
@@ -51,6 +58,7 @@ impl LedgerBackedPorts {
     fn copy_usage(&mut self, ledger: &Ledger) {
         crate::accounts::ports::recount(&self.accounts, ledger);
         let accounts = self.accounts.borrow();
+        let inventory = self.inventory.borrow();
         let ids: Vec<UnitId> = self
             .store
             .units()
@@ -63,6 +71,7 @@ impl LedgerBackedPorts {
             .map(|id| {
                 let usage = lib_units::UnitUse {
                     accounts: accounts.unit_accounts(*id),
+                    locations: inventory.unit_locations(*id),
                     ..ledger.unit_usage(*id)
                 };
                 (*id, usage)

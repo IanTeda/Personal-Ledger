@@ -167,6 +167,10 @@ units-in-use-budgets = { $count ->
     [one] { $count } budget
    *[other] { $count } budgets
 }
+units-in-use-locations = { $count ->
+    [one] { $count } location
+   *[other] { $count } locations
+}
 units-in-use-help = Deactivating it keeps it on those and hides it from the unit pickers. You can reactivate it later.
 units-in-use-base = It is also the base unit, so it stays active until another unit takes over as base.
 units-edit-usage = Used by { $uses }.

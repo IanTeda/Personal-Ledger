@@ -69,8 +69,8 @@ fn deleting_a_unit_in_use_opens_offering_deactivate_with_its_usage() {
         "{frame}"
     );
     assert!(
-        frame.contains("can't be deleted"),
-        "the usage says why:\n{frame}"
+        frame.contains("aud is used by") && frame.contains("locations"),
+        "the usage says why, Locations included:\n{frame}"
     );
     assert!(
         frame.contains("It is also the base unit"),

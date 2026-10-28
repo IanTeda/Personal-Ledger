@@ -75,11 +75,12 @@ pub struct UnitUse {
     pub accounts: usize,
     pub bill_plans: usize,
     pub budgets: usize,
+    pub locations: usize,
 }
 
 impl UnitUse {
     pub fn is_used(self) -> bool {
-        self.accounts + self.bill_plans + self.budgets > 0
+        self.accounts + self.bill_plans + self.budgets + self.locations > 0
     }
 }
 

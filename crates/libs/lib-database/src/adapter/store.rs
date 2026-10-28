@@ -544,6 +544,16 @@ pub trait InventoryStore {
     /// Document Links to its Items (Q18, #813).
     fn delete_location(&mut self, id: LocationId);
 
+    /// How many Locations are priced in `unit`: the Locations half of `lib-units`' `UnitUsage`.
+    /// The file refuses deleting a Unit one names, so Delete Unit must see them first (#885).
+    fn unit_locations(&self, unit: UnitId) -> usize {
+        self.inventory()
+            .locations()
+            .iter()
+            .filter(|location| location.unit == unit)
+            .count()
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors

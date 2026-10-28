@@ -171,6 +171,10 @@ mod tests {
                 budgets: 3,
                 ..UnitUse::default()
             },
+            UnitUse {
+                locations: 2,
+                ..UnitUse::default()
+            },
         ] {
             let mut ports = InMemoryPorts::stub(Utc::now());
             ports.usage.uses.insert(UnitId::SEED_BTC, uses);

@@ -179,17 +179,49 @@ impl LedgerStore {
         self.categories.borrow().payee_categories()
     }
 
+    /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
+    /// names (#885).
+    #[doc(hidden)]
+    pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut Context<'_, Self>) {
+        let mut scratch = lib_inventory::Inventory::default();
+        let draft = lib_inventory::LocationDraft {
+            name: "Beach shack".to_string(),
+            ..lib_inventory::LocationDraft::default()
+        };
+        if scratch.add_location(&draft, unit).is_err() {
+            return;
+        }
+        let Some(location) = scratch.locations.pop() else {
+            return;
+        };
+        self.inventory
+            .borrow_mut()
+            .inventory_mut()
+            .upsert_location(location);
+        self.copy_inventory();
+        cx.emit(LedgerChanged {
+            what: BTreeSet::from([Domain::Units, Domain::Inventory]),
+        });
+    }
+
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
     /// the Accounts store, the Budgets by the Ledger until Budgets persist (#811).
     pub fn account_usage(&self, id: AccountId) -> AccountUse {
         crate::accounts::ports::usage(&self.accounts, &self.ledger, id)
     }
 
-    /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts store's rows too,
-    /// since the Units count their Accounts from it.
+    /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts and Inventory
+    /// stores' rows too, since the Units count their Accounts and Locations from them.
     #[doc(hidden)]
     pub fn drop_unit_users_for_test(&mut self, cx: &mut Context<'_, Self>) {
         self.ledger.drop_unit_users_for_test();
+        {
+            let mut inventory = self.inventory.borrow_mut();
+            for location in inventory.inventory().locations() {
+                inventory.delete_location(location.id);
+            }
+        }
+        self.copy_inventory();
         let mut accounts = self.accounts.borrow_mut();
         for account in accounts.accounts().accounts() {
             accounts.accounts_mut().delete_account(account.id);

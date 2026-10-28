@@ -665,6 +665,23 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
 }
 
 #[gpui::test]
+fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.add_location_in(lib_core::UnitId::SEED_VAS);
+    ui.press("j j d");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("in_use_text").as_deref(),
+        Some("vas is used by 1 location, so it can't be deleted."),
+    );
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
 fn escape_closes_an_open_select_then_the_next_escape_cancels_the_dialog(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     let before = ui.unit_rows();
