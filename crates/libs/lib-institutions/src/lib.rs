@@ -8,8 +8,8 @@
 //! (`bin-desktop/src/institutions/`). Accounts still read Institutions from the `Ledger` read copy
 //! until the Accounts page moves.
 //!
-//! The rule: an Institution's name is required, stored trimmed, and case-insensitively unique.
-//! Add and edit exist; delete is backlog (#869).
+//! The rule: an Institution's name is required, stored trimmed, and case-insensitively unique. An
+//! Institution an Account names can't be deleted.
 
 #[cfg(feature = "contract-tests")]
 #[expect(
@@ -27,6 +27,6 @@ pub mod protocols;
 
 pub use entity::*;
 pub use protocols::{
-    InstitutionRepository, InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts,
-    InstitutionsRouter, SharedPorts,
+    InstitutionRepository, InstitutionUsage, InstitutionUse, InstitutionsDialog,
+    InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
 };

@@ -1,5 +1,5 @@
 //! `impl InstitutionsRouter` for the Desktop: where the Institutions page's Presenter asks to go.
-//! The Add and Edit Dialog opens as an Entity in the Dialog host through the page's gpui context, which is
+//! The Add, Edit and Delete Dialogs open as an Entity in the Dialog host through the page's gpui context, which is
 //! why the Router is built for each `handle` call, and a Notice goes onto the bin's queue
 //! (`crate::notices`), which the input's `send` drains.
 
@@ -9,7 +9,7 @@ use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome, Institu
 use lib_toast::{Notice, Notify};
 
 use super::ports::DesktopPorts;
-use super::view::dialog::InstitutionsDialog;
+use super::view::dialog::{DeleteInstitutionDialog, InstitutionsDialog};
 use super::view::page::InstitutionsPage;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
@@ -30,6 +30,14 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
+        if let Which::DeleteInstitution(id) = dialog {
+            let Some(dialog) = DeleteInstitutionDialog::open(id, &self.ports, &self.ledger, landed)
+            else {
+                return false;
+            };
+            host_dialog(self.cx, |_| dialog);
+            return true;
+        }
         let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, &self.ledger, landed)
         else {
             return false;

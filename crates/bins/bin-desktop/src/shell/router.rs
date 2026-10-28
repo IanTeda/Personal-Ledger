@@ -181,10 +181,11 @@ pub fn build(
     // The Inventory store is shared by the Ledger's forwarding shim and read copy and the
     // Inventory page (#866, #867).
     let inventory: lib_database::SharedInventoryStore = Rc::new(std::cell::RefCell::new(inventory));
-    let institutions = crate::institutions::LedgerBackedPorts::shared(institutions);
     // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
-    // (#853).
+    // (#853), and the Institutions' reads of which Accounts name one (#876).
     let accounts = crate::accounts::LedgerBackedPorts::shared(accounts);
+    let institutions =
+        crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
     let institutions_setup =
         crate::institutions::InstitutionsSetup::new(institutions.clone(), &bindings.keybindings);
     let transactions: lib_database::SharedTransactionsStore =

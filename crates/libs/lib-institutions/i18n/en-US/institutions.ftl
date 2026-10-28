@@ -13,10 +13,6 @@ institutions-column-products = Products
 institutions-row-edit = edit
 institutions-row-delete = delete
 
-## The status line when a row's delete is asked for: it has no Dialog yet.
-
-institutions-delete-not-built = delete institution — not yet built
-
 ## The row's right-click menu.
 
 institutions-menu-edit = Edit institution…
@@ -59,3 +55,23 @@ institutions-product-cash = cash
 institutions-error-name-taken = { $name } already exists
 institutions-error-name-required = An institution needs a name
 institutions-error-not-found = That institution is no longer on the ledger
+
+## The Delete institution Dialog. `$name` is the Institution, `$count` the Accounts that name it or
+## the ones left out of the list.
+
+institutions-delete-title = Delete institution — { $name }
+institutions-delete-submit = Delete institution
+institutions-delete-warning = No account uses this institution. Deleting it cannot be undone.
+institutions-delete-confirm-label = Type { $name } to confirm
+institutions-delete-toast = Deleted { $name }
+
+## What the Dialog says instead when an Account names the Institution: the Accounts, the first few
+## by name, and a Close button in place of Delete institution.
+
+institutions-delete-used-by = Used by { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+}
+institutions-delete-used-by-hint = Change those accounts' institution first, then delete this one.
+institutions-delete-and-more = and { $count } more
+institutions-delete-close = Close

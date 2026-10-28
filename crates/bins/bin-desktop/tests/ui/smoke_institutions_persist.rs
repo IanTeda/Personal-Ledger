@@ -106,3 +106,36 @@ fn an_edited_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         "the Account form's select shows the new name"
     );
 }
+
+#[gpui::test]
+fn a_deleted_institution_is_gone_after_a_restart(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = config_for(&dir.path().join("ledger.pldb"));
+
+    let names = {
+        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let writer = storage.writer.clone();
+        let mut ui = Harness::with_storage(app, storage);
+        let before = institution_names(&mut ui);
+        assert_eq!(
+            before.last().map(String::as_str),
+            Some("Superannuation Fund")
+        );
+        ui.click("institution-delete-6");
+        ui.press("S u p e r a n n u a t i o n space F u n d");
+        ui.press("enter");
+        assert_eq!(ui.dialog(), None, "the Delete Dialog confirmed");
+        let names = institution_names(&mut ui);
+        assert_eq!(names.len(), before.len() - 1);
+        bin_desktop::quit(&writer);
+        names
+    };
+
+    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let mut ui = Harness::with_storage(app, storage);
+    assert_eq!(institution_names(&mut ui), names);
+    assert!(
+        !account_select_institutions(&mut ui).contains(&"Superannuation Fund".to_string()),
+        "the Accounts page no longer offers it"
+    );
+}

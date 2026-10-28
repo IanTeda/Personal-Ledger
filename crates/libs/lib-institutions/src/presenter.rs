@@ -1,12 +1,16 @@
-//! One Presenter per Institutions View: the Settings page and its Add Dialog. Each takes events
-//! through `handle` and builds a plain-data view model through `view_model`, its text already
-//! localised from [`crate::msg`], so a View only draws. They share one set of ports
+//! One Presenter per Institutions View: the Settings page and its Add, Edit and Delete Dialogs.
+//! Each takes events through `handle` and builds a plain-data view model through `view_model`, its
+//! text already localised from [`crate::msg`], so a View only draws. They share one set of ports
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`InstitutionsRouter`](crate::protocols::InstitutionsRouter) the Client passes in.
 
+mod delete_institution;
 mod institution_form;
 mod institutions_page;
 
+pub use delete_institution::{
+    DeleteInstitutionEvent, DeleteInstitutionPresenter, DeleteInstitutionViewModel,
+};
 pub use institution_form::{
     InstitutionFormEvent, InstitutionFormPresenter, InstitutionFormViewModel, InstitutionProduct,
 };

@@ -3,9 +3,9 @@
 //! each write, so a write never fails here; a failed save is the adapter's to report. `fake`
 //! implements them in memory.
 //!
-//! Only list and upsert exist: Institution delete is backlog (#869). The
-//! Presenters reach every port together, through [`InstitutionsPorts`], and ask for navigation
-//! through [`InstitutionsRouter`], which each Client implements.
+//! The Presenters reach every port together, through [`InstitutionsPorts`], and ask for navigation
+//! through [`InstitutionsRouter`], which each Client implements. What names an Institution is the
+//! Accounts', so [`InstitutionUsage`] is a read port each Client answers from its Accounts.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -29,6 +29,29 @@ pub trait InstitutionRepository {
     /// Writes `institution`: a new id is a new row after every row already there, a known id
     /// replaces that row where it stands.
     fn upsert_institution(&mut self, institution: Institution);
+
+    /// Removes Institution `id`; an unknown id is ignored. It does not check usage: the
+    /// `DeleteInstitution` Interactor refuses an Institution in use, and storage's foreign key
+    /// backs it.
+    fn delete_institution(&mut self, id: InstitutionId);
+}
+
+/// What names one Institution: the names of the Accounts that do, in the Accounts' order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstitutionUse {
+    pub accounts: Vec<String>,
+}
+
+impl InstitutionUse {
+    /// Whether any Account names the Institution, so it can't be deleted.
+    pub fn is_used(&self) -> bool {
+        !self.accounts.is_empty()
+    }
+}
+
+/// What names an Institution, read when the Delete Dialog opens and again when it confirms.
+pub trait InstitutionUsage {
+    fn institution_usage(&self, id: InstitutionId) -> InstitutionUse;
 }
 
 /// Every Institutions port, as one value the Presenters share.
@@ -36,6 +59,8 @@ pub trait InstitutionsPorts {
     fn institutions(&self) -> &dyn InstitutionRepository;
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
+
+    fn usage(&self) -> &dyn InstitutionUsage;
 }
 
 /// The ports as the page and its Dialog hold them: one set, shared, so an Institution the Dialog
@@ -49,13 +74,16 @@ pub enum InstitutionsDialog {
     AddInstitution,
     /// The Add form for one Institution, pre-filled.
     EditInstitution(InstitutionId),
+    /// Delete for one Institution: typed-back name when no Account names it, a refusal listing
+    /// the Accounts when one does.
+    DeleteInstitution(InstitutionId),
 }
 
 /// What a confirmed Institutions Dialog did, handed to the page when the Dialog closes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionsOutcome {
     pub id: InstitutionId,
-    /// The Institution's name as written.
+    /// The Institution's name as written, or as it was when deleted.
     pub name: String,
 }
 

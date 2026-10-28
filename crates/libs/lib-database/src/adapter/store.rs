@@ -34,9 +34,9 @@ use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{CategoryId, LocationId, TagId, UnitId};
-use lib_institutions::InstitutionRepository;
+use lib_core::{CategoryId, InstitutionId, LocationId, TagId, UnitId};
 use lib_institutions::fake::InMemoryInstitutions;
+use lib_institutions::{InstitutionRepository, InstitutionUse};
 use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
@@ -210,6 +210,13 @@ pub trait AccountsStore {
         accounts::bill_accounts(&self.accounts().accounts())
     }
 
+    /// The Accounts naming `institution`: `lib-institutions`' `InstitutionUsage`.
+    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
+        InstitutionUse {
+            accounts: accounts::institution_accounts(&self.accounts().accounts(), institution),
+        }
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -241,6 +248,10 @@ impl AccountsStore for AccountsAdapter {
 
     fn bill_accounts(&self) -> Vec<BillAccount> {
         lib_bills::BillAccounts::bill_accounts(self)
+    }
+
+    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
+        lib_institutions::InstitutionUsage::institution_usage(self, institution)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -276,6 +287,10 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
 
     fn bill_accounts(&self) -> Vec<BillAccount> {
         (**self).bill_accounts()
+    }
+
+    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
+        (**self).institution_usage(institution)
     }
 
     fn reload(&mut self) -> Result<()> {

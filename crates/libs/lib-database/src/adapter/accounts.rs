@@ -1,6 +1,7 @@
 //! The Accounts adapter: `lib-accounts`' repository and `AccountUsage` ports over the `accounts`
 //! table, and the reads other modules make of the same rows: `lib-units`' `UnitHoldings` and the
-//! Accounts half of its `UnitUsage`, and `lib-bills`' `BillAccounts` (ADR-0046, #853).
+//! Accounts half of its `UnitUsage`, `lib-bills`' `BillAccounts` and `lib-institutions`'
+//! `InstitutionUsage` (ADR-0046, #853).
 //!
 //! It loads every Account into memory, blocking, and serves the rows from there, in the order they
 //! were added. A port write changes memory at once and joins the [`PendingWrites`] every adapter
@@ -20,6 +21,7 @@ use chrono::NaiveDate;
 use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse};
 use lib_bills::{BillAccount, BillAccounts};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
+use lib_institutions::{InstitutionUsage, InstitutionUse};
 use lib_units::{Holding, UnitHoldings, UnitUsage, UnitUse};
 use sqlx::SqliteConnection;
 
@@ -190,6 +192,15 @@ impl UnitUsage for AccountsAdapter {
     }
 }
 
+/// The Accounts naming an Institution are this domain's rows, read from memory.
+impl InstitutionUsage for AccountsAdapter {
+    fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
+        InstitutionUse {
+            accounts: institution_accounts(&self.accounts.rows, id),
+        }
+    }
+}
+
 impl BillAccounts for AccountsAdapter {
     fn bill_accounts(&self) -> Vec<BillAccount> {
         bill_accounts(&self.accounts.rows)
@@ -221,6 +232,18 @@ pub(crate) fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
         .iter()
         .filter(|account| account.unit == unit)
         .count()
+}
+
+/// The names of the `accounts` that name `institution`, in order.
+pub(crate) fn institution_accounts(
+    accounts: &[Account],
+    institution: InstitutionId,
+) -> Vec<String> {
+    accounts
+        .iter()
+        .filter(|account| account.institution == institution)
+        .map(|account| account.name.clone())
+        .collect()
 }
 
 /// `accounts` as Bills reads them, each flagged by `lib-transactions`' rule for whether it takes
@@ -753,6 +776,83 @@ mod tests {
         assert_eq!(bills.len(), default_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);
+    }
+
+    /// Usage is the names of the Accounts naming an Institution, in the Accounts' order.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn institution_usage_counts_the_accounts_that_name_it(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let ports = factory.create(default_accounts());
+        let adapter = &ports.adapter;
+
+        let named_by = |institution| -> Vec<String> {
+            default_accounts()
+                .into_iter()
+                .filter(|account| account.institution == institution)
+                .map(|account| account.name)
+                .collect()
+        };
+        let anz = named_by(InstitutionId::SEED_ANZ);
+        assert!(anz.len() > 1, "the stub has more than one ANZ Account");
+        assert_eq!(
+            adapter.institution_usage(InstitutionId::SEED_ANZ),
+            InstitutionUse { accounts: anz }
+        );
+        assert_eq!(
+            adapter
+                .institution_usage(InstitutionId::SEED_PERSONAL)
+                .accounts,
+            named_by(InstitutionId::SEED_PERSONAL)
+        );
+        assert_eq!(
+            adapter.institution_usage(InstitutionId::SEED_SUPER_FUND),
+            InstitutionUse::default()
+        );
+        assert_eq!(
+            adapter.institution_usage(InstitutionId::new()),
+            InstitutionUse::default()
+        );
+    }
+
+    /// The `accounts` foreign key has no cascade: deleting an Institution an Account names fails in
+    /// the file, naming the Institutions domain, and a reload brings it back.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_file_refuses_deleting_an_institution_an_account_names(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        use lib_institutions::InstitutionRepository as _;
+
+        let mut factory = AdapterFactory::new(options);
+        factory.create(default_accounts());
+        let mut institutions =
+            InstitutionsAdapter::load(factory.pending.clone()).expect("the Institutions load");
+
+        institutions.delete_institution(InstitutionId::SEED_ANZ);
+        institutions.delete_institution(InstitutionId::SEED_SUPER_FUND);
+        factory.pending.commit();
+
+        let failures = factory.failures();
+        assert_eq!(
+            failures.len(),
+            1,
+            "the delete of a named Institution is refused"
+        );
+        assert_eq!(failures[0].domains, [Domain::Institutions]);
+        institutions.reload().expect("the rows load");
+        let ids: Vec<_> = institutions
+            .institutions()
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        assert!(ids.contains(&InstitutionId::SEED_ANZ), "ANZ stays");
+        assert!(
+            ids.contains(&InstitutionId::SEED_SUPER_FUND),
+            "reload brings every row back"
+        );
     }
 
     #[sqlx::test(migrations = "migrations/client")]

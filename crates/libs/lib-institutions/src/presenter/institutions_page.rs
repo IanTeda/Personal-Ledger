@@ -1,14 +1,13 @@
 //! The Institutions Settings page (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 //! state"): every Institution in the order added, with its Products, and `edit · delete` per
-//! row. Edit opens the form on the Institution; delete has no Dialog yet, so it says so on the
-//! status line.
+//! row. Edit opens the form on the Institution and delete its Delete Dialog.
 //!
 //! The selection is an Institution id. It may name an Institution that has since gone, so it is
-//! resolved on every read: a missing one leaves the first row selected.
+//! resolved on every read: a missing one leaves the first row selected. A delete moves it to the
+//! next row, or the previous when the deleted one was last.
 
 use lib_core::InstitutionId;
 use lib_list_cursor::{Step, resolve, step_id};
-use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
 use crate::msg;
@@ -131,6 +130,9 @@ pub struct InstitutionsPagePresenter {
     /// The row whose menu is open.
     menu: Option<InstitutionId>,
     open_dialog: Option<InstitutionsDialog>,
+    /// Where the selection goes if the open Delete Dialog removes its Institution: the row after
+    /// it, else the one before.
+    after_delete: Option<InstitutionId>,
 }
 
 impl InstitutionsPagePresenter {
@@ -142,6 +144,7 @@ impl InstitutionsPagePresenter {
             selected: None,
             menu: None,
             open_dialog: None,
+            after_delete: None,
         }
     }
 
@@ -162,8 +165,8 @@ impl InstitutionsPagePresenter {
                 }
             }
             InstitutionsPageEvent::Delete => {
-                if self.selected().is_some() {
-                    router.notify(Notice::Status(msg::institutions_delete_not_built()));
+                if let Some(id) = self.selected() {
+                    self.open_dialog(InstitutionsDialog::DeleteInstitution(id), router);
                 }
             }
             InstitutionsPageEvent::EditRow(id) => {
@@ -172,7 +175,7 @@ impl InstitutionsPagePresenter {
             }
             InstitutionsPageEvent::DeleteRow(id) => {
                 self.select(id);
-                router.notify(Notice::Status(msg::institutions_delete_not_built()));
+                self.open_dialog(InstitutionsDialog::DeleteInstitution(id), router);
             }
             InstitutionsPageEvent::OpenMenu(id) => {
                 if self.ids().contains(&id) {
@@ -192,9 +195,14 @@ impl InstitutionsPagePresenter {
             }
             InstitutionsPageEvent::DialogClosed(outcome) => {
                 self.open_dialog = None;
-                // A save selects its Institution.
+                let after_delete = self.after_delete.take();
+                // A save selects its Institution; a delete, being gone, selects its neighbour.
                 if let Some(InstitutionsOutcome { id, .. }) = outcome {
-                    self.select(id);
+                    if self.ids().contains(&id) {
+                        self.select(id);
+                    } else if let Some(neighbour) = after_delete {
+                        self.select(neighbour);
+                    }
                 }
             }
         }
@@ -265,7 +273,20 @@ impl InstitutionsPagePresenter {
     fn open_dialog(&mut self, dialog: InstitutionsDialog, router: &mut dyn InstitutionsRouter) {
         if router.open_dialog(dialog) {
             self.open_dialog = Some(dialog);
+            self.after_delete = match dialog {
+                InstitutionsDialog::DeleteInstitution(id) => self.neighbour(id),
+                _ => None,
+            };
         }
+    }
+
+    /// The row after Institution `id`, else the one before it.
+    fn neighbour(&self, id: InstitutionId) -> Option<InstitutionId> {
+        let ids = self.ids();
+        let at = ids.iter().position(|row| *row == id)?;
+        ids.get(at + 1)
+            .or_else(|| at.checked_sub(1).and_then(|before| ids.get(before)))
+            .copied()
     }
 
     fn chord(&self, command: &str) -> &str {
@@ -333,10 +354,6 @@ mod tests {
                 .find(|row| Some(row.id) == view.selected)
                 .map(|row| row.name)
         }
-    }
-
-    fn status(text: &str) -> Vec<RouterCall> {
-        vec![RouterCall::Notice(Notice::Status(text.to_string()))]
     }
 
     #[test]
@@ -414,19 +431,75 @@ mod tests {
     }
 
     #[test]
-    fn delete_says_it_is_not_built_on_the_selected_row_or_a_clicked_one() {
+    fn delete_opens_the_delete_dialog_on_the_selected_row_or_a_clicked_one() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
+        let personal = page.view().rows[0].id;
+        let amex = page.view().rows[2].id;
 
         assert_eq!(
             page.send(InstitutionsPageEvent::Delete),
-            status("delete institution \u{2014} not yet built")
+            vec![RouterCall::OpenDialog(
+                InstitutionsDialog::DeleteInstitution(personal)
+            )]
         );
-        let amex = page.view().rows[2].id;
+        page.send(InstitutionsPageEvent::DialogClosed(None));
         assert_eq!(
             page.send(InstitutionsPageEvent::DeleteRow(amex)),
-            status("delete institution \u{2014} not yet built")
+            vec![RouterCall::OpenDialog(
+                InstitutionsDialog::DeleteInstitution(amex)
+            )]
         );
+        assert_eq!(page.selected_name().as_deref(), Some("American Express"));
+        assert_eq!(
+            page.view().open_dialog,
+            Some(InstitutionsDialog::DeleteInstitution(amex))
+        );
+    }
+
+    /// Confirms the delete of the row at `at` as the Dialog does: the row goes, then the page is
+    /// told.
+    fn delete(page: &mut Page, ports: &Rc<RefCell<InMemoryPorts>>, at: usize) {
+        let row = page.view().rows[at].clone();
+        page.send(InstitutionsPageEvent::DeleteRow(row.id));
+        ports.borrow_mut().institutions.institutions.remove(at);
+        page.send(InstitutionsPageEvent::DialogClosed(Some(
+            InstitutionsOutcome {
+                id: row.id,
+                name: row.name,
+            },
+        )));
+    }
+
+    #[test]
+    fn a_delete_selects_the_next_row_or_the_previous_when_it_was_last() {
+        let (ports, shared) = stub();
+        let mut page = Page::new(shared);
+
+        delete(&mut page, &ports, 2);
+        assert_eq!(
+            page.selected_name().as_deref(),
+            Some("Vanguard Investments")
+        );
+
+        page.send(InstitutionsPageEvent::Move(Step::Last));
+        delete(&mut page, &ports, 5);
+        assert_eq!(
+            page.selected_name().as_deref(),
+            Some("Cryptocurrency Exchange")
+        );
+        assert_eq!(page.view().rows.len(), 5);
+    }
+
+    #[test]
+    fn a_cancelled_delete_keeps_the_selection_on_the_row() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+        let amex = page.view().rows[2].id;
+
+        page.send(InstitutionsPageEvent::DeleteRow(amex));
+        page.send(InstitutionsPageEvent::DialogClosed(None));
+
         assert_eq!(page.selected_name().as_deref(), Some("American Express"));
     }
 
@@ -463,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn the_menus_delete_says_it_is_not_built_and_any_other_event_closes_the_menu() {
+    fn the_menus_delete_opens_the_delete_dialog_and_any_other_event_closes_the_menu() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
         let amex = page.view().rows[2].id;
@@ -471,7 +544,9 @@ mod tests {
         page.send(InstitutionsPageEvent::OpenMenu(amex));
         assert_eq!(
             page.send(InstitutionsPageEvent::Menu(MenuAction::DeleteInstitution)),
-            status("delete institution \u{2014} not yet built")
+            vec![RouterCall::OpenDialog(
+                InstitutionsDialog::DeleteInstitution(amex)
+            )]
         );
         page.send(InstitutionsPageEvent::OpenMenu(amex));
         page.send(InstitutionsPageEvent::Move(Step::Next));

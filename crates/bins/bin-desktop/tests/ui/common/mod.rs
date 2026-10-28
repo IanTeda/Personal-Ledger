@@ -37,7 +37,7 @@ use lib_categories::fake::InMemoryCategories;
 use lib_categories::{Category, CategoryRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
-use lib_core::{AccountId, CategoryId, PayeeId, PriceSourceId, TagId, UnitId};
+use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
     AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, FakeStores,
     InstitutionsStore, InventoryStore, PayeesStore, Stores, TagsStore, TransactionsStore,
@@ -170,6 +170,11 @@ impl<T: InstitutionRepository> InstitutionRepository for Marked<T> {
     fn upsert_institution(&mut self, institution: Institution) {
         self.written.set(true);
         self.inner.upsert_institution(institution);
+    }
+
+    fn delete_institution(&mut self, id: InstitutionId) {
+        self.written.set(true);
+        self.inner.delete_institution(id);
     }
 }
 

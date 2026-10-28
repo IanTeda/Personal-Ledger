@@ -2,6 +2,9 @@
 //! and the step that keeps the Ledger's read copy of the Institutions in line after an Institutions
 //! write. The write is committed by the input it was made in (`crate::input::send`), not here.
 //!
+//! A delete reads what names an Institution from the Accounts store, which the Units and Bills
+//! reads share.
+//!
 //! The ports are one value shared two ways: the Institutions module's Presenters read and write
 //! them as [`InstitutionsPorts`], and the Ledger store reads the rows back from them to refresh its
 //! copy and reloads them after a failed write.
@@ -10,8 +13,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_database::InstitutionsStore;
-use lib_institutions::{InstitutionRepository, InstitutionsPorts};
+use lib_core::InstitutionId;
+use lib_database::{InstitutionsStore, SharedAccountsStore};
+use lib_institutions::{
+    InstitutionRepository, InstitutionUsage, InstitutionUse, InstitutionsPorts,
+};
 use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
@@ -19,21 +25,42 @@ use crate::ledger_store::LedgerStore;
 /// The Institutions ports the Institutions module and the Ledger store share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// `store`'s Institutions.
+/// `store`'s Institutions, with the Accounts naming each read from the Accounts store.
 pub struct LedgerBackedPorts {
     store: Box<dyn InstitutionsStore>,
+    usage: AccountsUsage,
+}
+
+/// What names an Institution, answered from the Accounts store on each ask, so an Account added or
+/// moved while a Delete Dialog is open is seen when it confirms.
+struct AccountsUsage(SharedAccountsStore);
+
+impl InstitutionUsage for AccountsUsage {
+    fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
+        self.0.borrow().institution_usage(id)
+    }
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn InstitutionsStore>) -> DesktopPorts {
-        Rc::new(RefCell::new(Self { store }))
+    pub fn shared(
+        store: Box<dyn InstitutionsStore>,
+        accounts: SharedAccountsStore,
+    ) -> DesktopPorts {
+        Rc::new(RefCell::new(Self {
+            store,
+            usage: AccountsUsage(accounts),
+        }))
     }
 
-    /// `ledger`'s own Institutions in memory, for a test that needs no storage.
-    pub fn in_memory(ledger: &Ledger) -> DesktopPorts {
-        Self::shared(Box::new(lib_institutions::fake::InMemoryInstitutions {
-            institutions: ledger.institutions().to_vec(),
-        }))
+    /// `ledger`'s own Institutions in memory, with the Accounts naming them read from `accounts`,
+    /// for a test that needs no storage.
+    pub fn in_memory(ledger: &Ledger, accounts: SharedAccountsStore) -> DesktopPorts {
+        Self::shared(
+            Box::new(lib_institutions::fake::InMemoryInstitutions {
+                institutions: ledger.institutions().to_vec(),
+            }),
+            accounts,
+        )
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -53,6 +80,10 @@ impl InstitutionsPorts for LedgerBackedPorts {
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
         self.store.institutions_mut()
     }
+
+    fn usage(&self) -> &dyn InstitutionUsage {
+        &self.usage
+    }
 }
 
 /// Brings the Ledger read copy of the Institutions in line with the ports, announcing
@@ -69,12 +100,40 @@ mod tests {
     #[test]
     fn in_memory_ports_hold_the_ledgers_institutions() {
         let ledger = Ledger::stub();
-        let ports = LedgerBackedPorts::in_memory(&ledger);
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
         let ports = ports.borrow();
 
         assert_eq!(
             InstitutionsPorts::institutions(&*ports).institutions(),
             ledger.institutions()
+        );
+    }
+
+    #[test]
+    fn usage_is_the_accounts_naming_the_institution() {
+        let ledger = Ledger::stub();
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
+        let ports = ports.borrow();
+
+        let wallet: Vec<_> = ledger
+            .accounts()
+            .iter()
+            .filter(|account| account.institution == InstitutionId::SEED_PERSONAL)
+            .map(|account| account.name.clone())
+            .collect();
+        assert!(!wallet.is_empty());
+        assert_eq!(
+            InstitutionsPorts::usage(&*ports)
+                .institution_usage(InstitutionId::SEED_PERSONAL)
+                .accounts,
+            wallet
+        );
+        assert!(
+            !InstitutionsPorts::usage(&*ports)
+                .institution_usage(InstitutionId::SEED_SUPER_FUND)
+                .is_used()
         );
     }
 }

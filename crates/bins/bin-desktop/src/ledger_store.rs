@@ -65,7 +65,10 @@ impl LedgerSetup {
         Self {
             tags: crate::tags::ports::in_memory(&ledger),
             inventory: crate::inventory::ports::in_memory(&ledger),
-            institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
+            institutions: crate::institutions::LedgerBackedPorts::in_memory(
+                &ledger,
+                accounts.clone(),
+            ),
             transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             })),
@@ -125,7 +128,10 @@ impl LedgerStore {
             categories.clone(),
         );
         Self {
-            institutions: crate::institutions::LedgerBackedPorts::in_memory(&ledger),
+            institutions: crate::institutions::LedgerBackedPorts::in_memory(
+                &ledger,
+                accounts.clone(),
+            ),
             accounts,
             categories,
             tags: crate::tags::ports::in_memory(&ledger),
@@ -660,12 +666,14 @@ mod tests {
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
-        let institutions =
-            crate::institutions::LedgerBackedPorts::shared(Box::new(storage.institutions));
         let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
         let payees =
             crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees), categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts));
+        let institutions = crate::institutions::LedgerBackedPorts::shared(
+            Box::new(storage.institutions),
+            accounts.clone(),
+        );
         let bills = LedgerBackedPorts::shared(
             Rc::new(RefCell::new(storage.bills)),
             payees.clone(),

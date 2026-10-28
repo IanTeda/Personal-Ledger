@@ -4,7 +4,9 @@
 //! It loads every Institution into memory, blocking, and serves the rows from there, in the order
 //! they were added. A port write changes memory at once and joins the [`PendingWrites`] every
 //! adapter shares, which the bin commits after each input. The add rule refuses a blank or taken
-//! name before anything is written; the table's unique name backs it.
+//! name before anything is written; the table's unique name backs it. The delete rule refuses an
+//! Institution an Account names; the `accounts` foreign key (no cascade) backs it, so a delete that
+//! skips the rule fails in the file, is reported against the Institutions domain and is reloaded.
 
 use lib_core::InstitutionId;
 use lib_institutions::{Institution, InstitutionRepository};
@@ -17,6 +19,10 @@ use crate::writer::{BoxFuture, Change, Domain, Writer};
 /// One port write.
 #[derive(Debug, Clone)]
 struct UpsertInstitution(Institution);
+
+/// One port delete.
+#[derive(Debug, Clone)]
+struct DeleteInstitutionRow(InstitutionId);
 
 /// The Institutions domain, held in memory and saved through the shared writer.
 pub struct InstitutionsAdapter {
@@ -83,6 +89,14 @@ impl InstitutionRepository for InstitutionsAdapter {
         }
         self.pending.push(UpsertInstitution(institution));
     }
+
+    fn delete_institution(&mut self, id: InstitutionId) {
+        let before = self.rows.len();
+        self.rows.retain(|row| row.id != id);
+        if self.rows.len() != before {
+            self.pending.push(DeleteInstitutionRow(id));
+        }
+    }
 }
 
 impl Change for UpsertInstitution {
@@ -92,6 +106,21 @@ impl Change for UpsertInstitution {
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
         Box::pin(async move { upsert(conn, &self.0).await })
+    }
+}
+
+impl Change for DeleteInstitutionRow {
+    fn domain(&self) -> Domain {
+        Domain::Institutions
+    }
+
+    fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
+        Box::pin(async move {
+            sqlx::query!("DELETE FROM institutions WHERE id = ?", self.0)
+                .execute(&mut *conn)
+                .await?;
+            Ok(())
+        })
     }
 }
 
@@ -260,6 +289,24 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn a_case_only_rename_is_accepted(_: SqlitePoolOptions, options: SqliteConnectOptions) {
         contract::a_case_only_rename_is_accepted(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_deleted_institution_is_gone_after_a_reload(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::a_deleted_institution_is_gone_after_a_reload(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn deleting_one_in_use_is_refused_and_writes_nothing(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::deleting_one_in_use_is_refused_and_writes_nothing(&mut AdapterFactory::new(
+            options,
+        ));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

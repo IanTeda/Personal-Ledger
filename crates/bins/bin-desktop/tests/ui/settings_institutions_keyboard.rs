@@ -1,5 +1,6 @@
 //! The Settings Institutions page driven by keys: row selection, `n` for the Add dialog and its
-//! typing, `enter` to save and `escape` to cancel, and the legend `?` lists. State is read back
+//! typing, `enter` to save and `escape` to cancel, `d` for the Delete dialog in its two states, and
+//! the legend `?` lists. State is read back
 //! from `Root`.
 
 use super::common;
@@ -210,16 +211,153 @@ fn escape_cancels_an_edit_with_nothing_changed_and_focus_back_on_the_row(app: &m
     );
 }
 
+/// Types `name` into the Delete Dialog's confirmation: single characters, `space` between words.
+fn type_name(ui: &mut Harness<'_>, name: &str) {
+    let keys: Vec<String> = name
+        .chars()
+        .map(|ch| {
+            if ch == ' ' {
+                "space".to_string()
+            } else {
+                ch.to_string()
+            }
+        })
+        .collect();
+    ui.press(&keys.join(" "));
+}
+
 #[gpui::test]
-fn d_says_delete_is_not_built_yet(app: &mut TestAppContext) {
+fn d_opens_the_refused_dialog_for_an_institution_an_account_names(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
+    let before = ui.settings_institutions().institutions;
+    ui.press("j");
 
     ui.press("d");
+
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
     assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("delete institution \u{2014} not yet built")
+        ui.dialog_value("title").as_deref(),
+        Some("Delete institution \u{2014} ANZ Banking Group")
     );
+    assert_eq!(ui.dialog_value("refused").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("notice").as_deref(),
+        Some("Used by 2 accounts")
+    );
+    assert_eq!(
+        ui.dialog_value("accounts").as_deref(),
+        Some("ANZ Everyday, ANZ Offset")
+    );
+    assert_eq!(ui.dialog_value("more").as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+
+    type_name(&mut ui, "ANZ Banking Group");
+    assert_eq!(
+        ui.dialog_value("confirm").as_deref(),
+        Some(""),
+        "nothing to type back"
+    );
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None, "Enter is Close");
+    assert_eq!(ui.settings_institutions().institutions, before);
+}
+
+#[gpui::test]
+fn escape_cancels_a_delete_with_nothing_changed_and_focus_back_on_the_row(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_institutions(app);
+    let before = ui.settings_institutions().institutions;
+    ui.press("shift-g");
+
+    ui.press("d");
+    type_name(&mut ui, "Superannuation Fund");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    ui.press("escape");
+
     assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_institutions().institutions, before);
+    assert!(ui.settings().page_focused);
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("Superannuation Fund")
+    );
+}
+
+#[gpui::test]
+fn delete_waits_for_the_name_typed_back_exactly_then_removes_the_row(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    ui.press("shift-g");
+
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
+    assert_eq!(ui.dialog_value("refused").as_deref(), Some("false"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+
+    ui.press("enter");
+    assert_eq!(
+        ui.dialog(),
+        Some("DeleteInstitution"),
+        "nothing typed back yet"
+    );
+    type_name(&mut ui, "superannuation fund");
+    assert_eq!(
+        ui.dialog_value("can_confirm").as_deref(),
+        Some("false"),
+        "capitals count"
+    );
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
+
+    for _ in 0.."superannuation fund".len() {
+        ui.press("backspace");
+    }
+    type_name(&mut ui, "Superannuation Fund");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings_institutions();
+    assert_eq!(page.institutions.len(), 6);
+    assert!(
+        page.institutions
+            .iter()
+            .all(|row| row.0 != "Superannuation Fund")
+    );
+    assert_eq!(
+        page.selected_institution.as_deref(),
+        Some("Cryptocurrency Exchange"),
+        "the last row's neighbour is the one before"
+    );
+    assert_eq!(
+        ui.toasts().history.first().map(|toast| toast.text.clone()),
+        Some("Deleted Superannuation Fund".to_string())
+    );
+}
+
+#[gpui::test]
+fn deleting_a_row_that_is_not_last_selects_the_next_row(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    for name in ["alpha", "beta"] {
+        ui.press("n");
+        type_name(&mut ui, name);
+        ui.press("enter");
+    }
+    ui.press("k");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("alpha")
+    );
+
+    ui.press("d");
+    type_name(&mut ui, "alpha");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("beta")
+    );
 }
 
 #[gpui::test]
@@ -291,6 +429,34 @@ fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestA
     assert_eq!(
         ui.settings_institutions().institutions.len(),
         stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(ui.settings_institutions().institutions, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text
+                == "Couldn't save the change to institutions, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
+fn a_failed_delete_puts_the_institution_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_institutions(app);
+    ui.press("g s");
+    ui.click("settings-index-Institutions");
+    ui.press("l");
+    let stored = ui.settings_institutions().institutions;
+    ui.press("shift-g");
+
+    ui.press("d");
+    type_name(&mut ui, "Superannuation Fund");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().institutions.len(),
+        stored.len() - 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();

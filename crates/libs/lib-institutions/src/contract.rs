@@ -8,10 +8,13 @@
 
 use lib_core::InstitutionId;
 
-use crate::fake::InMemoryInstitutions;
-use crate::interactor::{AddInstitution, EditInstitution};
+use crate::fake::{InMemoryInstitutionUsage, InMemoryInstitutions};
+use crate::interactor::{
+    AddInstitution, DeleteInstitution, DeleteInstitutionRefusal, EditInstitution,
+};
 use crate::{
-    Institution, InstitutionDraft, InstitutionError, InstitutionRepository, default_institutions,
+    Institution, InstitutionDraft, InstitutionError, InstitutionRepository, InstitutionUsage,
+    InstitutionUse, InstitutionsPorts, default_institutions,
 };
 
 /// Builds the port a contract check runs on.
@@ -234,6 +237,95 @@ pub fn a_case_only_rename_is_accepted<F: PortsFactory>(factory: &mut F) {
     );
 }
 
+/// `repository` with the usage a check sets, as the Interactor reads its ports together. The
+/// Accounts that name an Institution are another domain's, so a check says which do.
+struct WithUsage<'a, R> {
+    repository: &'a mut R,
+    usage: InMemoryInstitutionUsage,
+}
+
+impl<R: InstitutionRepository> InstitutionsPorts for WithUsage<'_, R> {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        &*self.repository
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        &mut *self.repository
+    }
+
+    fn usage(&self) -> &dyn InstitutionUsage {
+        &self.usage
+    }
+}
+
+/// A deleted Institution is gone after a reload, the rows after it keeping their order.
+pub fn a_deleted_institution_is_gone_after_a_reload<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+
+    let deleted = DeleteInstitution {
+        id: InstitutionId::SEED_AMEX,
+    }
+    .run(&mut WithUsage {
+        repository: &mut ports,
+        usage: InMemoryInstitutionUsage::default(),
+    })
+    .expect("no Account names it");
+    factory.commit(&mut ports);
+
+    assert_eq!(deleted.name, "American Express");
+    let expected: Vec<_> = default_institutions()
+        .into_iter()
+        .filter(|institution| institution.id != InstitutionId::SEED_AMEX)
+        .collect();
+    assert_eq!(ports.institutions(), expected);
+    let ports = factory.reload(ports);
+    assert_eq!(ports.institutions(), expected);
+    assert_eq!(ports.institution(InstitutionId::SEED_AMEX), None);
+}
+
+/// An Institution Accounts name is refused with the Accounts' names, in their order, and writes
+/// nothing: the rows are the same after a reload. The Institutions beside it can still go.
+pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+    let before = ports.institutions();
+    let usage = InMemoryInstitutionUsage {
+        accounts: [(
+            InstitutionId::SEED_AMEX,
+            vec!["Amex Platinum".to_string(), "Amex Gold".to_string()],
+        )]
+        .into(),
+    };
+
+    let refused = DeleteInstitution {
+        id: InstitutionId::SEED_AMEX,
+    }
+    .run(&mut WithUsage {
+        repository: &mut ports,
+        usage: usage.clone(),
+    });
+    factory.commit(&mut ports);
+
+    assert_eq!(
+        refused,
+        Err(DeleteInstitutionRefusal::InUse(InstitutionUse {
+            accounts: vec!["Amex Platinum".into(), "Amex Gold".into()],
+        }))
+    );
+    assert_eq!(ports.institutions(), before, "the refusal wrote nothing");
+    let mut ports = factory.reload(ports);
+    assert_eq!(ports.institutions(), before);
+
+    DeleteInstitution {
+        id: InstitutionId::SEED_WESTPAC,
+    }
+    .run(&mut WithUsage {
+        repository: &mut ports,
+        usage,
+    })
+    .expect("no Account names Westpac");
+    assert_eq!(ports.institutions().len(), before.len() - 1);
+}
+
 /// A write that fails is reported once, naming the Institutions domain, and the port goes back to
 /// the last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
@@ -281,6 +373,16 @@ mod tests {
     #[test]
     fn in_memory_a_case_only_rename_is_accepted() {
         a_case_only_rename_is_accepted(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_deleted_institution_is_gone_after_a_reload() {
+        a_deleted_institution_is_gone_after_a_reload(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_deleting_one_in_use_is_refused_and_writes_nothing() {
+        deleting_one_in_use_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
     }
 
     #[test]

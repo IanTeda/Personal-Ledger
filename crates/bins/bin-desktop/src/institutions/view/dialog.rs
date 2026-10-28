@@ -6,7 +6,10 @@
 //! outcome is handed to the page, and the host closes on [`DialogClosed`]. The Toast the Presenter
 //! raises goes onto the bin's queue, which the input's `send` drains.
 
+mod delete_institution;
 mod institution_form;
+
+pub(crate) use delete_institution::DeleteInstitutionDialog;
 
 use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_institutions::presenter::{InstitutionFormEvent, InstitutionFormPresenter};
@@ -50,6 +53,8 @@ impl InstitutionsDialog {
         let presenter = match which {
             Which::AddInstitution => InstitutionFormPresenter::add(ports.clone()),
             Which::EditInstitution(id) => InstitutionFormPresenter::edit(ports.clone(), id)?,
+            // The Delete Dialog is its own Entity (`DeleteInstitutionDialog`).
+            Which::DeleteInstitution(_) => return None,
         };
         Some(Self {
             ports: ports.clone(),
@@ -83,9 +88,9 @@ impl InstitutionsDialog {
 /// Where the Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's queue
 /// for `Root` to drain once the key or click returns. The page opens Dialogs.
 #[derive(Default)]
-struct DialogRouter {
+pub(super) struct DialogRouter {
     /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    closed: Option<Option<InstitutionsOutcome>>,
+    pub(super) closed: Option<Option<InstitutionsOutcome>>,
 }
 
 impl InstitutionsRouter for DialogRouter {
@@ -156,6 +161,7 @@ impl HostedDialog for InstitutionsDialog {
             kind: match self.which {
                 Which::AddInstitution => "AddInstitution",
                 Which::EditInstitution(_) => "EditInstitution",
+                Which::DeleteInstitution(_) => "DeleteInstitution",
             },
             values,
         }

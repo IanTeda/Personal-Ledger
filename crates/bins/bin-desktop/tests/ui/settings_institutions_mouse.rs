@@ -1,5 +1,6 @@
 //! The Settings Institutions page driven by clicks: the Institutions row and add buttons, and the
-//! Add institution dialog's Products chips and buttons. State is read back from `Root`.
+//! Add institution dialog's Products chips and buttons, and the Delete institution dialog's
+//! buttons in its two states. State is read back from `Root`.
 
 use super::common;
 
@@ -37,7 +38,7 @@ fn the_page_draws_seven_rows_the_personal_institution_first(app: &mut TestAppCon
 }
 
 #[gpui::test]
-fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_says_it_is_not_built(
+fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_the_delete_dialog(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_page(app, "Institutions");
@@ -51,10 +52,12 @@ fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_says_it_is_not_built(
     assert_eq!(ui.dialog(), None);
 
     ui.click("institution-delete-2");
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
     assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("delete institution \u{2014} not yet built")
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("American Express")
     );
+    ui.click("delete-institution-close");
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_institutions().institutions, before);
 }
@@ -87,16 +90,16 @@ fn a_right_click_opens_the_rows_menu_and_edit_opens_the_dialog_on_that_row(
 }
 
 #[gpui::test]
-fn the_menus_delete_says_it_is_not_built_and_a_press_outside_closes_the_menu(
+fn the_menus_delete_opens_the_delete_dialog_and_a_press_outside_closes_the_menu(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_page(app, "Institutions");
 
     row_action(&mut ui, "settings-institutions-row-0", "delete-institution");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("delete institution \u{2014} not yet built")
-    );
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
+    assert_eq!(ui.dialog_value("name"), None);
+    assert_eq!(ui.dialog_value("refused").as_deref(), Some("true"));
+    ui.click("delete-institution-close");
     assert_eq!(ui.dialog(), None);
 
     assert_eq!(ui.settings_institutions().menu, None);
@@ -106,6 +109,67 @@ fn the_menus_delete_says_it_is_not_built_and_a_press_outside_closes_the_menu(
     ui.click("settings-institutions-row-0");
     assert_eq!(ui.settings_institutions().menu, None);
     assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn a_refusal_lists_the_accounts_and_offers_only_close(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.click("institution-delete-1");
+
+    assert_eq!(
+        ui.dialog_value("notice").as_deref(),
+        Some("Used by 2 accounts")
+    );
+    assert!(ui.is_drawn("delete-institution-account-0"));
+    assert!(ui.is_drawn("delete-institution-account-1"));
+    assert!(!ui.is_drawn("delete-institution-account-2"));
+    assert!(ui.is_drawn("delete-institution-close"));
+    assert!(
+        !ui.is_drawn("delete-institution-confirm"),
+        "no destructive button"
+    );
+    assert!(!ui.is_drawn("delete-institution-cancel"));
+    ui.click("delete-institution-close");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn the_delete_button_enables_on_the_name_typed_back_and_removes_the_row(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.click("institution-delete-6");
+    assert_eq!(ui.dialog_value("refused").as_deref(), Some("false"));
+    ui.click("delete-institution-confirm");
+    assert_eq!(
+        ui.dialog(),
+        Some("DeleteInstitution"),
+        "disabled until typed back"
+    );
+    ui.press("S u p e r a n n u a t i o n space F u n d");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    ui.click("delete-institution-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings_institutions();
+    assert_eq!(page.institutions.len(), 6);
+    assert_eq!(
+        page.selected_institution.as_deref(),
+        Some("Cryptocurrency Exchange")
+    );
+}
+
+#[gpui::test]
+fn cancel_closes_the_delete_dialog_with_nothing_removed(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+    let before = ui.settings_institutions().institutions;
+
+    row_action(&mut ui, "settings-institutions-row-6", "delete-institution");
+    ui.press("S u p e r a n n u a t i o n space F u n d");
+    ui.click("delete-institution-cancel");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_institutions().institutions, before);
 }
 
 #[gpui::test]
@@ -222,6 +286,8 @@ fn a_row_click_selects_its_institution_and_a_row_button_leaves_the_selection_on_
         ui.settings_institutions().selected_institution.as_ref(),
         names.get(4)
     );
+    assert_eq!(ui.dialog(), Some("DeleteInstitution"));
+    ui.click("delete-institution-close");
     assert_eq!(ui.dialog(), None);
 }
 
