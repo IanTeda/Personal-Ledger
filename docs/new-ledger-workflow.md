@@ -62,7 +62,7 @@ Open **Accounts** (press `g` then `a`) and choose **Add account**. Each account 
 
 - **Name:** what you'll call it, such as "Everyday Account".
 - **Kind:** what sort of account it is (see below).
-- **Institution and unit:** picked from the lists you built in steps 2 and 3.
+- **Institution and unit:** picked from the lists you built in steps 2 and 3. The unit starts on the institution's usual unit when it has one, such as bitcoin for a crypto exchange, and on your default unit otherwise.
 - **Opening balance:** how much the account held the moment before your first transaction.
 - **Account number:** optional.
 
