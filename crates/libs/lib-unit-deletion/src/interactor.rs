@@ -11,7 +11,7 @@
 use lib_core::{InstitutionId, UnitId};
 use lib_units::{UnitUsage, UnitUse};
 
-use crate::error::UnitDeletionError;
+use crate::error::{Error, Result};
 use crate::protocols::{UnitDeleted, UnitDeletion, UnitRemoval};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +35,7 @@ impl DeleteUnit {
         self,
         deletion: &mut dyn UnitDeletion,
         usage: &dyn UnitUsage,
-    ) -> Result<UnitDeleted, UnitDeletionError> {
+    ) -> Result<UnitDeleted> {
         let id = self.id;
         let new_base = self.new_base.map(tracing::field::display);
         let outcome = self.apply(deletion, usage);
@@ -54,11 +54,7 @@ impl DeleteUnit {
         outcome
     }
 
-    fn apply(
-        self,
-        deletion: &mut dyn UnitDeletion,
-        usage: &dyn UnitUsage,
-    ) -> Result<UnitDeleted, UnitDeletionError> {
+    fn apply(self, deletion: &mut dyn UnitDeletion, usage: &dyn UnitUsage) -> Result<UnitDeleted> {
         let units = deletion.units();
         let uses = UnitUse {
             institutions: 0,
@@ -81,7 +77,7 @@ impl DeleteUnit {
                     .iter()
                     .any(|unit| unit.id == replacement && unit.id != self.id && unit.is_active);
                 if !offered {
-                    return Err(UnitDeletionError::ReplacementGone);
+                    return Err(Error::ReplacementGone);
                 }
             }
         }
@@ -118,7 +114,7 @@ mod tests {
         id: UnitId,
         new_base: Option<UnitId>,
         replacements: Vec<(InstitutionId, UnitId)>,
-    ) -> Result<UnitDeleted, UnitDeletionError> {
+    ) -> Result<UnitDeleted> {
         DeleteUnit {
             id,
             new_base,
@@ -133,7 +129,7 @@ mod tests {
         id: UnitId,
         new_base: Option<UnitId>,
         replacements: Vec<(InstitutionId, UnitId)>,
-    ) -> UnitDeletionError {
+    ) -> Error {
         let before = deletion.clone();
         let refusal =
             delete(deletion, id, new_base, replacements).expect_err("the delete should be refused");
@@ -232,11 +228,11 @@ mod tests {
         let mut deletion = world();
         assert_eq!(
             refused(&mut deletion, AUD, None, vec![(WESTPAC, BTC)]),
-            UnitDeletionError::Unit(lib_units::Error::BaseUnitNeeded)
+            Error::Unit(lib_units::Error::BaseUnitNeeded)
         );
         assert_eq!(
             refused(&mut deletion, UnitId::new(), None, Vec::new()),
-            UnitDeletionError::Unit(lib_units::Error::UnitGone)
+            Error::Unit(lib_units::Error::UnitGone)
         );
 
         let mut usage = InMemoryUnitUsage::default();
@@ -254,12 +250,10 @@ mod tests {
                 replacements: Vec::new(),
             }
             .run(&mut deletion, &usage),
-            Err(UnitDeletionError::Unit(lib_units::Error::UnitInUse(
-                UnitUse {
-                    institutions: 0,
-                    ..uses
-                }
-            ))),
+            Err(Error::Unit(lib_units::Error::UnitInUse(UnitUse {
+                institutions: 0,
+                ..uses
+            }))),
             "an Account holding btc still refuses it, counting only what this can't reassign"
         );
         assert_eq!(deletion, before);
@@ -292,7 +286,7 @@ mod tests {
         for replacement in [BTC, UnitId::new()] {
             assert_eq!(
                 refused(&mut deletion, BTC, None, vec![(KRAKEN, replacement)]),
-                UnitDeletionError::ReplacementGone
+                Error::ReplacementGone
             );
         }
 
@@ -300,7 +294,7 @@ mod tests {
         assert_eq!(deletion.units.units[2].id, VAS);
         assert_eq!(
             refused(&mut deletion, BTC, None, vec![(KRAKEN, VAS)]),
-            UnitDeletionError::ReplacementGone
+            Error::ReplacementGone
         );
     }
 

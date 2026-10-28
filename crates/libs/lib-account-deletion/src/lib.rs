@@ -23,14 +23,14 @@
     reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
 )]
 pub mod contract;
-pub mod error;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod msg;
 pub mod presenter;
 pub mod protocols;
 
-pub use error::AccountDeletionError;
+pub use error::{Error, Result};
 pub use protocols::{
     AccountDeleted, AccountDeletion, AccountDeletionRouter, AccountRemoval, DeletionReads,
     SharedDeletion,

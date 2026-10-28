@@ -48,7 +48,7 @@ Invariants and deliberate omissions:
 
 The Account's `institution` and `unit` are ids, so it stays on them whatever they are renamed. Names are looked up when shown.
 
-`lib-account-deletion` holds `DeleteAccount`, the Interactor; `AccountDeletionError` (including `PaidFromByBillPlans`); `AccountRemoval { account, transactions, unmatched }`, the one value its write takes; and the Delete Dialog's Presenter.
+`lib-account-deletion` holds `DeleteAccount`, the Interactor; `Error` (including `PaidFromByBillPlans`); `AccountRemoval { account, transactions, unmatched }`, the one value its write takes; and the Delete Dialog's Presenter.
 
 ## Persistence
 

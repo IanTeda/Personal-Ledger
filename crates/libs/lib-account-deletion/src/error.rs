@@ -2,7 +2,7 @@
 
 /// A delete that wrote nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum AccountDeletionError {
+pub enum Error {
     #[error("account not found")]
     NotFound,
     /// Bill Plans pay from it, and a Plan has to pay from an Account. The file's foreign key on
@@ -10,3 +10,6 @@ pub enum AccountDeletionError {
     #[error("{plans} bill plans pay from the account")]
     PaidFromByBillPlans { plans: usize },
 }
+
+/// This crate's fallible results, as every feature crate's.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

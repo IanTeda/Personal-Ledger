@@ -23,7 +23,7 @@ use lib_units::presenter::{
 use lib_units::{SharedPorts, UnitUsage, UnitUse, UnitsRouter};
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
-use crate::error::UnitDeletionError;
+use crate::error::Error;
 use crate::interactor::DeleteUnit;
 use crate::msg;
 use crate::protocols::SharedUnitDeletion;
@@ -294,16 +294,14 @@ impl Deleting {
                 }));
                 None
             }
-            Err(UnitDeletionError::Unit(lib_units::Error::UnitInUse(_))) => {
+            Err(Error::Unit(lib_units::Error::UnitInUse(_))) => {
                 match UnitsDeletePresenter::new(self.ports.clone(), self.id) {
                     Some(deactivate) => return Some(deactivate),
                     None => Some(lib_units::msg::units_refusal_unit_gone()),
                 }
             }
-            Err(UnitDeletionError::Unit(refusal)) => Some(delete_refusal(refusal, &self.code)),
-            Err(UnitDeletionError::ReplacementGone) => {
-                Some(msg::unit_deletion_refusal_replacement_gone())
-            }
+            Err(Error::Unit(refusal)) => Some(delete_refusal(refusal, &self.code)),
+            Err(Error::ReplacementGone) => Some(msg::unit_deletion_refusal_replacement_gone()),
         };
         None
     }

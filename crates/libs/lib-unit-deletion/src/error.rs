@@ -2,7 +2,7 @@
 
 /// A delete that wrote nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum UnitDeletionError {
+pub enum Error {
     /// One of `lib-units`' own delete rules, which hold here unchanged but for the Institutions
     /// naming the Unit: this delete reassigns them rather than refusing.
     #[error(transparent)]
@@ -12,3 +12,6 @@ pub enum UnitDeletionError {
     #[error("replacement usual unit not found or deactivated")]
     ReplacementGone,
 }
+
+/// This crate's fallible results, as every feature crate's.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

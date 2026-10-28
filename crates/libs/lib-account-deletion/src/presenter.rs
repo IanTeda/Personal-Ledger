@@ -18,7 +18,7 @@ use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::view::{DialogFrame, TextFieldView};
 
-use crate::error::AccountDeletionError;
+use crate::error::Error;
 use crate::interactor::DeleteAccount;
 use crate::msg;
 use crate::protocols::{AccountDeletionRouter, DeletionReads, SharedDeletion};
@@ -141,11 +141,11 @@ impl DeleteAccountPresenter {
                 ));
                 router.close_dialog(Some(deleted));
             }
-            Err(AccountDeletionError::PaidFromByBillPlans { plans }) => {
+            Err(Error::PaidFromByBillPlans { plans }) => {
                 self.plans = plans;
                 self.refusal = None;
             }
-            Err(AccountDeletionError::NotFound) => {
+            Err(Error::NotFound) => {
                 self.refusal = Some(msg::account_deletion_error_gone());
             }
         }

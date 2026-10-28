@@ -766,8 +766,7 @@ mod tests {
         cx: &mut TestAppContext,
         on: &OnStorage,
         id: AccountId,
-    ) -> Result<lib_account_deletion::AccountDeleted, lib_account_deletion::AccountDeletionError>
-    {
+    ) -> lib_account_deletion::Result<lib_account_deletion::AccountDeleted> {
         let deleted = lib_account_deletion::interactor::DeleteAccount { id }
             .run(&mut *on.deletion.borrow_mut());
         cx.update(|cx| crate::account_deletion::refresh(&on.bills, &on.store, cx));
@@ -1189,7 +1188,7 @@ mod tests {
 
         assert_eq!(
             delete_account(cx, &on, account),
-            Err(lib_account_deletion::AccountDeletionError::PaidFromByBillPlans { plans })
+            Err(lib_account_deletion::Error::PaidFromByBillPlans { plans })
         );
 
         let OnStorage { store, pending, .. } = on;

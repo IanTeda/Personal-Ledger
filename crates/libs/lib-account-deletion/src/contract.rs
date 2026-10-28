@@ -11,7 +11,7 @@ use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry, Resolution, entry};
 use lib_transactions::Transaction;
 
-use crate::error::AccountDeletionError;
+use crate::error::Error;
 use crate::fake::InMemoryDeletion;
 use crate::fake::world::{
     EVERYDAY, EVERYDAY_PAYMENT, OFFSET, WALLET, paid_by_everyday, paid_by_wallet, world,
@@ -181,7 +181,7 @@ pub fn an_account_a_bill_plan_pays_from_is_refused<F: DeletionFactory>(factory: 
 
     assert_eq!(
         DeleteAccount { id: EVERYDAY }.run(&mut ports),
-        Err(AccountDeletionError::PaidFromByBillPlans { plans: 1 })
+        Err(Error::PaidFromByBillPlans { plans: 1 })
     );
 
     assert_eq!(factory.stored(ports), Stored::of(&world()));

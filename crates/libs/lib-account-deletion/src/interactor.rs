@@ -8,7 +8,7 @@
 use lib_bills::unmatch_transaction;
 use lib_core::AccountId;
 
-use crate::error::AccountDeletionError;
+use crate::error::{Error, Result};
 use crate::protocols::{AccountDeleted, AccountDeletion, AccountRemoval};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,10 +23,7 @@ impl DeleteAccount {
     /// # Errors
     /// `NotFound` for an Account that is gone, and `PaidFromByBillPlans` while a Bill Plan pays
     /// from it.
-    pub fn run(
-        self,
-        deletion: &mut dyn AccountDeletion,
-    ) -> Result<AccountDeleted, AccountDeletionError> {
+    pub fn run(self, deletion: &mut dyn AccountDeletion) -> Result<AccountDeleted> {
         let outcome = self.apply(deletion);
         match &outcome {
             Ok(deleted) => tracing::info!(
@@ -42,16 +39,11 @@ impl DeleteAccount {
         outcome
     }
 
-    fn apply(
-        self,
-        deletion: &mut dyn AccountDeletion,
-    ) -> Result<AccountDeleted, AccountDeletionError> {
-        let account = deletion
-            .account(self.id)
-            .ok_or(AccountDeletionError::NotFound)?;
+    fn apply(self, deletion: &mut dyn AccountDeletion) -> Result<AccountDeleted> {
+        let account = deletion.account(self.id).ok_or(Error::NotFound)?;
         let plans = deletion.bill_plans_paying_from(self.id);
         if plans > 0 {
-            return Err(AccountDeletionError::PaidFromByBillPlans { plans });
+            return Err(Error::PaidFromByBillPlans { plans });
         }
         let transactions = deletion.transactions_booked_to(self.id);
         let before = deletion.bill_entries();
@@ -150,7 +142,7 @@ mod tests {
 
         assert_eq!(
             DeleteAccount { id: EVERYDAY }.run(&mut deletion),
-            Err(AccountDeletionError::PaidFromByBillPlans { plans: 1 })
+            Err(Error::PaidFromByBillPlans { plans: 1 })
         );
         assert_eq!(deletion, before);
     }
@@ -164,7 +156,7 @@ mod tests {
                 id: AccountId::seed(9_999)
             }
             .run(&mut deletion),
-            Err(AccountDeletionError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(deletion, before);
 

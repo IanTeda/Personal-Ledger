@@ -10,7 +10,7 @@ use lib_core::{InstitutionId, UnitId};
 use lib_institutions::Institution;
 use lib_units::fake::InMemoryUnitUsage;
 
-use crate::error::UnitDeletionError;
+use crate::error::{Error, Result};
 use crate::fake::InMemoryUnitDeletion;
 use crate::fake::world::{AUD, BTC, COINSPOT, KRAKEN, VAS, WESTPAC, world};
 use crate::interactor::DeleteUnit;
@@ -125,7 +125,7 @@ fn delete(
     id: UnitId,
     new_base: Option<UnitId>,
     replacements: Vec<(InstitutionId, UnitId)>,
-) -> Result<crate::UnitDeleted, UnitDeletionError> {
+) -> Result<crate::UnitDeleted, Error> {
     DeleteUnit {
         id,
         new_base,
@@ -186,7 +186,7 @@ pub fn a_refused_delete_writes_nothing<F: DeletionFactory>(factory: &mut F) {
 
     assert_eq!(
         delete(&mut ports, BTC, None, vec![(KRAKEN, BTC)]),
-        Err(UnitDeletionError::ReplacementGone)
+        Err(Error::ReplacementGone)
     );
 
     assert_eq!(factory.stored(ports), Stored::of(&world()));
