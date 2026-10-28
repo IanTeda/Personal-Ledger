@@ -24,7 +24,7 @@ High fidelity. Colours, type, spacing, rules and states are final. Figures are s
 ---
 
 ## 2a · No ledger open
-The same empty shell as 1a. The view tabs are hidden. The body reads "No ledger open" with "Run **:open** to load a ledger file, or **:new** to start one."
+The same empty shell as 1a. The view tabs are hidden. The body reads "No ledger open" with "Run **:open** to open a Ledger file, or **:new** to start one."
 - Status bar: `NORMAL` · `: command · / search · b toggle sidebar · ? help`; right: "ledger · dashboard".
 - After a ledger loads, the Dashboard opens on the last view used (Today the first time).
 

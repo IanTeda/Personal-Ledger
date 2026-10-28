@@ -1,9 +1,9 @@
 # Handoff: Desktop Chrome & Navigation
 
-> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1f), plus the Window Size frames DESKTOP-106, DESKTOP-107 and DESKTOP-116 to DESKTOP-122. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 01 of 20 · Chrome & Navigation** — frames 1a–1f (1a, 1b, 1c, 1d, 1e, 1e·new, 1f), plus the Window Size frames DESKTOP-106, DESKTOP-107 and DESKTOP-116 to DESKTOP-122. Open `Shell.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
-This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
+This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file explorer for `:open` and `:new`, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
 
 ## About the Design Files
 `Shell.dc.html` is a **high-fidelity HTML prototype** showing intended look, layout, and interaction model. It is a **design reference, not production code**. Recreate these designs in the target codebase (Rust + GPUI) using established patterns, informed by the mockup's layout, typography, color, and behavior.
@@ -22,19 +22,20 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 **Purpose**: The shell's structural baseline, shown in its **cold-start state**. The primary rail groups the domain nouns under headings and carries each item's `g`-jump binding in a right-hand column. No second rail: the landing view has no entity to scope to.
 
 **Layout**:
-- **Header** (48px): panel toggle, Back and Forward chevrons (faint until there is somewhere to go), "Personal Ledger" wordmark, Undo with a caret listing the last 6 actions, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
+- **Header** (48px): panel toggle, Back and Forward chevrons (faint until there is somewhere to go), "Personal Ledger" wordmark, Undo with a caret listing the last 6 actions, `No ledger open` (#9b9797) where the sync indicator goes, three window controls. No file/unit label — there is no Ledger open.
 - **Primary rail** (206px): grouped nav
+  - Every destination but Dashboard (active, showing the empty state) and Settings is drawn at 45% opacity and refused (see **Why it matters**); the Notifications badge is gone, since there is nothing unread
   - `LEDGER` — Dashboard `g d`, Transactions `g l`, Documents `g f` (receipts, statements, policies, tax papers — linked to what they prove), Events `g e` (milestones, occasions, incidents and balance checks on the timeline), Notifications `g m` (+ red unread badge)
   - `NET WORTH` — Cash `g c`, Inventory `g o`, Loans `g n`, Credit cards `g k`, Investments `g i`
   - `PLAN` — Bills `g w`, Budgets `g b`, Reports `g r` (Reports is always the last nav item)
   - Spacer, 2px rule, then Settings `g s` pinned to the bottom. Accounts, Categories and Tags live in the Settings index (after Institutions), not the rail — see 16o/16i/16j in the main design
 - **Main pane** (flex:1): the empty state — vertically and horizontally centered
   - Title: "No ledger open" (800 26px/1.1, letter-spacing −.01em)
-  - Body: "Run `:open` to load a ledger file, or `:new` to start one." (13px, #605d5d, max-width 380px, `text-wrap: pretty`) — the two command names are set 800 weight in #201e1d
+  - Body: "Run `:open` to open a Ledger file, or `:new` to start one." (13px, #605d5d, max-width 380px, `text-wrap: pretty`) — the two command names are set 800 weight in #201e1d
   - Stack gap: 14px, `text-align: center`, pane padding 24px
-- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned "No ledger open…" (the right-hand slot shows the open `.pldb` file path once a ledger is loaded, e.g. `~/documents/ledgers/teda.pldb`)
+- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned "No ledger open…" (the right-hand slot shows the Open Ledger's path, with the home directory as `~`, once a Ledger is open, e.g. `~/documents/ledgers/teda.pldb`)
 
-**Why it matters**: The rail stays fully populated and legible with no ledger loaded — navigation is app structure, not document content. Only the main pane and the header's file label are empty.
+**Why it matters**: The rail stays drawn with no Ledger open, so the app's structure is visible before there is anything in it, but it is refused: every destination reads or writes a Ledger. A click, a `g` jump or a palette command for one leaves the empty Dashboard where it is and puts `No Ledger open: :open or :new first` on the status line. Only `:open`, `:new`, `:help`, quit and Settings work. Settings opens on its THIS DEVICE pages, with the THIS LEDGER pages dimmed and refused the same way (`../16-settings/` DESKTOP-179).
 
 ### 1b — Dashboard with an accounts-at-a-glance rail
 **Purpose**: The active dashboard: net worth, cash / investments / liabilities at a glance, and what needs action today. The second rail is a persistent "accounts at a glance" panel rather than a record list. Dashboard has no records of its own, so nothing is selected; `j/k` + `enter` jumps into an account.
@@ -53,7 +54,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 
 **Layout**:
 - Primary rail: icon-only, ~48px wide
-- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, AI Connections, Sync Server, Backup, History, Logs, About
+- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages under two headings — THIS DEVICE: General, Display, AI Connections, Logs, About; THIS LEDGER: Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync Server, Backup, History
 - Main pane: the selected settings pane (Display shown)
 
 ### 1d — Command palette
@@ -70,7 +71,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 - Palette chrome: `background #f3f2f2; border: 2px solid #201e1d; box-shadow: 0 12px 32px rgba(45,43,43,.30)`
 
 ### 1e — File explorer (`:open`)
-**Purpose**: The popup behind `:open` — browsing the filesystem to load a `.pldb` ledger. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
+**Purpose**: The popup behind `:open` — browsing the filesystem to open a `.pldb` Ledger file. It starts in the `data` folder, shown read-only on Settings › General. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
 
 **Layout**:
 - Shell behind: identical to 1a (empty state, `:open` shown active in the header), dimmed to `opacity:.30` (rails) / `.38` (header)
@@ -80,6 +81,18 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
   - Column header: NAME / SIZE / MODIFIED (800 10px, letter-spacing .11em, `#9b9797`)
   - Rows, in order: two folders (dimmed `#9b9797`, folder icon), a non-openable file (`expenses-2024.csv`, `#605d5d`, still selectable-looking but not the target type), a decoy near-match (`old-ledger.pldb.bak` — deliberately NOT a real `.pldb`), the **selected** `.pldb` row (dark treatment: `background:#201e1d; color:#f3f2f2`), and one more unselected `.pldb` row
   - Footer: helper text "only **.pldb** files can be opened" left, Cancel (secondary) + Open (primary, dark) right
+
+### 1e·new — File explorer in New mode (`:new`, DESKTOP-180)
+**Purpose**: The same explorer behind `:new`, naming a Ledger file to create in the folder browsed to.
+
+**Layout** (1e's, except):
+- Header: "New ledger file"; the header's command affordance and the status line read `: new`
+- The listing shows what is already in the folder, so a name can be checked by eye. Nothing is selected: teda.pldb is an ordinary `.pldb` row. Clicking a folder still navigates; a file row is inert.
+- **File name** field under the listing (`padding:14px 20px 4px; border-top:1px solid #d7d3d3`), focused: the typed name, the caret, and `.pldb` in #9b9797 at the right edge, since Create adds the extension when the name doesn't end in it.
+- **Refused inline:** a name already in the folder gives the field a 2px `#ae1800` border and, under it, a square `#ae1800` marker with "**teda.pldb** is already in **ledgers**. Pick another name, or **:open** it." (11.5px `#ae1800`). Create stays disabled (`#bab6b6`) until the name is free.
+- Footer: the two checkboxes, Cancel, and **Create** (primary) in place of Open
+
+**Behaviour**: `enter` or Create makes the file in the current folder and opens it, landing on the Dashboard with `Created <name>.pldb`; with a Ledger already open it swaps only once the new file opens. `esc` or Cancel closes without creating anything. Until the new-file workflow (#912), Create writes the same starting data `:open`'s stand-in seed does.
 
 **Why it matters**: `.pldb` is the only openable extension — everything else in the list (folders, `.csv`, `.pldb.bak`) is present specifically to test that the row-type distinction reads correctly at a glance, and that Open is meaningfully gated on selecting a real `.pldb` row.
 
@@ -217,6 +230,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 - Row click selects it; only `.pldb` rows are selectable as the open target — folders navigate in, other extensions are inert
 - Open is disabled until a `.pldb` row is selected; double-click a `.pldb` row opens immediately
 - `esc` or Cancel closes without opening
+- Open over an Open Ledger opens the new file first and swaps only on success; a file that won't open keeps the current Ledger and raises `Couldn't open <name>`. Success lands on the Dashboard.
 - Breadcrumb segments are clickable to jump up the path
 
 ### Command palette
@@ -226,9 +240,9 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 - One registry is the single source of truth for palette entries, rail bindings, and the status-bar legend
 
 ### Empty state
-- The no-ledger state is reached on cold start and after `:close`
-- Only the main pane and the header's file label empty out — rail and status bar stay fully rendered
-- `:open` and `:new` are the only two paths forward; both are named in the body copy
+- The no-ledger state is reached on start when the On start Preference (Settings › General) says Start with no Ledger open or there is no last Ledger to reopen, when the last Ledger won't open, and after `:close`
+- The main pane and the header's file label empty out; the rail is drawn dimmed and refused, and the status bar stays fully rendered
+- `:open` and `:new` are the two paths forward, both named in the body copy; `:help`, quit and Settings' THIS DEVICE pages also work, and anything else gets `No Ledger open: :open or :new first` on the status line
 
 ---
 
@@ -236,7 +250,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 
 ```
 shell
-  ledgerOpen: bool            // false → 1a empty state
+  ledgerOpen: bool            // false → 1a empty state; the rail is refused
   activeSection: Section      // Dashboard | Transactions | Accounts | …
   railCollapsed: bool         // b toggles
   secondaryRail: none | records | index
@@ -251,6 +265,8 @@ palette
   history: Vec<String>
 fileExplorer
   open: bool
+  mode: Open | New             // :open or :new (1e, 1e·new)
+  fileName: String             // New mode only; .pldb added if missing
   currentPath: PathBuf
   entries: Vec<DirEntry>       // folders + files, unfiltered
   selected: Option<PathBuf>    // only settable to a .pldb file
@@ -262,7 +278,7 @@ fileExplorer
 ## Implementation notes (GPUI)
 
 1. **HTML is a reference.** Translate to GPUI's element tree; do not port markup.
-2. **Rails are chrome, not content.** They render identically whether or not a ledger is open — only the main pane branches on `ledgerOpen`.
+2. **Rails are chrome, not content.** They render whether or not a Ledger is open, so the structure is always visible; with none open they are dimmed and their destinations refused, and the main pane shows the empty state.
 3. **One command registry.** Palette entries, `g`-jump bindings, and the status-bar legend must read from the same table, or they will drift.
 4. **Zero radius.** Every corner is square — this is load-bearing to the look.
 5. **Rules are 2px for section boundaries, 1px for row separators.** Do not soften either into a hairline.
@@ -274,7 +290,7 @@ fileExplorer
 11. **Row eligibility is type-driven, not name-driven.** Gate selectability on the actual file extension read from the filesystem — the mockup's `old-ledger.pldb.bak` decoy exists to catch a naive substring-match bug (`.includes(".pldb")` would wrongly accept it).
 
 ## Files
-- `Shell.dc.html` — the prototype, section 1 only (1a–1f, incl. 1f Help & About), with the current rail (Events added). Other destinations link to the sibling package folders.
+- `Shell.dc.html` — the prototype, section 1 only (1a–1f, incl. 1e·new `:new` and 1f Help & About), with the current rail (Events added). Other destinations link to the sibling package folders.
 - `styles.css`, `_ds_bundle.js`, `support.js` — Modernist tokens/components and the viewer runtime
 - `README.md` — this document
 
@@ -294,3 +310,9 @@ fileExplorer
 
 - **Window Sizes:** turns 2 and 3 draw the Chrome at Medium, Large and X-Large (DESKTOP-106, DESKTOP-107, DESKTOP-116 to DESKTOP-122), Medium first. See [Window Sizes](#window-sizes).
 - **Medium Settings navigation:** a drill-down index with a `Settings › <Page> ▾` page heading, picked in #692. DESKTOP-105, the Medium baseline with the docked index, is retired.
+
+## Changes (29 October 2026, #908)
+
+- **1a** says "open", not "load": "Run `:open` to open a Ledger file, or `:new` to start one." Its rail is drawn at 45% and refused with no Ledger open, its header shows `No ledger open` in place of the sync state, and the Notifications badge is gone (`GLOSSARY.md` **Open Ledger**).
+- **1e·new** (DESKTOP-180): `:new`'s explorer in New mode, with a File name field under the listing that adds `.pldb` and refuses an existing name inline.
+- **Settings indexes** (1c, DESKTOP-106, DESKTOP-107, the DESKTOP-119 index page and DESKTOP-120's picker) group the pages under THIS DEVICE and THIS LEDGER, in `../16-settings/`'s v7 order, with no footer. Display reads `this device · never synced` ([ADR-0051](../../../adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)).

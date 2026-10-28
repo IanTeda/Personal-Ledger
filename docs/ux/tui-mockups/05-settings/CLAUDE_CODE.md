@@ -133,10 +133,22 @@ Done when:
 - At X-Large each list page docks the 53-column detail pane; Units sends `UnitsPageEvent::SetDocked(true)` while docked, so its outcomes land in ACTIVITY instead of a Toast.
 - Render tests use `TestBackend` at each reference frame (128 × 69, 171 × 53, 256 × 72) and at the 96 × 30 floor.
 
+## Stage 7 — Settings by scope ([#910](https://github.com/IanTeda/Personal-Ledger/issues/910))
+
+**Files:** `src/view/settings/{mod,index,general,display}.rs`, a new `src/view/settings/ledger.rs`, the picker in `src/popup/settings/`, `src/shell.rs`
+**Spec:** README § *Overview*, § *Pages* (General, Ledger, Display); cards TUI-047, TUI-048, TUI-058, TUI-059, TUI-032
+**Decided in:** #872, [ADR-0051](../../../adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md). It supersedes Stage 1's scope glyphs and legend and Stage 2's General page.
+
+Done when:
+- The page list carries each page's group, and the index page, the picker, the docked index and `[` / `]` run THIS DEVICE (General, Display, AI connections, Logs, About) then THIS LEDGER (Ledger, Units … History), under the two headings, with no scope glyphs or legend.
+- **Ledger** is today's General page, renamed; **General** is new: on start, toasts (moved from Display), the read-only locale and ledger folder, and the THIS DEVICE box. Display loses toasts and locale.
+- With no Ledger open, `g s` and `:settings` open Settings on the remembered page if it is a this device page, else General; this ledger rows draw dim, and `enter`, `[` / `]`, the picker or `:settings <page>` onto one answer `No Ledger open: :open or :new first` on the status line.
+- Render and key tests cover the grouped index, the picker order, General and the refusal.
+
 ## Throughout
 
 - **Theme roles, not hex.** See the README's Style table. Use `crate::colours::Colours`.
-- **Never rely on colour alone.** Scope is `●`/`○`, failures are `■` plus words, and disabled keys are drawn dim *and* named in the dialog's note.
+- **Never rely on colour alone.** Scope is the group heading a page sits under (Stage 7; `●`/`○` before it), failures are `■` plus words, and disabled keys are drawn dim *and* named in the dialog's note.
 - **Cells clip, they don't wrap.** Row heights are fixed. Below 96 columns the Shell's "terminal too small" screen takes over (README § *Window Sizes*).
 - **Wireframe honesty.** Any figure without a real query behind it lives in a clearly named fixture or carries a `// wireframe:` comment. The module doc says which parts are real.
 - **Tests:** unit tests beside each page module for rendering at 96×30, key handling and focus. Use deterministic `fake` data for list pages. There are no doctests.

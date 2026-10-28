@@ -47,7 +47,7 @@ The TUI arranges itself by the Desktop's Window Sizes, read in columns ([ADR-005
 
 The state on cold start and after `:close`: no Ledger file is open until `:open` or `:new`. Status line (`Personal Ledger` on the left, the right side blank: there is nothing to have synced) and, on the key-hint bar, the mode (`NORMAL`) at the far left, the key hints (`: command · ? help`) and a right-aligned `No Ledger open` label at the far right, with a single centred note in the view region. No dashboard, no other views. Once a Ledger is open the label names its Ledger file.
 
-Note copy, two lines, centred horizontally and vertically in the view region: `No Ledger open.` then `Use :new to create a Ledger or :open to open one.` Only `:new`, `:open`, `:help`, `?` and quit are live until a Ledger is open; anything else, `g` jumps and `:settings` included, answers `No Ledger open: :open or :new first` on the status line. `:open [path]` opens `path` or the configured `file`; `:new <path>` refuses a path that exists. Built in #871.
+Note copy, two lines, centred horizontally and vertically in the view region: `No Ledger open.` then `Use :new to create a Ledger or :open to open one.` Only `:new`, `:open`, `:help`, `?`, quit and Settings' this device pages are live until a Ledger is open (`:settings` and `g s` open General or the remembered this device page, `../05-settings/` TUI-059, #910); anything else, other `g` jumps included, answers `No Ledger open: :open or :new first` on the status line. `:open [path]` opens `path` or the configured `file`; `:new <path>` refuses a path that exists. Built in #871.
 
 ## 1b — Shell with a ledger loaded (dashboard / financial position)
 
