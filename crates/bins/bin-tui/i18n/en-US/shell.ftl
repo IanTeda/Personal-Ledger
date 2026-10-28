@@ -31,6 +31,13 @@ tui-hint-command = command
 tui-hint-search = search
 tui-hint-help = help
 
+## The screen the Shell draws in place of everything else while the terminal is under the floor
+## (ADR-0050): a title, then the current and the minimum size in cells. Each `$…` is a whole
+## number of columns or rows.
+
+tui-too-small-title = Terminal too small
+tui-too-small-size = { $width } × { $height } · needs { $min-width } × { $min-height }
+
 ## The footer's right-hand label while no Ledger is open. Once one is, the label is its Ledger
 ## file's name.
 

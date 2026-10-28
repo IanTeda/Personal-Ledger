@@ -44,6 +44,7 @@
 use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::RowID;
+use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use ratatui::{
     Frame,
@@ -360,7 +361,7 @@ impl View for TagsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         // The heading/delete-confirm row spans the *full* width, not just `PANE_WIDTH` — a
         // narrow list pane has no room for "delete \"...\" ... y confirms, any other key
         // cancels" even wrapped, so it rides across the whole view region instead (the only
@@ -1027,7 +1028,7 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the Tags view should not error");
 
         let buffer = terminal.backend().buffer();

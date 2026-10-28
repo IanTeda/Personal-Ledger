@@ -800,6 +800,7 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
+ "lib_shell",
  "lib_toast",
  "lib_tracing",
  "lib_units",

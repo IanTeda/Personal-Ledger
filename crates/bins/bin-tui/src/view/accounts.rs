@@ -42,6 +42,7 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money, RowID};
+use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use ratatui::{
     Frame,
@@ -451,7 +452,7 @@ impl View for AccountsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -1197,7 +1198,7 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the Accounts view should not error");
 
         let buffer = terminal.backend().buffer();

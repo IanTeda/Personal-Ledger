@@ -12,6 +12,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_list_cursor::Step;
 use lib_locale::format::upper;
+use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use lib_units::SharedPorts;
 use lib_units::presenter::{
@@ -192,7 +193,7 @@ impl View for UnitsView {
         self.send(event);
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         let view = self.presenter.view_model();
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -614,7 +615,7 @@ mod tests {
         let mut terminal =
             Terminal::new(TestBackend::new(width, height)).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), &c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, &c))
             .expect("drawing the units view should not error");
         let buffer = terminal.backend().buffer();
         let mut text = String::new();

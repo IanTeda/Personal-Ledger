@@ -3,6 +3,7 @@
 //! the global `g k` jump chord both land here — before any real list/detail content is built
 //! out.
 
+use lib_shell::WindowSize;
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
 use crate::colours::Colours;
@@ -21,7 +22,7 @@ impl BalanceChecksView {
 impl View for BalanceChecksView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, _c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, _c: &Colours) {
         frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
@@ -48,7 +49,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the placeholder Balance Checks view should not error");
     }
 

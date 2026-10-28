@@ -5,6 +5,7 @@
 //! budgets this period, needs attention — so the dashboard's overall layout can be checked
 //! and adjusted before any one region's real widget content is built out.
 
+use lib_shell::WindowSize;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -95,7 +96,7 @@ impl DashboardView {
 impl View for DashboardView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1143,7 +1144,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                view.view(frame, area, c);
+                view.view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1215,7 +1216,7 @@ mod tests {
             terminal
                 .draw(|frame| {
                     let area = frame.area();
-                    DashboardView::new().view(frame, area, c);
+                    DashboardView::new().view(frame, area, WindowSize::Medium, c);
                 })
                 .expect("drawing the dashboard should not error");
             let buffer = terminal.backend().buffer();
@@ -1275,7 +1276,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area, c);
+                DashboardView::new().view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();
@@ -1330,7 +1331,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area, c);
+                DashboardView::new().view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();
@@ -1360,7 +1361,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area, c);
+                DashboardView::new().view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1426,7 +1427,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area, c);
+                DashboardView::new().view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1465,7 +1466,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area, c);
+                DashboardView::new().view(frame, area, WindowSize::Medium, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();

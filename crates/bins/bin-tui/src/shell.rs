@@ -12,10 +12,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
 use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
+use lib_shell::WindowSize;
+use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
 use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
@@ -1958,9 +1960,16 @@ impl Shell {
     /// around the active view, per `docs/ux/tui-mockups/01-shell/README.md`. `run`
     /// calls this on every change, and tests call it to read the frame back.
     pub fn draw(&mut self, frame: &mut Frame<'_>) {
+        let area = frame.area();
+        // Read on every draw and never stored: a resize redraws, which reads the new width.
+        let size = WindowSize::from_columns(area.width);
+        if area.width < MIN_COLUMNS || area.height < MIN_ROWS {
+            draw_too_small(frame, &self.colours);
+            return;
+        }
+
         // The frame size is only known here, so this is where a view shrinking under 40×8
         // hands its Toasts to the status-line echo, and back again.
-        let area = frame.area();
         self.toasts.set_display(Display {
             can_draw: area.width >= crate::toast::MIN_FRAME.0
                 && area.height >= crate::toast::MIN_FRAME.1,
@@ -2043,7 +2052,7 @@ impl Shell {
         if self.ledger.is_none() && self.view.id() == ViewId::Dashboard {
             crate::view::dashboard::render_no_ledger(frame, rows[1], c);
         } else {
-            self.view.view(frame, rows[1], c);
+            self.view.view(frame, rows[1], size, c);
         }
 
         // Footer Frame — each keybind's key is bolded to stand out from its label. While a
@@ -2179,6 +2188,32 @@ impl Shell {
         // Last, so cells a popup `Clear`ed also land on the Colour Theme.
         c.paint_base(frame.buffer_mut());
     }
+}
+
+/// The screen drawn in place of the whole Shell while the frame is under the 96 × 24 floor
+/// (ADR-0050): the title and the current and minimum size, centred, and nothing else. No View
+/// has a layout narrower than Medium, so there is nothing smaller to fall back to.
+fn draw_too_small(frame: &mut Frame<'_>, c: &Colours) {
+    let area = frame.area();
+    let size = crate::msg::tui_too_small_size(
+        &area.width.to_string(),
+        &area.height.to_string(),
+        &MIN_COLUMNS.to_string(),
+        &MIN_ROWS.to_string(),
+    );
+    let lines = vec![
+        Line::from(crate::msg::tui_too_small_title())
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        Line::from(size).style(c.muted()),
+    ];
+    let [_, middle, _] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(2),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), middle);
+    c.paint_base(frame.buffer_mut());
 }
 
 /// The name of the file at `path`, or the whole path if it names none.
@@ -2498,7 +2533,10 @@ mod tests {
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell should not error");
 
-        let buffer = terminal.backend().buffer();
+        buffer_text(terminal.backend().buffer())
+    }
+
+    fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
         let mut text = String::new();
         for y in 0..buffer.area.height {
             for x in 0..buffer.area.width {
@@ -2634,9 +2672,16 @@ mod tests {
         for i in 0..3 {
             shell.raise_toast(ToastKind::Error, format!("failure {i}"));
         }
-        // 11 rows: a 9-row view fits three boxes exactly, so no room for the more line; 10 rows
-        // leaves 8, which fits two and the line.
-        let text = drawn_at(&mut shell, 60, 10);
+        // The Shell never draws a view region this short (the floor is 96 × 24), so the overlay is
+        // drawn straight into a 60 × 8 area: it fits two boxes and the more line.
+        let mut terminal =
+            Terminal::new(TestBackend::new(60, 8)).expect("test backend should initialise");
+        terminal
+            .draw(|frame| {
+                crate::toast::render(frame, frame.area(), &shell.toasts, &shell.colours);
+            })
+            .expect("drawing the Toasts should not error");
+        let text = buffer_text(terminal.backend().buffer());
         assert!(
             text.contains("failure 2") && text.contains("failure 1"),
             "{text}"
@@ -2663,20 +2708,17 @@ mod tests {
         );
     }
 
+    /// Under the floor the too-small screen hides the Toasts with everything else; they are
+    /// still there when the terminal grows back.
     #[test]
-    fn under_a_forty_by_eight_view_the_toast_moves_to_the_footer_echo() {
+    fn under_the_floor_no_toast_draws_and_it_returns_over_it() {
         crate::locale::init_for_tests();
         let mut shell = opened();
         shell.raise_toast(ToastKind::Error, "hidden");
-        for (width, height) in [(39, 20), (60, 7)] {
-            let text = drawn_at(&mut shell, width, height);
-            let footer = text.lines().last().unwrap_or_default();
-            assert!(footer.starts_with(" ✗ hidden"), "no echo:\n{text}");
-            assert!(!text.contains("│▌"), "a Toast box drew:\n{text}");
-        }
-        let text = drawn_at(&mut shell, 40, 8);
+        let text = drawn_at(&mut shell, 95, 30);
+        assert!(!text.contains("hidden"), "a Toast drew:\n{text}");
+        let text = drawn_at(&mut shell, 96, 24);
         assert!(text.contains("│▌ ✗ hidden"), "no Toast box:\n{text}");
-        assert!(!text.lines().last().unwrap_or_default().contains("hidden"));
     }
 
     fn footer(shell: &mut Shell) -> String {
@@ -2996,6 +3038,97 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell should not error");
+    }
+
+    /// Below the 96 × 24 floor on either axis the frame holds the too-small screen alone, naming
+    /// the current size: no status line, View or hint bar.
+    #[test]
+    fn under_the_floor_draws_only_the_too_small_screen() {
+        for (width, height) in [(95, 30), (120, 23)] {
+            let mut shell = opened();
+            let text = drawn_at(&mut shell, width, height);
+            assert!(
+                text.contains("Terminal too small"),
+                "{width} × {height}:\n{text}"
+            );
+            assert!(
+                text.contains(&format!("{width} × {height} · needs 96 × 24")),
+                "{width} × {height}:\n{text}"
+            );
+            assert!(
+                !text.contains("Personal Ledger"),
+                "no status line at {width} × {height}"
+            );
+            assert!(
+                !text.contains("NORMAL"),
+                "no hint bar at {width} × {height}"
+            );
+        }
+    }
+
+    #[test]
+    fn at_the_floor_the_shell_draws_normally() {
+        let mut shell = opened();
+        let text = drawn_at(&mut shell, 96, 24);
+        assert!(!text.contains("Terminal too small"));
+        assert!(text.contains("Personal Ledger"));
+        assert!(text.contains("NORMAL"));
+    }
+
+    /// Growing back over the floor redraws exactly what was showing: the size is read per draw,
+    /// so dropping under it touches no View, selection or mode.
+    #[test]
+    fn a_resize_back_over_the_floor_redraws_the_same_view_selection_and_mode() {
+        let mut shell = opened();
+        shell.update(Action::OpenUnits);
+        let down = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('j'),
+                KeyModifiers::NONE,
+            )))
+            .expect("j moves the Units selection");
+        shell.update(down);
+        shell.update(Action::OpenCommandPopup);
+        let before = drawn_at(&mut shell, 96, 24);
+
+        let too_small = drawn_at(&mut shell, 95, 24);
+        assert!(too_small.contains("Terminal too small"));
+
+        assert_eq!(drawn_at(&mut shell, 96, 24), before);
+        assert_eq!(shell.view.id(), ViewId::Units);
+        assert!(shell.command_popup.is_some());
+    }
+
+    /// Every View is handed the Window Size and draws at each Window Size's reference frame.
+    #[test]
+    fn every_view_draws_at_each_window_size_reference_frame() {
+        let opens = [
+            Action::OpenDashboard,
+            Action::OpenAccounts,
+            Action::OpenBalanceChecks,
+            Action::OpenBudgets,
+            Action::OpenCategories,
+            Action::OpenHelp,
+            Action::OpenPayees,
+            Action::OpenReports,
+            Action::OpenSettings,
+            Action::OpenTags,
+            Action::OpenTransactions,
+            Action::OpenUnits,
+        ];
+        for size in [WindowSize::Medium, WindowSize::Large, WindowSize::XLarge] {
+            let (width, height) = size.reference_frame_cells();
+            assert_eq!(WindowSize::from_columns(width), size);
+            for open in &opens {
+                let mut shell = opened();
+                shell.update(open.clone());
+                let text = drawn_at(&mut shell, width, height);
+                assert!(
+                    text.contains("Personal Ledger"),
+                    "{open:?} at {width} × {height}"
+                );
+            }
+        }
     }
 
     #[test]

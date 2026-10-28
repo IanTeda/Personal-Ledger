@@ -19,6 +19,7 @@ pub mod transactions;
 
 use crossterm::event::KeyEvent;
 use lib_core::{HexColor, Money, RowID};
+use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
@@ -620,8 +621,10 @@ pub trait View {
     fn update(&mut self, action: &Action);
 
     /// Renders the view into the given area of the frame — the full-bleed view region below
-    /// the status line and above the command line.
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours);
+    /// the status line and above the command line. `size` is the frame's Window Size, read by
+    /// the Shell on every draw (ADR-0050), so a View picks its layout per size rather than
+    /// measuring `area` against Breakpoints of its own.
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, size: WindowSize, c: &Colours);
 
     /// This view's stable id, which `Shell` navigates on.
     fn id(&self) -> ViewId;

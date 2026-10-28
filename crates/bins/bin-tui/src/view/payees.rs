@@ -41,6 +41,7 @@
 
 use bigdecimal::BigDecimal;
 use crossterm::event::{KeyCode, KeyEvent};
+use lib_shell::WindowSize;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -452,7 +453,7 @@ impl View for PayeesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -1087,7 +1088,7 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the Payees view should not error");
 
         let buffer = terminal.backend().buffer();

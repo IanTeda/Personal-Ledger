@@ -32,6 +32,7 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::{Months, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{Money, RowID};
+use lib_shell::WindowSize;
 use lib_toast::ToastKind;
 use ratatui::{
     Frame,
@@ -549,7 +550,7 @@ impl View for CategoriesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -1516,7 +1517,7 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the Categories view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1552,7 +1553,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1577,7 +1578,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1903,7 +1904,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();

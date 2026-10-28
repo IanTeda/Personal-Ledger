@@ -2,6 +2,7 @@
 //! proving the navigation path — the command popup's `budget list [period]` entry and the
 //! global `g b` jump chord both land here — before any real list/detail content is built out.
 
+use lib_shell::WindowSize;
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
 use crate::colours::Colours;
@@ -20,7 +21,7 @@ impl BudgetsView {
 impl View for BudgetsView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect, _c: &Colours) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, _c: &Colours) {
         frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
@@ -47,7 +48,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
         terminal
-            .draw(|frame| view.view(frame, frame.area(), c))
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, c))
             .expect("rendering the placeholder Budgets view should not error");
     }
 
