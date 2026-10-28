@@ -223,13 +223,8 @@ impl View for UnitsView {
 
         render_left_column(frame, columns[0], &view, c);
         render_price_history(frame, columns[1], &view, c);
-        if let Some(detail) = &view.pane {
-            let keys = PaneKeys {
-                keymap: &self.keymap,
-                selected: selected_row(&view),
-                sources: &view.price_sources_heading,
-            };
-            pane::render(frame, columns[2], detail, &keys, c);
+        if view.pane.is_some() {
+            self.render_pane(frame, columns[2], &view, c);
         }
     }
 
@@ -260,6 +255,27 @@ impl View for UnitsView {
     fn render_dialog(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         if let Some(dialog) = &self.dialog {
             dialog.render(frame, area, c);
+        }
+    }
+}
+
+impl UnitsView {
+    /// The detail pane for `view`'s selection in `area`, if the page is docked. Settings › Units
+    /// draws it beside its own tables, as this View does beside its own.
+    pub fn render_pane(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        view: &UnitsPageViewModel,
+        c: &Colours,
+    ) {
+        if let Some(detail) = &view.pane {
+            let keys = PaneKeys {
+                keymap: &self.keymap,
+                selected: selected_row(view),
+                sources: &view.price_sources_heading,
+            };
+            pane::render(frame, area, detail, &keys, c);
         }
     }
 }

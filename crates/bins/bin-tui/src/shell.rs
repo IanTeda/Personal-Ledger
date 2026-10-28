@@ -1406,6 +1406,7 @@ impl Shell {
                     popup.set_not_yet_built(name);
                 }
             }
+            Action::FlashNotYetBuilt(command) => self.flash_not_yet_built(command),
             Action::CommandPopupHistoryRecall => {
                 let history = &self.command_history;
                 if let Some(popup) = &mut self.command_popup {
@@ -1490,9 +1491,7 @@ impl Shell {
                 self.open(SettingsView::remembering(
                     Rc::clone(&self.settings_page),
                     Rc::clone(&self.settings_values),
-                    self.ledger
-                        .as_ref()
-                        .map(|ledger| ledger.units.ports.clone()),
+                    self.ledger.as_ref().map(|ledger| &ledger.units),
                 ));
                 self.view.update(&action);
             }
@@ -4487,6 +4486,57 @@ mod tests {
 
         shell.update(Action::OpenDashboard);
         assert!(shell.settings_popup.is_none());
+    }
+
+    #[test]
+    fn o_on_settings_units_opens_the_units_view_and_esc_lands_on_the_same_page_and_row() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Units));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char('o')]);
+        assert_eq!(shell.view.id(), ViewId::Units);
+
+        press(&mut shell, &[KeyCode::Esc]);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        let text = drawn(&mut shell);
+        assert!(text.contains("Settings › Units"), "{text}");
+        assert!(
+            text.contains("btc is used by"),
+            "the second row, btc, is still selected:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_units_dialog_opened_from_settings_draws_over_it_in_insert() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Units));
+        press(&mut shell, &[KeyCode::Char('n')]);
+        let text = drawn(&mut shell);
+        assert!(lines(&text)[0].contains("INSERT"), "{text}");
+        assert!(text.contains("Add unit"), "{text}");
+
+        press(&mut shell, &[KeyCode::Esc]);
+        let text = drawn(&mut shell);
+        assert!(!lines(&text)[0].contains("INSERT"), "{text}");
+        assert!(
+            text.contains("Settings › Units"),
+            "esc closes only the Dialog:\n{text}"
+        );
+    }
+
+    #[test]
+    fn settings_accounts_keys_flash_not_yet_built() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Accounts));
+        press(&mut shell, &[KeyCode::Char('e')]);
+        let text = drawn(&mut shell);
+        assert!(
+            text.contains(":account edit \u{2014} not yet built"),
+            "{text}"
+        );
+        assert_eq!(shell.view.id(), ViewId::Settings);
     }
 
     #[test]

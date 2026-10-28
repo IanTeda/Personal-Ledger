@@ -86,6 +86,10 @@ pub enum Action {
     /// popup's info row, replacing whatever argument preview was showing. The popup stays
     /// open; `Enter` never closes it.
     CommandPopupSetNotYetBuilt(&'static str),
+    /// A key on a page whose action isn't built yet (Settings › Accounts' `n`, `e`, `d` and
+    /// `enter`): shows `":{command} — not yet built"` on the status line, as a `g` jump to a
+    /// placeholder view does.
+    FlashNotYetBuilt(&'static str),
     /// `Ctrl+r` while the command popup is open — walks backward through `Shell`'s own
     /// `command_history`, replacing the input buffer with each entry in turn (see
     /// `crate::popup::command::CommandPopup::recall_history`'s doc for the cursor's own

@@ -3,7 +3,8 @@
 //! the keymap are `lib-units`'; this folder turns crossterm keys into Presenter events and draws
 //! the view models, as the Desktop's `units/` does in gpui.
 //!
-//! - `view/units.rs` is the Units View, hosted by `Shell`.
+//! - `view/units.rs` is the Units View, hosted by `Shell`, and by Settings › Units, which draws
+//!   the same Presenter as TUI-033's tables (`view::settings::units`).
 //! - `view/dialog.rs` hosts each Dialog's Presenter and draws it as a floating window.
 //! - `router.rs` is the Router, which collects what a Presenter asked for.
 //! - `ports.rs` holds the halfway shims: usage and holdings answered by the stub Ledger (#746).

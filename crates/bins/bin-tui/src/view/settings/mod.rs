@@ -22,14 +22,23 @@
 //! without a value to open the field, the open field returns it with one to save, and `Shell`
 //! routes it, keeping what it owns (Toasts, the Colour Theme and Appearance, the base unit guard)
 //! and handing the rest back to [`View::update`]. What holds for the session only lives in
-//! [`field::SettingsValues`], shared with `Shell` as the selection is. Every other page draws its
-//! heading and scope note over an empty body until the stage that builds it.
+//! [`field::SettingsValues`], shared with `Shell` as the selection is.
+//!
+//! Units and Accounts are list pages, drawn by the one list-page pattern ([`list`]) every
+//! ledger-data page reuses. Units hosts the Units View itself ([`units`]), so its keys and
+//! Dialogs are `lib-units`'; Accounts reads a fixture until the TUI moves onto `lib-accounts`
+//! ([`accounts`]). `o` on either opens the full View, which `Shell` pushes Settings under, so the
+//! back key there returns to the same page and row. Every other page draws its heading and scope
+//! note over an empty body until the stage that builds it.
 
+mod accounts;
 mod display;
 pub mod field;
 mod general;
 mod index;
+mod list;
 mod picker;
+mod units;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -37,6 +46,7 @@ use std::rc::Rc;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_list_cursor::Step;
 use lib_shell::WindowSize;
+use lib_toast::ToastKind;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Margin, Rect},
@@ -48,7 +58,7 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::edit::{FieldEditor, Outcome};
-use crate::units::TuiPorts;
+use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
 use field::{SettingField, SettingsValues};
@@ -282,6 +292,9 @@ pub struct SettingsView {
     editor: Option<FieldEditor>,
     general: general::GeneralPage,
     display: display::DisplayPage,
+    /// Settings › Units, on the Open Ledger's Units; `None` for a View built without one.
+    units_page: Option<units::UnitsPage>,
+    accounts: accounts::AccountsPage,
 }
 
 impl SettingsView {
@@ -294,7 +307,7 @@ impl SettingsView {
 
     /// [`Self::new`] on `units`.
     #[cfg(test)]
-    pub fn with_units(units: TuiPorts) -> Self {
+    pub fn with_units(units: &UnitsSetup) -> Self {
         Self::remembering(Rc::default(), Rc::default(), Some(units))
     }
 
@@ -303,7 +316,7 @@ impl SettingsView {
     pub fn remembering(
         selected: Rc<Cell<SettingsPage>>,
         values: Rc<RefCell<SettingsValues>>,
-        units: Option<TuiPorts>,
+        units: Option<&UnitsSetup>,
     ) -> Self {
         Self {
             showing: Showing::Index,
@@ -311,10 +324,12 @@ impl SettingsView {
             selected,
             picker: None,
             values,
-            units,
+            units: units.map(|setup| setup.ports.clone()),
             editor: None,
             general: general::GeneralPage::default(),
             display: display::DisplayPage::new(),
+            units_page: units.map(units::UnitsPage::new),
+            accounts: accounts::AccountsPage::new(),
         }
     }
 
@@ -373,6 +388,8 @@ impl SettingsView {
             _ => match self.selected() {
                 SettingsPage::General => self.general.handle_key(key),
                 SettingsPage::Display => self.display.handle_key(key),
+                SettingsPage::Units => self.units_page.as_mut()?.handle_key(key),
+                SettingsPage::Accounts => self.accounts.handle_key(key),
                 _ => None,
             },
         }
@@ -385,6 +402,12 @@ impl SettingsView {
                 ("j/k".into(), msg::tui_settings_hint_field()),
                 ("enter".into(), msg::tui_settings_hint_edit()),
             ],
+            SettingsPage::Units => self
+                .units_page
+                .as_ref()
+                .map(units::UnitsPage::hints)
+                .unwrap_or_default(),
+            SettingsPage::Accounts => accounts::AccountsPage::hints(),
             _ => Vec::new(),
         };
         if self.selected() == SettingsPage::Display {
@@ -461,6 +484,10 @@ impl View for SettingsView {
         if self.editor.is_some() {
             return self.handle_editor_key(key);
         }
+        // A Units Dialog takes every key, `[`, `]` and `p` included.
+        if let Some(page) = self.units_page.as_mut().filter(|page| page.dialog_open()) {
+            return page.handle_key(key);
+        }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
                 picker::Outcome::Open(page) => {
@@ -529,6 +556,26 @@ impl View for SettingsView {
         self.editor.is_some()
     }
 
+    /// A Units Dialog opened from Settings › Units, which `Shell` draws over the frame.
+    fn dialog_open(&self) -> bool {
+        self.units_page
+            .as_ref()
+            .is_some_and(units::UnitsPage::dialog_open)
+    }
+
+    fn render_dialog(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        if let Some(page) = &self.units_page {
+            page.render_dialog(frame, area, c);
+        }
+    }
+
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        self.units_page
+            .as_mut()
+            .map(units::UnitsPage::take_toasts)
+            .unwrap_or_default()
+    }
+
     fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
         let hints = if let Some(editor) = &self.editor {
             editor.hints(back)
@@ -565,6 +612,9 @@ impl View for SettingsView {
         if self.docked() {
             self.picker = None;
         }
+        if let Some(page) = &mut self.units_page {
+            page.set_window_size(size);
+        }
     }
 
     fn view(&self, frame: &mut Frame<'_>, area: Rect, size: WindowSize, c: &Colours) {
@@ -583,6 +633,20 @@ impl View for SettingsView {
             ])
             .areas(inner);
             index::render_docked(frame, dock, self.selected(), index_focused, c);
+            let page = match &self.units_page {
+                // X-Large docks the Units detail pane at the View's right edge (TUI-055).
+                Some(units) if self.selected() == SettingsPage::Units && units.has_pane() => {
+                    let [page, _, pane] = Layout::horizontal([
+                        Constraint::Min(0),
+                        Constraint::Length(1),
+                        Constraint::Length(crate::units::view::pane::WIDTH),
+                    ])
+                    .areas(page);
+                    units.render_pane(frame, pane, c);
+                    page
+                }
+                _ => page,
+            };
             self.render_page(frame, page, true, !index_focused, c);
         }
         if let Some(picker) = &self.picker {
@@ -630,13 +694,24 @@ impl SettingsView {
                 name,
             ])
         };
-        render_heading(frame, heading, title, &page.scope_note(), c);
+        let note = match (page, &self.units_page) {
+            (SettingsPage::Units, Some(units)) => units.scope_note(),
+            (SettingsPage::Accounts, _) => self.accounts.scope_note(),
+            _ => page.scope_note(),
+        };
+        render_heading(frame, heading, title, &note, c);
         let body = body.inner(Margin::new(0, 1));
         let values = self.values.borrow();
         let context = self.context(&values);
         match page {
             SettingsPage::General => self.general.render(frame, body, focused, &context, c),
             SettingsPage::Display => self.display.render(frame, body, focused, &context, c),
+            SettingsPage::Units => {
+                if let Some(units) = &self.units_page {
+                    units.render(frame, body, focused, c);
+                }
+            }
+            SettingsPage::Accounts => self.accounts.render(frame, body, focused, c),
             _ => {}
         }
     }
@@ -792,8 +867,8 @@ mod tests {
     }
 
     /// The stub seed's Units on the stub Ledger, as an Open Ledger holds them.
-    pub(super) fn stub_units() -> TuiPorts {
-        crate::units::UnitsSetup::stub(&lib_config::KeyBindingConfig::default()).ports
+    pub(super) fn stub_units() -> UnitsSetup {
+        UnitsSetup::stub(&lib_config::KeyBindingConfig::default())
     }
 
     pub(super) fn render_at(view: &SettingsView, width: u16, height: u16) -> String {

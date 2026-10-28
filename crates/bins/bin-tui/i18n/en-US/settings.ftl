@@ -64,6 +64,16 @@ tui-settings-scope-backup = this device · local files
 tui-settings-scope-history = all devices
 tui-settings-scope-logs = this device · diagnostic
 tui-settings-scope-about = version info
+# A list page's note with its count, derived from its rows on each draw.
+tui-settings-scope-units = ledger data · synced · { $count ->
+    [one] { $count } unit
+   *[other] { $count } units
+}
+# `$net_worth` is formatted, in `$base`, the base Unit's code.
+tui-settings-scope-accounts = ledger data · synced · { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+} · net worth { $net_worth } { $base }
 
 ## Hint bar labels, each after its key.
 
@@ -80,6 +90,13 @@ tui-settings-hint-settings = settings
 # At Large and X-Large, where the index is docked beside the page (TUI-050, TUI-051).
 tui-settings-hint-focus-page = focus page
 tui-settings-hint-index = index
+# A list page's keys.
+tui-settings-hint-row = row
+tui-settings-hint-add = add
+tui-settings-hint-delete = delete
+tui-settings-hint-open-ledger = open ledger
+tui-settings-hint-open-units-view = open units view
+tui-settings-hint-open-accounts-view = open accounts view
 
 ## Settings › General's field labels.
 
@@ -227,3 +244,35 @@ tui-footer-colour-popup = j/k preview · enter keep · { $back } revert
 ## The rows' note while `$key` (the Configuration key) makes this terminal draw its own colours.
 
 tui-settings-colour-terminal-row-note = syncs; { $key } draws terminal colours here
+
+## A list page's group label, `$label` the group's and `$count` its rows.
+
+tui-settings-list-group = { $label } · { $count }
+
+## Settings › Units (TUI-033): each block's heading and add key's action, and the notes on the
+## selected row. `$code` is a Unit code.
+
+tui-settings-units-heading = units
+tui-settings-units-add-unit = add unit
+tui-settings-units-add-source = add source
+tui-settings-units-note-usage = { $code } is used by { $accounts ->
+    [one] { $accounts } account
+   *[other] { $accounts } accounts
+} and { $transactions ->
+    [one] { $transactions } transaction
+   *[other] { $transactions } transactions
+}. Renaming it is safe.
+tui-settings-units-note-unused = No account holds { $code } yet. Renaming it is safe.
+tui-settings-units-note-code = Changing its code changes every reference. Deleting asks you to type the code.
+
+## Settings › Accounts (TUI-041). `$amount` is a holding's formatted quantity of its Unit.
+
+tui-settings-accounts-heading = by type
+tui-settings-accounts-add = add account
+tui-settings-accounts-name = Name
+tui-settings-accounts-institution = Institution
+tui-settings-accounts-unit = Unit
+tui-settings-accounts-balance = Balance
+tui-settings-accounts-quantity = { $amount } u
+tui-settings-accounts-note-form = Add and edit use the account form from the Accounts view.
+tui-settings-accounts-note-net-worth = Unit balances convert to { $base } for net worth at the latest weekly close.

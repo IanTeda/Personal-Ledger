@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn it_draws_its_four_fields_and_the_ledger_s_counts() {
         crate::locale::init_for_tests();
-        let mut view = SettingsView::with_units(crate::view::settings::tests::stub_units());
+        let mut view = SettingsView::with_units(&crate::view::settings::tests::stub_units());
         view.update(&Action::OpenSettingsPage(SettingsPage::General));
         let text = render_at(&view, 96, 30);
         for needle in [
