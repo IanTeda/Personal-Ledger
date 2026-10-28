@@ -170,7 +170,9 @@ fn the_location_menu_asks_for_its_dialogs(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn add_area_from_a_collapsed_location_expands_it_and_adds_by_the_button(app: &mut TestAppContext) {
+fn add_area_from_a_collapsed_location_expands_it_only_once_the_area_lands(
+    app: &mut TestAppContext,
+) {
     let mut ui = on_inventory(app);
     let before = ui.settings_inventory().inventory_areas[1].1.len();
 
@@ -178,16 +180,22 @@ fn add_area_from_a_collapsed_location_expands_it_and_adds_by_the_button(app: &mu
     ui.click("settings-inventory-menu-add-area");
     assert_eq!(dialog(&mut ui).as_deref(), Some("AddArea"));
     assert!(
-        ui.settings_inventory()
+        !ui.settings_inventory()
             .inventory_rows
             .contains(&"area:Storage".to_string()),
-        "Add area expands the Location"
+        "an open Dialog has not expanded the Location"
     );
     ui.click("area-name");
     ui.press("l o f t");
     ui.click("add-area-confirm");
     let inventory_page = ui.settings_inventory();
     assert_eq!(ui.dialog(), None);
+    assert!(
+        inventory_page
+            .inventory_rows
+            .contains(&"area:Storage".to_string()),
+        "adding the Area expands the Location"
+    );
     assert_eq!(inventory_page.inventory_areas[1].1.len(), before + 1);
     assert_eq!(
         inventory_page.selected_inventory.as_deref(),

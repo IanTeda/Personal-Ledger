@@ -425,8 +425,9 @@ impl InventoryPagePresenter {
         self.select(outcome.selected);
     }
 
-    /// `a`: Add area for the selected Location (or the selected Area's), opening it so the new
-    /// Area shows. With no Location it is a Toast.
+    /// `a`: Add area for the selected Location (or the selected Area's). The Location opens when
+    /// the Area lands (`land`), not before, so a cancelled Dialog leaves it as it was. With no
+    /// Location it is a Toast.
     fn add_area_for_selection(&mut self, router: &mut dyn InventoryRouter) {
         let Some(location) = self.selected_location() else {
             router.notify(Notice::Toast(
@@ -435,7 +436,6 @@ impl InventoryPagePresenter {
             ));
             return;
         };
-        self.expanded.insert(location);
         self.open(InventoryDialog::AddArea(location), router);
     }
 
@@ -447,7 +447,6 @@ impl InventoryPagePresenter {
     ) {
         match (action, row) {
             (MenuAction::AddArea, InventoryRow::Location(id)) => {
-                self.expanded.insert(id);
                 self.open(InventoryDialog::AddArea(id), router);
             }
             (MenuAction::EditLocation | MenuAction::EditArea, row) => self.open_edit(row, router),
@@ -818,7 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn add_area_opens_the_location_and_works_from_one_of_its_areas() {
+    fn add_area_leaves_the_location_as_it_was_and_works_from_one_of_its_areas() {
         let mut page = Page::new();
         let elm = page.elm();
 
@@ -826,8 +825,13 @@ mod tests {
             page.send(InventoryPageEvent::AddArea),
             [RouterCall::OpenDialog(InventoryDialog::AddArea(elm.id))]
         );
-        assert!(page.view().rows.len() > 3, "a opens the Location");
+        assert_eq!(
+            page.view().rows.len(),
+            3,
+            "a cancelled Add area opens nothing"
+        );
         page.send(InventoryPageEvent::DialogClosed(None));
+        assert_eq!(page.view().rows.len(), 3, "the Location stays closed");
         page.send(InventoryPageEvent::Expand);
         assert_eq!(
             page.send(InventoryPageEvent::AddArea),
@@ -915,6 +919,8 @@ mod tests {
             [RouterCall::OpenDialog(InventoryDialog::AddArea(elm.id))]
         );
         assert_eq!(page.view().menu, None, "an entry closes the menu");
+        page.send(InventoryPageEvent::DialogClosed(None));
+        page.send(InventoryPageEvent::Expand);
 
         page.send(InventoryPageEvent::OpenMenu(area));
         assert_eq!(page.view().selected, Some(area), "the right-click selects");

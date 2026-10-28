@@ -441,7 +441,7 @@ fn an_area_name_may_repeat_in_another_location_but_not_in_its_own(app: &mut Test
     ui.press("escape");
 
     // The Storage unit is another Location, so the name is free there.
-    ui.press("left j a");
+    ui.press("j a");
     for ch in living.chars() {
         ui.press(&ch.to_string());
     }
