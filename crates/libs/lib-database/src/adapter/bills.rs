@@ -76,15 +76,29 @@ impl BillsAdapter {
     ) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for plan in &plans {
-                upsert_plan(&mut conn, plan).await?;
-            }
-            for entry in &entries {
-                upsert_entry(&mut conn, entry).await?;
-            }
+            Self::seed_in(&mut conn, &plans, &entries).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(
+        conn: &mut SqliteConnection,
+        plans: &[BillPlan],
+        entries: &[BillScheduleEntry],
+    ) -> Result<()> {
+        for plan in plans {
+            upsert_plan(conn, plan).await?;
+        }
+        for entry in entries {
+            upsert_entry(conn, entry).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Bills changes not yet committed and loads the rows again, blocking. For after a

@@ -95,24 +95,36 @@ impl UnitsAdapter {
         records: Vec<PriceSourceRecord>,
         base_unit: UnitId,
     ) -> Result<()> {
-        let changes: Vec<UnitsChange> = units
-            .into_iter()
-            .map(UnitsChange::UpsertUnit)
-            .chain(records.into_iter().map(UnitsChange::UpsertPriceSource))
-            .collect();
         writer.run(move |pool| async move {
             let mut transaction = pool.begin().await?;
-            // A seed's Units may quote one listed after them.
-            sqlx::query("PRAGMA defer_foreign_keys = ON")
-                .execute(&mut *transaction)
-                .await?;
-            for change in &changes {
-                save(&mut transaction, change).await?;
-            }
-            seed_base_unit(&mut transaction, base_unit).await?;
+            Self::seed_in(&mut transaction, &units, &records, base_unit).await?;
             transaction.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886). It defers `conn`'s foreign keys to the commit.
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(
+        conn: &mut SqliteConnection,
+        units: &[UnitRow],
+        records: &[PriceSourceRecord],
+        base_unit: UnitId,
+    ) -> Result<()> {
+        // A seed's Units may quote one listed after them.
+        sqlx::query("PRAGMA defer_foreign_keys = ON")
+            .execute(&mut *conn)
+            .await?;
+        for unit in units {
+            upsert_unit(conn, unit).await?;
+        }
+        for record in records {
+            upsert_price_source(conn, record).await?;
+        }
+        seed_base_unit(conn, base_unit).await
     }
 
     /// Drops the Units changes not yet committed and loads the rows again, blocking. For after a

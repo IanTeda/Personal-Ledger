@@ -62,12 +62,25 @@ impl CategoriesAdapter {
     pub fn seed(writer: &Writer, categories: Vec<Category>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for category in &tree_order(&categories) {
-                upsert(&mut conn, category).await?;
-            }
+            Self::seed_in(&mut conn, &categories).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(
+        conn: &mut SqliteConnection,
+        categories: &[Category],
+    ) -> Result<()> {
+        for category in &tree_order(categories) {
+            upsert(conn, category).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Categories changes not yet committed and loads the rows again, blocking. For

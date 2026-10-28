@@ -75,12 +75,22 @@ impl PayeesAdapter {
     pub fn seed(writer: &Writer, payees: Vec<Payee>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for payee in &payees {
-                upsert(&mut conn, payee).await?;
-            }
+            Self::seed_in(&mut conn, &payees).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(conn: &mut SqliteConnection, payees: &[Payee]) -> Result<()> {
+        for payee in payees {
+            upsert(conn, payee).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Payees changes not yet committed and loads the rows again, blocking. For after a

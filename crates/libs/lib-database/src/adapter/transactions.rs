@@ -62,12 +62,25 @@ impl TransactionsAdapter {
     pub fn seed(writer: &Writer, transactions: Vec<Transaction>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for transaction in &transactions {
-                upsert(&mut conn, transaction).await?;
-            }
+            Self::seed_in(&mut conn, &transactions).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(
+        conn: &mut SqliteConnection,
+        transactions: &[Transaction],
+    ) -> Result<()> {
+        for transaction in transactions {
+            upsert(conn, transaction).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Transactions changes not yet committed and loads the rows again, blocking. For

@@ -70,15 +70,25 @@ impl InventoryAdapter {
     pub fn seed(writer: &Writer, inventory: Inventory) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for location in &inventory.locations {
-                upsert_location(&mut conn, location).await?;
-            }
-            for item in &inventory.items {
-                upsert_item(&mut conn, item).await?;
-            }
+            Self::seed_in(&mut conn, &inventory).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(conn: &mut SqliteConnection, inventory: &Inventory) -> Result<()> {
+        for location in &inventory.locations {
+            upsert_location(conn, location).await?;
+        }
+        for item in &inventory.items {
+            upsert_item(conn, item).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Inventory changes not yet committed and loads the rows again, blocking. For after

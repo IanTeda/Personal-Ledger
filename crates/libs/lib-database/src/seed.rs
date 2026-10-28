@@ -34,29 +34,74 @@ use crate::adapter::transactions::TransactionsAdapter;
 use crate::adapter::units::UnitsAdapter;
 use crate::writer::Writer;
 
-/// Writes every persisted domain's stub seed, blocking until it lands: Units, Price Sources and
-/// the base Unit, the Institutions, which the Accounts name, the Accounts, which the Transactions
-/// and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans name, the Tags,
-/// which the Splits name (#862), the Payees, which the Splits and Bill Plans name, then the
-/// Transactions and the Bills dated from `now`'s local day, and last the Inventory as of that day
-/// (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions,
-/// Bills, Inventory (Q17).
+/// Writes every persisted domain's stub seed in one transaction, blocking until it lands: Units,
+/// Price Sources and the base Unit, the Institutions, which the Accounts name, the Accounts, which
+/// the Transactions and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans
+/// name, the Tags, which the Splits name (#862), the Payees, which the Splits and Bill Plans name,
+/// then the Transactions and the Bills dated from `now`'s local day, and last the Inventory as of
+/// that day (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees,
+/// Transactions, Bills, Inventory (Q17).
 ///
 /// # Errors
-/// Returns the error of a write; nothing of that domain's is written then.
+/// Returns the error of a write; nothing is written then.
 #[tracing::instrument(name = "Seed the stub", level = "debug", skip(writer), err)]
 pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
-    let today = now.with_timezone(&Local).date_naive();
-    UnitsAdapter::seed_from(writer, InMemoryPorts::stub(now))?;
-    InstitutionsAdapter::seed(writer, stub_institutions())?;
-    AccountsAdapter::seed(writer, stub_accounts())?;
-    CategoriesAdapter::seed(writer, stub_categories())?;
-    TagsAdapter::seed(writer, stub_tags())?;
-    PayeesAdapter::seed(writer, stub_payees())?;
-    TransactionsAdapter::seed(writer, stub_ledger_transactions(today))?;
+    write_stub(writer, now, now.with_timezone(&Local).date_naive(), None)
+}
+
+/// Writes [`stub`]'s seed in one transaction, its Units' prices as of `now` and its Transactions,
+/// Bills and Inventory as of `today`, with `personal` in place of the stub's Personal Institution
+/// when given. All or nothing, so a seed that fails partway, or a process that dies in it, never
+/// leaves a Ledger with a base Unit and only some of the rest (#886). The one place the domains'
+/// order lives: each names rows of those before it.
+///
+/// # Errors
+/// Returns the error of a write; nothing is written then.
+pub(crate) fn write_stub(
+    writer: &Writer,
+    now: DateTime<Utc>,
+    today: NaiveDate,
+    personal: Option<lib_institutions::Institution>,
+) -> Result<()> {
+    let units = InMemoryPorts::stub(now);
+    let institutions: Vec<_> = stub_institutions()
+        .into_iter()
+        .map(|institution| match &personal {
+            Some(personal) if personal.id == institution.id => personal.clone(),
+            _ => institution,
+        })
+        .collect();
+    let accounts = stub_accounts();
+    let categories = stub_categories();
+    let tags = stub_tags();
+    let payees = stub_payees();
+    let transactions = stub_ledger_transactions(today);
     let bills = stub_ledger_bills(today);
-    BillsAdapter::seed(writer, bills.plans, bills.entries)?;
-    InventoryAdapter::seed(writer, stub_inventory(today))
+    let inventory = stub_inventory(today);
+    writer.run(move |pool| async move {
+        let mut conn = pool.begin().await?;
+        // A seed's rows may name one written after them.
+        sqlx::query("PRAGMA defer_foreign_keys = ON")
+            .execute(&mut *conn)
+            .await?;
+        UnitsAdapter::seed_in(
+            &mut conn,
+            &units.units.units,
+            &units.price_sources.records,
+            units.base_unit.0,
+        )
+        .await?;
+        InstitutionsAdapter::seed_in(&mut conn, &institutions).await?;
+        AccountsAdapter::seed_in(&mut conn, &accounts).await?;
+        CategoriesAdapter::seed_in(&mut conn, &categories).await?;
+        TagsAdapter::seed_in(&mut conn, &tags).await?;
+        PayeesAdapter::seed_in(&mut conn, &payees).await?;
+        TransactionsAdapter::seed_in(&mut conn, &transactions).await?;
+        BillsAdapter::seed_in(&mut conn, &bills.plans, &bills.entries).await?;
+        InventoryAdapter::seed_in(&mut conn, &inventory).await?;
+        conn.commit().await?;
+        Ok(())
+    })
 }
 
 /// `lib-institutions`' stub seed, the stub Ledger's Institutions, with the ids its Accounts name.

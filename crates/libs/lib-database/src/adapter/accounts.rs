@@ -83,12 +83,22 @@ impl AccountsAdapter {
     pub fn seed(writer: &Writer, accounts: Vec<Account>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for account in &accounts {
-                upsert(&mut conn, account).await?;
-            }
+            Self::seed_in(&mut conn, &accounts).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(conn: &mut SqliteConnection, accounts: &[Account]) -> Result<()> {
+        for account in accounts {
+            upsert(conn, account).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Accounts changes not yet committed and loads the rows again, blocking. For after

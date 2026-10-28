@@ -9,7 +9,6 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use chrono::{NaiveDate, Utc};
-use lib_units::fake::InMemoryPorts;
 
 use crate::{
     AccountsAdapter, BillsAdapter, CategoriesAdapter, Error, InstitutionsAdapter, InventoryAdapter,
@@ -73,55 +72,34 @@ impl From<Storage> for Stores {
 }
 
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,
-/// blocking. A file this call creates is written with the Personal Institution under `personal`,
-/// the Client's "Personal" Message, which a Cash Account names (ADR-0049); that is part of every
-/// new Ledger, not of the stub seed, so it stays once the seed goes. Opening an existing file
-/// writes nothing of it.
+/// blocking.
 ///
-/// A Ledger with no base Unit is new to the stub seed, so it is seeded first with the stub's Units, Price
-/// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), the
-/// stub's Institutions, which its Accounts name (#849), the Personal Institution among them under
-/// `personal`, the stub's Accounts, which its
-/// Transactions and Bill Plans name (#853), the stub's Categories, which its Payees, Splits and
-/// Bill Plans name (#858), the stub's Tags, which its Splits carry (#862), the stub's Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and
-/// Documents name those Transactions (#774), and last the stub's Inventory as of `today`, whose
-/// Items the stub Documents link (#866). The first-launch seed is removed once every domain
-/// persists.
+/// A Ledger with no base Unit is new, so it is written first, in one transaction, with the
+/// Personal Institution under `personal`, the Client's "Personal" Message, which a Cash Account
+/// names (ADR-0049), and the stub seed around it: the stub's Units, Price Sources and base Unit,
+/// which the stub Accounts, Bill Plans and Budgets still name (#746), its Institutions, which its
+/// Accounts name (#849), its Accounts, which its Transactions and Bill Plans name (#853), its
+/// Categories, which its Payees, Splits and Bill Plans name (#858), its Tags, which its Splits
+/// carry (#862), its Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions
+/// and Bills as of `today`, whose Paid entries and Documents name those Transactions (#774), and
+/// last its Inventory as of `today`, whose Items the stub Documents link (#866). All or nothing,
+/// so a first launch cut short leaves no base Unit and the next open writes it whole (#886).
+/// Opening an existing Ledger writes nothing of it.
+///
+/// The first-launch seed is removed once every domain persists. The Personal Institution is part
+/// of every new Ledger, not of the stub seed, so it stays; but on its own it writes no base Unit,
+/// so a new Ledger then needs another way to be known as new.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the file.
 #[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
 pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Storage> {
-    let is_new = !path.exists();
     let (writer, failures) = Writer::open_ledger(path)?;
-    let personal = lib_institutions::personal_institution(personal);
-    if is_new {
-        InstitutionsAdapter::seed(&writer, vec![personal.clone()])?;
-        tracing::info!(path = %path.display(), "Wrote a new Ledger's Personal Institution");
-    }
     let pending = PendingWrites::new(writer.clone());
     let units = match UnitsAdapter::load(pending.clone()) {
         Err(Error::NotFound(_)) => {
-            UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))?;
-            let institutions = seed::stub_institutions()
-                .into_iter()
-                .map(|institution| {
-                    if institution.id == personal.id {
-                        personal.clone()
-                    } else {
-                        institution
-                    }
-                })
-                .collect();
-            InstitutionsAdapter::seed(&writer, institutions)?;
-            AccountsAdapter::seed(&writer, seed::stub_accounts())?;
-            CategoriesAdapter::seed(&writer, seed::stub_categories())?;
-            TagsAdapter::seed(&writer, seed::stub_tags())?;
-            PayeesAdapter::seed(&writer, seed::stub_payees())?;
-            TransactionsAdapter::seed(&writer, seed::stub_ledger_transactions(today))?;
-            let bills = seed::stub_ledger_bills(today);
-            BillsAdapter::seed(&writer, bills.plans, bills.entries)?;
-            InventoryAdapter::seed(&writer, seed::stub_inventory(today))?;
+            let personal = lib_institutions::personal_institution(personal);
+            seed::write_stub(&writer, Utc::now(), today, Some(personal))?;
             tracing::info!(path = %path.display(), "Seeded a new Ledger with the stub");
             UnitsAdapter::load(pending.clone())?
         }
@@ -222,6 +200,93 @@ mod tests {
         assert_eq!(
             storage.institutions.institutions().first(),
             Some(&lib_institutions::personal_institution("Persönlich"))
+        );
+    }
+
+    /// Every row in the file's tables but the migrations', to show what a failed open left.
+    fn rows(path: &Path) -> i64 {
+        let (writer, _) = Writer::open_ledger(path).expect("the file opens");
+        writer
+            .run(|pool| async move {
+                let tables: Vec<String> = sqlx::query_scalar(
+                    "SELECT name FROM sqlite_master
+                     WHERE type = 'table' AND name <> '_sqlx_migrations'
+                       AND name NOT LIKE 'sqlite%'",
+                )
+                .fetch_all(&pool)
+                .await?;
+                let mut total = 0;
+                for table in tables {
+                    let count: i64 =
+                        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM \"{table}\""))
+                            .fetch_one(&pool)
+                            .await?;
+                    total += count;
+                }
+                Ok(total)
+            })
+            .expect("the rows are counted")
+    }
+
+    /// A first launch that fails partway, here at the Inventory, the last domain seeded, writes
+    /// nothing, so the next open sees a new Ledger and seeds it whole (#886).
+    #[test]
+    fn a_first_launch_seed_that_fails_writes_nothing_and_the_next_open_seeds_it_whole() {
+        use lib_categories::CategoryRepository as _;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let (writer, _) = Writer::open_ledger(&path).expect("the file is made and migrated");
+        writer
+            .run(|pool| async move {
+                sqlx::query(
+                    "CREATE TRIGGER refuse_items BEFORE INSERT ON items
+                     BEGIN SELECT RAISE(ABORT, 'the test refuses Items'); END",
+                )
+                .execute(&pool)
+                .await?;
+                Ok(())
+            })
+            .expect("the trigger is made");
+        drop(writer);
+
+        assert!(open_storage(&path, today(), PERSONAL).is_err());
+        assert_eq!(rows(&path), 0, "nothing of the seed was written");
+
+        let (writer, _) = Writer::open_ledger(&path).expect("the file opens");
+        writer
+            .run(|pool| async move {
+                sqlx::query("DROP TRIGGER refuse_items")
+                    .execute(&pool)
+                    .await?;
+                Ok(())
+            })
+            .expect("the trigger is dropped");
+        drop(writer);
+        let storage = open_storage(&path, today(), "Persönlich").expect("the Ledger opens");
+
+        assert_eq!(
+            storage.institutions.institutions().first(),
+            Some(&lib_institutions::personal_institution("Persönlich"))
+        );
+        assert_eq!(
+            storage.institutions.institutions().len(),
+            seed::stub_institutions().len()
+        );
+        assert_eq!(
+            storage.accounts.accounts().accounts(),
+            seed::stub_accounts()
+        );
+        assert_eq!(storage.categories.categories(), seed::stub_categories());
+        assert_eq!(storage.tags.tags().tags(), seed::stub_tags());
+        assert_eq!(storage.payees.payees().payees(), seed::stub_payees());
+        assert_eq!(
+            storage.transactions.transactions(),
+            seed::stub_ledger_transactions(today())
+        );
+        assert_eq!(
+            storage.inventory.inventory().inventory(),
+            seed::stub_inventory(today())
         );
     }
 

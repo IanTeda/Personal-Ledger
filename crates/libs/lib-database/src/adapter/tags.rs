@@ -77,12 +77,22 @@ impl TagsAdapter {
     pub fn seed(writer: &Writer, tags: Vec<Tag>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for tag in &tags {
-                upsert(&mut conn, tag).await?;
-            }
+            Self::seed_in(&mut conn, &tags).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(conn: &mut SqliteConnection, tags: &[Tag]) -> Result<()> {
+        for tag in tags {
+            upsert(conn, tag).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Tags changes not yet committed and loads the rows again, blocking. For after a

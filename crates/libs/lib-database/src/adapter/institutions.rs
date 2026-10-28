@@ -54,12 +54,25 @@ impl InstitutionsAdapter {
     pub fn seed(writer: &Writer, institutions: Vec<Institution>) -> Result<()> {
         writer.run(move |pool| async move {
             let mut conn = pool.begin().await?;
-            for institution in &institutions {
-                upsert(&mut conn, institution).await?;
-            }
+            Self::seed_in(&mut conn, &institutions).await?;
             conn.commit().await?;
             Ok(())
         })
+    }
+
+    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
+    /// transaction (#886).
+    ///
+    /// # Errors
+    /// Returns the error of a write.
+    pub(crate) async fn seed_in(
+        conn: &mut SqliteConnection,
+        institutions: &[Institution],
+    ) -> Result<()> {
+        for institution in institutions {
+            upsert(conn, institution).await?;
+        }
+        Ok(())
     }
 
     /// Drops the Institutions changes not yet committed and loads the rows again, blocking. For
