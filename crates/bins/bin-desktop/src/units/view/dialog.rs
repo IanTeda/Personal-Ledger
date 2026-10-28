@@ -181,11 +181,12 @@ impl UnitsDialog {
 }
 
 /// Where a Units Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Root` to drain once the key or click returns. The page opens Dialogs.
+/// queue for `Root` to drain once the key or click returns. The page opens Dialogs. The Delete unit
+/// Dialog (`crate::unit_deletion`) shares it.
 #[derive(Default)]
-struct DialogRouter {
+pub(crate) struct DialogRouter {
     /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    closed: Option<Option<UnitsOutcome>>,
+    pub(crate) closed: Option<Option<UnitsOutcome>>,
 }
 
 impl UnitsRouter for DialogRouter {

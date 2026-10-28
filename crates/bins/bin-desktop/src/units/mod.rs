@@ -20,7 +20,7 @@ mod view;
 use lib_database::UnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
-pub(crate) use view::dialog::{Landed, help, refusal};
+pub(crate) use view::dialog::{DialogRouter, Landed, help, refusal};
 pub use view::page::UnitsPage;
 
 /// The Units page as the UI tests read it: its view model.

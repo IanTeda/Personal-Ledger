@@ -13,12 +13,11 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_core::UnitId;
-use lib_toast::{Notice, Notify};
 use lib_unit_deletion::SharedUnitDeletion;
-use lib_unit_deletion::presenter::{DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel};
-use lib_units::UnitsRouter;
-use lib_units::presenter::UnitsOutcome;
-use lib_viper::view::SelectView;
+use lib_unit_deletion::presenter::{
+    DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel, UsualUnitSelect,
+};
+use lib_units::presenter::NewBaseView;
 
 use crate::dialog;
 use crate::form::fields::text_field;
@@ -31,27 +30,106 @@ use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
 use crate::theme::color;
-use crate::units::{DesktopPorts, Landed, help, refusal};
+use crate::units::{DesktopPorts, DialogRouter, Landed, help, refusal};
 
 /// The open Delete Dialog's clicks.
 type Clicks = DialogClicks<DeleteUnitDialog>;
 
-/// A select the Dialog draws, in the order it draws them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Field {
-    NewBase,
-    /// The Usual unit of the Institution at this index of the view model's selects.
-    UsualUnit(usize),
+/// A select the Dialog draws, found by its position: the New base unit first when the Unit is the
+/// base, then the Usual unit of each Institution naming it, in the Ledger's order.
+enum Select<'a> {
+    NewBase(&'a NewBaseView),
+    /// The `n`th Usual unit select.
+    UsualUnit(usize, &'a UsualUnitSelect),
 }
 
-/// The selects `view` draws, top to bottom.
-fn fields(view: &DeleteUnitViewModel) -> Vec<Field> {
-    let new_base = view.unit.new_base.iter().map(|_| Field::NewBase);
+/// The select at `index`, top to bottom.
+fn select(view: &DeleteUnitViewModel, index: usize) -> Option<Select<'_>> {
+    let new_base = view.unit.new_base.as_ref();
     let usual_units = view
         .usual_units
-        .iter()
-        .flat_map(|usual_units| (0..usual_units.selects.len()).map(Field::UsualUnit));
-    new_base.chain(usual_units).collect()
+        .as_ref()
+        .map(|usual_units| &usual_units.selects[..]);
+    match (new_base, index) {
+        (Some(new_base), 0) => Some(Select::NewBase(new_base)),
+        (new_base, _) => {
+            let n = index - usize::from(new_base.is_some());
+            Some(Select::UsualUnit(n, usual_units?.get(n)?))
+        }
+    }
+}
+
+/// How many selects `view` draws.
+fn select_count(view: &DeleteUnitViewModel) -> usize {
+    let usual_units = view
+        .usual_units
+        .as_ref()
+        .map_or(0, |usual_units| usual_units.selects.len());
+    usize::from(view.unit.new_base.is_some()) + usual_units
+}
+
+/// The event for a new Usual unit on the Institution `named` selects for.
+fn usual_unit_chosen(named: &UsualUnitSelect, unit: Option<UnitId>) -> DeleteUnitEvent {
+    DeleteUnitEvent::UsualUnit {
+        institution: named.institution,
+        unit,
+    }
+}
+
+impl Select<'_> {
+    fn label(&self) -> &str {
+        match self {
+            Self::NewBase(new_base) => &new_base.select.label,
+            Self::UsualUnit(_, named) => &named.select.label,
+        }
+    }
+
+    fn options(&self) -> Vec<String> {
+        match self {
+            Self::NewBase(new_base) => labels(&new_base.select),
+            Self::UsualUnit(_, named) => labels(&named.select),
+        }
+    }
+
+    fn synced(&self, state: &SelectState) -> SelectState {
+        match self {
+            Self::NewBase(new_base) => synced(state, &new_base.select),
+            Self::UsualUnit(_, named) => synced(state, &named.select),
+        }
+    }
+
+    fn toggle(&self, state: &mut SelectState) {
+        match self {
+            Self::NewBase(new_base) => toggle_select(state, &new_base.select),
+            Self::UsualUnit(_, named) => toggle_select(state, &named.select),
+        }
+    }
+
+    /// The event a key on the select sends, when it changed the choice.
+    fn key(&self, state: &mut SelectState, key: DialogKey) -> Option<DeleteUnitEvent> {
+        match self {
+            Self::NewBase(new_base) => select_key(state, &new_base.select, key)
+                .1
+                .map(DeleteUnitEvent::NewBase),
+            Self::UsualUnit(_, named) => {
+                let unit = select_key(state, &named.select, key).1?;
+                Some(usual_unit_chosen(named, unit))
+            }
+        }
+    }
+
+    /// The event a click on row `option` of the open list sends.
+    fn choose(&self, state: &mut SelectState, option: usize) -> Option<DeleteUnitEvent> {
+        match self {
+            Self::NewBase(new_base) => {
+                choose_option(state, &new_base.select, option).map(DeleteUnitEvent::NewBase)
+            }
+            Self::UsualUnit(_, named) => {
+                let unit = choose_option(state, &named.select, option)?;
+                Some(usual_unit_chosen(named, unit))
+            }
+        }
+    }
 }
 
 /// The open Delete unit Dialog: its Presenter, the Units ports and Ledger read copy its confirm
@@ -60,9 +138,9 @@ pub struct DeleteUnitDialog {
     presenter: DeleteUnitPresenter,
     ports: DesktopPorts,
     ledger: Entity<LedgerStore>,
-    /// Each select's open list and highlight, in [`fields`] order.
+    /// Each select's open list and highlight by position.
     selects: Vec<SelectState>,
-    /// The select `Up`/`Down` drive, an index into [`fields`].
+    /// The select `Up`/`Down` drive, a position in [`select`].
     focus: usize,
     landed: Landed,
 }
@@ -101,7 +179,7 @@ impl DeleteUnitDialog {
         router
     }
 
-    /// The widget state of the select at `index` of [`fields`], made as it is first drawn.
+    /// The widget state of the select at `index`, made as it is first drawn.
     fn select_state(&mut self, index: usize) -> &mut SelectState {
         if self.selects.len() <= index {
             self.selects.resize_with(index + 1, SelectState::default);
@@ -109,79 +187,34 @@ impl DeleteUnitDialog {
         &mut self.selects[index]
     }
 
-    /// A select key on `field`, the select at `index`: a changed choice goes to the Presenter.
-    fn select_key(
-        &mut self,
-        view: &DeleteUnitViewModel,
-        index: usize,
-        field: Field,
-        key: DialogKey,
-    ) {
-        match field {
-            Field::NewBase => {
-                let Some(new_base) = &view.unit.new_base else {
-                    return;
-                };
-                if let (_, Some(id)) = select_key(self.select_state(index), &new_base.select, key) {
-                    self.send(DeleteUnitEvent::NewBase(id));
-                }
-            }
-            Field::UsualUnit(n) => {
-                let Some(named) = usual_unit(view, n) else {
-                    return;
-                };
-                if let (_, Some(unit)) = select_key(self.select_state(index), &named.1, key) {
-                    self.send(DeleteUnitEvent::UsualUnit {
-                        institution: named.0,
-                        unit,
-                    });
-                }
-            }
+    /// A select key on the select at `index`: a changed choice goes to the Presenter.
+    fn select_key(&mut self, view: &DeleteUnitViewModel, index: usize, key: DialogKey) {
+        let Some(select) = select(view, index) else {
+            return;
+        };
+        if let Some(event) = select.key(self.select_state(index), key) {
+            self.send(event);
         }
     }
 
     /// A click on the select at `index`: it takes the arrow keys, and its list opens or closes.
     fn click_select(&mut self, index: usize) {
         let view = self.view();
-        let Some(&field) = fields(&view).get(index) else {
+        let Some(select) = select(&view, index) else {
             return;
         };
         self.focus = index;
-        match field {
-            Field::NewBase => {
-                if let Some(new_base) = &view.unit.new_base {
-                    toggle_select(self.select_state(index), &new_base.select);
-                }
-            }
-            Field::UsualUnit(n) => {
-                if let Some((_, select)) = usual_unit(&view, n) {
-                    toggle_select(self.select_state(index), &select);
-                }
-            }
-        }
+        select.toggle(self.select_state(index));
     }
 
     /// A click on row `option` of the open list of the select at `index`.
     fn click_option(&mut self, index: usize, option: usize) {
         let view = self.view();
-        match fields(&view).get(index) {
-            Some(Field::NewBase) => {
-                let chosen = view.unit.new_base.as_ref().and_then(|new_base| {
-                    choose_option(self.select_state(index), &new_base.select, option)
-                });
-                if let Some(id) = chosen {
-                    self.send(DeleteUnitEvent::NewBase(id));
-                }
-            }
-            Some(&Field::UsualUnit(n)) => {
-                let Some((institution, select)) = usual_unit(&view, n) else {
-                    return;
-                };
-                if let Some(unit) = choose_option(self.select_state(index), &select, option) {
-                    self.send(DeleteUnitEvent::UsualUnit { institution, unit });
-                }
-            }
-            None => {}
+        let Some(select) = select(&view, index) else {
+            return;
+        };
+        if let Some(event) = select.choose(self.select_state(index), option) {
+            self.send(event);
         }
     }
 
@@ -198,39 +231,6 @@ impl DeleteUnitDialog {
     }
 }
 
-/// The Institution and select of the `n`th Usual unit select.
-fn usual_unit(
-    view: &DeleteUnitViewModel,
-    n: usize,
-) -> Option<(lib_core::InstitutionId, SelectView<Option<UnitId>>)> {
-    let named = view.usual_units.as_ref()?.selects.get(n)?;
-    Some((named.institution, named.select.clone()))
-}
-
-/// Where the Delete Dialog's Presenter asks to go: closing, which the Dialog reads, and Notices,
-/// which `Root` drains once the key or click returns. It opens no Dialog.
-#[derive(Default)]
-struct DialogRouter {
-    /// `Some` once the Presenter closed the Dialog, with what its confirm did.
-    closed: Option<Option<UnitsOutcome>>,
-}
-
-impl UnitsRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: lib_units::UnitsDialog) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
-
 impl EventEmitter<DialogClosed> for DeleteUnitDialog {}
 
 impl HostedDialog for DeleteUnitDialog {
@@ -238,11 +238,10 @@ impl HostedDialog for DeleteUnitDialog {
     /// the one focused, and every other key types into the typed-back code.
     fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
         let view = self.view();
-        let fields = fields(&view);
+        let count = select_count(&view);
         if matches!(key, DialogKey::Tab | DialogKey::BackTab) {
-            if !fields.is_empty() {
+            if count > 0 {
                 self.close_open_select();
-                let count = fields.len();
                 self.focus = if key == DialogKey::Tab {
                     (self.focus + 1) % count
                 } else {
@@ -251,14 +250,14 @@ impl HostedDialog for DeleteUnitDialog {
             }
             return DialogOutcome::Handled;
         }
-        if let Some(&field) = fields.get(self.focus) {
+        if self.focus < count {
             let select_key_now = match key {
                 DialogKey::Up | DialogKey::Down => true,
                 DialogKey::Enter => self.select_state(self.focus).is_open(),
                 _ => false,
             };
             if select_key_now {
-                self.select_key(&view, self.focus, field, key);
+                self.select_key(&view, self.focus, key);
                 return DialogOutcome::Handled;
             }
         }
@@ -312,14 +311,7 @@ impl HostedDialog for DeleteUnitDialog {
         let view = self.view();
         let unit = &view.unit;
         let usual_units = view.usual_units.as_ref();
-        let focused = match fields(&view).get(self.focus) {
-            Some(Field::NewBase) => unit
-                .new_base
-                .as_ref()
-                .map(|new_base| new_base.select.label.clone()),
-            Some(&Field::UsualUnit(n)) => usual_unit(&view, n).map(|(_, select)| select.label),
-            None => None,
-        };
+        let focused = select(&view, self.focus).map(|select| select.label().to_string());
         DialogReadback {
             kind: "DeleteUnit",
             values: vec![
@@ -398,24 +390,16 @@ impl HostedDialog for DeleteUnitDialog {
 impl Render for DeleteUnitDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let view = self.view();
-        let fields = fields(&view);
-        if self.selects.len() < fields.len() {
-            self.selects.resize_with(fields.len(), SelectState::default);
+        let count = select_count(&view);
+        if self.selects.len() < count {
+            self.selects.resize_with(count, SelectState::default);
         }
-        render(
-            &view,
-            &fields,
-            &self.selects,
-            self.focus,
-            &Clicks::new(cx),
-            cx,
-        )
+        render(&view, &self.selects, self.focus, &Clicks::new(cx), cx)
     }
 }
 
 fn render(
     view: &DeleteUnitViewModel,
-    fields: &[Field],
     selects: &[SelectState],
     focus: usize,
     actions: &Clicks,
@@ -449,8 +433,11 @@ fn render(
         }));
     }
     // The focus ring shows which select the arrow keys drive, needed only when there are two.
-    let ring = fields.len() > 1;
-    for (index, field) in fields.iter().enumerate() {
+    let ring = select_count(view) > 1;
+    for index in 0..select_count(view) {
+        let Some(select) = select(view, index) else {
+            continue;
+        };
         let state = selects.get(index).cloned().unwrap_or_default();
         let on_field_click = actions.click(move |dialog: &mut DeleteUnitDialog| {
             dialog.click_select(index);
@@ -459,65 +446,44 @@ fn render(
             dialog.click_option(index, option);
         });
         let focused = ring && index == focus;
-        match *field {
-            Field::NewBase => {
-                let Some(new_base) = &unit.new_base else {
-                    continue;
-                };
-                let options = labels(&new_base.select);
-                body.push(
-                    div()
-                        .child(select_field::render(
-                            SelectFieldProps {
-                                id: "delete-unit-new-base".into(),
-                                label: new_base.select.label.clone().into(),
-                                options: &options,
-                                state: &synced(&state, &new_base.select),
-                                focused,
-                                accent: false,
-                                read_only: None,
-                                on_field_click,
-                                on_option_click,
-                            },
-                            cx,
-                        ))
-                        .child(help(new_base.help.clone(), cx))
-                        .into_any_element(),
-                );
-            }
-            Field::UsualUnit(n) => {
-                let Some((_, select)) = usual_unit(view, n) else {
-                    continue;
-                };
-                if n == 0
-                    && let Some(usual_units) = &view.usual_units
-                {
-                    body.push(
-                        div()
-                            .debug_selector(|| "delete-unit-usual-units-help".to_string())
-                            .text_size(px(11.5))
-                            .text_color(color::muted(cx))
-                            .child(usual_units.help.clone())
-                            .into_any_element(),
-                    );
-                }
-                let options = labels(&select);
-                body.push(select_field::render(
-                    SelectFieldProps {
-                        id: format!("delete-unit-usual-unit-{n}").into(),
-                        label: select.label.clone().into(),
-                        options: &options,
-                        state: &synced(&state, &select),
-                        focused,
-                        accent: false,
-                        read_only: None,
-                        on_field_click,
-                        on_option_click,
-                    },
-                    cx,
-                ));
-            }
+        let options = select.options();
+        let state = select.synced(&state);
+        let (id, help_line) = match &select {
+            Select::NewBase(new_base) => (
+                "delete-unit-new-base".to_string(),
+                Some(help(new_base.help.clone(), cx)),
+            ),
+            Select::UsualUnit(n, _) => (format!("delete-unit-usual-unit-{n}"), None),
+        };
+        // The Usual units' help sits once above the first of their selects.
+        if let (Select::UsualUnit(0, _), Some(usual_units)) = (&select, &view.usual_units) {
+            body.push(
+                div()
+                    .debug_selector(|| "delete-unit-usual-units-help".to_string())
+                    .text_size(px(11.5))
+                    .text_color(color::muted(cx))
+                    .child(usual_units.help.clone())
+                    .into_any_element(),
+            );
         }
+        let field = select_field::render(
+            SelectFieldProps {
+                id: id.into(),
+                label: select.label().to_string().into(),
+                options: &options,
+                state: &state,
+                focused,
+                accent: false,
+                read_only: None,
+                on_field_click,
+                on_option_click,
+            },
+            cx,
+        );
+        body.push(match help_line {
+            Some(help_line) => div().child(field).child(help_line).into_any_element(),
+            None => field,
+        });
     }
     if let Some(confirm) = &unit.confirm {
         body.push(
