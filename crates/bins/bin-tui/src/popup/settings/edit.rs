@@ -1,4 +1,4 @@
-//! The in-place editor popup — `e` from the Settings view, or `:set <key>` (`docs/ux/tui-mockups/
+//! The in-place editor popup — `enter` on a Settings › General field, or `:set <key>` (`docs/ux/tui-mockups/
 //! settings/README.md` §4b, "Editing in place"). Wireframe stage, same as `popup::unit::edit`:
 //! every field renders §4b's own `general.negatives` worked example verbatim — including the
 //! candidate already chosen (`minus`) and its resolved preview/on-accept lines — rather than a

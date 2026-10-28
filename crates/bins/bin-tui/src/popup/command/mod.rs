@@ -144,10 +144,18 @@ impl CommandPopup {
     /// UI yet to complete a value "into". A no-op when nothing is selected (an empty result
     /// set) or the input already is exactly that text; never cycles between candidates on
     /// repeated presses the way `↑`/`↓` does — only they change which row it would fill from.
+    ///
+    /// Once an argument with known values is being typed (`settings sy`), it completes the
+    /// argument instead, to the first value it begins (`settings sync-server`).
     pub fn tab(&mut self) {
         self.not_yet_built = None;
         self.history_cursor = None;
 
+        if let Some(completed) = self.completed_argument() {
+            self.input = completed;
+            self.selected = 0;
+            return;
+        }
         let Some(command) = self.selected_command() else {
             return;
         };
@@ -206,6 +214,21 @@ impl CommandPopup {
     pub fn selected(&self) -> Option<(CommandId, &'static str)> {
         self.selected_command()
             .map(|command| (command.id, command.name))
+    }
+
+    /// The input with its typed argument completed to the first of the command's
+    /// [`commands::completions`] it begins, ignoring case; `None` with no argument typed, or none
+    /// it begins.
+    fn completed_argument(&self) -> Option<String> {
+        let (command, typed) = self.typed_argument()?;
+        if typed.is_empty() {
+            return None;
+        }
+        let typed = typed.to_lowercase();
+        let value = commands::completions(command.id)
+            .into_iter()
+            .find(|value| value.starts_with(&typed))?;
+        Some(format!("{} {value}", stem(command)))
     }
 
     /// What was typed after the highlighted command's name, if it takes arguments: `open

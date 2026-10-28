@@ -1,50 +1,91 @@
-## The Groups section: heading and group names.
+## The Settings index page (TUI-047) and the page picker (TUI-048).
 
-tui-settings-groups-heading = GROUPS
+tui-settings-heading = Settings
+tui-settings-page-count = { $count ->
+    [one] { $count } page
+   *[other] { $count } pages
+}
+tui-settings-legend = ● syncs with the ledger · ○ this device only
+tui-settings-picker-title = Go to Settings Page
 
-## The "Where values live" section.
+## A page's breadcrumb heading, before the page's name.
 
-tui-settings-where-heading = WHERE VALUES LIVE
-tui-settings-where-tag = H log
-tui-settings-where-overrides = overrides
-tui-settings-where-overrides-value = 3 rows
-tui-settings-where-defaults = defaults
-tui-settings-where-defaults-value = 42 in code
-tui-settings-where-last-commit = last commit
-tui-settings-where-last-commit-value = 14:02
-tui-settings-where-note = kept in the database
+tui-settings-breadcrumb-parent = Settings ›
 
-## The Reset section.
+## Page names, in the index's order.
 
-tui-settings-reset-heading = RESET
-tui-settings-reset-tag = deletes the row
-tui-settings-reset-hint-r = r this setting
-tui-settings-reset-hint-group = R whole group
+tui-settings-page-general = General
+tui-settings-page-display = Display
+tui-settings-page-units = Units
+tui-settings-page-institutions = Institutions
+tui-settings-page-accounts = Accounts
+tui-settings-page-categories = Categories
+tui-settings-page-tags = Tags
+tui-settings-page-payees = Payees
+tui-settings-page-documents = Documents
+tui-settings-page-inventory = Inventory
+tui-settings-page-ai-connections = AI connections
+tui-settings-page-sync-server = Sync server
+tui-settings-page-backup = Backup
+tui-settings-page-history = History
+tui-settings-page-logs = Logs
+tui-settings-page-about = About
 
-## The Settings list section.
+## The one-line description beside each page's name on the index page.
 
-tui-settings-list-heading = SETTINGS
-tui-settings-list-heading-tag = 8
-tui-settings-list-column-setting = SETTING
-tui-settings-list-column-value = VALUE
+tui-settings-description-general = ledger name, owner, financial year and base unit
+tui-settings-description-display = appearance, colour theme, date style, glyphs and hint bar
+tui-settings-description-units = currencies and other units, and their price sources
+tui-settings-description-institutions = banks, brokers and lenders
+tui-settings-description-accounts = every account, its institution and its unit
+tui-settings-description-categories = income and expense categories
+tui-settings-description-tags = free labels across transactions
+tui-settings-description-payees = who you pay, their match rules and default category
+tui-settings-description-documents = document types and their reminders
+tui-settings-description-inventory = locations and their areas
+tui-settings-description-ai-connections = model providers and assistant access
+tui-settings-description-sync-server = server address, status and last sync
+tui-settings-description-backup = local backups, export and Git backup
+tui-settings-description-history = every change, with undo and restore
+tui-settings-description-logs = log level and the live log
+tui-settings-description-about = version, licences and links
 
-## Setting rows in the list.
+## The scope note on the right of each page's heading.
 
-tui-settings-setting-base-unit = base unit
-tui-settings-setting-base-unit-value = AUD
+tui-settings-scope-general = preferences · synced · ledger identity
+tui-settings-scope-display = configuration · local · theme syncs
+tui-settings-scope-ledger-data = ledger data · synced
+tui-settings-scope-ai-connections = this device
+tui-settings-scope-sync-server = this device · synced
+tui-settings-scope-backup = this device · local files
+tui-settings-scope-history = all devices
+tui-settings-scope-logs = this device · diagnostic
+tui-settings-scope-about = version info
+
+## Hint bar labels, each after its key.
+
+tui-settings-hint-page = page
+tui-settings-hint-open = open
+tui-settings-hint-first-last = first/last
+tui-settings-hint-back = back
+tui-settings-hint-close = close
+tui-settings-hint-field = field
+tui-settings-hint-edit = edit
+tui-settings-hint-pages = pages
+tui-settings-hint-picker = picker
+tui-settings-hint-settings = settings
+
+## Settings › General's field labels.
+
+tui-settings-general-ledger-name = ledger name
+tui-settings-general-owner = owner
+tui-settings-general-financial-year = financial year starts
+tui-settings-general-base-unit = base unit
+
+## Settings › Display's field labels.
+
 tui-settings-setting-date-style = date style
-tui-settings-setting-negatives = negatives
 tui-settings-setting-locale = locale
-tui-settings-setting-week-starts = week starts
-tui-settings-setting-week-starts-value = monday
-tui-settings-setting-fiscal-year = fiscal year starts
-tui-settings-setting-fiscal-year-value = 01 jul
-tui-settings-setting-undo-depth = undo depth
-tui-settings-setting-undo-depth-value = 50 commands
-
-## The "Selected" section.
-
-tui-settings-selected-explain = every total converts to this
 
 ## The Edit Setting popup.
 

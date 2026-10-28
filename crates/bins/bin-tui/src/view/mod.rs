@@ -138,18 +138,19 @@ pub enum Action {
     /// `g r`, or `Enter` on the command popup's `report list` command — opens the placeholder
     /// Reports view.
     OpenReports,
-    /// `g s`, or `Enter` on the command popup's `settings` command — opens the Settings view
-    /// (`docs/ux/tui-mockups/05-settings/README.md` §4a — the "at rest" wireframe, plus the §4b/§4c popups
-    /// below; the database-backed registry behind either is later work).
+    /// `g s`, or `Enter` on the command popup's `settings` command — opens the Settings view on
+    /// its index page, with the page last left selected (`docs/ux/tui-mockups/05-settings/
+    /// README.md`, TUI-047).
     OpenSettings,
-    /// `e` on the Settings view — opens the in-place editor popup over the `general.negatives`
-    /// worked example (`docs/ux/tui-mockups/05-settings/README.md` §4b, "Editing in place").
+    /// `Enter` on the command popup's `settings <page>` — opens the Settings view on that page,
+    /// as if it had been opened from the index.
+    OpenSettingsPage(settings::SettingsPage),
+    /// `enter` on a Settings › General field other than the base unit — opens the in-place
+    /// editor popup over its `general.negatives` worked example until Stage 2 of the Settings
+    /// work plan makes it edit the field (TUI-020).
     OpenEditSettingPopup,
-    /// `enter` on the Settings view — opens the base-unit guard overlay over the `general.
-    /// base_unit` worked example (`docs/ux/tui-mockups/05-settings/README.md` §4c, "Base unit guard").
-    /// Bound to a key of its own rather than reached by committing an §4b edit, since there is
-    /// no real "currently selected setting" state yet to route a generic commit through —
-    /// `view::settings::SettingsView`'s own module doc says more.
+    /// `enter` on the Settings › General base unit — opens the base-unit guard overlay over its
+    /// worked example (TUI-021). Stage 2 opens it on committing a new base unit instead.
     OpenBaseUnitGuardPopup,
     /// `Enter` on the Settings Display group's `colour theme` row — opens its list popup.
     OpenColourThemePopup,
@@ -668,6 +669,25 @@ pub trait View {
     /// Draws the open Dialog over `area`, the whole frame. Only called while
     /// [`View::dialog_open`].
     fn render_dialog(&self, _frame: &mut Frame<'_>, _area: Rect, _c: &Colours) {}
+
+    /// Takes the `back` key before `Shell` pops its view stack: `true` when the view stepped
+    /// back within itself (Settings, from a page to its index), so the stack is left alone.
+    fn back(&mut self) -> bool {
+        false
+    }
+
+    /// Whether the view has a popup of its own open (the Settings page picker). `Shell` then
+    /// hands it every key but `Ctrl+C` ahead of its global keys and pauses the Toasts, but,
+    /// unlike [`View::dialog_open`], keeps the mode NORMAL and lets the view draw the popup.
+    fn popup_open(&self) -> bool {
+        false
+    }
+
+    /// The view's own keys for the hint bar, as `(key, label)`, in place of the Shell's
+    /// defaults; `None` keeps those. `back` is the Shell's configured back key.
+    fn hints(&self, _back: &str) -> Option<Vec<(String, String)>> {
+        None
+    }
 
     /// Tells the view the Toasts Preference, whenever it opens or changes, for the one view
     /// that shows it (Settings). `Shell` owns the Preference inside its `Toasts`.

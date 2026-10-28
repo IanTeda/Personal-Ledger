@@ -1,13 +1,14 @@
 //! Settings-domain popups: the in-place editor (`docs/ux/tui-mockups/05-settings/README.md` §4b) and the
 //! base-unit guard (§4c), hosted by `Shell` the same way `crate::popup::unit` is. Wireframe
-//! stage, same fidelity as the rest of `view::settings` and `popup::unit`: every field renders
-//! §4a/§4b/§4c's own worked examples verbatim rather than a real, editable draft against the
+//! stage, same fidelity as `view::settings`' General page and `popup::unit`: every field renders
+//! §4b/§4c's own worked examples verbatim rather than a real, editable draft against the
 //! (not yet built) settings registry.
 //!
 //! §4b's own text calls for the editor to open "in the row's position" — the list dims around
 //! it rather than a floating dialog. Implementing that would mean the settings list's row
 //! layout knowing about an open editor, which is a deeper change than this wireframe stage
-//! needs; both popups here instead reuse `popup::unit`'s "centred floating overlay over a
+//! needs; Stage 2 of the Settings work plan (`CLAUDE_CODE.md`) makes the editor inline. Until
+//! then both popups here reuse `popup::unit`'s "centred floating overlay over a
 //! dimmed view" treatment, the same simplification the units screen's own forms already made
 //! against their design doc's more contextual language.
 

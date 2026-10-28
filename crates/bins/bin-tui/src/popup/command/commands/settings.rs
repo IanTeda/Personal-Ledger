@@ -1,18 +1,27 @@
-//! The Settings domain — a single command, opening `crate::view::settings` (`docs/ux/tui-mockups/
-//! settings/README.md` §4a). That view, and the `e`/`enter` popups it opens
-//! (`crate::popup::settings`, §4b/§4c), are wireframe-stage: the database-backed registry the
-//! README's own command grammar assumes (`:set <key> <value>`, `:settings log`, `:settings
-//! reset <key>`) isn't built yet, so only the "at rest" screen has a command behind it here,
-//! matching `dashboard`/`help`'s own single-command domains.
+//! The Settings domain: `settings [page]`, opening the Settings index, or one page by its
+//! command name (`crate::view::settings::SettingsPage::command_name`), which `Tab` completes.
+//! The rest of the README's grammar (`set`, `sync`, `backup`) is Stage 5 of its work plan.
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command, CommandId};
+use super::{Arg, Chord, Command, CommandId};
+use crate::view::settings::SettingsPage;
 
 pub const COMMANDS: &[Command] = &[Command {
     id: CommandId::Settings,
-    name: "settings",
+    name: "settings [page]",
     chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('s')]),
     description: crate::msg::tui_command_settings_description,
-    args: &[],
+    args: &[Arg {
+        placeholder: "[page]",
+        preview: crate::msg::tui_command_preview_settings_page,
+    }],
 }];
+
+/// The values `[page]` completes on, in the index's order.
+pub fn pages() -> Vec<&'static str> {
+    SettingsPage::ALL
+        .iter()
+        .map(|page| page.command_name())
+        .collect()
+}

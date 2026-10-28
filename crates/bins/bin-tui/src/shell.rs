@@ -4,7 +4,9 @@
 //! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-shell/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Duration;
 
 use chrono::{DateTime, Local};
@@ -53,9 +55,17 @@ use crate::{
     tui::Tui,
     units::{UnitsSetup, view::units::UnitsView},
     view::{
-        Action, View, ViewId, accounts::AccountsView, balance_checks::BalanceChecksView,
-        budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
-        payees::PayeesView, reports::ReportsView, settings::SettingsView, tags::TagsView,
+        Action, View, ViewId,
+        accounts::AccountsView,
+        balance_checks::BalanceChecksView,
+        budgets::BudgetsView,
+        categories::CategoriesView,
+        dashboard::DashboardView,
+        help::HelpView,
+        payees::PayeesView,
+        reports::ReportsView,
+        settings::{SettingsPage, SettingsView},
+        tags::TagsView,
         transactions::TransactionsView,
     },
 };
@@ -105,6 +115,9 @@ pub struct Shell {
     /// here, mirroring `category_popup`. Mutually exclusive with `command_popup`/
     /// `category_popup`.
     settings_popup: Option<SettingsPopup>,
+    /// The Settings page selected on the index, or open, shared with every `SettingsView` this
+    /// session opens, so `g s` lands on the index with the page last left selected.
+    settings_page: Rc<Cell<SettingsPage>>,
     /// The Account-domain popup (`crate::popup::account`) — `Some` while one is open. Owned
     /// here, mirroring `category_popup`: it acts on `AccountsView`'s own fixture, reached via
     /// `View::account_store`, not on anything `Shell` owns directly. Mutually exclusive with
@@ -207,6 +220,7 @@ impl Shell {
             command_history: Vec::new(),
             category_popup: None,
             settings_popup: None,
+            settings_page: Rc::default(),
             account_popup: None,
             tag_popup: None,
             payee_popup: None,
@@ -409,6 +423,7 @@ impl Shell {
     fn popup_open(&self) -> bool {
         self.command_popup.is_some()
             || self.view.dialog_open()
+            || self.view.popup_open()
             || self.category_popup.is_some()
             || self.settings_popup.is_some()
             || self.account_popup.is_some()
@@ -512,7 +527,7 @@ impl Shell {
                     }
                     return self.map_command_popup_key(key);
                 }
-                if self.view.dialog_open() {
+                if self.view.dialog_open() || self.view.popup_open() {
                     return self.view.handle_key(key);
                 }
                 if self.category_popup.is_some() {
@@ -666,7 +681,13 @@ impl Shell {
             CommandId::ToastHistory | CommandId::ToastHistoryAlias => {
                 Some(Action::OpenToastHistory)
             }
-            CommandId::Settings => Some(Action::OpenSettings),
+            CommandId::Settings => Some(
+                self.command_popup
+                    .as_ref()
+                    .and_then(CommandPopup::argument)
+                    .and_then(SettingsPage::from_command_name)
+                    .map_or(Action::OpenSettings, Action::OpenSettingsPage),
+            ),
             CommandId::Category => Some(Action::OpenCategories),
             // The command popup has no real typed-argument resolution (`popup::command::
             // commands::categories`'s own module doc), so `<cat>`/`<parent>`/`<name>` all
@@ -1380,7 +1401,9 @@ impl Shell {
                 }
             }
             Action::PopView => {
-                if let Some(previous) = self.view_stack.pop() {
+                if !self.view.back()
+                    && let Some(previous) = self.view_stack.pop()
+                {
                     self.view = previous;
                 }
             }
@@ -1447,7 +1470,10 @@ impl Shell {
             Action::OpenHelp => self.open(HelpView::new()),
             Action::OpenPayees => self.open(PayeesView::new()),
             Action::OpenReports => self.open(ReportsView::new()),
-            Action::OpenSettings => self.open(SettingsView::new()),
+            Action::OpenSettings | Action::OpenSettingsPage(_) => {
+                self.open(SettingsView::remembering(Rc::clone(&self.settings_page)));
+                self.view.update(&action);
+            }
             Action::OpenTransactions => self.open(TransactionsView::new()),
             Action::NoOp => {}
             Action::SetColourTheme(colour_theme) => self.colours.set_colour_theme(colour_theme),
@@ -2109,7 +2135,14 @@ impl Shell {
             let mut spans = vec![Span::raw(" ")];
             spans.push(Span::styled(upper(&crate::msg::tui_mode_normal()), key));
             spans.push(Span::raw(HINT_SEPARATOR));
-            for (index, (token, label)) in self.footer_hints().into_iter().enumerate() {
+            // The view's own keys take the place of the Shell's resting hints.
+            let hints = self.view.hints(back_key).unwrap_or_else(|| {
+                self.footer_hints()
+                    .into_iter()
+                    .map(|(token, label)| (token.to_string(), label))
+                    .collect()
+            });
+            for (index, (token, label)) in hints.into_iter().enumerate() {
                 if index > 0 {
                     spans.push(Span::raw(HINT_SEPARATOR));
                 }
@@ -2426,7 +2459,7 @@ mod tests {
     fn opened_with(keybindings: KeyBindingConfig) -> Shell {
         let stores = Stores::with_units(
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
-            std::rc::Rc::new(lib_database::InMemoryCommit),
+            Rc::new(lib_database::InMemoryCommit),
             std::sync::mpsc::channel().1,
         );
         Shell::with_keybindings(keybindings).with_open_ledger("test.pldb", stores)
@@ -4090,41 +4123,182 @@ mod tests {
         assert!(shell.command_popup.is_none());
     }
 
-    #[test]
-    fn e_on_the_settings_view_opens_the_edit_setting_popup() {
-        let mut shell = opened();
-        shell.update(Action::OpenSettings);
-        assert!(shell.settings_popup.is_none());
-
-        let action = shell
-            .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Char('e'),
-                KeyModifiers::NONE,
-            )))
-            .expect("e on the settings view always maps to an action");
-        shell.update(action);
-
-        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
+    /// Presses each key through `map_event` and `update`, as the event loop does.
+    fn press(shell: &mut Shell, codes: &[KeyCode]) {
+        for code in codes {
+            shell.handle_event(Event::Key(KeyEvent::new(*code, KeyModifiers::NONE)));
+        }
     }
 
     #[test]
-    fn enter_on_the_settings_view_opens_the_base_unit_guard_popup() {
+    fn enter_on_a_general_field_opens_the_editor_and_on_the_base_unit_the_guard() {
         let mut shell = opened();
         shell.update(Action::OpenSettings);
-        assert!(shell.settings_popup.is_none());
+        press(&mut shell, &[KeyCode::Enter, KeyCode::Enter]);
+        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
 
-        let action = shell
-            .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Enter,
-                KeyModifiers::NONE,
-            )))
-            .expect("enter on the settings view always maps to an action");
-        shell.update(action);
-
+        press(
+            &mut shell,
+            &[KeyCode::Esc, KeyCode::Char('G'), KeyCode::Enter],
+        );
         assert!(matches!(
             shell.settings_popup,
             Some(SettingsPopup::BaseUnitGuard(_))
         ));
+    }
+
+    #[test]
+    fn esc_on_a_settings_page_returns_to_the_index_then_leaves_settings() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettings);
+        assert_eq!(shell.view_stack.len(), 1);
+        press(
+            &mut shell,
+            &[
+                KeyCode::Char('j'),
+                KeyCode::Enter,
+                KeyCode::Char(']'),
+                KeyCode::Char('p'),
+            ],
+        );
+        press(&mut shell, &[KeyCode::Down, KeyCode::Enter]);
+        assert_eq!(
+            shell.view_stack.len(),
+            1,
+            "paging pushed onto the view stack"
+        );
+        assert!(drawn(&mut shell).contains("Settings › Institutions"));
+
+        press(&mut shell, &[KeyCode::Esc]);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        assert!(!drawn(&mut shell).contains("Settings ›"), "still on a page");
+
+        press(&mut shell, &[KeyCode::Esc]);
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
+        assert_eq!(shell.settings_page.get(), SettingsPage::Institutions);
+    }
+
+    #[test]
+    fn esc_closes_a_colour_popup_before_it_leaves_the_display_page() {
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(&mut shell, &[KeyCode::Enter]);
+        assert!(matches!(
+            shell.settings_popup,
+            Some(SettingsPopup::Colour(_))
+        ));
+        press(&mut shell, &[KeyCode::Esc]);
+        assert!(shell.settings_popup.is_none());
+        assert!(
+            shell
+                .view
+                .hints("esc")
+                .is_some_and(|hints| hints.iter().any(|(key, _)| key == "[/]"))
+        );
+    }
+
+    #[test]
+    fn g_s_lands_on_the_index_with_the_page_last_left_selected() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::Backup));
+        press(&mut shell, &[KeyCode::Char('g'), KeyCode::Char('d')]);
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
+
+        press(&mut shell, &[KeyCode::Char('g'), KeyCode::Char('s')]);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        let text = drawn(&mut shell);
+        assert!(
+            text.contains("16 pages") && !text.contains("Settings ›"),
+            "{text}"
+        );
+        assert_eq!(shell.settings_page.get(), SettingsPage::Backup);
+
+        // From a page of the open Settings, too.
+        press(
+            &mut shell,
+            &[KeyCode::Enter, KeyCode::Char('g'), KeyCode::Char('s')],
+        );
+        assert!(!drawn(&mut shell).contains("Settings ›"));
+    }
+
+    #[test]
+    fn the_settings_command_opens_a_page_by_name_and_tab_completes_it() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenCommandPopup);
+        for c in "settings SY".chars() {
+            shell.update(Action::CommandPopupInput(c));
+        }
+        shell.update(Action::CommandPopupTab);
+        assert_eq!(
+            shell.command_popup.as_ref().map(CommandPopup::input),
+            Some("settings sync-server")
+        );
+        press(&mut shell, &[KeyCode::Enter]);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        assert!(drawn(&mut shell).contains("Settings › Sync server"));
+
+        press(&mut shell, &[KeyCode::Esc]);
+        assert_eq!(shell.settings_page.get(), SettingsPage::SyncServer);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+    }
+
+    #[test]
+    fn the_page_picker_keeps_normal_mode_and_shows_its_own_hints() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        let page_footer = footer(&mut shell);
+        assert!(
+            page_footer.contains("[/] pages · p picker · esc settings"),
+            "{page_footer}"
+        );
+
+        press(&mut shell, &[KeyCode::Char('p')]);
+        let text = drawn(&mut shell);
+        assert!(text.contains("Go to Settings Page"), "{text}");
+        assert!(!lines(&text)[0].contains("INSERT"), "{text}");
+        let picker_footer = footer(&mut shell);
+        assert!(picker_footer.contains("NORMAL"), "{picker_footer}");
+        assert!(picker_footer.contains("esc close"), "{picker_footer}");
+
+        // `g` reaches the picker rather than arming the jump leader.
+        press(
+            &mut shell,
+            &[
+                KeyCode::Char('G'),
+                KeyCode::Char('g'),
+                KeyCode::Char('j'),
+                KeyCode::Enter,
+            ],
+        );
+        assert!(!shell.pending_leader);
+        assert_eq!(shell.view.id(), ViewId::Settings);
+        assert!(drawn(&mut shell).contains("Settings › Display"));
+    }
+
+    #[test]
+    fn settings_draws_at_96_by_30_and_on_a_taller_terminal() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenSettings);
+        for (width, height) in [(96, 30), (96, 50)] {
+            let text = drawn_at(&mut shell, width, height);
+            for page in SettingsPage::ALL {
+                assert!(
+                    text.contains(&page.label()),
+                    "{page:?} at {height}:\n{text}"
+                );
+            }
+            let rows = lines(&text);
+            // The legend sits on the last View row, just above the hint bar.
+            assert!(
+                rows[rows.len() - 2].contains("syncs with the ledger"),
+                "{text}"
+            );
+        }
     }
 
     #[test]
@@ -4357,9 +4531,9 @@ mod tests {
 
     #[test]
     fn selecting_the_settings_command_and_pressing_enter_opens_the_settings_view() {
-        // `settings` is real, wireframe-stage content (`docs/ux/tui-mockups/05-settings/README.md` §4a),
-        // so it's dispatched from `Enter` alongside `unit`/`dashboard`, unlike the 8 empty
-        // placeholder boxes.
+        // `settings` is real content (`docs/ux/tui-mockups/05-settings/README.md`), so it's
+        // dispatched from `Enter` alongside `unit`/`dashboard`, unlike the 8 empty placeholder
+        // boxes.
         let mut shell = opened();
         shell.update(Action::OpenCommandPopup);
         for c in "settings".chars() {

@@ -1,4 +1,4 @@
-//! The base-unit guard overlay — `enter` from the Settings view on `general.base_unit`
+//! The base-unit guard overlay — `enter` on the Settings › General base unit
 //! (`docs/ux/tui-mockups/05-settings/README.md` §4c, "Base unit guard"). Wireframe stage, same as
 //! `popup::settings::edit`: every field renders §4c's own `AUD → USD` worked example verbatim
 //! — including the resolved impact figures and the typed confirmation — rather than a real

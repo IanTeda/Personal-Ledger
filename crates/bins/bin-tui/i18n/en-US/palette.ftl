@@ -82,7 +82,7 @@ tui-command-dismiss-all-description = dismiss every Toast
 tui-command-toasts-on-description = show Toasts
 tui-command-toasts-off-description = send Toasts to the status line (Errors still show)
 tui-command-toasts-description = show this session's Toasts
-tui-command-settings-description = groups, overrides and the settings table
+tui-command-settings-description = the Settings index, or one page by name
 
 ## Payees.
 
@@ -136,6 +136,7 @@ tui-command-preview-list-selection = the list selection
 tui-command-preview-list-selection-inactive = the list selection, with { $key } held to see it
 tui-command-preview-tree-selection = the tree selection
 tui-command-preview-open-path = the Ledger file to open, or the configured file with none
+tui-command-preview-settings-page = a page, such as general, display or sync-server; tab completes it
 tui-command-preview-new-path = where to create the Ledger file
 
 tui-command-preview-account-new = e.g. Everyday Spending, Mortgage Offset

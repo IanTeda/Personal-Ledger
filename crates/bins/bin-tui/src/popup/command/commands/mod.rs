@@ -274,6 +274,15 @@ pub const DOMAINS: &[Domain] = &[
     },
 ];
 
+/// The values the argument of the command `id` completes on with `Tab`, or none for an argument
+/// typed free (a path) or resolved against a View's selection.
+pub fn completions(id: CommandId) -> Vec<&'static str> {
+    match id {
+        CommandId::Settings => settings::pages(),
+        _ => Vec::new(),
+    }
+}
+
 /// Total command count across every domain, for the command popup's match-count row.
 pub fn total_commands() -> usize {
     DOMAINS.iter().map(|domain| domain.commands.len()).sum()
