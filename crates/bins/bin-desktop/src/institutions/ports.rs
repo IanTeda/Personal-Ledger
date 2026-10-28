@@ -113,6 +113,22 @@ impl InstitutionsPorts for LedgerBackedPorts {
     }
 }
 
+/// The same ports as the store they wrap, for the Unit Deletion adapter, which writes it with the
+/// Units store in one delete (#903).
+impl InstitutionsStore for LedgerBackedPorts {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        self.store.institutions()
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        self.store.institutions_mut()
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.store.reload()
+    }
+}
+
 /// Brings the Ledger read copy of the Institutions in line with the ports, announcing
 /// `Domain::Institutions` when it changed. Run before and after every Institutions event and
 /// Dialog confirm, so Accounts see a write at once.

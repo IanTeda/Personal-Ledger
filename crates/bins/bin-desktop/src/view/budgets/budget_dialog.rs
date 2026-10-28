@@ -278,7 +278,7 @@ pub fn render(props: BudgetDialogProps<'_>, cx: &App) -> AnyElement {
                 .min_w(px(0.0))
                 .child(select_field::render(
                     SelectFieldProps {
-                        id: "budgets-new-unit",
+                        id: "budgets-new-unit".into(),
                         label: lib_locale::msg::column_unit().into(),
                         options: &options.units,
                         state: &form.unit,

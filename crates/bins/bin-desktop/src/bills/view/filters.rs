@@ -88,7 +88,7 @@ fn filter_row(
                 .flex_none()
                 .child(select_field::render(
                     SelectFieldProps {
-                        id: select_id(field),
+                        id: select_id(field).into(),
                         label: select.view.label.clone().into(),
                         options: &options,
                         state,

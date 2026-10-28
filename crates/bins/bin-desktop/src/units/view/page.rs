@@ -41,6 +41,7 @@ impl EventEmitter<PageRowClicked> for UnitsPage {}
 pub struct UnitsPage {
     presenter: UnitsPagePresenter,
     ports: DesktopPorts,
+    deletion: lib_unit_deletion::SharedUnitDeletion,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<UnitsPageEvent>,
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
@@ -52,6 +53,7 @@ pub struct UnitsPage {
 impl UnitsPage {
     pub fn new(
         ports: DesktopPorts,
+        deletion: lib_unit_deletion::SharedUnitDeletion,
         ledger: Entity<LedgerStore>,
         keymap: Keymap<UnitsPageEvent>,
         cx: &mut Context<'_, Self>,
@@ -60,6 +62,7 @@ impl UnitsPage {
         Self {
             presenter,
             ports,
+            deletion,
             _units_changed: notify_on(&ledger, Domain::Units, cx),
             // The pane's ACCOUNTS group reads the Ledger's Accounts.
             _accounts_changed: notify_on(&ledger, Domain::Accounts, cx),
@@ -81,6 +84,7 @@ impl UnitsPage {
         ports::refresh(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
+            deletion: self.deletion.clone(),
             ledger: self.ledger.clone(),
             cx,
         };

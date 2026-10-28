@@ -14,22 +14,39 @@ use super::view::page::UnitsPage;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
+use crate::unit_deletion::DeleteUnitDialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
+    pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub ledger: gpui::Entity<LedgerStore>,
     pub cx: &'a mut Context<'b, UnitsPage>,
 }
 
 impl UnitsRouter for PageRouter<'_, '_> {
     /// Builds `dialog`'s Presenter on the shared ports and hosts its View; its confirmed outcome
-    /// comes back to the page through [`UnitsPage::dialog_landed`].
+    /// comes back to the page through [`UnitsPage::dialog_landed`]. Delete unit is the Unit
+    /// Deletion module's Dialog, which writes the Institutions that name the Unit too.
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let page = self.cx.weak_entity();
         let landed = Box::new(move |outcome, cx: &mut gpui::App| {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
+        if let Which::DeleteUnit(id) = dialog {
+            let Some(dialog) = DeleteUnitDialog::open(
+                id,
+                &self.ports,
+                &self.deletion,
+                &self.ledger,
+                landed,
+                self.cx,
+            ) else {
+                return false;
+            };
+            host_dialog(self.cx, |_| dialog);
+            return true;
+        }
         let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.ledger, landed) else {
             return false;
         };
@@ -52,10 +69,11 @@ impl Notify for PageRouter<'_, '_> {
 /// hosts as any other page.
 pub fn units_page(
     ports: DesktopPorts,
+    deletion: lib_unit_deletion::SharedUnitDeletion,
     ledger: gpui::Entity<LedgerStore>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| UnitsPage::new(ports, ledger, keymap, cx))
+    cx.new(|cx| UnitsPage::new(ports, deletion, ledger, keymap, cx))
 }

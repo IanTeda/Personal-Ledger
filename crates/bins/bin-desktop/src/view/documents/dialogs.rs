@@ -68,7 +68,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
         let on_option_click = on_option_click.clone();
         select_field::render(
             SelectFieldProps {
-                id,
+                id: id.into(),
                 label: text,
                 options: list,
                 state,
@@ -394,7 +394,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
     };
     let type_field = select_field::render(
         SelectFieldProps {
-            id: "facts-type",
+            id: "facts-type".into(),
             label: crate::msg::desktop_documents_field_type().into(),
             options: &options.type_labels,
             state: &form.doc_type,

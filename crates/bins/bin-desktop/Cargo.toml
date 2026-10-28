@@ -41,6 +41,7 @@ lib_documents = { path = "../../libs/lib-documents" }
 lib_inventory = { path = "../../libs/lib-inventory" }
 lib_payees = { path = "../../libs/lib-payees" }
 lib_tags = { path = "../../libs/lib-tags" }
+lib_unit_deletion = { path = "../../libs/lib-unit-deletion" }
 lib_units = { path = "../../libs/lib-units" }
 lib_viper = { path = "../../libs/lib-viper" }
 lib_transactions = { path = "../../libs/lib-transactions" }

@@ -1370,6 +1370,20 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Gives Institution `id` Unit `unit` as its Usual unit.
+    pub fn name_usual_unit(&mut self, id: InstitutionId, unit: UnitId) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.name_usual_unit_for_test(id, unit, cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
+    /// The code of Institution `id`'s Usual unit, as the Ledger has it.
+    pub fn usual_unit_code(&mut self, id: InstitutionId) -> Option<String> {
+        self.read_app(|shell, cx| shell.usual_unit_code(id, cx))
+    }
+
     /// Leaves no Unit quoted in another, so the base Unit can be deleted rather than refused.
     pub fn unquote_units(&mut self) {
         self.shell.update(self.cx, |shell, cx| {

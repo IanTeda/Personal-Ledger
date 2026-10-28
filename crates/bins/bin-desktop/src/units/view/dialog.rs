@@ -3,11 +3,13 @@
 //! select's list is open and its highlight). Every key and click becomes a Presenter event; each
 //! View draws the Presenter's view model and nothing else.
 //!
+//! Delete unit is the Unit Deletion module's Dialog (`crate::unit_deletion`), which the page's
+//! Router opens instead, since it writes the Institutions too.
+//!
 //! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
 //! outcome is handed to the page, and the host closes on [`DialogClosed`].
 
 mod delete_price_source;
-mod delete_unit;
 mod price_source_form;
 mod set_base_unit;
 mod unit_form;
@@ -15,8 +17,8 @@ mod unit_form;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_toast::{Notice, Notify};
 use lib_units::presenter::{
-    DeletePriceSourcePresenter, DeleteUnitPresenter, PriceSourceFormPresenter,
-    SetBaseUnitPresenter, UnitFormPresenter, UnitsOutcome,
+    DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, UnitFormPresenter,
+    UnitsOutcome,
 };
 use lib_units::{UnitsDialog as Which, UnitsRouter};
 
@@ -52,7 +54,6 @@ pub struct UnitsDialog {
 
 enum View {
     UnitForm(UnitFormPresenter, UnitSelects),
-    DeleteUnit(DeleteUnitPresenter, SelectState),
     SetBaseUnit(SetBaseUnitPresenter, SelectState),
     PriceSourceForm(PriceSourceFormPresenter, ApiKeyInput),
     DeletePriceSource(DeletePriceSourcePresenter),
@@ -64,7 +65,6 @@ impl View {
         match self {
             Self::UnitForm(_, selects) if selects.editing() => "EditUnit",
             Self::UnitForm(..) => "AddUnit",
-            Self::DeleteUnit(..) => "DeleteUnit",
             Self::SetBaseUnit(..) => "SetBaseUnit",
             Self::PriceSourceForm(presenter, _) => {
                 let view = presenter.view_model();
@@ -92,10 +92,8 @@ impl UnitsDialog {
         let view = match which {
             Which::AddUnit => unit_form::open(UnitFormPresenter::add(shared), false),
             Which::EditUnit(id) => unit_form::open(UnitFormPresenter::edit(shared, id)?, true),
-            Which::DeleteUnit(id) => View::DeleteUnit(
-                DeleteUnitPresenter::new(shared, id)?,
-                SelectState::default(),
-            ),
+            // The page's Router opens the Unit Deletion module's Dialog instead.
+            Which::DeleteUnit(_) => return None,
             Which::SetBaseUnit => {
                 View::SetBaseUnit(SetBaseUnitPresenter::new(shared), SelectState::default())
             }
@@ -131,8 +129,7 @@ impl UnitsDialog {
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
     fn close_event(&mut self, confirm: bool) -> DialogRouter {
         use lib_units::presenter::{
-            DeletePriceSourceEvent, DeleteUnitEvent, PriceSourceFormEvent, SetBaseUnitEvent,
-            UnitFormEvent,
+            DeletePriceSourceEvent, PriceSourceFormEvent, SetBaseUnitEvent, UnitFormEvent,
         };
         match &mut self.view {
             View::UnitForm(presenter, _) => {
@@ -142,14 +139,6 @@ impl UnitsDialog {
                     UnitFormEvent::Cancel
                 };
                 send(presenter, event, UnitFormPresenter::handle)
-            }
-            View::DeleteUnit(presenter, _) => {
-                let event = if confirm {
-                    DeleteUnitEvent::Confirm
-                } else {
-                    DeleteUnitEvent::Cancel
-                };
-                send(presenter, event, DeleteUnitPresenter::handle)
             }
             View::SetBaseUnit(presenter, _) => {
                 let event = if confirm {
@@ -227,7 +216,7 @@ fn send<P, E>(
 }
 
 /// Why the last confirm was refused, in the danger colour under the fields.
-fn refusal(text: Option<String>, cx: &App) -> Option<AnyElement> {
+pub(crate) fn refusal(text: Option<String>, cx: &App) -> Option<AnyElement> {
     text.map(|text| {
         div()
             .debug_selector(|| "units-dialog-refusal".to_string())
@@ -239,7 +228,7 @@ fn refusal(text: Option<String>, cx: &App) -> Option<AnyElement> {
 }
 
 /// A field's 11.5px muted help line under it.
-fn help(text: String, cx: &App) -> AnyElement {
+pub(crate) fn help(text: String, cx: &App) -> AnyElement {
     div()
         .mt(px(6.0))
         .text_size(px(11.5))
@@ -282,7 +271,6 @@ impl HostedDialog for UnitsDialog {
     fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
         match &mut self.view {
             View::UnitForm(presenter, selects) => unit_form::key(presenter, selects, key),
-            View::DeleteUnit(presenter, select) => delete_unit::key(presenter, select, key),
             View::SetBaseUnit(presenter, select) => set_base_unit::key(presenter, select, key),
             View::PriceSourceForm(presenter, api_key) => {
                 price_source_form::key(presenter, api_key, key)
@@ -294,7 +282,6 @@ impl HostedDialog for UnitsDialog {
     fn can_confirm(&self) -> bool {
         match &self.view {
             View::UnitForm(presenter, _) => presenter.view_model().frame.can_confirm,
-            View::DeleteUnit(presenter, _) => presenter.view_model().frame.can_confirm,
             View::SetBaseUnit(presenter, _) => presenter.view_model().frame.can_confirm,
             View::PriceSourceForm(presenter, _) => presenter.view_model().frame.can_confirm,
             View::DeletePriceSource(presenter) => presenter.view_model().frame.can_confirm,
@@ -324,7 +311,7 @@ impl HostedDialog for UnitsDialog {
         };
         match &mut self.view {
             View::UnitForm(_, selects) => selects.close(),
-            View::DeleteUnit(_, select) | View::SetBaseUnit(_, select) => close(select),
+            View::SetBaseUnit(_, select) => close(select),
             View::PriceSourceForm(..) | View::DeletePriceSource(_) => false,
         }
     }
@@ -335,10 +322,6 @@ impl HostedDialog for UnitsDialog {
             View::UnitForm(presenter, selects) => {
                 let view = presenter.view_model();
                 (view.frame.clone(), unit_form::readback(&view, selects))
-            }
-            View::DeleteUnit(presenter, select) => {
-                let view = presenter.view_model();
-                (view.frame.clone(), delete_unit::readback(&view, select))
             }
             View::SetBaseUnit(presenter, _) => {
                 let view = presenter.view_model();
@@ -368,9 +351,6 @@ impl Render for UnitsDialog {
         match &self.view {
             View::UnitForm(presenter, selects) => {
                 unit_form::render(&presenter.view_model(), selects, &actions, cx)
-            }
-            View::DeleteUnit(presenter, select) => {
-                delete_unit::render(&presenter.view_model(), select, &actions, cx)
             }
             View::SetBaseUnit(presenter, select) => {
                 set_base_unit::render(&presenter.view_model(), select, &actions, cx)

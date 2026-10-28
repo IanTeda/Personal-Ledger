@@ -20,7 +20,7 @@ use lib_units::presenter::{
     DeleteUnitViewModel as UnitsDeleteViewModel, NewBaseView, UnitChange, UnitsOutcome,
     active_unit_choices, delete_refusal,
 };
-use lib_units::{SharedPorts, UnitUse, UnitsRouter};
+use lib_units::{SharedPorts, UnitUsage, UnitUse, UnitsRouter};
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use crate::error::UnitDeletionError;
@@ -273,19 +273,19 @@ impl Deleting {
         if self.confirm_text != self.code {
             return None;
         }
-        let deleted = {
-            let ports = self.ports.borrow();
-            DeleteUnit {
-                id: self.id,
-                new_base: self.new_base,
-                replacements: self
-                    .named
-                    .iter()
-                    .filter_map(|named| Some((named.id, named.usual_unit?)))
-                    .collect(),
-            }
-            .run(&mut *self.deletion.borrow_mut(), ports.usage())
-        };
+        // The usage is copied out before the write: a Client may share one store between `ports`
+        // and `deletion`, which a borrow of `ports` held across the write would borrow twice.
+        let usage = Usage(self.ports.borrow().usage().unit_usage(self.id));
+        let deleted = DeleteUnit {
+            id: self.id,
+            new_base: self.new_base,
+            replacements: self
+                .named
+                .iter()
+                .filter_map(|named| Some((named.id, named.usual_unit?)))
+                .collect(),
+        }
+        .run(&mut *self.deletion.borrow_mut(), &usage);
         self.refusal = match deleted {
             Ok(deleted) => {
                 router.close_dialog(Some(UnitsOutcome::Unit {
@@ -306,6 +306,15 @@ impl Deleting {
             }
         };
         None
+    }
+}
+
+/// The deleted Unit's usage as read just before the write; the Interactor asks of no other Unit.
+struct Usage(UnitUse);
+
+impl UnitUsage for Usage {
+    fn unit_usage(&self, _id: UnitId) -> UnitUse {
+        self.0
     }
 }
 

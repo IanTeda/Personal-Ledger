@@ -49,7 +49,7 @@ pub fn render_remove(props: RemoveProps<'_>, cx: &App) -> AnyElement {
                 .into_any_element(),
             select_field::render(
                 SelectFieldProps {
-                    id: "document-type-destination",
+                    id: "document-type-destination".into(),
                     label: crate::msg::desktop_document_types_remove_destination().into(),
                     options: destinations,
                     state: destination,

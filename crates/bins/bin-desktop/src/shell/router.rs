@@ -217,6 +217,7 @@ pub fn build(
         units,
         accounts.clone(),
         inventory.clone(),
+        &institutions,
         &bindings.keybindings,
     );
     let storage = crate::ledger_store::LedgerSetup {
@@ -635,6 +636,31 @@ impl Root {
     #[doc(hidden)]
     pub fn unquote_units_for_test(&mut self, cx: &mut App) {
         crate::units::ports::unquote_for_test(&self.units, &self.ledger, cx);
+    }
+
+    /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
+    /// Institution names.
+    #[doc(hidden)]
+    pub fn name_usual_unit_for_test(
+        &mut self,
+        id: lib_core::InstitutionId,
+        unit: lib_core::UnitId,
+        cx: &mut App,
+    ) {
+        self.ledger
+            .update(cx, |store, cx| store.name_usual_unit_for_test(id, unit, cx));
+    }
+
+    /// The code of Institution `id`'s Usual unit, as the Ledger read copy has it: `None` for none.
+    #[doc(hidden)]
+    pub fn usual_unit_code(&self, id: lib_core::InstitutionId, cx: &App) -> Option<String> {
+        let ledger = self.ledger.read(cx).ledger();
+        let unit = ledger
+            .institutions()
+            .iter()
+            .find(|institution| institution.id == id)?
+            .usual_unit?;
+        Some(ledger.unit_code(unit).to_string())
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

@@ -204,7 +204,7 @@ pub(super) fn render(
                 .into_any_element(),
             select_field::render(
                 SelectFieldProps {
-                    id: category_id,
+                    id: category_id.into(),
                     label: view.default_category.label.clone().into(),
                     options: &options,
                     state: &synced(select, &view.default_category),

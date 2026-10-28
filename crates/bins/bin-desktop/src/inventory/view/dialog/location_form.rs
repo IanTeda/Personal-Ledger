@@ -130,7 +130,7 @@ pub(super) fn render(
         div()
             .child(select_field::render(
                 SelectFieldProps {
-                    id: "location-unit",
+                    id: "location-unit".into(),
                     label: view.unit.select.label.clone().into(),
                     options: &options,
                     state: &synced(select, &view.unit.select),

@@ -213,7 +213,7 @@ pub(super) fn render(
         type_field(view, actions, cx),
         select_field::render(
             SelectFieldProps {
-                id: parent_id,
+                id: parent_id.into(),
                 label: view.parent.label.clone().into(),
                 options: &options,
                 state: &synced(select, &view.parent),

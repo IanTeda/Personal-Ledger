@@ -254,7 +254,7 @@ pub fn render(props: LimitDialogProps<'_>, cx: &App) -> AnyElement {
         } else {
             fields.push(select_field::render(
                 SelectFieldProps {
-                    id: "budgets-limit-category",
+                    id: "budgets-limit-category".into(),
                     label: crate::msg::desktop_budgets_limit_field_category().into(),
                     options: &options.category_labels,
                     state: &form.category,
@@ -287,7 +287,7 @@ pub fn render(props: LimitDialogProps<'_>, cx: &App) -> AnyElement {
     );
     fields.push(select_field::render(
         SelectFieldProps {
-            id: "budgets-limit-starting",
+            id: "budgets-limit-starting".into(),
             label: crate::msg::desktop_budgets_limit_field_starting().into(),
             options: &options.month_labels,
             state: &form.starting,

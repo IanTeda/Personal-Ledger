@@ -65,7 +65,7 @@ pub(super) fn render(
     let options = super::labels(&view.base);
     let mut fields = vec![select_field::render(
         SelectFieldProps {
-            id: "set-base-unit-select",
+            id: "set-base-unit-select".into(),
             label: view.base.label.clone().into(),
             options: &options,
             state: &synced(select, &view.base),

@@ -42,7 +42,7 @@ pub fn render(props: StopDialogProps<'_>, cx: &App) -> AnyElement {
     let mut fields = vec![
         select_field::render(
             SelectFieldProps {
-                id: "budgets-stop-from",
+                id: "budgets-stop-from".into(),
                 label: crate::msg::desktop_budgets_stop_field_from().into(),
                 options: &options.month_labels,
                 state: &form.from,

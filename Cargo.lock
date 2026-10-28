@@ -739,6 +739,7 @@ dependencies = [
  "lib_toast",
  "lib_tracing",
  "lib_transactions",
+ "lib_unit_deletion",
  "lib_units",
  "lib_viper",
  "secrecy",

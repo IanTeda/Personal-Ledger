@@ -20,6 +20,7 @@ mod view;
 use lib_database::UnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
+pub(crate) use view::dialog::{Landed, help, refusal};
 pub use view::page::UnitsPage;
 
 /// The Units page as the UI tests read it: its view model.
@@ -29,6 +30,9 @@ pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 /// What `shell::router::build` hands the Units module: its ports and its keymap under `[keybindings]`.
 pub struct UnitsSetup {
     pub ports: DesktopPorts,
+    /// The Unit Deletion module's port over these ports and the Institutions', which Delete unit
+    /// writes through (#903).
+    pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
 }
 
@@ -37,25 +41,26 @@ impl UnitsSetup {
         ports: Box<dyn UnitsStore>,
         accounts: lib_database::SharedAccountsStore,
         inventory: lib_database::SharedInventoryStore,
+        institutions: &crate::institutions::ports::DesktopPorts,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
+        let ports = LedgerBackedPorts::shared(ports, accounts, inventory);
         Self {
-            ports: LedgerBackedPorts::shared(ports, accounts, inventory),
+            deletion: crate::unit_deletion::deletion(&ports, institutions),
+            ports,
             keymap: lib_units::keymap::units_page_keymap(config),
         }
     }
 
-    /// The stub seed in memory under the default keys, reading `accounts`' Accounts, for a test
-    /// that builds `Root` directly.
+    /// The stub seed in memory under the default keys, reading `storage`'s Accounts and Inventory
+    /// and deleting beside its Institutions, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(
-        accounts: lib_database::SharedAccountsStore,
-        inventory: lib_database::SharedInventoryStore,
-    ) -> Self {
+    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
         Self::new(
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
-            accounts,
-            inventory,
+            storage.accounts.clone(),
+            storage.inventory.clone(),
+            &storage.institutions,
             &lib_config::KeyBindingConfig::default(),
         )
     }

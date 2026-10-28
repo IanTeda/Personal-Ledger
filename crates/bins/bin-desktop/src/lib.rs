@@ -34,6 +34,7 @@ pub mod shell;
 mod tags;
 pub mod theme;
 mod transactions;
+mod unit_deletion;
 mod units;
 mod view;
 

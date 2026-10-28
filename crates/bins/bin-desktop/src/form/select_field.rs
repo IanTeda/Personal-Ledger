@@ -15,7 +15,7 @@ use crate::{dialog, form::select::SelectState, theme::color};
 pub type OnOptionClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 pub struct SelectFieldProps<'a> {
-    pub id: &'static str,
+    pub id: SharedString,
     pub label: SharedString,
     pub options: &'a [String],
     pub state: &'a SelectState,
@@ -49,8 +49,11 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
         .to_string();
 
     let mut field = div()
-        .id(id)
-        .debug_selector(move || id.to_string())
+        .id(id.clone())
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .flex()
         .items_center()
         .justify_between()
@@ -100,13 +103,13 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
         )
         .child(field)
         .when(state.is_open() && read_only.is_none(), |this| {
-            this.child(option_list(id, options, state, on_option_click, cx))
+            this.child(option_list(&id, options, state, on_option_click, cx))
         })
         .into_any_element()
 }
 
 fn option_list(
-    id: &'static str,
+    id: &SharedString,
     options: &[String],
     state: &SelectState,
     on_option_click: OnOptionClick,
@@ -126,7 +129,10 @@ fn option_list(
             let on_option_click = on_option_click.clone();
             div()
                 .id(SharedString::from(format!("{id}-option-{index}")))
-                .debug_selector(move || format!("{id}-option-{index}"))
+                .debug_selector({
+                    let id = id.clone();
+                    move || format!("{id}-option-{index}")
+                })
                 .cursor_pointer()
                 .py(px(6.0))
                 .px(px(10.0))

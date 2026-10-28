@@ -296,7 +296,13 @@ impl SettingsPages {
         Self {
             general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
             display: cx.new(|_| DisplayPage::default()),
-            units: units_page(units.ports, ledger.clone(), units.keymap, cx),
+            units: units_page(
+                units.ports,
+                units.deletion,
+                ledger.clone(),
+                units.keymap,
+                cx,
+            ),
             institutions: institutions_page(
                 institutions.ports,
                 ledger.clone(),

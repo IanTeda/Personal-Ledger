@@ -95,7 +95,7 @@ pub(super) fn render(
         let options = labels(destination);
         select_field::render(
             SelectFieldProps {
-                id: "area-destination",
+                id: "area-destination".into(),
                 label: destination.label.clone().into(),
                 options: &options,
                 state: &synced(select, destination),

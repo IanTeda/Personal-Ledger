@@ -131,7 +131,7 @@ pub(super) fn render(
         let options = labels(select_view);
         select_field::render(
             SelectFieldProps {
-                id,
+                id: id.into(),
                 label: select_view.label.clone().into(),
                 options: &options,
                 state: &synced(state, select_view),

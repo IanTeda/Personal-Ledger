@@ -13,6 +13,7 @@ use super::common;
 use bin_desktop::{WindowSize, navigation::nav::Noun};
 use common::Harness;
 use gpui::TestAppContext;
+use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, ToastKind};
 
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
@@ -297,6 +298,99 @@ fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+}
+
+#[gpui::test]
+fn an_institutions_usual_unit_select_reassigns_it_by_click(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    assert_eq!(
+        ui.dialog_value("usual_units").as_deref(),
+        Some("Cryptocurrency Exchange=None")
+    );
+    ui.click("delete-unit-usual-unit-0");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+    ui.click("delete-unit-usual-unit-0-option-2");
+    assert_eq!(
+        ui.dialog_value("usual_units").as_deref(),
+        Some("Cryptocurrency Exchange=vas — Vanguard Aus Shares")
+    );
+    ui.press("b t c");
+    ui.click("delete-unit-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .as_deref(),
+        Some("vas")
+    );
+}
+
+#[gpui::test]
+fn the_named_base_units_two_selects_are_each_chosen_by_click(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.unquote_units();
+    ui.name_usual_unit(InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
+    ui.right_click("unit-row-0");
+    ui.click("settings-units-menu-delete-unit");
+    ui.click("delete-unit-new-base");
+    ui.click("delete-unit-new-base-option-1");
+    ui.click("delete-unit-usual-unit-0");
+    assert_eq!(
+        ui.dialog_value("focused").as_deref(),
+        Some("Westpac Banking")
+    );
+    ui.click("delete-unit-usual-unit-0-option-1");
+    ui.press("a u d");
+    ui.click("delete-unit-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_WESTPAC).as_deref(),
+        Some("btc")
+    );
+}
+
+#[gpui::test]
+fn confirming_a_named_unit_untouched_by_click_leaves_its_institution_on_none(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    ui.press("b t c");
+    ui.click("delete-unit-confirm");
+
+    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE),
+        None
+    );
+}
+
+#[gpui::test]
+fn cancel_on_a_named_units_delete_reassigns_nothing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    ui.click("delete-unit-usual-unit-0");
+    ui.click("delete-unit-usual-unit-0-option-1");
+    ui.click("delete-unit-cancel");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .as_deref(),
+        Some("btc")
+    );
 }
 
 #[gpui::test]

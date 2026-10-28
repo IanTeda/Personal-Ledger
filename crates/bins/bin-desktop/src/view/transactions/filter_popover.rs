@@ -120,7 +120,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .gap(px(14.0))
                 .child(select_field::render(
                     SelectFieldProps {
-                        id: "filter-account",
+                        id: "filter-account".into(),
                         label: lib_locale::msg::column_account().into(),
                         options: options.for_field(FormField::Account),
                         state: &form.account,
@@ -134,7 +134,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 ))
                 .child(select_field::render(
                     SelectFieldProps {
-                        id: "filter-category",
+                        id: "filter-category".into(),
                         label: lib_locale::msg::column_category().into(),
                         options: options.for_field(FormField::Category),
                         state: &form.category,

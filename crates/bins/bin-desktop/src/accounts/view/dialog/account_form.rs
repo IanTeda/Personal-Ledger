@@ -218,7 +218,7 @@ pub(super) fn render(
                   field: AccountField| {
         select_field::render(
             SelectFieldProps {
-                id,
+                id: id.into(),
                 label: label.to_string().into(),
                 options: &options,
                 state: &state,

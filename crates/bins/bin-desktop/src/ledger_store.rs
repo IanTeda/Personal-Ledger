@@ -204,6 +204,25 @@ impl LedgerStore {
         });
     }
 
+    /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
+    /// Institution names.
+    pub fn name_usual_unit_for_test(
+        &mut self,
+        id: lib_core::InstitutionId,
+        unit: lib_core::UnitId,
+        cx: &mut Context<'_, Self>,
+    ) {
+        {
+            let mut ports = self.institutions.borrow_mut();
+            let Some(mut institution) = ports.institutions().institution(id) else {
+                return;
+            };
+            institution.usual_unit = Some(unit);
+            ports.institutions_mut().upsert_institution(institution);
+        }
+        self.refresh_institutions(cx);
+    }
+
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
     /// the Accounts store, the Budgets by the Ledger until Budgets persist (#811).
     pub fn account_usage(&self, id: AccountId) -> AccountUse {

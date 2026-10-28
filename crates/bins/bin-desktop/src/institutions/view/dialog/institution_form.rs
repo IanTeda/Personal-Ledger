@@ -153,7 +153,7 @@ pub(super) fn render(
             products_field(view, actions.choose(click_product), cx).into_any_element(),
             select_field::render(
                 SelectFieldProps {
-                    id: "institution-usual-unit",
+                    id: "institution-usual-unit".into(),
                     label: view.usual_unit.label.clone().into(),
                     options: &unit_options,
                     state: &unit_state,

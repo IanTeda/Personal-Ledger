@@ -391,7 +391,7 @@ fn select_field_of<T: PartialEq>(
     let options = super::labels(select);
     select_field::render(
         SelectFieldProps {
-            id,
+            id: id.into(),
             label: select.label.clone().into(),
             options: &options,
             state: &synced(state, select),

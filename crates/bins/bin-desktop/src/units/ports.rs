@@ -23,7 +23,7 @@ use lib_units::{
 };
 
 use crate::ledger_store::LedgerStore;
-use lib_database::{SharedAccountsStore, SharedInventoryStore, UnitsStore};
+use lib_database::{SharedAccountsStore, SharedInventoryStore};
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
@@ -31,7 +31,7 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 /// `store`'s Units, Price Sources and base Unit, with holdings and the Accounts naming each Unit
 /// copied from `accounts`, the Locations from `inventory`, and the Bill Plans and Budgets naming it from the Ledger.
 pub struct LedgerBackedPorts {
-    store: Box<dyn UnitsStore>,
+    store: Box<dyn lib_database::UnitsStore>,
     accounts: SharedAccountsStore,
     inventory: SharedInventoryStore,
     usage: InMemoryUnitUsage,
@@ -40,7 +40,7 @@ pub struct LedgerBackedPorts {
 
 impl LedgerBackedPorts {
     pub fn shared(
-        store: Box<dyn UnitsStore>,
+        store: Box<dyn lib_database::UnitsStore>,
         accounts: SharedAccountsStore,
         inventory: SharedInventoryStore,
     ) -> DesktopPorts {
@@ -107,6 +107,30 @@ impl UnitsPorts for LedgerBackedPorts {
 
     fn split_mut(&mut self) -> PortsMut<'_> {
         self.store.split_mut(&self.usage)
+    }
+}
+
+/// The same ports as the store they wrap, for the Unit Deletion adapter, which writes it with the
+/// Institutions store in one delete (#903).
+impl lib_database::UnitsStore for LedgerBackedPorts {
+    fn units(&self) -> &dyn UnitRepository {
+        self.store.units()
+    }
+
+    fn price_sources(&self) -> &dyn PriceSourceRepository {
+        self.store.price_sources()
+    }
+
+    fn base_unit(&self) -> &dyn BaseUnitRepository {
+        self.store.base_unit()
+    }
+
+    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
+        self.store.split_mut(usage)
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.store.reload()
     }
 }
 
