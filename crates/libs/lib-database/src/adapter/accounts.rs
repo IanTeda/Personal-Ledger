@@ -148,16 +148,16 @@ impl AccountRepository for StoredAccounts {
 }
 
 impl StoredUsage {
-    /// How many Transactions are booked to each Account that has any. A count that can't be read
-    /// is logged and answered as none, since it only feeds a figure.
-    fn transaction_counts(&self) -> HashMap<AccountId, usize> {
+    /// How many Transactions are booked to each of `accounts` that has any. A count that can't be
+    /// read is logged and answered as none, since it only feeds a figure.
+    fn transaction_counts(&self, accounts: Vec<AccountId>) -> HashMap<AccountId, usize> {
         self.writer
-            .run(|pool| async move {
+            .run(move |pool| async move {
                 let mut conn = pool.acquire().await?;
-                count_transactions(&mut conn).await
+                count_transactions(&mut conn, &accounts).await
             })
             .inspect_err(|error| {
-                tracing::error!(%error, "Failed to count the Transactions booked to each Account");
+                tracing::error!(%error, "Failed to count the Transactions booked to a Unit's Accounts");
             })
             .unwrap_or_default()
     }
@@ -185,7 +185,14 @@ impl AccountUsage for StoredUsage {
 
 impl UnitHoldings for AccountsAdapter {
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
-        let counts = self.usage.transaction_counts();
+        let ids = self
+            .accounts
+            .rows
+            .iter()
+            .filter(|account| account.unit == id)
+            .map(|account| account.id)
+            .collect();
+        let counts = self.usage.transaction_counts(ids);
         holdings(&self.accounts.rows, id, |account| {
             counts.get(&account).copied().unwrap_or_default()
         })
@@ -330,26 +337,38 @@ async fn count_transactions_of(conn: &mut SqliteConnection, id: AccountId) -> Re
         .map_err(|_| Error::Validation(format!("Account {id}'s Transactions count is {count}")))
 }
 
-async fn count_transactions(conn: &mut SqliteConnection) -> Result<HashMap<AccountId, usize>> {
-    sqlx::query!(
-        r#"SELECT account_id AS "account_id!: AccountId", COUNT(*) AS "count!: i64"
-           FROM transactions
-           GROUP BY account_id"#
-    )
-    .fetch_all(&mut *conn)
-    .await?
-    .into_iter()
-    .map(|row| {
-        usize::try_from(row.count)
-            .map(|count| (row.account_id, count))
-            .map_err(|_| {
-                Error::Validation(format!(
-                    "Account {}'s Transactions count is {}",
-                    row.account_id, row.count
-                ))
-            })
-    })
-    .collect()
+/// Counts only `accounts`' Transactions, through `idx_transactions_account_id`, rather than
+/// grouping the whole table. The list is a Unit's Accounts, so the placeholders stay few.
+async fn count_transactions(
+    conn: &mut SqliteConnection,
+    accounts: &[AccountId],
+) -> Result<HashMap<AccountId, usize>> {
+    if accounts.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; accounts.len()].join(", ");
+    let sql = format!(
+        "SELECT account_id, COUNT(*) FROM transactions WHERE account_id IN ({placeholders}) \
+         GROUP BY account_id"
+    );
+    let mut query = sqlx::query_as::<_, (AccountId, i64)>(&sql);
+    for account in accounts {
+        query = query.bind(*account);
+    }
+    query
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|(account_id, count)| {
+            usize::try_from(count)
+                .map(|count| (account_id, count))
+                .map_err(|_| {
+                    Error::Validation(format!(
+                        "Account {account_id}'s Transactions count is {count}"
+                    ))
+                })
+        })
+        .collect()
 }
 
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
@@ -786,6 +805,52 @@ mod tests {
         assert_eq!(bills.len(), default_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);
+    }
+
+    /// Another Unit's Transactions neither show in a Unit's holdings nor change its counts.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn holdings_count_only_the_units_own_accounts(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut ports = factory.create(default_accounts());
+        let accounts = default_accounts();
+        let aud = accounts
+            .iter()
+            .find(|account| account.unit == UnitId::SEED_AUD)
+            .expect("the stub has an aud Account");
+        let other = accounts
+            .iter()
+            .find(|account| account.unit != UnitId::SEED_AUD)
+            .expect("the stub has an Account in another Unit");
+        let uses = |transactions| AccountUse {
+            transactions,
+            budgets: 0,
+        };
+        factory.name_account(&mut ports, aud.id, uses(2));
+        factory.name_account(&mut ports, other.id, uses(3));
+        let adapter = &ports.adapter;
+
+        let counted = |unit, name: &str| {
+            adapter
+                .holdings(unit)
+                .into_iter()
+                .find(|holding| holding.name == name)
+                .map(|holding| holding.transactions)
+        };
+        assert_eq!(counted(UnitId::SEED_AUD, &aud.name), Some(2));
+        assert_eq!(counted(other.unit, &other.name), Some(3));
+        assert_eq!(counted(UnitId::SEED_AUD, &other.name), None);
+        assert!(
+            adapter
+                .holdings(UnitId::SEED_AUD)
+                .iter()
+                .filter(|holding| holding.name != aud.name)
+                .all(|holding| holding.transactions == 0),
+            "an Account with no Transactions counts zero"
+        );
+        assert!(adapter.holdings(UnitId::new()).is_empty());
     }
 
     /// Usage is the names of the Accounts naming an Institution, in the Accounts' order.
