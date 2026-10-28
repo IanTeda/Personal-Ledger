@@ -276,3 +276,149 @@ tui-settings-accounts-balance = Balance
 tui-settings-accounts-quantity = { $amount } u
 tui-settings-accounts-note-form = Add and edit use the account form from the Accounts view.
 tui-settings-accounts-note-net-worth = Unit balances convert to { $base } for net worth at the latest weekly close.
+
+## Settings › the ledger-data list pages after Units and Accounts (TUI-040, TUI-042 to TUI-046).
+
+tui-settings-sorted-a-z = a–z
+# The `selected` box's title, naming the row.
+tui-settings-selected = selected · { $name }
+tui-settings-hint-remove = remove
+tui-settings-hint-merge = merge
+tui-settings-hint-move = move
+tui-settings-hint-move-area = move area
+tui-settings-hint-expand-collapse = expand/collapse
+tui-settings-hint-add-sub = add sub
+tui-settings-hint-add-location = location
+tui-settings-hint-add-area = area
+tui-settings-hint-open-categories-view = open categories view
+tui-settings-hint-open-tags-view = open tags view
+tui-settings-hint-open-payees-view = open payees view
+
+tui-settings-scope-institutions = ledger data · synced · { $count ->
+    [one] { $count } institution
+   *[other] { $count } institutions
+}
+tui-settings-scope-categories = ledger data · synced · { $count ->
+    [one] { $count } category
+   *[other] { $count } categories
+} · { $levels ->
+    [one] { $levels } level deep
+   *[other] { $levels } levels deep
+}
+tui-settings-scope-tags = ledger data · synced · { $count ->
+    [one] { $count } tag
+   *[other] { $count } tags
+} · { $duplicates ->
+    [one] { $duplicates } likely duplicate
+   *[other] { $duplicates } likely duplicates
+}
+tui-settings-scope-payees = ledger data · synced · { $count ->
+    [one] { $count } payee
+   *[other] { $count } payees
+}
+# `$typed` and `$total` are formatted counts of files.
+tui-settings-scope-documents = ledger data · synced · { $count ->
+    [one] { $count } type
+   *[other] { $count } types
+} · { $typed } of { $total } files typed
+# `$items` is a formatted count.
+tui-settings-scope-inventory = ledger data · synced · { $locations ->
+    [one] { $locations } location
+   *[other] { $locations } locations
+} · { $areas ->
+    [one] { $areas } area
+   *[other] { $areas } areas
+} · { $items } items
+
+## Institutions
+
+tui-settings-institutions-add = add institution
+tui-settings-institutions-name = Institution
+tui-settings-institutions-types = Account types
+tui-settings-institutions-unit = Unit
+tui-settings-institutions-accounts = Accounts
+tui-settings-institutions-selected = selected · { $name }
+tui-settings-institutions-accounts-label = accounts
+tui-settings-institutions-types-label = account types
+tui-settings-institutions-unit-label = default unit
+tui-settings-institutions-unit-effect = {" "}— new accounts here start in { $unit }
+tui-settings-institutions-no-accounts = no accounts yet
+tui-settings-institutions-note-delete = Deleting an institution that still holds accounts asks you to move them first.
+
+## Categories
+
+tui-settings-categories-expense = expense
+tui-settings-categories-income = income
+tui-settings-categories-add = add category
+tui-settings-categories-name = Category
+tui-settings-categories-subcategories = { $count ->
+    [one] { $count } subcategory
+   *[other] { $count } subcategories
+}
+tui-settings-categories-note = Categories nest to any depth. Only leaf categories can be picked on a transaction. Spend and budgets live in Reports and Budgets, not here.
+
+## Tags
+
+tui-settings-tags-add = add tag
+tui-settings-tags-name = Tag
+tui-settings-tags-duplicate = ⚑ looks like a duplicate of "{ $of }"
+tui-settings-tags-merge-title = merge { $from } → { $to }
+tui-settings-tags-merge-label = merge
+tui-settings-tags-merge-effect = Every transaction tagged { $from } is retagged { $to }, then { $from } is removed. Opens the merge form from the Tags view, and u undoes it.
+tui-settings-tags-note = Usage counts and last-used dates live in the Tags view, not here.
+
+## Payees
+
+tui-settings-payees-add = add payee
+tui-settings-payees-name = Name
+tui-settings-payees-category = Category
+tui-settings-payees-rules = Match rules
+tui-settings-payees-no-rules = — no rules
+tui-settings-payees-rules-label = match rules
+tui-settings-payees-alias-label = also known as
+tui-settings-payees-renamed = {" "}· renamed { $date }
+tui-settings-payees-default-label = default category
+tui-settings-payees-default-effect = {" "}— filled in on import, still editable
+tui-settings-payees-note = Renaming keeps the old name as an alias, so past imports still match.
+
+## Documents
+
+tui-settings-documents-order = in type-filter order
+tui-settings-documents-add = add type
+tui-settings-documents-type = Type
+tui-settings-documents-tracks = Tracks
+tui-settings-documents-remind = Remind
+tui-settings-documents-tax-year = Tax year
+tui-settings-documents-files = Files
+tui-settings-documents-none = —
+tui-settings-documents-yes = yes
+tui-settings-documents-no = no
+tui-settings-documents-renews = renews
+tui-settings-documents-ends = ends
+tui-settings-documents-expires = expires
+tui-settings-documents-lead-days = { $count ->
+    [one] { $count } day before
+   *[other] { $count } days before
+}
+tui-settings-documents-lead-months = { $count ->
+    [one] { $count } month before
+   *[other] { $count } months before
+}
+tui-settings-documents-note-tracks = Tracks: the date a document of this type carries (renews, ends, expires).
+tui-settings-documents-note-remind = Remind: when that date raises an Event.
+tui-settings-documents-note-tax-year = Tax year: files group by tax year.
+tui-settings-documents-note-remove = Removing a type that still has files asks where to move them. { $untyped } untyped stay in the Inbox.
+
+## Inventory
+
+tui-settings-inventory-heading = locations
+tui-settings-inventory-add-location = add location
+tui-settings-inventory-add-area = add area
+tui-settings-inventory-name = Location · Area
+# `$items` is a formatted count.
+tui-settings-inventory-counts = { $areas ->
+    [one] { $areas } area
+   *[other] { $areas } areas
+} · { $items } items
+tui-settings-inventory-note-register = Address and cover live on the register in Inventory, not here.
+tui-settings-inventory-note-remove = Removing an area with items asks where to move them.

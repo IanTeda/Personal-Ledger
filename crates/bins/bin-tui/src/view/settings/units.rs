@@ -113,6 +113,7 @@ impl UnitsPage {
             frame,
             area,
             &[unit_table(&view), source_table(&view)],
+            None,
             &self.notes(&view),
             focused,
             c,
@@ -163,7 +164,7 @@ fn unit_table(view: &UnitsPageViewModel) -> Table {
     let labels = &view.unit_columns;
     Table {
         heading: msg::tui_settings_units_heading(),
-        add: Some(("n".into(), msg::tui_settings_units_add_unit())),
+        add: vec![("n".into(), msg::tui_settings_units_add_unit())],
         columns: vec![
             Column::left(labels.code.clone(), Constraint::Length(CODE_WIDTH)),
             Column::left(labels.name.clone(), Constraint::Length(NAME_WIDTH)),
@@ -214,7 +215,7 @@ fn source_table(view: &UnitsPageViewModel) -> Table {
     let labels = &view.source_columns;
     Table {
         heading: view.price_sources_heading.clone(),
-        add: Some(("n".into(), msg::tui_settings_units_add_source())),
+        add: vec![("n".into(), msg::tui_settings_units_add_source())],
         columns: vec![
             Column::left(labels.name.clone(), Constraint::Length(NAME_WIDTH)),
             Column::left(labels.source.clone(), Constraint::Min(0)),

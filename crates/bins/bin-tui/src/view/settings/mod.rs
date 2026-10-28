@@ -24,20 +24,27 @@
 //! and handing the rest back to [`View::update`]. What holds for the session only lives in
 //! [`field::SettingsValues`], shared with `Shell` as the selection is.
 //!
-//! Units and Accounts are list pages, drawn by the one list-page pattern ([`list`]) every
-//! ledger-data page reuses. Units hosts the Units View itself ([`units`]), so its keys and
+//! Units, Accounts and the six ledger-data pages after them are list pages, drawn by the one
+//! list-page pattern ([`list`]). Units hosts the Units View itself ([`units`]), so its keys and
 //! Dialogs are `lib-units`'; Accounts reads a fixture until the TUI moves onto `lib-accounts`
-//! ([`accounts`]). `o` on either opens the full View, which `Shell` pushes Settings under, so the
-//! back key there returns to the same page and row. Every other page draws its heading and scope
-//! note over an empty body until the stage that builds it.
+//! ([`accounts`]), and Institutions, Categories, Tags, Payees, Documents and Inventory do the same
+//! on [`list::Page`]. `o` opens the full View where there is one, which `Shell` pushes Settings
+//! under, so the back key there returns to the same page and row. Every other page draws its
+//! heading and scope note over an empty body until the stage that builds it.
 
 mod accounts;
+mod categories;
 mod display;
+mod documents;
 pub mod field;
 mod general;
 mod index;
+mod institutions;
+mod inventory;
 mod list;
+mod payees;
 mod picker;
+mod tags;
 mod units;
 
 use std::cell::{Cell, RefCell};
@@ -295,6 +302,12 @@ pub struct SettingsView {
     /// Settings › Units, on the Open Ledger's Units; `None` for a View built without one.
     units_page: Option<units::UnitsPage>,
     accounts: accounts::AccountsPage,
+    institutions: institutions::InstitutionsPage,
+    categories: categories::CategoriesPage,
+    tags: tags::TagsPage,
+    payees: payees::PayeesPage,
+    documents: documents::DocumentsPage,
+    inventory: inventory::InventoryPage,
 }
 
 impl SettingsView {
@@ -330,7 +343,38 @@ impl SettingsView {
             display: display::DisplayPage::new(),
             units_page: units.map(units::UnitsPage::new),
             accounts: accounts::AccountsPage::new(),
+            institutions: institutions::InstitutionsPage::new(),
+            categories: categories::CategoriesPage::new(),
+            tags: tags::TagsPage::new(),
+            payees: payees::PayeesPage::new(),
+            documents: documents::DocumentsPage::new(),
+            inventory: inventory::InventoryPage::new(),
         }
+    }
+
+    /// The ledger-data list page for `page`, among those on the shared [`list::Page`] pattern.
+    fn ledger_page(&self, page: SettingsPage) -> Option<&dyn list::Page> {
+        Some(match page {
+            SettingsPage::Institutions => &self.institutions,
+            SettingsPage::Categories => &self.categories,
+            SettingsPage::Tags => &self.tags,
+            SettingsPage::Payees => &self.payees,
+            SettingsPage::Documents => &self.documents,
+            SettingsPage::Inventory => &self.inventory,
+            _ => return None,
+        })
+    }
+
+    fn ledger_page_mut(&mut self, page: SettingsPage) -> Option<&mut dyn list::Page> {
+        Some(match page {
+            SettingsPage::Institutions => &mut self.institutions,
+            SettingsPage::Categories => &mut self.categories,
+            SettingsPage::Tags => &mut self.tags,
+            SettingsPage::Payees => &mut self.payees,
+            SettingsPage::Documents => &mut self.documents,
+            SettingsPage::Inventory => &mut self.inventory,
+            _ => return None,
+        })
     }
 
     fn selected(&self) -> SettingsPage {
@@ -390,7 +434,7 @@ impl SettingsView {
                 SettingsPage::Display => self.display.handle_key(key),
                 SettingsPage::Units => self.units_page.as_mut()?.handle_key(key),
                 SettingsPage::Accounts => self.accounts.handle_key(key),
-                _ => None,
+                page => self.ledger_page_mut(page)?.handle_key(key),
             },
         }
     }
@@ -408,7 +452,10 @@ impl SettingsView {
                 .map(units::UnitsPage::hints)
                 .unwrap_or_default(),
             SettingsPage::Accounts => accounts::AccountsPage::hints(),
-            _ => Vec::new(),
+            page => self
+                .ledger_page(page)
+                .map(list::Page::hints)
+                .unwrap_or_default(),
         };
         if self.selected() == SettingsPage::Display {
             hints.push(("space".into(), msg::tui_settings_hint_toggle()));
@@ -697,6 +744,10 @@ impl SettingsView {
         let note = match (page, &self.units_page) {
             (SettingsPage::Units, Some(units)) => units.scope_note(),
             (SettingsPage::Accounts, _) => self.accounts.scope_note(),
+            (page, _) if self.ledger_page(page).is_some() => self
+                .ledger_page(page)
+                .map(list::Page::scope_note)
+                .unwrap_or_default(),
             _ => page.scope_note(),
         };
         render_heading(frame, heading, title, &note, c);
@@ -712,7 +763,11 @@ impl SettingsView {
                 }
             }
             SettingsPage::Accounts => self.accounts.render(frame, body, focused, c),
-            _ => {}
+            page => {
+                if let Some(page) = self.ledger_page(page) {
+                    page.render(frame, body, focused, c);
+                }
+            }
         }
     }
 }

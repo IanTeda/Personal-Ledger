@@ -22,7 +22,7 @@ use crate::view::Action;
 use fixture::{BASE_UNIT, FixtureAccount};
 
 /// The groups, in the page's order. A type no Account has draws no group.
-const GROUPS: [AccountType; 5] = [
+pub(super) const GROUPS: [AccountType; 5] = [
     AccountType::Bank,
     AccountType::Cash,
     AccountType::CreditCard,
@@ -100,7 +100,7 @@ impl AccountsPage {
             msg::tui_settings_accounts_note_form(),
             msg::tui_settings_accounts_note_net_worth(BASE_UNIT),
         ];
-        list::render(frame, area, &[self.table()], &notes, focused, c);
+        list::render(frame, area, &[self.table()], None, &notes, focused, c);
     }
 
     fn table(&self) -> Table {
@@ -126,7 +126,7 @@ impl AccountsPage {
         }
         Table {
             heading: msg::tui_settings_accounts_heading(),
-            add: Some(("n".into(), msg::tui_settings_accounts_add())),
+            add: vec![("n".into(), msg::tui_settings_accounts_add())],
             columns: vec![
                 Column::left(msg::tui_settings_accounts_name(), Constraint::Min(0)),
                 Column::left(

@@ -6,16 +6,19 @@
 //! Actions are keys, never row buttons, so a row is only cells. A page builds its tables and notes
 //! from its rows on each draw, counts included, and nothing here is stored.
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use lib_list_cursor::Step;
 use lib_locale::format::upper;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
 use crate::colours::Colours;
+use crate::view::Action;
 
 /// How a span is drawn. Resolved against the row's selection, so a muted or negative cell stays
 /// readable on the reversed row.
@@ -27,6 +30,11 @@ pub(super) enum Tone {
     Negative,
     /// An outlined chip (`[base]`), in the accent when `true`.
     Chip(bool),
+    /// Drawn in the accent, as a flag is.
+    Accent,
+    Bold,
+    /// A one-cell colour mark (`■`) in a Tag's colour.
+    Swatch(Color),
 }
 
 /// One cell: its spans, left to right.
@@ -89,8 +97,8 @@ pub(super) enum Row {
 pub(super) struct Table {
     /// The block's label, drawn upper case and dim.
     pub heading: String,
-    /// The key that adds a row here and what it adds, drawn at the heading's right.
-    pub add: Option<(String, String)>,
+    /// The keys that add a row here and what each adds, drawn at the heading's right.
+    pub add: Vec<(String, String)>,
     pub columns: Vec<Column>,
     pub rows: Vec<Row>,
 }
@@ -185,13 +193,23 @@ impl Table {
             Paragraph::new(Span::styled(upper(&self.heading), c.muted())),
             area,
         );
-        if let Some((key, action)) = &self.add {
-            let line = Line::from(vec![
-                Span::styled(key.as_str(), Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" "),
-                Span::styled(action.as_str(), c.muted()),
-            ]);
-            frame.render_widget(Paragraph::new(line).alignment(Alignment::Right), area);
+        let mut spans = Vec::new();
+        for (key, action) in &self.add {
+            if !spans.is_empty() {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                key.as_str(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(action.as_str(), c.muted()));
+        }
+        if !spans.is_empty() {
+            frame.render_widget(
+                Paragraph::new(Line::from(spans)).alignment(Alignment::Right),
+                area,
+            );
         }
     }
 }
@@ -204,6 +222,13 @@ fn span(text: &str, tone: Tone, selected: bool, c: &Colours) -> Span<'static> {
         Tone::Muted => Span::styled(text.to_string(), c.muted()),
         Tone::Negative if selected => Span::styled(text.to_string(), c.negative_on_selection()),
         Tone::Negative => Span::styled(text.to_string(), c.negative()),
+        Tone::Accent if selected => Span::styled(text.to_string(), c.accent_selection()),
+        Tone::Accent => Span::styled(text.to_string(), c.accent()),
+        Tone::Bold => Span::styled(
+            text.to_string(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Tone::Swatch(colour) => Span::styled(text.to_string(), Style::default().fg(colour)),
         Tone::Chip(accent) => {
             let style = match (accent, selected) {
                 (true, true) => c.accent_selection(),
@@ -223,13 +248,61 @@ fn align(paragraph: Paragraph<'_>, right: bool) -> Paragraph<'_> {
     }
 }
 
+/// The box under the tables naming the selected row's detail (`selected · ANZ`): each line a
+/// dim label and its value.
+pub(super) struct Detail {
+    pub title: String,
+    pub lines: Vec<(String, Cell)>,
+}
+
+/// The label column of a [`Detail`].
+const DETAIL_LABEL: u16 = 18;
+
+impl Detail {
+    fn height(&self) -> u16 {
+        u16::try_from(self.lines.len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(2)
+    }
+
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .title(Span::styled(format!(" {} ", self.title), c.muted()));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        for (index, (label, value)) in self.lines.iter().enumerate() {
+            let row = Rect {
+                y: inner.y + u16::try_from(index).unwrap_or(0),
+                height: 1,
+                ..inner
+            };
+            let [label_area, value_area] =
+                Layout::horizontal([Constraint::Length(DETAIL_LABEL), Constraint::Min(0)])
+                    .areas(row);
+            frame.render_widget(
+                Paragraph::new(Span::styled(label.as_str(), c.muted())),
+                label_area,
+            );
+            let spans: Vec<Span<'static>> = value
+                .0
+                .iter()
+                .map(|(text, tone)| span(text, *tone, false, c))
+                .collect();
+            frame.render_widget(Paragraph::new(Line::from(spans)), value_area);
+        }
+    }
+}
+
 /// A list page's body in `area`: each table at its full height with a blank row between, then
-/// the `notes`, dim, pinned to the bottom under a `Min(0)` gap. A table that doesn't fit is cut to
-/// the room left and scrolls to its selection. Unless `focused`, no row draws as selected.
+/// the `detail` box of the selected row, then the `notes`, dim, pinned to the bottom under a
+/// `Min(0)` gap. A table that doesn't fit is cut to the room left and scrolls to its selection.
+/// Unless `focused`, no row draws as selected.
 pub(super) fn render(
     frame: &mut Frame<'_>,
     area: Rect,
     tables: &[Table],
+    detail: Option<&Detail>,
     notes: &[String],
     focused: bool,
     c: &Colours,
@@ -241,6 +314,11 @@ pub(super) fn render(
         }
         constraints.push(Constraint::Length(table.height()));
     }
+    let detail = detail.filter(|_| focused);
+    if let Some(detail) = detail {
+        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(detail.height()));
+    }
     constraints.push(Constraint::Min(0));
     constraints.push(Constraint::Length(
         u16::try_from(notes.len()).unwrap_or(u16::MAX),
@@ -249,6 +327,9 @@ pub(super) fn render(
     for (index, table) in tables.iter().enumerate() {
         table.render(frame, areas[index * 2], focused, c);
     }
+    if let Some(detail) = detail {
+        detail.render(frame, areas[tables.len() * 2], c);
+    }
     if let Some(notes_area) = areas.last() {
         let lines: Vec<Line<'_>> = notes
             .iter()
@@ -256,4 +337,28 @@ pub(super) fn render(
             .collect();
         frame.render_widget(Paragraph::new(lines), *notes_area);
     }
+}
+
+/// The cursor step a plain `j`/`k`/`Home`/`G` key asks for; `None` for any other key.
+pub(super) fn motion(key: KeyEvent) -> Option<Step> {
+    if key.modifiers != KeyModifiers::NONE && key.modifiers != KeyModifiers::SHIFT {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => Some(Step::Next),
+        KeyCode::Char('k') | KeyCode::Up => Some(Step::Prev),
+        KeyCode::Home => Some(Step::First),
+        KeyCode::Char('G') | KeyCode::End => Some(Step::Last),
+        _ => None,
+    }
+}
+
+/// A ledger-data list page Settings hosts beside Units and Accounts.
+pub(super) trait Page {
+    /// `None` when the page leaves `key` to Settings.
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Action>;
+    /// The heading's note, counts derived from the rows.
+    fn scope_note(&self) -> String;
+    fn hints(&self) -> Vec<(String, String)>;
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours);
 }
