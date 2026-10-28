@@ -12,7 +12,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_colour_theme::ColourAppearance;
-use lib_config::KeyBindingConfig;
+use lib_config::{ConfigWriter, KeyBindingConfig, PersonalLedgerConfig};
 use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
@@ -68,7 +68,7 @@ use crate::{
         reports::ReportsView,
         settings::{
             BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
-            field::{SettingField, SettingsValues},
+            field::{Configuration, SettingField, SettingsValues},
         },
         tags::TagsView,
         transactions::TransactionsView,
@@ -127,6 +127,9 @@ pub struct Shell {
     /// The form values that hold for the session only, shared with every `SettingsView` as
     /// `settings_page` is.
     settings_values: Rc<RefCell<SettingsValues>>,
+    /// Writes Display's Configuration rows to the user's `personal-ledger.conf`. A `Shell` built
+    /// without one has nowhere to write, so those rows stay read-only.
+    config_writer: ConfigWriter,
     /// The recent `tracing` events `main` captures, which Settings › Logs shows. A `Shell` built
     /// without one holds an empty buffer nothing feeds.
     logs: LogBuffer,
@@ -236,6 +239,7 @@ impl Shell {
             settings_popup: None,
             settings_page: Rc::default(),
             settings_values: Rc::default(),
+            config_writer: ConfigWriter::default(),
             logs: LogBuffer::new(LOG_CAPACITY),
             outside: Box::new(System),
             account_popup: None,
@@ -281,6 +285,19 @@ impl Shell {
     /// Sends links and copied text to `outside` instead of the real browser and clipboard.
     pub fn with_outside(mut self, outside: impl Outside + 'static) -> Self {
         self.outside = Box::new(outside);
+        self
+    }
+
+    /// Shows `config`'s `[Personal-Ledger]` values on Settings › Display and writes its rows
+    /// through `writer` (#904).
+    pub fn with_configuration(
+        mut self,
+        config: &PersonalLedgerConfig,
+        writer: ConfigWriter,
+    ) -> Self {
+        self.settings_values.borrow_mut().configuration =
+            Configuration::from_config(config, &writer);
+        self.config_writer = writer;
         self
     }
 
@@ -2072,7 +2089,10 @@ impl Shell {
     /// session's values, is the Settings View's, opened on the field's page first.
     fn set_setting(&mut self, field: SettingField, value: Option<String>) {
         self.command_popup = None;
-        if let Some(reason) = field.refusal() {
+        let refusal = field
+            .refusal()
+            .or_else(|| self.settings_values.borrow().configuration.refusal(field));
+        if let Some(reason) = refusal {
             self.status_message = Some(reason);
             return;
         }
@@ -2118,7 +2138,40 @@ impl Shell {
                     self.settings_popup = Some(SettingsPopup::BaseUnitGuard(guard));
                 }
             }
+            (field, Some(value)) if field.config_key().is_some() => {
+                self.write_configuration(field, value, &action);
+            }
             _ => self.view.update(&action),
+        }
+    }
+
+    /// Saves a Configuration row's `value` to the user's file, then shows it: terminal colours
+    /// redraws in the other mode at once, and the hint bar's footer and the rows read the session's
+    /// copy. Status glyphs is written and shown on its row, but the TUI draws Unicode either way
+    /// until it reads the key. A failed write leaves the field open with the reason.
+    fn write_configuration(&mut self, field: SettingField, value: &str, action: &Action) {
+        let (Some(key), Some(file_value)) =
+            (field.config_key(), Configuration::file_value(field, value))
+        else {
+            return;
+        };
+        if let Err(error) = self.config_writer.write(key, file_value) {
+            tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
+            self.status_message = Some(crate::msg::tui_settings_config_write_failed(
+                field.command_name(),
+                &error.to_string(),
+            ));
+            return;
+        }
+        self.view.update(action);
+        if field == SettingField::TerminalColours {
+            self.colours.set_terminal_colours(file_value == "true");
+        }
+        if let Some(path) = self.config_writer.target() {
+            self.status_message = Some(crate::msg::tui_settings_config_saved(
+                field.command_name(),
+                &path.display().to_string(),
+            ));
         }
     }
 
@@ -2316,18 +2369,20 @@ impl Shell {
                 crate::msg::tui_mode_normal()
             };
             spans.push(Span::styled(upper(&mode), key));
-            spans.push(Span::raw(HINT_SEPARATOR));
-            // The view's own keys take the place of the Shell's resting hints.
-            let hints = self.view.hints(back_key).unwrap_or_else(|| {
-                self.footer_hints()
-                    .into_iter()
-                    .map(|(token, label)| (token.to_string(), label))
-                    .collect()
-            });
-            for (index, (token, label)) in hints.into_iter().enumerate() {
-                if index > 0 {
-                    spans.push(Span::raw(HINT_SEPARATOR));
-                }
+            // The view's own keys take the place of the Shell's resting hints. With the hint bar
+            // off (`hint_bar` Configuration) only the mode is left.
+            let hints = if self.settings_values.borrow().configuration.hint_bar {
+                self.view.hints(back_key).unwrap_or_else(|| {
+                    self.footer_hints()
+                        .into_iter()
+                        .map(|(token, label)| (token.to_string(), label))
+                        .collect()
+                })
+            } else {
+                Vec::new()
+            };
+            for (token, label) in hints {
+                spans.push(Span::raw(HINT_SEPARATOR));
                 spans.push(Span::styled(token, key));
                 spans.push(Span::raw(format!(" {label}")));
             }
@@ -4611,7 +4666,108 @@ mod tests {
             "the Locale names where it changes"
         );
         press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
-        assert!(drawn(&mut shell).contains("which Settings can't write yet"));
+        assert!(
+            drawn(&mut shell).contains("no user config directory"),
+            "a Shell with nowhere to write keeps the Configuration rows read-only"
+        );
+    }
+
+    /// [`opened`], writing Configuration to `personal-ledger.conf` in `dir` under `env`.
+    fn writing_to(dir: &tempfile::TempDir, env: &[(&str, &str)]) -> (Shell, PathBuf) {
+        let path = dir
+            .path()
+            .join("personal-ledger")
+            .join("personal-ledger.conf");
+        let writer = ConfigWriter::new(
+            Some(path.clone()),
+            Vec::new(),
+            env.iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+        );
+        let shell = opened().with_configuration(&PersonalLedgerConfig::default(), writer);
+        (shell, path)
+    }
+
+    #[test]
+    fn terminal_colours_opens_in_place_saves_to_the_file_and_redraws_at_once() {
+        crate::locale::init_for_tests();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, path) = writing_to(&dir, &[]);
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        shell.update(Action::SetSetting(SettingField::TerminalColours, None));
+        assert!(shell.view.editing());
+        press(&mut shell, &[KeyCode::Right, KeyCode::Enter]);
+        assert!(!shell.view.editing());
+        assert!(
+            shell.colours.terminal_colours(),
+            "applies without a restart"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Personal-Ledger]\nterminal_colours = true\n"
+        );
+        let text = drawn(&mut shell);
+        assert!(text.contains("terminal palette"), "{text}");
+        assert!(text.contains("terminal-colours saved to"), "{text}");
+    }
+
+    #[test]
+    fn set_glyphs_writes_the_file_and_refuses_a_value_it_doesnt_take() {
+        crate::locale::init_for_tests();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, path) = writing_to(&dir, &[]);
+        run_command(&mut shell, "set glyphs braille");
+        assert!(!path.exists());
+        assert!(drawn(&mut shell).contains("braille isn't a value glyphs takes"));
+        run_command(&mut shell, "set glyphs ascii");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Personal-Ledger]\nstatus_glyphs = ascii\n"
+        );
+        let text = drawn(&mut shell);
+        assert!(row_of(&text, "status glyphs").contains("ascii"), "{text}");
+    }
+
+    #[test]
+    fn space_on_the_hint_bar_hides_the_footer_hints_and_saves() {
+        crate::locale::init_for_tests();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, path) = writing_to(&dir, &[]);
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        assert!(footer(&mut shell).contains("j/k"));
+        press(&mut shell, &[KeyCode::End, KeyCode::Char(' ')]);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Personal-Ledger]\nhint_bar = false\n"
+        );
+        // The save's status message holds the footer until the next key.
+        press(&mut shell, &[KeyCode::Char('k')]);
+        let footer = footer(&mut shell);
+        assert!(footer.contains("NORMAL"), "{footer}");
+        assert!(!footer.contains("j/k"), "{footer}");
+        assert!(row_of(&drawn(&mut shell), "hint bar").contains("[ ] show key hints"));
+    }
+
+    #[test]
+    fn a_key_an_environment_variable_sets_says_so_rather_than_saving() {
+        crate::locale::init_for_tests();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, path) = writing_to(
+            &dir,
+            &[("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "true")],
+        );
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        let text = drawn_at(&mut shell, 140, 30);
+        assert!(
+            row_of(&text, "hint bar").contains("set by PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR"),
+            "{text}"
+        );
+        press(&mut shell, &[KeyCode::End, KeyCode::Enter]);
+        assert!(!path.exists(), "nothing is written");
+        assert!(
+            drawn_at(&mut shell, 160, 30).contains("which outranks your personal-ledger.conf"),
+            "the status line says why"
+        );
     }
 
     #[test]

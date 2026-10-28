@@ -193,7 +193,7 @@ The Sync Server ignores this setting.
 
 __terminal_colours:__
 
-TUI only. When true, the TUI ignores the Colour Theme and any `[theme]` overrides and draws in the terminal's own ANSI colours, so your terminal theme wins. Per Client and never synced; changing it needs a restart. The Desktop ignores it.
+TUI only. When true, the TUI ignores the Colour Theme and any `[theme]` overrides and draws in the terminal's own ANSI colours, so your terminal theme wins. Per Client and never synced. Settings › Display in the TUI changes it at once and writes it to your own file (see The Settings screen in the TUI). The Desktop ignores it.
 
 * Type: Boolean
 * Default: false
@@ -204,6 +204,30 @@ Example:
 ```ini
 [Personal-Ledger]
 terminal_colours = true
+```
+
+__status_glyphs:__
+
+TUI only. `unicode` draws status glyphs such as `●`, `✓` and `⚑`; `ascii` asks for plain stand-ins, for a terminal font that lacks them. Settings › Display in the TUI writes it. The Desktop ignores it.
+
+* Type: String, `unicode` or `ascii`
+* Default: unicode
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS
+
+__hint_bar:__
+
+TUI only. When false, the footer shows only the mode (`NORMAL`, `INSERT` …) and not the keys the screen takes. Settings › Display in the TUI changes it at once and writes it. The Desktop ignores it.
+
+* Type: Boolean
+* Default: true
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR
+
+Example:
+
+```ini
+[Personal-Ledger]
+status_glyphs = ascii
+hint_bar = false
 ```
 
 __log_file_path:__
@@ -299,7 +323,16 @@ Resizing keeps the page you are on, its selected row and where you were.
 
 General and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
 
-Some fields can't be changed here. The Locale is read from `personal-ledger.conf` when the app starts, and Terminal colours, Status glyphs and Hint bar are kept in that file, which Settings can't write yet. Trying to change one says why.
+The Locale can't be changed here: it is read from `personal-ledger.conf` when the app starts. Trying to change it says why.
+
+### What Settings writes to personal-ledger.conf
+
+Terminal colours, Status glyphs and Hint bar are Configuration, so Settings › Display saves them to `personal-ledger.conf` rather than the Ledger. Terminal colours opens a choice of theme RGB or terminal palette, Status glyphs a choice of unicode or ascii, and `Enter` or `Space` on Hint bar ticks or clears it at once.
+
+- Settings writes only your own file: `~/.config/personal-ledger/personal-ledger.conf` on Linux, `~/Library/Preferences/personal-ledger/personal-ledger.conf` on macOS and `%APPDATA%\personal-ledger\personal-ledger.conf` on Windows. It creates the file and its folder if they don't exist. The note under Display's rows names the file.
+- A save changes only that key's line in the `[Personal-Ledger]` section, or adds one line if the key isn't there. Your comments, the order of your keys and every other section are left as you wrote them.
+- Terminal colours and Hint bar apply as soon as you save. The status line names the file it saved to.
+- An environment variable, or a file that comes after yours in the Configuration Hierarchy (beside the executable, `config/personal-ledger.conf` in the working directory, or `--config`), wins over your file. When one sets a key, its row says `set by` and names it, and Settings won't save the key, because the change would do nothing until that variable or file goes.
 
 ### Commands
 
@@ -325,12 +358,15 @@ The fields `set` takes are `ledger-name`, `owner`, `fy-start`, `base`, `appearan
 - `set appearance dark` and `set colour-theme nord`: the same as choosing them from their lists.
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.
 - `set base btc`: opens the confirmation that changing the base unit always asks for.
+- `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).
 
 A field name or value that `set` doesn't know is refused on the status line, which names what it takes.
 
 ### Heads up
 
 - Ledger name, owner, financial year and date style hold only until you close the app, until the Ledger saves its Preferences.
+- Status glyphs is saved and shown on its row, but the TUI still draws Unicode glyphs either way: it doesn't read the setting yet.
+- Turning Terminal colours off again while the app runs draws the Colour Theme, but System appearance can't follow your terminal's background until a restart: the TUI checks the background only at start-up, and skips the check while Terminal colours is on.
 - Undo and redo for History have no commands yet. On the History page, `u` and `ctrl`+`r` say they are not built yet.
 
 ## Toasts

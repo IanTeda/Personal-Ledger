@@ -4,17 +4,19 @@
 //! own scope glyph, since the page mixes scopes.
 //!
 //! `enter` on Appearance or Colour Theme opens its existing list popup, which `Shell` hosts, and
-//! `enter` or `space` on Toasts flips it. The date style opens in place and holds for the session
-//! ([`SettingsValues`](super::field::SettingsValues)): no TUI View formats dates by it yet, so the
-//! choice shows on this row, and the card's preview box isn't drawn until one does.
+//! `enter` or `space` on Toasts or the hint bar flips it. The date style opens in place and holds
+//! for the session ([`SettingsValues`](super::field::SettingsValues)): no TUI View formats dates by
+//! it yet, so the choice shows on this row, and the card's preview box isn't drawn until one does.
 //!
-//! Terminal colours, status glyphs and the hint bar are Configuration in `personal-ledger.conf`,
-//! which `lib-config` can't write yet, so they are read-only with the note `config file`; `enter`
-//! on one says why on the status line. Neither status glyphs nor the hint bar has a Configuration
-//! key yet either, so their values are the TUI's fixed behaviour.
+//! Terminal colours, status glyphs and the hint bar are Configuration in `personal-ledger.conf`
+//! ([`Configuration`](super::field::Configuration)), which `Shell` writes to the user's file
+//! (#904): terminal colours and status glyphs open in place, and the hint bar flips. A key an
+//! environment variable or a higher file sets is noted `set by …` on its row, and `enter` on it
+//! says why it can't be saved here rather than appearing to save.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_colour_theme::ColourAppearance;
+use lib_config::StatusGlyphs;
 use lib_list_cursor::Step;
 use ratatui::{
     Frame,
@@ -23,7 +25,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
-use super::field::{DATE_STYLES, SettingField};
+use super::field::{DATE_STYLES, SettingField, on_off};
 use super::keys::{self, Binding, Press};
 use super::{Context, FieldRow, Open, Scope, list, render_form};
 use crate::colours::Colours;
@@ -91,17 +93,22 @@ impl DisplayPage {
         self.toasts_on = on;
     }
 
-    /// `enter` opens the selected row; on Toasts it, like `space`, flips the checkbox at once.
-    /// `space` on any other row does nothing.
-    pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+    /// `enter` opens the selected row; on Toasts or the hint bar it, like `space`, flips the
+    /// checkbox at once, from `hint_bar` for the hint bar. `space` on any other row does nothing.
+    pub(super) fn handle_key(&mut self, key: KeyEvent, hint_bar: bool) -> Option<Action> {
         let field = ROWS[self.selected];
+        let flipped = match field {
+            SettingField::Toasts => Some(!self.toasts_on),
+            SettingField::HintBar => Some(!hint_bar),
+            _ => None,
+        };
         Some(match keys::lookup(KEYS, key)? {
             Command::Row => {
                 self.step(list::motion(key)?);
                 Action::NoOp
             }
-            Command::Open | Command::Toggle if field == SettingField::Toasts => {
-                Action::SetSetting(field, Some(on_off(!self.toasts_on).to_string()))
+            Command::Open | Command::Toggle if let Some(on) = flipped => {
+                Action::SetSetting(field, Some(on_off(on).to_string()))
             }
             Command::Open => Action::SetSetting(field, None),
             Command::Toggle => Action::NoOp,
@@ -150,12 +157,13 @@ impl DisplayPage {
             c,
         );
         let [_, notes] = Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).areas(rest);
+        let config_note = match &context.values.configuration.path {
+            Some(path) => msg::tui_settings_display_note_config_writes(&path.display().to_string()),
+            None => msg::tui_settings_display_note_config(),
+        };
         frame.render_widget(
             Paragraph::new(vec![
-                ratatui::text::Line::from(Span::styled(
-                    msg::tui_settings_display_note_config(),
-                    c.muted(),
-                )),
+                ratatui::text::Line::from(Span::styled(config_note, c.muted())),
                 ratatui::text::Line::from(Span::styled(
                     msg::tui_settings_display_note_scope(),
                     c.muted(),
@@ -167,13 +175,42 @@ impl DisplayPage {
     }
 
     /// What opening `field` in place starts from: its draft and the old value's label. `None` for
-    /// a row that opens a popup, flips at once, or is read-only.
+    /// a row that opens a popup or is read-only.
     pub(super) fn draft(
         &self,
         field: SettingField,
         context: &Context<'_>,
     ) -> Option<(Draft, String)> {
+        let configuration = &context.values.configuration;
         match field {
+            SettingField::TerminalColours => {
+                let on = configuration.terminal_colours;
+                Some((
+                    choice(&[(false, "off"), (true, "on")], on, |on| {
+                        terminal_colours_label(*on)
+                    }),
+                    terminal_colours_label(on),
+                ))
+            }
+            SettingField::StatusGlyphs => {
+                let glyphs = configuration.status_glyphs;
+                Some((
+                    choice(
+                        &[
+                            (StatusGlyphs::Unicode, StatusGlyphs::Unicode.key()),
+                            (StatusGlyphs::Ascii, StatusGlyphs::Ascii.key()),
+                        ],
+                        glyphs,
+                        |glyphs| status_glyphs_label(*glyphs),
+                    ),
+                    status_glyphs_label(glyphs),
+                ))
+            }
+            // `:set hint-bar` without a value opens the checkbox in place, as Toasts does.
+            SettingField::HintBar => Some((
+                Draft::Check(configuration.hint_bar),
+                hint_bar_label(configuration.hint_bar),
+            )),
             SettingField::DateStyle => {
                 let segments = DATE_STYLES
                     .iter()
@@ -207,7 +244,16 @@ impl DisplayPage {
         } else {
             msg::tui_settings_colour_theme_note()
         };
-        let config = msg::tui_settings_config_file_note();
+        let configuration = &context.values.configuration;
+        // A Configuration row names what outranks its write, else the file it saves to.
+        let config = || {
+            field
+                .config_key()
+                .and_then(|key| configuration.shadow(key))
+                .map_or_else(msg::tui_settings_config_file_note, |source| {
+                    msg::tui_settings_config_shadowed_note(&source)
+                })
+        };
         let (glyph, value, note) = match field {
             SettingField::Appearance => {
                 let appearance = c.colour_appearance().unwrap_or_default();
@@ -239,29 +285,23 @@ impl DisplayPage {
             }
             SettingField::TerminalColours => (
                 Scope::ThisDevice,
-                if c.terminal_colours() {
-                    msg::tui_settings_terminal_colours_palette()
-                } else {
-                    msg::tui_settings_terminal_colours_theme()
-                },
-                config,
+                terminal_colours_label(configuration.terminal_colours),
+                config(),
             ),
-            // wireframe: no Configuration key chooses the glyphs yet; the TUI draws unicode.
             SettingField::StatusGlyphs => (
                 Scope::ThisDevice,
-                msg::tui_settings_status_glyphs_unicode(),
-                config,
+                status_glyphs_label(configuration.status_glyphs),
+                config(),
             ),
             SettingField::Toasts => (
                 Scope::ThisDevice,
                 toasts_label(self.toasts_on),
                 lib_locale::msg::toast_setting_note(),
             ),
-            // wireframe: no Configuration key hides the hint bar yet; the TUI always draws it.
             _ => (
                 Scope::ThisDevice,
-                msg::tui_settings_hint_bar_shown(),
-                config,
+                hint_bar_label(configuration.hint_bar),
+                config(),
             ),
         };
         FieldRow {
@@ -273,9 +313,44 @@ impl DisplayPage {
     }
 }
 
-/// The Toasts Preference as `:set toasts` takes it.
-pub(super) fn on_off(on: bool) -> &'static str {
-    if on { "on" } else { "off" }
+/// A two-way choice drafted on `chosen`, each option by the value `:set` takes.
+fn choice<T: PartialEq>(options: &[(T, &str)], chosen: T, label: impl Fn(&T) -> String) -> Draft {
+    Draft::Choice {
+        segments: options
+            .iter()
+            .map(|(option, value)| Segment {
+                value: (*value).to_string(),
+                label: label(option),
+            })
+            .collect(),
+        chosen: options
+            .iter()
+            .position(|(option, _)| *option == chosen)
+            .unwrap_or_default(),
+    }
+}
+
+fn terminal_colours_label(on: bool) -> String {
+    if on {
+        msg::tui_settings_terminal_colours_palette()
+    } else {
+        msg::tui_settings_terminal_colours_theme()
+    }
+}
+
+fn status_glyphs_label(glyphs: StatusGlyphs) -> String {
+    match glyphs {
+        StatusGlyphs::Unicode => msg::tui_settings_status_glyphs_unicode(),
+        StatusGlyphs::Ascii => msg::tui_settings_status_glyphs_ascii(),
+    }
+}
+
+fn hint_bar_label(on: bool) -> String {
+    if on {
+        msg::tui_settings_hint_bar_shown()
+    } else {
+        msg::tui_settings_hint_bar_hidden()
+    }
 }
 
 fn toasts_label(on: bool) -> String {
@@ -311,32 +386,32 @@ mod tests {
     fn enter_opens_each_colour_popup_by_its_field_and_flips_toasts() {
         let mut page = DisplayPage::new();
         assert_eq!(
-            page.handle_key(key(KeyCode::Enter)),
+            page.handle_key(key(KeyCode::Enter), true),
             Some(Action::SetSetting(SettingField::Appearance, None))
         );
-        page.handle_key(key(KeyCode::Char('j')));
+        page.handle_key(key(KeyCode::Char('j')), true);
         assert_eq!(
-            page.handle_key(key(KeyCode::Enter)),
+            page.handle_key(key(KeyCode::Enter), true),
             Some(Action::SetSetting(SettingField::ColourTheme, None))
         );
         page.select(SettingField::Toasts);
         assert_eq!(
-            page.handle_key(key(KeyCode::Enter)),
+            page.handle_key(key(KeyCode::Enter), true),
             Some(Action::SetSetting(SettingField::Toasts, Some("off".into())))
         );
         page.set_toasts_on(false);
         assert_eq!(
-            page.handle_key(key(KeyCode::Char(' '))),
+            page.handle_key(key(KeyCode::Char(' ')), true),
             Some(Action::SetSetting(SettingField::Toasts, Some("on".into())))
         );
         page.select(SettingField::Locale);
         assert_eq!(
-            page.handle_key(key(KeyCode::Enter)),
+            page.handle_key(key(KeyCode::Enter), true),
             Some(Action::SetSetting(SettingField::Locale, None)),
             "the Shell refuses the read-only Locale with its reason"
         );
         assert_eq!(
-            page.handle_key(key(KeyCode::Char(' '))),
+            page.handle_key(key(KeyCode::Char(' ')), true),
             Some(Action::NoOp),
             "space only toggles Toasts"
         );
@@ -389,7 +464,8 @@ mod tests {
             true,
             crate::colours::ColourDepth::TrueColor,
         );
-        let values = SettingsValues::default();
+        let mut values = SettingsValues::default();
+        values.configuration.terminal_colours = true;
         let page = DisplayPage::new();
         assert!(
             page.field(SettingField::ColourTheme, &context(&values), &c)
@@ -404,9 +480,69 @@ mod tests {
     }
 
     #[test]
+    fn the_configuration_rows_open_in_place_flip_and_name_what_outranks_them() {
+        crate::locale::init_for_tests();
+        let mut values = SettingsValues::default();
+        let mut page = DisplayPage::new();
+        page.select(SettingField::TerminalColours);
+        assert_eq!(
+            page.handle_key(key(KeyCode::Enter), true),
+            Some(Action::SetSetting(SettingField::TerminalColours, None))
+        );
+        let Some((Draft::Choice { segments, chosen }, was)) =
+            page.draft(SettingField::StatusGlyphs, &context(&values))
+        else {
+            panic!("status glyphs opens a choice");
+        };
+        assert_eq!(
+            segments
+                .iter()
+                .map(|s| s.value.as_str())
+                .collect::<Vec<_>>(),
+            ["unicode", "ascii"]
+        );
+        assert_eq!((chosen, was.as_str()), (0, "unicode"));
+
+        page.select(SettingField::HintBar);
+        assert_eq!(
+            page.handle_key(key(KeyCode::Char(' ')), true),
+            Some(Action::SetSetting(
+                SettingField::HintBar,
+                Some("off".into())
+            ))
+        );
+        assert_eq!(
+            page.handle_key(key(KeyCode::Enter), false),
+            Some(Action::SetSetting(SettingField::HintBar, Some("on".into())))
+        );
+
+        values.configuration.hint_bar = false;
+        values.configuration.shadows = vec![(
+            lib_config::ConfigKey::HintBar,
+            lib_config::Shadow::Env("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()),
+        )];
+        let row = page.field(
+            SettingField::HintBar,
+            &context(&values),
+            &Colours::default(),
+        );
+        assert_eq!(row.value, "[ ] show key hints");
+        assert_eq!(row.note, "set by PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR");
+        assert_eq!(
+            page.field(
+                SettingField::StatusGlyphs,
+                &context(&values),
+                &Colours::default()
+            )
+            .note,
+            "config file"
+        );
+    }
+
+    #[test]
     fn the_hint_bar_is_the_keys_the_page_takes() {
         keys::tests::assert_the_hints_are_the_keys(KEYS, DisplayPage::hints(), |key| {
-            DisplayPage::new().handle_key(key)
+            DisplayPage::new().handle_key(key, true)
         });
     }
 }

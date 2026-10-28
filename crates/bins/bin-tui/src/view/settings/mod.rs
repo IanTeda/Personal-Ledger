@@ -504,7 +504,10 @@ impl SettingsView {
             }
             _ => match self.selected() {
                 SettingsPage::General => self.general.handle_key(key),
-                SettingsPage::Display => self.display.handle_key(key),
+                SettingsPage::Display => {
+                    let hint_bar = self.values.borrow().configuration.hint_bar;
+                    self.display.handle_key(key, hint_bar)
+                }
                 SettingsPage::Units => self.units_page.as_mut()?.handle_key(key),
                 SettingsPage::Accounts => self.accounts.handle_key(key),
                 SettingsPage::SyncServer => self.sync_server.handle_key(key),

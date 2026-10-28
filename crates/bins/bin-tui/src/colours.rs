@@ -140,6 +140,13 @@ impl Colours {
         self.system
     }
 
+    /// Turns the `terminal_colours` Configuration switch on or off; the next draw shows it. The
+    /// terminal's light/dark background stays as detected at start-up, which isn't probed under
+    /// terminal colours, so System reads as undetected after turning it off.
+    pub fn set_terminal_colours(&mut self, on: bool) {
+        self.terminal_colours = on;
+    }
+
     /// Whether the `terminal_colours` Configuration switch is on, for the Settings note. A
     /// 16-colour terminal also draws terminal colours but is not named by that note.
     pub fn terminal_colours(&self) -> bool {

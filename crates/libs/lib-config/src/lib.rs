@@ -15,6 +15,7 @@
 //!   read by Clients
 //! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
 //!   the TUI/Desktop Clients
+//! - [`writer`] - Writes one `[Personal-Ledger]` key back to the user's file, for Settings
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
 //!   arguments, flattened into each binary's own parser
@@ -35,6 +36,7 @@ mod ledger;
 mod personal_ledger;
 mod sync_server;
 mod theme;
+mod writer;
 
 /// Re-export settings [`Error`] type.
 pub use error::Error;
@@ -46,7 +48,10 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub use ledger::LedgerConfig as Config;
 
 /// Personal Ledger configuration.
-pub use personal_ledger::{DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig};
+pub use personal_ledger::{DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig, StatusGlyphs};
+
+/// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
+pub use writer::{ConfigKey, ConfigWriter, Shadow};
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

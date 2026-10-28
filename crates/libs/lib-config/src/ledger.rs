@@ -79,6 +79,11 @@ pub struct LedgerConfig {
     /// warning instead of failing the whole parse (ADR-0023).
     #[serde(skip)]
     pub theme: crate::ThemeConfig,
+
+    /// Where Settings writes Configuration, and what outranks it: the user's file under
+    /// [`Self::parse`], nothing under [`Self::parse_for_sync_server`].
+    #[serde(skip)]
+    writer: crate::ConfigWriter,
 }
 
 impl LedgerConfig {
@@ -106,7 +111,7 @@ impl LedgerConfig {
     /// [`Self::parse`] with an optional injected environment (`None` reads the process
     /// environment) and operating-system Locale detector. Tests use this because mutating
     /// the process environment is `unsafe` and the real machine's Locale is not repeatable.
-    fn parse_with_detector(
+    pub(crate) fn parse_with_detector(
         config_file: Option<&Path>,
         env: Option<HashMap<String, String>>,
         detect_locale: impl FnOnce() -> Option<String>,
@@ -128,9 +133,21 @@ impl LedgerConfig {
         } else {
             None
         };
-        if let Some(cwd_config) = cwd_config.filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, &cwd_config)?;
+        if let Some(cwd_config) = cwd_config.as_ref().filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, cwd_config)?;
         }
+
+        // The files above the user's, lowest first, for the writer to name the one that wins.
+        let above = [Self::get_executable_config_path(), cwd_config]
+            .into_iter()
+            .flatten()
+            .chain(config_file.map(Path::to_path_buf))
+            .collect();
+        let writer = crate::ConfigWriter::new(
+            Self::get_user_config_path(),
+            above,
+            env.clone().unwrap_or_else(|| std::env::vars().collect()),
+        );
 
         config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
 
@@ -138,6 +155,7 @@ impl LedgerConfig {
         ledger_config
             .personal_ledger
             .resolve_locale(detect_locale)?;
+        ledger_config.writer = writer;
         Ok(ledger_config)
     }
 
@@ -344,6 +362,11 @@ impl LedgerConfig {
     /// Get the `[theme]` Colour Role overrides.
     pub fn theme_config(&self) -> &crate::ThemeConfig {
         &self.theme
+    }
+
+    /// Where Settings writes Configuration back to, and what outranks it there.
+    pub fn writer(&self) -> &crate::ConfigWriter {
+        &self.writer
     }
 
     /// Get the Personal Ledger bootstrap/startup configuration.
@@ -825,6 +848,48 @@ mod tests {
         let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__TERMINAL_COLOURS", "true")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
         assert!(config.personal_ledger.terminal_colours());
+    }
+
+    #[test]
+    fn status_glyphs_and_the_hint_bar_default_to_unicode_and_shown_and_read_env() {
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
+        assert_eq!(
+            config.personal_ledger.status_glyphs(),
+            crate::StatusGlyphs::Unicode
+        );
+        assert!(config.personal_ledger.hint_bar());
+
+        let env = env_map(&[
+            ("PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS", "ascii"),
+            ("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "false"),
+        ]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(
+            config.personal_ledger.status_glyphs(),
+            crate::StatusGlyphs::Ascii
+        );
+        assert!(!config.personal_ledger.hint_bar());
+    }
+
+    #[test]
+    fn the_client_writes_to_the_user_file_and_the_sync_server_nowhere() {
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse_with_detector(None, env_map(&[]), || None).unwrap();
+            assert_eq!(
+                config.writer().target(),
+                LedgerConfig::get_user_config_path().as_deref()
+            );
+            let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "false")]);
+            let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
+            assert_eq!(
+                config.writer().shadow(crate::ConfigKey::HintBar),
+                Some(crate::Shadow::Env(
+                    "PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()
+                ))
+            );
+        });
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
+        assert_eq!(config.writer().target(), None);
     }
 
     const LOCALE_ENV: &str = "PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE";

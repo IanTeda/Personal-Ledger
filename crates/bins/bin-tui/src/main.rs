@@ -65,6 +65,7 @@ async fn main() -> Result<()> {
         colours,
         Some(config.personal_ledger_config().file()),
     )
+    .with_configuration(config.personal_ledger_config(), config.writer().clone())
     .with_log_buffer(logs)
     .run()
     .await

@@ -24,6 +24,15 @@ pub enum Error {
         value: String,
     },
 
+    /// A configuration file Settings writes couldn't be read or written.
+    #[error("Could not write configuration file {path:?}: {source}")]
+    Write {
+        /// The file written.
+        path: std::path::PathBuf,
+        /// Why it failed.
+        source: std::io::Error,
+    },
+
     /// Two commands are bound to the same key, leaving one unreachable.
     #[error("Invalid key binding config: {0}")]
     InvalidKeyBindingConfig(String),

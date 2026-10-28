@@ -131,16 +131,26 @@ tui-settings-setting-hint-bar = hint bar
 tui-settings-terminal-colours-theme = theme rgb
 tui-settings-terminal-colours-palette = terminal palette
 tui-settings-status-glyphs-unicode = unicode
+tui-settings-status-glyphs-ascii = ascii
 tui-settings-hint-bar-shown = [x] show key hints
-# The note on a Configuration row Settings can't write yet.
+tui-settings-hint-bar-hidden = [ ] show key hints
+# The note on a Configuration row, which saves to personal-ledger.conf.
 tui-settings-config-file-note = config file
+# The note on a Configuration row a higher source sets. `$source` is an environment variable's name
+# or a file's path.
+tui-settings-config-shadowed-note = set by { $source }
+# With no user config directory, nothing is written.
 tui-settings-display-note-config = Config file rows are read from personal-ledger.conf at start-up; change them there.
+# `$path` is the user's personal-ledger.conf.
+tui-settings-display-note-config-writes = Config file rows save to { $path }.
 tui-settings-display-note-scope = ● rows sync with the ledger. The locale changes only in the file, then a restart.
 
 ## Why a field can't be set. `$field` is the name `:set` takes.
 
 tui-settings-read-only-locale = { $field } is read-only: change it in personal-ledger.conf, then restart
-tui-settings-read-only-config = { $field } is in personal-ledger.conf, which Settings can't write yet
+tui-settings-read-only-config = { $field } is in personal-ledger.conf, and there's no user config directory to write it to
+# `$source` is an environment variable's name or a file's path.
+tui-settings-set-shadowed = { $field } is set by { $source }, which outranks your personal-ledger.conf: change it there
 
 ## `:set` refusals and the line echoing an open field as the command. `$set` is `:set` and
 ## `$fields` the field names it takes: command syntax, so never translated.
@@ -209,6 +219,10 @@ tui-settings-guard-hint-price-sources = price sources
 tui-settings-guard-hint-cancel = cancel
 # The Toast once the base unit is set.
 tui-settings-toast-base-set = { $to } is now the base unit
+# A Configuration row saved. `$path` is the file written.
+tui-settings-config-saved = { $field } saved to { $path }
+# `$error` is the operating system's reason.
+tui-settings-config-write-failed = Couldn't save { $field }: { $error }
 
 ## Locale display descriptions (where the effective Locale came from).
 

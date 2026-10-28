@@ -1,5 +1,6 @@
-//! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, and the values
-//! that hold for the session only ([`SettingsValues`]).
+//! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, the values that
+//! hold for the session only ([`SettingsValues`]), and the Configuration Display writes back to
+//! `personal-ledger.conf` ([`Configuration`], #904).
 //!
 //! Opening and saving a field is one [`Action::SetSetting`] with the field and an optional value:
 //! `enter` on a row sends it without one, which opens the field in place, and the open field's
@@ -9,6 +10,7 @@
 //! [`Action::SetSetting`]: crate::view::Action::SetSetting
 
 use chrono::{Datelike, Months, NaiveDate};
+use lib_config::{ConfigKey, ConfigWriter, PersonalLedgerConfig, Shadow, StatusGlyphs};
 use lib_core::DateStyle;
 
 use super::SettingsPage;
@@ -36,8 +38,6 @@ pub enum SettingField {
 pub enum ReadOnly {
     /// The Locale is Configuration read at start-up (ADR-0021).
     Locale,
-    /// Configuration in `personal-ledger.conf`, which `lib-config` can't write yet.
-    ConfigFile,
 }
 
 impl SettingField {
@@ -93,13 +93,21 @@ impl SettingField {
         }
     }
 
-    /// Why the field can't be edited, or `None` when it can.
+    /// Why the field can't be edited, or `None` when it can. A Configuration row can be too,
+    /// but whether it is depends on the files and environment ([`Configuration::refusal`]).
     pub fn read_only(self) -> Option<ReadOnly> {
         match self {
             Self::Locale => Some(ReadOnly::Locale),
-            Self::TerminalColours | Self::StatusGlyphs | Self::HintBar => {
-                Some(ReadOnly::ConfigFile)
-            }
+            _ => None,
+        }
+    }
+
+    /// The `personal-ledger.conf` key the field writes, for a Configuration row.
+    pub fn config_key(self) -> Option<ConfigKey> {
+        match self {
+            Self::TerminalColours => Some(ConfigKey::TerminalColours),
+            Self::StatusGlyphs => Some(ConfigKey::StatusGlyphs),
+            Self::HintBar => Some(ConfigKey::HintBar),
             _ => None,
         }
     }
@@ -126,7 +134,6 @@ impl SettingField {
     pub fn refusal(self) -> Option<String> {
         self.read_only().map(|reason| match reason {
             ReadOnly::Locale => msg::tui_settings_read_only_locale(self.command_name()),
-            ReadOnly::ConfigFile => msg::tui_settings_read_only_config(self.command_name()),
         })
     }
 }
@@ -154,6 +161,86 @@ pub const DATE_STYLES: [(&str, Option<DateStyle>); 5] = [
     ("iso", Some(DateStyle::Iso)),
 ];
 
+/// The values `:set terminal-colours` and `:set hint-bar` take, as `:set toasts` does.
+pub fn on_off(on: bool) -> &'static str {
+    if on { "on" } else { "off" }
+}
+
+/// The Configuration Display's rows edit, as read at start-up and written since, with what
+/// outranks each key's write. `Shell` writes the file; the rows read this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Configuration {
+    /// The user's `personal-ledger.conf`, which a row writes; `None` leaves the rows read-only.
+    pub path: Option<std::path::PathBuf>,
+    pub terminal_colours: bool,
+    pub status_glyphs: StatusGlyphs,
+    pub hint_bar: bool,
+    /// The source above the file that sets each key, so a write there changes nothing. Read
+    /// once at start-up, as the values are.
+    pub shadows: Vec<(ConfigKey, Shadow)>,
+}
+
+impl Default for Configuration {
+    /// `lib-config`'s defaults, with nowhere to write.
+    fn default() -> Self {
+        Self::from_config(&PersonalLedgerConfig::default(), &ConfigWriter::default())
+    }
+}
+
+impl Configuration {
+    pub fn from_config(config: &PersonalLedgerConfig, writer: &ConfigWriter) -> Self {
+        Self {
+            path: writer.target().map(std::path::Path::to_path_buf),
+            terminal_colours: config.terminal_colours(),
+            status_glyphs: config.status_glyphs(),
+            hint_bar: config.hint_bar(),
+            shadows: [
+                ConfigKey::TerminalColours,
+                ConfigKey::StatusGlyphs,
+                ConfigKey::HintBar,
+            ]
+            .into_iter()
+            .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
+            .collect(),
+        }
+    }
+
+    /// The source that outranks `key`'s write, named as the row and the status line name it.
+    pub fn shadow(&self, key: ConfigKey) -> Option<String> {
+        self.shadows
+            .iter()
+            .find(|(shadowed, _)| *shadowed == key)
+            .map(|(_, shadow)| match shadow {
+                Shadow::Env(var) => var.clone(),
+                Shadow::File(path) => path.display().to_string(),
+            })
+    }
+
+    /// Why `field`'s Configuration row can't be written: there's no file to write, or a source
+    /// above it sets the key. `None` for any other field.
+    pub fn refusal(&self, field: SettingField) -> Option<String> {
+        let key = field.config_key()?;
+        if self.path.is_none() {
+            return Some(msg::tui_settings_read_only_config(field.command_name()));
+        }
+        self.shadow(key)
+            .map(|source| msg::tui_settings_set_shadowed(field.command_name(), &source))
+    }
+
+    /// The value `field` holds as the file spells it, from the value `:set` takes.
+    pub fn file_value(field: SettingField, value: &str) -> Option<&'static str> {
+        match field {
+            SettingField::TerminalColours | SettingField::HintBar => match value {
+                "on" => Some("true"),
+                "off" => Some("false"),
+                _ => None,
+            },
+            SettingField::StatusGlyphs => StatusGlyphs::from_key(value).map(StatusGlyphs::key),
+            _ => None,
+        }
+    }
+}
+
 /// The values that hold for this session only, shared by every Settings View `Shell` opens.
 ///
 /// Ledger name, owner and the financial year's start have no Preference columns yet, so they
@@ -167,6 +254,8 @@ pub struct SettingsValues {
     /// The month the financial year starts on, 1–12.
     pub financial_year_start: u32,
     pub date_style: Option<DateStyle>,
+    /// Not the session's: `Shell` writes it to the file, then sets it here for the rows.
+    pub configuration: Configuration,
 }
 
 impl Default for SettingsValues {
@@ -177,6 +266,7 @@ impl Default for SettingsValues {
             owner: "Ian Teda".into(),
             financial_year_start: 7,
             date_style: None,
+            configuration: Configuration::default(),
         }
     }
 }
@@ -216,6 +306,24 @@ impl SettingsValues {
                 };
                 self.date_style = *style;
             }
+            SettingField::TerminalColours | SettingField::HintBar => {
+                let on = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => return false,
+                };
+                if field == SettingField::TerminalColours {
+                    self.configuration.terminal_colours = on;
+                } else {
+                    self.configuration.hint_bar = on;
+                }
+            }
+            SettingField::StatusGlyphs => {
+                let Some(glyphs) = StatusGlyphs::from_key(value) else {
+                    return false;
+                };
+                self.configuration.status_glyphs = glyphs;
+            }
             _ => return false,
         }
         true
@@ -234,6 +342,9 @@ impl SettingsValues {
                 .iter()
                 .find(|(_, style)| *style == self.date_style)
                 .map(|(name, _)| (*name).to_string())?,
+            SettingField::TerminalColours => on_off(self.configuration.terminal_colours).into(),
+            SettingField::StatusGlyphs => self.configuration.status_glyphs.key().into(),
+            SettingField::HintBar => on_off(self.configuration.hint_bar).into(),
             _ => return None,
         })
     }
@@ -312,5 +423,44 @@ mod tests {
         assert!(values.set(SettingField::Owner, "Alex"));
         assert_eq!(values.get(SettingField::Owner).as_deref(), Some("Alex"));
         assert!(!values.set(SettingField::BaseUnit, "btc"), "not held here");
+        assert!(values.set(SettingField::StatusGlyphs, "ascii"));
+        assert!(values.set(SettingField::HintBar, "off"));
+        assert!(!values.set(SettingField::TerminalColours, "maybe"));
+        assert_eq!(
+            values.get(SettingField::StatusGlyphs).as_deref(),
+            Some("ascii")
+        );
+        assert_eq!(values.get(SettingField::HintBar).as_deref(), Some("off"));
+    }
+
+    #[test]
+    fn a_configuration_row_is_refused_with_no_file_or_under_a_higher_source() {
+        crate::locale::init_for_tests();
+        let mut configuration = Configuration::default();
+        assert!(
+            configuration
+                .refusal(SettingField::HintBar)
+                .is_some_and(|reason| reason.contains("no user config directory"))
+        );
+        configuration.path = Some("/home/someone/.config/personal-ledger.conf".into());
+        assert_eq!(configuration.refusal(SettingField::HintBar), None);
+        assert_eq!(configuration.refusal(SettingField::DateStyle), None);
+        configuration.shadows = vec![(
+            ConfigKey::HintBar,
+            Shadow::Env("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()),
+        )];
+        assert!(
+            configuration
+                .refusal(SettingField::HintBar)
+                .is_some_and(|reason| reason.contains("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR"))
+        );
+        assert_eq!(
+            Configuration::file_value(SettingField::TerminalColours, "on"),
+            Some("true")
+        );
+        assert_eq!(
+            Configuration::file_value(SettingField::StatusGlyphs, "ASCII"),
+            Some("ascii")
+        );
     }
 }

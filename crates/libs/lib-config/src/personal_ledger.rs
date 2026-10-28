@@ -68,6 +68,47 @@ pub struct PersonalLedgerConfig {
     /// Read only by the TUI; Configuration, so it never syncs.
     #[serde(default)]
     pub terminal_colours: bool,
+
+    /// Draw status glyphs as Unicode or plain ASCII. Read only by the TUI; Configuration.
+    #[serde(default)]
+    pub status_glyphs: StatusGlyphs,
+
+    /// Whether the TUI's footer shows the key hints. Read only by the TUI; Configuration.
+    #[serde(default = "shown")]
+    pub hint_bar: bool,
+}
+
+/// How the TUI draws its status glyphs: the `status_glyphs` key.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StatusGlyphs {
+    /// `●`, `✓`, `⚑` and the rest, the default.
+    #[default]
+    Unicode,
+    /// Plain ASCII stand-ins, for a terminal font without them.
+    Ascii,
+}
+
+impl StatusGlyphs {
+    /// The value as the file and `:set glyphs` spell it.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Unicode => "unicode",
+            Self::Ascii => "ascii",
+        }
+    }
+
+    /// The value `key` spells, ignoring case.
+    pub fn from_key(key: &str) -> Option<Self> {
+        [Self::Unicode, Self::Ascii]
+            .into_iter()
+            .find(|glyphs| glyphs.key().eq_ignore_ascii_case(key))
+    }
+}
+
+/// The hint bar's default: shown.
+fn shown() -> bool {
+    true
 }
 
 impl Default for PersonalLedgerConfig {
@@ -84,6 +125,8 @@ impl Default for PersonalLedgerConfig {
             locale: None,
             system_locale: None,
             terminal_colours: false,
+            status_glyphs: StatusGlyphs::Unicode,
+            hint_bar: true,
         }
     }
 }
@@ -120,6 +163,16 @@ impl PersonalLedgerConfig {
     /// Whether the TUI draws with the terminal's own colours rather than the Colour Theme.
     pub fn terminal_colours(&self) -> bool {
         self.terminal_colours
+    }
+
+    /// How the TUI draws its status glyphs.
+    pub fn status_glyphs(&self) -> StatusGlyphs {
+        self.status_glyphs
+    }
+
+    /// Whether the TUI's footer shows the key hints.
+    pub fn hint_bar(&self) -> bool {
+        self.hint_bar
     }
 
     /// Returns the Locale set by configuration, if any (canonical casing once parsed).
