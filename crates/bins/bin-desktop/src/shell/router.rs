@@ -682,7 +682,6 @@ impl Root {
         self.presenter
             .toast(ToastInput::Display(lib_toast::Display {
                 toasts_on: display.toasts_on,
-                ..self.presenter.toasts().display()
             }));
         let (date_style, glyphs, density) = (
             display.date_style,

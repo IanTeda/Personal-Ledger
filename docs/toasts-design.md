@@ -34,7 +34,7 @@ Colour sits on the non-text marks only: the leading bar and the glyph, each in a
 - **Layering:** Toasts draw last, above dialogs, the command palette and their scrim, so an outcome is never hidden by the surface that caused it. They never cover the status line or footer.
 - **Content:** one line per Toast: leading bar, glyph, Message, `×N` badge, then the Desktop ✕. No title.
 - **Width:** at most 420 px (Desktop) or 48 columns (TUI), never wider than the view. Long text truncates with `…` and never wraps; the full text is in the history. The badge and ✕ sit outside the truncated text and are never cut.
-- **TUI:** each Toast is a 3-row bordered box. Under a 40×8 view no Toast is drawn (the status-line echo carries it), and stacking stops at whatever fits.
+- **TUI:** each Toast is a 3-row bordered box, and stacking stops at whatever fits. Below its 96 × 24 floor the TUI draws only its "terminal too small" screen, Toasts included ([ADR-0050](adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md)).
 
 The chosen layout is Variant A of the prototype on branch `prototype/307-toast-placement`; the implementation rewrites it rather than merging it.
 
@@ -42,7 +42,7 @@ The chosen layout is Variant A of the prototype on branch `prototype/307-toast-p
 
 Toasts on/off is the first **Client-scoped Preference**: default on, one switch, stored locally and never synced, held in memory until the Settings screens read and write Preferences (as the Colour Theme Preferences are). It never silences an Error. See ADR-0027.
 
-- **Echo:** with Toasts off, Info, Success and Warning Toasts go to a **status-line echo** (the Kind glyph in its mark colour, then the Message) for the Toast's lifetime; an Error still toasts. The echo also carries Toasts in a TUI view under 40×8, where an Error echo stays until dismissed. It shows only then, so the same text never shows twice.
+- **Echo:** with Toasts off, Info, Success and Warning Toasts go to a **status-line echo** (the Kind glyph in its mark colour, then the Message) for the Toast's lifetime; an Error still toasts. The echo shows only while Toasts are off, so the same text never shows twice.
 - **Precedence on the status line (left side):** command echo > status-line message > Toast echo > page legend / shell hint strip. The right-hand side is untouched.
 - **Switching off** removes the showing Info, Success and Warning Toasts, and the newest moves to the echo for the rest of its lifetime.
 - **Control:** a "Toasts" On/Off row in each Client's Settings Display group, above the Colour Theme group, with a note that Errors still show; plus `toasts on` / `toasts off` palette commands.

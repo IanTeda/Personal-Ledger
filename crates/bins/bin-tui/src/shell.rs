@@ -1328,10 +1328,7 @@ impl Shell {
             }
             Action::SetToasts(on) => {
                 self.command_popup = None;
-                self.toasts.set_display(Display {
-                    toasts_on: on,
-                    ..self.toasts.display()
-                });
+                self.toasts.set_display(Display { toasts_on: on });
             }
             Action::OpenToastHistory => {
                 self.command_popup = None;
@@ -1968,13 +1965,6 @@ impl Shell {
             return;
         }
 
-        // The frame size is only known here, so this is where a view shrinking under 40×8
-        // hands its Toasts to the status-line echo, and back again.
-        self.toasts.set_display(Display {
-            can_draw: area.width >= crate::toast::MIN_FRAME.0
-                && area.height >= crate::toast::MIN_FRAME.1,
-            ..self.toasts.display()
-        });
         self.view.set_toasts_on(self.toasts.display().toasts_on);
 
         let c = &self.colours;

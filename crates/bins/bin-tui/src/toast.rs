@@ -18,19 +18,12 @@ use crate::colours::Colours;
 const MAX_WIDTH: u16 = 48;
 /// A Toast box's rows: border, the one line of content, border.
 const HEIGHT: u16 = 3;
-/// Below this frame size no Toast is drawn; the status-line echo carries them instead (#309).
-pub const MIN_FRAME: (u16, u16) = (40, 8);
 const BAR: &str = "▌";
 const ELLIPSIS: char = '…';
 
 /// Draws the visible Toasts inside `area` (the view region, so they never cover the footer or
 /// status line), stacking up from its bottom edge and stopping at whatever fits.
 pub fn render<S>(frame: &mut Frame<'_>, area: Rect, toasts: &Toasts<S>, c: &Colours) {
-    let full = frame.area();
-    if full.width < MIN_FRAME.0 || full.height < MIN_FRAME.1 {
-        return;
-    }
-
     let max_width = MAX_WIDTH.min(area.width);
     let fits = usize::from(area.height / HEIGHT);
     let visible = toasts.visible();

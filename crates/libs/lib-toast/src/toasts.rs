@@ -5,22 +5,16 @@ use crate::{History, ToastKind};
 /// Toasts drawn at once; past this the oldest timed Toast is evicted (#306).
 pub const MAX_VISIBLE: usize = 3;
 
-/// What the bin can show, passed in so the model never reads the Preference or the view size.
+/// What the bin can show, passed in so the model never reads the Preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Display {
     /// The Client-scoped Toasts Preference (ADR-0027). Off never silences an Error.
     pub toasts_on: bool,
-    /// `false` when the bin cannot draw a Toast at all (a TUI view under 40×8), so the
-    /// status-line echo carries every Kind, Errors included.
-    pub can_draw: bool,
 }
 
 impl Default for Display {
     fn default() -> Self {
-        Self {
-            toasts_on: true,
-            can_draw: true,
-        }
+        Self { toasts_on: true }
     }
 }
 
@@ -202,7 +196,7 @@ impl<S> Toasts<S> {
     /// The Desktop ✕: removes the Toast at `index` in [`Self::visible`]. `false` if out of range.
     pub fn dismiss_visible(&mut self, index: usize) -> bool {
         let start = self.stack.len().saturating_sub(MAX_VISIBLE);
-        if !self.display.can_draw || index >= self.stack.len() - start {
+        if index >= self.stack.len() - start {
             return false;
         }
         self.stack.remove(start + index);
@@ -215,7 +209,7 @@ impl<S> Toasts<S> {
         self.off_echo = None;
     }
 
-    /// Applies a change to the Preference or the view size. Turning Toasts off takes the showing
+    /// Applies a change to the Preference. Turning Toasts off takes the showing
     /// Info, Success and Warning Toasts off the stack and moves the newest to the echo for the
     /// rest of its lifetime; turning them back on returns the echoed Toast to the stack.
     pub fn set_display(&mut self, display: Display) {
@@ -240,34 +234,19 @@ impl<S> Toasts<S> {
     }
 
     /// The Toasts to draw, oldest first (the bin stacks the last nearest the status line).
-    /// Empty when the bin cannot draw.
     pub fn visible(&self) -> &[Toast] {
-        if !self.display.can_draw {
-            return &[];
-        }
         let start = self.stack.len().saturating_sub(MAX_VISIBLE);
         &self.stack[start..]
     }
 
     /// The `+N more` count above the stack: held-back sticky Errors.
     pub fn more_count(&self) -> usize {
-        if !self.display.can_draw {
-            return 0;
-        }
         self.stack.len().saturating_sub(MAX_VISIBLE)
     }
 
-    /// What the status-line echo shows, if anything: the Toast carried while Toasts are off,
-    /// or, when the bin cannot draw, the newest live Toast of any Kind.
+    /// What the status-line echo shows, if anything: the Toast carried while Toasts are off.
     pub fn echo(&self) -> Option<&Toast> {
-        let off = self.off_echo.as_ref();
-        if self.display.can_draw {
-            return off;
-        }
-        [self.stack.last(), off]
-            .into_iter()
-            .flatten()
-            .max_by_key(|t| t.seq)
+        self.off_echo.as_ref()
     }
 
     pub fn history(&self) -> &History<S> {
@@ -312,17 +291,7 @@ mod tests {
     }
 
     fn off() -> Display {
-        Display {
-            toasts_on: false,
-            can_draw: true,
-        }
-    }
-
-    fn cannot_draw() -> Display {
-        Display {
-            toasts_on: true,
-            can_draw: false,
-        }
+        Display { toasts_on: false }
     }
 
     #[test]
@@ -527,44 +496,6 @@ mod tests {
         toasts.set_display(Display::default());
         assert!(toasts.echo().is_none());
         assert_eq!(texts(&toasts), ["a"]);
-    }
-
-    #[test]
-    fn when_the_bin_cannot_draw_the_echo_carries_the_newest_of_any_kind() {
-        let mut toasts = Toasts::new(cannot_draw());
-        toasts.raise(Info, "a", 0);
-        toasts.raise(Error, "e", 1);
-        assert!(toasts.visible().is_empty());
-        assert_eq!(toasts.more_count(), 0);
-        assert_eq!(toasts.echo().map(Toast::text), Some("e"));
-
-        // The Error echo stays until dismissed.
-        toasts.advance(secs(3600));
-        assert_eq!(toasts.echo().map(Toast::text), Some("e"));
-        toasts.dismiss_newest();
-        assert!(toasts.echo().is_none());
-    }
-
-    #[test]
-    fn when_the_bin_cannot_draw_with_toasts_off_the_newest_still_echoes() {
-        let mut toasts = Toasts::new(Display {
-            toasts_on: false,
-            can_draw: false,
-        });
-        toasts.raise(Error, "e", 0);
-        toasts.raise(Info, "a", 1);
-        assert_eq!(toasts.echo().map(Toast::text), Some("a"));
-        toasts.advance(secs(4));
-        assert_eq!(toasts.echo().map(Toast::text), Some("e"));
-    }
-
-    #[test]
-    fn regaining_room_to_draw_shows_the_stack_again() {
-        let mut toasts = Toasts::new(cannot_draw());
-        toasts.raise(Error, "e", 0);
-        toasts.set_display(Display::default());
-        assert_eq!(texts(&toasts), ["e"]);
-        assert!(toasts.echo().is_none());
     }
 
     #[test]
