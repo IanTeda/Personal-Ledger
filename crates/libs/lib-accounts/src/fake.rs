@@ -105,6 +105,7 @@ pub fn stub_institutions() -> Vec<AccountInstitution> {
     .map(|(id, name)| AccountInstitution {
         id,
         name: name.to_string(),
+        usual_unit: None,
     })
     .collect()
 }

@@ -90,7 +90,7 @@ Personal Ledger shows accounts on a list with their balances, filterable by kind
 - An account's Unit (currency) is set at creation and cannot be changed later.
 - A transaction can only move between accounts sharing the same Unit.
 - Deleting an account deletes its transactions and its balance checks, and sets the bill entries they paid back to unpaid. An account that bills are paid from can't be deleted until those bills move to another account.
-- An account's institution is chosen from your institutions. A new cash account starts on your Personal institution, and you can pick any other.
+- An account's institution is chosen from your institutions. A new cash account starts on your Personal institution, and you can pick any other. A new account starts on its institution's usual unit when that institution has one and the unit is active, and on your base unit otherwise. The unit follows the institution you pick until you pick a unit yourself, after which changing the institution leaves it alone. Editing never changes an account's unit.
 - Accounts you saved before this version of the desktop app are not carried over: a ledger made earlier needs to be started fresh.
 
 ## Scope

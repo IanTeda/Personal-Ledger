@@ -54,6 +54,9 @@ pub trait AccountUsage {
 pub struct AccountInstitution {
     pub id: InstitutionId,
     pub name: String,
+    /// The Unit a new Account at this Institution starts on, a hint only: the base Unit stays the
+    /// Ledger's one default.
+    pub usual_unit: Option<UnitId>,
 }
 
 /// The Institutions on the Ledger. A read port, so `lib-accounts` needn't depend on the

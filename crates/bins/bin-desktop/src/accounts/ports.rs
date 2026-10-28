@@ -71,6 +71,7 @@ impl LedgerBackedPorts {
             .map(|institution| AccountInstitution {
                 id: institution.id,
                 name: institution.name.clone(),
+                usual_unit: institution.usual_unit,
             })
             .collect();
         self.units.units = ledger

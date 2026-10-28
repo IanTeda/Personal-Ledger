@@ -6,6 +6,10 @@
 //!   starts on the Personal Institution when it is on the Ledger, any other Type on the first
 //!   Institution that isn't it, and either otherwise on no choice. Any Institution can be picked
 //!   for any Type, Cash included, and a pick stays through a change of Type.
+//! - **The Unit follows the Institution's Usual unit until one is picked.** A new Account starts
+//!   on its Institution's Usual unit when that Unit is active, and on the base Unit otherwise (or
+//!   the first Unit when there is no base). A pick stays through a change of Institution. This is
+//!   a prefill: the base Unit remains the Ledger's one default.
 //! - **Edit fixes Unit and Opening balance**: they are shown read-only, `Tab` skips them and focus
 //!   is refused. The Edit's notice says how many Transactions the Account carries.
 //! - Opening balance only takes what can be part of a decimal amount: digits, one `.` and a `-` at
@@ -112,6 +116,10 @@ pub struct AccountFormPresenter {
     today: NaiveDate,
     editing: Option<Editing>,
     institutions: Vec<Choice<InstitutionId>>,
+    /// Each Institution's Usual unit, for the ones that name one.
+    usual_units: Vec<(InstitutionId, UnitId)>,
+    /// The Unit a new Account starts on when its Institution names no usable Usual unit.
+    fallback_unit: Option<UnitId>,
     types: Vec<Choice<AccountType>>,
     units: Vec<Choice<UnitId>>,
     name: String,
@@ -121,6 +129,9 @@ pub struct AccountFormPresenter {
     institution_picked: bool,
     account_type: AccountType,
     unit: Option<UnitId>,
+    /// Whether the Unit is the person's pick, which a change of Institution leaves alone, rather
+    /// than the Institution's Usual unit.
+    unit_picked: bool,
     opening_balance: String,
     account_number: String,
     focused: AccountField,
@@ -151,6 +162,10 @@ impl AccountFormPresenter {
         let unit = base
             .filter(|base| units.iter().any(|choice| choice.value == *base))
             .or_else(|| units.first().map(|choice| choice.value));
+        let usual_units = institutions
+            .iter()
+            .filter_map(|institution| Some((institution.id, institution.usual_unit?)))
+            .collect();
         let institutions: Vec<Choice<InstitutionId>> = institutions
             .into_iter()
             .map(|institution| Choice {
@@ -165,6 +180,8 @@ impl AccountFormPresenter {
             institution: None,
             institution_picked: false,
             institutions,
+            usual_units,
+            fallback_unit: unit,
             types: GROUP_ORDER
                 .iter()
                 .map(|account_type| Choice {
@@ -176,12 +193,14 @@ impl AccountFormPresenter {
             name: name.trim().to_string(),
             account_type: AccountType::Bank,
             unit,
+            unit_picked: false,
             opening_balance: String::new(),
             account_number: String::new(),
             focused: AccountField::Name,
             error: None,
         };
         form.institution = form.default_institution();
+        form.follow_usual_unit();
         form
     }
 
@@ -222,6 +241,7 @@ impl AccountFormPresenter {
             .then_some(account.institution);
         form.institution_picked = true;
         form.unit = Some(account.unit);
+        form.unit_picked = true;
         form.account_number = account.account_number.clone().unwrap_or_default();
         form.editing = Some(Editing {
             id,
@@ -256,6 +276,7 @@ impl AccountFormPresenter {
                 if self.institutions.iter().any(|choice| choice.value == id) {
                     self.institution = Some(id);
                     self.institution_picked = true;
+                    self.follow_usual_unit();
                 }
             }
             AccountFormEvent::Type(account_type) => {
@@ -263,12 +284,14 @@ impl AccountFormPresenter {
                     self.account_type = account_type;
                     if !self.institution_picked {
                         self.institution = self.default_institution();
+                        self.follow_usual_unit();
                     }
                 }
             }
             AccountFormEvent::Unit(id) => {
                 if self.editing.is_none() && self.units.iter().any(|choice| choice.value == id) {
                     self.unit = Some(id);
+                    self.unit_picked = true;
                 }
             }
             AccountFormEvent::NextField => self.cycle(false),
@@ -354,6 +377,24 @@ impl AccountFormPresenter {
             .iter()
             .map(|choice| choice.value)
             .find(|id| personal(*id) == is_cash)
+    }
+
+    /// Moves a not-yet-picked Unit to the Institution's Usual unit when it is an active choice, and
+    /// to the fallback otherwise. An Edit, whose Unit is fixed, and a picked Unit stay as they are.
+    fn follow_usual_unit(&mut self) {
+        if self.editing.is_some() || self.unit_picked {
+            return;
+        }
+        let usual = self
+            .institution
+            .and_then(|institution| {
+                self.usual_units
+                    .iter()
+                    .find(|(id, _)| *id == institution)
+                    .map(|(_, unit)| *unit)
+            })
+            .filter(|unit| self.units.iter().any(|choice| choice.value == *unit));
+        self.unit = usual.or(self.fallback_unit);
     }
 
     /// Whether `field` can't take focus right now: the Unit and Opening balance of an Account that
@@ -640,6 +681,112 @@ mod tests {
             float.map(|float| (float.institution, float.account_type)),
             Some((InstitutionId::SEED_AMEX, AccountType::Cash))
         );
+    }
+
+    fn give_usual_unit(
+        ports: &std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryPorts>>,
+        institution: InstitutionId,
+        unit: UnitId,
+    ) {
+        for row in &mut ports.borrow_mut().institutions.institutions {
+            if row.id == institution {
+                row.usual_unit = Some(unit);
+            }
+        }
+    }
+
+    #[test]
+    fn a_new_account_starts_on_its_institutions_usual_unit() {
+        let (ports, shared) = stub();
+        give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
+
+        let view = add(shared).view_model();
+
+        assert_eq!(view.institution.chosen, Some(InstitutionId::SEED_ANZ));
+        assert_eq!(view.unit.chosen, Some(UnitId::SEED_BTC));
+    }
+
+    #[test]
+    fn with_no_usual_unit_the_unit_starts_on_the_base_unit() {
+        let (_, shared) = stub();
+        let mut form = add(shared);
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_AMEX)],
+        );
+
+        assert_eq!(form.view_model().unit.chosen, Some(UnitId::SEED_AUD));
+    }
+
+    #[test]
+    fn a_deactivated_usual_unit_falls_back_to_the_base_unit_until_it_is_active_again() {
+        let (ports, shared) = stub();
+        give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
+        ports.borrow_mut().units.units[2].is_active = false;
+        assert_eq!(
+            add(shared.clone()).view_model().unit.chosen,
+            Some(UnitId::SEED_AUD)
+        );
+
+        ports.borrow_mut().units.units[2].is_active = true;
+        assert_eq!(add(shared).view_model().unit.chosen, Some(UnitId::SEED_BTC));
+    }
+
+    #[test]
+    fn the_unit_follows_each_institution_picked_until_a_unit_is_picked() {
+        let (ports, shared) = stub();
+        give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
+        give_usual_unit(&ports, InstitutionId::SEED_VANGUARD, UnitId::SEED_VAS);
+        let mut form = add(shared);
+
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_VANGUARD)],
+        );
+        assert_eq!(form.view_model().unit.chosen, Some(UnitId::SEED_VAS));
+
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_AMEX)],
+        );
+        assert_eq!(form.view_model().unit.chosen, Some(UnitId::SEED_AUD));
+
+        send(
+            &mut form,
+            vec![
+                AccountFormEvent::Unit(UnitId::SEED_AUD),
+                AccountFormEvent::Institution(InstitutionId::SEED_VANGUARD),
+            ],
+        );
+        assert_eq!(form.view_model().unit.chosen, Some(UnitId::SEED_AUD));
+    }
+
+    #[test]
+    fn a_change_of_type_that_moves_the_institution_moves_the_unit_too() {
+        let (ports, shared) = stub();
+        give_usual_unit(&ports, InstitutionId::SEED_PERSONAL, UnitId::SEED_VAS);
+        let mut form = add(shared);
+
+        send(&mut form, vec![AccountFormEvent::Type(AccountType::Cash)]);
+
+        assert_eq!(form.view_model().unit.chosen, Some(UnitId::SEED_VAS));
+    }
+
+    #[test]
+    fn edit_leaves_the_accounts_own_unit_alone() {
+        let (ports, shared) = stub();
+        give_usual_unit(&ports, InstitutionId::SEED_AMEX, UnitId::SEED_BTC);
+        let mut form =
+            AccountFormPresenter::edit(shared, AccountId::seed(6), today()).expect("stub");
+        let before = form.view_model().unit.chosen;
+
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_AMEX)],
+        );
+
+        assert_eq!(form.view_model().unit.chosen, before);
+        assert_eq!(before, Some(UnitId::SEED_VAS));
     }
 
     #[test]

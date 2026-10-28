@@ -227,3 +227,35 @@ fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     shorter.pop();
     assert!(accounts_page.account_names.contains(&shorter));
 }
+
+#[gpui::test]
+fn stepping_to_an_institution_with_a_usual_unit_starts_the_unit_on_it(app: &mut TestAppContext) {
+    let mut ui = add_dialog(app);
+    assert_eq!(ui.account_form().unit.as_deref(), Some("aud"));
+
+    ui.press("tab down down down down");
+    let form = ui.account_form();
+    assert_eq!(form.institution.as_deref(), Some("Cryptocurrency Exchange"));
+    assert_eq!(form.unit.as_deref(), Some("btc"));
+
+    // Back to an Institution with no Usual unit: the unit falls back to the base unit.
+    ui.press("up");
+    let form = ui.account_form();
+    assert_eq!(form.institution.as_deref(), Some("Westpac Banking"));
+    assert_eq!(form.unit.as_deref(), Some("aud"));
+}
+
+#[gpui::test]
+fn a_unit_picked_with_the_keys_stays_through_a_change_of_institution(app: &mut TestAppContext) {
+    let mut ui = add_dialog(app);
+
+    ui.press("tab tab tab down");
+    assert_eq!(ui.account_form().focused, "Unit");
+    let picked = ui.account_form().unit;
+    assert_ne!(picked.as_deref(), Some("aud"));
+
+    ui.press("shift-tab shift-tab down down down down");
+    let form = ui.account_form();
+    assert_eq!(form.institution.as_deref(), Some("Cryptocurrency Exchange"));
+    assert_eq!(form.unit, picked);
+}
