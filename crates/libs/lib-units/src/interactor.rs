@@ -17,7 +17,7 @@ pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
 pub use deactivate_unit::DeactivateUnit;
 pub use delete_price_source::{DeletePriceSource, PriceSourceDeleted};
-pub use delete_unit::DeleteUnit;
+pub use delete_unit::{CheckedDelete, DeleteUnit};
 pub use edit_price_source::EditPriceSource;
 pub use edit_unit::EditUnit;
 pub use reactivate_unit::ReactivateUnit;

@@ -12,6 +12,7 @@ pub mod inventory;
 pub mod payees;
 pub mod tags;
 pub mod transactions;
+pub mod unit_deletion;
 pub mod units;
 
 /// What the Clients hold each module's ports by: an adapter, or the module's in-memory fakes.

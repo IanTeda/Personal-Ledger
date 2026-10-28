@@ -11,7 +11,7 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use super::{UnitChange, UnitsOutcome, count, uses_text};
 use crate::interactor::{DeactivateUnit, DeleteUnit};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{Error, UnitUse, msg, units_by_code};
+use crate::{Error, UnitRow, UnitUse, msg, units_by_code};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteUnitEvent {
@@ -78,14 +78,7 @@ impl DeleteUnitPresenter {
             // The pickers offer only active Units, as deactivating one hides it from them.
             let is_base = ports.base_unit().base_unit() == id;
             let candidates = if is_base {
-                units_by_code(&units)
-                    .into_iter()
-                    .filter(|other| other.id != id && other.is_active)
-                    .map(|other| Choice {
-                        value: other.id,
-                        label: msg::units_base_unit_option(&other.code, &other.name),
-                    })
-                    .collect()
+                active_unit_choices(&units, id)
             } else {
                 Vec::new()
             };
@@ -205,16 +198,7 @@ impl DeleteUnitPresenter {
                 self.in_use = Some(uses);
                 None
             }
-            Err(Error::UnitGone) => Some(msg::units_refusal_unit_gone()),
-            Err(Error::OnlyUnit) => Some(msg::units_refusal_only_unit(code)),
-            Err(Error::BaseUnitNeeded) => Some(msg::units_refusal_base_unit_needed(code)),
-            Err(Error::NewBaseGone) => Some(msg::units_refusal_new_base_gone()),
-            Err(Error::InactiveBase) => Some(msg::units_refusal_inactive_base()),
-            Err(Error::QuotedBy(quoting)) => Some(msg::units_refusal_quoted(count(quoting), code)),
-            Err(refusal) => {
-                debug_assert!(false, "DeleteUnit doesn't return {refusal:?}");
-                Some(msg::units_refusal_unit_gone())
-            }
+            Err(refusal) => Some(delete_refusal(refusal, code)),
         };
     }
 
@@ -239,6 +223,36 @@ impl DeleteUnitPresenter {
                 Some(msg::units_refusal_unit_gone())
             }
         };
+    }
+}
+
+/// Every active Unit but `except`, by code, labelled `aud — Australian Dollar`: what a select
+/// offers in place of a Unit being deleted.
+pub fn active_unit_choices(units: &[UnitRow], except: UnitId) -> Vec<Choice<UnitId>> {
+    units_by_code(units)
+        .into_iter()
+        .filter(|other| other.id != except && other.is_active)
+        .map(|other| Choice {
+            value: other.id,
+            label: msg::units_base_unit_option(&other.code, &other.name),
+        })
+        .collect()
+}
+
+/// Why deleting Unit `code` was refused, for every refusal but a Unit in use, which turns the
+/// Dialog into Deactivate rather than saying so.
+pub fn delete_refusal(refusal: Error, code: &str) -> String {
+    match refusal {
+        Error::OnlyUnit => msg::units_refusal_only_unit(code),
+        Error::BaseUnitNeeded => msg::units_refusal_base_unit_needed(code),
+        Error::NewBaseGone => msg::units_refusal_new_base_gone(),
+        Error::InactiveBase => msg::units_refusal_inactive_base(),
+        Error::QuotedBy(quoting) => msg::units_refusal_quoted(count(quoting), code),
+        Error::UnitGone => msg::units_refusal_unit_gone(),
+        refusal => {
+            debug_assert!(false, "DeleteUnit doesn't return {refusal:?}");
+            msg::units_refusal_unit_gone()
+        }
     }
 }
 

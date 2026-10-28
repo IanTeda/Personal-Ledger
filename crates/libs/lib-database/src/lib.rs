@@ -78,11 +78,12 @@ pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
     AccountsStore, BillsStore, CategoriesStore, CountingCommit, FakeStores, InstitutionsStore,
     InventoryStore, PayeesStore, SharedAccountsStore, SharedBillsStore, SharedCategoriesStore,
-    SharedInventoryStore, SharedPayeesStore, SharedTagsStore, SharedTransactionsStore, TagsStore,
-    TransactionsStore, UnitsStore,
+    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transactions::TransactionsAdapter;
+pub use adapter::unit_deletion::UnitDeletionAdapter;
 pub use adapter::units::UnitsAdapter;
 
 /// A Client's Ledger file, opened at start-up with its adapters and the writer, and the

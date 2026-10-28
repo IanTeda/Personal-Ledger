@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
 use crate::protocols::{BaseUnitRepository, UnitRepository, UnitUsage};
-use crate::{Error, Result, UnitRow};
+use crate::{Error, Result, UnitRow, UnitUse};
 
 /// Delete a Unit. The base Unit can only go together with a move of the base to `new_base`, so
 /// the Ledger is never left without one; for any other Unit `new_base` is ignored.
@@ -35,28 +35,32 @@ impl DeleteUnit {
         outcome
     }
 
-    fn apply(
+    /// The rules alone, given the Units, the base and the Unit's usage, writing nothing: what a
+    /// delete that also writes through another port runs first. `lib-unit-deletion` does, since it
+    /// reassigns the Institutions naming the Unit in the same write.
+    ///
+    /// # Errors
+    /// The refusals [`Self::run`] returns.
+    pub fn check(
         self,
-        units: &mut dyn UnitRepository,
-        base_unit: &mut dyn BaseUnitRepository,
-        usage: &dyn UnitUsage,
-    ) -> Result<UnitRow> {
-        let all = units.units();
-        let unit = all
+        units: &[UnitRow],
+        base_unit: UnitId,
+        uses: UnitUse,
+    ) -> Result<CheckedDelete> {
+        let unit = units
             .iter()
             .find(|unit| unit.id == self.id)
             .cloned()
             .ok_or(Error::UnitGone)?;
-        if all.len() == 1 {
+        if units.len() == 1 {
             return Err(Error::OnlyUnit);
         }
-        let in_use = usage.unit_usage(self.id);
-        if in_use.is_used() {
-            return Err(Error::UnitInUse(in_use));
+        if uses.is_used() {
+            return Err(Error::UnitInUse(uses));
         }
-        let moves_base = if self.id == base_unit.base_unit() {
+        let new_base = if self.id == base_unit {
             let new_base = self.new_base.ok_or(Error::BaseUnitNeeded)?;
-            let new_base = all
+            let new_base = units
                 .iter()
                 .find(|unit| unit.id == new_base && unit.id != self.id)
                 .ok_or(Error::NewBaseGone)?;
@@ -67,19 +71,41 @@ impl DeleteUnit {
         } else {
             None
         };
-        let quoted_by = all
+        let quoted_by = units
             .iter()
             .filter(|other| other.id != self.id && other.link.quote == self.id)
             .count();
         if quoted_by > 0 {
             return Err(Error::QuotedBy(quoted_by));
         }
-        if let Some(new_base) = moves_base {
+        Ok(CheckedDelete { unit, new_base })
+    }
+
+    fn apply(
+        self,
+        units: &mut dyn UnitRepository,
+        base_unit: &mut dyn BaseUnitRepository,
+        usage: &dyn UnitUsage,
+    ) -> Result<UnitRow> {
+        let checked = self.check(
+            &units.units(),
+            base_unit.base_unit(),
+            usage.unit_usage(self.id),
+        )?;
+        if let Some(new_base) = checked.new_base {
             base_unit.set_base_unit(new_base);
         }
         units.delete_unit(self.id);
-        Ok(unit)
+        Ok(checked.unit)
     }
+}
+
+/// A delete that keeps every rule: the Unit it removes and, for the base Unit, the Unit that takes
+/// over as base.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedDelete {
+    pub unit: UnitRow,
+    pub new_base: Option<UnitId>,
 }
 
 #[cfg(test)]

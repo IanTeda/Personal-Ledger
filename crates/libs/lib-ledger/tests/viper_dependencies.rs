@@ -58,6 +58,7 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
         "lib_account_deletion",
         &["lib_accounts", "lib_transactions", "lib_bills"],
     ),
+    ("lib_unit_deletion", &["lib_units", "lib_institutions"]),
 ];
 
 /// The Shell module, which hosts every other module: only the bins may depend on it, so no
@@ -296,6 +297,40 @@ fn violations_flags_any_module_depending_on_lib_shell_and_lib_shell_reaching_a_m
             "lib_shell -> lib_bills",
             "lib_shell -> gpui",
             "lib_shell -> lib_database"
+        ]
+    );
+}
+
+#[test]
+fn violations_keeps_lib_units_off_lib_institutions_and_both_off_lib_unit_deletion() {
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_units",
+                "dependencies": [{ "name": "lib_institutions" }, { "name": "lib_unit_deletion" }]
+            },
+            {
+                "name": "lib_institutions",
+                "dependencies": [{ "name": "lib_unit_deletion" }]
+            },
+            {
+                "name": "lib_unit_deletion",
+                "dependencies": [
+                    { "name": "lib_units" },
+                    { "name": "lib_institutions" },
+                    { "name": "lib_accounts" },
+                ]
+            }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata, MIGRATED),
+        vec![
+            "lib_units -> lib_institutions",
+            "lib_units -> lib_unit_deletion",
+            "lib_institutions -> lib_unit_deletion",
+            "lib_unit_deletion -> lib_accounts",
         ]
     );
 }

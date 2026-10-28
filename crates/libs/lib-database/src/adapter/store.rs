@@ -169,6 +169,51 @@ impl InstitutionsStore for InMemoryInstitutions {
     }
 }
 
+/// A Units store shared by the Units module and the Unit Deletion adapter, which writes it with the
+/// Institutions store in one delete (#902). Single-threaded, as the ports are.
+pub type SharedUnitsStore = Rc<RefCell<dyn UnitsStore>>;
+
+/// An Institutions store shared by the Institutions module and the Unit Deletion adapter (#902).
+pub type SharedInstitutionsStore = Rc<RefCell<dyn InstitutionsStore>>;
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedUnitsStore`]).
+impl<T: UnitsStore + ?Sized> UnitsStore for Box<T> {
+    fn units(&self) -> &dyn UnitRepository {
+        (**self).units()
+    }
+
+    fn price_sources(&self) -> &dyn PriceSourceRepository {
+        (**self).price_sources()
+    }
+
+    fn base_unit(&self) -> &dyn BaseUnitRepository {
+        (**self).base_unit()
+    }
+
+    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
+        (**self).split_mut(usage)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedInstitutionsStore`]).
+impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        (**self).institutions()
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        (**self).institutions_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
 /// An Accounts store shared by the Ledger's forwarding shim and the Units and Bills reads.
 /// Single-threaded, as the ports are.
 pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
