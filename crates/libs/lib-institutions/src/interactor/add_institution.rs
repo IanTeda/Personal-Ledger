@@ -27,7 +27,7 @@ impl AddInstitution {
     ) -> Result<Institution, InstitutionError> {
         let mut rows = institutions.institutions();
         let institution = insert_institution(&mut rows, &self.0)?;
-        institutions.add_institution(institution.clone());
+        institutions.upsert_institution(institution.clone());
         Ok(institution)
     }
 }

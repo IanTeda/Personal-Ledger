@@ -23,19 +23,23 @@ fn status(ui: &mut Harness<'_>) -> Option<String> {
 /// Right-clicks the row and picks an entry of its context menu: the rows carry no buttons.
 fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
     ui.right_click(row);
-    ui.click(&format!("settings-units-menu-{action}"));
+    ui.click(&format!("settings-institutions-menu-{action}"));
 }
 
 #[gpui::test]
-fn institution_edit_and_delete_buttons_flash_a_not_yet_built_message(app: &mut TestAppContext) {
+fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_says_it_is_not_built(
+    app: &mut TestAppContext,
+) {
     let mut ui = on_page(app, "Institutions");
     let before = ui.settings_institutions().institutions;
 
-    ui.click("institution-edit-0");
-    assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("edit institution \u{2014} not yet built")
-    );
+    ui.click("institution-edit-1");
+    assert_eq!(ui.dialog(), Some("EditInstitution"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("American Express"));
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("CreditCard"));
+    ui.click("add-institution-cancel");
+    assert_eq!(ui.dialog(), None);
+
     ui.click("institution-delete-1");
     assert_eq!(
         status(&mut ui).as_deref(),
@@ -43,6 +47,81 @@ fn institution_edit_and_delete_buttons_flash_a_not_yet_built_message(app: &mut T
     );
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.settings_institutions().institutions, before);
+}
+
+#[gpui::test]
+fn a_right_click_opens_the_rows_menu_and_edit_opens_the_dialog_on_that_row(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.right_click("settings-institutions-row-2");
+    assert!(ui.is_drawn("settings-institutions-menu"));
+    assert_eq!(
+        ui.settings_institutions().menu,
+        Some(vec!["edit-institution", "delete-institution"])
+    );
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("Vanguard Investments")
+    );
+    assert!(ui.settings().page_focused);
+    ui.click("settings-institutions-menu-edit-institution");
+
+    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.dialog(), Some("EditInstitution"));
+    assert_eq!(
+        ui.dialog_value("name").as_deref(),
+        Some("Vanguard Investments")
+    );
+}
+
+#[gpui::test]
+fn the_menus_delete_says_it_is_not_built_and_a_press_outside_closes_the_menu(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_page(app, "Institutions");
+
+    row_action(&mut ui, "settings-institutions-row-0", "delete-institution");
+    assert_eq!(
+        status(&mut ui).as_deref(),
+        Some("delete institution \u{2014} not yet built")
+    );
+    assert_eq!(ui.dialog(), None);
+
+    assert_eq!(ui.settings_institutions().menu, None);
+
+    ui.right_click("settings-institutions-row-1");
+    assert!(ui.settings_institutions().menu.is_some());
+    ui.click("settings-institutions-row-0");
+    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn the_edit_dialogs_buttons_save_a_rename_and_a_refused_one_stays_open(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    row_action(&mut ui, "settings-institutions-row-1", "edit-institution");
+    for _ in 0.."American Express".len() {
+        ui.press("backspace");
+    }
+    ui.press("a n z space b a n k i n g space g r o u p");
+    ui.click("add-institution-confirm");
+    assert_eq!(ui.dialog(), Some("EditInstitution"));
+
+    for _ in 0.."anz banking group".len() {
+        ui.press("backspace");
+    }
+    ui.press("A m e x");
+    ui.click("add-institution-chip-cash");
+    ui.click("add-institution-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().institutions[1],
+        ("Amex".to_string(), "credit card \u{b7} cash".to_string())
+    );
 }
 
 #[gpui::test]
@@ -134,4 +213,17 @@ fn a_row_click_selects_its_institution_and_a_row_button_leaves_the_selection_on_
         names.get(4)
     );
     assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn escape_closes_the_open_menu_before_it_leaves_the_page(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    ui.right_click("settings-institutions-row-1");
+    assert!(ui.settings_institutions().menu.is_some());
+    ui.press("escape");
+
+    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.settings().page, "Institutions");
+    assert!(ui.settings().page_focused);
 }

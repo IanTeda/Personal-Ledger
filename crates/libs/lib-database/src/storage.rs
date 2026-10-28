@@ -182,7 +182,7 @@ mod tests {
             products: "savings".into(),
         };
 
-        storage.institutions.add_institution(bank.clone());
+        storage.institutions.upsert_institution(bank.clone());
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);

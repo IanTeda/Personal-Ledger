@@ -33,6 +33,9 @@ pub enum InstitutionError {
     /// Carries the name as the Institution holding it spells it.
     #[error("an institution named {0} already exists")]
     DuplicateName(String),
+    /// The Institution being edited is no longer on the Ledger.
+    #[error("the institution is not on the Ledger")]
+    NotFound,
 }
 
 /// The mockup's own six seeded rows, in its own order, each with its fixed id (the mockup's static
@@ -87,6 +90,26 @@ pub fn find_by_name<'a>(institutions: &'a [Institution], name: &str) -> Option<&
         .find(|institution| institution.name.to_lowercase() == name)
 }
 
+/// The trimmed name `draft` asks for, if it is set and no Institution but `own` holds it. `own` is
+/// the Institution being edited, so a change of capitals only is not a clash with itself.
+fn checked_name<'a>(
+    institutions: &[Institution],
+    draft: &'a InstitutionDraft,
+    own: Option<InstitutionId>,
+) -> Result<&'a str, InstitutionError> {
+    let name = draft.name.trim();
+    if name.is_empty() {
+        return Err(InstitutionError::NameRequired);
+    }
+    let lowered = name.to_lowercase();
+    if let Some(holder) = institutions.iter().find(|institution| {
+        Some(institution.id) != own && institution.name.to_lowercase() == lowered
+    }) {
+        return Err(InstitutionError::DuplicateName(holder.name.clone()));
+    }
+    Ok(name)
+}
+
 /// Appends the Institution `draft` describes, with a fresh id, and returns it. The name is stored
 /// trimmed and must be set and case-insensitively unique, so persistence can keep `name` unique;
 /// `products` is the joined label the dialog built, stored as given. A refusal leaves
@@ -95,13 +118,7 @@ pub fn insert_institution(
     institutions: &mut Vec<Institution>,
     draft: &InstitutionDraft,
 ) -> Result<Institution, InstitutionError> {
-    let name = draft.name.trim();
-    if name.is_empty() {
-        return Err(InstitutionError::NameRequired);
-    }
-    if let Some(holder) = find_by_name(institutions, name) {
-        return Err(InstitutionError::DuplicateName(holder.name.clone()));
-    }
+    let name = checked_name(institutions, draft, None)?;
     let institution = Institution {
         id: InstitutionId::new(),
         name: name.to_string(),
@@ -109,6 +126,27 @@ pub fn insert_institution(
     };
     institutions.push(institution.clone());
     Ok(institution)
+}
+
+/// Rewrites Institution `id` in place to what `draft` describes, keeping its id and its place in
+/// the order. The name rule is the add rule's, skipping the Institution's own row. A refusal leaves
+/// `institutions` untouched.
+pub fn edit_institution(
+    institutions: &mut [Institution],
+    id: InstitutionId,
+    draft: &InstitutionDraft,
+) -> Result<(), InstitutionError> {
+    if get(institutions, id).is_none() {
+        return Err(InstitutionError::NotFound);
+    }
+    let name = checked_name(institutions, draft, Some(id))?.to_string();
+    let institution = institutions
+        .iter_mut()
+        .find(|institution| institution.id == id)
+        .ok_or(InstitutionError::NotFound)?;
+    institution.name = name;
+    institution.products = draft.products.clone();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -177,6 +215,51 @@ mod tests {
         assert_eq!(
             insert_institution(&mut institutions, &draft(" american EXPRESS ")),
             Err(InstitutionError::DuplicateName("American Express".into()))
+        );
+        assert_eq!(institutions, before);
+    }
+
+    #[test]
+    fn an_edit_rewrites_the_row_in_place_and_a_change_of_capitals_is_accepted() {
+        let mut institutions = default_institutions();
+
+        edit_institution(
+            &mut institutions,
+            InstitutionId::SEED_WESTPAC,
+            &draft(" westpac banking "),
+        )
+        .expect("its own name, in other capitals");
+
+        assert_eq!(institutions[3].name, "westpac banking");
+        assert_eq!(institutions[3].products, "savings \u{b7} offset");
+        assert_eq!(institutions.len(), 6);
+    }
+
+    #[test]
+    fn an_edit_refuses_a_blank_name_another_holds_or_a_missing_row_and_changes_nothing() {
+        let mut institutions = default_institutions();
+        let before = institutions.clone();
+
+        assert_eq!(
+            edit_institution(&mut institutions, InstitutionId::SEED_WESTPAC, &draft("  ")),
+            Err(InstitutionError::NameRequired)
+        );
+        assert_eq!(
+            edit_institution(
+                &mut institutions,
+                InstitutionId::SEED_WESTPAC,
+                &draft("anz banking group")
+            ),
+            Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+        );
+        assert_eq!(
+            edit_institution(&mut institutions, InstitutionId::new(), &draft("Bank X")),
+            Err(InstitutionError::NotFound)
+        );
+        assert_eq!(
+            edit_institution(&mut institutions, InstitutionId::new(), &draft("  ")),
+            Err(InstitutionError::NotFound),
+            "a missing row is reported before its draft's name"
         );
         assert_eq!(institutions, before);
     }

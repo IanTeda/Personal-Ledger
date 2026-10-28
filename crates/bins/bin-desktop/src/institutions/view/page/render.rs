@@ -5,9 +5,12 @@
 
 use std::rc::Rc;
 
-use gpui::{App, Context, Entity, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, BoxShadow, Context, Entity, MouseButton, Pixels, Point, Rgba, SharedString,
+    Window, div, point, prelude::*, px,
+};
 use lib_institutions::presenter::{
-    InstitutionLine, InstitutionsPageEvent, InstitutionsPageViewModel,
+    InstitutionLine, InstitutionsPageEvent, InstitutionsPageViewModel, MenuEntry, RowMenu,
 };
 use lib_locale::format::upper;
 
@@ -16,14 +19,18 @@ use crate::theme::color;
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const PRODUCTS_WIDTH: gpui::Pixels = px(140.0);
-const ACTIONS_WIDTH: gpui::Pixels = px(120.0);
+/// The context menu's width (`width:190px`), as Units' is.
+const MENU_WIDTH: f32 = 190.0;
+const PRODUCTS_WIDTH: Pixels = px(140.0);
+const ACTIONS_WIDTH: Pixels = px(120.0);
 
 impl Render for InstitutionsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
         let view = self.view_model(cx);
         let focused = self.page_focused;
+        let menu_at = self.menu_at;
+        let menu = view.menu.clone();
         div()
             .flex()
             .flex_col()
@@ -51,6 +58,7 @@ impl Render for InstitutionsPage {
                 on_event(&entity, InstitutionsPageEvent::New),
                 cx,
             ))
+            .children(menu.map(|menu| row_menu(menu, menu_at, &entity, cx)))
     }
 }
 
@@ -134,6 +142,14 @@ fn row(
         })
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
         .on_click(move |_event, _window, cx| on_row_click(cx))
+        .on_mouse_down(MouseButton::Right, {
+            let entity = entity.clone();
+            move |event, _window, cx| {
+                cx.stop_propagation();
+                let position = event.position;
+                entity.update(cx, |page, cx| page.open_menu(id, position, cx));
+            }
+        })
         .child(
             div()
                 .flex_1()
@@ -225,4 +241,81 @@ fn add_button(
         .child(view.add_button.clone());
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
+}
+
+/// The row's context menu at the pointer, drawn as Units' is: `190px`, `border:2px solid`, the
+/// dialog shadow, the destructive entry last in red below a 1px rule. A press anywhere outside it
+/// closes it.
+fn row_menu(
+    menu: RowMenu,
+    at: Point<Pixels>,
+    entity: &Entity<InstitutionsPage>,
+    cx: &App,
+) -> AnyElement {
+    let hover = color::hover(cx);
+    let items = menu.entries.into_iter().map(
+        |MenuEntry {
+             action,
+             label,
+             destructive,
+         }| {
+            let on_click = on_event(entity, InstitutionsPageEvent::Menu(action));
+            let id = SharedString::from(format!("settings-institutions-menu-{}", action.slug()));
+            let item = div()
+                .debug_selector({
+                    let id = id.clone();
+                    move || id.to_string()
+                })
+                .id(id)
+                .cursor_pointer()
+                .py(px(7.0))
+                .px(px(12.0))
+                .text_size(px(12.5))
+                .text_color(if destructive {
+                    color::accent_text(cx)
+                } else {
+                    color::foreground(cx)
+                })
+                .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
+                .on_click(move |_event, window, cx| on_click(window, cx))
+                .child(label);
+            if destructive {
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().h(px(1.0)).my(px(4.0)).bg(color::hairline(cx)))
+                    .child(item)
+                    .into_any_element()
+            } else {
+                item.into_any_element()
+            }
+        },
+    );
+    let dismiss = on_event(entity, InstitutionsPageEvent::CloseMenu);
+    gpui::deferred(
+        gpui::anchored().position(at).snap_to_window().child(
+            div()
+                .debug_selector(|| "settings-institutions-menu".to_string())
+                .id("settings-institutions-menu")
+                .occlude()
+                .w(px(MENU_WIDTH))
+                .flex()
+                .flex_col()
+                .py(px(4.0))
+                .bg(color::background(cx))
+                .border_2()
+                .border_color(color::foreground(cx))
+                .shadow(vec![BoxShadow {
+                    color: color::dialog_shadow(cx).into(),
+                    offset: point(px(0.0), px(16.0)),
+                    blur_radius: px(48.0),
+                    spread_radius: px(0.0),
+                }])
+                .font_weight(gpui::FontWeight::NORMAL)
+                .on_mouse_down_out(move |_event, window, cx| dismiss(window, cx))
+                .children(items),
+        ),
+    )
+    .with_priority(1)
+    .into_any_element()
 }

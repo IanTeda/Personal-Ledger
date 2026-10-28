@@ -101,15 +101,109 @@ fn adding_an_institution_selects_it_and_raises_a_toast(app: &mut TestAppContext)
     );
 }
 
+/// Backspaces the Edit dialog's name empty and types `name` (single characters, `space` between
+/// words) in its place.
+fn retype_name(ui: &mut Harness<'_>, name: &str) {
+    let current = ui.dialog_value("name").unwrap_or_default();
+    for _ in current.chars() {
+        ui.press("backspace");
+    }
+    let keys: Vec<String> = name
+        .chars()
+        .map(|ch| {
+            if ch == ' ' {
+                "space".to_string()
+            } else {
+                ch.to_string()
+            }
+        })
+        .collect();
+    ui.press(&keys.join(" "));
+}
+
 #[gpui::test]
-fn e_and_d_say_edit_and_delete_are_not_built_yet(app: &mut TestAppContext) {
+fn e_opens_the_edit_dialog_filled_with_the_selected_institution(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
 
     ui.press("e");
+
+    assert_eq!(ui.dialog(), Some("EditInstitution"));
     assert_eq!(
-        status(&mut ui).as_deref(),
-        Some("edit institution \u{2014} not yet built")
+        ui.dialog_value("title").as_deref(),
+        Some("Edit institution")
     );
+    assert_eq!(
+        ui.dialog_value("name").as_deref(),
+        Some("ANZ Banking Group")
+    );
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings,Offset"));
+}
+
+#[gpui::test]
+fn enter_saves_an_edit_selects_the_row_and_raises_a_toast(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    ui.press("j");
+
+    ui.press("e");
+    retype_name(&mut ui, "Amex");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings_institutions();
+    assert_eq!(page.selected_institution.as_deref(), Some("Amex"));
+    assert_eq!(page.institutions[1].0, "Amex");
+    assert_eq!(page.institutions.len(), 6);
+    assert_eq!(
+        ui.toasts().history.first().map(|toast| toast.text.clone()),
+        Some("Saved Amex".to_string())
+    );
+}
+
+#[gpui::test]
+fn a_rename_to_a_name_another_holds_is_refused_and_a_change_of_capitals_is_accepted(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_institutions(app);
+    let before = ui.settings_institutions().institutions;
+
+    ui.press("e");
+    retype_name(&mut ui, "american express");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("EditInstitution"));
+    assert_eq!(ui.settings_institutions().institutions, before);
+
+    retype_name(&mut ui, "anz banking group");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_institutions().institutions[0].0,
+        "anz banking group"
+    );
+}
+
+#[gpui::test]
+fn escape_cancels_an_edit_with_nothing_changed_and_focus_back_on_the_row(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    let before = ui.settings_institutions().institutions;
+
+    ui.press("e");
+    retype_name(&mut ui, "Changed");
+    ui.press("escape");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.settings_institutions().institutions, before);
+    assert!(ui.settings().page_focused);
+    ui.press("j");
+    assert_eq!(
+        ui.settings_institutions().selected_institution.as_deref(),
+        Some("American Express")
+    );
+}
+
+#[gpui::test]
+fn d_says_delete_is_not_built_yet(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
     ui.press("d");
     assert_eq!(
         status(&mut ui).as_deref(),

@@ -6,7 +6,10 @@
 
 mod render;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
+use gpui::{
+    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
+};
+use lib_core::InstitutionId;
 use lib_institutions::InstitutionsOutcome;
 use lib_institutions::presenter::{
     InstitutionsPageEvent, InstitutionsPagePresenter, InstitutionsPageViewModel,
@@ -41,6 +44,8 @@ pub struct InstitutionsPage {
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     page_focused: bool,
+    /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
+    menu_at: Point<Pixels>,
     /// Repaints the page when its rows change: an Institutions write or a rollback.
     _institutions_changed: Subscription,
 }
@@ -59,6 +64,7 @@ impl InstitutionsPage {
             ledger,
             keymap,
             page_focused: false,
+            menu_at: Point::default(),
         }
     }
 
@@ -106,10 +112,22 @@ impl InstitutionsPage {
         cx.emit(PageRowClicked);
     }
 
+    /// A right-click on a row opens its menu at the pointer.
+    fn open_menu(&mut self, id: InstitutionId, at: Point<Pixels>, cx: &mut Context<'_, Self>) {
+        self.menu_at = at;
+        self.click(InstitutionsPageEvent::OpenMenu(id), cx);
+    }
+
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> SettingsInstitutionsSnapshot {
         let view = self.view_model(cx);
         SettingsInstitutionsSnapshot {
+            menu: view.menu.as_ref().map(|menu| {
+                menu.entries
+                    .iter()
+                    .map(|entry| entry.action.slug())
+                    .collect()
+            }),
             selected_institution: view
                 .rows
                 .iter()
@@ -140,6 +158,15 @@ impl Page for InstitutionsPage {
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
     /// the page where it is: there is no hand-off from an Institution.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
+        true
+    }
+
+    /// `Esc` closes an open row menu; otherwise it is left to Settings.
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.presenter.view_model().menu.is_none() {
+            return false;
+        }
+        self.send(InstitutionsPageEvent::CloseMenu, cx);
         true
     }
 

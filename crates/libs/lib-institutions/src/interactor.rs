@@ -3,5 +3,7 @@
 //! leaves the port untouched.
 
 mod add_institution;
+mod edit_institution;
 
 pub use add_institution::AddInstitution;
+pub use edit_institution::EditInstitution;

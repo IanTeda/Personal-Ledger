@@ -1,5 +1,5 @@
 //! `impl InstitutionsRouter` for the Desktop: where the Institutions page's Presenter asks to go.
-//! The Add Dialog opens as an Entity in the Dialog host through the page's gpui context, which is
+//! The Add and Edit Dialog opens as an Entity in the Dialog host through the page's gpui context, which is
 //! why the Router is built for each `handle` call, and a Notice goes onto the bin's queue
 //! (`crate::notices`), which the input's `send` drains.
 
@@ -30,7 +30,10 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let dialog = InstitutionsDialog::open(dialog, &self.ports, &self.ledger, landed);
+        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, &self.ledger, landed)
+        else {
+            return false;
+        };
         host_dialog(self.cx, |_| dialog);
         true
     }

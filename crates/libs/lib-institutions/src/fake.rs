@@ -32,8 +32,15 @@ impl InstitutionRepository for InMemoryInstitutions {
         self.institutions.clone()
     }
 
-    fn add_institution(&mut self, institution: Institution) {
-        self.institutions.push(institution);
+    fn upsert_institution(&mut self, institution: Institution) {
+        match self
+            .institutions
+            .iter_mut()
+            .find(|row| row.id == institution.id)
+        {
+            Some(row) => *row = institution,
+            None => self.institutions.push(institution),
+        }
     }
 }
 

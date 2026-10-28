@@ -6,8 +6,10 @@
 //! the Institutions Interactors, as a Client does, reloads as a restart would, and expects the same
 //! rows back, in the same order.
 
+use lib_core::InstitutionId;
+
 use crate::fake::InMemoryInstitutions;
-use crate::interactor::AddInstitution;
+use crate::interactor::{AddInstitution, EditInstitution};
 use crate::{
     Institution, InstitutionDraft, InstitutionError, InstitutionRepository, default_institutions,
 };
@@ -158,6 +160,80 @@ pub fn a_blank_or_taken_name_is_refused_and_writes_nothing<F: PortsFactory>(fact
     assert_eq!(ports.institutions(), before);
 }
 
+/// An edited Institution reloads with its new name and Products, in the place it held.
+pub fn an_edited_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+
+    let edited = EditInstitution {
+        id: InstitutionId::SEED_AMEX,
+        draft: draft(" Amex ", "credit card \u{b7} cash"),
+    }
+    .run(&mut ports)
+    .expect("a free name");
+    factory.commit(&mut ports);
+
+    let before = ports.institutions();
+    assert_eq!(before[1], edited);
+    let ports = factory.reload(ports);
+    assert_eq!(ports.institutions(), before);
+    assert_eq!(ports.institutions().len(), default_institutions().len());
+    assert_eq!(ports.institution(edited.id), Some(edited));
+}
+
+/// A rename to a name another Institution holds, in any case, is refused and writes nothing; a
+/// blank name is too.
+pub fn a_clashing_rename_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+    let before = ports.institutions();
+
+    assert_eq!(
+        EditInstitution {
+            id: InstitutionId::SEED_AMEX,
+            draft: draft(" anz banking group ", "loan"),
+        }
+        .run(&mut ports),
+        Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+    );
+    assert_eq!(
+        EditInstitution {
+            id: InstitutionId::SEED_AMEX,
+            draft: draft("  ", "loan"),
+        }
+        .run(&mut ports),
+        Err(InstitutionError::NameRequired)
+    );
+    factory.commit(&mut ports);
+
+    assert_eq!(
+        ports.institutions(),
+        before,
+        "the refused edits wrote nothing"
+    );
+    let ports = factory.reload(ports);
+    assert_eq!(ports.institutions(), before);
+}
+
+/// A rename that changes only the capitals of the Institution's own name is accepted.
+pub fn a_case_only_rename_is_accepted<F: PortsFactory>(factory: &mut F) {
+    let mut ports = factory.create(default_institutions());
+
+    EditInstitution {
+        id: InstitutionId::SEED_WESTPAC,
+        draft: draft("WESTPAC BANKING", "savings"),
+    }
+    .run(&mut ports)
+    .expect("its own name in other capitals");
+    factory.commit(&mut ports);
+
+    let ports = factory.reload(ports);
+    assert_eq!(
+        ports
+            .institution(InstitutionId::SEED_WESTPAC)
+            .map(|institution| institution.name),
+        Some("WESTPAC BANKING".to_string())
+    );
+}
+
 /// A write that fails is reported once, naming the Institutions domain, and the port goes back to
 /// the last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
@@ -190,6 +266,21 @@ mod tests {
     #[test]
     fn in_memory_a_blank_or_taken_name_is_refused_and_writes_nothing() {
         a_blank_or_taken_name_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_an_edited_institution_reloads_the_same() {
+        an_edited_institution_reloads_the_same(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_clashing_rename_is_refused_and_writes_nothing() {
+        a_clashing_rename_is_refused_and_writes_nothing(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_case_only_rename_is_accepted() {
+        a_case_only_rename_is_accepted(&mut InMemoryFactory::default());
     }
 
     #[test]

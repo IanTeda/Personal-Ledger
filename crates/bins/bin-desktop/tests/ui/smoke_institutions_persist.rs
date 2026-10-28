@@ -70,3 +70,35 @@ fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         "the Accounts page reads the Institution from the adapter's rows"
     );
 }
+
+#[gpui::test]
+fn an_edited_institution_is_there_after_a_restart(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = config_for(&dir.path().join("ledger.pldb"));
+
+    let names = {
+        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let writer = storage.writer.clone();
+        let mut ui = Harness::with_storage(app, storage);
+        institution_names(&mut ui);
+        ui.click("institution-edit-1");
+        for _ in 0.."American Express".len() {
+            ui.press("backspace");
+        }
+        ui.press("A m e x");
+        ui.press("enter");
+        assert_eq!(ui.dialog(), None, "the Edit Dialog confirmed");
+        let names = institution_names(&mut ui);
+        assert_eq!(names[1], "Amex");
+        bin_desktop::quit(&writer);
+        names
+    };
+
+    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let mut ui = Harness::with_storage(app, storage);
+    assert_eq!(institution_names(&mut ui), names);
+    assert!(
+        account_select_institutions(&mut ui).contains(&"Amex".to_string()),
+        "the Account form's select shows the new name"
+    );
+}

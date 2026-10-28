@@ -1,4 +1,5 @@
-//! The Add institution Dialog (2e): Name, and Products as a multi-select.
+//! The Add and Edit institution Dialog (2e, 16e): Name, and Products as a multi-select. Edit is the
+//! same form opened on one Institution, pre-filled, its Products split back into chips.
 //!
 //! - Name is the only text field, so it is always the one typed into; there is nothing to `Tab`
 //!   between.
@@ -10,7 +11,9 @@
 use lib_toast::{Notice, ToastKind};
 use lib_viper::view::{DialogFrame, TextFieldView};
 
-use crate::interactor::AddInstitution;
+use lib_core::InstitutionId;
+
+use crate::interactor::{AddInstitution, EditInstitution};
 use crate::protocols::{InstitutionsOutcome, InstitutionsRouter, SharedPorts};
 use crate::{InstitutionDraft, InstitutionError, msg};
 
@@ -86,6 +89,8 @@ pub struct InstitutionFormViewModel {
 
 pub struct InstitutionFormPresenter {
     ports: SharedPorts,
+    /// The Institution being edited, `None` when adding.
+    editing: Option<InstitutionId>,
     name: String,
     products: Vec<InstitutionProduct>,
     /// The last refusal, with the name it refused.
@@ -97,10 +102,29 @@ impl InstitutionFormPresenter {
     pub fn add(ports: SharedPorts) -> Self {
         Self {
             ports,
+            editing: None,
             name: String::new(),
             products: vec![InstitutionProduct::Savings],
             refusal: None,
         }
+    }
+
+    /// An Edit form on Institution `id`, filled with its name and Products. `None` when it is no
+    /// longer on the Ledger.
+    pub fn edit(ports: SharedPorts, id: InstitutionId) -> Option<Self> {
+        let institution = ports.borrow().institutions().institution(id)?;
+        let labels: Vec<&str> = institution.products.split(PRODUCTS_SEPARATOR).collect();
+        let products = InstitutionProduct::ALL
+            .into_iter()
+            .filter(|product| labels.contains(&product.label().as_str()))
+            .collect();
+        Some(Self {
+            ports,
+            editing: Some(id),
+            name: institution.name,
+            products,
+            refusal: None,
+        })
     }
 
     pub fn handle(&mut self, event: InstitutionFormEvent, router: &mut dyn InstitutionsRouter) {
@@ -122,8 +146,16 @@ impl InstitutionFormPresenter {
     pub fn view_model(&self) -> InstitutionFormViewModel {
         InstitutionFormViewModel {
             frame: DialogFrame {
-                title: msg::institutions_add_title(),
-                submit: msg::institutions_add_submit(),
+                title: if self.editing.is_some() {
+                    msg::institutions_edit_title()
+                } else {
+                    msg::institutions_add_title()
+                },
+                submit: if self.editing.is_some() {
+                    msg::institutions_edit_submit()
+                } else {
+                    msg::institutions_add_submit()
+                },
                 can_confirm: self.is_valid(),
                 destructive: false,
             },
@@ -166,17 +198,24 @@ impl InstitutionFormPresenter {
                 .iter()
                 .map(|product| product.label())
                 .collect::<Vec<_>>()
-                .join(" \u{b7} "),
+                .join(PRODUCTS_SEPARATOR),
         };
-        let added = {
+        let saved = {
             let mut ports = self.ports.borrow_mut();
-            AddInstitution(draft).run(ports.institutions_mut())
+            match self.editing {
+                Some(id) => EditInstitution { id, draft }.run(ports.institutions_mut()),
+                None => AddInstitution(draft).run(ports.institutions_mut()),
+            }
         };
-        match added {
+        match saved {
             Ok(institution) => {
                 router.notify(Notice::Toast(
                     ToastKind::Success,
-                    msg::institutions_add_toast(&institution.name),
+                    if self.editing.is_some() {
+                        msg::institutions_edit_toast(&institution.name)
+                    } else {
+                        msg::institutions_add_toast(&institution.name)
+                    },
                 ));
                 router.close_dialog(Some(InstitutionsOutcome {
                     id: institution.id,
@@ -188,11 +227,15 @@ impl InstitutionFormPresenter {
     }
 }
 
+/// What joins the Products into the one label the table's cell shows.
+const PRODUCTS_SEPARATOR: &str = " \u{b7} ";
+
 /// A name refusal as the Dialog words it.
 fn refusal_text(error: &InstitutionError) -> String {
     match error {
         InstitutionError::DuplicateName(name) => msg::institutions_error_name_taken(name),
         InstitutionError::NameRequired => msg::institutions_error_name_required(),
+        InstitutionError::NotFound => msg::institutions_error_not_found(),
     }
 }
 
@@ -358,6 +401,106 @@ mod tests {
         assert_eq!(form.ports.borrow().institutions.institutions.len(), before);
         form.type_name("anz banking group 2");
         assert_eq!(form.view().name_error, None);
+    }
+
+    fn edit_form(id: InstitutionId) -> Form {
+        let (ports, shared) = stub();
+        Form {
+            presenter: InstitutionFormPresenter::edit(shared, id).expect("a stub Institution"),
+            ports,
+            router: RecordingRouter::default(),
+        }
+    }
+
+    #[test]
+    fn edit_opens_filled_with_the_name_and_its_products_as_ticked_chips() {
+        let form = edit_form(InstitutionId::SEED_ANZ);
+        let view = form.view();
+
+        assert_eq!(view.frame.title, "Edit institution");
+        assert_eq!(view.frame.submit, "Save institution");
+        assert!(view.frame.can_confirm);
+        assert_eq!(view.name.text, "ANZ Banking Group");
+        let checked: Vec<_> = view
+            .products
+            .iter()
+            .filter(|chip| chip.checked)
+            .map(|chip| chip.product)
+            .collect();
+        assert_eq!(
+            checked,
+            [InstitutionProduct::Savings, InstitutionProduct::Offset]
+        );
+    }
+
+    #[test]
+    fn edit_of_an_institution_that_is_gone_does_not_open() {
+        let (_, shared) = stub();
+
+        assert!(InstitutionFormPresenter::edit(shared, InstitutionId::new()).is_none());
+    }
+
+    #[test]
+    fn confirming_an_edit_rewrites_the_row_toasts_and_closes_on_it() {
+        let mut form = edit_form(InstitutionId::SEED_AMEX);
+        form.type_name("Amex");
+        form.send(InstitutionFormEvent::ToggleProduct(
+            InstitutionProduct::Cash,
+        ));
+
+        let calls = form.send(InstitutionFormEvent::Confirm);
+
+        let rows = form.ports.borrow().institutions.institutions.clone();
+        assert_eq!(rows.len(), 6);
+        assert_eq!(rows[1].name, "Amex");
+        assert_eq!(rows[1].products, "credit card \u{b7} cash");
+        assert_eq!(
+            calls,
+            vec![
+                RouterCall::Notice(Notice::Toast(ToastKind::Success, "Saved Amex".to_string())),
+                RouterCall::CloseDialog(Some(InstitutionsOutcome {
+                    id: InstitutionId::SEED_AMEX,
+                    name: "Amex".to_string(),
+                })),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unchanged_confirm_still_writes_and_toasts() {
+        let mut form = edit_form(InstitutionId::SEED_WESTPAC);
+
+        let calls = form.send(InstitutionFormEvent::Confirm);
+
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            form.ports.borrow().institutions.institutions[3].name,
+            "Westpac Banking"
+        );
+    }
+
+    #[test]
+    fn a_rename_skips_its_own_id_but_not_another_holders() {
+        let mut form = edit_form(InstitutionId::SEED_WESTPAC);
+
+        form.type_name("westpac banking");
+        assert_eq!(form.send(InstitutionFormEvent::Confirm).len(), 2);
+        assert_eq!(
+            form.ports.borrow().institutions.institutions[3].name,
+            "westpac banking"
+        );
+
+        let mut form = edit_form(InstitutionId::SEED_WESTPAC);
+        form.type_name("anz banking group");
+        assert!(form.send(InstitutionFormEvent::Confirm).is_empty());
+        assert_eq!(
+            form.view().name_error.as_deref(),
+            Some("ANZ Banking Group already exists")
+        );
+        assert_eq!(
+            form.ports.borrow().institutions.institutions[3].name,
+            "Westpac Banking"
+        );
     }
 
     #[test]

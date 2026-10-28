@@ -12,7 +12,7 @@ pub use institution_form::{
 };
 pub use institutions_page::{
     Hint, InstitutionColumns, InstitutionLine, InstitutionsPageEvent, InstitutionsPagePresenter,
-    InstitutionsPageViewModel,
+    InstitutionsPageViewModel, MenuAction, MenuEntry, RowMenu,
 };
 
 #[cfg(test)]

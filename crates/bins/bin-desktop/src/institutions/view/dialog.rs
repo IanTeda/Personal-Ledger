@@ -1,4 +1,4 @@
-//! The Institutions Add Dialog's View, an Entity in the Dialog host (`shell::view::dialog_entity`).
+//! The Institutions Add and Edit Dialog's View, an Entity in the Dialog host (`shell::view::dialog_entity`).
 //! [`InstitutionsDialog`] holds the `lib-institutions` form Presenter. Every key and click becomes
 //! a Presenter event; the View draws the Presenter's view model and nothing else.
 //!
@@ -33,27 +33,31 @@ pub struct InstitutionsDialog {
     /// The Ledger read copy a confirm brings in line with what it wrote.
     ledger: Entity<LedgerStore>,
     presenter: InstitutionFormPresenter,
+    /// Which Dialog this is, for the test readback.
+    which: Which,
     landed: Landed,
 }
 
 impl InstitutionsDialog {
-    /// `which`'s Presenter on `ports`. A confirm brings `ledger` in line and hands its outcome to
-    /// `landed`.
+    /// `which`'s Presenter on `ports`, or `None` when it is an Edit of an Institution that has
+    /// gone. A confirm brings `ledger` in line and hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         ports: &DesktopPorts,
         ledger: &Entity<LedgerStore>,
         landed: Landed,
-    ) -> Self {
+    ) -> Option<Self> {
         let presenter = match which {
             Which::AddInstitution => InstitutionFormPresenter::add(ports.clone()),
+            Which::EditInstitution(id) => InstitutionFormPresenter::edit(ports.clone(), id)?,
         };
-        Self {
+        Some(Self {
             ports: ports.clone(),
             ledger: ledger.clone(),
             presenter,
+            which,
             landed,
-        }
+        })
     }
 
     /// Sends the Presenter `event`, returning what its Router was asked.
@@ -149,7 +153,10 @@ impl HostedDialog for InstitutionsDialog {
         values.insert(0, ("title", view.frame.title));
         values.push(("can_confirm", view.frame.can_confirm.to_string()));
         DialogReadback {
-            kind: "AddInstitution",
+            kind: match self.which {
+                Which::AddInstitution => "AddInstitution",
+                Which::EditInstitution(_) => "EditInstitution",
+            },
             values,
         }
     }

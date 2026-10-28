@@ -3,7 +3,7 @@
 //! each write, so a write never fails here; a failed save is the adapter's to report. `fake`
 //! implements them in memory.
 //!
-//! Only list and add exist: Institution edit and delete are a backlog ticket (#847). The
+//! Only list and upsert exist: Institution delete is backlog (#869). The
 //! Presenters reach every port together, through [`InstitutionsPorts`], and ask for navigation
 //! through [`InstitutionsRouter`], which each Client implements.
 
@@ -26,8 +26,9 @@ pub trait InstitutionRepository {
             .find(|institution| institution.id == id)
     }
 
-    /// Writes `institution` as a new row, after every row already there.
-    fn add_institution(&mut self, institution: Institution);
+    /// Writes `institution`: a new id is a new row after every row already there, a known id
+    /// replaces that row where it stands.
+    fn upsert_institution(&mut self, institution: Institution);
 }
 
 /// Every Institutions port, as one value the Presenters share.
@@ -46,6 +47,8 @@ pub type SharedPorts = Rc<RefCell<dyn InstitutionsPorts>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstitutionsDialog {
     AddInstitution,
+    /// The Add form for one Institution, pre-filled.
+    EditInstitution(InstitutionId),
 }
 
 /// What a confirmed Institutions Dialog did, handed to the page when the Dialog closes.

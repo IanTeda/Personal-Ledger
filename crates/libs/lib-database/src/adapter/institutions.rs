@@ -16,7 +16,7 @@ use crate::writer::{BoxFuture, Change, Domain, Writer};
 
 /// One port write.
 #[derive(Debug, Clone)]
-struct AddInstitution(Institution);
+struct UpsertInstitution(Institution);
 
 /// The Institutions domain, held in memory and saved through the shared writer.
 pub struct InstitutionsAdapter {
@@ -76,13 +76,16 @@ impl InstitutionRepository for InstitutionsAdapter {
         self.rows.clone()
     }
 
-    fn add_institution(&mut self, institution: Institution) {
-        self.rows.push(institution.clone());
-        self.pending.push(AddInstitution(institution));
+    fn upsert_institution(&mut self, institution: Institution) {
+        match self.rows.iter_mut().find(|row| row.id == institution.id) {
+            Some(row) => *row = institution.clone(),
+            None => self.rows.push(institution.clone()),
+        }
+        self.pending.push(UpsertInstitution(institution));
     }
 }
 
-impl Change for AddInstitution {
+impl Change for UpsertInstitution {
     fn domain(&self) -> Domain {
         Domain::Institutions
     }
@@ -237,6 +240,29 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
+    async fn an_edited_institution_reloads_the_same(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::an_edited_institution_reloads_the_same(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_clashing_rename_is_refused_and_writes_nothing(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::a_clashing_rename_is_refused_and_writes_nothing(&mut AdapterFactory::new(
+            options,
+        ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_case_only_rename_is_accepted(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        contract::a_case_only_rename_is_accepted(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
     async fn a_failed_write_reloads_and_reports(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
@@ -255,7 +281,7 @@ mod tests {
         let mut institutions = factory.create(default_institutions());
         let stored = institutions.institutions();
 
-        institutions.add_institution(Institution {
+        institutions.upsert_institution(Institution {
             id: InstitutionId::new(),
             name: "anz banking group".into(),
             products: "savings".into(),

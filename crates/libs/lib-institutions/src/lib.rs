@@ -9,7 +9,7 @@
 //! until the Accounts page moves.
 //!
 //! The rule: an Institution's name is required, stored trimmed, and case-insensitively unique.
-//! Only add exists; edit and delete are a backlog ticket.
+//! Add and edit exist; delete is backlog (#869).
 
 #[cfg(feature = "contract-tests")]
 #[expect(

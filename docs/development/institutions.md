@@ -4,7 +4,7 @@ End-user documentation: [Institutions](../institutions.md).
 
 ## Overview
 
-An Institution is the bank, broker or lender an Account is held with: a first-class entity that Accounts name by id. `lib-institutions` is the Institutions VIPER module, toolkit-free and I/O-free: the Entity and its add rule, the Interactor, the page and Dialog Presenters, the ports, the keymap and its Messages. `lib-database` owns the `institutions` table and the Institutions adapter (`adapter/institutions.rs`) the Desktop persists Institutions through. The Desktop's half of the module is `bin-desktop/src/institutions/`. Institutions were the first domain of slice 5 of the VIPER transition ([#847](https://github.com/IanTeda/Personal-Ledger/issues/847)), following the [Migrating a domain](viper-architecture.md#migrating-a-domain) checklist Payees set.
+An Institution is the bank, broker or lender an Account is held with: a first-class entity that Accounts name by id. `lib-institutions` is the Institutions VIPER module, toolkit-free and I/O-free: the Entity and its add and edit rules, the Interactors, the page and Dialog Presenters, the ports, the keymap and its Messages. `lib-database` owns the `institutions` table and the Institutions adapter (`adapter/institutions.rs`) the Desktop persists Institutions through. The Desktop's half of the module is `bin-desktop/src/institutions/`. Institutions were the first domain of slice 5 of the VIPER transition ([#847](https://github.com/IanTeda/Personal-Ledger/issues/847)), following the [Migrating a domain](viper-architecture.md#migrating-a-domain) checklist Payees set.
 
 ## Data model
 
@@ -29,13 +29,13 @@ Invariants and deliberate omissions:
 
 ## Domain types
 
-`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the refusal (`NameRequired`, `DuplicateName`), declared in `entity.rs` beside `insert_institution`, `get`, `find_by_name` and `default_institutions`.
+`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the refusal (`NameRequired`, `DuplicateName`, `NotFound`), declared in `entity.rs` beside `insert_institution`, `edit_institution` (the same name rule, skipping the Institution's own id, so a change of capitals is accepted), `get`, `find_by_name` and `default_institutions`.
 
 The "No institution" placeholder for Cash Accounts is `lib_accounts::NO_INSTITUTION`, `InstitutionId::seed(0)`: in `lib-accounts`, not in `default_institutions()`, and not shown on the page.
 
 ## Persistence
 
-`crates/libs/lib-database/src/adapter/institutions.rs` is the Institutions adapter (ADR-0041, ADR-0046): it loads every Institution at start-up and serves `lib-institutions`' `InstitutionRepository` from memory, each write joining the one pending batch the Desktop commits once per input. A write is an upsert (`ON CONFLICT (id) DO UPDATE`), so seeding again leaves the same rows and an edit will need no new query.
+`crates/libs/lib-database/src/adapter/institutions.rs` is the Institutions adapter (ADR-0041, ADR-0046): it loads every Institution at start-up and serves `lib-institutions`' `InstitutionRepository` from memory, each write joining the one pending batch the Desktop commits once per input. The port's one write, `upsert_institution`, adds a new id after the rows there and replaces a known id where it stands (the Interactors `AddInstitution` and `EditInstitution` both end in it); the SQL is an upsert (`ON CONFLICT (id) DO UPDATE`), so seeding again leaves the same rows.
 
 `InstitutionsStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_institutions::fake::InMemoryInstitutions` as the in-memory store. `Stores::with_units` fills it with an empty store for the TUI's test fixture. `lib-institutions`' contract suite (`contract.rs`, feature `contract-tests`, which `lib-database`'s dev-dependencies enable) runs against both.
 
@@ -46,10 +46,10 @@ A new Ledger, and `mise run db-seed`, write `lib_institutions::fake::InMemoryIns
 The Desktop's Institutions page reads and writes the adapter through `lib-institutions`' Presenters; the Accounts page and its Institution select still read the Ledger's read copy. The TUI doesn't persist Institutions and draws none of the module's Views.
 
 - **Desktop:** the Settings Institutions page, handoff `docs/ux/desktop-mockups/16-settings/README.md`, screens 16h and 16e.
-  - `crates/libs/lib-institutions/`, the module. Start here. `interactor/add_institution.rs` is the one Interactor. `presenter/` has the page (`institutions_page.rs`, 16h) and the Add Dialog (`institution_form.rs`, 16e), whose eight `InstitutionProduct` chips (savings, offset, credit card, loan, investment, crypto, retirement, cash) join into `products`. `protocols.rs` holds the ports: `InstitutionRepository`, the `InstitutionsPorts` bundle with its `SharedPorts` alias, and the `InstitutionsRouter`. `keymap.rs` binds the shared flat movement and `new` commands; `edit` and `delete` are not bound yet. `i18n/` holds its Messages and `fake.rs` the in-memory ports and a recording Router.
-  - `src/institutions/`, the module's Desktop half: `view/page.rs` the page Entity and `view/page/render.rs` its list, `view/dialog.rs` and `view/dialog/institution_form.rs` the Add Dialog as an Entity on the Dialog host, `router.rs` the `InstitutionsRouter`, and `ports.rs`. `ports.rs`'s `LedgerBackedPorts` owns the boxed `InstitutionsStore` and implements both `InstitutionsPorts` and `InstitutionsStore`, so one `Rc<RefCell<…>>` is the module's ports and `LedgerStore`'s `DesktopInstitutionsPorts`. It also holds the read copy's refresh (`refresh`, `reload`).
+  - `crates/libs/lib-institutions/`, the module. Start here. `interactor/` has `AddInstitution` and `EditInstitution`. `presenter/` has the page (`institutions_page.rs`, 16h) and the Add and Edit Dialog (`institution_form.rs`, 16e; `add` and `edit(ports, id)` open its two modes, Edit pre-filled with the Products split back into chips), whose eight `InstitutionProduct` chips (savings, offset, credit card, loan, investment, crypto, retirement, cash) join into `products`. `protocols.rs` holds the ports: `InstitutionRepository`, the `InstitutionsPorts` bundle with its `SharedPorts` alias, and the `InstitutionsRouter`. `keymap.rs` binds the shared flat movement, `new`, `edit` and `delete` commands. The page Presenter also holds the row menu (`OpenMenu`, `CloseMenu`, `Menu(MenuAction)`), as Units' does. `i18n/` holds its Messages and `fake.rs` the in-memory ports and a recording Router.
+  - `src/institutions/`, the module's Desktop half: `view/page.rs` the page Entity and `view/page/render.rs` its list, `view/dialog.rs` and `view/dialog/institution_form.rs` the Add and Edit Dialog as an Entity on the Dialog host, `router.rs` the `InstitutionsRouter`, and `ports.rs`. `ports.rs`'s `LedgerBackedPorts` owns the boxed `InstitutionsStore` and implements both `InstitutionsPorts` and `InstitutionsStore`, so one `Rc<RefCell<…>>` is the module's ports and `LedgerStore`'s `DesktopInstitutionsPorts`. It also holds the read copy's refresh (`refresh`, `reload`).
   - The page reaches `Root` through `settings::pages::SettingsSetup`'s `institutions`. It takes the default plain-page `?` hints, built from the keymap, so both the status line and the cheat sheet follow `[keybindings]`. It is reached from the Settings index or `:settings institutions`; there is no `:institutions` alias.
-  - The Add Dialog raises an `Added <name>` Toast before it closes; the page lands only the outcome and selects the new row. Edit and delete raise a "not yet built" status Notice through `Notify` (ADR-0048).
+  - The Dialog raises an `Added <name>` or `Saved <name>` Toast before it closes; the page lands only the outcome and selects the row. A right-click on a row selects it and opens the menu at the pointer (`Esc` or a press outside closes it). Delete, from `d`, the row link or the menu, raises a "not yet built" status Notice through `Notify` (ADR-0048). After a save, `ports::refresh` copies the rows into the `Ledger` read copy and a failed write is rolled back through `reload_institutions`, so the Accounts page and the Account form show the new name.
 
 ## Traceability
 
@@ -61,6 +61,7 @@ Desktop locations for the ticked requirements.
 | INS-002 | `lib_institutions::insert_institution`, `lib_institutions::interactor::AddInstitution`, `institutions/view/dialog/institution_form.rs` | `settings_institutions_keyboard::adding_an_institution_selects_it_and_raises_a_toast` |
 | INS-003 | `lib_database::adapter::institutions`, `seed::stub_institutions` | `lib_database::adapter::institutions::tests::an_added_institution_reloads_the_same`, `smoke_institutions_persist::an_added_institution_is_there_after_a_restart` |
 | INS-004 | `LedgerStore::refresh_institutions`, `Ledger::refresh_institutions` | `smoke_institutions_persist::an_added_institution_is_there_after_a_restart` |
+| INS-005 | `lib_institutions::edit_institution`, `lib_institutions::interactor::EditInstitution`, `InstitutionFormPresenter::edit` | `lib_institutions::contract::an_edited_institution_reloads_the_same`, `settings_institutions_keyboard::enter_saves_an_edit_selects_the_row_and_raises_a_toast`, `smoke_institutions_persist::an_edited_institution_is_there_after_a_restart` |
 
 ## Decisions
 
@@ -72,7 +73,7 @@ Desktop locations for the ticked requirements.
 ## Open questions and known gaps
 
 - **Halfway states.** The Accounts page, its Institution select and the Documents picker's Account link labels read the Ledger's read copy of the Institutions, which stays until Accounts migrate (#853). It is a row in [During the transition](viper-architecture.md#during-the-transition).
-- **No edit or delete.** Backlog: [#869](https://github.com/IanTeda/Personal-Ledger/issues/869), including the refusal of deleting an Institution an Account names. The port has only add; an edit needs an upsert on it, which the adapter's write already is.
+- **No delete.** Backlog: [#869](https://github.com/IanTeda/Personal-Ledger/issues/869), including the refusal of deleting an Institution an Account names.
 - **No Default unit.** The Add Dialog's Default unit select was never saved and went in #873; saving one that prefills the Account form is backlog ([#877](https://github.com/IanTeda/Personal-Ledger/issues/877)).
 - **The Cash placeholder has no row.** Once `accounts.institution_id` gets a foreign key, `NO_INSTITUTION` needs a seeded row kept off the page, or Cash Accounts need a nullable column (#853).
 - **A file from before #849 has no Institutions.** The first-launch seed runs only on a new file, so #853 must decide between a fresh Ledger and seeding an empty table.

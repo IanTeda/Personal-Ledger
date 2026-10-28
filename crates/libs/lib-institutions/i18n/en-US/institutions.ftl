@@ -13,10 +13,14 @@ institutions-column-products = Products
 institutions-row-edit = edit
 institutions-row-delete = delete
 
-## The status line when a row's edit or delete is asked for: neither has a Dialog yet.
+## The status line when a row's delete is asked for: it has no Dialog yet.
 
-institutions-edit-not-built = edit institution — not yet built
 institutions-delete-not-built = delete institution — not yet built
+
+## The row's right-click menu.
+
+institutions-menu-edit = Edit institution…
+institutions-menu-delete = Delete institution…
 
 ## The page's legend.
 
@@ -25,11 +29,14 @@ institutions-hint-edit = edit
 institutions-hint-delete = delete
 institutions-hint-new = new
 
-## The Add institution Dialog (2e). `$name` is the Institution as written.
+## The Add and Edit institution Dialog (2e, 16e). `$name` is the Institution as written.
 
 institutions-add-title = Add institution
 institutions-add-submit = Add institution
 institutions-add-toast = Added { $name }
+institutions-edit-title = Edit institution
+institutions-edit-submit = Save institution
+institutions-edit-toast = Saved { $name }
 institutions-name-label = Institution name
 institutions-name-placeholder = e.g. Commonwealth Bank
 institutions-products = Products
@@ -51,3 +58,4 @@ institutions-product-cash = cash
 
 institutions-error-name-taken = { $name } already exists
 institutions-error-name-required = An institution needs a name
+institutions-error-not-found = That institution is no longer on the ledger

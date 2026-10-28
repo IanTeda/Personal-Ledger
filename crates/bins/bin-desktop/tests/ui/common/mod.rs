@@ -167,9 +167,9 @@ impl<T: InstitutionRepository> InstitutionRepository for Marked<T> {
         self.inner.institutions()
     }
 
-    fn add_institution(&mut self, institution: Institution) {
+    fn upsert_institution(&mut self, institution: Institution) {
         self.written.set(true);
-        self.inner.add_institution(institution);
+        self.inner.upsert_institution(institution);
     }
 }
 

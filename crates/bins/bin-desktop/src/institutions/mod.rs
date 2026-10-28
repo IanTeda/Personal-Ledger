@@ -29,6 +29,8 @@ use lib_institutions::presenter::InstitutionsPageEvent;
 pub struct SettingsInstitutionsSnapshot {
     pub institutions: Vec<(String, String)>,
     pub selected_institution: Option<String>,
+    /// The slugs of the open row menu's entries, `None` while no menu is open.
+    pub menu: Option<Vec<&'static str>>,
 }
 
 /// What `shell::router::build` hands the Institutions module: its ports, shared with the Ledger

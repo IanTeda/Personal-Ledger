@@ -2,12 +2,13 @@
 
 An institution is the bank, lender or broker that holds one of your accounts: ANZ, American Express, Vanguard. Personal Ledger keeps a list of them so each account can say where it is held.
 
-> **Heads up:** in the desktop app, the institutions you add are saved. Editing and deleting an institution isn't built yet: the `edit` and `delete` links, and the `e` and `d` keys, only tell you so. The terminal app has no Institutions screen.
+> **Heads up:** in the desktop app, the institutions you add or edit are saved. Deleting an institution isn't built yet: the `delete` link, the `d` key and the menu's Delete institution only tell you so. The terminal app has no Institutions screen.
 
 ## What you can do
 
 - See every institution in one list, in the order you added them, with its products
 - Add an institution with a name and the products it offers
+- Edit an institution's name and products
 - Choose an institution when you create an account
 - Keep your institutions after you close the app
 
@@ -31,17 +32,21 @@ In the desktop app, open the Institutions page in Settings (press `g` `s` and pi
 - Press `n`, or click Add institution, to add one. If you've changed these keys under `[keybindings]` in your settings, the page follows your keys.
 - In the add dialog, type the name and click at least one product, then press `ctrl+Enter` to add it, or `Esc` to close without adding.
 - If the name is blank or already taken, the dialog says so under the name and won't add until you change it.
-- `e` and `d`, and each row's `edit` and `delete` links, say the action isn't built yet.
+- Press `e`, or click a row's `edit` link, to edit the selected institution. You can also right-click a row for a menu with Edit institution and Delete institution. The edit dialog opens with the name filled in and its products ticked; change either, then press `ctrl+Enter` to save or `Esc` to close without saving.
+- The edit dialog follows the same rules as the add dialog. You can change only the capitals of a name ("anz" to "ANZ"), but not take a name another institution holds.
+- `d`, the row's `delete` link and the menu's Delete institution say deleting isn't built yet.
 
-A message at the bottom of the window confirms each institution you add. If it can't be saved, a message says so straight away and the list goes back to what was last saved.
+A message at the bottom of the window confirms each institution you add or save. If it can't be saved, a message says so straight away and the list goes back to what was last saved.
 
 ## Worked example
 
 You're setting up your ledger and bank with Commonwealth Bank. You open Settings, choose Institutions and press `n`. You type "Commonwealth Bank", tick savings and offset and press `ctrl+Enter`. The list now ends with Commonwealth Bank, shown as "savings · offset", and a message says it was added. You close the desktop app. When you open it again Commonwealth Bank is still there, and the account dialog offers it when you create your savings account.
 
+You later rename it to "CBA": you right-click Commonwealth Bank, choose Edit institution, type the new name and press `ctrl+Enter`. The account dialog offers CBA from then on, and the accounts held there show the new name.
+
 ## Screens
 
-The desktop app's Institutions page lists every institution in the order you added them, with its name and products. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. An Add institution button sits at the top.
+The desktop app's Institutions page lists every institution in the order you added them, with its name and products. The heading says how many there are. The selected row is highlighted, and each row has `edit` and `delete` links. Right-clicking a row selects it and opens its menu. An Add institution button sits at the top. The edit dialog is the add dialog, titled Edit institution, with a Save institution button.
 
 ## Rules to know
 
@@ -50,7 +55,6 @@ The desktop app's Institutions page lists every institution in the order you add
 
 ## Scope
 
-- Editing an institution isn't built yet.
 - Deleting an institution isn't built yet. When it is, an institution that an account names will be refused, as a payee in use is.
 - Institutions don't carry a default unit, address or contact details.
 - Institutions aren't synced between devices yet.
@@ -77,7 +81,7 @@ Intended features for Institutions. Ticked means built in at least one app; the 
 - [x] INS-002 (desktop): Add an institution with a name and products, refusing a blank or taken name
 - [x] INS-003 (desktop): Keep institutions after the app closes
 - [x] INS-004 (desktop): Choose an institution when creating an account
-- [ ] INS-005: Edit an institution
+- [x] INS-005 (desktop): Edit an institution
 - [ ] INS-006: Delete an institution no account names
 
 ## For developers

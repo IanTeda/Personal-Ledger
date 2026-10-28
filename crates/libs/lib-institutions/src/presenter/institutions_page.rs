@@ -1,6 +1,7 @@
 //! The Institutions Settings page (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 //! state"): every Institution in the order added, with its Products, and `edit · delete` per
-//! row. Edit and delete have no Dialog yet, so they say so on the status line.
+//! row. Edit opens the form on the Institution; delete has no Dialog yet, so it says so on the
+//! status line.
 //!
 //! The selection is an Institution id. It may name an Institution that has since gone, so it is
 //! resolved on every read: a missing one leaves the first row selected.
@@ -26,8 +27,62 @@ pub enum InstitutionsPageEvent {
     /// A row's own **edit** or **delete**: selects the row, then asks for its Dialog.
     EditRow(InstitutionId),
     DeleteRow(InstitutionId),
+    /// A right-click on a row: selects it and opens its menu.
+    OpenMenu(InstitutionId),
+    CloseMenu,
+    /// An entry of the open menu.
+    Menu(MenuAction),
     /// The open Dialog closed, with what its confirm did or `None` when cancelled.
     DialogClosed(Option<InstitutionsOutcome>),
+}
+
+/// An action a row's menu offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    EditInstitution,
+    DeleteInstitution,
+}
+
+impl MenuAction {
+    /// In menu order, the destructive one last.
+    const ALL: [Self; 2] = [Self::EditInstitution, Self::DeleteInstitution];
+
+    /// A stable name (`edit-institution`), for a Client's element ids and tests.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::EditInstitution => "edit-institution",
+            Self::DeleteInstitution => "delete-institution",
+        }
+    }
+
+    fn entry(self) -> MenuEntry {
+        match self {
+            Self::EditInstitution => MenuEntry {
+                action: self,
+                label: msg::institutions_menu_edit(),
+                destructive: false,
+            },
+            Self::DeleteInstitution => MenuEntry {
+                action: self,
+                label: msg::institutions_menu_delete(),
+                destructive: true,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuEntry {
+    pub action: MenuAction,
+    pub label: String,
+    pub destructive: bool,
+}
+
+/// The menu open on a row, its entries in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowMenu {
+    pub row: InstitutionId,
+    pub entries: Vec<MenuEntry>,
 }
 
 /// The page as drawn.
@@ -43,6 +98,8 @@ pub struct InstitutionsPageViewModel {
     pub row_delete: String,
     pub selected: Option<InstitutionId>,
     pub hints: Vec<Hint>,
+    /// The menu a right-click opened, until any other event.
+    pub menu: Option<RowMenu>,
     /// The Dialog the page last opened, until it closes.
     pub open_dialog: Option<InstitutionsDialog>,
 }
@@ -71,6 +128,8 @@ pub struct InstitutionsPagePresenter {
     ports: SharedPorts,
     keymap: Keymap<InstitutionsPageEvent>,
     selected: Option<InstitutionId>,
+    /// The row whose menu is open.
+    menu: Option<InstitutionId>,
     open_dialog: Option<InstitutionsDialog>,
 }
 
@@ -81,20 +140,25 @@ impl InstitutionsPagePresenter {
             ports,
             keymap,
             selected: None,
+            menu: None,
             open_dialog: None,
         }
     }
 
     pub fn handle(&mut self, event: InstitutionsPageEvent, router: &mut dyn InstitutionsRouter) {
+        // Any event but the menu's own closes it, as a key or click elsewhere does.
+        let menu = self.menu.take();
         match event {
             InstitutionsPageEvent::Move(step) => {
                 self.selected = step_id(&self.ids(), self.selected(), step);
             }
             InstitutionsPageEvent::Select(id) => self.select(id),
-            InstitutionsPageEvent::New => self.open(router),
+            InstitutionsPageEvent::New => {
+                self.open_dialog(InstitutionsDialog::AddInstitution, router)
+            }
             InstitutionsPageEvent::Edit => {
-                if self.selected().is_some() {
-                    router.notify(Notice::Status(msg::institutions_edit_not_built()));
+                if let Some(id) = self.selected() {
+                    self.open_dialog(InstitutionsDialog::EditInstitution(id), router);
                 }
             }
             InstitutionsPageEvent::Delete => {
@@ -104,11 +168,27 @@ impl InstitutionsPagePresenter {
             }
             InstitutionsPageEvent::EditRow(id) => {
                 self.select(id);
-                router.notify(Notice::Status(msg::institutions_edit_not_built()));
+                self.open_dialog(InstitutionsDialog::EditInstitution(id), router);
             }
             InstitutionsPageEvent::DeleteRow(id) => {
                 self.select(id);
                 router.notify(Notice::Status(msg::institutions_delete_not_built()));
+            }
+            InstitutionsPageEvent::OpenMenu(id) => {
+                if self.ids().contains(&id) {
+                    self.select(id);
+                    self.menu = Some(id);
+                }
+            }
+            InstitutionsPageEvent::CloseMenu => {}
+            InstitutionsPageEvent::Menu(action) => {
+                if let Some(id) = menu {
+                    let event = match action {
+                        MenuAction::EditInstitution => InstitutionsPageEvent::EditRow(id),
+                        MenuAction::DeleteInstitution => InstitutionsPageEvent::DeleteRow(id),
+                    };
+                    self.handle(event, router);
+                }
             }
             InstitutionsPageEvent::DialogClosed(outcome) => {
                 self.open_dialog = None;
@@ -134,6 +214,13 @@ impl InstitutionsPagePresenter {
             })
             .collect();
         let selected = resolve(rows.iter().map(|row| row.id), self.selected);
+        let menu = self
+            .menu
+            .filter(|id| rows.iter().any(|row| row.id == *id))
+            .map(|row| RowMenu {
+                row,
+                entries: MenuAction::ALL.into_iter().map(MenuAction::entry).collect(),
+            });
         InstitutionsPageViewModel {
             scope: msg::institutions_count(i64::try_from(rows.len()).unwrap_or(i64::MAX)),
             add_button: msg::institutions_add_button("+"),
@@ -147,6 +234,7 @@ impl InstitutionsPagePresenter {
             row_delete: msg::institutions_row_delete(),
             selected,
             hints: self.hints(),
+            menu,
             open_dialog: self.open_dialog,
         }
     }
@@ -174,9 +262,9 @@ impl InstitutionsPagePresenter {
         }
     }
 
-    fn open(&mut self, router: &mut dyn InstitutionsRouter) {
-        if router.open_dialog(InstitutionsDialog::AddInstitution) {
-            self.open_dialog = Some(InstitutionsDialog::AddInstitution);
+    fn open_dialog(&mut self, dialog: InstitutionsDialog, router: &mut dyn InstitutionsRouter) {
+        if router.open_dialog(dialog) {
+            self.open_dialog = Some(dialog);
         }
     }
 
@@ -297,14 +385,37 @@ mod tests {
     }
 
     #[test]
-    fn edit_and_delete_say_they_are_not_built_on_the_selected_row_or_a_clicked_one() {
+    fn edit_opens_the_form_on_the_selected_row_or_a_clicked_one() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
+        let anz = page.view().rows[0].id;
+        let amex = page.view().rows[1].id;
 
         assert_eq!(
             page.send(InstitutionsPageEvent::Edit),
-            status("edit institution \u{2014} not yet built")
+            vec![RouterCall::OpenDialog(InstitutionsDialog::EditInstitution(
+                anz
+            ))]
         );
+        page.send(InstitutionsPageEvent::DialogClosed(None));
+        assert_eq!(
+            page.send(InstitutionsPageEvent::EditRow(amex)),
+            vec![RouterCall::OpenDialog(InstitutionsDialog::EditInstitution(
+                amex
+            ))]
+        );
+        assert_eq!(page.selected_name().as_deref(), Some("American Express"));
+        assert_eq!(
+            page.view().open_dialog,
+            Some(InstitutionsDialog::EditInstitution(amex))
+        );
+    }
+
+    #[test]
+    fn delete_says_it_is_not_built_on_the_selected_row_or_a_clicked_one() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+
         assert_eq!(
             page.send(InstitutionsPageEvent::Delete),
             status("delete institution \u{2014} not yet built")
@@ -315,6 +426,59 @@ mod tests {
             status("delete institution \u{2014} not yet built")
         );
         assert_eq!(page.selected_name().as_deref(), Some("American Express"));
+    }
+
+    #[test]
+    fn a_right_click_selects_the_row_and_opens_its_menu_whose_entry_runs_on_it() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+        let amex = page.view().rows[1].id;
+
+        page.send(InstitutionsPageEvent::OpenMenu(amex));
+        let menu = page.view().menu.expect("the menu is open");
+        assert_eq!(menu.row, amex);
+        let labels: Vec<_> = menu
+            .entries
+            .iter()
+            .map(|entry| (entry.label.as_str(), entry.destructive))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("Edit institution\u{2026}", false),
+                ("Delete institution\u{2026}", true)
+            ]
+        );
+        assert_eq!(page.selected_name().as_deref(), Some("American Express"));
+
+        assert_eq!(
+            page.send(InstitutionsPageEvent::Menu(MenuAction::EditInstitution)),
+            vec![RouterCall::OpenDialog(InstitutionsDialog::EditInstitution(
+                amex
+            ))]
+        );
+        assert_eq!(page.view().menu, None);
+    }
+
+    #[test]
+    fn the_menus_delete_says_it_is_not_built_and_any_other_event_closes_the_menu() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+        let amex = page.view().rows[1].id;
+
+        page.send(InstitutionsPageEvent::OpenMenu(amex));
+        assert_eq!(
+            page.send(InstitutionsPageEvent::Menu(MenuAction::DeleteInstitution)),
+            status("delete institution \u{2014} not yet built")
+        );
+        page.send(InstitutionsPageEvent::OpenMenu(amex));
+        page.send(InstitutionsPageEvent::Move(Step::Next));
+        assert_eq!(page.view().menu, None);
+        assert!(
+            page.send(InstitutionsPageEvent::Menu(MenuAction::EditInstitution))
+                .is_empty(),
+            "with no menu open an entry does nothing"
+        );
     }
 
     #[test]
