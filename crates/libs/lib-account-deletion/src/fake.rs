@@ -109,14 +109,14 @@ impl Notify for RecordingRouter {
 pub mod world {
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
-    use lib_accounts::{Account, NO_INSTITUTION};
+    use lib_accounts::Account;
     use lib_bills::fake::InMemoryBills;
     use lib_bills::{
         AmountKind, BillPlan, BillScheduleEntry, EntryId, Recurrence, Resolution, SplitRef,
     };
     use lib_core::{
-        AccountId, AccountType, BillPlanId, BillScheduleEntryId, CategoryId, Money, TransactionId,
-        TransactionStatus, UnitId,
+        AccountId, AccountType, BillPlanId, BillScheduleEntryId, CategoryId, InstitutionId, Money,
+        TransactionId, TransactionStatus, UnitId,
     };
     use lib_transactions::fake::InMemoryTransactions;
     use lib_transactions::{Split, Transaction};
@@ -164,7 +164,7 @@ pub mod world {
         Account {
             id,
             name: name.to_string(),
-            institution: NO_INSTITUTION,
+            institution: InstitutionId::SEED_PERSONAL,
             account_type,
             unit: UnitId::SEED_AUD,
             balance: cents(-231_844),

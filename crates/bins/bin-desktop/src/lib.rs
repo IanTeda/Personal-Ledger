@@ -70,15 +70,19 @@ const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraB
 /// creating and seeding it when new, with the stub dated from today, then generates the Bill
 /// Schedule through the horizon and commits the new entries before the Shell is built
 /// (ADR-0019). The app never runs on a file it can't save to, so a failure is the caller's to
-/// report and stop on. `main` and the smoke test both start here.
+/// report and stop on. `main` starts here. The Locale is set first, once and before any window
+/// opens, since a new Ledger is written with the Personal Institution named in it.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the Ledger file.
 pub fn start(config: &lib_config::Config) -> lib_database::Result<Storage> {
+    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
+    locale::init(requested_locale, locale_source);
     start_on(config, chrono::Local::now().date_naive())
 }
 
-/// [`start`] as of `today`, so a smoke test seeds and generates on the date its Shell is built for.
+/// [`start`] as of `today`, on the Locale already set, so a smoke test seeds and generates on the
+/// date its Shell is built for.
 ///
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the Ledger file.
@@ -87,9 +91,10 @@ pub fn start_on(
     today: chrono::NaiveDate,
 ) -> lib_database::Result<Storage> {
     let path = config.personal_ledger_config().file();
-    let mut storage = open_storage(path, today).inspect_err(|error| {
-        tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
-    })?;
+    let mut storage = open_storage(path, today, &lib_locale::msg::institution_personal())
+        .inspect_err(|error| {
+            tracing::error!(%error, path = %path.display(), "Failed to open the Ledger");
+        })?;
     bills::ports::generate(&mut storage.bills, today);
     lib_database::Commit::commit(&storage.pending);
     Ok(storage)
@@ -114,9 +119,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
     let theme_overrides = config.theme_config().overrides.clone();
     let keybindings = config.keybindings_config().clone();
 
-    // Resolved once, before any window opens; the Locale never changes at runtime.
-    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
-    let locale = locale::init(requested_locale, locale_source);
+    // Set once by `start`; the Locale never changes at runtime.
+    let locale = locale::info().effective;
 
     Application::new()
         .with_assets(assets::Assets)

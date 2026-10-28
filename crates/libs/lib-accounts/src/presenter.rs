@@ -18,7 +18,6 @@ pub use accounts_page::{
 
 use lib_core::InstitutionId;
 
-use crate::NO_INSTITUTION;
 use crate::protocols::AccountInstitution;
 
 /// A count as a Message's plural argument.
@@ -26,18 +25,13 @@ fn count(n: usize) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// What to show for an Account's `institution`: the placeholder's Message in the Locale in effect,
-/// or the name of the one of `institutions` it names, unchanged (Ledger data, not a Message). An
-/// id `institutions` doesn't hold shows nothing.
+/// What to show for an Account's `institution`: the name of the one of `institutions` it names,
+/// unchanged (Ledger data, not a Message). An id `institutions` doesn't hold shows nothing.
 fn institution_label(institution: InstitutionId, institutions: &[AccountInstitution]) -> String {
-    if institution == NO_INSTITUTION {
-        lib_locale::msg::institution_none()
-    } else {
-        institutions
-            .iter()
-            .find(|row| row.id == institution)
-            .map_or_else(String::new, |row| row.name.clone())
-    }
+    institutions
+        .iter()
+        .find(|row| row.id == institution)
+        .map_or_else(String::new, |row| row.name.clone())
 }
 
 #[cfg(test)]

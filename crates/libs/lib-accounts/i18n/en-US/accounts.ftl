@@ -1,6 +1,6 @@
 ## The Accounts module's Messages, read by its Presenters. Each Client composes this layer into its
 ## Locale; no Client catalogue keeps a copy. Column and field labels other screens share (Name,
-## Institution, Type, Unit, Actions) and the placeholder Institution come from the shared layer.
+## Institution, Type, Unit, Actions) come from the shared layer.
 
 ## The Settings page. `$count` is the Accounts, `$glyph` the Add button's leading plus sign and
 ## `$key` the key that opens Add.

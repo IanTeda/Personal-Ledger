@@ -39,14 +39,24 @@ pub(crate) async fn insert_category(
     id
 }
 
-/// Stores a Bank Account in Unit `unit_id` with no Institution, returning its id.
+/// Stores a Bank Account in Unit `unit_id` with the Personal Institution, which it stores first if
+/// it isn't, returning its id.
 pub(crate) async fn insert_account(pool: &SqlitePool, unit_id: lib_core::RowID) -> lib_core::RowID {
+    let institution = lib_core::InstitutionId::SEED_PERSONAL;
+    sqlx::query(
+        "INSERT OR IGNORE INTO institutions (id, name, products) VALUES (?, 'Personal', 'cash')",
+    )
+    .bind(institution)
+    .execute(pool)
+    .await
+    .expect("the Institution is written");
     let id = lib_core::RowID::new();
     sqlx::query(
-        "INSERT INTO accounts (id, name, account_type, unit_id, balance, opened_at)
-         VALUES (?, 'Test account', 'bank', ?, '0', '2026-01-01')",
+        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
+         VALUES (?, 'Test account', ?, 'bank', ?, '0', '2026-01-01')",
     )
     .bind(id)
+    .bind(institution)
     .bind(unit_id)
     .execute(pool)
     .await

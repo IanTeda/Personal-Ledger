@@ -33,10 +33,11 @@ budget-period-monthly = Monthly
 budget-period-quarterly = Quarterly
 budget-period-yearly = Yearly
 
-## The system-seeded placeholder Institution a Cash Account links to. The row stores a stable key,
-## never this text, so each Client renders it in its own Locale.
+## The name a new Ledger's Personal Institution is written with, the person keeping the Ledger,
+## whom a Cash Account names. Written once, in the Locale the Ledger is made in, then Ledger data
+## the person may rename like any other Institution.
 
-institution-none = No institution
+institution-personal = Personal
 
 ## Colour Theme names, shared by the desktop and the TUI. Brand names (Catppuccin, Gruvbox,
 ## Nord) are left untranslated.

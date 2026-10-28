@@ -87,10 +87,11 @@ impl AccountUnits for InMemoryAccountUnits {
     }
 }
 
-/// The stub Institutions the stub Accounts name, with their seed ids: ANZ, Amex, Westpac, Vanguard
-/// and the crypto exchange.
+/// The stub Institutions the stub Accounts name, with their seed ids, in the Institutions' order:
+/// the Personal Institution, ANZ, Amex, Vanguard, Westpac and the crypto exchange.
 pub fn stub_institutions() -> Vec<AccountInstitution> {
     [
+        (InstitutionId::SEED_PERSONAL, "Personal"),
         (InstitutionId::SEED_ANZ, "ANZ Banking Group"),
         (InstitutionId::SEED_AMEX, "American Express"),
         (InstitutionId::SEED_VANGUARD, "Vanguard Investments"),

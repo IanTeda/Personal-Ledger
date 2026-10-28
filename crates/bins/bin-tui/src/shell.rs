@@ -315,7 +315,11 @@ impl Shell {
         let name = file_name(&path);
         // The Open Ledger's writes land first, so reopening its own file reads them back.
         self.flush_ledger();
-        match lib_database::open_storage(&path, Local::now().date_naive()) {
+        match lib_database::open_storage(
+            &path,
+            Local::now().date_naive(),
+            &lib_locale::msg::institution_personal(),
+        ) {
             Ok(storage) => {
                 let writer = storage.writer.clone();
                 let ledger = self.open_ledger_on(path, Stores::from(storage), Some(writer));

@@ -73,9 +73,15 @@ impl From<Storage> for Stores {
 }
 
 /// Opens the Ledger at `path`, creating and migrating it if need be, and loads every adapter,
-/// blocking. A Ledger with no base Unit is new, so it is seeded first with the stub's Units, Price
+/// blocking. A file this call creates is written with the Personal Institution under `personal`,
+/// the Client's "Personal" Message, which a Cash Account names (ADR-0049); that is part of every
+/// new Ledger, not of the stub seed, so it stays once the seed goes. Opening an existing file
+/// writes nothing of it.
+///
+/// A Ledger with no base Unit is new to the stub seed, so it is seeded first with the stub's Units, Price
 /// Sources and base Unit, which the stub Accounts, Bill Plans and Budgets still name (#746), the
-/// stub's Institutions, which its Accounts name (#849), the stub's Accounts, which its
+/// stub's Institutions, which its Accounts name (#849), the Personal Institution among them under
+/// `personal`, the stub's Accounts, which its
 /// Transactions and Bill Plans name (#853), the stub's Categories, which its Payees, Splits and
 /// Bill Plans name (#858), the stub's Tags, which its Splits carry (#862), the stub's Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions and Bills as of `today`, whose Paid entries and
 /// Documents name those Transactions (#774), and last the stub's Inventory as of `today`, whose
@@ -85,13 +91,29 @@ impl From<Storage> for Stores {
 /// # Errors
 /// Returns the error opening, migrating, seeding or reading the file.
 #[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
-pub fn open_storage(path: &Path, today: NaiveDate) -> Result<Storage> {
+pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Storage> {
+    let is_new = !path.exists();
     let (writer, failures) = Writer::open_ledger(path)?;
+    let personal = lib_institutions::personal_institution(personal);
+    if is_new {
+        InstitutionsAdapter::seed(&writer, vec![personal.clone()])?;
+        tracing::info!(path = %path.display(), "Wrote a new Ledger's Personal Institution");
+    }
     let pending = PendingWrites::new(writer.clone());
     let units = match UnitsAdapter::load(pending.clone()) {
         Err(Error::NotFound(_)) => {
             UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))?;
-            InstitutionsAdapter::seed(&writer, seed::stub_institutions())?;
+            let institutions = seed::stub_institutions()
+                .into_iter()
+                .map(|institution| {
+                    if institution.id == personal.id {
+                        personal.clone()
+                    } else {
+                        institution
+                    }
+                })
+                .collect();
+            InstitutionsAdapter::seed(&writer, institutions)?;
             AccountsAdapter::seed(&writer, seed::stub_accounts())?;
             CategoriesAdapter::seed(&writer, seed::stub_categories())?;
             TagsAdapter::seed(&writer, seed::stub_tags())?;
@@ -134,8 +156,13 @@ mod tests {
     use lib_bills::{BillScheduleRepository, Resolution};
     use lib_transactions::TransactionRepository;
 
+    use lib_institutions::InstitutionRepository as _;
+
     use super::*;
     use crate::Commit;
+
+    /// The name the Clients pass in en-US, which the stub seed's Personal Institution also has.
+    const PERSONAL: &str = "Personal";
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
@@ -146,7 +173,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
 
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         let seeded = storage.transactions.transactions();
         assert_eq!(seeded, seed::stub_ledger_transactions(today()));
         let gone = seeded[0].id;
@@ -156,7 +183,7 @@ mod tests {
         drop(storage);
 
         // A day later, so a re-seed would show as shifted dates.
-        let reopened = open_storage(&path, today().succ_opt().expect("a real date"))
+        let reopened = open_storage(&path, today().succ_opt().expect("a real date"), PERSONAL)
             .expect("the Ledger opens again");
 
         let mut expected = seeded;
@@ -166,12 +193,45 @@ mod tests {
     }
 
     #[test]
+    fn a_new_ledger_is_written_with_the_personal_institution_under_the_name_passed() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+
+        let storage = open_storage(&path, today(), "Persönlich").expect("a new Ledger opens");
+        let personal = lib_institutions::personal_institution("Persönlich");
+        assert_eq!(storage.institutions.institutions().first(), Some(&personal));
+        storage.writer.flush().expect("the writer is running");
+        drop(storage);
+
+        let reopened = open_storage(&path, today(), "Personal").expect("the Ledger opens again");
+        assert_eq!(
+            reopened.institutions.institutions().first(),
+            Some(&personal),
+            "opening an existing file writes nothing"
+        );
+    }
+
+    #[test]
+    fn a_migrated_file_with_no_rows_takes_the_personal_institution_from_the_stub_seed() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let (writer, _) = Writer::open_ledger(&path).expect("the file is made and migrated");
+        drop(writer);
+
+        let storage = open_storage(&path, today(), "Persönlich").expect("the Ledger opens");
+        assert_eq!(
+            storage.institutions.institutions().first(),
+            Some(&lib_institutions::personal_institution("Persönlich"))
+        );
+    }
+
+    #[test]
     fn a_new_ledger_opens_with_the_stub_institutions_and_an_added_one_survives_a_restart() {
         use lib_institutions::{Institution, InstitutionRepository};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(
             storage.institutions.institutions(),
             seed::stub_institutions()
@@ -186,7 +246,7 @@ mod tests {
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         let mut expected = seed::stub_institutions();
         expected.push(bank);
@@ -199,7 +259,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(
             storage.accounts.accounts().accounts(),
             seed::stub_accounts()
@@ -217,7 +277,7 @@ mod tests {
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         let mut expected = seed::stub_accounts();
         expected.push(savings);
@@ -230,7 +290,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(storage.categories.categories(), seed::stub_categories());
         let gas = Category {
             id: lib_core::CategoryId::new(),
@@ -243,7 +303,7 @@ mod tests {
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         assert_eq!(reopened.categories.category(gas.id), Some(gas));
         assert_eq!(
@@ -258,7 +318,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(storage.tags.tags().tags(), seed::stub_tags());
         let holiday = Tag {
             id: lib_core::TagId::new(),
@@ -271,7 +331,7 @@ mod tests {
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         assert_eq!(reopened.tags.tags().tag(holiday.id), Some(holiday));
         assert_eq!(
@@ -287,7 +347,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(
             storage.inventory.inventory().inventory(),
             seed::stub_inventory(today())
@@ -324,7 +384,7 @@ mod tests {
         assert!(storage.failures.try_recv().is_err(), "the writes landed");
         let written = storage.inventory.inventory().inventory();
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         let reread = reopened.inventory.inventory().inventory();
         assert_eq!(reread, written);
@@ -337,7 +397,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let mut storage = open_storage(&path, today()).expect("a new Ledger opens");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         assert_eq!(storage.payees.payees().payees(), seed::stub_payees());
         let corner = Payee {
             id: lib_core::PayeeId::new(),
@@ -351,7 +411,7 @@ mod tests {
         storage.pending.commit();
         storage.writer.flush().expect("the writer is running");
         drop(storage);
-        let reopened = open_storage(&path, today()).expect("the Ledger opens again");
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
 
         assert_eq!(reopened.payees.payees().payee(corner.id), Some(corner));
     }
@@ -360,8 +420,8 @@ mod tests {
     fn a_new_ledger_opens_with_the_stub_bills_and_their_paid_entries() {
         let dir = tempfile::tempdir().expect("a temporary directory");
 
-        let storage =
-            open_storage(&dir.path().join("ledger.pldb"), today()).expect("a new Ledger opens");
+        let storage = open_storage(&dir.path().join("ledger.pldb"), today(), PERSONAL)
+            .expect("a new Ledger opens");
 
         let expected = seed::stub_ledger_bills(today());
         assert_eq!(

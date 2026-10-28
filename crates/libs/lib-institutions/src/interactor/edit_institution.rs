@@ -66,8 +66,8 @@ mod tests {
         .expect("a free name");
 
         assert_eq!(edited.name, "Amex");
-        assert_eq!(institutions.institutions[1], edited);
-        assert_eq!(institutions.institutions.len(), 6);
+        assert_eq!(institutions.institutions[2], edited);
+        assert_eq!(institutions.institutions.len(), 7);
     }
 
     #[test]

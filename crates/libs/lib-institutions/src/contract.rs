@@ -173,7 +173,7 @@ pub fn an_edited_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) 
     factory.commit(&mut ports);
 
     let before = ports.institutions();
-    assert_eq!(before[1], edited);
+    assert_eq!(before[2], edited);
     let ports = factory.reload(ports);
     assert_eq!(ports.institutions(), before);
     assert_eq!(ports.institutions().len(), default_institutions().len());

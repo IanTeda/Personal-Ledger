@@ -27,20 +27,30 @@ fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
 }
 
 #[gpui::test]
+fn the_page_draws_seven_rows_the_personal_institution_first(app: &mut TestAppContext) {
+    let mut ui = on_page(app, "Institutions");
+
+    assert_eq!(ui.settings_institutions().institutions.len(), 7);
+    assert!(ui.is_drawn("settings-institutions-row-6"));
+    ui.click("institution-edit-0");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Personal"));
+}
+
+#[gpui::test]
 fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_says_it_is_not_built(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_page(app, "Institutions");
     let before = ui.settings_institutions().institutions;
 
-    ui.click("institution-edit-1");
+    ui.click("institution-edit-2");
     assert_eq!(ui.dialog(), Some("EditInstitution"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("American Express"));
     assert_eq!(ui.dialog_value("types").as_deref(), Some("CreditCard"));
     ui.click("add-institution-cancel");
     assert_eq!(ui.dialog(), None);
 
-    ui.click("institution-delete-1");
+    ui.click("institution-delete-2");
     assert_eq!(
         status(&mut ui).as_deref(),
         Some("delete institution \u{2014} not yet built")
@@ -55,7 +65,7 @@ fn a_right_click_opens_the_rows_menu_and_edit_opens_the_dialog_on_that_row(
 ) {
     let mut ui = on_page(app, "Institutions");
 
-    ui.right_click("settings-institutions-row-2");
+    ui.right_click("settings-institutions-row-3");
     assert!(ui.is_drawn("settings-institutions-menu"));
     assert_eq!(
         ui.settings_institutions().menu,
@@ -102,7 +112,7 @@ fn the_menus_delete_says_it_is_not_built_and_a_press_outside_closes_the_menu(
 fn the_edit_dialogs_buttons_save_a_rename_and_a_refused_one_stays_open(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
 
-    row_action(&mut ui, "settings-institutions-row-1", "edit-institution");
+    row_action(&mut ui, "settings-institutions-row-2", "edit-institution");
     for _ in 0.."American Express".len() {
         ui.press("backspace");
     }
@@ -119,7 +129,7 @@ fn the_edit_dialogs_buttons_save_a_rename_and_a_refused_one_stays_open(app: &mut
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions[1],
+        ui.settings_institutions().institutions[2],
         ("Amex".to_string(), "credit card \u{b7} cash".to_string())
     );
 }

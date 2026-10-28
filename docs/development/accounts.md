@@ -16,7 +16,7 @@ The table comes from `crates/libs/lib-database/migrations/client/20260905000000_
 | --- | --- | --- |
 | `id` | UUID | Primary key, an `AccountId` (UUIDv7) |
 | `name` | TEXT | Not null |
-| `institution_id` | UUID | Nullable, references `institutions(id)` with no cascade |
+| `institution_id` | UUID | Not null, references `institutions(id)` with no cascade |
 | `account_type` | TEXT | Not null, one of `cash`, `bank`, `credit_card`, `investment`, `loan` |
 | `unit_id` | UUID | Not null, references `units(id)`, fixed at creation |
 | `balance` | TEXT | Not null, the opening balance as a decimal string in the Unit's precision |
@@ -35,7 +35,7 @@ Who names an Account, and what the file does when one is deleted:
 
 Invariants and deliberate omissions:
 
-- **`institution_id` is nullable, and only the Accounts adapter knows why.** A Cash Account's Institution is `lib_accounts::NO_INSTITUTION` (`InstitutionId::seed(0)`), which has no `institutions` row and is kept off the Institutions page. The adapter writes it as NULL and reads NULL back as the placeholder, so the foreign key still refuses a real id with no row. The ticket listed only `account_number` as nullable (#853).
+- **`institution_id` is never NULL.** Every Account names a stored Institution, a Cash Account usually the Personal Institution (`InstitutionId::SEED_PERSONAL`), which every new Ledger file is written with ([ADR-0049](../adr/0049-a-cash-account-names-the-personal-institution.md), #875). The foreign key refuses an id with no row.
 - **Rows read back in rowid order**, the order they were added in. There is no position column; the page groups by type in a fixed order (`GROUP_ORDER`).
 - **Unit, opening balance and opened date never change** after the Account is added. `edit_account` writes only the name, Institution, type and account number.
 - **There is no transaction count column.** The Dialogs' count is `COUNT(*) FROM transactions WHERE account_id = ?`, so an Import can't leave it wrong (#852, #853).
@@ -126,12 +126,12 @@ Rather than bolting loan-, investment-, and credit-card-specific columns onto on
 
 The financial institution — a bank, a broker, a lender — that an Account is held with. A first-class entity, not a free-text field.
 
-Every Account, regardless of Account Kind, carries a **mandatory** link to exactly one Institution. This is deliberately strict, including for Cash: a Cash-type Transaction Account represents physical, on-hand cash, which has no real-world institution — so in code it names a placeholder Institution (`NO_INSTITUTION`, representing "no institution") rather than leaving the field empty. The placeholder has no `institutions` row, and the `accounts` table stores it as NULL (see the Data model above). Two alternatives were considered and rejected:
+Every Account, regardless of Account Kind, carries a **mandatory** link to exactly one Institution. This is deliberately strict, including for Cash: a Cash-type Transaction Account represents physical, on-hand cash, which has no bank but does have a holder, the person keeping the Ledger. So it names the Personal Institution, an ordinary Institution every new Ledger starts with, rather than leaving the field empty ([ADR-0049](../adr/0049-a-cash-account-names-the-personal-institution.md), which replaced an earlier placeholder with no row). Two alternatives were considered and rejected:
 
 - Making the link optional (nullable) — rejected because every real Bank, Credit Card, Loan, and Investment record always has a genuine Institution, and an optional field invites inconsistent data for no principled reason.
-- Forcing the user to pick a real Institution even for Cash — rejected as meaningless data entry.
+- Forcing the user to pick a bank even for Cash — rejected as meaningless data entry; the Account form defaults a new Cash Account to the Personal Institution instead, and any other may be picked.
 
-Examples: "Commonwealth Bank", "Vanguard", "IG Markets", the system-seeded placeholder for Cash.
+Examples: "Commonwealth Bank", "Vanguard", "IG Markets", the Personal Institution for Cash.
 
 ### Account and Account Kind
 
@@ -161,7 +161,7 @@ Fields:
 - Starting Balance — in the Transaction Account's Unit, combined with its Transactions to compute the current Balance.
 - Active flag — soft-delete; an inactive Transaction Account isn't offered for new Transactions but its history remains valid.
 
-Transaction Account Type stays a two-value field (Cash, Bank) rather than being inferred from whether the Institution is the Cash placeholder or a real one — keeping classification and Institution-linking independent, so one can change without silently implying the other.
+Transaction Account Type stays a two-value field (Cash, Bank) rather than being inferred from whether the Institution is the Personal Institution or a bank — keeping classification and Institution-linking independent, so one can change without silently implying the other.
 
 ### Credit Card Account
 

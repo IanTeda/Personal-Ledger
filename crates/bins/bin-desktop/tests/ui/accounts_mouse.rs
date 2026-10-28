@@ -45,7 +45,7 @@ fn clicking_a_select_opens_its_list_and_an_option_chooses_it(app: &mut TestAppCo
     assert!(form.select_open);
     assert_eq!(form.focused, "Institution");
 
-    ui.click("add-account-institution-option-1");
+    ui.click("add-account-institution-option-2");
     let form = ui.account_form();
     assert!(!form.select_open);
     assert_ne!(form.institution, before);
@@ -65,19 +65,23 @@ fn clicking_an_open_select_again_closes_it_without_a_change(app: &mut TestAppCon
 }
 
 #[gpui::test]
-fn choosing_cash_with_the_mouse_makes_the_institution_read_only(app: &mut TestAppContext) {
+fn choosing_cash_with_the_mouse_starts_on_the_personal_institution(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
 
     ui.click("add-account-type");
     // Cash is the first type option.
     ui.click("add-account-type-option-0");
-    assert_eq!(ui.account_form().account_type.as_deref(), Some("Cash"));
-
-    ui.click("add-account-name");
-    ui.click("add-account-institution");
     let form = ui.account_form();
-    assert!(!form.select_open, "the Cash institution does not open");
-    assert_eq!(form.focused, "Name");
+    assert_eq!(form.account_type.as_deref(), Some("Cash"));
+    assert_eq!(form.institution.as_deref(), Some("Personal"));
+
+    // Any Institution can still be picked: American Express is the third.
+    ui.click("add-account-institution");
+    assert!(ui.account_form().select_open);
+    ui.click("add-account-institution-option-2");
+    let form = ui.account_form();
+    assert_eq!(form.institution.as_deref(), Some("American Express"));
+    assert_eq!(form.account_type.as_deref(), Some("Cash"));
 }
 
 #[gpui::test]

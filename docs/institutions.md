@@ -16,11 +16,11 @@ An institution is the bank, lender or broker that holds one of your accounts: AN
 
 - **Institution:** The bank, lender or broker an account is held with (for example ANZ Banking Group or Vanguard Investments).
 - **Products:** A label for what the institution offers: savings, offset, credit card, loan, investment, crypto, retirement or cash. The list shows the products you picked joined together.
-- **No institution:** A built-in entry for cash accounts, which have no bank. It never appears on the Institutions page.
+- **Personal institution:** The institution that stands for you, the person keeping the ledger. Every new ledger starts with one, named Personal, and a new cash account starts on it.
 
 ## Institutions concept
 
-Every account names exactly one institution, so you add the institutions you use before you add accounts. You don't have to add them all at once: the account dialog lists whatever you have so far. Cash is the one exception. Physical cash has no bank, so cash accounts use the built-in "No institution" entry instead.
+Every account names exactly one institution, so you add the institutions you use before you add accounts. You don't have to add them all at once: the account dialog lists whatever you have so far. Physical cash has no bank, but you hold it, so a new ledger starts with a Personal institution that stands for you, and a new cash account starts on it. It is an ordinary institution: you can rename it, edit it, and pick another for a cash account if you prefer.
 
 An institution's name is how you tell it apart, so two institutions can't share one. "ANZ" and "anz" count as the same name, and a name with only spaces in it isn't a name.
 
@@ -52,6 +52,7 @@ The desktop app's Institutions page lists every institution in the order you add
 
 - A name must be set and can't match another institution's name, ignoring capitals.
 - The products are a label for the list. They don't limit which accounts you can create with the institution.
+- A new ledger starts with the Personal institution, named in your language. A cash account can name any institution; Personal is only where it starts.
 
 ## Scope
 

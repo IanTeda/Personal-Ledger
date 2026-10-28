@@ -5,8 +5,8 @@
 --
 -- unit_id references the Unit the Account counts in, fixed at creation (FR.10). institution_id
 -- references the Institution holding it, with no cascade: an Institution is never deleted while an
--- Account names it. It is NULL for a Cash Account, which lib-accounts' NO_INSTITUTION placeholder
--- stands for in code; the placeholder has no row, so the Accounts adapter maps it to and from NULL.
+-- Account names it. It is never NULL: a Cash Account names an Institution too, usually the Personal
+-- Institution every new Ledger is written with (ADR-0049).
 -- balance is the opening balance as a decimal string in the Unit's precision, so no precision is
 -- lost to a float; opened_at is a calendar date. account_number is the form's optional field.
 -- Rows read back in rowid order, the order they were added in. Enforced by SQLite's foreign_keys
@@ -15,7 +15,7 @@
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
-    institution_id UUID REFERENCES institutions(id),
+    institution_id UUID NOT NULL REFERENCES institutions(id),
     account_type TEXT NOT NULL
         CHECK (account_type IN ('cash', 'bank', 'credit_card', 'investment', 'loan')),
     unit_id UUID NOT NULL REFERENCES units(id),

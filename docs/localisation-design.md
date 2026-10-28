@@ -53,7 +53,7 @@ The Locale owns number, date and currency formatting, replacing the earlier `Num
 - **Glyphs:** the label is the Message and the glyph is a separate argument, because glyph style is a Display Preference. The join is one Message with two variables.
 - **Casing and abbreviations:** a Message is written once in natural sentence case. Upper-casing is done by the renderer through a Locale-aware helper. Abbreviations are not the default: the source Message uses the full word, and a `.short` variant exists only where layout needs it.
 - **Sentences:** one Message per complete sentence or paragraph, never split for styling. Hard-wrapped literals are rejoined, and wrapping is the renderer's job.
-- **Seeded rows:** system-seeded rows that ship into synced data (such as `No institution`) store a stable key and render the Message at display time, so Clients in different Locales each show their own.
+- **Seeded rows:** a row a new Ledger is written with that the person may then edit, such as the Personal Institution, is written once with the Message in the Locale the Ledger is made in (`institution-personal`), and from then on is Ledger data, not a Message. A system row the person can't edit would instead store a stable key and render its Message at display time, so Clients in different Locales each show their own.
 
 ## Looking up a Message
 
@@ -125,7 +125,7 @@ The crate is `lib-locale` (crate `lib_locale`), chosen over `lib-localisation` a
   - The chain `en-AU -> en-GB -> en-US` works with sparse Locales.
 - Measured on a `ratatui` stand-in, for a stripped release binary: Fluent adds about 2.1 MB (1.4 MB with a size-tuned profile) and 11 s of clean build, and ICU4X with its default data adds about 1.3 MB and 24 s. An `icu4x-datagen` trim to `en-US`, `en-GB` and `en-AU` cuts the ICU4X share to about 0.3 MB and saves about 12 s. The trim is a separate, later ticket, and must be regenerated when a new ICU4X marker is used.
 - Since landed: the per-screen string migration, the Preference migration (the number-separator column is gone and `date_format` is now the nullable `date_style`), and the TUI palette's move from dispatch-on-display-text to dispatch-on-id.
-- Seeded rows: no database table seeds display text yet. The one seeded row, the placeholder Institution a Cash Account names, is a fixed id (`lib_accounts::NO_INSTITUTION`), never a name, and the Desktop renders `institution-none` for it through `settings::accounts::institution_label`. When Institutions are persisted, the same id goes into the seeded row.
+- Seeded rows: the one row every new Ledger file is written with is the Personal Institution (`InstitutionId::SEED_PERSONAL`), whose name each Client passes to `lib_database::open_storage` as `institution-personal` in its Locale (ADR-0049). It is then the person's to rename, so it is not rendered from a Message afterwards.
 - Still outstanding: the `icu4x-datagen` trim above; translation workflow; per-Locale command aliases; user-supplied Catalogues; and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
 - The cost figures come from a stand-in binary, not a real `bin-tui` or `bin-desktop` build. Both bins now carry `lib-locale`, so the figures can be re-measured for real.
 

@@ -128,6 +128,8 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
+            crate::InstitutionsAdapter::seed(&writer, crate::seed::stub_institutions())
+                .expect("the stub Institutions are written");
             crate::CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
                 .expect("the stub Categories are written");
             crate::TagsAdapter::seed(&writer, crate::seed::stub_tags())

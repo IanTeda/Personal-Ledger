@@ -25,13 +25,13 @@ Invariants and deliberate omissions:
 - **Rows read back in rowid order**, the order they were added in. There is no position column, since an Institution can't be moved.
 - **`name` is unique ignoring ASCII case.** The add rule refuses a blank or taken name before anything is written (`InstitutionError`), and the collation backs it for a write that skips the rule.
 - **`products` is one free-form label**, the Add Dialog's chips joined with ` · `, not a table of Products. It never limits which Accounts may name the Institution. An Institution has no Default unit (#877).
-- **No foreign keys point at it yet.** `accounts` isn't persisted, so nothing refuses deleting an Institution an Account names. Delete doesn't exist either (see the gaps below).
+- **`accounts.institution_id` references it**, `NOT NULL` with no cascade, so the file refuses deleting an Institution an Account names. Delete doesn't exist yet (see the gaps below).
 
 ## Domain types
 
-`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the refusal (`NameRequired`, `DuplicateName`, `NotFound`), declared in `entity.rs` beside `insert_institution`, `edit_institution` (the same name rule, skipping the Institution's own id, so a change of capitals is accepted), `get`, `find_by_name` and `default_institutions`.
+`InstitutionId` is in `lib-core`, with the fixed seed ids (`SEED_PERSONAL`, then `SEED_ANZ` … `SEED_SUPER_FUND`) that `lib-accounts`' stub names, since feature crates never depend on each other. `lib_institutions::Institution` is the domain type (`id`, `name`, `products`), `InstitutionDraft` what the Dialog asks for, and `InstitutionError` the refusal (`NameRequired`, `DuplicateName`, `NotFound`), declared in `entity.rs` beside `insert_institution`, `edit_institution` (the same name rule, skipping the Institution's own id, so a change of capitals is accepted), `get`, `find_by_name`, `personal_institution` and `default_institutions`.
 
-The "No institution" placeholder for Cash Accounts is `lib_accounts::NO_INSTITUTION`, `InstitutionId::seed(0)`: in `lib-accounts`, not in `default_institutions()`, and not shown on the page.
+The Personal Institution (`GLOSSARY.md`, [ADR-0049](../adr/0049-a-cash-account-names-the-personal-institution.md)) is `personal_institution(name)`: `SEED_PERSONAL`, the name given and Products `cash`. It is an ordinary row, listed first by `default_institutions()` and shown, edited (and, once built, deleted) on the page like any other. The Account form defaults a new Cash Account to it when it is on the Ledger, by its id.
 
 ## Persistence
 
@@ -39,7 +39,7 @@ The "No institution" placeholder for Cash Accounts is `lib_accounts::NO_INSTITUT
 
 `InstitutionsStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_institutions::fake::InMemoryInstitutions` as the in-memory store. `Stores::with_units` fills it with an empty store for the TUI's test fixture. `lib-institutions`' contract suite (`contract.rs`, feature `contract-tests`, which `lib-database`'s dev-dependencies enable) runs against both.
 
-A new Ledger, and `mise run db-seed`, write `lib_institutions::fake::InMemoryInstitutions::stub`'s Institutions (`seed::stub_institutions`) after the Units and before the Payees, Transactions and Bills. A Ledger file opened before the table existed starts with no Institutions, since the first-launch seed runs only on a new file.
+`open_storage(path, today, personal)` writes the Personal Institution, named `personal`, into a file it creates, before and apart from the first-launch stub seed; the Desktop and the TUI pass `lib_locale::msg::institution_personal()`. Opening an existing file writes nothing of it. A new Ledger, and `mise run db-seed`, then write `lib_institutions::fake::InMemoryInstitutions::stub`'s seven Institutions (`seed::stub_institutions`) after the Units and before the Accounts, Payees, Transactions and Bills; `open_storage` gives the stub's Personal Institution the name passed. A Ledger file opened before the table existed starts with no Institutions, since the first-launch seed runs only on a new file.
 
 ## UI
 
@@ -61,6 +61,7 @@ Desktop locations for the ticked requirements.
 | INS-002 | `lib_institutions::insert_institution`, `lib_institutions::interactor::AddInstitution`, `institutions/view/dialog/institution_form.rs` | `settings_institutions_keyboard::adding_an_institution_selects_it_and_raises_a_toast` |
 | INS-003 | `lib_database::adapter::institutions`, `seed::stub_institutions` | `lib_database::adapter::institutions::tests::an_added_institution_reloads_the_same`, `smoke_institutions_persist::an_added_institution_is_there_after_a_restart` |
 | INS-004 | `LedgerStore::refresh_institutions`, `Ledger::refresh_institutions` | `smoke_institutions_persist::an_added_institution_is_there_after_a_restart` |
+| INS-004 (Cash) | `lib_institutions::personal_institution`, `lib_database::open_storage`, `AccountFormPresenter`'s Cash default | `lib_database::storage::tests::a_new_ledger_is_written_with_the_personal_institution_under_the_name_passed`, `settings_accounts_keyboard::a_cash_account_added_from_the_keyboard_names_the_personal_institution` |
 | INS-005 | `lib_institutions::edit_institution`, `lib_institutions::interactor::EditInstitution`, `InstitutionFormPresenter::edit` | `lib_institutions::contract::an_edited_institution_reloads_the_same`, `settings_institutions_keyboard::enter_saves_an_edit_selects_the_row_and_raises_a_toast`, `smoke_institutions_persist::an_edited_institution_is_there_after_a_restart` |
 
 ## Decisions
@@ -68,14 +69,14 @@ Desktop locations for the ticked requirements.
 - [ADR-0041](../adr/0041-lib-database-one-file-per-entity.md) and [ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md) — the one-file adapter and the shared writer the Institutions adapter follows.
 - [ADR-0048](../adr/0048-modules-notify-the-shell-through-one-lib-toast-trait.md) — the Toast and status Notices the page and Dialog raise.
 - [VIPER transition slice 5](https://github.com/IanTeda/Personal-Ledger/issues/847) — Institutions as the first domain after the Payees template.
-- `GLOSSARY.md` — Institution, Products, Account.
+- [ADR-0049](../adr/0049-a-cash-account-names-the-personal-institution.md) — a Cash Account names the Personal Institution, not a placeholder.
+- `GLOSSARY.md` — Institution, Personal Institution, Products, Account.
 
 ## Open questions and known gaps
 
 - **Halfway states.** The Accounts page, its Institution select and the Documents picker's Account link labels read the Ledger's read copy of the Institutions, which stays until Accounts migrate (#853). It is a row in [During the transition](viper-architecture.md#during-the-transition).
-- **No delete.** Backlog: [#869](https://github.com/IanTeda/Personal-Ledger/issues/869), including the refusal of deleting an Institution an Account names.
+- **No delete.** Backlog: [#876](https://github.com/IanTeda/Personal-Ledger/issues/876) under [#869](https://github.com/IanTeda/Personal-Ledger/issues/869), including the refusal of deleting an Institution an Account names, the Personal Institution included.
 - **No Default unit.** The Add Dialog's Default unit select was never saved and went in #873; saving one that prefills the Account form is backlog ([#877](https://github.com/IanTeda/Personal-Ledger/issues/877)).
-- **The Cash placeholder has no row.** Once `accounts.institution_id` gets a foreign key, `NO_INSTITUTION` needs a seeded row kept off the page, or Cash Accounts need a nullable column (#853).
 - **A file from before #849 has no Institutions.** The first-launch seed runs only on a new file, so #853 must decide between a fresh Ledger and seeding an empty table.
 - **The Add Dialog's Toast is new behaviour**, added with the Presenter (#850).
 - **The TUI doesn't persist Institutions.** It draws fixtures until its redesign (#805).

@@ -6,15 +6,6 @@
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
-/// The Institution a Cash account links to. The glossary gives every Account a mandatory
-/// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
-/// deliberately absent from `lib_institutions::default_institutions()`: it is not a user-managed
-/// row. Its id is the Institutions seed's place 0, which no seeded Institution takes.
-///
-/// This is a stable id, never display text: the row syncs between Clients, so storing a rendered
-/// name would show one Client's Locale on another. Render it through the Desktop's
-/// `institution_label`, which owns the Message.
-pub const NO_INSTITUTION: InstitutionId = InstitutionId::seed(0);
 
 /// The order the Accounts page groups accounts in -- fixed, never alphabetised or sorted by
 /// balance (the README's implementation note 3). Not `AccountType::all()`, whose order puts
@@ -271,7 +262,7 @@ pub fn default_accounts() -> Vec<Account> {
         Account {
             id: AccountId::seed(1),
             name: "Wallet".to_string(),
-            institution: NO_INSTITUTION,
+            institution: InstitutionId::SEED_PERSONAL,
             account_type: AccountType::Cash,
             unit: UnitId::SEED_AUD,
             balance: money("240.00"),
@@ -349,7 +340,7 @@ mod tests {
         Account {
             id,
             name: name.to_string(),
-            institution: NO_INSTITUTION,
+            institution: InstitutionId::SEED_PERSONAL,
             account_type,
             unit: UnitId::SEED_AUD,
             balance: money("0"),

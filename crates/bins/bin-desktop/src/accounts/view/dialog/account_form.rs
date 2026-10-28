@@ -3,8 +3,7 @@
 //! two-up field rows need the room. Name, Opening balance and Account number are typed into;
 //! Institution, Type and Unit are the shared dropdown (`crate::form::select_field`), which takes
 //! the arrows, `Enter` and `Space` and swallows other typing rather than letting it reach the
-//! Shell. Institution reads as the placeholder while Type is Cash. Edit shows Unit and Opening
-//! balance read-only, with the reason in the usage notice.
+//! Shell. Edit shows Unit and Opening balance read-only, with the reason in the usage notice.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_accounts::presenter::{AccountField, AccountFormEvent, AccountFormViewModel};
@@ -136,8 +135,8 @@ fn click_text(dialog: &mut AccountsDialog, field: AccountField) {
     dialog.send(AccountFormEvent::Focus(field));
 }
 
-/// A click on a select's closed field focuses it and toggles its list. The read-only Cash
-/// Institution takes no click.
+/// A click on a select's closed field focuses it and toggles its list. A field that refuses focus
+/// takes no click.
 fn click_select(dialog: &mut AccountsDialog, field: AccountField) {
     dialog.send(AccountFormEvent::Focus(field));
     let view = dialog.presenter.view_model();
@@ -216,7 +215,6 @@ pub(super) fn render(
                   options: Vec<String>,
                   state: SelectState,
                   focused: bool,
-                  read_only: Option<SharedString>,
                   field: AccountField| {
         select_field::render(
             SelectFieldProps {
@@ -226,7 +224,7 @@ pub(super) fn render(
                 state: &state,
                 focused,
                 accent: false,
-                read_only,
+                read_only: None,
                 on_field_click: on_select(field),
                 on_option_click: on_option(field),
             },
@@ -251,7 +249,6 @@ pub(super) fn render(
             labels(&view.unit),
             synced(&selects.unit, &view.unit),
             view.unit.focused,
-            None,
             AccountField::Unit,
         ),
     };
@@ -297,7 +294,6 @@ pub(super) fn render(
                 labels(&view.institution),
                 synced(&selects.institution, &view.institution),
                 view.institution.focused,
-                view.institution_read_only.clone().map(Into::into),
                 AccountField::Institution,
             ),
             select(
@@ -306,7 +302,6 @@ pub(super) fn render(
                 labels(&view.account_type),
                 synced(&selects.account_type, &view.account_type),
                 view.account_type.focused,
-                None,
                 AccountField::Type,
             ),
         ]),

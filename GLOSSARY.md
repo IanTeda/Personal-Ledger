@@ -221,7 +221,7 @@ An everyday place where spending money is held: Cash or Bank (its Transaction Ac
 _Avoid_: Wallet, plain "Account" once the Kind matters. Not to be confused with Category: a Transaction Account is *where* money sits, a Category is *what* it's classified as.
 
 **Transaction Account Type**:
-Cash or Bank — the classification within Transaction Account itself (see above), distinct from Account Kind (see above), which is the broader Transaction/Credit Card/Loan/Investment split. Kept as an explicit field rather than inferred from whether the Transaction Account links to the placeholder Institution (Cash) or a real one (Bank), so classification and Institution-linking stay independent concepts.
+Cash or Bank — the classification within Transaction Account itself (see above), distinct from Account Kind (see above), which is the broader Transaction/Credit Card/Loan/Investment split. Kept as an explicit field rather than inferred from whether the Transaction Account names the Personal Institution (Cash) or a bank (Bank), so classification and Institution-linking stay independent concepts.
 _Avoid_: Account Type — see Account Kind, above, for why the two axes are named differently.
 
 **Credit Card Account**:

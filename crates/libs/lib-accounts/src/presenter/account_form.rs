@@ -2,10 +2,10 @@
 //! one form, Edit pre-filled from the Account.
 //!
 //! - The fields, in `Tab` order: Name, Institution, Type, Unit, Opening balance and Account number.
-//! - **Cash has no Institution to pick.** The glossary links a Cash account to a system-seeded
-//!   placeholder ([`NO_INSTITUTION`]) because the real-world thing has none, so while Type is Cash
-//!   the Institution select is read-only, `Tab` skips it and the Account links to the placeholder.
-//!   Switching away from Cash brings the earlier pick back.
+//! - **The Institution follows the Type until one is picked** (ADR-0049). A new Cash Account
+//!   starts on the Personal Institution when it is on the Ledger, any other Type on the first
+//!   Institution that isn't it, and either otherwise on no choice. Any Institution can be picked
+//!   for any Type, Cash included, and a pick stays through a change of Type.
 //! - **Edit fixes Unit and Opening balance**: they are shown read-only, `Tab` skips them and focus
 //!   is refused. The Edit's notice says how many Transactions the Account carries.
 //! - Opening balance only takes what can be part of a decimal amount: digits, one `.` and a `-` at
@@ -24,7 +24,7 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use super::count;
 use crate::interactor::{AddAccount, EditAccount};
 use crate::protocols::{AccountsOutcome, AccountsRouter, SharedPorts};
-use crate::{AccountDraft, AccountError, GROUP_ORDER, NO_INSTITUTION, NewAccount, msg};
+use crate::{AccountDraft, AccountError, GROUP_ORDER, NewAccount, msg};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -83,8 +83,6 @@ pub struct AccountFormViewModel {
     pub frame: DialogFrame,
     pub name: TextFieldView,
     pub institution: SelectView<InstitutionId>,
-    /// The placeholder drawn in place of the Institution select while Type is Cash.
-    pub institution_read_only: Option<String>,
     pub account_type: SelectView<AccountType>,
     pub unit: SelectView<UnitId>,
     /// Edit: the Unit's code, which can no longer change.
@@ -118,6 +116,9 @@ pub struct AccountFormPresenter {
     units: Vec<Choice<UnitId>>,
     name: String,
     institution: Option<InstitutionId>,
+    /// Whether the Institution is the person's pick (or an Edit's own), which a change of Type
+    /// leaves alone, rather than the Type's default.
+    institution_picked: bool,
     account_type: AccountType,
     unit: Option<UnitId>,
     opening_balance: String,
@@ -127,9 +128,9 @@ pub struct AccountFormPresenter {
 }
 
 impl AccountFormPresenter {
-    /// A fresh Add form: Type on Bank (the common case, and one that needs a real Institution),
-    /// Institution on the first available, Unit on the base Unit when it is one of the options and
-    /// the first option otherwise. The Account opens `today`.
+    /// A fresh Add form: Type on Bank (the common case), Institution on Bank's default, Unit on the
+    /// base Unit when it is one of the options and the first option otherwise. The Account opens
+    /// `today`.
     pub fn add(ports: SharedPorts, name: &str, today: NaiveDate) -> Self {
         let (institutions, units, base) = {
             let ports = ports.borrow();
@@ -157,11 +158,12 @@ impl AccountFormPresenter {
                 label: institution.name,
             })
             .collect();
-        Self {
+        let mut form = Self {
             ports,
             today,
             editing: None,
-            institution: institutions.first().map(|choice| choice.value),
+            institution: None,
+            institution_picked: false,
             institutions,
             types: GROUP_ORDER
                 .iter()
@@ -178,12 +180,14 @@ impl AccountFormPresenter {
             account_number: String::new(),
             focused: AccountField::Name,
             error: None,
-        }
+        };
+        form.institution = form.default_institution();
+        form
     }
 
-    /// The Edit form pre-filled from Account `id`, or `None` when it is gone. A Cash Account's
-    /// Institution is the placeholder, not a pick, so that select starts on the first real
-    /// Institution (which only matters if Type is switched away from Cash).
+    /// The Edit form pre-filled from Account `id`, or `None` when it is gone. Its Institution counts
+    /// as picked, so a change of Type leaves it; one no longer among the choices falls back to the
+    /// Type's default, so the form still saves.
     pub fn edit(ports: SharedPorts, id: AccountId, today: NaiveDate) -> Option<Self> {
         let (account, usage, unit_code) = {
             let ports = ports.borrow();
@@ -207,15 +211,16 @@ impl AccountFormPresenter {
                 label: code.clone(),
             });
         }
-        if account.institution != NO_INSTITUTION
-            && form
-                .institutions
-                .iter()
-                .any(|choice| choice.value == account.institution)
-        {
-            form.institution = Some(account.institution);
-        }
         form.account_type = account.account_type.clone();
+        form.institution_picked = form
+            .institutions
+            .iter()
+            .any(|choice| choice.value == account.institution);
+        form.institution = if form.institution_picked {
+            Some(account.institution)
+        } else {
+            form.default_institution()
+        };
         form.unit = Some(account.unit);
         form.account_number = account.account_number.clone().unwrap_or_default();
         form.editing = Some(Editing {
@@ -250,14 +255,14 @@ impl AccountFormPresenter {
             AccountFormEvent::Institution(id) => {
                 if self.institutions.iter().any(|choice| choice.value == id) {
                     self.institution = Some(id);
+                    self.institution_picked = true;
                 }
             }
             AccountFormEvent::Type(account_type) => {
                 if self.types.iter().any(|choice| choice.value == account_type) {
                     self.account_type = account_type;
-                    // A read-only Institution can't hold focus.
-                    if self.is_skipped(self.focused) {
-                        self.focused = AccountField::Type;
+                    if !self.institution_picked {
+                        self.institution = self.default_institution();
                     }
                 }
             }
@@ -304,7 +309,6 @@ impl AccountFormPresenter {
                 chosen: self.institution,
                 focused: focus(AccountField::Institution),
             },
-            institution_read_only: self.is_cash().then(lib_locale::msg::institution_none),
             account_type: SelectView {
                 label: lib_locale::msg::column_type(),
                 options: self.types.clone(),
@@ -341,16 +345,21 @@ impl AccountFormPresenter {
         }
     }
 
-    fn is_cash(&self) -> bool {
-        self.account_type == AccountType::Cash
+    /// The Institution the Type starts on: for Cash the Personal Institution, for any other Type
+    /// the first Institution that isn't it, and `None` when the Ledger has no such Institution.
+    fn default_institution(&self) -> Option<InstitutionId> {
+        let personal = |id: InstitutionId| id == InstitutionId::SEED_PERSONAL;
+        let is_cash = self.account_type == AccountType::Cash;
+        self.institutions
+            .iter()
+            .map(|choice| choice.value)
+            .find(|id| personal(*id) == is_cash)
     }
 
-    /// Whether `field` can't take focus right now: the read-only Cash Institution, and the Unit and
-    /// Opening balance of an Account that exists.
+    /// Whether `field` can't take focus right now: the Unit and Opening balance of an Account that
+    /// exists.
     fn is_skipped(&self, field: AccountField) -> bool {
-        (field == AccountField::Institution && self.is_cash())
-            || (self.editing.is_some()
-                && matches!(field, AccountField::Unit | AccountField::OpeningBalance))
+        self.editing.is_some() && matches!(field, AccountField::Unit | AccountField::OpeningBalance)
     }
 
     fn cycle(&mut self, backward: bool) {
@@ -382,22 +391,18 @@ impl AccountFormPresenter {
         }
     }
 
-    /// Name, Type, Unit and Opening balance are required (an empty balance means zero),
-    /// Institution too unless the Account is Cash, and Account number is optional.
+    /// Name, Institution, Type, Unit and Opening balance are required (an empty balance means
+    /// zero), and Account number is optional.
     fn is_valid(&self) -> bool {
         !self.name.trim().is_empty()
             && self.unit.is_some()
-            && (self.is_cash() || self.institution.is_some())
+            && self.institution.is_some()
             && self.balance().is_some()
     }
 
     /// The Name, Institution, Type and Account number to write.
     fn draft(&self) -> Option<AccountDraft> {
-        let institution = if self.is_cash() {
-            NO_INSTITUTION
-        } else {
-            self.institution?
-        };
+        let institution = self.institution?;
         let number = self.account_number.trim();
         Some(AccountDraft {
             name: self.name.trim().to_string(),
@@ -574,44 +579,29 @@ mod tests {
     }
 
     #[test]
-    fn cash_makes_the_institution_read_only_skips_it_and_links_the_placeholder() {
+    fn cash_starts_on_the_personal_institution_and_another_type_on_the_first_other_one() {
         let (ports, shared) = stub();
         let mut form = add(shared);
         send(
             &mut form,
-            vec![
-                name("Tin"),
-                AccountFormEvent::Institution(InstitutionId::SEED_AMEX),
-                AccountFormEvent::Type(AccountType::Cash),
-            ],
+            vec![name("Tin"), AccountFormEvent::Type(AccountType::Cash)],
         );
-        let view = form.view_model();
         assert_eq!(
-            view.institution_read_only.as_deref(),
-            Some("No institution")
+            form.view_model().institution.chosen,
+            Some(InstitutionId::SEED_PERSONAL)
         );
 
-        send(
-            &mut form,
-            vec![AccountFormEvent::Focus(AccountField::Institution)],
-        );
-        assert_eq!(
-            form.view_model().focused,
-            AccountField::Name,
-            "focus refused"
-        );
         send(&mut form, vec![AccountFormEvent::NextField]);
         assert_eq!(
             form.view_model().focused,
-            AccountField::Type,
-            "Tab skips it"
+            AccountField::Institution,
+            "Tab no longer skips it"
         );
-
-        // Switching away brings the earlier pick back.
         send(&mut form, vec![AccountFormEvent::Type(AccountType::Loan)]);
-        let view = form.view_model();
-        assert_eq!(view.institution_read_only, None);
-        assert_eq!(view.institution.chosen, Some(InstitutionId::SEED_AMEX));
+        assert_eq!(
+            form.view_model().institution.chosen,
+            Some(InstitutionId::SEED_ANZ)
+        );
 
         send(
             &mut form,
@@ -620,13 +610,60 @@ mod tests {
                 AccountFormEvent::Confirm,
             ],
         );
-        let id = ports.borrow().accounts.accounts().last().map(|a| a.id);
-        let tin = ports
-            .borrow()
-            .accounts
-            .account(id.expect("added"))
-            .expect("row");
-        assert_eq!(tin.institution, NO_INSTITUTION);
+        let tin = ports.borrow().accounts.accounts().last().cloned();
+        assert_eq!(
+            tin.map(|tin| tin.institution),
+            Some(InstitutionId::SEED_PERSONAL)
+        );
+    }
+
+    #[test]
+    fn a_cash_account_may_name_any_institution_and_a_pick_stays_through_a_change_of_type() {
+        let (ports, shared) = stub();
+        let mut form = add(shared);
+        send(
+            &mut form,
+            vec![
+                name("Float"),
+                AccountFormEvent::Institution(InstitutionId::SEED_AMEX),
+                AccountFormEvent::Type(AccountType::Cash),
+            ],
+        );
+        assert_eq!(
+            form.view_model().institution.chosen,
+            Some(InstitutionId::SEED_AMEX)
+        );
+
+        send(&mut form, vec![AccountFormEvent::Confirm]);
+        let float = ports.borrow().accounts.accounts().last().cloned();
+        assert_eq!(
+            float.map(|float| (float.institution, float.account_type)),
+            Some((InstitutionId::SEED_AMEX, AccountType::Cash))
+        );
+    }
+
+    #[test]
+    fn with_no_personal_institution_a_cash_account_starts_on_no_choice() {
+        let (ports, shared) = stub();
+        ports
+            .borrow_mut()
+            .institutions
+            .institutions
+            .retain(|row| row.id != InstitutionId::SEED_PERSONAL);
+        let mut form = add(shared);
+        send(
+            &mut form,
+            vec![name("Tin"), AccountFormEvent::Type(AccountType::Cash)],
+        );
+
+        let view = form.view_model();
+        assert_eq!(view.institution.chosen, None);
+        assert!(!view.frame.can_confirm, "an Institution is required");
+        send(
+            &mut form,
+            vec![AccountFormEvent::Institution(InstitutionId::SEED_WESTPAC)],
+        );
+        assert!(form.view_model().frame.can_confirm);
     }
 
     #[test]
@@ -786,17 +823,46 @@ mod tests {
     }
 
     #[test]
-    fn edit_of_a_cash_account_starts_the_institution_on_the_first_real_one() {
+    fn edit_of_a_cash_account_shows_its_institution_and_a_change_of_type_keeps_it() {
         let (_, shared) = stub();
+        let mut form =
+            AccountFormPresenter::edit(shared, AccountId::seed(1), today()).expect("stub");
+        assert_eq!(
+            form.view_model().institution.chosen,
+            Some(InstitutionId::SEED_PERSONAL)
+        );
+
+        send(&mut form, vec![AccountFormEvent::Type(AccountType::Bank)]);
+        assert_eq!(
+            form.view_model().institution.chosen,
+            Some(InstitutionId::SEED_PERSONAL)
+        );
+    }
+
+    #[test]
+    fn edit_of_an_account_whose_institution_is_gone_starts_on_its_types_default() {
+        let (ports, shared) = stub();
+        ports
+            .borrow_mut()
+            .institutions
+            .institutions
+            .retain(|row| row.id != InstitutionId::SEED_PERSONAL);
         let view = AccountFormPresenter::edit(shared, AccountId::seed(1), today())
             .expect("stub")
             .view_model();
 
+        assert_eq!(view.institution.chosen, None, "Cash has no default left");
+        let (ports, shared) = stub();
+        ports
+            .borrow_mut()
+            .institutions
+            .institutions
+            .retain(|row| row.id != InstitutionId::SEED_AMEX);
+        let view = AccountFormPresenter::edit(shared, AccountId::seed(4), today())
+            .expect("stub")
+            .view_model();
         assert_eq!(view.institution.chosen, Some(InstitutionId::SEED_ANZ));
-        assert_eq!(
-            view.institution_read_only.as_deref(),
-            Some("No institution")
-        );
+        assert!(view.frame.can_confirm);
     }
 
     #[test]

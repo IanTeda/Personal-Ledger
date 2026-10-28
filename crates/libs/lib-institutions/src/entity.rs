@@ -38,42 +38,60 @@ pub enum InstitutionError {
     NotFound,
 }
 
-/// The mockup's own six seeded rows, in its own order, each with its fixed id (the mockup's static
-/// scope note claims "7 institutions", but only six rows are actually drawn -- treated as a
-/// mockup-authoring slip, not a seventh row to invent; the scope note counts the rows, so it
-/// self-corrects). Ids match `lib-accounts`' stub, whose Accounts name these Institutions.
-pub fn default_institutions() -> Vec<Institution> {
-    [
-        (
-            InstitutionId::SEED_ANZ,
-            "ANZ Banking Group",
-            "savings \u{b7} offset",
-        ),
-        (InstitutionId::SEED_AMEX, "American Express", "credit card"),
-        (
-            InstitutionId::SEED_VANGUARD,
-            "Vanguard Investments",
-            "investment",
-        ),
-        (InstitutionId::SEED_WESTPAC, "Westpac Banking", "savings"),
-        (
-            InstitutionId::SEED_CRYPTO_EXCHANGE,
-            "Cryptocurrency Exchange",
-            "crypto",
-        ),
-        (
-            InstitutionId::SEED_SUPER_FUND,
-            "Superannuation Fund",
-            "retirement",
-        ),
-    ]
-    .into_iter()
-    .map(|(id, name, products)| Institution {
-        id,
+/// The Products every Personal Institution is written with, as the Add Dialog's Cash chip joins it.
+/// Stored as given, like any Products label.
+const PERSONAL_PRODUCTS: &str = "cash";
+
+/// The Personal Institution (`GLOSSARY.md`, ADR-0049): the person keeping the Ledger, whom a Cash
+/// Account names. Every new Ledger is written with it under `name`, the "Personal" Message in the
+/// Locale the Ledger was made in; from then on it is an ordinary Institution, renamed, edited and
+/// deleted like any other.
+pub fn personal_institution(name: &str) -> Institution {
+    Institution {
+        id: InstitutionId::SEED_PERSONAL,
         name: name.to_string(),
-        products: products.to_string(),
-    })
-    .collect()
+        products: PERSONAL_PRODUCTS.to_string(),
+    }
+}
+
+/// The Personal Institution, then the mockup's own six seeded rows in its own order, each with its
+/// fixed id: seven, as the mockup's scope note counts. Ids match `lib-accounts`' stub, whose
+/// Accounts name these Institutions.
+pub fn default_institutions() -> Vec<Institution> {
+    std::iter::once(personal_institution("Personal"))
+        .chain(
+            [
+                (
+                    InstitutionId::SEED_ANZ,
+                    "ANZ Banking Group",
+                    "savings \u{b7} offset",
+                ),
+                (InstitutionId::SEED_AMEX, "American Express", "credit card"),
+                (
+                    InstitutionId::SEED_VANGUARD,
+                    "Vanguard Investments",
+                    "investment",
+                ),
+                (InstitutionId::SEED_WESTPAC, "Westpac Banking", "savings"),
+                (
+                    InstitutionId::SEED_CRYPTO_EXCHANGE,
+                    "Cryptocurrency Exchange",
+                    "crypto",
+                ),
+                (
+                    InstitutionId::SEED_SUPER_FUND,
+                    "Superannuation Fund",
+                    "retirement",
+                ),
+            ]
+            .into_iter()
+            .map(|(id, name, products)| Institution {
+                id,
+                name: name.to_string(),
+                products: products.to_string(),
+            }),
+        )
+        .collect()
 }
 
 /// Institution `id`, if it's in `institutions`.
@@ -161,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn default_institutions_matches_the_mockups_own_six_seeded_rows() {
+    fn default_institutions_is_the_personal_institution_then_the_mockups_six_rows() {
         let names: Vec<_> = default_institutions()
             .into_iter()
             .map(|institution| institution.name)
@@ -169,6 +187,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
+                "Personal",
                 "ANZ Banking Group",
                 "American Express",
                 "Vanguard Investments",
@@ -184,12 +203,22 @@ mod tests {
         let seeded = default_institutions();
         assert_eq!(seeded, default_institutions(), "the seed is deterministic");
         let mut ids: Vec<_> = seeded.iter().map(|institution| institution.id).collect();
+        ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), seeded.len());
         assert_eq!(
             get(&seeded, InstitutionId::SEED_WESTPAC).map(|i| i.name.as_str()),
             Some("Westpac Banking")
         );
+    }
+
+    #[test]
+    fn the_personal_institution_takes_its_fixed_id_the_name_given_and_cash() {
+        let personal = personal_institution("Persönlich");
+        assert_eq!(personal.id, InstitutionId::SEED_PERSONAL);
+        assert_eq!(personal.name, "Persönlich");
+        assert_eq!(personal.products, "cash");
+        assert_eq!(default_institutions()[0].id, InstitutionId::SEED_PERSONAL);
     }
 
     #[test]
@@ -230,9 +259,9 @@ mod tests {
         )
         .expect("its own name, in other capitals");
 
-        assert_eq!(institutions[3].name, "westpac banking");
-        assert_eq!(institutions[3].products, "savings \u{b7} offset");
-        assert_eq!(institutions.len(), 6);
+        assert_eq!(institutions[4].name, "westpac banking");
+        assert_eq!(institutions[4].products, "savings \u{b7} offset");
+        assert_eq!(institutions.len(), 7);
     }
 
     #[test]

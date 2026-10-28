@@ -451,9 +451,9 @@ mod tests {
         let calls = form.send(InstitutionFormEvent::Confirm);
 
         let rows = form.ports.borrow().institutions.institutions.clone();
-        assert_eq!(rows.len(), 6);
-        assert_eq!(rows[1].name, "Amex");
-        assert_eq!(rows[1].products, "credit card \u{b7} cash");
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[2].name, "Amex");
+        assert_eq!(rows[2].products, "credit card \u{b7} cash");
         assert_eq!(
             calls,
             vec![
@@ -474,7 +474,7 @@ mod tests {
 
         assert_eq!(calls.len(), 2);
         assert_eq!(
-            form.ports.borrow().institutions.institutions[3].name,
+            form.ports.borrow().institutions.institutions[4].name,
             "Westpac Banking"
         );
     }
@@ -486,7 +486,7 @@ mod tests {
         form.type_name("westpac banking");
         assert_eq!(form.send(InstitutionFormEvent::Confirm).len(), 2);
         assert_eq!(
-            form.ports.borrow().institutions.institutions[3].name,
+            form.ports.borrow().institutions.institutions[4].name,
             "westpac banking"
         );
 
@@ -498,7 +498,7 @@ mod tests {
             Some("ANZ Banking Group already exists")
         );
         assert_eq!(
-            form.ports.borrow().institutions.institutions[3].name,
+            form.ports.borrow().institutions.institutions[4].name,
             "Westpac Banking"
         );
     }
@@ -512,6 +512,6 @@ mod tests {
             form.send(InstitutionFormEvent::Cancel),
             vec![RouterCall::CloseDialog(None)]
         );
-        assert_eq!(form.ports.borrow().institutions.institutions.len(), 6);
+        assert_eq!(form.ports.borrow().institutions.institutions.len(), 7);
     }
 }

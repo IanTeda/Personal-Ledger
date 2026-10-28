@@ -199,6 +199,10 @@ impl UnitId {
 }
 
 impl InstitutionId {
+    /// The Personal Institution (`GLOSSARY.md`, ADR-0049), first in `lib_institutions`' seed but
+    /// not only a stub id: `lib_database::open_storage` writes it into every new Ledger, and the
+    /// Account form defaults a Cash Account to it, so it stays when the stub seed goes.
+    pub const SEED_PERSONAL: Self = Self::seed(0);
     /// The stub seed's fixed ids, in `lib_institutions`' seed order. They live here, not in
     /// `lib_institutions`, because `lib_accounts`' seed points at them and the domain crates never
     /// depend on each other.

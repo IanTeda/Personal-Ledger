@@ -630,7 +630,8 @@ mod tests {
 
     /// The Desktop's start-up storage on a Ledger file in `dir`, as of `today`.
     fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> lib_database::Storage {
-        lib_database::open_storage(&dir.join("ledger.pldb"), today).expect("the Ledger opens")
+        lib_database::open_storage(&dir.join("ledger.pldb"), today, "Personal")
+            .expect("the Ledger opens")
     }
 
     /// A store on `storage`, with the pending writes the test commits, as an input's `send` would.

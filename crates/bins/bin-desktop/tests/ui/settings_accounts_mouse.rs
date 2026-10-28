@@ -107,6 +107,28 @@ fn an_edit_action_saved_keeps_the_edited_account_selected(app: &mut TestAppConte
 }
 
 #[gpui::test]
+fn a_cash_account_added_by_click_names_the_personal_institution(app: &mut TestAppContext) {
+    let mut ui = on_accounts(app);
+
+    ui.click("settings-accounts-add");
+    ui.press("t i n");
+    ui.click("add-account-type");
+    ui.click("add-account-type-option-0");
+    assert_eq!(ui.dialog_value("institution").as_deref(), Some("Personal"));
+    ui.click("add-account-confirm");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_accounts().selected_account.as_deref(),
+        Some("tin")
+    );
+
+    // The stub's Cash Account, the Wallet, names it too.
+    ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(1)));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Wallet"));
+    assert_eq!(ui.dialog_value("institution").as_deref(), Some("Personal"));
+}
+
+#[gpui::test]
 fn a_new_account_defaults_to_the_base_unit_set_on_general(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s");

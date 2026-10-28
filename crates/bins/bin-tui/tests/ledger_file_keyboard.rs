@@ -74,7 +74,7 @@ fn the_status_line_names_the_mode_when_it_is_not_normal() {
 fn open_with_a_path_opens_that_ledger_file() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    lib_database::open_storage(&path, chrono::Local::now().date_naive())
+    lib_database::open_storage(&path, chrono::Local::now().date_naive(), "Personal")
         .expect("a Ledger file to open");
     let mut shell = cold_shell(None);
 
@@ -94,7 +94,7 @@ fn open_with_a_path_opens_that_ledger_file() {
 fn a_bare_open_opens_the_configured_ledger_file() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("configured.pldb");
-    lib_database::open_storage(&path, chrono::Local::now().date_naive())
+    lib_database::open_storage(&path, chrono::Local::now().date_naive(), "Personal")
         .expect("a Ledger file to open");
     let mut shell = cold_shell(Some(&path));
 

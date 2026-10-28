@@ -1,6 +1,6 @@
 //! The Add and Edit account dialogs' form driven by keys: the `Tab` ring, typing into the focused
 //! field, the opening balance's filter, the selects (open, step, commit, the first `Esc` closing
-//! only the list), the Cash and Edit read-only rules, and `Enter` confirming only a valid form.
+//! only the list), the Cash Institution default, the Edit read-only rules, and `Enter` confirming only a valid form.
 //! The dialogs open from the Settings Accounts page; state is read back from `Root`.
 
 use super::common;
@@ -169,20 +169,26 @@ fn tab_commits_an_open_lists_highlight_and_moves_on(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn a_cash_account_has_no_institution_to_pick(app: &mut TestAppContext) {
+fn a_cash_account_starts_on_the_personal_institution_and_may_pick_another(
+    app: &mut TestAppContext,
+) {
     let mut ui = add_dialog(app);
     ui.press("tab tab");
     assert_eq!(ui.account_form().focused, "Type");
 
     // Closed: up steps Bank back to Cash.
     ui.press("up");
-    assert_eq!(ui.account_form().account_type.as_deref(), Some("Cash"));
+    let form = ui.account_form();
+    assert_eq!(form.account_type.as_deref(), Some("Cash"));
+    assert_eq!(form.institution.as_deref(), Some("Personal"));
 
-    // Institution is read-only now: `Shift-Tab` from Type skips it.
+    // The Institution still takes focus, and another can be picked.
     ui.press("shift-tab");
-    assert_eq!(ui.account_form().focused, "Name");
-    ui.press("tab");
-    assert_eq!(ui.account_form().focused, "Type");
+    assert_eq!(ui.account_form().focused, "Institution");
+    ui.press("enter down tab");
+    let form = ui.account_form();
+    assert_eq!(form.institution.as_deref(), Some("ANZ Banking Group"));
+    assert_eq!(form.account_type.as_deref(), Some("Cash"));
 }
 
 #[gpui::test]
@@ -191,8 +197,7 @@ fn editing_fixes_the_unit_and_balance_and_tab_skips_them(app: &mut TestAppContex
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditAccount"));
 
-    // The seeded selection may be Cash (which also skips Institution), so assert the rule that
-    // always holds: a full lap never lands on Unit or Opening balance, and wraps to Name.
+    // Assert the rule that holds whichever Account is selected: a full lap never lands on Unit or Opening balance, and wraps to Name.
     let mut seen = Vec::new();
     for _ in 0..4 {
         ui.press("tab");

@@ -96,6 +96,27 @@ fn typing_a_name_and_pressing_enter_adds_the_account(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn a_cash_account_added_from_the_keyboard_names_the_personal_institution(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+
+    ui.press("n");
+    ui.press("t i n");
+    // Tab to Type, step Bank up to Cash, and back to Name, where Enter confirms.
+    ui.press("tab tab up shift-tab shift-tab");
+    assert_eq!(ui.dialog_value("institution").as_deref(), Some("Personal"));
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_accounts().selected_account.as_deref(),
+        Some("tin")
+    );
+
+    ui.press("e");
+    assert_eq!(ui.dialog_value("type").as_deref(), Some("Cash"));
+    assert_eq!(ui.dialog_value("institution").as_deref(), Some("Personal"));
+}
+
+#[gpui::test]
 fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     let name = ui

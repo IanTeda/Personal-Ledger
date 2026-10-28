@@ -345,11 +345,13 @@ mod tests {
         let page = Page::new(shared);
         let view = page.view();
 
-        assert_eq!(view.scope, "6 institutions");
+        assert_eq!(view.scope, "7 institutions");
         assert_eq!(view.add_button, "+ Add institution");
-        assert_eq!(view.rows[0].name, "ANZ Banking Group");
-        assert_eq!(view.rows[0].products, "savings \u{b7} offset");
-        assert_eq!(page.selected_name().as_deref(), Some("ANZ Banking Group"));
+        assert_eq!(view.rows[0].name, "Personal");
+        assert_eq!(view.rows[0].products, "cash");
+        assert_eq!(view.rows[1].name, "ANZ Banking Group");
+        assert_eq!(view.rows[1].products, "savings \u{b7} offset");
+        assert_eq!(page.selected_name().as_deref(), Some("Personal"));
     }
 
     #[test]
@@ -358,13 +360,13 @@ mod tests {
         let mut page = Page::new(shared);
 
         page.send(InstitutionsPageEvent::Move(Step::Next));
-        assert_eq!(page.selected_name().as_deref(), Some("American Express"));
+        assert_eq!(page.selected_name().as_deref(), Some("ANZ Banking Group"));
         page.send(InstitutionsPageEvent::Move(Step::Last));
         assert_eq!(page.selected_name().as_deref(), Some("Superannuation Fund"));
         page.send(InstitutionsPageEvent::Move(Step::Next));
         assert_eq!(page.selected_name().as_deref(), Some("Superannuation Fund"));
         page.send(InstitutionsPageEvent::Move(Step::First));
-        assert_eq!(page.selected_name().as_deref(), Some("ANZ Banking Group"));
+        assert_eq!(page.selected_name().as_deref(), Some("Personal"));
     }
 
     #[test]
@@ -388,13 +390,13 @@ mod tests {
     fn edit_opens_the_form_on_the_selected_row_or_a_clicked_one() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
-        let anz = page.view().rows[0].id;
-        let amex = page.view().rows[1].id;
+        let personal = page.view().rows[0].id;
+        let amex = page.view().rows[2].id;
 
         assert_eq!(
             page.send(InstitutionsPageEvent::Edit),
             vec![RouterCall::OpenDialog(InstitutionsDialog::EditInstitution(
-                anz
+                personal
             ))]
         );
         page.send(InstitutionsPageEvent::DialogClosed(None));
@@ -420,7 +422,7 @@ mod tests {
             page.send(InstitutionsPageEvent::Delete),
             status("delete institution \u{2014} not yet built")
         );
-        let amex = page.view().rows[1].id;
+        let amex = page.view().rows[2].id;
         assert_eq!(
             page.send(InstitutionsPageEvent::DeleteRow(amex)),
             status("delete institution \u{2014} not yet built")
@@ -432,7 +434,7 @@ mod tests {
     fn a_right_click_selects_the_row_and_opens_its_menu_whose_entry_runs_on_it() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
-        let amex = page.view().rows[1].id;
+        let amex = page.view().rows[2].id;
 
         page.send(InstitutionsPageEvent::OpenMenu(amex));
         let menu = page.view().menu.expect("the menu is open");
@@ -464,7 +466,7 @@ mod tests {
     fn the_menus_delete_says_it_is_not_built_and_any_other_event_closes_the_menu() {
         let (_, shared) = stub();
         let mut page = Page::new(shared);
-        let amex = page.view().rows[1].id;
+        let amex = page.view().rows[2].id;
 
         page.send(InstitutionsPageEvent::OpenMenu(amex));
         assert_eq!(
@@ -485,7 +487,7 @@ mod tests {
     fn a_save_selects_its_institution_and_a_missing_selection_falls_to_the_first_row() {
         let (ports, shared) = stub();
         let mut page = Page::new(shared);
-        let westpac = page.view().rows[3].id;
+        let westpac = page.view().rows[4].id;
 
         page.send(InstitutionsPageEvent::DialogClosed(Some(
             InstitutionsOutcome {
@@ -495,8 +497,8 @@ mod tests {
         )));
         assert_eq!(page.selected_name().as_deref(), Some("Westpac Banking"));
 
-        ports.borrow_mut().institutions.institutions.remove(3);
-        assert_eq!(page.selected_name().as_deref(), Some("ANZ Banking Group"));
+        ports.borrow_mut().institutions.institutions.remove(4);
+        assert_eq!(page.selected_name().as_deref(), Some("Personal"));
     }
 
     #[test]

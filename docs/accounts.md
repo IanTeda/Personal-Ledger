@@ -20,7 +20,7 @@ An account is a place where you hold money or track what you owe. Personal Ledge
 - **Account Kind:** which type of account it is (Transaction, Credit Card, Loan, or Investment) — decided when you create it and can't be changed later.
 - **Balance:** the current total in a transaction or credit card account, computed from all its transactions.
 - **Unit:** the currency or security an account is denominated in (AUD, USD, AAPL shares, etc.) — fixed at creation.
-- **Institution:** the bank, lender or broker an account is held with. Cash accounts have none.
+- **Institution:** the bank, lender or broker an account is held with. Cash accounts are held with your Personal institution, which stands for you.
 
 ## Account kinds
 
@@ -28,7 +28,7 @@ Personal Ledger splits accounts into four kinds, each with its own shape and wor
 
 ### Transaction Account
 
-A place to hold everyday spending money — bank accounts and cash. Your Balance is computed from all transactions posted against it. You can record transactions, move money between accounts of the same currency, and track your spending against this account. Cash accounts link to a system placeholder for the institution; bank accounts link to a real bank.
+A place to hold everyday spending money — bank accounts and cash. Your Balance is computed from all transactions posted against it. You can record transactions, move money between accounts of the same currency, and track your spending against this account. A cash account is held by you, so it starts on your Personal institution; a bank account links to a real bank.
 
 ### Credit Card Account
 
@@ -90,7 +90,7 @@ Personal Ledger shows accounts on a list with their balances, filterable by kind
 - An account's Unit (currency) is set at creation and cannot be changed later.
 - A transaction can only move between accounts sharing the same Unit.
 - Deleting an account deletes its transactions and its balance checks, and sets the bill entries they paid back to unpaid. An account that bills are paid from can't be deleted until those bills move to another account.
-- An account's institution is chosen from your institutions. Cash accounts use the built-in "No institution" entry.
+- An account's institution is chosen from your institutions. A new cash account starts on your Personal institution, and you can pick any other.
 - Accounts you saved before this version of the desktop app are not carried over: a ledger made earlier needs to be started fresh.
 
 ## Scope

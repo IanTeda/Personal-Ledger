@@ -73,6 +73,19 @@ fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_page_lists_seven_institutions_the_personal_one_first(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+
+    let page = ui.settings_institutions();
+    assert_eq!(page.institutions.len(), 7);
+    assert_eq!(
+        page.institutions.first(),
+        Some(&("Personal".to_string(), "cash".to_string()))
+    );
+    assert_eq!(page.selected_institution.as_deref(), Some("Personal"));
+}
+
+#[gpui::test]
 fn n_opens_the_add_dialog_and_escape_cancels_it(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
 
@@ -132,11 +145,8 @@ fn e_opens_the_edit_dialog_filled_with_the_selected_institution(app: &mut TestAp
         ui.dialog_value("title").as_deref(),
         Some("Edit institution")
     );
-    assert_eq!(
-        ui.dialog_value("name").as_deref(),
-        Some("ANZ Banking Group")
-    );
-    assert_eq!(ui.dialog_value("types").as_deref(), Some("Savings,Offset"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Personal"));
+    assert_eq!(ui.dialog_value("types").as_deref(), Some("Cash"));
 }
 
 #[gpui::test]
@@ -152,7 +162,7 @@ fn enter_saves_an_edit_selects_the_row_and_raises_a_toast(app: &mut TestAppConte
     let page = ui.settings_institutions();
     assert_eq!(page.selected_institution.as_deref(), Some("Amex"));
     assert_eq!(page.institutions[1].0, "Amex");
-    assert_eq!(page.institutions.len(), 6);
+    assert_eq!(page.institutions.len(), 7);
     assert_eq!(
         ui.toasts().history.first().map(|toast| toast.text.clone()),
         Some("Saved Amex".to_string())
@@ -166,7 +176,7 @@ fn a_rename_to_a_name_another_holds_is_refused_and_a_change_of_capitals_is_accep
     let mut ui = in_institutions(app);
     let before = ui.settings_institutions().institutions;
 
-    ui.press("e");
+    ui.press("j e");
     retype_name(&mut ui, "american express");
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("EditInstitution"));
@@ -176,7 +186,7 @@ fn a_rename_to_a_name_another_holds_is_refused_and_a_change_of_capitals_is_accep
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions[0].0,
+        ui.settings_institutions().institutions[1].0,
         "anz banking group"
     );
 }
@@ -196,7 +206,7 @@ fn escape_cancels_an_edit_with_nothing_changed_and_focus_back_on_the_row(app: &m
     ui.press("j");
     assert_eq!(
         ui.settings_institutions().selected_institution.as_deref(),
-        Some("American Express")
+        Some("ANZ Banking Group")
     );
 }
 

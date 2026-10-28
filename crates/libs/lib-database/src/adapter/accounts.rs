@@ -4,8 +4,8 @@
 //!
 //! It loads every Account into memory, blocking, and serves the rows from there, in the order they
 //! were added. A port write changes memory at once and joins the [`PendingWrites`] every adapter
-//! shares, which the bin commits after each input. A Cash Account's Institution is
-//! `lib-accounts`' [`NO_INSTITUTION`] placeholder, which has no row, so it is stored as NULL.
+//! shares, which the bin commits after each input. Every Account names a stored Institution, a
+//! Cash Account usually the Personal Institution (ADR-0049), so `institution_id` is never NULL.
 //!
 //! Usage is other domains' rows, so [`AccountUsage`] counts the `transactions` booked to an
 //! Account in the file, blocking: what the last commit left, not a write still pending. Budgets
@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use chrono::NaiveDate;
-use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse, NO_INSTITUTION};
+use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse};
 use lib_bills::{BillAccount, BillAccounts};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_units::{Holding, UnitHoldings, UnitUsage, UnitUse};
@@ -253,7 +253,6 @@ impl Change for AccountsChange {
 }
 
 async fn upsert(conn: &mut SqliteConnection, account: &Account) -> Result<()> {
-    let institution = (account.institution != NO_INSTITUTION).then_some(account.institution);
     sqlx::query!(
         "INSERT INTO accounts
              (id, name, institution_id, account_type, unit_id, balance, opened_at, account_number)
@@ -268,7 +267,7 @@ async fn upsert(conn: &mut SqliteConnection, account: &Account) -> Result<()> {
              account_number = excluded.account_number",
         account.id,
         account.name,
-        institution,
+        account.institution,
         account.account_type,
         account.unit,
         account.balance,
@@ -325,7 +324,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
         r#"SELECT
                id             AS "id!: AccountId",
                name,
-               institution_id AS "institution_id?: InstitutionId",
+               institution_id AS "institution_id!: InstitutionId",
                account_type   AS "account_type!: AccountType",
                unit_id        AS "unit_id!: UnitId",
                balance        AS "balance!: Money",
@@ -340,7 +339,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
     .map(|row| Account {
         id: row.id,
         name: row.name,
-        institution: row.institution_id.unwrap_or(NO_INSTITUTION),
+        institution: row.institution_id,
         account_type: row.account_type,
         unit: row.unit_id,
         balance: row.balance,
@@ -581,37 +580,43 @@ mod tests {
         contract::a_failed_write_reloads_and_reports(&mut AdapterFactory::new(options));
     }
 
-    /// The Cash placeholder has no Institutions row, so it is stored as no Institution and reads
-    /// back as the placeholder.
+    /// A Cash Account names a stored Institution like any other, here the Personal Institution.
     #[sqlx::test(migrations = "migrations/client")]
-    async fn a_cash_account_stores_no_institution_and_reloads_the_placeholder(
+    async fn a_cash_account_round_trips_its_institution(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let ports = factory.create(default_accounts());
+        factory.create(default_accounts());
         let wallet = AccountId::seed(1);
-        assert_eq!(
-            ports
-                .adapter
-                .accounts()
-                .account(wallet)
-                .map(|a| a.institution),
-            Some(NO_INSTITUTION)
-        );
 
-        let stored = factory
-            .writer
-            .run(move |pool| async move {
-                let row: Option<InstitutionId> =
-                    sqlx::query_scalar("SELECT institution_id FROM accounts WHERE id = ?")
-                        .bind(wallet)
-                        .fetch_one(&pool)
-                        .await?;
-                Ok(row)
-            })
-            .expect("the row reads");
-        assert_eq!(stored, None);
+        let reloaded = factory.ports().adapter.accounts().account(wallet);
+        assert_eq!(
+            reloaded.map(|a| (a.account_type, a.institution)),
+            Some((AccountType::Cash, InstitutionId::SEED_PERSONAL))
+        );
+    }
+
+    /// `institution_id` is `NOT NULL`: no Account, Cash included, is stored without an Institution.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn an_account_with_no_institution_is_refused(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let factory = AdapterFactory::new(options);
+
+        let refused = factory.writer.run(|pool| async move {
+            sqlx::query(
+                "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
+                 VALUES (?, 'Tin', NULL, 'cash', ?, '0', '2026-01-01')",
+            )
+            .bind(AccountId::new())
+            .bind(UnitId::SEED_AUD)
+            .execute(&pool)
+            .await?;
+            Ok(())
+        });
+        assert!(refused.is_err());
     }
 
     /// The new foreign keys refuse an Account naming an Institution that isn't stored, and a

@@ -100,7 +100,7 @@ pub struct AccountGroupView {
 pub struct AccountLine {
     pub id: AccountId,
     pub name: String,
-    /// The Institution's name, or the placeholder's Message for a Cash Account.
+    /// The name of the Institution it names, as the Ledger holds it.
     pub institution: String,
     /// The Unit's code.
     pub unit: String,
@@ -469,8 +469,8 @@ mod tests {
         assert_eq!(bank[0].institution, "ANZ Banking Group");
         assert_eq!(bank[0].unit, "aud");
         assert_eq!(
-            view.groups[0].lines[0].institution, "No institution",
-            "Cash is at the placeholder"
+            view.groups[0].lines[0].institution, "Personal",
+            "Cash is at the Personal Institution"
         );
         assert_eq!(view.empty, None);
     }

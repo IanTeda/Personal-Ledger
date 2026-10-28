@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n               id             AS \"id!: AccountId\",\n               name,\n               institution_id AS \"institution_id?: InstitutionId\",\n               account_type   AS \"account_type!: AccountType\",\n               unit_id        AS \"unit_id!: UnitId\",\n               balance        AS \"balance!: Money\",\n               opened_at      AS \"opened_at!: NaiveDate\",\n               account_number\n           FROM accounts\n           ORDER BY rowid",
+  "query": "SELECT\n               id             AS \"id!: AccountId\",\n               name,\n               institution_id AS \"institution_id!: InstitutionId\",\n               account_type   AS \"account_type!: AccountType\",\n               unit_id        AS \"unit_id!: UnitId\",\n               balance        AS \"balance!: Money\",\n               opened_at      AS \"opened_at!: NaiveDate\",\n               account_number\n           FROM accounts\n           ORDER BY rowid",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         "type_info": "Text"
       },
       {
-        "name": "institution_id?: InstitutionId",
+        "name": "institution_id!: InstitutionId",
         "ordinal": 2,
         "type_info": "Null"
       },
@@ -50,7 +50,7 @@
     "nullable": [
       true,
       false,
-      true,
+      false,
       false,
       false,
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "7275f55ae4dd7ac35a472bfb178a78c9cba69d280a03c64de7876d0289341eee"
+  "hash": "aba3cbc56eff30326ea1bddc7420f376bf1dca4fec24ee3270ab454b0937a5fd"
 }

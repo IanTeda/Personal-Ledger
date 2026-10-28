@@ -21,21 +21,15 @@ pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::accounts_page;
 pub use view::page::AccountsPage;
 
-use lib_accounts::NO_INSTITUTION;
 use lib_accounts::presenter::AccountsPageEvent;
 use lib_core::InstitutionId;
 use lib_institutions::Institution;
 
-/// What to show for an account's `institution`: the placeholder's Message in the Locale in
-/// effect, or the name of the one of `institutions` it names, unchanged (Ledger data, not a
-/// Message). An id `institutions` doesn't hold shows nothing.
+/// What to show for an account's `institution`: the name of the one of `institutions` it names,
+/// unchanged (Ledger data, not a Message). An id `institutions` doesn't hold shows nothing.
 pub fn institution_label(institution: InstitutionId, institutions: &[Institution]) -> String {
-    if institution == NO_INSTITUTION {
-        lib_locale::msg::institution_none()
-    } else {
-        lib_institutions::get(institutions, institution)
-            .map_or_else(String::new, |institution| institution.name.clone())
-    }
+    lib_institutions::get(institutions, institution)
+        .map_or_else(String::new, |institution| institution.name.clone())
 }
 
 /// The Accounts page: names in the order the page lists them, and the selected row's name
@@ -85,12 +79,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn institution_label_renders_the_placeholder_and_names_an_institution_by_its_id() {
+    fn institution_label_names_an_institution_by_its_id() {
         lib_locale::with_locale(lib_locale::Locale::EnUs, || {
             let institutions = lib_institutions::default_institutions();
             assert_eq!(
-                institution_label(NO_INSTITUTION, &institutions),
-                "No institution"
+                institution_label(InstitutionId::SEED_PERSONAL, &institutions),
+                "Personal"
             );
             assert_eq!(
                 institution_label(InstitutionId::SEED_ANZ, &institutions),

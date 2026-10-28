@@ -54,7 +54,7 @@ An institution is the bank, lender or broker an account is held with, such as "C
 
 Open **Settings**, then **Institutions**, and add the ones you use. You don't need to add them all now. You can always add another when you create an account.
 
-Physical cash has no bank, so you don't need to add anything for it. Personal Ledger includes a built-in "No institution" entry that cash accounts use.
+Physical cash has no bank, so you don't need to add anything for it. Every new ledger starts with a Personal institution that stands for you, and a new cash account starts on it.
 
 ## Step 4: Add your accounts
 
