@@ -80,8 +80,8 @@ const TICK_RATE: Duration = Duration::from_millis(250);
 
 /// The command names the Ledger file messages point to. Command syntax the user types, so passed
 /// into the Messages rather than translated (`popup::command::commands::ledger`).
-const OPEN_COMMAND: &str = ":open";
-const NEW_COMMAND: &str = ":new";
+pub(crate) const OPEN_COMMAND: &str = ":open";
+pub(crate) const NEW_COMMAND: &str = ":new";
 const SET_COMMAND: &str = ":set";
 
 /// What separates one hint item from the next in the footer bar.
@@ -270,13 +270,15 @@ impl Shell {
     /// Starts with a Ledger open on `stores`, named `path`, with no writer to flush: for a test that
     /// needs an Open Ledger but not a Ledger file.
     pub fn with_open_ledger(mut self, path: impl Into<PathBuf>, stores: Stores) -> Self {
-        self.ledger = Some(self.open_ledger_on(path.into(), stores, None));
+        let ledger = self.open_ledger_on(path.into(), stores, None);
+        self.settings_values.borrow_mut().last_ledger = Some(ledger.path.clone());
+        self.ledger = Some(ledger);
         self
     }
 
     /// Applies the Client-scoped Preferences kept on this device (ADR-0051): Toasts, the Colour
-    /// Theme and Appearance, and the date style. A stored appearance this release doesn't know
-    /// falls back to System.
+    /// Theme and Appearance, the date style and On start. A stored appearance this release doesn't
+    /// know falls back to System.
     pub fn with_client_preferences(mut self, preferences: &lib_core::ClientPreferences) -> Self {
         self.toasts.set_display(Display {
             toasts_on: preferences.toasts_on,
@@ -289,13 +291,27 @@ impl Shell {
                 .as_deref()
                 .and_then(ColourAppearance::from_key),
         );
-        self.settings_values.borrow_mut().date_style = preferences.date_style;
+        let mut values = self.settings_values.borrow_mut();
+        values.date_style = preferences.date_style;
+        values.on_start = preferences.on_start;
+        drop(values);
         self
     }
 
-    /// The Client-scoped Preferences as they stand, for the state file at quit. On start has no
-    /// control yet (#910), so it is kept as it was read.
-    pub fn client_preferences(&self, on_start: lib_core::OnStart) -> lib_core::ClientPreferences {
+    /// Opens the Ledger file On start names, as `:open <path>` would: the configured `file` if
+    /// there is one, else, under Reopen last Ledger, `remembered`, the one open at the last quit.
+    /// A file that won't open raises the Error Toast and leaves no Ledger open.
+    pub fn open_on_start(&mut self, remembered: Option<&Path>) {
+        let on_start = self.settings_values.borrow().on_start;
+        if let Some(path) =
+            lib_core::ledger_to_open(on_start, self.ledger_file.as_deref(), remembered)
+        {
+            self.open_ledger(Some(path));
+        }
+    }
+
+    /// The Client-scoped Preferences as they stand, for the state file at quit.
+    pub fn client_preferences(&self) -> lib_core::ClientPreferences {
         lib_core::ClientPreferences {
             toasts_on: self.toasts.display().toasts_on,
             colour_theme: self.colours.colour_theme().map(str::to_string),
@@ -304,7 +320,7 @@ impl Shell {
                 .colour_appearance()
                 .map(|appearance| appearance.key().to_string()),
             date_style: self.settings_values.borrow().date_style,
-            on_start,
+            on_start: self.settings_values.borrow().on_start,
         }
     }
 
@@ -338,8 +354,10 @@ impl Shell {
         config: &PersonalLedgerConfig,
         writer: ConfigWriter,
     ) -> Self {
-        self.settings_values.borrow_mut().configuration =
-            Configuration::from_config(config, &writer);
+        let mut values = self.settings_values.borrow_mut();
+        values.configuration = Configuration::from_config(config, &writer);
+        values.ledger_folder = config.data().to_path_buf();
+        drop(values);
         self.config_writer = writer;
         self
     }
@@ -430,6 +448,7 @@ impl Shell {
                 let ledger = self.open_ledger_on(path, Stores::from(storage), Some(writer));
                 self.close_ledger();
                 tracing::info!(path = %ledger.path.display(), "Opened the Ledger file");
+                self.settings_values.borrow_mut().last_ledger = Some(ledger.path.clone());
                 self.ledger = Some(ledger);
                 Some(name)
             }
@@ -460,6 +479,7 @@ impl Shell {
         if let Some(ledger) = self.ledger.take() {
             tracing::info!(path = %ledger.path.display(), "Closed the Ledger file");
         }
+        self.settings_values.borrow_mut().last_ledger = None;
     }
 
     /// Blocks until every write the Open Ledger has sent has landed or failed.
@@ -655,7 +675,9 @@ impl Shell {
                     self.pending_leader = false;
                     return match jump(key.code) {
                         None => None,
-                        // With no Ledger open there's nothing to jump to.
+                        // With no Ledger open there's nothing to jump to but Settings, whose this
+                        // device pages work without one (TUI-059).
+                        Some(Jump::Open(Action::OpenSettings)) => Some(Action::OpenSettings),
                         Some(_) if self.ledger.is_none() => Some(Action::NoLedgerOpen),
                         Some(Jump::Open(action)) => Some(action),
                         Some(Jump::NotYetBuilt(noun)) => {
@@ -782,11 +804,18 @@ impl Shell {
                 Some(Action::OpenToastHistory)
             }
             CommandId::Settings => Some(
-                self.command_popup
+                match self
+                    .command_popup
                     .as_ref()
                     .and_then(CommandPopup::argument)
                     .and_then(SettingsPage::from_command_name)
-                    .map_or(Action::OpenSettings, Action::OpenSettingsPage),
+                {
+                    Some(page) if page.needs_ledger() && self.ledger.is_none() => {
+                        Action::NoLedgerOpen
+                    }
+                    Some(page) => Action::OpenSettingsPage(page),
+                    None => Action::OpenSettings,
+                },
             ),
             CommandId::Set => Some(set_command(
                 self.command_popup.as_ref().and_then(CommandPopup::argument),
@@ -1627,12 +1656,17 @@ impl Shell {
             Action::OpenPayees => self.open(PayeesView::new()),
             Action::OpenReports => self.open(ReportsView::new()),
             Action::OpenSettings | Action::OpenSettingsPage(_) => {
-                self.open(SettingsView::remembering(
+                let settings = SettingsView::remembering(
                     Rc::clone(&self.settings_page),
                     Rc::clone(&self.settings_values),
                     self.ledger.as_ref().map(|ledger| &ledger.units),
                     self.logs.clone(),
-                ));
+                );
+                self.open(if self.ledger.is_some() {
+                    settings
+                } else {
+                    settings.without_ledger()
+                });
                 self.view.update(&action);
             }
             Action::OpenTransactions => self.open(TransactionsView::new()),
@@ -2586,6 +2620,8 @@ fn runs_without_ledger(id: CommandId) -> bool {
         id,
         CommandId::LedgerOpen
             | CommandId::LedgerNew
+            // Settings' this device pages work without one; `command_action` refuses the rest.
+            | CommandId::Settings
             | CommandId::Help
             | CommandId::Quit
             | CommandId::Dismiss
@@ -2804,10 +2840,7 @@ mod tests {
             shell.settings_values.borrow().date_style,
             Some(lib_core::DateStyle::Iso)
         );
-        assert_eq!(
-            shell.client_preferences(lib_core::OnStart::NoLedger),
-            preferences
-        );
+        assert_eq!(shell.client_preferences(), preferences);
     }
 
     /// [`opened`], reading the global keys from `keybindings`.
@@ -4582,10 +4615,10 @@ mod tests {
         }
     }
 
-    /// The guard on making btc the base, opened as committing it on General does.
+    /// The guard on making btc the base, opened as committing it on Ledger does.
     fn guarded() -> Shell {
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         shell.update(Action::SetSetting(
             SettingField::BaseUnit,
             Some("btc".into()),
@@ -4598,10 +4631,10 @@ mod tests {
     }
 
     #[test]
-    fn enter_opens_a_general_field_in_place_with_insert_showing_and_enter_saves_it() {
+    fn enter_opens_a_ledger_field_in_place_with_insert_showing_and_enter_saves_it() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
         let text = drawn(&mut shell);
         assert!(lines(&text)[0].contains("INSERT"), "{text}");
@@ -4625,14 +4658,14 @@ mod tests {
     fn esc_closes_an_open_field_keeping_its_value_before_it_leaves_the_page() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         press(
             &mut shell,
             &[KeyCode::Enter, KeyCode::Char('x'), KeyCode::Esc],
         );
         let text = drawn(&mut shell);
         assert!(
-            text.contains("Settings › General"),
+            text.contains("Settings › Ledger"),
             "still on the page:\n{text}"
         );
         assert!(!lines(&text)[0].contains("INSERT"), "{text}");
@@ -4653,7 +4686,7 @@ mod tests {
     fn tab_saves_the_open_field_and_selects_the_next() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         press(
             &mut shell,
             &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Enter],
@@ -4723,11 +4756,8 @@ mod tests {
     #[test]
     fn space_toggles_toasts_at_rest_and_in_place() {
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
-        press(
-            &mut shell,
-            &[KeyCode::End, KeyCode::Char('k'), KeyCode::Char(' ')],
-        );
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char(' ')]);
         assert!(!shell.toasts.display().toasts_on);
 
         // Opened by its Action, as `:set toasts` will, it's a checkbox `enter` saves.
@@ -4742,11 +4772,8 @@ mod tests {
     fn a_read_only_field_says_why_on_the_status_line() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
-        press(
-            &mut shell,
-            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Char('j')],
-        );
+        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char('j')]);
         press(&mut shell, &[KeyCode::Enter]);
         assert!(!shell.view.editing());
         assert!(
@@ -4754,6 +4781,21 @@ mod tests {
             "the Locale names where it changes"
         );
         press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
+        assert!(!shell.view.editing());
+        assert!(
+            drawn(&mut shell).contains("ledger-folder is read-only"),
+            "the ledger folder names where it changes"
+        );
+        shell.update(Action::OpenSettingsPage(SettingsPage::Display));
+        press(
+            &mut shell,
+            &[
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+                KeyCode::Enter,
+            ],
+        );
         assert!(
             drawn(&mut shell).contains("no user config directory"),
             "a Shell with nowhere to write keeps the Configuration rows read-only"
@@ -4862,7 +4904,7 @@ mod tests {
     fn committing_a_new_base_unit_opens_the_guard_whose_confirm_sets_the_base() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::OpenSettingsPage(SettingsPage::General));
+        shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         // The same base commits nothing, so no guard opens.
         press(&mut shell, &[KeyCode::End, KeyCode::Enter, KeyCode::Enter]);
         assert!(shell.settings_popup.is_none());
@@ -5015,7 +5057,7 @@ mod tests {
             1,
             "paging pushed onto the view stack"
         );
-        assert!(drawn(&mut shell).contains("Settings › Institutions"));
+        assert!(drawn(&mut shell).contains("Settings › Logs"));
 
         press(&mut shell, &[KeyCode::Esc]);
         assert_eq!(shell.view.id(), ViewId::Settings);
@@ -5023,7 +5065,7 @@ mod tests {
 
         press(&mut shell, &[KeyCode::Esc]);
         assert_eq!(shell.view.id(), ViewId::Dashboard);
-        assert_eq!(shell.settings_page.get(), SettingsPage::Institutions);
+        assert_eq!(shell.settings_page.get(), SettingsPage::Logs);
     }
 
     #[test]
@@ -5057,7 +5099,7 @@ mod tests {
         assert_eq!(shell.view.id(), ViewId::Settings);
         let text = drawn(&mut shell);
         assert!(
-            text.contains("16 pages") && !text.contains("Settings ›"),
+            text.contains("17 pages") && !text.contains("Settings ›"),
             "{text}"
         );
         assert_eq!(shell.settings_page.get(), SettingsPage::Backup);
@@ -5166,7 +5208,7 @@ mod tests {
             shell
                 .status_message
                 .as_deref()
-                .is_some_and(|message| message.starts_with(":set needs a field: ledger-name")),
+                .is_some_and(|message| message.starts_with(":set needs a field: on-start")),
             "{:?}",
             shell.status_message
         );
@@ -5329,12 +5371,8 @@ mod tests {
                     "{page:?} at {height}:\n{text}"
                 );
             }
-            let rows = lines(&text);
-            // The legend sits on the last View row, just above the hint bar.
-            assert!(
-                rows[rows.len() - 2].contains("syncs with the ledger"),
-                "{text}"
-            );
+            assert!(text.contains("this device \u{2500}"), "{text}");
+            assert!(text.contains("this ledger \u{2500}"), "{text}");
         }
     }
 
@@ -5346,7 +5384,7 @@ mod tests {
 
         let text = drawn_at(&mut shell, 171, 53);
         assert!(!text.contains("Settings ›"), "{text}");
-        assert!(text.contains("○ this device only"), "{text}");
+        assert!(text.contains("this device \u{2500}"), "{text}");
         let footer = lines(&text).last().copied().unwrap_or_default().to_string();
         assert!(footer.contains("[/] pages · esc index"), "{footer}");
 

@@ -16,12 +16,18 @@
 //! place; none of them push onto the Shell's view stack, so the back key on a page always returns
 //! to the index ([`View::back`]).
 //!
-//! General and Display are form pages: rows of label, value and dim note, where `enter` opens a
+//! The index groups its pages by scope ([`Group`], ADR-0051): this device (General, Display, AI
+//! Connections, Logs, About), then this ledger (Ledger … History). With no Ledger open
+//! ([`SettingsView::without_ledger`], TUI-059) the this ledger rows are drawn dim, and opening one
+//! by `enter`, `[` / `]` or the picker answers [`Action::NoLedgerOpen`] and stays put; a remembered
+//! this ledger page gives way to General.
+//!
+//! General, Ledger and Display are form pages: rows of label, value and dim note, where `enter` opens a
 //! field in place (TUI-020, `popup::settings::edit`) and the status line shows `INSERT` while it
 //! is open. Opening and saving are one [`Action::SetSetting`] ([`field`]): the page returns it
 //! without a value to open the field, the open field returns it with one to save, and `Shell`
 //! routes it, keeping what it owns (Toasts, the Colour Theme and Appearance, the base unit guard)
-//! and handing the rest back to [`View::update`]. What holds for the session only lives in
+//! and handing the rest back to [`View::update`]. The values the form pages show live in
 //! [`field::SettingsValues`], shared with `Shell` as the selection is.
 //!
 //! Units, Accounts and the six ledger-data pages after them are list pages, drawn by the one
@@ -60,6 +66,7 @@ mod index;
 mod institutions;
 mod inventory;
 mod keys;
+mod ledger;
 mod list;
 mod logs;
 mod payees;
@@ -96,13 +103,17 @@ use picker::Picker;
 pub use backup::BackupCommand;
 pub use sync_server::SyncCommand;
 
-/// The sixteen Settings pages. [`SettingsPage::ALL`] is the one page order the index, the picker
-/// and `[` / `]` all read, so the three can't drift.
+/// The seventeen Settings pages. [`SettingsPage::ALL`] is the one page order the index, the
+/// picker and `[` / `]` all read, so the three can't drift.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsPage {
     #[default]
     General,
     Display,
+    AiConnections,
+    Logs,
+    About,
+    Ledger,
     Units,
     Institutions,
     Accounts,
@@ -111,42 +122,40 @@ pub enum SettingsPage {
     Payees,
     Documents,
     Inventory,
-    AiConnections,
     SyncServer,
     Backup,
     History,
-    Logs,
-    About,
 }
 
-/// Where a page's values live, drawn as the index's one-glyph scope column. Never colour alone:
-/// the two glyphs are distinct shapes.
+/// Which of the index's two groups a page sits under (ADR-0051, `GLOSSARY.md` **Preference**).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
-    /// Stored in the Ledger and synced as Change Sets (`●`).
-    Synced,
-    /// Configuration on this device, never synced (`○`).
+pub enum Group {
+    /// What belongs to the device: Client-scoped Preferences and Configuration. These pages never
+    /// sync and work with no Ledger open.
     ThisDevice,
-    /// Nothing stored (About).
-    None,
+    /// What the Open Ledger stores, or acts on its file. Refused with no Ledger open.
+    ThisLedger,
 }
 
-impl Scope {
-    pub fn glyph(self) -> &'static str {
+impl Group {
+    /// The group's heading on the index, the docked index and the picker.
+    pub fn heading(self) -> String {
         match self {
-            Self::Synced => "●",
-            Self::ThisDevice => "○",
-            Self::None => " ",
+            Self::ThisDevice => msg::tui_settings_group_this_device(),
+            Self::ThisLedger => msg::tui_settings_group_this_ledger(),
         }
     }
 }
 
 impl SettingsPage {
-    /// Every page, in the index's order: the Desktop's, with AI Connections and History in the
-    /// places the TUI handoff gives them.
-    pub const ALL: [SettingsPage; 16] = [
+    /// Every page, in the index's order: this device's, then this ledger's, as the Desktop's.
+    pub const ALL: [SettingsPage; 17] = [
         Self::General,
         Self::Display,
+        Self::AiConnections,
+        Self::Logs,
+        Self::About,
+        Self::Ledger,
         Self::Units,
         Self::Institutions,
         Self::Accounts,
@@ -155,12 +164,9 @@ impl SettingsPage {
         Self::Payees,
         Self::Documents,
         Self::Inventory,
-        Self::AiConnections,
         Self::SyncServer,
         Self::Backup,
         Self::History,
-        Self::Logs,
-        Self::About,
     ];
 
     /// This page's position in [`Self::ALL`].
@@ -180,6 +186,7 @@ impl SettingsPage {
     pub fn label(self) -> String {
         match self {
             Self::General => msg::tui_settings_page_general(),
+            Self::Ledger => msg::tui_settings_page_ledger(),
             Self::Display => msg::tui_settings_page_display(),
             Self::Units => msg::tui_settings_page_units(),
             Self::Institutions => msg::tui_settings_page_institutions(),
@@ -202,6 +209,7 @@ impl SettingsPage {
     pub fn description(self) -> String {
         match self {
             Self::General => msg::tui_settings_description_general(),
+            Self::Ledger => msg::tui_settings_description_ledger(),
             Self::Display => msg::tui_settings_description_display(),
             Self::Units => msg::tui_settings_description_units(),
             Self::Institutions => msg::tui_settings_description_institutions(),
@@ -220,25 +228,19 @@ impl SettingsPage {
         }
     }
 
-    /// Where the page's values live, by the Preference / Configuration split (ADR-0014). Display
-    /// mixes both, so it takes the scope of most of its rows and marks each row itself.
-    pub fn scope(self) -> Scope {
+    /// The index group the page sits under.
+    pub fn group(self) -> Group {
         match self {
-            Self::General
-            | Self::Units
-            | Self::Institutions
-            | Self::Accounts
-            | Self::Categories
-            | Self::Tags
-            | Self::Payees
-            | Self::Documents
-            | Self::Inventory
-            | Self::History => Scope::Synced,
-            Self::Display | Self::AiConnections | Self::SyncServer | Self::Backup | Self::Logs => {
-                Scope::ThisDevice
+            Self::General | Self::Display | Self::AiConnections | Self::Logs | Self::About => {
+                Group::ThisDevice
             }
-            Self::About => Scope::None,
+            _ => Group::ThisLedger,
         }
+    }
+
+    /// Whether the page needs an Open Ledger: every this ledger page does.
+    pub fn needs_ledger(self) -> bool {
+        self.group() == Group::ThisLedger
     }
 
     /// The page heading's right-aligned scope note. Counts join it as each page's stage derives
@@ -246,6 +248,7 @@ impl SettingsPage {
     pub fn scope_note(self) -> String {
         match self {
             Self::General => msg::tui_settings_scope_general(),
+            Self::Ledger => msg::tui_settings_scope_ledger(),
             Self::Display => msg::tui_settings_scope_display(),
             Self::Units
             | Self::Institutions
@@ -271,6 +274,7 @@ impl SettingsPage {
     pub fn command_name(self) -> &'static str {
         match self {
             Self::General => "general",
+            Self::Ledger => "ledger",
             Self::Display => "display",
             Self::Units => "units",
             Self::Institutions => "institutions",
@@ -342,7 +346,10 @@ pub struct SettingsView {
     units: Option<TuiPorts>,
     /// `Some` while a field is open in place.
     editor: Option<FieldEditor>,
+    /// Whether a Ledger is open: without one the this ledger pages are refused.
+    ledger_open: bool,
     general: general::GeneralPage,
+    ledger: ledger::LedgerPage,
     display: display::DisplayPage,
     /// Settings › Units, on the Open Ledger's Units; `None` for a View built without one.
     units_page: Option<units::UnitsPage>,
@@ -402,7 +409,9 @@ impl SettingsView {
             values,
             units: units.map(|setup| setup.ports.clone()),
             editor: None,
-            general: general::GeneralPage::default(),
+            ledger_open: true,
+            general: general::GeneralPage::new(),
+            ledger: ledger::LedgerPage::default(),
             display: display::DisplayPage::new(),
             units_page: units.map(units::UnitsPage::new),
             accounts: accounts::AccountsPage::new(),
@@ -419,6 +428,36 @@ impl SettingsView {
             logs: logs::LogsPage::new(logs),
             about: about::AboutPage::default(),
         }
+    }
+
+    /// With no Ledger open: the this ledger pages are refused, and a remembered one gives way to
+    /// General (TUI-059).
+    pub fn without_ledger(mut self) -> Self {
+        self.ledger_open = false;
+        self.leave_this_ledger();
+        self
+    }
+
+    /// Selects General in place of a this ledger page, with no Ledger open.
+    fn leave_this_ledger(&mut self) {
+        if self.refused(self.selected()) {
+            self.selected.set(SettingsPage::General);
+        }
+    }
+
+    /// Whether `page` can't open: it needs a Ledger and none is open.
+    fn refused(&self, page: SettingsPage) -> bool {
+        !self.ledger_open && page.needs_ledger()
+    }
+
+    /// Shows `page` as [`Self::open_page`] does, or, when it is refused, answers
+    /// [`Action::NoLedgerOpen`] and leaves everything as it was.
+    fn go_to(&mut self, page: SettingsPage) -> Action {
+        if self.refused(page) {
+            return Action::NoLedgerOpen;
+        }
+        self.open_page(page);
+        Action::NoOp
     }
 
     /// The ledger-data list page for `page`, among those on the shared [`list::Page`] pattern.
@@ -474,10 +513,7 @@ impl SettingsView {
             // View (`view::accounts`).
             KeyCode::Home => Step::First,
             KeyCode::Char('G') | KeyCode::End => Step::Last,
-            KeyCode::Enter | KeyCode::Char('l') => {
-                self.open_page(self.selected());
-                return Some(Action::NoOp);
-            }
+            KeyCode::Enter | KeyCode::Char('l') => return Some(self.go_to(self.selected())),
             _ => return None,
         };
         self.selected.set(self.selected().step(step));
@@ -486,14 +522,8 @@ impl SettingsView {
 
     fn handle_page_key(&mut self, key: KeyEvent) -> Option<Action> {
         match key.code {
-            KeyCode::Char('[') => {
-                self.selected.set(self.selected().step(Step::Prev));
-                Some(Action::NoOp)
-            }
-            KeyCode::Char(']') => {
-                self.selected.set(self.selected().step(Step::Next));
-                Some(Action::NoOp)
-            }
+            KeyCode::Char('[') => Some(self.go_to(self.selected().step(Step::Prev))),
+            KeyCode::Char(']') => Some(self.go_to(self.selected().step(Step::Next))),
             // Docked, every page is in view, so there is no picker; `p` is still taken, so it
             // does nothing rather than reach the Shell.
             KeyCode::Char('p') => {
@@ -504,6 +534,7 @@ impl SettingsView {
             }
             _ => match self.selected() {
                 SettingsPage::General => self.general.handle_key(key),
+                SettingsPage::Ledger => self.ledger.handle_key(key),
                 SettingsPage::Display => {
                     let hint_bar = self.values.borrow().configuration.hint_bar;
                     self.display.handle_key(key, hint_bar)
@@ -523,6 +554,7 @@ impl SettingsView {
     fn page_hints(&self) -> Vec<(String, String)> {
         match self.selected() {
             SettingsPage::General => general::GeneralPage::hints(),
+            SettingsPage::Ledger => ledger::LedgerPage::hints(),
             SettingsPage::Display => display::DisplayPage::hints(),
             SettingsPage::Units => self
                 .units_page
@@ -551,6 +583,7 @@ impl SettingsView {
             Outcome::SaveAndNext(value) => {
                 match field.page() {
                     SettingsPage::General => self.general.step(Step::Next),
+                    SettingsPage::Ledger => self.ledger.step(Step::Next),
                     _ => self.display.step(Step::Next),
                 }
                 Action::SetSetting(field, Some(value))
@@ -570,16 +603,21 @@ impl SettingsView {
             let values = self.values.borrow();
             let context = self.context(&values);
             match field.page() {
-                SettingsPage::General => general::draft(field, &context),
+                SettingsPage::General => self.general.draft(field, &context),
+                SettingsPage::Ledger => ledger::draft(field, &context),
                 _ => self.display.draft(field, &context),
             }
         };
         let Some((draft, was)) = opened else {
             return;
         };
+        if self.refused(field.page()) {
+            return;
+        }
         self.open_page(field.page());
         match field.page() {
             SettingsPage::General => self.general.select(field),
+            SettingsPage::Ledger => self.ledger.select(field),
             _ => self.display.select(field),
         }
         self.editor = Some(FieldEditor::new(field, draft, was));
@@ -613,7 +651,7 @@ impl SettingsView {
     }
 }
 
-/// What General and Display read on each draw besides their own selection.
+/// What General, Ledger and Display read on each draw besides their own selection.
 struct Context<'a> {
     values: &'a SettingsValues,
     /// The Open Ledger's Units ports; `None` for a View built without them.
@@ -646,10 +684,7 @@ impl View for SettingsView {
         }
         if let Some(picker) = &mut self.picker {
             return match picker.handle_key(key) {
-                picker::Outcome::Open(page) => {
-                    self.open_page(page);
-                    Some(Action::NoOp)
-                }
+                picker::Outcome::Open(page) => Some(self.go_to(page)),
                 picker::Outcome::Close => {
                     self.picker = None;
                     Some(Action::NoOp)
@@ -670,8 +705,11 @@ impl View for SettingsView {
             Action::OpenSettings => {
                 self.showing = Showing::Index;
                 self.picker = None;
+                self.leave_this_ledger();
             }
-            Action::OpenSettingsPage(page) => self.open_page(*page),
+            Action::OpenSettingsPage(page) => {
+                self.go_to(*page);
+            }
             Action::SetSetting(field, None) => self.open_field(*field),
             Action::SetSetting(field, Some(value)) => {
                 if self
@@ -734,6 +772,9 @@ impl View for SettingsView {
     /// Opens the command's page, closing whatever was open over it, then runs its key.
     fn run_page_command(&mut self, command: PageCommand) -> Option<Action> {
         self.back_to_page();
+        if self.refused(command.page()) {
+            return Some(Action::NoLedgerOpen);
+        }
         self.open_page(command.page());
         Some(match command {
             PageCommand::Sync(command) => self.sync_server.run(command),
@@ -761,7 +802,7 @@ impl View for SettingsView {
             vec![(back.to_string(), msg::tui_settings_hint_close_dialog())]
         } else {
             match self.showing {
-                Showing::Index => index::hints(back, self.docked()),
+                Showing::Index => index::hints(back, self.docked(), self.ledger_open),
                 Showing::Page => {
                     let mut hints = self.page_hints();
                     hints.push(("[/]".into(), msg::tui_settings_hint_pages()));
@@ -781,7 +822,7 @@ impl View for SettingsView {
     }
 
     fn set_toasts_on(&mut self, on: bool) {
-        self.display.set_toasts_on(on);
+        self.general.set_toasts_on(on);
     }
 
     /// Docking closes the picker, which only Medium has; the page and the focus stay.
@@ -799,7 +840,7 @@ impl View for SettingsView {
         let inner = area.inner(Margin::new(1, 0));
         if size == WindowSize::Medium {
             match self.showing {
-                Showing::Index => index::render(frame, inner, self.selected(), c),
+                Showing::Index => index::render(frame, inner, self.selected(), self.ledger_open, c),
                 Showing::Page => self.render_page(frame, inner, false, true, c),
             }
         } else {
@@ -810,7 +851,14 @@ impl View for SettingsView {
                 Constraint::Min(0),
             ])
             .areas(inner);
-            index::render_docked(frame, dock, self.selected(), index_focused, c);
+            index::render_docked(
+                frame,
+                dock,
+                self.selected(),
+                index_focused,
+                self.ledger_open,
+                c,
+            );
             let page = match &self.units_page {
                 // X-Large docks the Units detail pane at the View's right edge (TUI-055).
                 Some(units) if self.selected() == SettingsPage::Units && units.has_pane() => {
@@ -829,7 +877,7 @@ impl View for SettingsView {
         }
         if let Some(picker) = &self.picker {
             frame.render_widget(crate::popup::Dim, area);
-            picker.render(frame, area, self.selected(), c);
+            picker.render(frame, area, self.selected(), self.ledger_open, c);
         } else if self.logs.confirm_open() {
             frame.render_widget(crate::popup::Dim, area);
             self.logs.render_confirm(frame, area, c);
@@ -891,10 +939,25 @@ impl SettingsView {
         };
         render_heading(frame, heading, title, &note, c);
         let body = body.inner(Margin::new(0, 1));
+        // Docked, a this ledger page is in view beside the index with no Ledger to show.
+        if self.refused(page) {
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    msg::tui_status_no_ledger_open(
+                        crate::shell::OPEN_COMMAND,
+                        crate::shell::NEW_COMMAND,
+                    ),
+                    c.muted(),
+                )),
+                body,
+            );
+            return;
+        }
         let values = self.values.borrow();
         let context = self.context(&values);
         match page {
             SettingsPage::General => self.general.render(frame, body, focused, &context, c),
+            SettingsPage::Ledger => self.ledger.render(frame, body, focused, &context, c),
             SettingsPage::Display => self.display.render(frame, body, focused, &context, c),
             SettingsPage::Units => {
                 if let Some(units) = &self.units_page {
@@ -970,10 +1033,8 @@ const FIELD_LABEL_WIDTH: u16 = 22;
 /// The value column of a form page's field rows.
 const FIELD_VALUE_WIDTH: u16 = 28;
 
-/// One row of a form page: an optional scope glyph (Display marks each row, as it mixes scopes),
-/// the field, whose label it shows, its value and a dim note.
+/// One row of a form page: the field, whose label it shows, its value and a dim note.
 struct FieldRow {
-    glyph: Option<Scope>,
     field: SettingField,
     value: String,
     note: String,
@@ -1030,20 +1091,12 @@ fn render_form(
         } else {
             Style::default()
         };
-        let glyph_width = if row.glyph.is_some() { 2 } else { 0 };
-        let [glyph, label, value, note] = Layout::horizontal([
-            Constraint::Length(glyph_width),
+        let [label, value, note] = Layout::horizontal([
             Constraint::Length(FIELD_LABEL_WIDTH),
             Constraint::Length(FIELD_VALUE_WIDTH),
             Constraint::Min(0),
         ])
         .areas(*row_area);
-        if let Some(scope) = row.glyph {
-            frame.render_widget(
-                Paragraph::new(Span::styled(scope.glyph(), value_style)),
-                glyph,
-            );
-        }
         frame.render_widget(Paragraph::new(Span::styled(row.field.label(), dim)), label);
         frame.render_widget(
             Paragraph::new(Span::styled(
@@ -1184,7 +1237,7 @@ mod tests {
                 .contains("Settings › General"),
             "{text}"
         );
-        assert!(!text.contains("○ this device only"), "{text}");
+        assert!(!text.contains("this device \u{2500}"), "{text}");
         assert_eq!(cell(&text, 112, 1), "━", "{text}");
         assert_eq!(cell(&text, 113, 1), " ", "{text}");
 
@@ -1195,7 +1248,7 @@ mod tests {
             let text = render_at(&at(size, Some(SettingsPage::General)), width, height);
             let heading = text.lines().next().unwrap_or_default();
             assert!(
-                heading.contains("Settings") && heading.contains("16 pages"),
+                heading.contains("Settings") && heading.contains("17 pages"),
                 "{text}"
             );
             assert!(!text.contains("Settings ›"), "{text}");
@@ -1214,9 +1267,9 @@ mod tests {
             for page in SettingsPage::ALL {
                 assert!(text.contains(&page.label()), "{page:?} at {width}:\n{text}");
             }
-            assert!(text.contains("● syncs with the ledger"), "{text}");
-            assert!(text.contains("○ this device only"), "{text}");
-            assert!(text.contains("ledger name"), "{text}");
+            assert!(text.contains("this device \u{2500}"), "{text}");
+            assert!(text.contains("this ledger \u{2500}"), "{text}");
+            assert!(text.contains("on start"), "{text}");
         }
     }
 
@@ -1226,7 +1279,8 @@ mod tests {
         // TUI-050: the page focused, its field reversed and the index's open page barred.
         let view = at(WindowSize::Large, Some(SettingsPage::General));
         let text = render_at(&view, 171, 53);
-        assert_eq!(cell(&text, 1, 2), "▌", "{text}");
+        // Below the heading, its rule and the this device heading.
+        assert_eq!(cell(&text, 1, 3), "▌", "{text}");
         let c = Colours::default();
         let mut terminal =
             Terminal::new(TestBackend::new(171, 53)).expect("test backend should initialise");
@@ -1236,7 +1290,7 @@ mod tests {
         let buffer = terminal.backend().buffer();
         // The index row for General is not reversed; the page's first field, three rows below
         // its heading, is.
-        assert_ne!(buffer[(5, 2)].style().bg, c.selection().bg);
+        assert_ne!(buffer[(5, 3)].style().bg, c.selection().bg);
         assert_eq!(buffer[(40, 3)].style().bg, c.selection().bg);
 
         // TUI-051: the index focused, its selection reversed, no bar, and no field reversed.
@@ -1246,7 +1300,7 @@ mod tests {
             .draw(|frame| view.view(frame, frame.area(), WindowSize::Large, &c))
             .expect("drawing the settings view should not error");
         let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(5, 3)].style().bg, c.selection().bg);
+        assert_eq!(buffer[(5, 4)].style().bg, c.selection().bg);
         assert_ne!(buffer[(40, 3)].style().bg, c.selection().bg);
         let text = render_at(&view, 171, 53);
         assert!(!text.contains('▌'), "{text}");
@@ -1279,11 +1333,11 @@ mod tests {
         let mut view = at(WindowSize::Large, Some(SettingsPage::General));
         press(&mut view, &[KeyCode::Char('[')]);
         assert_eq!(view.selected(), SettingsPage::General);
-        view.update(&Action::OpenSettingsPage(SettingsPage::About));
+        view.update(&Action::OpenSettingsPage(SettingsPage::History));
         press(&mut view, &[KeyCode::Char(']')]);
-        assert_eq!(view.selected(), SettingsPage::About);
+        assert_eq!(view.selected(), SettingsPage::History);
         press(&mut view, &[KeyCode::Char('[')]);
-        assert_eq!(view.selected(), SettingsPage::Logs);
+        assert_eq!(view.selected(), SettingsPage::Backup);
         assert_eq!(view.showing, Showing::Page, "focus stays on the page");
 
         assert_eq!(
@@ -1302,23 +1356,23 @@ mod tests {
         view.set_window_size(WindowSize::Large);
         assert_eq!(
             (view.showing, view.selected()),
-            (Showing::Index, SettingsPage::Units)
+            (Showing::Index, SettingsPage::AiConnections)
         );
         view.set_window_size(WindowSize::Medium);
         assert_eq!(
             (view.showing, view.selected()),
-            (Showing::Index, SettingsPage::Units)
+            (Showing::Index, SettingsPage::AiConnections)
         );
 
         // A page keeps its own field selection; docking closes the Medium-only picker.
-        let mut view = at(WindowSize::Medium, Some(SettingsPage::General));
+        let mut view = at(WindowSize::Medium, Some(SettingsPage::Ledger));
         press(&mut view, &[KeyCode::Char('j'), KeyCode::Char('p')]);
         assert!(view.popup_open());
         view.set_window_size(WindowSize::XLarge);
         assert!(!view.popup_open());
         assert_eq!(
             (view.showing, view.selected()),
-            (Showing::Page, SettingsPage::General)
+            (Showing::Page, SettingsPage::Ledger)
         );
         view.set_window_size(WindowSize::Medium);
         assert_eq!(
@@ -1392,11 +1446,11 @@ mod tests {
         press(&mut view, &[KeyCode::Char('k')]);
         assert_eq!(view.selected(), SettingsPage::General);
         press(&mut view, &[KeyCode::Char('j'), KeyCode::Down]);
-        assert_eq!(view.selected(), SettingsPage::Units);
+        assert_eq!(view.selected(), SettingsPage::AiConnections);
         press(&mut view, &[KeyCode::Char('G')]);
-        assert_eq!(view.selected(), SettingsPage::About);
+        assert_eq!(view.selected(), SettingsPage::History);
         press(&mut view, &[KeyCode::Char('j')]);
-        assert_eq!(view.selected(), SettingsPage::About);
+        assert_eq!(view.selected(), SettingsPage::History);
         press(&mut view, &[KeyCode::Home]);
         assert_eq!(view.selected(), SettingsPage::General);
         assert_eq!(view.showing, Showing::Index);
@@ -1408,11 +1462,11 @@ mod tests {
             let mut view = SettingsView::new();
             press(&mut view, &[KeyCode::Char('j'), KeyCode::Char('j'), open]);
             assert_eq!(view.showing, Showing::Page);
-            assert_eq!(view.selected(), SettingsPage::Units);
+            assert_eq!(view.selected(), SettingsPage::AiConnections);
 
             assert!(view.back(), "back on a page stays in Settings");
             assert_eq!(view.showing, Showing::Index);
-            assert_eq!(view.selected(), SettingsPage::Units);
+            assert_eq!(view.selected(), SettingsPage::AiConnections);
             assert!(!view.back(), "back on the index leaves Settings");
         }
     }
@@ -1427,11 +1481,16 @@ mod tests {
         press(&mut view, &[KeyCode::Char('[')]);
         assert_eq!(view.selected(), SettingsPage::General);
 
+        // This device runs into this ledger.
         view.update(&Action::OpenSettingsPage(SettingsPage::About));
         press(&mut view, &[KeyCode::Char(']')]);
-        assert_eq!(view.selected(), SettingsPage::About);
+        assert_eq!(view.selected(), SettingsPage::Ledger);
+
+        view.update(&Action::OpenSettingsPage(SettingsPage::History));
+        press(&mut view, &[KeyCode::Char(']')]);
+        assert_eq!(view.selected(), SettingsPage::History);
         press(&mut view, &[KeyCode::Char('[')]);
-        assert_eq!(view.selected(), SettingsPage::Logs);
+        assert_eq!(view.selected(), SettingsPage::Backup);
         assert_eq!(view.showing, Showing::Page);
     }
 
@@ -1466,7 +1525,7 @@ mod tests {
         press(&mut view, &[KeyCode::Char('G')]);
         assert_eq!(
             view.picker.as_ref().map(Picker::selected),
-            Some(SettingsPage::About)
+            Some(SettingsPage::History)
         );
         press(&mut view, &[KeyCode::Char('g')]);
         assert_eq!(
@@ -1530,34 +1589,141 @@ mod tests {
     }
 
     #[test]
-    fn the_index_lists_every_page_with_its_glyph_and_description() {
+    fn the_index_lists_every_page_with_its_description() {
         crate::locale::init_for_tests();
         let text = render(&SettingsView::new());
         assert!(text.contains("Settings"), "{text}");
-        assert!(text.contains("16 pages"), "{text}");
+        assert!(text.contains("17 pages"), "{text}");
         for page in SettingsPage::ALL {
             let row = text
                 .lines()
-                .find(|line| line.contains(&page.label()))
-                .unwrap_or_else(|| panic!("{page:?} missing:\n{text}"));
-            assert!(
-                row.contains(page.scope().glyph()),
-                "{page:?}'s glyph:\n{row}"
-            );
-            let start: String = page.description().chars().take(20).collect();
-            assert!(row.contains(&start), "{page:?}'s description:\n{row}");
+                .find(|line| {
+                    line.contains(&page.description().chars().take(20).collect::<String>())
+                })
+                .unwrap_or_default();
+            assert!(row.contains(&page.label()), "{page:?} missing:\n{text}");
         }
+        assert!(!text.contains('\u{25cf}'), "a scope glyph:\n{text}");
     }
 
     #[test]
-    fn the_index_pins_its_legend_to_the_bottom_on_a_taller_terminal() {
+    fn the_index_groups_its_pages_under_this_device_then_this_ledger() {
         crate::locale::init_for_tests();
-        for height in [28, 50] {
-            let text = render_at(&SettingsView::new(), 96, height);
-            let last = text.lines().last().unwrap_or_default();
-            assert!(last.contains("syncs with the ledger"), "{height}:\n{text}");
-            assert!(last.contains("this device only"), "{height}:\n{text}");
-        }
+        let text = render(&SettingsView::new());
+        let row = |needle: &str| text.lines().position(|line| line.contains(needle));
+        let rows = [
+            row("this device \u{2500}"),
+            row("on start, toasts"),
+            row("version, licences"),
+            row("this ledger \u{2500}"),
+            row("ledger name, owner"),
+            row("every change"),
+        ];
+        assert!(rows.iter().all(Option::is_some), "{rows:?}\n{text}");
+        assert!(rows.is_sorted(), "{rows:?}\n{text}");
+    }
+
+    #[test]
+    fn with_no_ledger_open_the_index_counts_and_dims_the_this_ledger_pages() {
+        crate::locale::init_for_tests();
+        let c = Colours::default();
+        let view = SettingsView::new().without_ledger();
+        let mut terminal =
+            Terminal::new(TestBackend::new(96, 28)).expect("test backend should initialise");
+        terminal
+            .draw(|frame| view.view(frame, frame.area(), WindowSize::Medium, &c))
+            .expect("drawing the settings view should not error");
+        let buffer = terminal.backend().buffer();
+        let muted = c.muted().fg;
+        // The colour of `label`'s first cell, on the row that names it at the name column.
+        let name_colour = |label: &str| {
+            (0..buffer.area.height).find_map(|y| {
+                let row: String = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
+                row.starts_with(&format!(" {label} "))
+                    .then(|| buffer[(1, y)].fg)
+            })
+        };
+        assert_eq!(name_colour("Units"), muted);
+        assert_eq!(name_colour("History"), muted);
+        assert_ne!(name_colour("Display"), muted);
+        let heading: String = (0..buffer.area.width)
+            .map(|x| buffer[(x, 0)].symbol())
+            .collect();
+        assert!(
+            heading.contains("17 pages \u{b7} 5 without a Ledger"),
+            "{heading}"
+        );
+    }
+
+    #[test]
+    fn with_no_ledger_open_a_this_ledger_page_is_refused_and_nothing_moves() {
+        let mut view = SettingsView::new().without_ledger();
+        press(&mut view, &[KeyCode::Char('G')]);
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::NoLedgerOpen)
+        );
+        assert_eq!(view.showing, Showing::Index);
+
+        view.update(&Action::OpenSettingsPage(SettingsPage::About));
+        assert_eq!(
+            view.handle_key(key(KeyCode::Char(']'))),
+            Some(Action::NoLedgerOpen)
+        );
+        assert_eq!(view.selected(), SettingsPage::About);
+
+        press(&mut view, &[KeyCode::Char('p'), KeyCode::Char('j')]);
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::NoLedgerOpen)
+        );
+        assert!(view.popup_open(), "the picker stays open");
+        assert_eq!(view.selected(), SettingsPage::About);
+
+        view.update(&Action::OpenSettingsPage(SettingsPage::Units));
+        assert_eq!(view.selected(), SettingsPage::About);
+        assert_eq!(
+            view.run_page_command(PageCommand::Sync(SyncCommand::Now)),
+            Some(Action::NoLedgerOpen)
+        );
+    }
+
+    #[test]
+    fn with_no_ledger_open_a_remembered_this_ledger_page_gives_way_to_general() {
+        let remembered = Rc::new(Cell::new(SettingsPage::Tags));
+        let view = SettingsView::remembering(
+            Rc::clone(&remembered),
+            Rc::default(),
+            None,
+            LogBuffer::new(4),
+        )
+        .without_ledger();
+        assert_eq!(view.selected(), SettingsPage::General);
+
+        remembered.set(SettingsPage::Logs);
+        let view = SettingsView::remembering(remembered, Rc::default(), None, LogBuffer::new(4))
+            .without_ledger();
+        assert_eq!(view.selected(), SettingsPage::Logs);
+    }
+
+    #[test]
+    fn with_no_ledger_open_a_docked_this_ledger_page_says_so_and_won_t_take_focus() {
+        crate::locale::init_for_tests();
+        let mut view = SettingsView::new().without_ledger();
+        view.set_window_size(WindowSize::Large);
+        press(&mut view, &[KeyCode::Char('G')]);
+        let text = render_at(&view, 171, 40);
+        assert!(
+            text.contains("No Ledger open: :open or :new first"),
+            "{text}"
+        );
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::NoLedgerOpen)
+        );
+        assert_eq!(view.showing, Showing::Index);
     }
 
     #[test]

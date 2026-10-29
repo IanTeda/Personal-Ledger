@@ -189,7 +189,7 @@ mod tests {
         let text = render_at(&sync_page(), 96, 30);
         for needle in [
             "Settings › Sync server",
-            "this device · synced · every 30 seconds",
+            "this ledger · synced · every 30 seconds",
             "server url",
             "sync.ledger.localhost",
             "● connected",

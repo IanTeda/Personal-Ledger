@@ -1,4 +1,4 @@
-//! Keyboard tests for the Ledger file commands (#871): the Shell starts with no Ledger open, and
+//! Keyboard tests for the Ledger file commands (#871, #910): the Shell starts by On start, and
 //! `:open`, `:new` and `:close` act on a real Ledger file in a throwaway directory.
 
 mod common;
@@ -249,6 +249,132 @@ fn add_gold(shell: &mut bin_tui::Shell) {
     press(shell, "Enter");
 }
 
+/// A Ledger file at `path`, created and migrated as `:new` would.
+fn ledger_file(path: &std::path::Path) {
+    assert!(
+        lib_database::open_storage(path, chrono::Local::now().date_naive(), "Personal").is_ok(),
+        "a Ledger file to open"
+    );
+}
+
+/// On start set to start with no Ledger open.
+fn no_ledger_on_start() -> lib_core::ClientPreferences {
+    lib_core::ClientPreferences {
+        on_start: lib_core::OnStart::NoLedger,
+        ..lib_core::ClientPreferences::default()
+    }
+}
+
+#[test]
+fn reopen_last_ledger_opens_the_remembered_ledger_file_at_start() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    ledger_file(&path);
+    let mut shell = cold_shell(None);
+
+    shell.open_on_start(Some(&path));
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("Opened ledger household.pldb"), "{frame}");
+    assert!(
+        hint_bar(&frame).trim_end().ends_with("household.pldb"),
+        "{frame}"
+    );
+}
+
+#[test]
+fn start_with_no_ledger_open_ignores_the_remembered_ledger_file() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    ledger_file(&path);
+    let mut shell = cold_shell(None).with_client_preferences(&no_ledger_on_start());
+
+    shell.open_on_start(Some(&path));
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("No Ledger open."), "{frame}");
+}
+
+#[test]
+fn an_explicit_file_opens_at_start_whatever_on_start_says() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let explicit = directory.path().join("explicit.pldb");
+    let remembered = directory.path().join("remembered.pldb");
+    ledger_file(&explicit);
+    ledger_file(&remembered);
+    let mut shell = cold_shell(Some(&explicit)).with_client_preferences(&no_ledger_on_start());
+
+    shell.open_on_start(Some(&remembered));
+    let frame = screen(&mut shell);
+
+    assert!(
+        hint_bar(&frame).trim_end().ends_with("explicit.pldb"),
+        "{frame}"
+    );
+}
+
+#[test]
+fn a_remembered_file_that_won_t_open_raises_an_error_toast_and_starts_with_none_open() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("gone.pldb");
+    let mut shell = cold_shell(None);
+
+    shell.open_on_start(Some(&path));
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains("\u{2717} Couldn't open ledger gone.pldb"),
+        "{frame}"
+    );
+    assert!(frame.contains("No Ledger open."), "{frame}");
+    assert!(!path.exists(), "a failed open created the file");
+}
+
+#[test]
+fn open_over_an_open_ledger_that_fails_keeps_the_open_ledger() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    let notes = directory.path().join("notes.pldb");
+    std::fs::write(&notes, "not a database").expect("a file to write");
+    let mut shell = cold_shell(None);
+    run_command(&mut shell, &format!("new {}", path.display()));
+    add_gold(&mut shell);
+
+    run_command(&mut shell, &format!("open {}", notes.display()));
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains("\u{2717} Couldn't open ledger notes.pldb"),
+        "{frame}"
+    );
+    assert!(
+        hint_bar(&frame).trim_end().ends_with("household.pldb"),
+        "{frame}"
+    );
+    assert!(frame.contains("xau"), "the Units View closed:\n{frame}");
+}
+
+#[test]
+fn open_over_an_open_ledger_swaps_to_the_new_file_on_the_dashboard() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let first = directory.path().join("household.pldb");
+    let second = directory.path().join("business.pldb");
+    ledger_file(&second);
+    let mut shell = cold_shell(None);
+    run_command(&mut shell, &format!("new {}", first.display()));
+    add_gold(&mut shell);
+
+    run_command(&mut shell, &format!("open {}", second.display()));
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("Opened ledger business.pldb"), "{frame}");
+    assert!(
+        hint_bar(&frame).trim_end().ends_with("business.pldb"),
+        "{frame}"
+    );
+    assert!(!frame.contains("xau"), "still on the Units View:\n{frame}");
+}
+
 #[test]
 fn with_no_ledger_open_a_jump_is_refused_on_the_status_line() {
     let mut shell = cold_shell(None);
@@ -265,7 +391,13 @@ fn with_no_ledger_open_a_jump_is_refused_on_the_status_line() {
 
 #[test]
 fn with_no_ledger_open_a_command_is_refused_on_the_status_line() {
-    for command in ["settings", "unit", "dashboard", "close", "report list"] {
+    for command in [
+        "settings units",
+        "unit",
+        "dashboard",
+        "close",
+        "report list",
+    ] {
         let mut shell = cold_shell(None);
 
         run_command(&mut shell, command);

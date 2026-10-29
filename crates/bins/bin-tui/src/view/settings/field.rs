@@ -1,5 +1,5 @@
 //! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, the values that
-//! hold for the session only ([`SettingsValues`]), and the Configuration Display writes back to
+//! hold for the session or that `Shell` keeps for the state file ([`SettingsValues`]), and the Configuration Display writes back to
 //! `personal-ledger.conf` ([`Configuration`], #904).
 //!
 //! Opening and saving a field is one [`Action::SetSetting`] with the field and an optional value:
@@ -11,14 +11,18 @@
 
 use chrono::{Datelike, Months, NaiveDate};
 use lib_config::{ConfigKey, ConfigWriter, PersonalLedgerConfig, Shadow, StatusGlyphs};
-use lib_core::DateStyle;
+use lib_core::{DateStyle, OnStart};
 
 use super::SettingsPage;
 use crate::msg;
 
-/// Every field on General and Display.
+/// Every field on General, Ledger and Display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingField {
+    OnStart,
+    Toasts,
+    Locale,
+    LedgerFolder,
     LedgerName,
     Owner,
     FinancialYearStart,
@@ -26,10 +30,8 @@ pub enum SettingField {
     Appearance,
     ColourTheme,
     DateStyle,
-    Locale,
     TerminalColours,
     StatusGlyphs,
-    Toasts,
     HintBar,
 }
 
@@ -38,11 +40,17 @@ pub enum SettingField {
 pub enum ReadOnly {
     /// The Locale is Configuration read at start-up (ADR-0021).
     Locale,
+    /// `data`, the ledger folder, is Configuration read at start-up.
+    LedgerFolder,
 }
 
 impl SettingField {
-    /// Every field, General's then Display's, each in its page's row order.
-    pub const ALL: [SettingField; 12] = [
+    /// Every field, General's, Ledger's then Display's, each in its page's row order.
+    pub const ALL: [SettingField; 14] = [
+        Self::OnStart,
+        Self::Toasts,
+        Self::Locale,
+        Self::LedgerFolder,
         Self::LedgerName,
         Self::Owner,
         Self::FinancialYearStart,
@@ -50,10 +58,8 @@ impl SettingField {
         Self::Appearance,
         Self::ColourTheme,
         Self::DateStyle,
-        Self::Locale,
         Self::TerminalColours,
         Self::StatusGlyphs,
-        Self::Toasts,
         Self::HintBar,
     ];
 
@@ -61,6 +67,8 @@ impl SettingField {
     /// than a Message, as command names are.
     pub fn command_name(self) -> &'static str {
         match self {
+            Self::OnStart => "on-start",
+            Self::LedgerFolder => "ledger-folder",
             Self::LedgerName => "ledger-name",
             Self::Owner => "owner",
             Self::FinancialYearStart => "fy-start",
@@ -86,8 +94,11 @@ impl SettingField {
     /// The page the field's row is on.
     pub fn page(self) -> SettingsPage {
         match self {
-            Self::LedgerName | Self::Owner | Self::FinancialYearStart | Self::BaseUnit => {
+            Self::OnStart | Self::Toasts | Self::Locale | Self::LedgerFolder => {
                 SettingsPage::General
+            }
+            Self::LedgerName | Self::Owner | Self::FinancialYearStart | Self::BaseUnit => {
+                SettingsPage::Ledger
             }
             _ => SettingsPage::Display,
         }
@@ -98,6 +109,7 @@ impl SettingField {
     pub fn read_only(self) -> Option<ReadOnly> {
         match self {
             Self::Locale => Some(ReadOnly::Locale),
+            Self::LedgerFolder => Some(ReadOnly::LedgerFolder),
             _ => None,
         }
     }
@@ -115,10 +127,12 @@ impl SettingField {
     /// The row's label.
     pub fn label(self) -> String {
         match self {
-            Self::LedgerName => msg::tui_settings_general_ledger_name(),
-            Self::Owner => msg::tui_settings_general_owner(),
-            Self::FinancialYearStart => msg::tui_settings_general_financial_year(),
-            Self::BaseUnit => msg::tui_settings_general_base_unit(),
+            Self::OnStart => msg::tui_settings_general_on_start(),
+            Self::LedgerFolder => msg::tui_settings_general_ledger_folder(),
+            Self::LedgerName => msg::tui_settings_ledger_ledger_name(),
+            Self::Owner => msg::tui_settings_ledger_owner(),
+            Self::FinancialYearStart => msg::tui_settings_ledger_financial_year(),
+            Self::BaseUnit => msg::tui_settings_ledger_base_unit(),
             Self::Appearance => msg::tui_settings_setting_colour_appearance(),
             Self::ColourTheme => msg::tui_settings_setting_colour_theme(),
             Self::DateStyle => msg::tui_settings_setting_date_style(),
@@ -132,9 +146,8 @@ impl SettingField {
 
     /// What the status line says when the field is opened or set: why it can't be.
     pub fn refusal(self) -> Option<String> {
-        self.read_only().map(|reason| match reason {
-            ReadOnly::Locale => msg::tui_settings_read_only_locale(self.command_name()),
-        })
+        self.read_only()
+            .map(|_| msg::tui_settings_read_only_restart(self.command_name()))
     }
 }
 
@@ -148,6 +161,20 @@ pub fn month_label(month: u32) -> String {
         1 => msg::tui_settings_month_january(),
         4 => msg::tui_settings_month_april(),
         _ => msg::tui_settings_month_july(),
+    }
+}
+
+/// The On start choices, in the order the field shows them, by the value `:set on-start` takes.
+pub const ON_STARTS: [(&str, OnStart); 2] = [
+    ("reopen", OnStart::ReopenLastLedger),
+    ("none", OnStart::NoLedger),
+];
+
+/// An On start choice's label.
+pub fn on_start_label(on_start: OnStart) -> String {
+    match on_start {
+        OnStart::ReopenLastLedger => msg::tui_settings_on_start_reopen(),
+        OnStart::NoLedger => msg::tui_settings_on_start_none(),
     }
 }
 
@@ -241,12 +268,12 @@ impl Configuration {
     }
 }
 
-/// The values that hold for this session only, shared by every Settings View `Shell` opens.
+/// The values the form pages show, shared by every Settings View `Shell` opens.
 ///
 /// Ledger name, owner and the financial year's start have no Preference columns yet, so they
-/// start on TUI-019's worked values. The date style is a Preference, but neither Client saves
-/// Preferences to the database yet (`lib_database::Preferences` has no adapter), so it lives here
-/// for the session, as the Colour Theme and Appearance do in `Shell`'s `Colours`.
+/// start on TUI-019's worked values and hold for the session. The date style and On start are
+/// Client-scoped Preferences (ADR-0051): `Shell` reads them back for the state file as it quits,
+/// as it does the Colour Theme and Appearance from its `Colours`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsValues {
     pub ledger_name: String,
@@ -254,6 +281,12 @@ pub struct SettingsValues {
     /// The month the financial year starts on, 1–12.
     pub financial_year_start: u32,
     pub date_style: Option<DateStyle>,
+    pub on_start: OnStart,
+    /// `data`, the folder `:open` and `:new` start in, as read at start-up.
+    pub ledger_folder: std::path::PathBuf,
+    /// The Ledger file On start's Reopen last Ledger would reopen were the TUI to quit now: the
+    /// Open Ledger's, which `Shell` keeps here. `None` with no Ledger open.
+    pub last_ledger: Option<std::path::PathBuf>,
     /// Not the session's: `Shell` writes it to the file, then sets it here for the rows.
     pub configuration: Configuration,
 }
@@ -266,6 +299,9 @@ impl Default for SettingsValues {
             owner: "Ian Teda".into(),
             financial_year_start: 7,
             date_style: None,
+            on_start: OnStart::default(),
+            ledger_folder: PersonalLedgerConfig::default().data().to_path_buf(),
+            last_ledger: None,
             configuration: Configuration::default(),
         }
     }
@@ -296,6 +332,15 @@ impl SettingsValues {
                     return false;
                 };
                 self.financial_year_start = *month;
+            }
+            SettingField::OnStart => {
+                let Some((_, on_start)) = ON_STARTS
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case(value))
+                else {
+                    return false;
+                };
+                self.on_start = *on_start;
             }
             SettingField::DateStyle => {
                 let Some((_, style)) = DATE_STYLES
@@ -337,6 +382,10 @@ impl SettingsValues {
             SettingField::FinancialYearStart => FINANCIAL_YEAR_STARTS
                 .iter()
                 .find(|(_, month)| *month == self.financial_year_start)
+                .map(|(name, _)| (*name).to_string())?,
+            SettingField::OnStart => ON_STARTS
+                .iter()
+                .find(|(_, on_start)| *on_start == self.on_start)
                 .map(|(name, _)| (*name).to_string())?,
             SettingField::DateStyle => DATE_STYLES
                 .iter()
@@ -418,6 +467,10 @@ mod tests {
         assert!(values.set(SettingField::DateStyle, "iso"));
         assert_eq!(values.date_style, Some(DateStyle::Iso));
         assert!(values.set(SettingField::DateStyle, "default"));
+        assert!(values.set(SettingField::OnStart, "none"));
+        assert_eq!(values.on_start, OnStart::NoLedger);
+        assert_eq!(values.get(SettingField::OnStart).as_deref(), Some("none"));
+        assert!(!values.set(SettingField::OnStart, "sometimes"));
         assert_eq!(values.date_style, None);
         assert!(!values.set(SettingField::Owner, "  "));
         assert!(values.set(SettingField::Owner, "Alex"));

@@ -60,7 +60,7 @@ Invariants:
 
 ### On start
 
-`lib_core::OnStart` is `ReopenLastLedger` (the default) or `NoLedger`. `lib_core::ledger_to_open(on_start, file, remembered)` is the one resolver both Clients ask at start: an explicit `file` wins; otherwise Reopen last Ledger opens the remembered path, or none, and Start with no Ledger open always says none. The Desktop still needs a Ledger before its window, so with none named it falls back to `<data>/My-Personal-Ledger.pldb` (`bin_desktop::ledger_path`) until #911. The TUI starts with no Ledger open whatever the resolver says until #910.
+`lib_core::OnStart` is `ReopenLastLedger` (the default) or `NoLedger`. `lib_core::ledger_to_open(on_start, file, remembered)` is the one resolver both Clients ask at start: an explicit `file` wins; otherwise Reopen last Ledger opens the remembered path, or none, and Start with no Ledger open always says none. The Desktop still needs a Ledger before its window, so with none named it falls back to `<data>/My-Personal-Ledger.pldb` (`bin_desktop::ledger_path`) until #911. The TUI asks it through `Shell::open_on_start`, which opens the named file as `:open <path>` would: one that won't open raises `toast-ledger-open-failed` and the TUI runs with no Ledger open. The TUI remembers the Open Ledger's path as it quits, so `:close` then quit forgets it.
 
 ## Domain types
 
@@ -121,7 +121,7 @@ Omitted: [settings.md](../settings.md) is a configuration reference and carries 
 ## Open questions and known gaps
 
 - **Neither Settings screen reads or writes `Preferences`.** The row has no columns yet, so `get_or_create_default` has no production call site.
-- **On start has no control yet.** It is read from and written back to each Client's state file unchanged; the General page that sets it is #910 and #911.
+- **On start has no control on the Desktop yet.** The TUI's Settings › General sets it (`:set on-start reopen|none`); the Desktop reads and writes it back unchanged until #911.
 - **The TUI Settings registry does not exist.** The wireframe is explicitly built ahead of "the database-backed registry behind it", and the view has no selection state.
 - **Keybindings are parsed but unused.** `KeyBindingConfig::key_for` is called only from `lib-config`'s own tests; neither bin reads its shortcuts from configuration, and the `g`-leader grammar in [navigation-design.md](../navigation-design.md) is not wired to it.
 - **No Change Set emission.** The preferences table is sync-ready in shape — a normal `RowID` and an `updated_on` trigger — but nothing emits Change Sets on write, so Ledger-scoped Preferences do not actually sync yet.

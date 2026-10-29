@@ -295,7 +295,7 @@ mod tests {
         crate::locale::init_for_tests();
         // TUI-054: nothing on the page changes.
         let text = render_at(&units_page(171), 171, 53);
-        assert!(text.contains("16 pages"), "{text}");
+        assert!(text.contains("17 pages"), "{text}");
         assert!(!text.contains("Settings › Units"), "{text}");
         assert!(
             text.contains("n add unit") && text.contains("[base]"),

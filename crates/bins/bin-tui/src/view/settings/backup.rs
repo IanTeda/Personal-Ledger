@@ -269,7 +269,7 @@ mod tests {
         let text = render_at(&backup_page(), 96, 30);
         for needle in [
             "Settings › Backup",
-            "this device · local files · 2.84 mb",
+            "this ledger · local files · 2.84 mb",
             "LOCAL",
             "store location",
             "~/.ledger/personal",

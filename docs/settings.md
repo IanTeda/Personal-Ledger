@@ -305,7 +305,12 @@ With nothing captured yet the list says "No log entries yet." When entries exist
 
 ## The Settings screen in the TUI
 
-Settings in the TUI has the same two places as the Desktop: an index of pages and one page open. The sixteen pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, AI connections, Sync server, Backup, History, Logs and About. Each index entry has a glyph saying where its values live: `●` stored in the Ledger and synced, `○` on this device only.
+Settings in the TUI has the same two places as the Desktop: an index of pages and one page open. The index lists its seventeen pages in two groups:
+
+- **This device:** General, Display, AI connections, Logs and About. These belong to the computer you are on, never sync, and work with no Ledger open.
+- **This Ledger:** Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server, Backup and History. These are stored in the open Ledger, or act on its file.
+
+With no Ledger open, `g` `s` and `settings` still open Settings, on the page you last left if it is a This device page, otherwise on General. The This Ledger pages are drawn dim, and opening one, by `Enter`, `[` or `]`, the picker or `settings units`, says "No Ledger open: :open or :new first" and leaves you where you were.
 
 - Press `g` `s`, or run `settings`, to open the index with the page you last left selected. `j` and `k` move through it, and `Enter` or `l` opens the page.
 - Run `settings <page>` to open one page directly, for example `settings sync-server`. `Tab` completes the page's name.
@@ -321,9 +326,15 @@ Resizing keeps the page you are on, its selected row and where you were.
 
 ### Editing a field
 
-General and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
+General, Ledger and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
 
-The Locale can't be changed here: it is read from `personal-ledger.conf` when the app starts. Trying to change it says why.
+The Locale and the ledger folder (`data`) can't be changed here: they are read from `personal-ledger.conf` when the app starts. Trying to change either says why.
+
+### On start
+
+Settings › General's **on start** row chooses which Ledger the TUI opens as it starts: **reopen last ledger** (the default) opens the one that was open when you last quit, or none if none was, and **start with no ledger open** always starts with none. Run `set on-start reopen` or `set on-start none` to set it by name. A file named by `--file` or `file` always opens instead. If the file won't open, an error Toast says so and the TUI starts with no Ledger open. Quitting after `close` forgets the last Ledger, so the next start has none to reopen.
+
+Below the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
 ### What Settings writes to personal-ledger.conf
 
@@ -371,7 +382,7 @@ A field name or value that `set` doesn't know is refused on the status line, whi
 
 ## Toasts
 
-A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings: go to Display, where the Toasts row sits above the Colour Theme settings. In the Desktop app it's an On / Off switch; in the TUI, move to the row and press `Enter` to flip it. From the command box you can also run `toasts on` or `toasts off`.
+A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings. In the Desktop app go to Display, where an On / Off switch sits above the Colour Theme settings; in the TUI go to General, move to the Toasts row and press `Enter` or `Space` to flip it. From the command box you can also run `toasts on` or `toasts off`.
 
 With Toasts off, the message shows on the status line at the bottom instead, for as long as the Toast would have shown. Errors still appear as Toasts either way, so you never miss one; the note beside the row says so.
 

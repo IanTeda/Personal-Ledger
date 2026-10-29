@@ -5,11 +5,12 @@ tui-settings-page-count = { $count ->
     [one] { $count } page
    *[other] { $count } pages
 }
-tui-settings-legend = ● syncs with the ledger · ○ this device only
+# With no Ledger open (TUI-059). `$pages` is the page count above, `$count` the formatted count of pages that work without one.
+tui-settings-page-count-without-ledger = { $pages } · { $count } without a Ledger
 tui-settings-picker-title = Go to Settings Page
-# The legend's two halves, one to a row under the docked index (TUI-050), which is too narrow for the one-line legend.
-tui-settings-legend-synced = ● syncs with the ledger
-tui-settings-legend-this-device = ○ this device only
+# The index's two group headings (ADR-0051).
+tui-settings-group-this-device = this device
+tui-settings-group-this-ledger = this ledger
 
 ## A page's breadcrumb heading, before the page's name.
 
@@ -19,6 +20,10 @@ tui-settings-breadcrumb-parent = Settings ›
 
 tui-settings-page-general = General
 tui-settings-page-display = Display
+tui-settings-page-ai-connections = AI connections
+tui-settings-page-logs = Logs
+tui-settings-page-about = About
+tui-settings-page-ledger = Ledger
 tui-settings-page-units = Units
 tui-settings-page-institutions = Institutions
 tui-settings-page-accounts = Accounts
@@ -27,17 +32,15 @@ tui-settings-page-tags = Tags
 tui-settings-page-payees = Payees
 tui-settings-page-documents = Documents
 tui-settings-page-inventory = Inventory
-tui-settings-page-ai-connections = AI connections
 tui-settings-page-sync-server = Sync server
 tui-settings-page-backup = Backup
 tui-settings-page-history = History
-tui-settings-page-logs = Logs
-tui-settings-page-about = About
 
 ## The one-line description beside each page's name on the index page.
 
-tui-settings-description-general = ledger name, owner, financial year and base unit
+tui-settings-description-general = on start, toasts, locale and the ledger folder
 tui-settings-description-display = appearance, colour theme, date style, glyphs and hint bar
+tui-settings-description-ledger = ledger name, owner, financial year and base unit
 tui-settings-description-units = currencies and other units, and their price sources
 tui-settings-description-institutions = banks, brokers and lenders
 tui-settings-description-accounts = every account, its institution and its unit
@@ -55,12 +58,13 @@ tui-settings-description-about = version, licences and links
 
 ## The scope note on the right of each page's heading.
 
-tui-settings-scope-general = preferences · synced · ledger identity
-tui-settings-scope-display = configuration · local · theme syncs
+tui-settings-scope-general = this device · never synced
+tui-settings-scope-display = this device · never synced
+tui-settings-scope-ledger = preferences · synced · ledger identity
 tui-settings-scope-ledger-data = ledger data · synced
 tui-settings-scope-ai-connections = this device
-tui-settings-scope-sync-server = this device · synced · every 30 seconds
-tui-settings-scope-backup = this device · local files · { $size }
+tui-settings-scope-sync-server = this ledger · synced · every 30 seconds
+tui-settings-scope-backup = this ledger · local files · { $size }
 tui-settings-scope-history = all devices
 # `$capacity` is a formatted count.
 tui-settings-scope-logs = this device · diagnostic · last { $capacity } entries
@@ -98,13 +102,31 @@ tui-settings-hint-delete = delete
 tui-settings-hint-open-ledger = open ledger
 tui-settings-hint-open-units-view = open units view
 tui-settings-hint-open-accounts-view = open accounts view
+# The index with no Ledger open (TUI-059), after `:open` and `:new`.
+tui-settings-hint-open-a-ledger = open a ledger
+tui-settings-hint-start-one = start one
 
-## Settings › General's field labels.
+## Settings › General (TUI-058): its field labels and notes, the THIS DEVICE box and the note.
 
-tui-settings-general-ledger-name = ledger name
-tui-settings-general-owner = owner
-tui-settings-general-financial-year = financial year starts
-tui-settings-general-base-unit = base unit
+tui-settings-general-on-start = on start
+tui-settings-on-start-reopen = reopen last ledger
+tui-settings-on-start-none = start with no ledger open
+tui-settings-general-on-start-note = a file named by --file or file wins
+tui-settings-general-ledger-folder = ledger folder
+tui-settings-general-ledger-folder-note = data · read-only
+tui-settings-general-this-device = this device
+tui-settings-general-last-ledger = last ledger
+tui-settings-general-config-file = config file
+# THIS DEVICE with no Ledger open or no config file.
+tui-settings-general-none = none
+tui-settings-general-note = General settings belong to this device and never sync. On start reopens the last ledger above. What travels with the Ledger is under Ledger.
+
+## Settings › Ledger's field labels.
+
+tui-settings-ledger-ledger-name = ledger name
+tui-settings-ledger-owner = owner
+tui-settings-ledger-financial-year = financial year starts
+tui-settings-ledger-base-unit = base unit
 
 ## The financial year's start months.
 
@@ -112,14 +134,14 @@ tui-settings-month-july = july
 tui-settings-month-january = january
 tui-settings-month-april = april
 
-## Settings › General's THIS LEDGER box and its note.
+## Settings › Ledger's THIS LEDGER box and its note.
 
-tui-settings-general-this-ledger = this ledger
-tui-settings-general-accounts = accounts
-tui-settings-general-transactions = transactions
-tui-settings-general-units = units
-tui-settings-general-institutions = institutions
-tui-settings-general-note = Ledger name, owner and financial year hold for this session until the Ledger saves Preferences. The base unit is the Units' own and saves at once.
+tui-settings-ledger-this-ledger = this ledger
+tui-settings-ledger-accounts = accounts
+tui-settings-ledger-transactions = transactions
+tui-settings-ledger-units = units
+tui-settings-ledger-institutions = institutions
+tui-settings-ledger-note = Ledger name, owner and financial year hold for this session until the Ledger saves Preferences. The base unit is the Units' own and saves at once.
 
 ## Settings › Display's field labels, values and notes.
 
@@ -143,11 +165,11 @@ tui-settings-config-shadowed-note = set by { $source }
 tui-settings-display-note-config = Config file rows are read from personal-ledger.conf at start-up; change them there.
 # `$path` is the user's personal-ledger.conf.
 tui-settings-display-note-config-writes = Config file rows save to { $path }.
-tui-settings-display-note-scope = ● rows sync with the ledger. The locale changes only in the file, then a restart.
+tui-settings-display-note-scope = These belong to this device and never sync. Toasts and the locale are on General.
 
 ## Why a field can't be set. `$field` is the name `:set` takes.
 
-tui-settings-read-only-locale = { $field } is read-only: change it in personal-ledger.conf, then restart
+tui-settings-read-only-restart = { $field } is read-only: change it in personal-ledger.conf, then restart
 tui-settings-read-only-config = { $field } is in personal-ledger.conf, and there's no user config directory to write it to
 # `$source` is an environment variable's name or a file's path.
 tui-settings-set-shadowed = { $field } is set by { $source }, which outranks your personal-ledger.conf: change it there

@@ -1,6 +1,7 @@
-//! The Settings page picker (TUI-048): every page in index order in a popup centred in the View,
-//! the command popup's treatment, with a `•` on the open page. All sixteen fit, so there is no
-//! filter, and the mode stays NORMAL.
+//! The Settings page picker (TUI-048): every page in index order under the index's two group
+//! headings, in a popup centred in the View, the command popup's treatment, with a `•` on the open
+//! page. All seventeen fit, so there is no filter, and the mode stays NORMAL. With no Ledger open
+//! the this ledger pages are dim, and `enter` on one is refused by the View (TUI-059).
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_list_cursor::Step;
@@ -12,13 +13,13 @@ use ratatui::{
     widgets::{Block, Clear, Paragraph},
 };
 
-use super::{SettingsPage, index::page_count, render_heading};
+use super::index::{Entry, entries, height, page_count, render_group_heading};
+use super::{SettingsPage, render_heading};
 use crate::colours::Colours;
 use crate::msg;
 
-/// The popup's size in cells, border included: a title row and its rule over the sixteen pages.
+/// The popup's width in cells, border included.
 const WIDTH: u16 = 40;
-const HEIGHT: u16 = 20;
 
 /// What a key did to the picker.
 #[derive(Debug, PartialEq, Eq)]
@@ -61,46 +62,57 @@ impl Picker {
         Outcome::Moved
     }
 
-    /// Draws the popup centred in `area`, the View, with `current` marked.
+    /// Draws the popup centred in `area`, the View, with `current` marked: a title row and its
+    /// rule over the index's rows, inside the border.
     pub(super) fn render(
         &self,
         frame: &mut Frame<'_>,
         area: Rect,
         current: SettingsPage,
+        ledger_open: bool,
         c: &Colours,
     ) {
-        let popup = centred(area, WIDTH, HEIGHT);
+        let popup = centred(area, WIDTH, height() + 4);
         frame.render_widget(Clear, popup);
         let block = Block::bordered();
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
 
-        let pages = u16::try_from(SettingsPage::ALL.len()).unwrap_or(u16::MAX);
         let [heading, rows] =
-            Layout::vertical([Constraint::Length(2), Constraint::Length(pages)]).areas(inner);
+            Layout::vertical([Constraint::Length(2), Constraint::Length(height())]).areas(inner);
         let title = Line::from(Span::styled(
             msg::tui_settings_picker_title(),
             Style::default().add_modifier(Modifier::BOLD),
         ));
-        render_heading(frame, heading, title, &page_count(), c);
+        // The plain count: the picker is too narrow for the no-Ledger note beside its title.
+        render_heading(frame, heading, title, &page_count(true), c);
 
-        let row_areas =
-            Layout::vertical(vec![Constraint::Length(1); SettingsPage::ALL.len()]).split(rows);
-        for (page, row) in SettingsPage::ALL.into_iter().zip(row_areas.iter()) {
-            if page == self.selected {
+        let entries = entries();
+        let row_areas = Layout::vertical(vec![Constraint::Length(1); entries.len()]).split(rows);
+        for (entry, row) in entries.into_iter().zip(row_areas.iter()) {
+            let page = match entry {
+                Entry::Heading(group) => {
+                    render_group_heading(frame, *row, group, c);
+                    continue;
+                }
+                Entry::Gap => continue,
+                Entry::Page(page) => page,
+            };
+            let selected = page == self.selected;
+            if selected {
                 frame.render_widget(Block::new().style(c.selection()), *row);
             }
-            let [mark, name, glyph] = Layout::horizontal([
-                Constraint::Length(2),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
-            .areas(*row);
+            let [mark, name] =
+                Layout::horizontal([Constraint::Length(2), Constraint::Min(0)]).areas(*row);
             if page == current {
                 frame.render_widget(Paragraph::new("•"), mark);
             }
-            frame.render_widget(Paragraph::new(page.label()), name);
-            frame.render_widget(Paragraph::new(page.scope().glyph()), glyph);
+            let style = if !ledger_open && page.needs_ledger() && !selected {
+                c.muted()
+            } else {
+                Style::default()
+            };
+            frame.render_widget(Paragraph::new(Span::styled(page.label(), style)), name);
         }
     }
 }

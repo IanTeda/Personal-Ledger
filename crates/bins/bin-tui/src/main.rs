@@ -58,23 +58,22 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    // No Ledger opens until `:open` or `:new`, whatever On start names: opening it at start is
-    // #910's. The Shell flushes the Open Ledger's writes as it quits, and the file it had open is
-    // remembered for On start.
+    // The Ledger file On start names opens before the first draw; one that won't open leaves
+    // none open behind its Error Toast. The Shell flushes the Open Ledger's writes as it quits, and
+    // the file it had open is remembered for the next start.
     let kept = state::load();
-    let file = config.personal_ledger_config().file();
-    if let Some(path) =
-        lib_core::ledger_to_open(kept.preferences.on_start, file, kept.last_ledger.as_deref())
-    {
-        tracing::debug!(path = %path.display(), "On start names a Ledger; starting with none open");
-    }
-    let mut shell = build_shell(config.keybindings_config().clone(), colours, file)
-        .with_configuration(config.personal_ledger_config(), config.writer().clone())
-        .with_client_preferences(&kept.preferences)
-        .with_log_buffer(logs);
+    let mut shell = build_shell(
+        config.keybindings_config().clone(),
+        colours,
+        config.personal_ledger_config().file(),
+    )
+    .with_configuration(config.personal_ledger_config(), config.writer().clone())
+    .with_client_preferences(&kept.preferences)
+    .with_log_buffer(logs);
+    shell.open_on_start(kept.last_ledger.as_deref());
     let ran = shell.run().await;
     let quit = state::TuiState {
-        preferences: shell.client_preferences(kept.preferences.on_start),
+        preferences: shell.client_preferences(),
         last_ledger: shell.quit_ledger().map(std::path::Path::to_path_buf),
     };
     if let Err(error) = state::save(&quit) {
