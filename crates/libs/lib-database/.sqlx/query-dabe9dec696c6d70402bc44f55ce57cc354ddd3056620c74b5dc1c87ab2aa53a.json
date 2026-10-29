@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM unit_prices WHERE unit_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "dabe9dec696c6d70402bc44f55ce57cc354ddd3056620c74b5dc1c87ab2aa53a"
+}

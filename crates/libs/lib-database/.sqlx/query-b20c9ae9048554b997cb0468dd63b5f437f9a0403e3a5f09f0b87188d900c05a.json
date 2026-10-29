@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE units\n                SET code = ?, name = ?, unit_kind = ?, price_source_id = ?, price_symbol = ?,\n                    quote_unit_id = ?, is_active = ?\n                WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "b20c9ae9048554b997cb0468dd63b5f437f9a0403e3a5f09f0b87188d900c05a"
+}

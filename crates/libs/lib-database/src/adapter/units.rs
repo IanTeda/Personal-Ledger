@@ -1,5 +1,5 @@
 //! The Units adapter: `lib-units`' Units, Price Sources and base Unit ports over the `units`,
-//! `price_sources` and `ledger` tables (ADR-0046).
+//! `unit_prices`, `price_sources` and `ledger` tables (ADR-0046).
 //!
 //! It loads every row into memory, blocking, and serves reads from there. A port write changes
 //! memory at once and joins the [`PendingWrites`] every adapter shares, which the bin commits
@@ -8,12 +8,14 @@
 //! A built-in Price Source has a row only once a person overrides it, and Manual entry never has
 //! one (ADR-0043), so `units.price_source_id` is not a foreign key.
 
-use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+
+use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 use lib_units::{
-    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, LastPrice, PortsMut,
-    PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
-    UnitUsage, Updates,
+    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, PriceLink,
+    PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow, UnitUsage,
+    Updates, WeeklyPrice,
 };
 use sqlx::SqliteConnection;
 
@@ -280,13 +282,13 @@ async fn seed_base_unit(conn: &mut SqliteConnection, id: UnitId) -> Result<()> {
     Ok(())
 }
 
+/// Writes the Unit and its Weekly Prices, which are written afresh: a quote change clears them all
+/// and a price rewrites the current week, so the row's whole list is what lands.
 async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> {
-    let price = unit.last_price.as_ref().map(|last| &last.price);
-    let fetched_at = unit.last_price.as_ref().map(|last| last.fetched_at);
     sqlx::query!(
         "INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol,
-                            quote_unit_id, last_price, last_price_fetched_on, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            quote_unit_id, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              code = excluded.code,
              name = excluded.name,
@@ -294,8 +296,6 @@ async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> 
              price_source_id = excluded.price_source_id,
              price_symbol = excluded.price_symbol,
              quote_unit_id = excluded.quote_unit_id,
-             last_price = excluded.last_price,
-             last_price_fetched_on = excluded.last_price_fetched_on,
              is_active = excluded.is_active",
         unit.id,
         unit.code,
@@ -304,12 +304,28 @@ async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> 
         unit.link.source_id,
         unit.link.symbol,
         unit.link.quote,
-        price,
-        fetched_at,
         unit.is_active,
     )
-    .execute(conn)
+    .execute(&mut *conn)
     .await?;
+    sqlx::query!("DELETE FROM unit_prices WHERE unit_id = ?", unit.id)
+        .execute(&mut *conn)
+        .await?;
+    for price in &unit.prices {
+        sqlx::query!(
+            "INSERT INTO unit_prices (unit_id, week, close, open, high, low, written_on)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            unit.id,
+            price.week,
+            price.close,
+            price.open,
+            price.high,
+            price.low,
+            price.written_at,
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
     Ok(())
 }
 
@@ -388,6 +404,32 @@ struct Rows {
 }
 
 async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
+    let mut prices: HashMap<UnitId, Vec<WeeklyPrice>> = HashMap::new();
+    for row in sqlx::query!(
+        r#"SELECT
+               unit_id    AS "unit_id!: UnitId",
+               week       AS "week!: NaiveDate",
+               close      AS "close!: Money",
+               open       AS "open?: Money",
+               high       AS "high?: Money",
+               low        AS "low?: Money",
+               written_on AS "written_on!: DateTime<Utc>"
+           FROM unit_prices
+           ORDER BY week"#
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    {
+        prices.entry(row.unit_id).or_default().push(WeeklyPrice {
+            week: row.week,
+            close: row.close,
+            open: row.open,
+            high: row.high,
+            low: row.low,
+            written_at: row.written_on,
+        });
+    }
+
     let units = sqlx::query!(
         r#"SELECT
                id                    AS "id!: UnitId",
@@ -397,8 +439,6 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                price_source_id       AS "price_source_id!: PriceSourceId",
                price_symbol,
                quote_unit_id         AS "quote_unit_id!: UnitId",
-               last_price            AS "last_price?: Money",
-               last_price_fetched_on AS "last_price_fetched_on?: DateTime<Utc>",
                is_active
            FROM units"#
     )
@@ -415,10 +455,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
             symbol: row.price_symbol,
             quote: row.quote_unit_id,
         },
-        last_price: row
-            .last_price
-            .zip(row.last_price_fetched_on)
-            .map(|(price, fetched_at)| LastPrice { price, fetched_at }),
+        prices: prices.remove(&row.id).unwrap_or_default(),
         is_active: row.is_active,
     })
     .collect();
@@ -658,6 +695,16 @@ mod tests {
         contract::deleting_a_custom_source_moves_its_units_to_manual_entry(
             &mut AdapterFactory::new(options),
         );
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn weekly_prices_reload_and_a_quote_change_clears_them(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::weekly_prices_reload_and_a_quote_change_clears_them(&mut AdapterFactory::new(
+            options,
+        ));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

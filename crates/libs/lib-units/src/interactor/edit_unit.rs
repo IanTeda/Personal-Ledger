@@ -83,13 +83,13 @@ mod tests {
             (edited.code.as_str(), edited.name.as_str()),
             ("xbt", "Bitcoin core")
         );
-        assert_eq!(edited.last_price, btc.last_price);
-        assert!(edited.last_price.is_some());
+        assert_eq!(edited.prices, btc.prices);
+        assert!(!edited.prices.is_empty());
         assert_eq!(ports.units.unit(UnitId::SEED_BTC), Some(edited));
     }
 
     #[test]
-    fn changing_the_quote_unit_drops_the_last_price() {
+    fn changing_the_quote_unit_clears_the_weekly_prices() {
         let mut ports = InMemoryPorts::stub(Utc::now());
         let mut link = ports.units.unit(UnitId::SEED_BTC).unwrap().link;
         link.quote = UnitId::SEED_VAS;
@@ -98,7 +98,7 @@ mod tests {
             .run(&mut ports.units, &ports.price_sources)
             .unwrap();
 
-        assert_eq!(edited.last_price, None);
+        assert!(edited.prices.is_empty());
     }
 
     #[test]

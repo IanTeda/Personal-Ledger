@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol,\n                            quote_unit_id, is_active)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             code = excluded.code,\n             name = excluded.name,\n             unit_kind = excluded.unit_kind,\n             price_source_id = excluded.price_source_id,\n             price_symbol = excluded.price_symbol,\n             quote_unit_id = excluded.quote_unit_id,\n             is_active = excluded.is_active",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "53e5137533a57b3039d5ef5dc501e5892b41f4be678275491e9b3e3627016d31"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id             AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    unit_kind      AS \"unit_kind!: domain::UnitKind\",\n                    price_source_id,\n                    price_symbol,\n                    quote_unit_id  AS \"quote_unit_id!: domain::RowID\",\n                    last_price,\n                    last_price_fetched_on,\n                    is_active,\n                    created_on     AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on     AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM units\n                WHERE code = ?\n            ",
+  "query": "\n                SELECT\n                    id             AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    unit_kind      AS \"unit_kind!: domain::UnitKind\",\n                    price_source_id,\n                    price_symbol,\n                    quote_unit_id  AS \"quote_unit_id!: domain::RowID\",\n                    is_active,\n                    created_on     AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on     AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM units\n                WHERE is_active = TRUE\n                ORDER BY code ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -39,33 +39,23 @@
         "type_info": "Null"
       },
       {
-        "name": "last_price",
-        "ordinal": 7,
-        "type_info": "Text"
-      },
-      {
-        "name": "last_price_fetched_on",
-        "ordinal": 8,
-        "type_info": "Text"
-      },
-      {
         "name": "is_active",
-        "ordinal": 9,
+        "ordinal": 7,
         "type_info": "Bool"
       },
       {
         "name": "created_on!: chrono::DateTime<chrono::Utc>",
-        "ordinal": 10,
+        "ordinal": 8,
         "type_info": "Text"
       },
       {
         "name": "updated_on!: chrono::DateTime<chrono::Utc>",
-        "ordinal": 11,
+        "ordinal": 9,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       true,
@@ -75,12 +65,10 @@
       false,
       false,
       false,
-      true,
-      true,
       false,
       false,
       false
     ]
   },
-  "hash": "bb2186265c1fe87a3631947051d2d1126a00f93c59f6c6235afddf56ec0515af"
+  "hash": "ed2bfc77fd318232507f68ea960846a0b852c4a4963d15ccfa7ebb46329388cc"
 }

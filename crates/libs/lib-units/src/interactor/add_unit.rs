@@ -87,7 +87,7 @@ mod tests {
             ("eth", "Ethereum")
         );
         assert_eq!(added.link, link);
-        assert_eq!(added.last_price, None);
+        assert!(added.prices.is_empty());
         assert!(added.is_active);
         assert_eq!(ports.units.unit(added.id), Some(added));
         assert_eq!(ports.units.units.len(), 4);

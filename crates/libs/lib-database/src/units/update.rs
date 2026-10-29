@@ -22,7 +22,7 @@ impl crate::Units {
             r#"
                 UPDATE units
                 SET code = ?, name = ?, unit_kind = ?, price_source_id = ?, price_symbol = ?,
-                    quote_unit_id = ?, last_price = ?, last_price_fetched_on = ?, is_active = ?
+                    quote_unit_id = ?, is_active = ?
                 WHERE id = ?
             "#,
             self.code,
@@ -31,8 +31,6 @@ impl crate::Units {
             self.price_source_id,
             self.price_symbol,
             self.quote_unit_id,
-            self.last_price,
-            self.last_price_fetched_on,
             self.is_active,
             self.id
         )
@@ -89,15 +87,11 @@ mod tests {
         let mut unit = crate::Units::mock().insert(&pool).await.unwrap();
         unit.name = "Updated Name".to_string();
         unit.price_symbol = "bitcoin".to_string();
-        unit.last_price = Some("64000.12".to_string());
-        unit.last_price_fetched_on = Some("2026-10-19".to_string());
 
         let updated = unit.update(&pool).await.unwrap();
 
         assert_eq!(updated.name, "Updated Name");
         assert_eq!(updated.price_symbol, "bitcoin");
-        assert_eq!(updated.last_price.as_deref(), Some("64000.12"));
-        assert_eq!(updated.last_price_fetched_on.as_deref(), Some("2026-10-19"));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

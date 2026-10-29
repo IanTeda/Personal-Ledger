@@ -20,7 +20,7 @@ use lib_bills::{AmountKind, BillPlan, BillsSeed, Recurrence};
 use lib_core::{BillPlanId, Money, TransactionId, TransactionStatus, UnitId, UnitKind};
 use lib_transactions::{Split, Transaction};
 use lib_units::fake::InMemoryPorts;
-use lib_units::{LastPrice, PriceLink, UnitRow};
+use lib_units::{PriceLink, UnitRow, seed_weekly_prices};
 
 use crate::Result;
 use crate::adapter::accounts::AccountsAdapter;
@@ -164,7 +164,7 @@ const FAKE_FIRST_NUMBER: u32 = 100;
 
 /// `count` generated Units, quoted in the stub's base Unit. The same `count` always gives the same
 /// ids, codes and names, so a second seed upserts over the first rather than adding rows. Only the
-/// prices' fetch times follow `now`.
+/// Weekly Prices' weeks and newest write follow `now`.
 pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
     let mut rng = StdRng::seed_from_u64(FAKE_RNG_SEED);
     let kinds = [
@@ -186,9 +186,12 @@ pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
                     .fake_with_rng::<String, _>(&mut rng)
                     .to_lowercase()
             );
-            let last_price = (kind != UnitKind::Currency).then(|| LastPrice {
-                price: Money(BigDecimal::new(rng.random_range(1..=2_000_000).into(), 2)),
-                fetched_at: now - Duration::minutes(rng.random_range(1..=1_440)),
+            // A priced Unit's last price, then a year of Weekly Prices leading up to it.
+            let last_price = (kind != UnitKind::Currency).then(|| {
+                (
+                    rng.random_range(1..=2_000_000),
+                    now - Duration::minutes(rng.random_range(1..=1_440)),
+                )
             });
             UnitRow {
                 id: UnitId::seed(number),
@@ -196,7 +199,9 @@ pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
                 name: CompanyName().fake_with_rng(&mut rng),
                 kind,
                 link: PriceLink::manual(UnitId::SEED_AUD),
-                last_price,
+                prices: last_price.map_or_else(Vec::new, |(cents, written_at)| {
+                    seed_weekly_prices(cents, written_at, number)
+                }),
                 is_active: Faker.fake_with_rng(&mut rng),
             }
         })
@@ -626,6 +631,34 @@ mod tests {
 
         assert_eq!(units.len(), 3 + 20);
         assert_eq!(second.units().units(), units);
+    }
+
+    #[test]
+    fn every_seeded_priced_unit_loads_52_weeks_ending_on_the_current_week() {
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+        stub(&writer, now).expect("the stub lands");
+        fake(&writer, now, 20).expect("the generated seed lands");
+        let units = UnitsAdapter::load(PendingWrites::new(writer.clone()))
+            .expect("the seed loads")
+            .units()
+            .units();
+        let current = lib_units::WeeklyPrice::week_of(now.date_naive());
+
+        let priced: Vec<_> = units
+            .iter()
+            .filter(|unit| !unit.prices.is_empty())
+            .collect();
+
+        assert!(
+            priced.iter().any(|unit| unit.id == UnitId::SEED_BTC),
+            "the stub's btc"
+        );
+        assert!(priced.len() > 1, "and some generated Units");
+        for unit in priced {
+            assert_eq!(unit.prices.len(), 52, "{}", unit.code);
+            assert_eq!(unit.last_price().map(|price| price.week), Some(current));
+        }
     }
 
     #[test]

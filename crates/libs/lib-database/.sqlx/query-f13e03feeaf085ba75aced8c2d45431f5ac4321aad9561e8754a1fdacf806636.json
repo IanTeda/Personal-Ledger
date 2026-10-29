@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO unit_prices (unit_id, week, close, open, high, low, written_on)\n             VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "f13e03feeaf085ba75aced8c2d45431f5ac4321aad9561e8754a1fdacf806636"
+}

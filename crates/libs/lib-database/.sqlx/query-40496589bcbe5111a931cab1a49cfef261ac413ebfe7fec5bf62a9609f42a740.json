@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol, quote_unit_id, is_active, created_on, updated_on)\n                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "40496589bcbe5111a931cab1a49cfef261ac413ebfe7fec5bf62a9609f42a740"
+}

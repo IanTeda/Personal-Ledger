@@ -17,8 +17,8 @@ impl crate::Units {
     pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let insert_result = sqlx::query!(
             r#"
-                INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol, quote_unit_id, last_price, last_price_fetched_on, is_active, created_on, updated_on)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol, quote_unit_id, is_active, created_on, updated_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             self.id,
             self.code,
@@ -27,8 +27,6 @@ impl crate::Units {
             self.price_source_id,
             self.price_symbol,
             self.quote_unit_id,
-            self.last_price,
-            self.last_price_fetched_on,
             self.is_active,
             self.created_on,
             self.updated_on
@@ -90,7 +88,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "migrations/client")]
-    async fn insert_round_trips_the_price_link_and_last_price(pool: SqlitePool) {
+    async fn insert_round_trips_the_price_link(pool: SqlitePool) {
         let base = crate::Units::mock().insert(&pool).await.unwrap();
         assert_eq!(base.quote_unit_id, base.id, "the base Unit quotes itself");
 
@@ -101,7 +99,6 @@ mod tests {
             .with_price_source_id("coingecko")
             .with_price_symbol("bitcoin")
             .with_quote_unit_id(base.id)
-            .with_last_price("64000.12", "2026-10-19")
             .build()
             .unwrap()
             .insert(&pool)
@@ -111,8 +108,6 @@ mod tests {
         assert_eq!(btc.price_source_id, "coingecko");
         assert_eq!(btc.price_symbol, "bitcoin");
         assert_eq!(btc.quote_unit_id, base.id);
-        assert_eq!(btc.last_price.as_deref(), Some("64000.12"));
-        assert_eq!(btc.last_price_fetched_on.as_deref(), Some("2026-10-19"));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

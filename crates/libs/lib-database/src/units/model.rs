@@ -35,12 +35,6 @@ pub struct Units {
     /// The Unit the price is quoted in. The base Unit quotes itself.
     pub quote_unit_id: lib_core::RowID,
 
-    /// The newest price in `quote_unit_id`, as a decimal string so no precision is lost.
-    pub last_price: Option<String>,
-
-    /// When `last_price` was fetched or entered. `None` while there is no price.
-    pub last_price_fetched_on: Option<String>,
-
     /// Soft-delete flag — `false` means the Unit should not be used for new Accounts or
     /// Transactions, but existing ones remain valid.
     pub is_active: bool,

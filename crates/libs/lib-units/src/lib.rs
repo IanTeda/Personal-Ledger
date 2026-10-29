@@ -24,11 +24,12 @@ pub mod protocols;
 
 pub use entity::{
     BUILT_IN_SOURCES, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource, Endpoint,
-    FRANKFURTER, KeyPlacement, LastPrice, MANUAL_ENTRY, PriceLink, PriceSource, PriceSourceAuth,
-    PriceSourceRecord, SourceOrigin, UnitRow, Updates, YAHOO_FINANCE, add_custom_source, add_unit,
-    built_in, default_units, edit_custom_source, edit_unit, last_fetched, move_units_to_manual,
-    override_built_in, price_source, price_source_exists, price_sources, remove_custom_source,
-    remove_unit, set_unit_active, sources_for_kind, units_by_code,
+    FRANKFURTER, KeyPlacement, MANUAL_ENTRY, PriceLink, PriceSource, PriceSourceAuth,
+    PriceSourceRecord, SourceOrigin, UnitRow, Updates, WeeklyPrice, YAHOO_FINANCE,
+    add_custom_source, add_unit, built_in, default_units, edit_custom_source, edit_unit,
+    last_fetched, move_units_to_manual, override_built_in, price_source, price_source_exists,
+    price_sources, remove_custom_source, remove_unit, seed_weekly_prices, set_unit_active,
+    sources_for_kind, units_by_code,
 };
 pub use error::{Error, Result};
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};

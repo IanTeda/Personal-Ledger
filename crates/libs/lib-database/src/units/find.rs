@@ -23,8 +23,6 @@ impl crate::Units {
                     price_source_id,
                     price_symbol,
                     quote_unit_id  AS "quote_unit_id!: domain::RowID",
-                    last_price,
-                    last_price_fetched_on,
                     is_active,
                     created_on     AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on     AS "updated_on!: chrono::DateTime<chrono::Utc>"
@@ -59,8 +57,6 @@ impl crate::Units {
                     price_source_id,
                     price_symbol,
                     quote_unit_id  AS "quote_unit_id!: domain::RowID",
-                    last_price,
-                    last_price_fetched_on,
                     is_active,
                     created_on     AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on     AS "updated_on!: chrono::DateTime<chrono::Utc>"
@@ -92,8 +88,6 @@ impl crate::Units {
                     price_source_id,
                     price_symbol,
                     quote_unit_id  AS "quote_unit_id!: domain::RowID",
-                    last_price,
-                    last_price_fetched_on,
                     is_active,
                     created_on     AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on     AS "updated_on!: chrono::DateTime<chrono::Utc>"
@@ -125,8 +119,6 @@ impl crate::Units {
                     price_source_id,
                     price_symbol,
                     quote_unit_id  AS "quote_unit_id!: domain::RowID",
-                    last_price,
-                    last_price_fetched_on,
                     is_active,
                     created_on     AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on     AS "updated_on!: chrono::DateTime<chrono::Utc>"
@@ -162,8 +154,6 @@ impl crate::Units {
                     price_source_id,
                     price_symbol,
                     quote_unit_id  AS "quote_unit_id!: domain::RowID",
-                    last_price,
-                    last_price_fetched_on,
                     is_active,
                     created_on     AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on     AS "updated_on!: chrono::DateTime<chrono::Utc>"

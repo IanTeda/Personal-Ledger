@@ -269,8 +269,8 @@ pub fn last_fetched(units: &[UnitRow], id: PriceSourceId) -> Option<DateTime<Utc
     units
         .iter()
         .filter(|unit| unit.link.source_id == id)
-        .filter_map(|unit| unit.last_price.as_ref())
-        .map(|price| price.fetched_at)
+        .filter_map(UnitRow::last_price)
+        .map(|price| price.written_at)
         .max()
 }
 
@@ -535,13 +535,13 @@ mod tests {
     }
 
     #[test]
-    fn moving_units_to_manual_keeps_their_last_price() {
+    fn moving_units_to_manual_keeps_their_weekly_prices() {
         let mut units = default_units(Utc::now());
-        let before = units[1].last_price.clone();
+        let before = units[1].prices.clone();
         let moved = move_units_to_manual(&mut units, COINGECKO);
         assert_eq!(moved.len(), 1);
         assert_eq!(units[1].link.source_id, MANUAL_ENTRY);
-        assert_eq!(units[1].last_price, before);
-        assert!(before.is_some());
+        assert_eq!(units[1].prices, before);
+        assert!(!before.is_empty());
     }
 }

@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               unit_id    AS \"unit_id!: UnitId\",\n               week       AS \"week!: NaiveDate\",\n               close      AS \"close!: Money\",\n               open       AS \"open?: Money\",\n               high       AS \"high?: Money\",\n               low        AS \"low?: Money\",\n               written_on AS \"written_on!: DateTime<Utc>\"\n           FROM unit_prices\n           ORDER BY week",
+  "describe": {
+    "columns": [
+      {
+        "name": "unit_id!: UnitId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "week!: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "close!: Money",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "open?: Money",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "high?: Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "low?: Money",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "written_on!: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "a4a91e606858a5752cdbd8b442dc484507826b4987f4d41d31efd014179e07bc"
+}

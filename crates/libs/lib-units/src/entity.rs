@@ -1,10 +1,10 @@
-//! The Units Entities: a Unit, its link to a Price Source and its newest price, with the rules
+//! The Units Entities: a Unit, its link to a Price Source and its Weekly Prices, with the rules
 //! about themselves only. The Price Sources are in `price_source`.
 
 mod price_source;
 
 use bigdecimal::BigDecimal;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use price_source::{
     BUILT_IN_SOURCES, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource, Endpoint,
@@ -26,8 +26,10 @@ pub struct UnitRow {
     pub kind: UnitKind,
     /// Where its price comes from.
     pub link: PriceLink,
-    /// The newest price, kept with no history.
-    pub last_price: Option<LastPrice>,
+    /// Its price history, oldest week first, at most one per week and kept forever (ADR-0052).
+    /// On the row rather than a store of its own, since the Units page reads every Unit's last
+    /// price and the Unit prices view one Unit's history, both from the Units it already holds.
+    pub prices: Vec<WeeklyPrice>,
     /// A deactivated Unit stays on the Ledger and on whatever uses it, but is no longer offered to
     /// pick (the lifecycle Category, Payee and Account follow).
     pub is_active: bool,
@@ -43,17 +45,17 @@ impl UnitRow {
             name,
             kind,
             link,
-            last_price: None,
+            prices: Vec::new(),
             is_active: true,
         }
     }
 
     /// Rewrites the Unit from the Edit unit dialog, keeping its id and whether it is active. The
-    /// last price is kept unless the quote Unit changes, since a price in the old quote would read
-    /// as one in the new.
+    /// Weekly Prices are kept unless the quote Unit changes, since a price in the old quote would
+    /// read as one in the new.
     pub fn edit(&mut self, code: String, name: String, kind: UnitKind, link: PriceLink) {
         if self.link.quote != link.quote {
-            self.last_price = None;
+            self.prices.clear();
         }
         self.code = code;
         self.name = name;
@@ -61,10 +63,36 @@ impl UnitRow {
         self.link = link;
     }
 
-    /// Moves the Unit to Manual entry, keeping its symbol and last price, for when its Price
+    /// Moves the Unit to Manual entry, keeping its symbol and Weekly Prices, for when its Price
     /// Source is deleted.
     pub fn move_to_manual(&mut self) {
         self.link.source_id = MANUAL_ENTRY;
+    }
+
+    /// The newest Weekly Price, whose close is the Unit's last price, or `None` before its first.
+    pub fn last_price(&self) -> Option<&WeeklyPrice> {
+        self.prices.iter().max_by_key(|price| price.week)
+    }
+
+    /// Writes `close`, a price as of `at`, into the week holding `today`. A week with no entry yet
+    /// starts with the close only; the current week's entry is provisional, so a new price
+    /// overwrites its close and widens its high and low. `today` is the Clock's day rather than
+    /// `at`'s, so the week is the one the person sees.
+    pub fn record_price(&mut self, close: Money, today: NaiveDate, at: DateTime<Utc>) {
+        let week = WeeklyPrice::week_of(today);
+        if let Some(current) = self.prices.iter_mut().find(|price| price.week == week) {
+            current.widen(close, at);
+            return;
+        }
+        self.prices.push(WeeklyPrice {
+            week,
+            close,
+            open: None,
+            high: None,
+            low: None,
+            written_at: at,
+        });
+        self.prices.sort_by_key(|price| price.week);
     }
 }
 
@@ -91,23 +119,93 @@ impl PriceLink {
     }
 }
 
-/// A Unit's newest price, in its link's quote Unit.
+/// A Unit's price for one ISO week, in its link's quote Unit (`GLOSSARY.md`'s Weekly Price). A
+/// week with all four prices draws as a candle, any other as a close only, which is what Manual
+/// entry usually gives.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LastPrice {
-    pub price: Money,
-    pub fetched_at: DateTime<Utc>,
+pub struct WeeklyPrice {
+    /// The Monday of its ISO week, Monday to Sunday in every Locale, so one Ledger buckets the same
+    /// prices the same way on every machine.
+    pub week: NaiveDate,
+    pub close: Money,
+    pub open: Option<Money>,
+    pub high: Option<Money>,
+    pub low: Option<Money>,
+    /// When it was last written: the last price's age.
+    pub written_at: DateTime<Utc>,
 }
 
-impl LastPrice {
-    /// A balance of the Unit at this price, rounded to two places. It is in the link's quote
+impl WeeklyPrice {
+    /// The Monday starting `day`'s ISO week.
+    pub fn week_of(day: NaiveDate) -> NaiveDate {
+        day - Duration::days(i64::from(day.weekday().num_days_from_monday()))
+    }
+
+    /// A balance of the Unit at this close, rounded to two places. It is in the link's quote
     /// Unit, not the base Unit: a Unit quoted in usd values in usd even on an aud Ledger.
     pub fn value(&self, balance: &Money) -> Money {
-        Money((&balance.0 * &self.price.0).round(2))
+        Money((&balance.0 * &self.close.0).round(2))
+    }
+
+    /// Overwrites the close with `close` and widens the high and low to take it in. An absent high
+    /// or low starts from the close it replaces, a price the week has already had.
+    fn widen(&mut self, close: Money, at: DateTime<Utc>) {
+        let high = self.high.take().unwrap_or_else(|| self.close.clone());
+        let low = self.low.take().unwrap_or_else(|| self.close.clone());
+        self.high = Some(high.max(close.clone()));
+        self.low = Some(low.min(close.clone()));
+        self.close = close;
+        self.written_at = at;
     }
 }
 
-/// The stub seed's three Units: aud and vas on Manual entry, btc on CoinGecko with a price
-/// fetched five minutes before `now`.
+/// How many weeks of Weekly Prices [`seed_weekly_prices`] gives: a year, for the 52-week range.
+const SEED_WEEKS: i64 = 52;
+
+/// A year of deterministic Weekly Prices for a seeded Unit, ending with a close of `close_cents`
+/// written at `written_at` in that day's week. The past weeks climb from about 70% of it with a
+/// wobble `salt` varies, each with an open, high and low, so the Unit prices view has candles to
+/// draw. The same arguments always give the same prices.
+pub fn seed_weekly_prices(
+    close_cents: i64,
+    written_at: DateTime<Utc>,
+    salt: u32,
+) -> Vec<WeeklyPrice> {
+    let money = |cents: i64| Money(BigDecimal::new(cents.into(), 2));
+    let current = WeeklyPrice::week_of(written_at.date_naive());
+    let mut open = close_cents * 68 / 100;
+    (0..SEED_WEEKS)
+        .map(|index| {
+            let week = current - Duration::weeks(SEED_WEEKS - 1 - index);
+            let close = if index == SEED_WEEKS - 1 {
+                close_cents
+            } else {
+                // A ±5% wobble on a climb from 70% to 100% of the close.
+                let wobble = (index * 7 + i64::from(salt) * 13) % 11 - 5;
+                close_cents * (70 + 30 * index / SEED_WEEKS + wobble) / 100
+            };
+            let price = WeeklyPrice {
+                week,
+                close: money(close),
+                open: Some(money(open)),
+                high: Some(money(open.max(close) * 103 / 100)),
+                low: Some(money(open.min(close) * 97 / 100)),
+                written_at: if index == SEED_WEEKS - 1 {
+                    written_at
+                } else {
+                    (week + Duration::days(6))
+                        .and_time(chrono::NaiveTime::MIN)
+                        .and_utc()
+                },
+            };
+            open = close;
+            price
+        })
+        .collect()
+}
+
+/// The stub seed's three Units: aud and vas on Manual entry, btc on CoinGecko with a year of
+/// Weekly Prices, the newest written five minutes before `now`.
 pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
     vec![
         UnitRow {
@@ -116,7 +214,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             name: "Australian Dollar".to_string(),
             kind: UnitKind::Currency,
             link: PriceLink::manual(UnitId::SEED_AUD),
-            last_price: None,
+            prices: Vec::new(),
             is_active: true,
         },
         UnitRow {
@@ -129,10 +227,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
                 symbol: "bitcoin".to_string(),
                 quote: UnitId::SEED_AUD,
             },
-            last_price: Some(LastPrice {
-                price: Money(BigDecimal::new(14_821_240.into(), 2)),
-                fetched_at: now - chrono::Duration::minutes(5),
-            }),
+            prices: seed_weekly_prices(14_821_240, now - Duration::minutes(5), 2),
             is_active: true,
         },
         UnitRow {
@@ -141,7 +236,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             name: "Vanguard Aus Shares".to_string(),
             kind: UnitKind::Equity,
             link: PriceLink::manual(UnitId::SEED_AUD),
-            last_price: None,
+            prices: Vec::new(),
             is_active: true,
         },
     ]
@@ -203,6 +298,136 @@ mod tests {
         default_units(Utc::now())
     }
 
+    fn day(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
+    }
+
+    fn at(y: i32, m: u32, d: u32) -> DateTime<Utc> {
+        day(y, m, d)
+            .and_hms_opt(9, 0, 0)
+            .expect("a real time")
+            .and_utc()
+    }
+
+    fn money(text: &str) -> Money {
+        text.parse().expect("a decimal")
+    }
+
+    #[test]
+    fn a_price_in_a_new_week_starts_that_weeks_entry_with_a_close_only() {
+        let mut unit = UnitRow::new(
+            "eth".into(),
+            "Ethereum".into(),
+            UnitKind::Crypto,
+            PriceLink::manual(UnitId::SEED_AUD),
+        );
+
+        // Thursday 29 October 2026 is in the ISO week starting Monday 26 October.
+        unit.record_price(money("4000.00"), day(2026, 10, 29), at(2026, 10, 29));
+
+        assert_eq!(
+            unit.prices,
+            vec![WeeklyPrice {
+                week: day(2026, 10, 26),
+                close: money("4000.00"),
+                open: None,
+                high: None,
+                low: None,
+                written_at: at(2026, 10, 29),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_price_in_the_current_week_overwrites_its_close_and_widens_its_high_and_low() {
+        let mut unit = UnitRow::new(
+            "eth".into(),
+            "Ethereum".into(),
+            UnitKind::Crypto,
+            PriceLink::manual(UnitId::SEED_AUD),
+        );
+        let last_week = WeeklyPrice {
+            week: day(2026, 10, 19),
+            close: money("3900.00"),
+            open: Some(money("3800.00")),
+            high: Some(money("3950.00")),
+            low: Some(money("3700.00")),
+            written_at: at(2026, 10, 25),
+        };
+        unit.prices.push(last_week.clone());
+        unit.record_price(money("4000.00"), day(2026, 10, 26), at(2026, 10, 26));
+
+        // Absent, the high and low are set from the overwritten close and the new price.
+        unit.record_price(money("4100.00"), day(2026, 10, 28), at(2026, 10, 28));
+        // A price inside the range moves only the close.
+        unit.record_price(money("4050.00"), day(2026, 11, 1), at(2026, 11, 1));
+        // A price below the range widens the low.
+        unit.record_price(money("3950.00"), day(2026, 11, 1), at(2026, 11, 1));
+
+        assert_eq!(unit.prices[0], last_week, "a past week is final");
+        assert_eq!(
+            unit.prices[1],
+            WeeklyPrice {
+                week: day(2026, 10, 26),
+                close: money("3950.00"),
+                open: None,
+                high: Some(money("4100.00")),
+                low: Some(money("3950.00")),
+                written_at: at(2026, 11, 1),
+            }
+        );
+        assert_eq!(unit.prices.len(), 2, "one entry per week");
+    }
+
+    #[test]
+    fn the_last_price_is_the_newest_weeks_close_and_its_age_when_that_was_written() {
+        let mut unit = UnitRow::new(
+            "eth".into(),
+            "Ethereum".into(),
+            UnitKind::Crypto,
+            PriceLink::manual(UnitId::SEED_AUD),
+        );
+        assert_eq!(unit.last_price(), None);
+        unit.record_price(money("3900.00"), day(2026, 10, 20), at(2026, 10, 20));
+        unit.record_price(money("4000.00"), day(2026, 10, 27), at(2026, 10, 27));
+
+        let last = unit.last_price().expect("two weeks are written");
+
+        assert_eq!(
+            (&last.close, last.written_at),
+            (&money("4000.00"), at(2026, 10, 27))
+        );
+    }
+
+    #[test]
+    fn the_seed_gives_btc_52_weeks_ending_on_the_current_week_and_the_rest_none() {
+        let now = at(2026, 10, 29);
+        let units = default_units(now);
+        let btc = &units[1];
+
+        let weeks: Vec<_> = btc.prices.iter().map(|price| price.week).collect();
+
+        assert_eq!(weeks.len(), 52);
+        assert_eq!(weeks.first(), Some(&day(2025, 11, 3)));
+        assert_eq!(weeks.last(), Some(&day(2026, 10, 26)));
+        assert!(
+            weeks
+                .windows(2)
+                .all(|pair| pair[1] - pair[0] == Duration::weeks(1))
+        );
+        for price in &btc.prices[..51] {
+            let (open, high, low) = (
+                price.open.as_ref().expect("a past week has an open"),
+                price.high.as_ref().expect("and a high"),
+                price.low.as_ref().expect("and a low"),
+            );
+            assert!(high >= open && high >= &price.close, "{price:?}");
+            assert!(low <= open && low <= &price.close, "{price:?}");
+        }
+        assert_eq!(default_units(now), units, "the seed is deterministic");
+        assert!(units[0].prices.is_empty() && units[2].prices.is_empty());
+    }
+
     #[test]
     fn the_seed_is_aud_currency_btc_crypto_and_vas_equity() {
         let units: Vec<_> = seed()
@@ -232,12 +457,10 @@ mod tests {
                 quote: UnitId::SEED_AUD
             }
         );
+        let last = btc.last_price().expect("btc is seeded with prices");
         assert_eq!(
-            btc.last_price,
-            Some(LastPrice {
-                price: "148212.40".parse().unwrap(),
-                fetched_at: now - chrono::Duration::minutes(5),
-            })
+            (&last.close, last.written_at),
+            (&"148212.40".parse().unwrap(), now - Duration::minutes(5))
         );
         for unit in [&units[0], &units[2]] {
             assert_eq!(
@@ -246,14 +469,14 @@ mod tests {
                 "{}",
                 unit.code
             );
-            assert_eq!(unit.last_price, None);
+            assert_eq!(unit.last_price(), None);
         }
     }
 
     #[test]
     fn a_balance_is_valued_at_the_last_price_in_the_quote_unit_to_two_places() {
         let btc = &seed()[1];
-        let price = btc.last_price.as_ref().expect("btc is seeded with a price");
+        let price = btc.last_price().expect("btc is seeded with a price");
 
         let value = price.value(&"0.4120".parse().unwrap());
 
@@ -303,14 +526,14 @@ mod tests {
         );
         assert_eq!(added.code, "eth");
         assert_eq!(added.link, link);
-        assert_eq!(added.last_price, None);
+        assert!(added.prices.is_empty());
         assert_eq!(units.len(), 4);
     }
 
     #[test]
-    fn editing_writes_the_link_and_keeps_the_price_in_the_same_quote() {
+    fn editing_writes_the_link_and_keeps_the_weekly_prices_in_the_same_quote() {
         let mut units = seed();
-        let price = units[1].last_price.clone();
+        let prices = units[1].prices.clone();
         let link = PriceLink {
             source_id: MANUAL_ENTRY,
             symbol: String::new(),
@@ -327,11 +550,12 @@ mod tests {
         .expect("btc is seeded");
         assert_eq!(edited.code, "xbt");
         assert_eq!(edited.link, link);
-        assert_eq!(edited.last_price, price);
+        assert_eq!(edited.prices, prices);
+        assert!(!prices.is_empty());
     }
 
     #[test]
-    fn changing_the_quote_drops_the_last_price() {
+    fn changing_the_quote_clears_the_weekly_prices() {
         let mut units = seed();
         let mut link = units[1].link.clone();
         link.quote = UnitId::SEED_VAS;
@@ -344,7 +568,7 @@ mod tests {
             link,
         )
         .expect("btc is seeded");
-        assert_eq!(edited.last_price, None);
+        assert!(edited.prices.is_empty());
     }
 
     #[test]

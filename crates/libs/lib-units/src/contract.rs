@@ -5,7 +5,7 @@
 //! since an adapter's tests need their own set-up (a fresh database per test). Each drives the
 //! Interactors, reloads as a restart would, and expects the same rows back.
 
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use lib_core::UnitId;
 
 use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
@@ -360,6 +360,79 @@ pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>
     assert_eq!(gold.link.symbol, "gold", "a moved Unit keeps its symbol");
 }
 
+/// Weekly Prices reload the same, a close-only week and a full one alike; an edit in the same quote
+/// keeps them in storage, a quote change clears them there, and a priced Unit deletes with them.
+/// There is no Set price Interactor yet, so the prices are written through the Units port.
+pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(factory: &mut F) {
+    let usage = InMemoryUnitUsage::default();
+    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut eth = add_unit(
+        ports.split_mut(&usage),
+        "eth",
+        UnitKind::Crypto,
+        PriceLink::manual(UnitId::SEED_AUD),
+    );
+    let day = |d: u32| NaiveDate::from_ymd_opt(2026, 10, d).expect("a real date");
+    let at = |d: u32| day(d).and_hms_opt(9, 0, 0).expect("a real time").and_utc();
+    eth.record_price("3900.00".parse().expect("a decimal"), day(20), at(20));
+    eth.record_price("4000.00".parse().expect("a decimal"), day(27), at(27));
+    eth.record_price("4100.25".parse().expect("a decimal"), day(28), at(28));
+    ports.split_mut(&usage).units.upsert_unit(eth.clone());
+    let before = snapshot(&mut ports);
+    let mut ports = factory.reload(ports);
+    assert_eq!(snapshot(&mut ports), before);
+
+    let edit = |ports: &mut F::Ports, quote: UnitId| {
+        let split = ports.split_mut(&usage);
+        EditUnit {
+            id: UnitId::SEED_BTC,
+            code: "btc".into(),
+            name: "Bitcoin".into(),
+            kind: UnitKind::Crypto,
+            link: PriceLink::manual(quote),
+        }
+        .run(split.units, split.price_sources)
+        .expect("btc is on the stub")
+    };
+    let kept = edit(&mut ports, UnitId::SEED_AUD);
+    assert_eq!(kept.prices.len(), 52, "a source change keeps them");
+    let mut ports = factory.reload(ports);
+    assert_eq!(unit(&mut ports, UnitId::SEED_BTC).prices, kept.prices);
+
+    edit(&mut ports, eth.id);
+    let split = ports.split_mut(&usage);
+    DeleteUnit {
+        id: eth.id,
+        new_base: None,
+    }
+    .run(split.units, split.base_unit, split.usage)
+    .expect_err("btc is quoted in eth now");
+    edit(&mut ports, UnitId::SEED_AUD);
+    let split = ports.split_mut(&usage);
+    DeleteUnit {
+        id: eth.id,
+        new_base: None,
+    }
+    .run(split.units, split.base_unit, split.usage)
+    .expect("eth is unused");
+    let before = snapshot(&mut ports);
+    let mut ports = factory.reload(ports);
+    assert_eq!(snapshot(&mut ports), before);
+    assert!(
+        unit(&mut ports, UnitId::SEED_BTC).prices.is_empty(),
+        "the quote change cleared them"
+    );
+}
+
+fn unit(ports: &mut impl StoredPorts, id: UnitId) -> UnitRow {
+    let usage = InMemoryUnitUsage::default();
+    ports
+        .split_mut(&usage)
+        .units
+        .unit(id)
+        .expect("the Unit is stored")
+}
+
 /// A write that fails is reported once, naming the Units domain, and the ports go back to the last
 /// committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
@@ -408,6 +481,11 @@ mod tests {
     #[test]
     fn in_memory_deleting_a_custom_source_moves_its_units_to_manual_entry() {
         deleting_a_custom_source_moves_its_units_to_manual_entry(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_weekly_prices_reload_and_a_quote_change_clears_them() {
+        weekly_prices_reload_and_a_quote_change_clears_them(&mut InMemoryFactory::default());
     }
 
     #[test]

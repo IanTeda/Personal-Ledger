@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn deleting_a_custom_source_moves_its_units_to_manual_entry_with_their_last_price() {
+    fn deleting_a_custom_source_moves_its_units_to_manual_entry_with_their_weekly_prices() {
         let mut ports = InMemoryPorts::stub(Utc::now());
         let source = add_custom(&mut ports);
         ports.units.units[1].link.source_id = source.id;
@@ -108,8 +108,8 @@ mod tests {
         let moved = ports.units.unit(UnitId::SEED_BTC).unwrap();
         assert_eq!(moved.link.source_id, MANUAL_ENTRY);
         assert_eq!(moved.link.symbol, btc.link.symbol);
-        assert_eq!(moved.last_price, btc.last_price);
-        assert!(moved.last_price.is_some());
+        assert_eq!(moved.prices, btc.prices);
+        assert!(!moved.prices.is_empty());
         assert!(ports.price_sources.price_source_records().is_empty());
     }
 

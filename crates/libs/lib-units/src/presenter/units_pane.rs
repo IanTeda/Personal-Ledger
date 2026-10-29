@@ -290,15 +290,13 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
         ),
         Fact::plain(
             msg::units_pane_last_price(),
-            unit.last_price
-                .as_ref()
-                .map_or_else(msg::units_none, |price| amount(&price.price, &quote)),
+            unit.last_price()
+                .map_or_else(msg::units_none, |price| amount(&price.close, &quote)),
         ),
         Fact::plain(
             msg::units_column_last_updated(),
-            unit.last_price
-                .as_ref()
-                .map_or_else(not_fetched, |price| ago(price.fetched_at, input.now)),
+            unit.last_price()
+                .map_or_else(not_fetched, |price| ago(price.written_at, input.now)),
         ),
     ];
     SourceGroup {
@@ -415,11 +413,10 @@ fn values_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> ValuesGroup 
                     .then(|| (msg::units_pane_symbol(), unit.link.symbol.clone())),
                 quoted_in: msg::units_pane_quoted_in(&quote),
                 price: unit
-                    .last_price
-                    .as_ref()
-                    .map_or_else(msg::units_none, |price| amount(&price.price, &quote)),
-                age: match &unit.last_price {
-                    Some(price) => Some(ago(price.fetched_at, input.now)),
+                    .last_price()
+                    .map_or_else(msg::units_none, |price| amount(&price.close, &quote)),
+                age: match unit.last_price() {
+                    Some(price) => Some(ago(price.written_at, input.now)),
                     None if manual => None,
                     None => Some(not_fetched()),
                 },
@@ -450,8 +447,7 @@ fn accounts_group(input: &PaneInput<'_>, unit: &UnitRow) -> AccountsGroup {
         kind,
         balance: amount(balance, &unit.code),
         value: unit
-            .last_price
-            .as_ref()
+            .last_price()
             .map(|price| amount(&price.value(balance), &quote)),
     };
     let total = (!holdings.is_empty()).then(|| {

@@ -15,8 +15,6 @@ pub struct UnitsBuilder {
     price_source_id: Option<String>,
     price_symbol: Option<String>,
     quote_unit_id: Option<lib_core::RowID>,
-    last_price: Option<String>,
-    last_price_fetched_on: Option<String>,
     is_active: Option<bool>,
     created_on: Option<chrono::DateTime<chrono::Utc>>,
     updated_on: Option<chrono::DateTime<chrono::Utc>>,
@@ -79,18 +77,6 @@ impl UnitsBuilder {
         self
     }
 
-    /// Set the newest price (a decimal string) and when it was fetched or entered.
-    #[must_use]
-    pub fn with_last_price(
-        mut self,
-        last_price: impl Into<String>,
-        fetched_on: impl Into<String>,
-    ) -> Self {
-        self.last_price = Some(last_price.into());
-        self.last_price_fetched_on = Some(fetched_on.into());
-        self
-    }
-
     /// Provide an optional active flag, defaulting to `true` when unset.
     #[must_use]
     pub fn with_is_active_opt(mut self, is_active: Option<bool>) -> Self {
@@ -143,8 +129,6 @@ impl UnitsBuilder {
             price_source_id: self.price_source_id.unwrap_or_else(|| "manual".to_string()),
             price_symbol: self.price_symbol.unwrap_or_default(),
             quote_unit_id: self.quote_unit_id.unwrap_or(id),
-            last_price: self.last_price,
-            last_price_fetched_on: self.last_price_fetched_on,
             is_active: self.is_active.unwrap_or(true),
             created_on: self.created_on.unwrap_or_else(chrono::Utc::now),
             updated_on: self.updated_on.unwrap_or_else(chrono::Utc::now),
