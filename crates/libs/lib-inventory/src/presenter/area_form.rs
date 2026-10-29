@@ -160,6 +160,7 @@ impl AreaFormPresenter {
                 submit,
                 can_confirm: self.can_confirm(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: msg::inventory_area_field_name(),

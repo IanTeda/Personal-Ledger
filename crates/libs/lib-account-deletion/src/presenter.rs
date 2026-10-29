@@ -102,6 +102,7 @@ impl DeleteAccountPresenter {
                 submit: msg::account_deletion_submit(),
                 can_confirm: self.can_confirm(),
                 destructive: true,
+                hints: Vec::new(),
             },
             warning: msg::account_deletion_warning(&self.balance, count(self.usage.transactions)),
             reference: msg::account_deletion_reference(

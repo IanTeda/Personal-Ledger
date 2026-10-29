@@ -107,6 +107,7 @@ impl DeleteCategoryPresenter {
                 submit: msg::categories_delete_submit(),
                 can_confirm: self.can_confirm(),
                 destructive: true,
+                hints: Vec::new(),
             },
             warning: msg::categories_delete_warning(count(self.uses.splits)),
             reference: msg::categories_delete_reference(count(self.uses.budgets)),

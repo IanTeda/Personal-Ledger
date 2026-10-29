@@ -73,6 +73,7 @@ impl DeletePriceSourcePresenter {
                 submit: msg::units_price_source_delete_submit(),
                 can_confirm: self.confirm_text == self.name,
                 destructive: true,
+                hints: vec![super::cancel_hint()],
             },
             warning: msg::units_price_source_delete_warning(units),
             fallback: (!self.codes.is_empty())
@@ -118,7 +119,7 @@ impl DeletePriceSourcePresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::{hints, pairs, stub};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::interactor::AddPriceSource;
@@ -204,5 +205,15 @@ mod tests {
             gone.view_model().refusal.as_deref(),
             Some("That price source was removed while the dialog was open.")
         );
+    }
+
+    #[test]
+    fn deleting_takes_no_field_keys() {
+        let (_, shared) = stub();
+        let view = DeletePriceSourcePresenter::new(shared, COINGECKO)
+            .unwrap()
+            .view_model();
+
+        assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
     }
 }

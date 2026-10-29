@@ -124,6 +124,7 @@ impl RemoveLocationPresenter {
                 submit: msg::inventory_dialog_remove_submit(),
                 can_confirm: self.can_confirm(),
                 destructive: holds_something,
+                hints: Vec::new(),
             },
             warning: if holds_something {
                 msg::inventory_remove_warning(

@@ -95,6 +95,7 @@ impl RemoveTagPresenter {
                 submit: msg::tags_remove_submit(),
                 can_confirm: self.can_confirm(),
                 destructive: false,
+                hints: Vec::new(),
             },
             warning: if self.transactions == 0 {
                 msg::tags_remove_unused(name)

@@ -188,6 +188,7 @@ impl MergeTagsPresenter {
                     }),
                 can_confirm: pair.is_some(),
                 destructive: false,
+                hints: Vec::new(),
             },
             source: self.select(
                 msg::tags_merge_source_label(),

@@ -515,6 +515,7 @@ impl PlanFormPresenter {
                 submit,
                 can_confirm: self.draft().is_some(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: text(
                 lib_locale::msg::column_name(),

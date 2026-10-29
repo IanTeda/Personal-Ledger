@@ -56,6 +56,7 @@ impl AreaBlockedPresenter {
                 submit: msg::inventory_area_blocked_close(),
                 can_confirm: true,
                 destructive: false,
+                hints: Vec::new(),
             },
             body: msg::inventory_area_blocked_body(
                 &self.name,

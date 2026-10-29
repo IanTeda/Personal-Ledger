@@ -3,17 +3,21 @@
 //! Presenter's; what is the TUI's is the widget mechanics (a text field appends and backspaces, a
 //! select steps with `←`/`→`) and the typed API key, which the view model only shows as dots.
 //!
-//! Keys: `Tab`/`Shift-Tab` move between fields, `Enter` confirms, `Esc` cancels, printable keys
-//! and `Backspace` edit the focused text field, and `←`/`→` step the focused select (or a
-//! Dialog's only select, where its Presenter keeps no focus).
+//! Keys: a key is looked up first in `lib-shell`'s Dialog keymap, so `[keybindings]` moves it (by
+//! default `Tab`/`Shift-Tab` move between fields, `Enter` confirms, `Esc` cancels and `↑`/`↓`
+//! step a select). Then printable keys and `Backspace` edit the focused text field, and `←`/`→`
+//! step the focused select (or a Dialog's only select, where its Presenter keeps no focus). The
+//! footer names the keys the Presenter says its Dialog takes, each chord read from that keymap.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use lib_shell::DialogCommand;
 use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeleteUnitEvent, DeleteUnitPresenter,
     PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SetBaseUnitEvent,
     SetBaseUnitPresenter, UnitFormEvent, UnitFormPresenter,
 };
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
+use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::view::{DialogFrame, SelectView, TextFieldView};
 use ratatui::{
     Frame,
@@ -25,8 +29,8 @@ use ratatui::{
 use secrecy::{ExposeSecret as _, SecretString};
 
 use crate::colours::Colours;
-use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::units::view::units::chord;
 
 /// The window's width: the ~88% of the reference terminal the unit forms have always taken
 /// (`docs/ux/tui-mockups/07-units/README.md` "The forms").
@@ -34,6 +38,9 @@ const POPUP_WIDTH: u16 = (REFERENCE_TERMINAL_WIDTH as u32 * 88 / 100) as u16;
 
 /// The field label column, wide enough for the longest English label with a gap.
 const LABEL_WIDTH: u16 = 18;
+
+/// What separates one footer key from the next.
+const FOOTER_SEPARATOR: &str = " \u{b7} ";
 
 /// The open Units Dialog: its Presenter, and for the Price Source form the API key typed so far.
 pub enum Dialog {
@@ -81,27 +88,42 @@ impl Dialog {
         })
     }
 
-    /// Turns `key` into the open Presenter's event, if it means one, and sends it.
-    pub fn handle_key(&mut self, key: KeyEvent, router: &mut dyn UnitsRouter) {
+    /// Turns `key` into the open Presenter's event, if it means one, and sends it. `keymap` is
+    /// the Dialog keymap, which a key is looked up in before it types or steps.
+    pub fn handle_key(
+        &mut self,
+        key: KeyEvent,
+        keymap: &Keymap<DialogCommand>,
+        router: &mut dyn UnitsRouter,
+    ) {
+        let form = chord(key)
+            .and_then(|chord| keymap.event(&chord))
+            .map(FormKey::from);
         match self {
             Self::UnitForm(presenter) => {
-                if let Some(event) = unit_form_event(&presenter.view_model(), key) {
+                if let Some(event) = unit_form_event(&presenter.view_model(), form, key) {
                     presenter.handle(event, router);
                 }
             }
             Self::DeleteUnit(presenter) => {
                 let view = presenter.view_model();
-                let event = match key.code {
-                    KeyCode::Esc => Some(DeleteUnitEvent::Cancel),
-                    KeyCode::Enter => Some(DeleteUnitEvent::Confirm),
-                    _ => view
+                let event = match form {
+                    Some(FormKey::Cancel) => Some(DeleteUnitEvent::Cancel),
+                    Some(FormKey::Confirm) => Some(DeleteUnitEvent::Confirm),
+                    Some(FormKey::Step(delta)) => view
+                        .new_base
+                        .as_ref()
+                        .and_then(|new_base| stepped(&new_base.select, delta))
+                        .map(DeleteUnitEvent::NewBase),
+                    Some(FormKey::Next | FormKey::Prev) => None,
+                    None => view
                         .confirm
                         .as_ref()
                         .and_then(|field| edited(&field.text, key))
                         .map(DeleteUnitEvent::ConfirmText)
                         .or_else(|| {
                             let select = &view.new_base.as_ref()?.select;
-                            stepped(select, key).map(DeleteUnitEvent::NewBase)
+                            stepped(select, arrow(key)?).map(DeleteUnitEvent::NewBase)
                         }),
                 };
                 if let Some(event) = event {
@@ -109,25 +131,29 @@ impl Dialog {
                 }
             }
             Self::SetBaseUnit(presenter) => {
-                let event = match key.code {
-                    KeyCode::Esc => Some(SetBaseUnitEvent::Cancel),
-                    KeyCode::Enter => Some(SetBaseUnitEvent::Confirm),
-                    _ => stepped(&presenter.view_model().base, key).map(SetBaseUnitEvent::Choose),
+                let event = match form {
+                    Some(FormKey::Cancel) => Some(SetBaseUnitEvent::Cancel),
+                    Some(FormKey::Confirm) => Some(SetBaseUnitEvent::Confirm),
+                    Some(FormKey::Next | FormKey::Prev) => None,
+                    step => form_step(step, key)
+                        .and_then(|delta| stepped(&presenter.view_model().base, delta))
+                        .map(SetBaseUnitEvent::Choose),
                 };
                 if let Some(event) = event {
                     presenter.handle(event, router);
                 }
             }
             Self::PriceSourceForm(presenter, api_key) => {
-                if let Some(event) = price_source_event(presenter, api_key, key) {
+                if let Some(event) = price_source_event(presenter, api_key, form, key) {
                     presenter.handle(event, router);
                 }
             }
             Self::DeletePriceSource(presenter) => {
-                let event = match key.code {
-                    KeyCode::Esc => Some(DeletePriceSourceEvent::Cancel),
-                    KeyCode::Enter => Some(DeletePriceSourceEvent::Confirm),
-                    _ => edited(&presenter.view_model().confirm.text, key)
+                let event = match form {
+                    Some(FormKey::Cancel) => Some(DeletePriceSourceEvent::Cancel),
+                    Some(FormKey::Confirm) => Some(DeletePriceSourceEvent::Confirm),
+                    Some(_) => None,
+                    None => edited(&presenter.view_model().confirm.text, key)
                         .map(DeletePriceSourceEvent::ConfirmText),
                 };
                 if let Some(event) = event {
@@ -137,8 +163,15 @@ impl Dialog {
         }
     }
 
-    /// The Dialog as a floating window over `area`, the whole frame.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    /// The Dialog as a floating window over `area`, the whole frame, its footer's chords read from
+    /// `keymap`, the Dialog keymap.
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        keymap: &Keymap<DialogCommand>,
+        c: &Colours,
+    ) {
         let (dialog, items) = self.items();
         let lines: Vec<Line<'_>> = items.iter().map(|item| item_line(item, c)).collect();
         // A long note wraps, so the body is as tall as its lines wrap to inside the border.
@@ -173,7 +206,7 @@ impl Dialog {
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), footer_rule);
-        frame.render_widget(Paragraph::new(footer_line(&dialog, c)), footer);
+        frame.render_widget(Paragraph::new(footer_line(&dialog, keymap, c)), footer);
     }
 
     fn items(&self) -> (DialogFrame, Vec<Item>) {
@@ -254,58 +287,62 @@ impl Dialog {
 
 fn unit_form_event(
     view: &lib_units::presenter::UnitFormViewModel,
+    form: Option<FormKey>,
     key: KeyEvent,
 ) -> Option<UnitFormEvent> {
-    if let Some(event) = form_key(key) {
-        return Some(match event {
-            FormKey::Cancel => UnitFormEvent::Cancel,
-            FormKey::Confirm => UnitFormEvent::Confirm,
-            FormKey::Next => UnitFormEvent::NextField,
-            FormKey::Prev => UnitFormEvent::PrevField,
-        });
-    }
-    if view.code.focused {
-        return edited(&view.code.text, key).map(UnitFormEvent::Code);
-    }
-    if view.name.focused {
-        return edited(&view.name.text, key).map(UnitFormEvent::Name);
-    }
-    if view.precision.focused {
-        return edited(&view.precision.text, key).map(UnitFormEvent::Precision);
-    }
-    if let Some(symbol) = view.symbol.as_ref().filter(|field| field.focused) {
-        return edited(&symbol.text, key).map(UnitFormEvent::Symbol);
-    }
+    let delta = match form {
+        Some(FormKey::Cancel) => return Some(UnitFormEvent::Cancel),
+        Some(FormKey::Confirm) => return Some(UnitFormEvent::Confirm),
+        Some(FormKey::Next) => return Some(UnitFormEvent::NextField),
+        Some(FormKey::Prev) => return Some(UnitFormEvent::PrevField),
+        Some(FormKey::Step(delta)) => delta,
+        None => {
+            if view.code.focused {
+                return edited(&view.code.text, key).map(UnitFormEvent::Code);
+            }
+            if view.name.focused {
+                return edited(&view.name.text, key).map(UnitFormEvent::Name);
+            }
+            if view.precision.focused {
+                return edited(&view.precision.text, key).map(UnitFormEvent::Precision);
+            }
+            if let Some(symbol) = view.symbol.as_ref().filter(|field| field.focused) {
+                return edited(&symbol.text, key).map(UnitFormEvent::Symbol);
+            }
+            arrow(key)?
+        }
+    };
     if view.kind.focused {
-        return stepped(&view.kind, key).map(UnitFormEvent::Kind);
+        return stepped(&view.kind, delta).map(UnitFormEvent::Kind);
     }
     if view.source.focused {
-        return stepped(&view.source, key).map(UnitFormEvent::Source);
+        return stepped(&view.source, delta).map(UnitFormEvent::Source);
     }
     let quote = view.quote.as_ref().filter(|select| select.focused)?;
-    stepped(quote, key).map(UnitFormEvent::Quote)
+    stepped(quote, delta).map(UnitFormEvent::Quote)
 }
 
 fn price_source_event(
     presenter: &PriceSourceFormPresenter,
     api_key: &mut SecretString,
+    form: Option<FormKey>,
     key: KeyEvent,
 ) -> Option<PriceSourceFormEvent> {
-    if let Some(event) = form_key(key) {
-        return Some(match event {
-            FormKey::Cancel => PriceSourceFormEvent::Cancel,
-            FormKey::Confirm => PriceSourceFormEvent::Confirm,
-            FormKey::Next => PriceSourceFormEvent::NextField,
-            FormKey::Prev => PriceSourceFormEvent::PrevField,
-        });
-    }
-    let view = presenter.view_model();
     // The selects (Updates, Authentication) step through the Presenter, which knows the focus.
+    match form {
+        Some(FormKey::Cancel) => return Some(PriceSourceFormEvent::Cancel),
+        Some(FormKey::Confirm) => return Some(PriceSourceFormEvent::Confirm),
+        Some(FormKey::Next) => return Some(PriceSourceFormEvent::NextField),
+        Some(FormKey::Prev) => return Some(PriceSourceFormEvent::PrevField),
+        Some(FormKey::Step(delta)) => return Some(PriceSourceFormEvent::Step(delta)),
+        None => {}
+    }
     match key.code {
         KeyCode::Left => return Some(PriceSourceFormEvent::Step(-1)),
         KeyCode::Right => return Some(PriceSourceFormEvent::Step(1)),
         _ => {}
     }
+    let view = presenter.view_model();
     if view.name.focused {
         return edited(&view.name.text, key)
             .map(|text| PriceSourceFormEvent::Text(PriceSourceField::Name, text));
@@ -328,20 +365,45 @@ fn price_source_event(
     edited(&text.text, key).map(|text| PriceSourceFormEvent::Text(field, text))
 }
 
-/// The keys every form Dialog shares.
+/// A Dialog keymap command as these Dialogs take it. Their selects step in place rather than
+/// open a list, so `select` confirms as `submit` does.
+#[derive(Clone, Copy)]
 enum FormKey {
     Cancel,
     Confirm,
     Next,
     Prev,
+    Step(isize),
 }
 
-fn form_key(key: KeyEvent) -> Option<FormKey> {
+impl From<DialogCommand> for FormKey {
+    fn from(command: DialogCommand) -> Self {
+        match command {
+            DialogCommand::Back => Self::Cancel,
+            DialogCommand::Select | DialogCommand::Submit => Self::Confirm,
+            DialogCommand::NextField => Self::Next,
+            DialogCommand::PreviousField => Self::Prev,
+            DialogCommand::SelectNext => Self::Step(1),
+            DialogCommand::SelectPrevious => Self::Step(-1),
+        }
+    }
+}
+
+/// How far a select steps: by the Dialog keymap's command, or for a key it doesn't bind, by an
+/// arrow.
+fn form_step(form: Option<FormKey>, key: KeyEvent) -> Option<isize> {
+    match form {
+        Some(FormKey::Step(delta)) => Some(delta),
+        Some(_) => None,
+        None => arrow(key),
+    }
+}
+
+/// `←` (`↑`) steps a select back and `→` (`↓`) forward.
+fn arrow(key: KeyEvent) -> Option<isize> {
     match key.code {
-        KeyCode::Esc => Some(FormKey::Cancel),
-        KeyCode::Enter => Some(FormKey::Confirm),
-        KeyCode::Tab => Some(FormKey::Next),
-        KeyCode::BackTab => Some(FormKey::Prev),
+        KeyCode::Left | KeyCode::Up => Some(-1),
+        KeyCode::Right | KeyCode::Down => Some(1),
         _ => None,
     }
 }
@@ -365,13 +427,8 @@ pub(crate) fn edited(text: &str, key: KeyEvent) -> Option<String> {
     Some(text)
 }
 
-/// The option `←` (`↑`) or `→` (`↓`) moves `select` to, stopping at either end.
-fn stepped<T: Copy + PartialEq>(select: &SelectView<T>, key: KeyEvent) -> Option<T> {
-    let delta: isize = match key.code {
-        KeyCode::Left | KeyCode::Up => -1,
-        KeyCode::Right | KeyCode::Down => 1,
-        _ => return None,
-    };
+/// The option `delta` steps `select` to, stopping at either end.
+fn stepped<T: Copy + PartialEq>(select: &SelectView<T>, delta: isize) -> Option<T> {
     let current = select
         .options
         .iter()
@@ -449,9 +506,10 @@ fn item_line<'a>(item: &'a Item, c: &Colours) -> Line<'a> {
     }
 }
 
-/// `enter Add unit · tab next field · ←/→ choose · esc cancel`, the submit dimmed while it can't
-/// confirm and in the danger colour when it destroys something.
-fn footer_line<'a>(dialog: &DialogFrame, c: &Colours) -> Line<'a> {
+/// `enter Add · tab next field · up/down choose · esc cancel`: the submit, dimmed while it can't
+/// confirm and in the danger colour when it destroys something, then the keys the Presenter says
+/// the Dialog takes, each chord read from `keymap`.
+fn footer_line<'a>(dialog: &DialogFrame, keymap: &Keymap<DialogCommand>, c: &Colours) -> Line<'a> {
     let submit = if !dialog.can_confirm {
         c.muted()
     } else if dialog.destructive {
@@ -459,10 +517,15 @@ fn footer_line<'a>(dialog: &DialogFrame, c: &Colours) -> Line<'a> {
     } else {
         Style::default().add_modifier(Modifier::BOLD)
     };
-    Line::from(vec![
-        Span::styled(msg::tui_units_dialog_confirm(&dialog.submit), submit),
-        Span::styled(msg::tui_units_dialog_keys(), c.muted()),
-    ])
+    let confirm = keymap.chord(SELECT).unwrap_or_default();
+    let mut spans = vec![Span::styled(format!("{confirm} {}", dialog.submit), submit)];
+    for (chord, action) in dialog.legend(keymap) {
+        spans.push(Span::styled(
+            format!("{FOOTER_SEPARATOR}{chord} {action}"),
+            c.muted(),
+        ));
+    }
+    Line::from(spans)
 }
 
 /// A window `content_rows` tall plus its border, centred across `area` and anchored in its top
@@ -516,9 +579,9 @@ mod tests {
             chosen: Some(1),
             focused: true,
         };
-        assert_eq!(stepped(&select, key(KeyCode::Right)), Some(2));
-        assert_eq!(stepped(&select, key(KeyCode::Left)), Some(1));
-        assert_eq!(stepped(&select, key(KeyCode::Char('x'))), None);
+        assert_eq!(stepped(&select, 1), Some(2));
+        assert_eq!(stepped(&select, -1), Some(1));
+        assert_eq!(stepped(&select, 5), Some(3));
     }
 
     #[test]

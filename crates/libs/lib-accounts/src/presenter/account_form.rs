@@ -323,6 +323,7 @@ impl AccountFormPresenter {
                 submit,
                 can_confirm: self.is_valid(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: lib_locale::msg::column_name(),

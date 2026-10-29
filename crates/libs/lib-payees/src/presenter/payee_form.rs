@@ -233,6 +233,7 @@ impl PayeeFormPresenter {
                 submit,
                 can_confirm: self.clean_name().is_ok(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: lib_locale::msg::column_name(),

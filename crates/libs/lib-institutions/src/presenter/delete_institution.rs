@@ -125,6 +125,7 @@ impl DeleteInstitutionPresenter {
                 },
                 can_confirm: self.can_confirm(),
                 destructive: !refused,
+                hints: Vec::new(),
             },
             notice,
             accounts,

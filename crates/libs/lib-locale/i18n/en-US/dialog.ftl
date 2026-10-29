@@ -2,3 +2,9 @@
 
 dialog-cancel = Cancel
 dialog-close = Close
+
+## What a key a Dialog's footer names does, after its chord: `tab next field`.
+
+dialog-hint-next-field = next field
+dialog-hint-choose = choose
+dialog-hint-cancel = cancel

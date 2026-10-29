@@ -283,6 +283,7 @@ impl UnitFormPresenter {
                 submit,
                 can_confirm: self.is_valid(),
                 destructive: false,
+                hints: super::form_hints(),
             },
             code: text(
                 lib_locale::msg::column_code(),
@@ -486,7 +487,7 @@ fn refusal_text(refusal: Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::{hints, pairs, stub};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
@@ -912,6 +913,21 @@ mod tests {
         assert_eq!(
             send(&mut form, vec![UnitFormEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
+        );
+    }
+
+    #[test]
+    fn the_form_takes_next_field_choose_and_cancel() {
+        let (_, ports) = stub();
+        let view = UnitFormPresenter::add(ports).view_model();
+
+        assert_eq!(
+            hints(&view.frame),
+            pairs(&[
+                ("next_field", "next field"),
+                ("select_previous/select_next", "choose"),
+                ("back", "cancel")
+            ])
         );
     }
 }

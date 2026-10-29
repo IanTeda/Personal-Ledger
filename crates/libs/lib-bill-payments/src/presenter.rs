@@ -372,6 +372,7 @@ impl PayPresenter {
                 },
                 can_confirm: self.can_confirm(),
                 destructive: false,
+                hints: Vec::new(),
             },
             modes: vec![
                 Choice {

@@ -222,6 +222,7 @@ impl InstitutionFormPresenter {
                 },
                 can_confirm: self.is_valid(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: msg::institutions_name_label(),

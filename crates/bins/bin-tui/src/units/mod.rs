@@ -21,18 +21,20 @@ use std::rc::Rc;
 use lib_config::KeyBindingConfig;
 use lib_database::{Commit, InMemoryCommit, UnitsStore};
 use lib_ledger::Ledger;
+use lib_shell::DialogCommand;
 use lib_units::keymap::units_page_keymap;
 use lib_units::presenter::UnitsPageEvent;
 use lib_viper::keymap::Keymap;
 
 pub use ports::{LedgerBackedPorts, TuiPorts};
 
-/// What `Shell` builds each Units View from: the shared ports and the keymap under
-/// `[keybindings]`.
+/// What `Shell` builds each Units View from: the shared ports, and the page's and the Dialogs'
+/// keymaps under `[keybindings]`.
 #[derive(Clone)]
 pub struct UnitsSetup {
     pub ports: TuiPorts,
     pub keymap: Keymap<UnitsPageEvent>,
+    pub dialog_keymap: Keymap<DialogCommand>,
 }
 
 impl UnitsSetup {
@@ -44,6 +46,7 @@ impl UnitsSetup {
         Self {
             ports: LedgerBackedPorts::shared(store, commit, Ledger::stub()),
             keymap: units_page_keymap(config),
+            dialog_keymap: lib_shell::dialog_keymap(config),
         }
     }
 

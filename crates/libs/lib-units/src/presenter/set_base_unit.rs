@@ -73,6 +73,7 @@ impl SetBaseUnitPresenter {
                 submit: msg::units_set_base_submit(),
                 can_confirm: self.chosen.is_some(),
                 destructive: false,
+                hints: vec![super::choose_hint(), super::cancel_hint()],
             },
             base: SelectView {
                 label: msg::units_set_base_label(),
@@ -116,7 +117,7 @@ impl SetBaseUnitPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::{hints, pairs, stub};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
 
@@ -185,5 +186,19 @@ mod tests {
             Some("This unit was removed while the dialog was open.")
         );
         assert_eq!(ports.borrow().base_unit.0, UnitId::SEED_AUD);
+    }
+
+    #[test]
+    fn its_one_select_takes_choose_and_cancel_and_no_next_field() {
+        let (_, shared) = stub();
+        let view = SetBaseUnitPresenter::new(shared).view_model();
+
+        assert_eq!(
+            hints(&view.frame),
+            pairs(&[
+                ("select_previous/select_next", "choose"),
+                ("back", "cancel")
+            ])
+        );
     }
 }

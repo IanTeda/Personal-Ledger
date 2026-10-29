@@ -249,6 +249,7 @@ impl TagFormPresenter {
                 submit,
                 can_confirm: self.can_confirm(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: lib_locale::msg::column_name(),

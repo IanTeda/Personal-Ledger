@@ -47,12 +47,19 @@ impl DeleteUnitViewModel {
         new_base: Option<UnitId>,
         refusal: Option<String>,
     ) -> Self {
+        // Typing the code takes no field key; only the New base unit select adds one.
+        let mut hints = Vec::new();
+        if !candidates.is_empty() {
+            hints.push(super::choose_hint());
+        }
+        hints.push(super::cancel_hint());
         Self {
             frame: DialogFrame {
                 title: msg::units_delete_title(code),
                 submit: msg::units_delete_submit(),
                 can_confirm: confirms_delete(confirm_text, code),
                 destructive: true,
+                hints,
             },
             confirm: Some(TextFieldView {
                 label: msg::units_delete_confirm_label(code),
@@ -173,6 +180,7 @@ impl DeleteUnitPresenter {
                     submit: msg::units_deactivate_submit(),
                     can_confirm: !self.is_base,
                     destructive: false,
+                    hints: vec![super::cancel_hint()],
                 },
                 confirm: None,
                 new_base: None,
@@ -284,7 +292,7 @@ pub fn delete_refusal(refusal: Error, code: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{stub, unquote_aud};
+    use super::super::test_support::{hints, pairs, stub, unquote_aud};
     use super::*;
     use crate::UnitRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -602,5 +610,39 @@ mod tests {
             inactive.view_model().refusal.as_deref(),
             Some("A deactivated unit can't be the base unit.")
         );
+    }
+
+    #[test]
+    fn deleting_or_deactivating_takes_no_field_keys_but_the_new_base_select_takes_choose() {
+        let (ports, shared) = stub();
+        let view = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_BTC)
+            .unwrap()
+            .view_model();
+        assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
+
+        let view = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD)
+            .unwrap()
+            .view_model();
+        assert!(view.new_base.is_some(), "aud is the base");
+        assert_eq!(
+            hints(&view.frame),
+            pairs(&[
+                ("select_previous/select_next", "choose"),
+                ("back", "cancel")
+            ])
+        );
+
+        ports.borrow_mut().usage.uses.insert(
+            UnitId::SEED_BTC,
+            UnitUse {
+                accounts: 1,
+                ..UnitUse::default()
+            },
+        );
+        let view = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC)
+            .unwrap()
+            .view_model();
+        assert!(view.in_use.is_some(), "btc deactivates");
+        assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
     }
 }

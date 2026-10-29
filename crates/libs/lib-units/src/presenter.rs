@@ -20,7 +20,8 @@ use std::rc::Rc;
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 use lib_list_cursor::Step;
-use lib_viper::view::Choice;
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT_NEXT, SELECT_PREVIOUS};
+use lib_viper::view::{Choice, DialogHint};
 
 pub use delete_price_source::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
@@ -47,6 +48,33 @@ pub use units_pane::{
 use crate::protocols::UnitsPorts;
 pub use crate::protocols::{UnitChange, UnitsOutcome};
 use crate::{UnitUse, Updates, msg};
+
+/// A form Dialog's keys besides its submit: next field, choose and cancel.
+fn form_hints() -> Vec<DialogHint> {
+    vec![next_field_hint(), choose_hint(), cancel_hint()]
+}
+
+fn next_field_hint() -> DialogHint {
+    DialogHint {
+        commands: &[NEXT_FIELD],
+        action: lib_locale::msg::dialog_hint_next_field(),
+    }
+}
+
+/// Steps a select, for a Dialog that has one.
+fn choose_hint() -> DialogHint {
+    DialogHint {
+        commands: &[SELECT_PREVIOUS, SELECT_NEXT],
+        action: lib_locale::msg::dialog_hint_choose(),
+    }
+}
+
+fn cancel_hint() -> DialogHint {
+    DialogHint {
+        commands: &[BACK],
+        action: lib_locale::msg::dialog_hint_cancel(),
+    }
+}
 
 /// Where a Presenter reads the time from: `Utc::now` in a Client, a fixed instant in a test.
 pub type Clock = Rc<dyn Fn() -> DateTime<Utc>>;
@@ -244,6 +272,24 @@ pub(crate) mod test_support {
 
     pub fn clock() -> Clock {
         Rc::new(now)
+    }
+
+    /// `frame`'s hints as `(commands, action)`, the commands joined by `/`, for asserting which
+    /// keys a Dialog takes.
+    pub fn hints(frame: &lib_viper::view::DialogFrame) -> Vec<(String, String)> {
+        frame
+            .hints
+            .iter()
+            .map(|hint| (hint.commands.join("/"), hint.action.clone()))
+            .collect()
+    }
+
+    /// `(commands, action)` pairs as [`hints`] returns them.
+    pub fn pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(commands, action)| (commands.to_string(), action.to_string()))
+            .collect()
     }
 
     /// The stub seed, shared, with the handle the test reads it back through.

@@ -47,6 +47,7 @@ impl SkipPresenter {
                     submit: msg::bills_skip_submit(),
                     can_confirm: true,
                     destructive: false,
+                    hints: Vec::new(),
                 },
                 body,
             },

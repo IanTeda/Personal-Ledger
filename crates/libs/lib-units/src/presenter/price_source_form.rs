@@ -309,6 +309,7 @@ impl PriceSourceFormPresenter {
                 submit,
                 can_confirm: self.is_valid(),
                 destructive: false,
+                hints: super::form_hints(),
             },
             name: text(
                 lib_locale::msg::column_name(),
@@ -512,7 +513,7 @@ impl PriceSourceFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::{hints, pairs, stub};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{BuiltInOverride, COINGECKO, CustomSource, MANUAL_ENTRY, PriceSourceRecord};
@@ -738,6 +739,21 @@ mod tests {
         assert_eq!(
             edit.view_model().refusal.as_deref(),
             Some("That price source was removed while the dialog was open.")
+        );
+    }
+
+    #[test]
+    fn the_form_takes_next_field_choose_and_cancel() {
+        let (_, shared) = stub();
+        let view = PriceSourceFormPresenter::add(shared).view_model();
+
+        assert_eq!(
+            hints(&view.frame),
+            pairs(&[
+                ("next_field", "next field"),
+                ("select_previous/select_next", "choose"),
+                ("back", "cancel")
+            ])
         );
     }
 }

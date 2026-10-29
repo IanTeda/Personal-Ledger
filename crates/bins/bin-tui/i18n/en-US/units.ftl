@@ -22,8 +22,3 @@ tui-units-hints-heading = KEYS · COMMANDS
 tui-units-command-new = :unit new \<code\> \<type\> \<precision\>  — add a unit
 tui-units-command-edit = :unit edit VDHG  — name, symbol, precision, active
 tui-units-command-price = :price set VDHG \<date\> \<close\>  ·  :price import \<path.csv\>
-
-## A Units Dialog's footer: the confirm key with its submit, then the other keys.
-
-tui-units-dialog-confirm = enter { $submit }
-tui-units-dialog-keys = {"  "}· tab next field · ←/→ choose · esc cancel

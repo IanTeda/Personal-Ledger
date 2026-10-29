@@ -252,6 +252,7 @@ impl LocationFormPresenter {
                 submit,
                 can_confirm: problem.is_none(),
                 destructive: false,
+                hints: Vec::new(),
             },
             name: TextFieldView {
                 label: msg::inventory_field_name(),

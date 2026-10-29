@@ -7,7 +7,8 @@
 //! Keys become chord text and are looked up in the shared Units keymap, so `[keybindings]`
 //! overrides reach them as on the Desktop. The arrows walk the tables and `Enter` edits, as the
 //! Desktop's router movements and double-click do. While a Dialog is open it takes every key
-//! ([`View::dialog_open`]) and draws over the frame ([`View::render_dialog`]).
+//! ([`View::dialog_open`]), looked up first in `lib-shell`'s Dialog keymap, and draws over the
+//! frame ([`View::render_dialog`]).
 //!
 //! At X-Large the page docks the detail pane at the View's right edge (TUI-055, `pane.rs`). The
 //! View tells the page through `UnitsPageEvent::SetDocked` when the Window Size crosses into or
@@ -16,7 +17,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_list_cursor::Step;
 use lib_locale::format::upper;
-use lib_shell::WindowSize;
+use lib_shell::{DialogCommand, WindowSize};
 use lib_toast::ToastKind;
 use lib_units::SharedPorts;
 use lib_units::presenter::{
@@ -82,6 +83,7 @@ pub struct UnitsView {
     presenter: UnitsPagePresenter,
     ports: TuiPorts,
     keymap: Keymap<UnitsPageEvent>,
+    dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
@@ -101,6 +103,7 @@ impl UnitsView {
             ),
             ports: setup.ports.clone(),
             keymap: setup.keymap.clone(),
+            dialog_keymap: setup.dialog_keymap.clone(),
             dialog: None,
             toasts: Vec::new(),
             docked: false,
@@ -131,7 +134,7 @@ impl UnitsView {
             return;
         };
         let mut router = Router::new(self.ports.clone(), &mut self.toasts);
-        dialog.handle_key(key, &mut router);
+        dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
         self.ports.borrow_mut().commit();
         if let Some(outcome) = closed {
@@ -158,14 +161,17 @@ impl UnitsView {
     }
 }
 
-/// `key` as `[keybindings]` writes a chord (`ctrl+d`, `G`, `tab`), or `None` for one the keymap
-/// can't name. crossterm already reports a shifted letter as its capital.
-fn chord(key: KeyEvent) -> Option<String> {
+/// `key` as `[keybindings]` writes a chord (`ctrl+d`, `G`, `tab`, `esc`), or `None` for one the
+/// keymap can't name. crossterm already reports a shifted letter as its capital.
+pub(super) fn chord(key: KeyEvent) -> Option<String> {
     let base = match key.code {
         KeyCode::Char(ch) => ch.to_string(),
         KeyCode::Tab => "tab".to_string(),
         KeyCode::BackTab => "shift+tab".to_string(),
         KeyCode::Enter => "enter".to_string(),
+        KeyCode::Esc => "esc".to_string(),
+        KeyCode::Down => "down".to_string(),
+        KeyCode::Up => "up".to_string(),
         _ => return None,
     };
     let mut chord = String::new();
@@ -254,7 +260,7 @@ impl View for UnitsView {
 
     fn render_dialog(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         if let Some(dialog) = &self.dialog {
-            dialog.render(frame, area, c);
+            dialog.render(frame, area, &self.dialog_keymap, c);
         }
     }
 }
@@ -679,6 +685,83 @@ mod tests {
             text.push('\n');
         }
         text
+    }
+
+    /// The open Dialog's footer, its last row inside the border, as drawn over a 160x40 frame.
+    fn dialog_footer(view: &UnitsView) -> String {
+        let c = Colours::default();
+        let mut terminal =
+            Terminal::new(TestBackend::new(160, 40)).expect("test backend should initialise");
+        terminal
+            .draw(|frame| view.render_dialog(frame, frame.area(), &c))
+            .expect("drawing the dialog should not error");
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect()
+            })
+            .collect();
+        // The footer is the row above the window's bottom border, the last bordered row.
+        let bottom = rows
+            .iter()
+            .rposition(|row| row.contains('\u{2514}'))
+            .expect("a dialog is drawn");
+        rows[bottom - 1]
+            .trim()
+            .trim_matches('\u{2502}')
+            .trim()
+            .to_string()
+    }
+
+    fn rebound(command: &str, chord: &str) -> UnitsView {
+        crate::locale::init_for_tests();
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(command.to_string(), chord.to_string());
+        UnitsView::new(&UnitsSetup::stub(&config))
+    }
+
+    #[test]
+    fn a_dialog_footer_names_only_the_keys_it_takes() {
+        let mut view = units_view();
+        view.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(
+            dialog_footer(&view),
+            "enter Add \u{b7} tab next field \u{b7} up/down choose \u{b7} esc cancel"
+        );
+        view.handle_key(key(KeyCode::Esc));
+
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
+            lib_units::UnitId::SEED_VAS,
+        )));
+        view.handle_key(key(KeyCode::Char('d')));
+        let footer = dialog_footer(&view);
+        assert!(footer.ends_with("esc cancel"), "{footer}");
+        assert!(!footer.contains("next field"), "{footer}");
+        assert!(!footer.contains("choose"), "{footer}");
+    }
+
+    #[test]
+    fn rebinding_a_dialog_key_changes_its_footer_and_the_key() {
+        let mut view = rebound(lib_viper::keymap::BACK, "ctrl+h");
+        view.handle_key(key(KeyCode::Char('n')));
+        assert!(
+            dialog_footer(&view).ends_with("ctrl+h cancel"),
+            "{}",
+            dialog_footer(&view)
+        );
+
+        view.handle_key(key(KeyCode::Esc));
+        assert!(view.dialog_open(), "esc no longer cancels");
+        view.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL));
+        assert!(!view.dialog_open(), "ctrl+h cancels");
+
+        let mut view = rebound(lib_viper::keymap::NEXT_FIELD, "ctrl+n");
+        view.handle_key(key(KeyCode::Char('n')));
+        assert!(dialog_footer(&view).contains("ctrl+n next field"));
     }
 
     #[test]

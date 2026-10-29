@@ -149,6 +149,7 @@ impl RemoveAreaPresenter {
                 submit: msg::inventory_area_remove_submit(),
                 can_confirm: self.can_confirm(),
                 destructive: holds_items,
+                hints: Vec::new(),
             },
             warning: if holds_items {
                 msg::inventory_area_remove_with_items(

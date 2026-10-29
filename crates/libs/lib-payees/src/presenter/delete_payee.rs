@@ -141,6 +141,7 @@ impl DeletePayeePresenter {
                 submit,
                 can_confirm: self.can_confirm(),
                 destructive,
+                hints: Vec::new(),
             },
             action: self.action,
             warning,
