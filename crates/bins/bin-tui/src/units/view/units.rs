@@ -35,7 +35,7 @@ use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
 
@@ -49,14 +49,18 @@ use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
 /// Width of the left column: the two tables and the summary. Widened past §4a's own "~36 cols"
-/// for less cramped columns and the summary box's horizontal padding.
-const LEFT_COLUMN_WIDTH: u16 = 46;
+/// for less cramped columns, the summary box's horizontal padding and the Units table's LAST.
+const LEFT_COLUMN_WIDTH: u16 = 61;
 
 /// Width of the Units table's CODE column.
 const UNIT_CODE_WIDTH: u16 = 6;
 
 /// Width of the Units table's right-aligned PRICE SOURCE column, the longest built-in's name.
 const UNIT_SOURCE_WIDTH: u16 = 14;
+
+/// Width of the Units table's right-aligned LAST column, a price such as `148,212.40 aud`. Its age
+/// is the summary's, as a row has no room for both.
+const UNIT_LAST_WIDTH: u16 = 14;
 
 /// Width of the Price Sources table's right-aligned LAST UPDATED column.
 const SOURCE_UPDATED_WIDTH: u16 = 18;
@@ -65,8 +69,8 @@ const SOURCE_UPDATED_WIDTH: u16 = 18;
 /// glyph, not a Message.
 const NOT_FETCHED_GLYPH: &str = "\u{2717} ";
 
-/// Rows inside the summary box's border: the title row, a second line, a rule, then two facts.
-const SUMMARY_BOX_CONTENT_HEIGHT: u16 = 5;
+/// Rows inside the summary box's border: the title row, a second line, a rule, then three facts.
+const SUMMARY_BOX_CONTENT_HEIGHT: u16 = 6;
 
 /// The summary section: its heading, rule and the bordered box. Fixed, so extra terminal height
 /// goes to the tables above it.
@@ -481,6 +485,10 @@ fn render_unit_table(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewMode
         Paragraph::new(Span::styled(upper(&labels.price_source), dim)).alignment(Alignment::Right),
         columns[2],
     );
+    frame.render_widget(
+        Paragraph::new(Span::styled(upper(&labels.last), dim)).alignment(Alignment::Right),
+        columns[3],
+    );
 
     let selected = view.units.iter().position(|unit| unit.selected);
     let offset = scroll_offset(selected, usize::from(body.height));
@@ -536,13 +544,18 @@ fn render_unit_row(frame: &mut Frame<'_>, area: Rect, unit: &UnitLine, c: &Colou
         Paragraph::new(Span::styled(unit.price_source.as_str(), rest)).alignment(Alignment::Right),
         columns[2],
     );
+    frame.render_widget(
+        Paragraph::new(Span::styled(unit.last_price.as_str(), rest)).alignment(Alignment::Right),
+        columns[3],
+    );
 }
 
-fn unit_row_columns(area: Rect) -> [Rect; 3] {
+fn unit_row_columns(area: Rect) -> [Rect; 4] {
     Layout::horizontal([
         Constraint::Length(UNIT_CODE_WIDTH),
         Constraint::Min(0),
         Constraint::Length(UNIT_SOURCE_WIDTH),
+        Constraint::Length(UNIT_LAST_WIDTH),
     ])
     .spacing(1)
     .areas(area)
@@ -636,16 +649,14 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, 
     let block = Block::bordered().padding(Padding::horizontal(1));
     let inner = block.inner(boxed);
     frame.render_widget(block, boxed);
-    let [title, second, divider, first_fact, second_fact] =
-        Layout::vertical([Constraint::Length(1); 5]).areas(inner);
+    let [title, second, divider, first_fact, second_fact, third_fact] =
+        Layout::vertical([Constraint::Length(1); 6]).areas(inner);
 
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let dim = c.muted();
-    let fact = |label: &str, value: &str| {
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
-            Span::raw(value.to_string()),
-        ]))
+    let label = |label: &str| Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim);
+    let fact = |name: &str, value: &str| {
+        Paragraph::new(Line::from(vec![label(name), Span::raw(value.to_string())]))
     };
     if let Some(unit) = view.units.iter().find(|unit| unit.selected) {
         let [code, kind] = Layout::horizontal([
@@ -663,6 +674,12 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, 
         let columns = &view.unit_columns;
         frame.render_widget(fact(&columns.price_source, &unit.price_source), first_fact);
         frame.render_widget(fact(&columns.flags, &unit.flags), second_fact);
+        // The last price, then the age the table's LAST has no room for, dim.
+        let mut last = vec![label(&columns.last), Span::raw(unit.last_price.as_str())];
+        if let Some(age) = &unit.last_age {
+            last.extend([Span::raw("  "), Span::styled(age.as_str(), dim)]);
+        }
+        frame.render_widget(Paragraph::new(Line::from(last)), third_fact);
     } else if let Some(source) = view.price_sources.iter().find(|source| source.selected) {
         frame.render_widget(
             Paragraph::new(Span::styled(source.name.as_str(), bold)),
@@ -710,7 +727,8 @@ fn render_price_region(frame: &mut Frame<'_>, area: Rect, heading: &str, c: &Col
     render_heading(frame, heading_row, heading, "", c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_units_price_history_open(), c.muted())),
+        Paragraph::new(Span::styled(msg::tui_units_price_history_open(), c.muted()))
+            .wrap(Wrap { trim: true }),
         note,
     );
 }
@@ -949,6 +967,35 @@ mod tests {
     }
 
     #[test]
+    fn last_draws_each_units_last_price_and_the_summary_its_age() {
+        let mut view = units_view();
+        let row = |text: &str, code: &str| {
+            text.lines()
+                .find(|line| line.trim_start().starts_with(code))
+                .map(str::to_string)
+                .unwrap_or_default()
+        };
+        let text = render(&view, 128, 40);
+        assert!(text.contains("LAST"), "{text}");
+        assert!(row(&text, "btc").contains("148,212.40 aud"), "{text}");
+        assert!(row(&text, "vas").contains('—'), "{text}");
+        let summary_last = |text: &str| {
+            text.lines()
+                .find(|line| line.contains("\u{2502} Last "))
+                .map(str::to_string)
+                .unwrap_or_default()
+        };
+        assert!(summary_last(&text).contains('—'), "aud has none:\n{text}");
+
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let text = render(&view, 128, 40);
+        assert!(
+            summary_last(&text).contains("148,212.40 aud  5 minutes ago"),
+            "the summary adds its age:\n{text}"
+        );
+    }
+
+    #[test]
     fn the_keys_box_draws_the_page_hints() {
         let view = units_view();
         let text = render(&view, 160, 30);
@@ -963,7 +1010,8 @@ mod tests {
 
     #[test]
     fn the_price_history_regions_point_at_the_prices_view() {
-        let text = render(&units_view(), 96, 30);
+        // At Medium's reference width the note fits one line; at the 96-column floor it wraps.
+        let text = render(&units_view(), 128, 30);
         assert!(text.contains("WEEKLY CLOSE"), "{text}");
         assert!(text.contains("WEEKLY PRICES"), "{text}");
         assert!(

@@ -55,7 +55,7 @@ The Unit Kind decides which built-in Price Sources are offered for a unit: CoinG
 
 ## Screens
 
-The Units screen lists all units you've created with their names and types, and whether they're currently in use by an account. At its widest, the detail pane shows each account's balance in the unit at the unit's precision, and its last price and the accounts' values at the precision of the unit it is quoted in. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
+The Units screen lists all units you've created with their names and types, each unit's last price in the unit it is quoted in (and how long ago it was written: under the price in the desktop app, beside it in the terminal app's summary for the selected unit), and whether they're currently in use by an account. At its widest, the detail pane shows each account's balance in the unit at the unit's precision, and its last price and the accounts' values at the precision of the unit it is quoted in. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
 
 ## Rules to know
 

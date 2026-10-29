@@ -488,6 +488,31 @@ fn escape_closes_an_open_row_menu_before_leaving_the_page(app: &mut TestAppConte
 }
 
 #[gpui::test]
+fn the_units_table_draws_each_units_last_price_and_its_age_under_last(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let last: Vec<_> = ui
+        .settings_units()
+        .units
+        .into_iter()
+        .map(|unit| (unit.last_price, unit.last_age))
+        .collect();
+    assert_eq!(
+        last,
+        [
+            ("—".to_string(), None),
+            (
+                "148,212.40 aud".to_string(),
+                Some("5 minutes ago".to_string())
+            ),
+            ("—".to_string(), None),
+        ]
+    );
+    for row in 0..last.len() {
+        assert!(ui.is_drawn(&format!("unit-last-{row}")), "row {row}");
+    }
+}
+
+#[gpui::test]
 fn at_x_large_the_pane_is_drawn_and_follows_the_selection(app: &mut TestAppContext) {
     let mut ui = on_units_at(app, WindowSize::XLarge);
     assert!(ui.is_drawn("units-detail-pane"));

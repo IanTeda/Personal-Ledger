@@ -12,6 +12,7 @@ units-column-flags = Flags
 units-column-price-source = Price source
 units-column-source = Source
 units-column-last-updated = Last updated
+units-column-last = Last
 units-not-fetched-yet = Not fetched yet
 units-none = —
 units-flag-base = base

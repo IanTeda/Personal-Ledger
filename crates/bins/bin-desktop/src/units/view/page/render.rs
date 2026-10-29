@@ -34,6 +34,7 @@ const GLYPH_WIDTH: Pixels = px(24.0);
 const CODE_WIDTH: Pixels = px(100.0);
 const TYPE_WIDTH: Pixels = px(90.0);
 const SOURCE_WIDTH: Pixels = px(130.0);
+const LAST_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_NAME_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_LAST_UPDATED_WIDTH: Pixels = px(130.0);
 
@@ -251,7 +252,8 @@ fn units_table(
                 .child(header_cell(Some(CODE_WIDTH), Some(&columns.code)))
                 .child(header_cell(None, Some(&columns.name)))
                 .child(header_cell(Some(TYPE_WIDTH), Some(&columns.kind)))
-                .child(header_cell(Some(SOURCE_WIDTH), Some(&columns.price_source))),
+                .child(header_cell(Some(SOURCE_WIDTH), Some(&columns.price_source)))
+                .child(header_cell(Some(LAST_WIDTH), Some(&columns.last))),
         )
         .children(
             units
@@ -337,6 +339,21 @@ fn unit_row(
             .flex_none()
             .text_color(muted)
             .child(unit.price_source.clone()),
+    )
+    // The last price over its age, as the detail pane draws a value.
+    .child(
+        div()
+            .debug_selector(move || format!("unit-last-{index}"))
+            .w(LAST_WIDTH)
+            .flex_none()
+            .flex()
+            .flex_col()
+            .child(unit.last_price.clone())
+            .children(
+                unit.last_age
+                    .clone()
+                    .map(|age| div().text_size(px(11.0)).text_color(muted).child(age)),
+            ),
     )
 }
 

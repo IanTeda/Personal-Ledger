@@ -10,7 +10,7 @@ use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
-use super::units_pane::{DetailPane, PaneInput, detail_pane};
+use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::interactor::ReactivateUnit;
 use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
@@ -221,6 +221,7 @@ pub struct UnitColumns {
     pub name: String,
     pub kind: String,
     pub price_source: String,
+    pub last: String,
     pub flags: String,
 }
 
@@ -240,6 +241,11 @@ pub struct UnitLine {
     pub kind: String,
     /// The name of the Price Source the Unit's link names; empty when it is gone.
     pub price_source: String,
+    /// The newest Weekly Price's close in the quote Unit at its Precision, `148,212.40 aud`, or —
+    /// with none.
+    pub last_price: String,
+    /// How long ago that price was written, `5 minutes ago`; `None` with no price.
+    pub last_age: Option<String>,
     pub is_base: bool,
     /// `base` for the base Unit.
     pub base_flag: Option<String>,
@@ -409,6 +415,8 @@ impl UnitsPagePresenter {
                 let base_flag = (unit.id == base).then(msg::units_flag_base);
                 let inactive_tag = (!unit.is_active).then(msg::units_inactive);
                 let flags = [base_flag.clone(), inactive_tag.clone()];
+                let last = unit.last_price();
+                let quote = units.iter().find(|quote| quote.id == unit.link.quote);
                 UnitLine {
                     id: unit.id,
                     code: unit.code.clone(),
@@ -419,6 +427,9 @@ impl UnitsPagePresenter {
                         .find(|source| source.id == unit.link.source_id)
                         .map(|source| source.name.to_string())
                         .unwrap_or_default(),
+                    last_price: last
+                        .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
+                    last_age: last.map(|price| ago(price.written_at, now)),
                     is_base: unit.id == base,
                     kind_meta: joined(
                         std::iter::once(unit.kind.label())
@@ -474,6 +485,7 @@ impl UnitsPagePresenter {
                 name: lib_locale::msg::column_name(),
                 kind: lib_locale::msg::column_type(),
                 price_source: msg::units_column_price_source(),
+                last: msg::units_column_last(),
                 flags: msg::units_column_flags(),
             },
             units: unit_lines,
@@ -830,6 +842,21 @@ mod tests {
                 view.units[1].flags.as_str()
             ),
             ("Crypto", "")
+        );
+        assert_eq!(view.unit_columns.last, "Last");
+        let last: Vec<_> = view
+            .units
+            .iter()
+            .map(|unit| (unit.last_price.as_str(), unit.last_age.as_deref()))
+            .collect();
+        assert_eq!(
+            last,
+            [
+                ("—", None),
+                ("148,212.40 aud", Some("5 minutes ago")),
+                ("—", None),
+            ],
+            "btc's newest Weekly Price at aud's Precision; aud and vas have none"
         );
         assert_eq!(view.scope, "3 units · synced");
         let sources: Vec<_> = view

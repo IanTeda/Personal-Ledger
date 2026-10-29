@@ -61,6 +61,13 @@ fn selected(ui: &mut Harness<'_>) -> String {
         .unwrap_or_default()
 }
 
+#[gpui::test]
+fn a_click_on_a_units_last_price_selects_its_row(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("unit-last-1");
+    assert_eq!(selected(&mut ui), "btc");
+}
+
 /// The open row menu's entries as their slugs.
 fn menu(ui: &mut Harness<'_>) -> Option<Vec<&'static str>> {
     ui.settings_units().menu.map(|menu| {
