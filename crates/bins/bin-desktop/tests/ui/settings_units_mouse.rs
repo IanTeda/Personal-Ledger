@@ -536,3 +536,50 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
     );
     assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
 }
+
+#[gpui::test]
+fn the_set_price_menu_entry_and_pane_button_open_set_price_and_confirm_sets_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    ui.right_click("unit-row-2");
+    ui.click("settings-units-menu-set-price");
+    assert_eq!(ui.dialog(), Some("SetPrice"));
+    ui.click("set-price-cancel");
+    assert_eq!(ui.dialog(), None);
+    ui.right_click("unit-row-1");
+    assert!(
+        !menu(&mut ui)
+            .expect("btc has a menu")
+            .contains(&"set-price"),
+        "btc is priced by CoinGecko"
+    );
+    // The open menu draws over the rows under btc, so it closes before vas is clicked.
+    ui.press("escape");
+    ui.click("unit-row-2");
+
+    ui.click("units-pane-set-price");
+    assert_eq!(ui.dialog(), Some("SetPrice"));
+    ui.click("set-price-week");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Week"));
+    ui.click("set-price-close");
+    ui.press("7 . 5");
+    ui.click("set-price-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    let prices: Vec<_> = ui
+        .settings_units()
+        .pane
+        .expect("docked at X-Large")
+        .groups
+        .into_iter()
+        .filter_map(|group| match group {
+            lib_units::presenter::PaneGroup::Source(source) => Some(source.facts),
+            _ => None,
+        })
+        .flatten()
+        .filter(|fact| fact.label == "Last price")
+        .map(|fact| fact.value)
+        .collect();
+    assert_eq!(prices, ["7.50 aud"]);
+}

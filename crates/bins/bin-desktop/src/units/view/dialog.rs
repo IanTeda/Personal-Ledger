@@ -12,13 +12,14 @@
 mod delete_price_source;
 mod price_source_form;
 mod set_base_unit;
+mod set_price;
 mod unit_form;
 
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_toast::{Notice, Notify};
 use lib_units::presenter::{
-    DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, UnitFormPresenter,
-    UnitsOutcome,
+    DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, SetPricePresenter,
+    UnitFormPresenter, UnitsOutcome,
 };
 use lib_units::{UnitsDialog as Which, UnitsRouter};
 
@@ -56,6 +57,7 @@ enum View {
     /// Boxed: the form is the largest Presenter by far.
     UnitForm(Box<UnitFormPresenter>, UnitSelects),
     SetBaseUnit(SetBaseUnitPresenter, SelectState),
+    SetPrice(SetPricePresenter),
     PriceSourceForm(PriceSourceFormPresenter, ApiKeyInput),
     DeletePriceSource(DeletePriceSourcePresenter),
 }
@@ -67,6 +69,7 @@ impl View {
             Self::UnitForm(_, selects) if selects.editing() => "EditUnit",
             Self::UnitForm(..) => "AddUnit",
             Self::SetBaseUnit(..) => "SetBaseUnit",
+            Self::SetPrice(_) => "SetPrice",
             Self::PriceSourceForm(presenter, _) => {
                 let view = presenter.view_model();
                 match (&view.endpoint, &view.usage) {
@@ -98,6 +101,11 @@ impl UnitsDialog {
             Which::SetBaseUnit => {
                 View::SetBaseUnit(SetBaseUnitPresenter::new(shared), SelectState::default())
             }
+            Which::SetPrice(id) => View::SetPrice(SetPricePresenter::new(
+                shared,
+                std::rc::Rc::new(chrono::Utc::now),
+                id,
+            )?),
             Which::AddPriceSource => price_source_form::open(PriceSourceFormPresenter::add(shared)),
             Which::EditPriceSource(id) => {
                 price_source_form::open(PriceSourceFormPresenter::edit(shared, id)?)
@@ -130,7 +138,8 @@ impl UnitsDialog {
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
     fn close_event(&mut self, confirm: bool) -> DialogRouter {
         use lib_units::presenter::{
-            DeletePriceSourceEvent, PriceSourceFormEvent, SetBaseUnitEvent, UnitFormEvent,
+            DeletePriceSourceEvent, PriceSourceFormEvent, SetBaseUnitEvent, SetPriceEvent,
+            UnitFormEvent,
         };
         match &mut self.view {
             View::UnitForm(presenter, _) => {
@@ -148,6 +157,14 @@ impl UnitsDialog {
                     SetBaseUnitEvent::Cancel
                 };
                 send(presenter, event, SetBaseUnitPresenter::handle)
+            }
+            View::SetPrice(presenter) => {
+                let event = if confirm {
+                    SetPriceEvent::Confirm
+                } else {
+                    SetPriceEvent::Cancel
+                };
+                send(presenter, event, SetPricePresenter::handle)
             }
             View::PriceSourceForm(presenter, _) => {
                 let event = if confirm {
@@ -274,6 +291,7 @@ impl HostedDialog for UnitsDialog {
         match &mut self.view {
             View::UnitForm(presenter, selects) => unit_form::key(presenter, selects, key),
             View::SetBaseUnit(presenter, select) => set_base_unit::key(presenter, select, key),
+            View::SetPrice(presenter) => set_price::key(presenter, key),
             View::PriceSourceForm(presenter, api_key) => {
                 price_source_form::key(presenter, api_key, key)
             }
@@ -285,6 +303,7 @@ impl HostedDialog for UnitsDialog {
         match &self.view {
             View::UnitForm(presenter, _) => presenter.view_model().frame.can_confirm,
             View::SetBaseUnit(presenter, _) => presenter.view_model().frame.can_confirm,
+            View::SetPrice(presenter) => presenter.view_model().frame.can_confirm,
             View::PriceSourceForm(presenter, _) => presenter.view_model().frame.can_confirm,
             View::DeletePriceSource(presenter) => presenter.view_model().frame.can_confirm,
         }
@@ -314,7 +333,7 @@ impl HostedDialog for UnitsDialog {
         match &mut self.view {
             View::UnitForm(_, selects) => selects.close(),
             View::SetBaseUnit(_, select) => close(select),
-            View::PriceSourceForm(..) | View::DeletePriceSource(_) => false,
+            View::SetPrice(_) | View::PriceSourceForm(..) | View::DeletePriceSource(_) => false,
         }
     }
 
@@ -328,6 +347,10 @@ impl HostedDialog for UnitsDialog {
             View::SetBaseUnit(presenter, _) => {
                 let view = presenter.view_model();
                 (view.frame.clone(), set_base_unit::readback(&view))
+            }
+            View::SetPrice(presenter) => {
+                let view = presenter.view_model();
+                (view.frame.clone(), set_price::readback(&view))
             }
             View::PriceSourceForm(presenter, _) => {
                 let view = presenter.view_model();
@@ -357,6 +380,7 @@ impl Render for UnitsDialog {
             View::SetBaseUnit(presenter, select) => {
                 set_base_unit::render(&presenter.view_model(), select, &actions, cx)
             }
+            View::SetPrice(presenter) => set_price::render(&presenter.view_model(), &actions, cx),
             View::PriceSourceForm(presenter, _) => {
                 price_source_form::render(&presenter.view_model(), &actions, cx)
             }

@@ -172,6 +172,11 @@ pub enum UnitsOutcome {
         change: UnitChange,
         code: String,
     },
+    /// A price was set by hand for the Unit `code`, in the week starting `week`.
+    PriceSet {
+        code: String,
+        week: chrono::NaiveDate,
+    },
     SourceSaved {
         name: String,
     },
@@ -190,6 +195,7 @@ pub enum UnitsDialog {
     EditUnit(UnitId),
     DeleteUnit(UnitId),
     SetBaseUnit,
+    SetPrice(UnitId),
     AddPriceSource,
     EditPriceSource(PriceSourceId),
     DeletePriceSource(PriceSourceId),

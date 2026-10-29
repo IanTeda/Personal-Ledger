@@ -20,6 +20,7 @@ units-inactive = inactive
 units-menu-edit-unit = Edit unit…
 units-menu-delete-unit = Delete unit…
 units-menu-reactivate-unit = Reactivate unit
+units-menu-set-price = Set price…
 units-menu-test-source = Test price source
 units-menu-edit-source = Edit price source…
 units-menu-delete-source = Delete price source…
@@ -30,6 +31,7 @@ units-hint-delete = delete
 units-hint-new = new
 units-hint-test-source = test source
 units-hint-test = test
+units-hint-set-price = set price
 units-hint-units = units
 units-hint-price-sources = price sources
 units-status-test-not-yet-built = test price source — not yet built
@@ -38,6 +40,7 @@ units-activity-deleted = Deleted unit { $code }
 units-activity-deactivated = Deactivated unit { $code }
 units-activity-reactivated = Reactivated unit { $code }
 units-activity-base-set = Made { $code } the base unit
+units-activity-price-set = Set the price of { $code } for the week of { $week }
 units-activity-source-saved = Saved price source { $name }
 units-activity-source-deleted = Deleted price source { $name }
 
@@ -60,6 +63,7 @@ units-pane-meta = { $kind } · valued in { $base }
 units-pane-edit-unit = Edit unit
 units-pane-delete-unit = Delete unit
 units-pane-reactivate-unit = Reactivate unit
+units-pane-set-price = Set price
 units-pane-test = Test
 units-pane-edit-source = Edit source
 units-pane-delete-source = Delete source
@@ -88,6 +92,7 @@ units-pane-activity-note = This session's Units outcomes, newest first. Errors s
 units-toast-deleted = Deleted unit { $code }
 units-toast-deactivated = Deactivated unit { $code }
 units-toast-reactivated = Reactivated unit { $code }
+units-toast-price-set = Set the price of { $code } for the week of { $week }
 units-toast-source-saved = Saved price source { $name }
 units-toast-source-deleted = Deleted price source { $name }{ $moved ->
     [0] {""}
@@ -191,6 +196,19 @@ units-set-base =
     .submit = Set base unit
 units-set-base-label = Base unit
 
+## The Set price Dialog, for a unit on Manual entry. `$date` is the week's Monday.
+
+units-set-price =
+    .title = Set price — { $code }
+    .submit = Set price
+units-set-price-field-week = Week
+units-set-price-week-of = Week of { $date }
+units-set-price-field-close = Close
+units-set-price-close-help = In { $code }, to { $places ->
+    [one] { $places } place
+   *[other] { $places } places
+}.
+
 ## Refusals: an Interactor said no, shown in the open Dialog.
 
 units-refusal-unit-gone = This unit was removed while the dialog was open.
@@ -204,6 +222,8 @@ units-refusal-quoted = { $count ->
     [one] { $code } is the quote unit of { $count } other unit, so it can't be deleted. Change that unit's quote first.
    *[other] { $code } is the quote unit of { $count } other units, so it can't be deleted. Change their quotes first.
 }
+units-refusal-priced-by-source = { $code } is priced by its price source, so it takes no price by hand.
+units-refusal-future-week = The week of { $date } hasn't started, so it can't be priced yet.
 units-refusal-manual-entry = Manual entry can't be edited or deleted.
 units-refusal-built-in-endpoint = A built-in price source's address isn't edited here.
 units-refusal-built-in-delete = A built-in price source can't be deleted.

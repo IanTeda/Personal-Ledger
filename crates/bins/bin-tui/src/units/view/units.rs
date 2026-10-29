@@ -917,6 +917,30 @@ mod tests {
     }
 
     #[test]
+    fn at_x_large_p_on_a_manual_entry_unit_sets_its_price_and_the_pane_shows_it() {
+        let mut view = units_view();
+        view.set_window_size(WindowSize::XLarge);
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
+            lib_units::UnitId::SEED_VAS,
+        )));
+        assert!(
+            render(&view, 256, 72).contains("p Set price"),
+            "the Unit's keys"
+        );
+
+        view.handle_key(key(KeyCode::Char('p')));
+        for ch in "42".chars() {
+            view.handle_key(key(KeyCode::Char(ch)));
+        }
+        view.handle_key(key(KeyCode::Enter));
+
+        assert!(!view.dialog_open(), "enter confirms Set price");
+        let text = render(&view, 256, 72);
+        assert!(text.contains("42.00 aud"), "the last price:\n{text}");
+        assert!(text.contains("Set the price of vas"), "ACTIVITY:\n{text}");
+    }
+
+    #[test]
     fn a_price_source_selected_swaps_the_groups() {
         let mut view = docked_on_btc();
         view.send(UnitsPageEvent::Select(UnitsRow::Source(

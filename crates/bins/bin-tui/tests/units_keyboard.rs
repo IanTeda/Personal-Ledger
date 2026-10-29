@@ -209,3 +209,32 @@ fn a_failed_units_write_raises_an_error_toast() {
         "{frame}"
     );
 }
+
+#[test]
+fn p_sets_a_manual_entry_units_price_and_toasts_its_week() {
+    let mut shell = shell();
+    // vas, the third Unit, is on Manual entry.
+    press(&mut shell, "g u j j p");
+    let open = screen(&mut shell);
+    assert!(open.contains("Set price — vas"), "{open}");
+
+    type_text(&mut shell, "42");
+    press(&mut shell, "Enter");
+    let frame = screen(&mut shell);
+
+    assert!(
+        !frame.contains("Set price — vas"),
+        "the Dialog closed:\n{frame}"
+    );
+    assert!(frame.contains("Set the price of vas"), "{frame}");
+}
+
+#[test]
+fn p_on_a_unit_its_source_prices_opens_nothing() {
+    let mut shell = shell();
+
+    press(&mut shell, "g u j p");
+    let frame = screen(&mut shell);
+
+    assert!(!frame.contains("Set price"), "{frame}");
+}

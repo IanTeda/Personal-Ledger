@@ -11,6 +11,7 @@ mod delete_price_source;
 mod delete_unit;
 mod price_source_form;
 mod set_base_unit;
+mod set_price;
 mod unit_form;
 mod units_page;
 mod units_pane;
@@ -35,6 +36,7 @@ pub use price_source_form::{
     PriceSourceFormViewModel,
 };
 pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
+pub use set_price::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};
 pub use unit_form::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
 pub use units_page::{
     ActivityLine, Hint, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,
@@ -89,6 +91,7 @@ impl UnitsOutcome {
                 UnitChange::Deactivated => msg::units_toast_deactivated(code),
                 UnitChange::Reactivated => msg::units_toast_reactivated(code),
             },
+            Self::PriceSet { code, week } => msg::units_toast_price_set(code, &week_text(*week)),
             Self::SourceSaved { name } => msg::units_toast_source_saved(name),
             Self::SourceDeleted { name, moved } => {
                 msg::units_toast_source_deleted(name, count(*moved))
@@ -106,10 +109,16 @@ impl UnitsOutcome {
                 UnitChange::Reactivated => msg::units_activity_reactivated(code),
                 UnitChange::BaseSet => msg::units_activity_base_set(code),
             },
+            Self::PriceSet { code, week } => msg::units_activity_price_set(code, &week_text(*week)),
             Self::SourceSaved { name } => msg::units_activity_source_saved(name),
             Self::SourceDeleted { name, .. } => msg::units_activity_source_deleted(name),
         }
     }
+}
+
+/// A Weekly Price's week, as its Monday in the Locale's medium form.
+fn week_text(week: chrono::NaiveDate) -> String {
+    lib_locale::format::format_date(week, None)
 }
 
 /// The codes of the Units source `id` prices, in the Ledger's order.

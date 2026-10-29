@@ -14,7 +14,7 @@ use lib_shell::DialogCommand;
 use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeleteUnitEvent, DeleteUnitPresenter,
     PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SetBaseUnitEvent,
-    SetBaseUnitPresenter, UnitFormEvent, UnitFormPresenter,
+    SetBaseUnitPresenter, SetPriceEvent, SetPricePresenter, UnitFormEvent, UnitFormPresenter,
 };
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
 use lib_viper::keymap::{Keymap, SELECT};
@@ -47,6 +47,7 @@ pub enum Dialog {
     UnitForm(UnitFormPresenter),
     DeleteUnit(DeleteUnitPresenter),
     SetBaseUnit(SetBaseUnitPresenter),
+    SetPrice(SetPricePresenter),
     PriceSourceForm(PriceSourceFormPresenter, SecretString),
     DeletePriceSource(DeletePriceSourcePresenter),
 }
@@ -74,6 +75,11 @@ impl Dialog {
             Which::EditUnit(id) => Self::UnitForm(UnitFormPresenter::edit(ports, id)?),
             Which::DeleteUnit(id) => Self::DeleteUnit(DeleteUnitPresenter::new(ports, id)?),
             Which::SetBaseUnit => Self::SetBaseUnit(SetBaseUnitPresenter::new(ports)),
+            Which::SetPrice(id) => Self::SetPrice(SetPricePresenter::new(
+                ports,
+                std::rc::Rc::new(chrono::Utc::now),
+                id,
+            )?),
             Which::AddPriceSource => Self::PriceSourceForm(
                 PriceSourceFormPresenter::add(ports),
                 SecretString::from(String::new()),
@@ -138,6 +144,23 @@ impl Dialog {
                     step => form_step(step, key)
                         .and_then(|delta| stepped(&presenter.view_model().base, delta))
                         .map(SetBaseUnitEvent::Choose),
+                };
+                if let Some(event) = event {
+                    presenter.handle(event, router);
+                }
+            }
+            Self::SetPrice(presenter) => {
+                let view = presenter.view_model();
+                let event = match form {
+                    Some(FormKey::Cancel) => Some(SetPriceEvent::Cancel),
+                    Some(FormKey::Confirm) => Some(SetPriceEvent::Confirm),
+                    Some(FormKey::Next) => Some(SetPriceEvent::NextField),
+                    Some(FormKey::Prev) => Some(SetPriceEvent::PrevField),
+                    Some(FormKey::Step(_)) => None,
+                    None if view.week.focused => {
+                        edited(&view.week.text, key).map(SetPriceEvent::Week)
+                    }
+                    None => edited(&view.close.text, key).map(SetPriceEvent::Close),
                 };
                 if let Some(event) = event {
                     presenter.handle(event, router);
@@ -245,6 +268,14 @@ impl Dialog {
             Self::SetBaseUnit(presenter) => {
                 let view = presenter.view_model();
                 items.push(select(&view.base));
+                (view.frame, view.refusal)
+            }
+            Self::SetPrice(presenter) => {
+                let view = presenter.view_model();
+                items.push(Item::Text(view.week));
+                items.push(Item::Note(view.week_help));
+                items.push(Item::Text(view.close));
+                items.push(Item::Note(view.close_help));
                 (view.frame, view.refusal)
             }
             Self::PriceSourceForm(presenter, _) => {

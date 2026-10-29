@@ -8,6 +8,7 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 - Assign a unit to each account at creation
 - View and manage your holdings in each unit
 - Set optional pricing information for valuations
+- Set the price of a unit you price by hand, for this week or an earlier one
 - Track multiple units without cross-unit conversion
 
 ## Terminology
@@ -65,6 +66,7 @@ The Units screen lists all units you've created with their names and types, and 
 - Cross-unit transactions (moving money between accounts in different units) require manual exchange-rate tracking in a transaction split — they are not supported directly.
 - Precision is the *Precision* field of Add unit and Edit unit, a whole number from 0 to 18. Add unit starts it at 8 for Crypto and 2 for every other type, and follows the type you pick until you type a precision yourself; Edit unit never changes it for you. Changing a unit's precision changes only how its amounts show: they are rounded for display and kept as stored. A price is shown at its quote unit's precision, so a share priced under a dollar to three places, as some on the ASX are, shows to two places in AUD.
 - Inactive units are kept if they have historical transactions associated with them.
+- A unit on Manual entry is priced only by you. Select it and press `p`, or choose *Set price…* from its row menu or *Set price* in the detail pane. *Week* starts on today and takes any day of the week you mean, typed in your locale's short date form or as `YYYY-MM-DD`; the dialog shows the Monday that week starts on. *Close* is in the unit it is quoted in, at that unit's precision. Setting this week's price again overwrites it and widens the week's high and low; setting an earlier week replaces whatever that week had. A week that hasn't started yet is refused. A unit priced by a fetching source doesn't offer Set price.
 
 ## Scope
 
@@ -99,6 +101,7 @@ Intended features for Units. Ticked means built in at least one app; the tag say
 - [ ] UNT-006: Bulk import units from standard currency/commodity/crypto lists
 - [ ] UNT-007: Market pricing integration and valuation calculations
 - [ ] UNT-008: Cross-unit aggregate reporting and portfolio valuation
+- [x] UNT-009 (TUI, desktop): Set a Manual entry unit's price for the current or an earlier week
 
 ## For developers
 

@@ -12,6 +12,7 @@ mod edit_price_source;
 mod edit_unit;
 mod reactivate_unit;
 mod set_base_unit;
+mod set_price;
 
 pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
@@ -22,3 +23,4 @@ pub use edit_price_source::EditPriceSource;
 pub use edit_unit::EditUnit;
 pub use reactivate_unit::ReactivateUnit;
 pub use set_base_unit::SetBaseUnit;
+pub use set_price::SetPrice;

@@ -920,3 +920,93 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
 
     ui.assert_cheat_sheet_matches_status("Settings keys");
 }
+
+/// The selected Unit's Last price in the docked pane's PRICE SOURCE group.
+fn pane_last_price(ui: &mut Harness<'_>) -> Option<String> {
+    use lib_units::presenter::PaneGroup;
+    ui.settings_units()
+        .pane?
+        .groups
+        .into_iter()
+        .find_map(|group| match group {
+            PaneGroup::Source(source) => Some(source.facts),
+            _ => None,
+        })?
+        .into_iter()
+        .find(|fact| fact.label == "Last price")
+        .map(|fact| fact.value)
+}
+
+/// Empties the Set price Dialog's focused text field with Backspace.
+fn clear(ui: &mut Harness<'_>, field: &str) {
+    let len = ui.dialog_value(field).unwrap_or_default().chars().count();
+    for _ in 0..len {
+        ui.press("backspace");
+    }
+}
+
+#[gpui::test]
+fn p_on_a_manual_entry_unit_sets_this_weeks_price_and_the_pane_shows_it(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    ui.press("j j");
+    assert_eq!(pane_last_price(&mut ui).as_deref(), Some("—"));
+
+    ui.press("p");
+    assert_eq!(ui.dialog(), Some("SetPrice"));
+    assert_eq!(ui.dialog_value("title").as_deref(), Some("Set price — vas"));
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Close"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    type_word(&mut ui, "42");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(pane_last_price(&mut ui).as_deref(), Some("42.00 aud"));
+    let activity = ui.settings_units().activity;
+    assert!(
+        activity[0].text.starts_with("Set the price of vas"),
+        "{activity:?}"
+    );
+}
+
+#[gpui::test]
+fn a_future_week_is_refused_with_its_message_and_a_past_week_is_set(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("j j p tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Week"));
+    clear(&mut ui, "week");
+    type_word(&mut ui, "2999-01-09");
+    assert_eq!(
+        ui.dialog_value("week_help").as_deref(),
+        Some("Week of Jan 7, 2999"),
+        "the date snaps to its Monday"
+    );
+    ui.press("tab");
+    type_word(&mut ui, "10");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), Some("SetPrice"), "the Dialog stays open");
+    assert_eq!(
+        ui.dialog_value("refusal").as_deref(),
+        Some("The week of Jan 7, 2999 hasn't started, so it can't be priced yet.")
+    );
+
+    ui.press("tab");
+    clear(&mut ui, "week");
+    type_word(&mut ui, "2020-01-08");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.toast_texts(),
+        ["Set the price of vas for the week of Jan 6, 2020"]
+    );
+}
+
+#[gpui::test]
+fn p_on_a_unit_its_source_prices_opens_nothing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.press("j p");
+
+    assert_eq!(ui.dialog(), None, "btc is priced by CoinGecko");
+}

@@ -259,9 +259,15 @@ fn unit_group(input: &PaneInput<'_>, unit: &UnitRow) -> UnitGroup {
 }
 
 /// A selected Unit's PRICE SOURCE: the source its link names with the Unit's own last price, or
-/// Add price source while it sits on Manual entry.
+/// while it sits on Manual entry the last price set by hand and Add price source.
 fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
     let heading = msg::units_price_sources_heading();
+    let quote = unit_of(input.units, unit.link.quote);
+    let last_price = Fact::plain(
+        msg::units_pane_last_price(),
+        unit.last_price()
+            .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
+    );
     let source = (unit.link.source_id != MANUAL_ENTRY)
         .then(|| {
             input
@@ -275,7 +281,18 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
             heading,
             title: None,
             meta: None,
-            facts: Vec::new(),
+            facts: vec![
+                Fact::plain(
+                    msg::units_column_source(),
+                    lib_locale::msg::price_source_manual_entry(),
+                ),
+                last_price,
+                Fact::plain(
+                    msg::units_column_last_updated(),
+                    unit.last_price()
+                        .map_or_else(msg::units_none, |price| ago(price.written_at, input.now)),
+                ),
+            ],
             note: None,
             buttons: vec![PaneButton {
                 slug: "add-source",
@@ -284,7 +301,6 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
             }],
         };
     };
-    let quote = unit_of(input.units, unit.link.quote);
     let facts = vec![
         Fact::plain(msg::units_column_source(), source.name.to_string()),
         Fact::mono(
@@ -297,11 +313,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
             msg::units_price_source_field_updates(),
             updates_label(source.updates),
         ),
-        Fact::plain(
-            msg::units_pane_last_price(),
-            unit.last_price()
-                .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
-        ),
+        last_price,
         Fact::plain(
             msg::units_column_last_updated(),
             unit.last_price()

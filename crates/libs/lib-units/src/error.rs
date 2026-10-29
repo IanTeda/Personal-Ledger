@@ -52,6 +52,12 @@ pub enum Error {
     /// A built-in's address, request, price path and auth are fixed in code.
     #[error("a built-in price source's endpoint can't be edited")]
     BuiltInEndpoint,
+    /// A Unit whose source fetches is priced by it; only Manual entry takes a price by hand.
+    #[error("only a unit on manual entry takes a price by hand")]
+    PricedBySource,
+    /// A week that hasn't started has no price yet.
+    #[error("a future week can't be priced")]
+    FutureWeek,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

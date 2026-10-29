@@ -14,6 +14,7 @@ use crate::presenter::UnitsPageEvent;
 pub const TEST_SOURCE: &str = "units.test_source";
 pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
+pub const SET_PRICE: &str = "units.set_price";
 
 /// The Units page's commands, with today's keys. The arrow, Home/End and Page keys move as `j`/`k`,
 /// `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it. `units.set_base` is new: setting the base Unit
@@ -115,6 +116,11 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
         chord: "B",
         event: UnitsPageEvent::SetBase,
     },
+    Binding {
+        command: SET_PRICE,
+        chord: "p",
+        event: UnitsPageEvent::SetPrice,
+    },
 ];
 
 /// The Units page's keymap under `config`'s overrides.
@@ -140,6 +146,7 @@ mod tests {
 
         assert_eq!(keymap.event("d"), Some(UnitsPageEvent::Delete));
         assert_eq!(keymap.event("B"), Some(UnitsPageEvent::SetBase));
+        assert_eq!(keymap.event("p"), Some(UnitsPageEvent::SetPrice));
         assert_eq!(keymap.event("g g"), Some(UnitsPageEvent::Move(Step::First)));
         assert_eq!(keymap.event("down"), Some(UnitsPageEvent::Move(Step::Next)));
         assert_eq!(keymap.event("end"), Some(UnitsPageEvent::Move(Step::Last)));

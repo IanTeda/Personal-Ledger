@@ -11,7 +11,7 @@ use lib_core::UnitId;
 use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
     AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, EditPriceSource,
-    EditUnit, SetBaseUnit,
+    EditUnit, SetBaseUnit, SetPrice,
 };
 use crate::protocols::PortsMut;
 use crate::{
@@ -368,11 +368,10 @@ pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>
 
 /// Weekly Prices reload the same, a close-only week and a full one alike; an edit in the same quote
 /// keeps them in storage, a quote change clears them there, and a priced Unit deletes with them.
-/// There is no Set price Interactor yet, so the prices are written through the Units port.
 pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
     let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
-    let mut eth = add_unit(
+    let eth = add_unit(
         ports.split_mut(&usage),
         "eth",
         UnitKind::Crypto,
@@ -380,10 +379,15 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
     );
     let day = |d: u32| NaiveDate::from_ymd_opt(2026, 10, d).expect("a real date");
     let at = |d: u32| day(d).and_hms_opt(9, 0, 0).expect("a real time").and_utc();
-    eth.record_price("3900.00".parse().expect("a decimal"), day(20), at(20));
-    eth.record_price("4000.00".parse().expect("a decimal"), day(27), at(27));
-    eth.record_price("4100.25".parse().expect("a decimal"), day(28), at(28));
-    ports.split_mut(&usage).units.upsert_unit(eth.clone());
+    for (on, close) in [(20, "3900.00"), (27, "4000.00"), (28, "4100.25")] {
+        SetPrice {
+            id: eth.id,
+            day: day(on),
+            close: close.parse().expect("a decimal"),
+        }
+        .run(ports.split_mut(&usage).units, day(on), at(on))
+        .expect("eth is on Manual entry");
+    }
     let before = snapshot(&mut ports);
     let mut ports = factory.reload(ports);
     assert_eq!(snapshot(&mut ports), before);

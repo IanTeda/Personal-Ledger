@@ -113,6 +113,27 @@ impl UnitRow {
         });
         self.prices.sort_by_key(|price| price.week);
     }
+
+    /// Writes `close`, a price set by hand, into the week holding `day`. The week holding `today`
+    /// is provisional, so it takes the price as [`Self::record_price`] does; an earlier week has
+    /// ended, so the close alone replaces any entry it had, final.
+    pub fn set_price(&mut self, close: Money, day: NaiveDate, today: NaiveDate, at: DateTime<Utc>) {
+        let week = WeeklyPrice::week_of(day);
+        if week == WeeklyPrice::week_of(today) {
+            self.record_price(close, today, at);
+            return;
+        }
+        self.prices.retain(|price| price.week != week);
+        self.prices.push(WeeklyPrice {
+            week,
+            close,
+            open: None,
+            high: None,
+            low: None,
+            written_at: at,
+        });
+        self.prices.sort_by_key(|price| price.week);
+    }
 }
 
 /// A Unit's link to its Price Source. The symbol and quote live here, not on the source, since one
