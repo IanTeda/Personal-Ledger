@@ -4,7 +4,7 @@
 //! `lib-bill-payments` Presenter event, and this draws the view model and nothing else.
 //!
 //! The body scrolls past [`BODY_MAX_HEIGHT`], so the switch and the buttons stay on screen however
-//! many candidates the Match list holds.
+//! many candidates the Match list holds, and `j`/`k` scroll the chosen row into view.
 //!
 //! Keys: `←`/`→` switch panel. On Match `j`/`k` (and `select_next`/`select_previous`) choose a
 //! row, and `select` on "None of these" switches to Pay it directly instead of confirming. On Pay
@@ -15,8 +15,8 @@
 //! outcome is handed to the page, and the host closes on [`DialogClosed`].
 
 use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window, div, prelude::*,
-    px,
+    AnyElement, App, Context, Entity, EventEmitter, Render, ScrollHandle, SharedString, Window,
+    div, prelude::*, px,
 };
 use lib_bill_payments::PayOutcome;
 use lib_bill_payments::presenter::{
@@ -56,6 +56,8 @@ pub struct PayDialog {
     ports: DesktopPorts,
     ledger: Entity<LedgerStore>,
     landed: Landed,
+    /// The body's scroll, which `j`/`k` move to keep the chosen Match row in view.
+    scroll: ScrollHandle,
 }
 
 impl PayDialog {
@@ -70,6 +72,7 @@ impl PayDialog {
             ports: ports.clone(),
             ledger: ledger.clone(),
             landed,
+            scroll: ScrollHandle::new(),
         }
     }
 
@@ -136,7 +139,11 @@ impl HostedDialog for PayDialog {
             }
             _ => return DialogOutcome::Ignored,
         };
+        let chooses = matches!(event, PayEvent::NextChoice | PayEvent::PrevChoice);
         self.send(event);
+        if chooses && let Some(row) = chosen_row(&self.view()) {
+            self.scroll.scroll_to_item(row);
+        }
         DialogOutcome::Handled
     }
 
@@ -203,11 +210,11 @@ impl HostedDialog for PayDialog {
 
 impl Render for PayDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        render(&self.view(), &Clicks::new(cx), cx)
+        render(&self.view(), &self.scroll, &Clicks::new(cx), cx)
     }
 }
 
-fn render(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &PayViewModel, scroll: &ScrollHandle, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = match view.mode {
         PayMode::Match => match_panel(view, actions, cx),
         PayMode::Direct => direct_panel(view, actions, cx),
@@ -226,11 +233,12 @@ fn render(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
                 .child(switch(view, actions, cx)),
         )
         .child(
-            div()
+            dialog::body(fields)
                 .id("pay-bill-body")
+                .debug_selector(|| "pay-bill-body".to_string())
                 .max_h(BODY_MAX_HEIGHT)
                 .overflow_y_scroll()
-                .child(dialog::body(fields)),
+                .track_scroll(scroll),
         )
         .child(dialog::action_row(
             [
@@ -277,6 +285,16 @@ fn switch(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
                 .child(mode.label.clone())
         }))
         .into_any_element()
+}
+
+/// The chosen Match row's index among the body's children, in [`match_panel`]'s order: the
+/// heading, the no-candidates line if any, the candidates, then "None of these".
+fn chosen_row(view: &PayViewModel) -> Option<usize> {
+    let first = 1 + usize::from(view.no_candidates.is_some());
+    match view.choice? {
+        MatchChoice::Candidate(index) => Some(first + index),
+        MatchChoice::NoneOfThese => Some(first + view.candidates.len()),
+    }
 }
 
 fn match_panel(view: &PayViewModel, actions: &Clicks, cx: &App) -> Vec<AnyElement> {

@@ -107,8 +107,9 @@ pub fn header(title: impl Into<SharedString>, destructive: bool, cx: &App) -> im
         .child(title.into())
 }
 
-/// The body wrapper: `padding:20px`, `fields` laid out in a column with `gap:16px`.
-pub fn body(fields: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
+/// The body wrapper: `padding:20px`, `fields` laid out in a column with `gap:16px`. A `Div`, so a
+/// scrolling body can track a `ScrollHandle` with `fields` as its direct children.
+pub fn body(fields: impl IntoIterator<Item = AnyElement>) -> gpui::Div {
     div()
         .p(px(20.0))
         .flex()

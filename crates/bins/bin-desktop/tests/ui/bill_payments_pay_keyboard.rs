@@ -10,6 +10,7 @@
 
 use super::common;
 
+use bin_desktop::WindowSize;
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
@@ -261,4 +262,44 @@ fn an_override_of_next_field_moves_pay_it_directly_to_the_date(app: &mut TestApp
     ui.press("ctrl-n x");
     assert_eq!(ui.dialog_value("date"), Some(format!("{date}x")));
     assert_eq!(ui.dialog_value("amount"), Some(amount));
+}
+
+/// Whether the chosen row's bounds sit inside the Dialog body's.
+fn chosen_row_in_body(ui: &mut Harness<'_>) -> bool {
+    let row = match ui.dialog_value("choice").as_deref() {
+        Some("none") => "pay-bill-none-of-these".to_string(),
+        Some(index) => format!("pay-bill-candidate-{index}"),
+        None => return false,
+    };
+    let body = ui.bounds("pay-bill-body");
+    let row = ui.bounds(&row);
+    row.top() >= body.top() && row.bottom() <= body.bottom()
+}
+
+#[gpui::test]
+fn j_and_k_keep_the_chosen_row_inside_the_body_on_a_small_window(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    on_telstra(&mut ui);
+    ui.press("p");
+    let candidates = ui.bills().pay_candidates.expect("the Pay Dialog is open");
+
+    for _ in 0..candidates {
+        ui.press("j");
+        assert!(
+            chosen_row_in_body(&mut ui),
+            "{:?}",
+            ui.dialog_value("choice")
+        );
+    }
+    assert_eq!(ui.dialog_value("choice").as_deref(), Some("none"));
+    for _ in 0..candidates {
+        ui.press("k");
+        assert!(
+            chosen_row_in_body(&mut ui),
+            "{:?}",
+            ui.dialog_value("choice")
+        );
+    }
+    assert_eq!(ui.dialog_value("choice").as_deref(), Some("0"));
 }
