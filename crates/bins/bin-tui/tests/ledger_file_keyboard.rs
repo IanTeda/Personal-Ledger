@@ -3,7 +3,8 @@
 
 mod common;
 
-use common::{cold_shell, press, run_command, screen, type_text};
+use common::{cold_shell, press, run_command, screen, shell_with_failures, type_text};
+use lib_database::{Domain, WriteFailure};
 
 /// The top row of a drawn frame.
 fn status_line(frame: &str) -> &str {
@@ -203,6 +204,51 @@ fn close_returns_to_no_ledger_open() {
         "{frame}"
     );
     assert_eq!(status_line(&frame).trim(), "Personal Ledger", "{frame}");
+}
+
+/// A failed Units write, as the writer reports one for the last batch before the Ledger closes.
+fn failed_units_write() -> WriteFailure {
+    WriteFailure {
+        domains: vec![Domain::Units],
+        error: lib_database::Error::WriterStopped,
+    }
+}
+
+#[test]
+fn a_write_that_fails_just_before_close_raises_an_error_toast() {
+    let (mut shell, report) = shell_with_failures();
+    report
+        .send(failed_units_write())
+        .expect("the Shell holds the receiver");
+
+    run_command(&mut shell, "close");
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("No Ledger open."), "{frame}");
+    assert!(
+        frame.contains("\u{2717} Last change to test.pldb wasn't saved"),
+        "{frame}"
+    );
+}
+
+#[test]
+fn a_write_that_fails_just_before_open_raises_an_error_toast() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let other = directory.path().join("other.pldb");
+    ledger_file(&other);
+    let (mut shell, report) = shell_with_failures();
+    report
+        .send(failed_units_write())
+        .expect("the Shell holds the receiver");
+
+    run_command(&mut shell, &format!("open {}", other.display()));
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("Opened ledger other.pldb"), "{frame}");
+    assert!(
+        frame.contains("Last change to test.pldb wasn't saved"),
+        "{frame}"
+    );
 }
 
 #[test]

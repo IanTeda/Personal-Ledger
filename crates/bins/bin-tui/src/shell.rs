@@ -471,15 +471,42 @@ impl Shell {
     }
 
     /// Returns to the Dashboard, closing every view that shows the Open Ledger, then flushes the
-    /// Ledger's writes and drops it, so its last writes land and no Ledger is open.
+    /// Ledger's writes and drops it, so its last writes land and no Ledger is open. A write that
+    /// failed since the last tick raises the Error Toast; on quit the log is all that reports it.
     fn close_ledger(&mut self) {
         self.view_stack.clear();
         self.open(DashboardView::new());
         self.flush_ledger();
         if let Some(ledger) = self.ledger.take() {
+            self.report_last_failed_writes(&ledger);
             tracing::info!(path = %ledger.path.display(), "Closed the Ledger file");
         }
         self.settings_values.borrow_mut().last_ledger = None;
+    }
+
+    /// Raises one Error Toast if any write the closing `ledger` sent failed after the last tick
+    /// polled its failures. Nothing is rolled back: the Ledger is about to be dropped, so all
+    /// that's left is to say its last change wasn't saved.
+    fn report_last_failed_writes(&mut self, ledger: &OpenLedger) {
+        let Some(failures) = &ledger.failures else {
+            return;
+        };
+        let mut failed = false;
+        for failure in failures.try_iter() {
+            tracing::error!(
+                error = %failure.error,
+                domains = ?failure.domains,
+                path = %ledger.path.display(),
+                "A write failed as the Ledger closed"
+            );
+            failed = true;
+        }
+        if failed {
+            self.raise_toast(
+                ToastKind::Error,
+                crate::msg::tui_toast_write_failed_on_close(&ledger.name()),
+            );
+        }
     }
 
     /// Blocks until every write the Open Ledger has sent has landed or failed.

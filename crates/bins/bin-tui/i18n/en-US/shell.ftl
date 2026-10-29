@@ -95,6 +95,11 @@ tui-toast-more = +{ $count } more
 tui-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
 tui-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved
 
+## A failed save in the last batch before the Ledger closed, on `:close` or `:open`. `$name` is
+## the closed Ledger file's name.
+
+tui-toast-write-failed-on-close = Last change to { $name } wasn't saved
+
 ## Settings › About's links and Settings › Logs' lines, sent outside the terminal.
 
 tui-toast-copied = Copied to the clipboard
