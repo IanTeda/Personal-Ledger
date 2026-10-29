@@ -29,6 +29,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc;
 
+use chrono::NaiveDate;
 use lib_accounts::{AccountRepository, AccountUsage};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
@@ -55,7 +56,7 @@ use crate::adapter::{accounts, categories};
 use crate::{
     AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
     InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter,
-    UnitsAdapter, WriteFailure,
+    UnitsAdapter,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -976,6 +977,33 @@ pub struct FakeStores {
     pub inventory: InMemoryInventory,
 }
 
+impl FakeStores {
+    /// Every domain's stub seed as of `today`, with the stub Ledger's Transactions and each
+    /// Account's usage counted from it. For a Client that runs on the stub without a Ledger file.
+    pub fn stub(today: NaiveDate) -> Self {
+        let ledger = lib_ledger::Ledger::stub_on(today);
+        let mut accounts = lib_accounts::fake::InMemoryPorts::stub();
+        accounts.usage.uses = ledger
+            .accounts()
+            .iter()
+            .map(|account| (account.id, ledger.account_use(account.id)))
+            .collect();
+        Self {
+            units: InMemoryPorts::stub(chrono::Utc::now()),
+            institutions: InMemoryInstitutions::stub(),
+            accounts,
+            categories: InMemoryCategories::stub(),
+            tags: lib_tags::fake::InMemoryPorts::stub(),
+            payees: lib_payees::fake::InMemoryPorts::stub(),
+            transactions: InMemoryTransactions {
+                transactions: ledger.transactions().to_vec(),
+            },
+            bills: lib_bills::fake::InMemoryPorts::stub(today).bills,
+            inventory: InMemoryInventory::stub(today),
+        }
+    }
+}
+
 impl Stores {
     /// `fakes` in memory, committed through a [`CountingCommit`] whose count is returned, on a
     /// failure channel nothing reports on, since there is no writer.
@@ -1007,29 +1035,6 @@ impl Stores {
             failures: mpsc::channel().1,
         };
         (stores, count)
-    }
-
-    /// `units` committed through `commit`, failures reported on `failures`, and every other store
-    /// empty in memory. For a Client test that drives only the Units, which then needs no edit as
-    /// a domain joins the bundle (the TUI's, #849).
-    pub fn with_units(
-        units: Box<dyn UnitsStore>,
-        commit: Rc<dyn Commit>,
-        failures: mpsc::Receiver<WriteFailure>,
-    ) -> Self {
-        Self {
-            units,
-            institutions: Box::new(InMemoryInstitutions::default()),
-            accounts: Box::new(lib_accounts::fake::InMemoryPorts::default()),
-            categories: Box::new(InMemoryCategories::default()),
-            tags: Box::new(lib_tags::fake::InMemoryPorts::default()),
-            payees: Box::new(lib_payees::fake::InMemoryPorts::default()),
-            transactions: Box::new(InMemoryTransactions::default()),
-            bills: Box::new(InMemoryBills::default()),
-            inventory: Box::new(InMemoryInventory::default()),
-            commit,
-            failures,
-        }
     }
 }
 

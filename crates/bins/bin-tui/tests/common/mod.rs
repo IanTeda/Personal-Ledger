@@ -2,7 +2,7 @@
 //! hermetic `Shell`, feeds it key sequences the way the terminal would, and reads the drawn
 //! screen back from ratatui's `TestBackend`. Nothing here touches the terminal or the user's
 //! config, and only a test that runs `:open` or `:new` touches a Ledger file: [`shell`]'s Units sit
-//! on `lib-units`' in-memory ports. What a test may assert on (screen text, Colour Roles, and when a
+//! on `lib-units`' in-memory ports, beside the other domains' in-memory stub stores. What a test may assert on (screen text, Colour Roles, and when a
 //! `#[doc(hidden)]` accessor is allowed) is set out in ADR-0035.
 
 #![expect(
@@ -17,7 +17,7 @@ use std::sync::mpsc;
 use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{Commit, InMemoryCommit, UnitsStore, WriteFailure};
+use lib_database::{Commit, FakeStores, InMemoryCommit, Stores, UnitsStore, WriteFailure};
 use lib_units::fake::InMemoryPorts;
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -39,16 +39,21 @@ pub fn shell_with_failures() -> (Shell, mpsc::Sender<WriteFailure>) {
     )
 }
 
-/// A `Shell` with a Ledger open whose Units are kept in `units`, committed through `commit`.
+/// A `Shell` with a Ledger open whose Units are kept in `units`, committed through `commit`, and
+/// every other domain's stub seed beside them, so the stub's Accounts and Locations use its Units.
 pub fn shell_on(
     units: Box<dyn UnitsStore>,
     commit: Rc<dyn Commit>,
 ) -> (Shell, mpsc::Sender<WriteFailure>) {
     let (report, failures) = mpsc::channel();
-    let shell = cold_shell(None).with_open_ledger(
-        "test.pldb",
-        lib_database::Stores::with_units(units, commit, failures),
-    );
+    let (stub, _) = Stores::fake(FakeStores::stub(chrono::Local::now().date_naive()));
+    let stores = Stores {
+        units,
+        commit,
+        failures,
+        ..stub
+    };
+    let shell = cold_shell(None).with_open_ledger("test.pldb", stores);
     (shell, report)
 }
 

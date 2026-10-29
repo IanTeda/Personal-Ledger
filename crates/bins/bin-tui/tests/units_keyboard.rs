@@ -238,3 +238,92 @@ fn p_on_a_unit_its_source_prices_opens_nothing() {
 
     assert!(!frame.contains("Set price"), "{frame}");
 }
+
+/// A Ledger file at `path`, created and seeded as `:new` would, then changed by `edit` and saved.
+fn ledger_file_with(path: &std::path::Path, edit: impl FnOnce(&mut lib_database::Storage)) {
+    let storage = lib_database::open_storage(path, chrono::Local::now().date_naive(), "Personal");
+    assert!(storage.is_ok(), "a new Ledger opens");
+    let Ok(mut storage) = storage else { return };
+    edit(&mut storage);
+    lib_database::Commit::commit(&storage.pending);
+    assert!(storage.writer.flush().is_ok(), "the writer is running");
+}
+
+#[test]
+fn deleting_a_unit_an_account_in_the_opened_file_uses_is_refused() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    // xau, which nothing in the stub uses, with an Account in it in the file.
+    ledger_file_with(&path, |storage| {
+        let mut xau = storage
+            .units
+            .units()
+            .unit(lib_core::UnitId::SEED_BTC)
+            .expect("the seed has btc");
+        xau.id = lib_core::UnitId::new();
+        xau.code = "xau".to_string();
+        xau.name = "Gold".to_string();
+        let unused = lib_units::UnitUse::default();
+        storage
+            .units
+            .split_mut(&unused)
+            .units
+            .upsert_unit(xau.clone());
+        let mut account = storage.accounts.accounts().accounts()[0].clone();
+        account.id = lib_core::AccountId::new();
+        account.unit = xau.id;
+        storage.accounts.accounts_mut().upsert_account(account);
+    });
+    let mut shell = common::cold_shell(None);
+    common::run_command(&mut shell, &format!("open {}", path.display()));
+
+    press(&mut shell, "g u j j j d");
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains(&lib_units::msg::units_deactivate_title("xau")),
+        "refused before the commit, offering Deactivate:\n{frame}"
+    );
+    assert!(frame.contains("xau is used by"), "{frame}");
+}
+
+#[test]
+fn a_unit_only_the_stub_uses_can_be_deleted_from_the_opened_file() {
+    use lib_database::InstitutionsStore;
+
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    // The stub's btc Accounts are in aud in the file, and its Institution has no Usual unit, so
+    // nothing in the file uses btc.
+    ledger_file_with(&path, |storage| {
+        for mut account in storage.accounts.accounts().accounts() {
+            if account.unit == lib_core::UnitId::SEED_BTC {
+                account.unit = lib_core::UnitId::SEED_AUD;
+                storage.accounts.accounts_mut().upsert_account(account);
+            }
+        }
+        for mut institution in storage.institutions.institutions().institutions() {
+            if institution.usual_unit == Some(lib_core::UnitId::SEED_BTC) {
+                institution.usual_unit = None;
+                storage
+                    .institutions
+                    .institutions_mut()
+                    .upsert_institution(institution);
+            }
+        }
+    });
+    let mut shell = common::cold_shell(None);
+    common::run_command(&mut shell, &format!("open {}", path.display()));
+
+    press(&mut shell, "g u j d");
+    let dialog = screen(&mut shell);
+    assert!(
+        !dialog.contains(&lib_units::msg::units_deactivate_title("btc")),
+        "the stub's usage doesn't count:\n{dialog}"
+    );
+    type_text(&mut shell, "btc");
+    press(&mut shell, "Enter");
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("Deleted unit btc"), "{frame}");
+}

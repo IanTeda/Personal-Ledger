@@ -375,10 +375,11 @@ impl Shell {
 
     /// The Open Ledger on `stores`, its Units under the key bindings already set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
+        let (units, failures) = UnitsSetup::on(stores, &self.keybindings);
         OpenLedger {
             path,
-            units: UnitsSetup::new(stores.units, stores.commit, &self.keybindings),
-            failures: Some(stores.failures),
+            units,
+            failures: Some(failures),
             writer,
         }
     }
@@ -2908,11 +2909,7 @@ mod tests {
 
     /// [`opened`], reading the global keys from `keybindings`.
     fn opened_with(keybindings: KeyBindingConfig) -> Shell {
-        let stores = Stores::with_units(
-            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
-            Rc::new(lib_database::InMemoryCommit),
-            std::sync::mpsc::channel().1,
-        );
+        let (stores, _) = Stores::fake(lib_database::FakeStores::stub(Local::now().date_naive()));
         Shell::with_keybindings(keybindings).with_open_ledger("test.pldb", stores)
     }
 

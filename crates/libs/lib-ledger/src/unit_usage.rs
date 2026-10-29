@@ -5,8 +5,8 @@
 //!   in use and the Units page can list a Unit's Accounts before those domains persist. The
 //!   Desktop reads the holdings and the Accounts count from `lib-database`'s Accounts adapter since
 //!   Accounts persist (#853) and the Locations count from the Inventory store (#885), and only the
-//!   Bill Plans and Budgets counts here; the TUI's Units
-//!   ports read all of it here until its redesign (#805, Q24). They go with the last reader.
+//!   Bill Plans and Budgets counts here. The TUI's Units ports read none of it, but count from
+//!   the stores opened beside them (#887). They go with the Desktop's last read.
 //! - **The Units read copy ([`Ledger::refresh_units`]).** The Units ports are the truth; the
 //!   Ledger keeps a copy for Bills, Budgets, Transactions, the Dashboard and the Bill and Budget
 //!   forms. It goes when the last of them reads Units through its own domain's read port.
