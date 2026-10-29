@@ -18,6 +18,7 @@ The defining constraint on this domain is that **Personal Ledger does not conver
 | `code` | TEXT | Unique, not null — e.g. `AUD`, `AAPL` |
 | `name` | TEXT | Not null — note **not** unique, unlike `code` |
 | `unit_kind` | TEXT | Not null; `CHECK`ed against the six Unit Kind tokens |
+| `precision` | INTEGER | Not null, `CHECK`ed 0 to 18; defaults to 2 only for the older per-entity queries, which don't write it |
 | `price_source_id` | TEXT | Not null; **no foreign key** (below) |
 | `price_symbol` | TEXT | Not null |
 | `quote_unit_id` | UUID | Not null, references `units`; the base Unit quotes itself |
@@ -42,6 +43,7 @@ Invariants and gaps:
 ## Domain types
 
 - `lib_core::UnitKind` (`unit_kind.rs`) — the six Unit Kinds: `Currency`, `Crypto`, `Equity`, `FixedIncome`, `Commodity`, `Custom`, stored as `currency`, `crypto`, `equity`, `fixed_income`, `commodity`, `custom`. Parsing it is the only guard on the `unit_kind` column.
+- `lib_units::Precision` (`entity/precision.rs`) — a Unit's decimal places, 0 to 18 (`Precision::MAX`, Ether's wei; `Money` itself has no limit). `Precision::of_kind` is what Add unit starts on: 8 for Crypto, 2 for every other Kind. It only formats: the Units pane shows a balance at its Unit's Precision (`AmountStyle::fixed`) and a price or value at its quote Unit's, and `WeeklyPrice::value` rounds to the quote's; no stored amount is rewritten when it changes (#914). Formatting an amount in a Unit elsewhere (Accounts, Bills, Bill Payments, Account Deletion, both Clients' amount helpers) still uses the amount's own places.
 - `lib_core::PriceSourceId` (`ids.rs`) — a Price Source's id. Manual entry and the built-ins have fixed ids (`lib_units::MANUAL_ENTRY`, `COINGECKO`, `YAHOO_FINANCE`, `FRANKFURTER`).
 - `lib_core::Money` (`money.rs`) — a `BigDecimal`-backed amount, stored as arbitrary-precision TEXT. Amounts are converted with `to_plain_string()` and never through `f64`, and are summed in Rust rather than by SQL `SUM()`.
 - `lib_core::RowID` — UUIDv7 primary key.

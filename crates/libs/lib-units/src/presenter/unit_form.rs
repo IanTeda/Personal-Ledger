@@ -1,7 +1,8 @@
 //! The Add unit and Edit unit Dialogs: one form, Edit pre-filled from the row.
 //!
 //! The Source select offers only the sources able to price the chosen Type, so changing Type
-//! re-filters it and falls back to Manual entry when the chosen source no longer fits. Manual entry
+//! re-filters it and falls back to Manual entry when the chosen source no longer fits. Add starts
+//! Precision on the Type's and follows Type until a Precision is typed; Edit never re-defaults it. Manual entry
 //! has no Symbol or Quoted in to fill, so those fields are hidden and `Tab` skips them. The options
 //! are copied when the Dialog opens, as the Dialog is modal and nothing changes them under it.
 
@@ -12,26 +13,28 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
 use crate::interactor::{AddUnit, EditUnit};
 use crate::protocols::{SharedPorts, UnitsRouter};
-use crate::{Error, MANUAL_ENTRY, PriceLink, UnitUse, msg};
+use crate::{Error, MANUAL_ENTRY, Precision, PriceLink, UnitUse, msg};
 
-/// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name, then the
-/// PRICE SOURCE group.
+/// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name and
+/// Precision, then the PRICE SOURCE group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UnitField {
     #[default]
     Code,
     Type,
     Name,
+    Precision,
     Source,
     Symbol,
     Quote,
 }
 
 impl UnitField {
-    const ORDER: [Self; 6] = [
+    const ORDER: [Self; 7] = [
         Self::Code,
         Self::Type,
         Self::Name,
+        Self::Precision,
         Self::Source,
         Self::Symbol,
         Self::Quote,
@@ -43,6 +46,7 @@ pub enum UnitFormEvent {
     /// A text field's whole new text, as its View's input holds it.
     Code(String),
     Name(String),
+    Precision(String),
     Symbol(String),
     Kind(UnitKind),
     Source(PriceSourceId),
@@ -62,6 +66,9 @@ pub struct UnitFormViewModel {
     pub code: TextFieldView,
     pub kind: SelectView<UnitKind>,
     pub name: TextFieldView,
+    /// The decimal places, as typed: valid only as a whole number from 0 to 18.
+    pub precision: TextFieldView,
+    pub precision_help: String,
     /// The PRICE SOURCE group's heading.
     pub source_group: String,
     pub source: SelectView<PriceSourceId>,
@@ -96,6 +103,10 @@ pub struct UnitFormPresenter {
     code: String,
     name: String,
     kind: UnitKind,
+    /// The Precision as typed, so a half-typed one shows as it is.
+    precision: String,
+    /// Whether a person has typed a Precision, which stops Add following Type.
+    precision_typed: bool,
     source: PriceSourceId,
     symbol: String,
     quote: Option<UnitId>,
@@ -131,6 +142,7 @@ impl UnitFormPresenter {
         form.code = unit.code;
         form.name = unit.name;
         form.kind = unit.kind;
+        form.precision = unit.precision.to_string();
         form.source = unit.link.source_id;
         form.symbol = unit.link.symbol;
         form.usage = Some(form.ports.borrow().usage().unit_usage(id));
@@ -187,6 +199,8 @@ impl UnitFormPresenter {
             code: String::new(),
             name: String::new(),
             kind: UnitKind::default(),
+            precision: Precision::of_kind(UnitKind::default()).to_string(),
+            precision_typed: false,
             source: MANUAL_ENTRY,
             symbol: String::new(),
             quote: None,
@@ -213,8 +227,15 @@ impl UnitFormPresenter {
             UnitFormEvent::Code(text) => self.code = text,
             UnitFormEvent::Name(text) => self.name = text,
             UnitFormEvent::Symbol(text) => self.symbol = text,
+            UnitFormEvent::Precision(text) => {
+                self.precision = text;
+                self.precision_typed = true;
+            }
             UnitFormEvent::Kind(kind) => {
                 self.kind = kind;
+                if self.editing.is_none() && !self.precision_typed {
+                    self.precision = Precision::of_kind(kind).to_string();
+                }
                 self.sync_source();
             }
             UnitFormEvent::Source(id) => {
@@ -287,6 +308,13 @@ impl UnitFormPresenter {
                 msg::units_name_placeholder(),
                 UnitField::Name,
             ),
+            precision: text(
+                msg::units_field_precision(),
+                &self.precision,
+                msg::units_precision_placeholder(&Precision::MAX.to_string()),
+                UnitField::Precision,
+            ),
+            precision_help: msg::units_precision_help(),
             source_group: msg::units_group_source(),
             source: SelectView {
                 label: msg::units_field_source(),
@@ -368,11 +396,12 @@ impl UnitFormPresenter {
         }
     }
 
-    /// Code and Name are required, and a source that fetches needs a Unit to quote in. Type always
-    /// has a value, so it never blocks.
+    /// Code, Name and a Precision in range are required, and a source that fetches needs a Unit to
+    /// quote in. Type always has a value, so it never blocks.
     fn is_valid(&self) -> bool {
         !self.code.trim().is_empty()
             && !self.name.trim().is_empty()
+            && Precision::parse(&self.precision).is_some()
             && (self.is_manual() || self.quote.is_some())
     }
 
@@ -392,9 +421,9 @@ impl UnitFormPresenter {
     }
 
     fn confirm(&mut self, router: &mut dyn UnitsRouter) {
-        if !self.is_valid() {
+        let Some(precision) = Precision::parse(&self.precision).filter(|_| self.is_valid()) else {
             return;
-        }
+        };
         let id = self.editing.unwrap_or_else(UnitId::new);
         let (code, name, kind, link) = (
             self.code.clone(),
@@ -411,6 +440,7 @@ impl UnitFormPresenter {
                     code,
                     name,
                     kind,
+                    precision,
                     link,
                 }
                 .run(ports.units, ports.price_sources)
@@ -420,6 +450,7 @@ impl UnitFormPresenter {
                     code,
                     name,
                     kind,
+                    precision,
                     link,
                 }
                 .run(ports.units, ports.price_sources)
@@ -493,6 +524,7 @@ mod tests {
                 UnitField::Code,
                 UnitField::Type,
                 UnitField::Name,
+                UnitField::Precision,
                 UnitField::Source
             ]
         );
@@ -782,6 +814,95 @@ mod tests {
         let added = ports.borrow().units.units.clone();
         assert_eq!(added.len(), 1, "{:?}", form.view_model().refusal);
         assert_eq!(added[0].link.quote, added[0].id);
+    }
+
+    #[test]
+    fn a_new_units_precision_follows_its_type_until_one_is_typed() {
+        let (_, ports) = stub();
+        let mut form = UnitFormPresenter::add(ports);
+        assert_eq!(form.view_model().precision.text, "2", "Currency's");
+
+        send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
+        assert_eq!(form.view_model().precision.text, "8");
+
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Precision("6".into()),
+                UnitFormEvent::Kind(UnitKind::Currency),
+            ],
+        );
+        assert_eq!(
+            form.view_model().precision.text,
+            "6",
+            "a typed Precision stays"
+        );
+    }
+
+    #[test]
+    fn editing_prefills_the_precision_and_a_type_change_keeps_it() {
+        let (_, shared) = stub();
+        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_AUD).expect("aud is seeded");
+        assert_eq!(form.view_model().precision.text, "2");
+
+        send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
+
+        assert_eq!(form.view_model().precision.text, "2");
+    }
+
+    #[test]
+    fn precision_sits_after_name_in_tab_order() {
+        let (_, ports) = stub();
+        let mut form = UnitFormPresenter::add(ports);
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Focus(UnitField::Name),
+                UnitFormEvent::NextField,
+            ],
+        );
+        let view = form.view_model();
+        assert!(view.precision.focused);
+        assert_eq!(
+            view.fields,
+            [
+                UnitField::Code,
+                UnitField::Type,
+                UnitField::Name,
+                UnitField::Precision,
+                UnitField::Source
+            ]
+        );
+    }
+
+    #[test]
+    fn a_precision_outside_0_to_18_does_not_confirm_and_one_inside_is_saved() {
+        let (ports, shared) = stub();
+        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).expect("btc is seeded");
+
+        for refused in ["", "19", "2.5"] {
+            let calls = send(
+                &mut form,
+                vec![
+                    UnitFormEvent::Precision(refused.into()),
+                    UnitFormEvent::Confirm,
+                ],
+            );
+            assert_eq!(calls, [], "{refused:?}");
+            assert!(!form.view_model().frame.can_confirm, "{refused:?}");
+        }
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Precision("18".into()),
+                UnitFormEvent::Confirm,
+            ],
+        );
+
+        assert_eq!(
+            ports.borrow().units.units[1].precision,
+            Precision::new(18).expect("in range")
+        );
     }
 
     #[test]

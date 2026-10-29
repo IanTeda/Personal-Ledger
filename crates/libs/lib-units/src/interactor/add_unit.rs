@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
 use crate::protocols::{PriceSourceRepository, UnitRepository};
-use crate::{Error, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
+use crate::{Error, Precision, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
 
 /// Add a Unit. The form has already checked the fields, so only a link naming something gone
 /// refuses it. The caller picks the id, so a Unit can be quoted in itself, as the first one is.
@@ -11,6 +11,7 @@ pub struct AddUnit {
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
+    pub precision: Precision,
     pub link: PriceLink,
 }
 
@@ -43,7 +44,7 @@ impl AddUnit {
         }
         let unit = UnitRow {
             id: self.id,
-            ..UnitRow::new(self.code, self.name, self.kind, self.link)
+            ..UnitRow::new(self.code, self.name, self.kind, self.precision, self.link)
         };
         units.upsert_unit(unit.clone());
         Ok(unit)
@@ -65,6 +66,7 @@ mod tests {
             code: "eth".into(),
             name: "Ethereum".into(),
             kind: UnitKind::Crypto,
+            precision: Precision::of_kind(UnitKind::Crypto),
             link,
         }
     }

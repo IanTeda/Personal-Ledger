@@ -18,7 +18,7 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 - **Price Source:** Where a unit's price comes from: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a custom source you add, or Manual entry, where you type the price yourself.
 - **Base Unit:** The one unit your ledger counts in. It is marked ◆ on the Units page, and new accounts start on it. There is no separate default unit. Change it with the *Base unit* field on the General page, or with Set base unit on the Units page (`B`, in both the Desktop and the TUI; `units.set_base` under `[keybindings]` moves it). There is always one: deleting the base unit asks which other unit takes over, and the base unit cannot be deleted when it is your only unit.
 - **Pricing Pair:** The unit you use to price another unit (e.g. BTC priced in AUD).
-- **Precision:** The number of decimal places supported (e.g. AUD uses 2, BTC uses 8).
+- **Precision:** The number of decimal places a unit's amounts show at, from 0 to 18 (e.g. AUD uses 2, BTC uses 8). A price shows at the precision of the unit it is quoted in, since it is an amount in that unit.
 
 ## Units concept
 
@@ -32,7 +32,7 @@ An account's unit defines what its balance means. If you decide "this account is
 
 ## Approach
 
-When you create an account, choose a unit; the form starts on your base unit. If the unit already exists in your ledger (from another account), select it. If it's new, create it with a name and type (currency, crypto, stock, etc.). You can optionally set its precision (how many decimal places it uses — AUD uses 2, Bitcoin uses 8) and a pricing pair if you want valuations (e.g. "price Bitcoin in AUD").
+When you create an account, choose a unit; the form starts on your base unit. If the unit already exists in your ledger (from another account), select it. If it's new, create it with a name and type (currency, crypto, stock, etc.). Its precision (how many decimal places it uses — AUD uses 2, Bitcoin uses 8) starts on the type's, which you can change, and you can optionally set a pricing pair if you want valuations (e.g. "price Bitcoin in AUD").
 
 ## Worked example
 
@@ -53,7 +53,7 @@ The Unit Kind decides which built-in Price Sources are offered for a unit: CoinG
 
 ## Screens
 
-The Units screen lists all units you've created with their names, types, precision, and whether they're currently in use by an account. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
+The Units screen lists all units you've created with their names and types, and whether they're currently in use by an account. At its widest, the detail pane shows each account's balance in the unit at the unit's precision, and its last price and the accounts' values at the precision of the unit it is quoted in. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
 
 ## Rules to know
 
@@ -63,7 +63,7 @@ The Units screen lists all units you've created with their names, types, precisi
 - The base unit cannot be deactivated: its *Deactivate unit* button is disabled, with the reason beside the counts. Pick another base unit on the General page first. An unused base unit that no other unit is quoted in can still be deleted by choosing the unit that takes over.
 - A unit, once created and assigned to an account, cannot be changed.
 - Cross-unit transactions (moving money between accounts in different units) require manual exchange-rate tracking in a transaction split — they are not supported directly.
-- Precision (decimal places) is set when creating a unit and controls value entry and display.
+- Precision is the *Precision* field of Add unit and Edit unit, a whole number from 0 to 18. Add unit starts it at 8 for Crypto and 2 for every other type, and follows the type you pick until you type a precision yourself; Edit unit never changes it for you. Changing a unit's precision changes only how its amounts show: they are rounded for display and kept as stored. A price is shown at its quote unit's precision, so a share priced under a dollar to three places, as some on the ASX are, shows to two places in AUD.
 - Inactive units are kept if they have historical transactions associated with them.
 
 ## Scope
@@ -93,7 +93,7 @@ Intended features for Units. Ticked means built in at least one app; the tag say
 
 - [x] UNT-001 (TUI, desktop): Create a unit with a code, name, Unit Kind (Currency, Crypto, Equity, Fixed Income, Commodity, Custom), and precision
 - [x] UNT-002 (TUI, desktop): List units with filtering by active status
-- [x] UNT-003 (TUI, desktop): Edit a unit's name and active status
+- [x] UNT-003 (TUI, desktop): Edit a unit's name, precision and active status
 - [x] UNT-004 (TUI, desktop): Set a pricing pair for optional valuation (AUD, USD, etc.)
 - [x] UNT-005 (TUI, desktop): Deactivate a unit without deleting it if it has transactions
 - [ ] UNT-006: Bulk import units from standard currency/commodity/crypto lists

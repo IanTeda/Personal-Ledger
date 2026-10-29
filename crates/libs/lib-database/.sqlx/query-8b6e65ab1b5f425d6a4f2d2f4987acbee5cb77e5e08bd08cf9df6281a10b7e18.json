@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n               id                    AS \"id!: UnitId\",\n               code,\n               name,\n               unit_kind             AS \"unit_kind!: UnitKind\",\n               price_source_id       AS \"price_source_id!: PriceSourceId\",\n               price_symbol,\n               quote_unit_id         AS \"quote_unit_id!: UnitId\",\n               is_active\n           FROM units",
+  "query": "SELECT\n               id                    AS \"id!: UnitId\",\n               code,\n               name,\n               unit_kind             AS \"unit_kind!: UnitKind\",\n               precision             AS \"precision!: u8\",\n               price_source_id       AS \"price_source_id!: PriceSourceId\",\n               price_symbol,\n               quote_unit_id         AS \"quote_unit_id!: UnitId\",\n               is_active\n           FROM units",
   "describe": {
     "columns": [
       {
@@ -24,23 +24,28 @@
         "type_info": "Text"
       },
       {
-        "name": "price_source_id!: PriceSourceId",
+        "name": "precision!: u8",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Integer"
       },
       {
-        "name": "price_symbol",
+        "name": "price_source_id!: PriceSourceId",
         "ordinal": 5,
         "type_info": "Text"
       },
       {
-        "name": "quote_unit_id!: UnitId",
+        "name": "price_symbol",
         "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "quote_unit_id!: UnitId",
+        "ordinal": 7,
         "type_info": "Null"
       },
       {
         "name": "is_active",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Bool"
       }
     ],
@@ -55,8 +60,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "0e45179786dac04009b96be03403ddace1a46972ec7614d00e7c69cc5600c9c0"
+  "hash": "8b6e65ab1b5f425d6a4f2d2f4987acbee5cb77e5e08bd08cf9df6281a10b7e18"
 }

@@ -1236,7 +1236,7 @@ mod tests {
             (
                 "Cold wallet",
                 "Investment",
-                "0.4120 btc",
+                "0.41200000 btc",
                 Some("61,063.51 aud")
             )
         );
@@ -1245,6 +1245,46 @@ mod tests {
             Some("Total")
         );
         assert_eq!(accounts.empty, None);
+    }
+
+    #[test]
+    fn a_balance_shows_at_its_units_precision_and_a_price_or_value_at_its_quote_units() {
+        let mut page = docked();
+        {
+            let mut ports = page.ports.borrow_mut();
+            ports.units.units[0].precision = crate::Precision::new(0).expect("in range");
+            ports.units.units[1].precision = crate::Precision::new(3).expect("in range");
+            ports.holdings.by_unit.insert(
+                UnitId::SEED_BTC,
+                vec![crate::Holding {
+                    name: "Cold wallet".into(),
+                    kind: lib_core::AccountType::Investment,
+                    balance: lib_core::Money("0.4125".parse().expect("a decimal")),
+                    transactions: 1,
+                }],
+            );
+        }
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let groups = pane(&page);
+
+        let source = source_group(&groups);
+        assert_eq!(source.facts[3].value, "148,212 aud", "aud's 0 places");
+        let PaneGroup::Accounts(accounts) = &groups[2] else {
+            panic!("ACCOUNTS third")
+        };
+        // 0.4125 × 148,212.40 = 61,137.615: rounded for display, never as stored.
+        assert_eq!(
+            (
+                accounts.rows[0].balance.as_str(),
+                accounts.rows[0].value.as_deref()
+            ),
+            ("0.413 btc", Some("61,138 aud"))
+        );
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        let PaneGroup::Values(values) = &pane(&page)[1] else {
+            panic!("VALUES second")
+        };
+        assert_eq!(values.rows[0].price, "148,212 aud");
     }
 
     #[test]

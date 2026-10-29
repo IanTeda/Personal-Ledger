@@ -222,7 +222,7 @@ fn choosing_a_source_by_click_shows_the_symbol_and_quote_fields(app: &mut TestAp
     assert!(!ui.is_drawn("add-unit-symbol"));
     assert_eq!(
         ui.dialog_value("visible").as_deref(),
-        Some("Code|Type|Name|Source")
+        Some("Code|Type|Name|Precision|Source")
     );
 
     ui.click("add-unit-source");
@@ -234,7 +234,7 @@ fn choosing_a_source_by_click_shows_the_symbol_and_quote_fields(app: &mut TestAp
     ui.click(&format!("add-unit-source-option-{custom_or_built_in}"));
     assert_eq!(
         ui.dialog_value("visible").as_deref(),
-        Some("Code|Type|Name|Source|Symbol|Quote")
+        Some("Code|Type|Name|Precision|Source|Symbol|Quote")
     );
     assert!(ui.is_drawn("add-unit-symbol"));
 }
@@ -466,6 +466,34 @@ fn at_x_large_the_pane_draws_a_units_accounts(app: &mut TestAppContext) {
             .as_deref()
             .is_some_and(|value| value.ends_with(" aud"))
     }));
+    assert!(
+        accounts.rows.iter().all(|row| {
+            row.balance
+                .strip_suffix(" btc")
+                .and_then(|amount| amount.split_once('.'))
+                .is_some_and(|(_, places)| places.len() == 8)
+        }),
+        "btc's balances show at its Precision of 8"
+    );
+}
+
+#[gpui::test]
+fn a_click_on_precision_focuses_it_for_typing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("unit-row-1");
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditUnit"));
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("8"));
+
+    ui.click("edit-unit-precision");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.press("backspace 4");
+    ui.click("edit-unit-confirm");
+    assert_eq!(ui.dialog(), None);
+
+    ui.click("unit-row-1");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("4"));
 }
 
 #[gpui::test]

@@ -226,6 +226,32 @@ fn typing_tab_and_enter_fill_and_save_an_add_unit_dialog(app: &mut TestAppContex
 }
 
 #[gpui::test]
+fn precision_follows_type_on_add_takes_typed_digits_and_reopens_in_edit(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("n");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("2"));
+    type_word(&mut ui, "eth");
+    ui.press("tab down");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("8"));
+
+    ui.press("tab");
+    type_word(&mut ui, "Ether");
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.press("backspace 1 9");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    ui.press("backspace");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+
+    // A new Unit lands at the foot of the table.
+    ui.press("g g j j j");
+    assert_eq!(selected(&mut ui), "eth");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("1"));
+}
+
+#[gpui::test]
 fn a_select_opens_on_enter_moves_on_down_and_commits_on_enter(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("n tab");

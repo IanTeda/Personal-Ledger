@@ -53,7 +53,8 @@ pub struct UnitsDialog {
 }
 
 enum View {
-    UnitForm(UnitFormPresenter, UnitSelects),
+    /// Boxed: the form is the largest Presenter by far.
+    UnitForm(Box<UnitFormPresenter>, UnitSelects),
     SetBaseUnit(SetBaseUnitPresenter, SelectState),
     PriceSourceForm(PriceSourceFormPresenter, ApiKeyInput),
     DeletePriceSource(DeletePriceSourcePresenter),
@@ -138,7 +139,7 @@ impl UnitsDialog {
                 } else {
                     UnitFormEvent::Cancel
                 };
-                send(presenter, event, UnitFormPresenter::handle)
+                send(presenter.as_mut(), event, UnitFormPresenter::handle)
             }
             View::SetBaseUnit(presenter, _) => {
                 let event = if confirm {

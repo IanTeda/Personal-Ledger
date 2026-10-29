@@ -1,9 +1,9 @@
 use lib_core::UnitId;
 
 use crate::protocols::{PriceSourceRepository, UnitRepository};
-use crate::{Error, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
+use crate::{Error, Precision, PriceLink, Result, UnitKind, UnitRow, price_source_exists};
 
-/// Edit a Unit's code, name, Kind and Price Source link. The id stays, so editing the code leaves
+/// Edit a Unit's code, name, Kind, Precision and Price Source link. The id stays, so editing the code leaves
 /// whatever names the Unit on it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditUnit {
@@ -11,6 +11,7 @@ pub struct EditUnit {
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
+    pub precision: Precision,
     pub link: PriceLink,
 }
 
@@ -44,7 +45,7 @@ impl EditUnit {
         if units.unit(self.link.quote).is_none() {
             return Err(Error::QuoteGone);
         }
-        unit.edit(self.code, self.name, self.kind, self.link);
+        unit.edit(self.code, self.name, self.kind, self.precision, self.link);
         units.upsert_unit(unit.clone());
         Ok(unit)
     }
@@ -65,6 +66,7 @@ mod tests {
             code: "xbt".into(),
             name: "Bitcoin core".into(),
             kind: UnitKind::Crypto,
+            precision: Precision::of_kind(UnitKind::Crypto),
             link,
         }
     }

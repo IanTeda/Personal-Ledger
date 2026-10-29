@@ -4,6 +4,8 @@
 -- ADR-0044); its prices are Weekly Prices in unit_prices (ADR-0052). The quote Unit is the base
 -- Unit unless a person picks another, and the base Unit quotes itself. price_source_id has no FK:
 -- Manual entry and a built-in nobody has renamed have no price_sources row (see that table).
+-- precision is the decimal places its amounts and the prices quoted in it show at (GLOSSARY
+-- Precision); the adapter always writes it, and the default is only for the legacy units module.
 
 CREATE TABLE IF NOT EXISTS units (
     id UUID PRIMARY KEY,
@@ -11,6 +13,7 @@ CREATE TABLE IF NOT EXISTS units (
     name TEXT NOT NULL,
     unit_kind TEXT NOT NULL CHECK (unit_kind IN
         ('currency', 'crypto', 'equity', 'fixed_income', 'commodity', 'custom')),
+    precision INTEGER NOT NULL DEFAULT 2 CHECK (precision BETWEEN 0 AND 18),
     price_source_id TEXT NOT NULL,
     price_symbol TEXT NOT NULL,
     quote_unit_id UUID NOT NULL REFERENCES units(id),

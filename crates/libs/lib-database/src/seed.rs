@@ -20,7 +20,7 @@ use lib_bills::{AmountKind, BillPlan, BillsSeed, Recurrence};
 use lib_core::{BillPlanId, Money, TransactionId, TransactionStatus, UnitId, UnitKind};
 use lib_transactions::{Split, Transaction};
 use lib_units::fake::InMemoryPorts;
-use lib_units::{PriceLink, UnitRow, seed_weekly_prices};
+use lib_units::{Precision, PriceLink, UnitRow, seed_weekly_prices};
 
 use crate::Result;
 use crate::adapter::accounts::AccountsAdapter;
@@ -198,6 +198,7 @@ pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
                 code,
                 name: CompanyName().fake_with_rng(&mut rng),
                 kind,
+                precision: Precision::of_kind(kind),
                 link: PriceLink::manual(UnitId::SEED_AUD),
                 prices: last_price.map_or_else(Vec::new, |(cents, written_at)| {
                     seed_weekly_prices(cents, written_at, number)

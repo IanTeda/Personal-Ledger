@@ -192,17 +192,26 @@ pub(super) fn detail_pane(input: &PaneInput<'_>) -> DetailPane {
     DetailPane { groups }
 }
 
+fn unit_of(units: &[UnitRow], id: UnitId) -> Option<&UnitRow> {
+    units.iter().find(|unit| unit.id == id)
+}
+
 fn code_of(units: &[UnitRow], id: UnitId) -> String {
-    units
-        .iter()
-        .find(|unit| unit.id == id)
+    unit_of(units, id)
         .map(|unit| unit.code.clone())
         .unwrap_or_default()
 }
 
-/// An amount at its own places, followed by the code of the Unit it is in: `148,212.40 aud`.
-fn amount(money: &Money, code: &str) -> String {
-    format!("{} {code}", format_amount(money, AmountStyle::own()).text)
+/// An amount at the Precision of the Unit it is in, followed by that Unit's code:
+/// `148,212.40 aud`. A Unit that is gone, a quote mid-delete, leaves the amount at its own places.
+fn amount(money: &Money, unit: Option<&UnitRow>) -> String {
+    let (style, code) = unit.map_or((AmountStyle::own(), ""), |unit| {
+        (
+            AmountStyle::fixed(unit.precision.places()),
+            unit.code.as_str(),
+        )
+    });
+    format!("{} {code}", format_amount(money, style).text)
 }
 
 fn not_fetched() -> String {
@@ -275,7 +284,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
             }],
         };
     };
-    let quote = code_of(input.units, unit.link.quote);
+    let quote = unit_of(input.units, unit.link.quote);
     let facts = vec![
         Fact::plain(msg::units_column_source(), source.name.to_string()),
         Fact::mono(
@@ -291,7 +300,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
         Fact::plain(
             msg::units_pane_last_price(),
             unit.last_price()
-                .map_or_else(msg::units_none, |price| amount(&price.close, &quote)),
+                .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
         ),
         Fact::plain(
             msg::units_column_last_updated(),
@@ -405,16 +414,16 @@ fn values_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> ValuesGroup 
         .iter()
         .filter(|unit| unit.link.source_id == source.id)
         .map(|unit| {
-            let quote = code_of(input.units, unit.link.quote);
+            let quote = unit_of(input.units, unit.link.quote);
             ValueLine {
                 code: unit.code.clone(),
                 name: unit.name.clone(),
                 symbol: (!unit.link.symbol.is_empty())
                     .then(|| (msg::units_pane_symbol(), unit.link.symbol.clone())),
-                quoted_in: msg::units_pane_quoted_in(&quote),
+                quoted_in: msg::units_pane_quoted_in(&code_of(input.units, unit.link.quote)),
                 price: unit
                     .last_price()
-                    .map_or_else(msg::units_none, |price| amount(&price.close, &quote)),
+                    .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
                 age: match unit.last_price() {
                     Some(price) => Some(ago(price.written_at, input.now)),
                     None if manual => None,
@@ -441,14 +450,15 @@ fn values_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> ValuesGroup 
 /// The Accounts held in `unit`, each valued at the Unit's last price in its quote Unit.
 fn accounts_group(input: &PaneInput<'_>, unit: &UnitRow) -> AccountsGroup {
     let holdings = input.ports.holdings().holdings(unit.id);
-    let quote = code_of(input.units, unit.link.quote);
+    let quote = unit_of(input.units, unit.link.quote);
     let line = |name: String, kind: String, balance: &Money| AccountLine {
         name,
         kind,
-        balance: amount(balance, &unit.code),
-        value: unit
-            .last_price()
-            .map(|price| amount(&price.value(balance), &quote)),
+        balance: amount(balance, Some(unit)),
+        value: unit.last_price().map(|price| {
+            let precision = quote.map_or(unit.precision, |quote| quote.precision);
+            amount(&price.value(balance, precision), quote)
+        }),
     };
     let total = (!holdings.is_empty()).then(|| {
         let sum = Money(

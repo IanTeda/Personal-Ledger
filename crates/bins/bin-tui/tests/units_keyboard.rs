@@ -57,6 +57,35 @@ fn a_unit_added_through_its_dialog_shows_in_the_table() {
     assert!(frame.contains("eur"), "{frame}");
 }
 
+/// The words on the Dialog's Precision line, none when it isn't drawn.
+fn precision_line(frame: &str) -> Vec<String> {
+    frame
+        .lines()
+        .find(|line| line.contains("Precision"))
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn add_unit_starts_precision_on_its_type_and_takes_a_typed_one() {
+    let mut shell = shell();
+    press(&mut shell, "g u n");
+    assert!(precision_line(&screen(&mut shell)).contains(&"2".to_string()));
+
+    // Tab to Type and step Currency to Crypto.
+    press(&mut shell, "Tab Right");
+    assert!(precision_line(&screen(&mut shell)).contains(&"8".to_string()));
+
+    // Tab past Name to Precision and type over the 8.
+    press(&mut shell, "Tab Tab Backspace");
+    type_text(&mut shell, "6");
+    let frame = screen(&mut shell);
+
+    assert!(precision_line(&frame).contains(&"6".to_string()), "{frame}");
+}
+
 #[test]
 fn deleting_a_unit_in_use_opens_offering_deactivate_with_its_usage() {
     let mut shell = shell();

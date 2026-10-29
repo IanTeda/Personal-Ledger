@@ -206,7 +206,7 @@ impl Notify for RecordingRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BuiltInOverride, COINGECKO, PriceLink, UnitKind, Updates};
+    use crate::{BuiltInOverride, COINGECKO, Precision, PriceLink, UnitKind, Updates};
 
     #[test]
     fn the_stub_seed_holds_aud_btc_and_vas_with_aud_as_base() {
@@ -233,6 +233,7 @@ mod tests {
             "eth".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
+            Precision::of_kind(UnitKind::Crypto),
             PriceLink::manual(UnitId::SEED_AUD),
         );
         units.upsert_unit(eth.clone());

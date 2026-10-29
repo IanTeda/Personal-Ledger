@@ -76,9 +76,9 @@ mod tests {
 
     use chrono::Utc;
     use lib_core::{UnitId, UnitKind};
-    use lib_units::PriceLink;
     use lib_units::fake::{InMemoryPorts, InMemoryUnitUsage};
     use lib_units::interactor::AddUnit;
+    use lib_units::{Precision, PriceLink};
     use sqlx::SqliteConnection;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
@@ -145,6 +145,7 @@ mod tests {
                 code: "nzd".into(),
                 name: "New Zealand dollar".into(),
                 kind: UnitKind::Currency,
+                precision: Precision::of_kind(UnitKind::Currency),
                 link: PriceLink::manual(UnitId::SEED_AUD),
             }
             .run(ports.units, ports.price_sources)

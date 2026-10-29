@@ -1,5 +1,5 @@
-//! The Add unit and Edit unit Dialogs (16c·src): Code and Type, Name, then the PRICE SOURCE
-//! group, whose Symbol, Quoted in and Test price hide on Manual entry.
+//! The Add unit and Edit unit Dialogs (16c·src): Code and Type, Name and Precision, then the PRICE
+//! SOURCE group, whose Symbol, Quoted in and Test price hide on Manual entry.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_units::presenter::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
@@ -53,7 +53,7 @@ impl UnitSelects {
 
 pub(super) fn open(presenter: UnitFormPresenter, editing: bool) -> View {
     View::UnitForm(
-        presenter,
+        Box::new(presenter),
         UnitSelects {
             editing,
             ..UnitSelects::default()
@@ -117,13 +117,16 @@ pub(super) fn key(
             }
             None => DialogOutcome::Ignored,
         },
-        Some(field @ (UnitField::Code | UnitField::Name | UnitField::Symbol)) => {
+        Some(
+            field @ (UnitField::Code | UnitField::Name | UnitField::Precision | UnitField::Symbol),
+        ) => {
             let text = text_of(&view, field).unwrap_or_default();
             match typed(&text, key) {
                 Some(text) => {
                     let event = match field {
                         UnitField::Code => UnitFormEvent::Code(text),
                         UnitField::Name => UnitFormEvent::Name(text),
+                        UnitField::Precision => UnitFormEvent::Precision(text),
                         _ => UnitFormEvent::Symbol(text),
                     };
                     handle(presenter, event);
@@ -156,6 +159,7 @@ fn focused(view: &UnitFormViewModel, field: UnitField) -> bool {
         UnitField::Code => view.code.focused,
         UnitField::Type => view.kind.focused,
         UnitField::Name => view.name.focused,
+        UnitField::Precision => view.precision.focused,
         UnitField::Source => view.source.focused,
         UnitField::Symbol => view.symbol.as_ref().is_some_and(|symbol| symbol.focused),
         UnitField::Quote => view.quote.as_ref().is_some_and(|quote| quote.focused),
@@ -166,6 +170,7 @@ fn text_of(view: &UnitFormViewModel, field: UnitField) -> Option<String> {
     match field {
         UnitField::Code => Some(view.code.text.clone()),
         UnitField::Name => Some(view.name.text.clone()),
+        UnitField::Precision => Some(view.precision.text.clone()),
         UnitField::Symbol => view.symbol.as_ref().map(|symbol| symbol.text.clone()),
         UnitField::Type | UnitField::Source | UnitField::Quote => None,
     }
@@ -177,6 +182,7 @@ struct Ids {
     code: &'static str,
     kind: &'static str,
     name: &'static str,
+    precision: &'static str,
     source: &'static str,
     symbol: &'static str,
     quote: &'static str,
@@ -188,6 +194,7 @@ const ADD: Ids = Ids {
     code: "add-unit-code",
     kind: "add-unit-type",
     name: "add-unit-name",
+    precision: "add-unit-precision",
     source: "add-unit-source",
     symbol: "add-unit-symbol",
     quote: "add-unit-quote",
@@ -199,6 +206,7 @@ const EDIT: Ids = Ids {
     code: "edit-unit-code",
     kind: "edit-unit-type",
     name: "edit-unit-name",
+    precision: "edit-unit-precision",
     source: "edit-unit-source",
     symbol: "edit-unit-symbol",
     quote: "edit-unit-quote",
@@ -302,7 +310,13 @@ pub(super) fn render(
                 cx,
             ),
         ]),
-        text(ids.name, &view.name, UnitField::Name),
+        div()
+            .child(two_up([
+                text(ids.name, &view.name, UnitField::Name),
+                text(ids.precision, &view.precision, UnitField::Precision),
+            ]))
+            .child(help(view.precision_help.clone(), cx))
+            .into_any_element(),
         group_label(view.source_group.clone(), cx),
         div()
             .child(select_field_of(
@@ -465,6 +479,7 @@ pub(super) fn readback(
     vec![
         ("code", view.code.text.clone()),
         ("name", view.name.text.clone()),
+        ("precision", view.precision.text.clone()),
         ("kind", super::chosen_label(&view.kind).unwrap_or_default()),
         (
             "source",

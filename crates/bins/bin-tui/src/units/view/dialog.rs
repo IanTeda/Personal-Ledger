@@ -184,6 +184,8 @@ impl Dialog {
                 items.push(Item::Text(view.code));
                 items.push(select(&view.kind));
                 items.push(Item::Text(view.name));
+                items.push(Item::Text(view.precision));
+                items.push(Item::Note(view.precision_help));
                 items.push(Item::Heading(view.source_group));
                 items.push(select(&view.source));
                 items.push(Item::Note(view.source_help));
@@ -267,6 +269,9 @@ fn unit_form_event(
     }
     if view.name.focused {
         return edited(&view.name.text, key).map(UnitFormEvent::Name);
+    }
+    if view.precision.focused {
+        return edited(&view.precision.text, key).map(UnitFormEvent::Precision);
     }
     if let Some(symbol) = view.symbol.as_ref().filter(|field| field.focused) {
         return edited(&symbol.text, key).map(UnitFormEvent::Symbol);

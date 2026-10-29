@@ -13,9 +13,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 use lib_units::{
-    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, PriceLink,
-    PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow, UnitUsage,
-    Updates, WeeklyPrice,
+    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
+    PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
+    UnitUsage, Updates, WeeklyPrice,
 };
 use sqlx::SqliteConnection;
 
@@ -285,14 +285,16 @@ async fn seed_base_unit(conn: &mut SqliteConnection, id: UnitId) -> Result<()> {
 /// Writes the Unit and its Weekly Prices, which are written afresh: a quote change clears them all
 /// and a price rewrites the current week, so the row's whole list is what lands.
 async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> {
+    let precision = unit.precision.get();
     sqlx::query!(
-        "INSERT INTO units (id, code, name, unit_kind, price_source_id, price_symbol,
+        "INSERT INTO units (id, code, name, unit_kind, precision, price_source_id, price_symbol,
                             quote_unit_id, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              code = excluded.code,
              name = excluded.name,
              unit_kind = excluded.unit_kind,
+             precision = excluded.precision,
              price_source_id = excluded.price_source_id,
              price_symbol = excluded.price_symbol,
              quote_unit_id = excluded.quote_unit_id,
@@ -301,6 +303,7 @@ async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> 
         unit.code,
         unit.name,
         unit.kind,
+        precision,
         unit.link.source_id,
         unit.link.symbol,
         unit.link.quote,
@@ -436,6 +439,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                code,
                name,
                unit_kind             AS "unit_kind!: UnitKind",
+               precision             AS "precision!: u8",
                price_source_id       AS "price_source_id!: PriceSourceId",
                price_symbol,
                quote_unit_id         AS "quote_unit_id!: UnitId",
@@ -445,20 +449,27 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
     .fetch_all(&mut *conn)
     .await?
     .into_iter()
-    .map(|row| UnitRow {
-        id: row.id,
-        code: row.code,
-        name: row.name,
-        kind: row.unit_kind,
-        link: PriceLink {
-            source_id: row.price_source_id,
-            symbol: row.price_symbol,
-            quote: row.quote_unit_id,
-        },
-        prices: prices.remove(&row.id).unwrap_or_default(),
-        is_active: row.is_active,
+    .map(|row| {
+        // The table's CHECK holds it in range, so this refuses only a file edited by hand.
+        let precision = Precision::new(row.precision).ok_or_else(|| {
+            Error::UnitsBuilder(format!("unit {} has precision {}", row.id, row.precision))
+        })?;
+        Ok(UnitRow {
+            id: row.id,
+            code: row.code,
+            name: row.name,
+            kind: row.unit_kind,
+            precision,
+            link: PriceLink {
+                source_id: row.price_source_id,
+                symbol: row.price_symbol,
+                quote: row.quote_unit_id,
+            },
+            prices: prices.remove(&row.id).unwrap_or_default(),
+            is_active: row.is_active,
+        })
     })
-    .collect();
+    .collect::<Result<Vec<_>>>()?;
 
     let records = sqlx::query!(
         r#"SELECT
@@ -734,6 +745,7 @@ mod tests {
                 code: code.into(),
                 name: code.into(),
                 kind: UnitKind::Currency,
+                precision: Precision::of_kind(UnitKind::Currency),
                 link: PriceLink::manual(UnitId::SEED_AUD),
             }
             .run(ports.units, ports.price_sources)

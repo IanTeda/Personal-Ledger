@@ -15,7 +15,7 @@ use crate::interactor::{
 };
 use crate::protocols::PortsMut;
 use crate::{
-    COINGECKO, Endpoint, Error, KeyPlacement, MANUAL_ENTRY, PriceLink, PriceSourceAuth,
+    COINGECKO, Endpoint, Error, KeyPlacement, MANUAL_ENTRY, Precision, PriceLink, PriceSourceAuth,
     PriceSourceRecord, UnitKind, UnitRow, UnitUsage, Updates,
 };
 
@@ -144,6 +144,7 @@ fn add_unit(ports: PortsMut<'_>, code: &str, kind: UnitKind, link: PriceLink) ->
         code: code.into(),
         name: code.to_uppercase(),
         kind,
+        precision: Precision::of_kind(kind),
         link,
     }
     .run(ports.units, ports.price_sources)
@@ -173,6 +174,8 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
         code: "vas".into(),
         name: "Vanguard Australian Shares".into(),
         kind: UnitKind::Equity,
+        // Off Equity's 2, so a stored Precision, not a default, is what reloads.
+        precision: Precision::new(4).expect("in range"),
         link: PriceLink::manual(eur.id),
     }
     .run(split.units, split.price_sources)
@@ -279,6 +282,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
         code: "eth".into(),
         name: "ETH".into(),
         kind: UnitKind::Crypto,
+        precision: Precision::of_kind(UnitKind::Crypto),
         link: gone.clone(),
     }
     .run(split.units, split.price_sources)
@@ -292,6 +296,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
         code: "btc".into(),
         name: "BTC".into(),
         kind: UnitKind::Crypto,
+        precision: Precision::of_kind(UnitKind::Crypto),
         link: gone,
     }
     .run(split.units, split.price_sources)
@@ -314,6 +319,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
         code: "eth".into(),
         name: "ETH".into(),
         kind: UnitKind::Crypto,
+        precision: Precision::of_kind(UnitKind::Crypto),
         link: PriceLink::manual(id),
     }
     .run(split.units, split.price_sources)
@@ -389,6 +395,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
             code: "btc".into(),
             name: "Bitcoin".into(),
             kind: UnitKind::Crypto,
+            precision: Precision::of_kind(UnitKind::Crypto),
             link: PriceLink::manual(quote),
         }
         .run(split.units, split.price_sources)
