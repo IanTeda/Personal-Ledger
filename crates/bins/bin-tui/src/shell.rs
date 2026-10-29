@@ -784,7 +784,7 @@ impl Shell {
             self.command_popup
                 .as_ref()
                 .and_then(CommandPopup::argument)
-                .map(PathBuf::from)
+                .map(|argument| expand_tilde(argument, dirs::home_dir().as_deref()))
         };
         match id {
             CommandId::Unit => Some(Action::OpenUnits),
@@ -2559,6 +2559,23 @@ fn draw_too_small(frame: &mut Frame<'_>, c: &Colours) {
     c.paint_base(frame.buffer_mut());
 }
 
+/// `typed` as a path, with a leading `~` (alone or as `~/…`) taken as `home`. The shell does this
+/// for a command line but not for a path typed into `:open` or `:new`; `~user` stays as typed, and
+/// so does everything when there is no home directory.
+fn expand_tilde(typed: &str, home: Option<&Path>) -> PathBuf {
+    let Some(home) = home else {
+        return PathBuf::from(typed);
+    };
+    match typed.strip_prefix('~') {
+        Some("") => home.to_path_buf(),
+        Some(rest) => match rest.strip_prefix('/') {
+            Some(under_home) => home.join(under_home),
+            None => PathBuf::from(typed),
+        },
+        None => PathBuf::from(typed),
+    }
+}
+
 /// The name of the file at `path`, or the whole path if it names none.
 fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(
@@ -2797,6 +2814,25 @@ impl Default for Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn expand_tilde_takes_a_leading_tilde_as_the_home_directory() {
+        let home = Path::new("/home/ian");
+        assert_eq!(expand_tilde("~", Some(home)), PathBuf::from("/home/ian"));
+        assert_eq!(
+            expand_tilde("~/x.pldb", Some(home)),
+            PathBuf::from("/home/ian/x.pldb")
+        );
+        assert_eq!(
+            expand_tilde("dir/x.pldb", Some(home)),
+            PathBuf::from("dir/x.pldb")
+        );
+        assert_eq!(
+            expand_tilde("~other/x.pldb", Some(home)),
+            PathBuf::from("~other/x.pldb")
+        );
+        assert_eq!(expand_tilde("~/x.pldb", None), PathBuf::from("~/x.pldb"));
+    }
+
     use lib_toast::Toast;
     use ratatui::{Terminal, backend::TestBackend};
 
