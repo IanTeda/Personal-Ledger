@@ -17,6 +17,8 @@ units-none = —
 units-flag-base = base
 units-legend-base = base unit
 units-inactive = inactive
+# Two parts of one line, as a Unit row's kind and flags: `Currency · base`.
+units-joined = { $head } · { $tail }
 units-menu-prices = Prices
 units-menu-edit-unit = Edit unit…
 units-menu-delete-unit = Delete unit…
@@ -84,6 +86,7 @@ units-pane-manual-note = Prices you enter by hand.
 units-pane-values = Values
 units-pane-values-none = No units use this source.
 units-pane-symbol = symbol
+units-pane-symbol-value = { $label } { $symbol }
 units-pane-quoted-in = quoted in { $code }
 units-pane-values-note = Each unit sets its own symbol in Edit unit.
 units-pane-values-note-custom = Each unit sets its own symbol in Edit unit. Deleting this source moves these units to Manual entry.

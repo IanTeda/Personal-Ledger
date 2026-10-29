@@ -8,7 +8,7 @@ use lib_locale::Label as _;
 use lib_locale::format::{AmountStyle, format_amount};
 
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
-use super::{ago, count, updates_label};
+use super::{ago, count, joined, updates_label};
 use crate::protocols::UnitsPorts;
 use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
 
@@ -143,6 +143,8 @@ pub struct ValueLine {
     pub symbol: Option<(String, String)>,
     /// `quoted in aud`.
     pub quoted_in: String,
+    /// The symbol, then the quote: `symbol bitcoin · quoted in aud`.
+    pub detail: String,
     pub price: String,
     pub age: Option<String>,
 }
@@ -427,12 +429,20 @@ fn values_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> ValuesGroup 
         .filter(|unit| unit.link.source_id == source.id)
         .map(|unit| {
             let quote = unit_of(input.units, unit.link.quote);
+            let symbol = (!unit.link.symbol.is_empty())
+                .then(|| (msg::units_pane_symbol(), unit.link.symbol.clone()));
+            let quoted_in = msg::units_pane_quoted_in(&code_of(input.units, unit.link.quote));
             ValueLine {
                 code: unit.code.clone(),
                 name: unit.name.clone(),
-                symbol: (!unit.link.symbol.is_empty())
-                    .then(|| (msg::units_pane_symbol(), unit.link.symbol.clone())),
-                quoted_in: msg::units_pane_quoted_in(&code_of(input.units, unit.link.quote)),
+                detail: joined(
+                    symbol
+                        .iter()
+                        .map(|(label, symbol)| msg::units_pane_symbol_value(label, symbol))
+                        .chain([quoted_in.clone()]),
+                ),
+                symbol,
+                quoted_in,
                 price: unit
                     .last_price()
                     .map_or_else(msg::units_none, |price| amount(&price.close, quote)),

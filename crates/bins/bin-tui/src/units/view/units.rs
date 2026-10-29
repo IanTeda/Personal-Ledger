@@ -523,23 +523,15 @@ fn render_unit_row(frame: &mut Frame<'_>, area: Rect, unit: &UnitLine, c: &Colou
     } else {
         dim
     };
-    let kind = [
-        Some(&unit.kind),
-        unit.base_flag.as_ref(),
-        unit.inactive_tag.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    .cloned()
-    .collect::<Vec<_>>()
-    .join(" \u{b7} ");
-
     let columns = unit_row_columns(area);
     frame.render_widget(
         Paragraph::new(Span::styled(unit.code.as_str(), code_style)),
         columns[0],
     );
-    frame.render_widget(Paragraph::new(Span::styled(kind, rest)), columns[1]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(unit.kind_meta.as_str(), rest)),
+        columns[1],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(unit.price_source.as_str(), rest)).alignment(Alignment::Right),
         columns[2],
@@ -668,15 +660,9 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, 
         );
         frame.render_widget(Paragraph::new(unit.name.as_str()), second);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), divider);
-        let flags = [unit.base_flag.as_ref(), unit.inactive_tag.as_ref()]
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" \u{b7} ");
         let columns = &view.unit_columns;
         frame.render_widget(fact(&columns.price_source, &unit.price_source), first_fact);
-        frame.render_widget(fact(&columns.flags, &flags), second_fact);
+        frame.render_widget(fact(&columns.flags, &unit.flags), second_fact);
     } else if let Some(source) = view.price_sources.iter().find(|source| source.selected) {
         frame.render_widget(
             Paragraph::new(Span::styled(source.name.as_str(), bold)),

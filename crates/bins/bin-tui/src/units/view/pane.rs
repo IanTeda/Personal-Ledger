@@ -177,15 +177,8 @@ fn value_rows(rows: &mut Vec<Row>, line: &ValueLine, c: &Colours) {
         Line::from(format!("{} \u{b7} {}", line.code, line.name)),
         Line::from(line.price.clone()),
     ));
-    let detail = line
-        .symbol
-        .iter()
-        .map(|(label, symbol)| format!("{label} {symbol}"))
-        .chain([line.quoted_in.clone()])
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
     rows.push(Row::Split(
-        dim(detail, c),
+        dim(line.detail.clone(), c),
         dim(line.age.clone().unwrap_or_default(), c),
     ));
 }

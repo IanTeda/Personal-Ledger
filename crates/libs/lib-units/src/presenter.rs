@@ -203,6 +203,15 @@ fn ago(at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     }
 }
 
+/// `parts` joined into one line through `units-joined`, `Currency · base · inactive`; empty for
+/// none.
+fn joined(parts: impl IntoIterator<Item = String>) -> String {
+    parts
+        .into_iter()
+        .reduce(|head, tail| msg::units_joined(&head, &tail))
+        .unwrap_or_default()
+}
+
 /// `label`, suffixed ` (2)`, ` (3)`... when an earlier option already shows it, so two Custom
 /// sources sharing a name can still be told apart in a select.
 fn unique_label(label: &str, seen: &mut Vec<String>) -> String {
@@ -327,6 +336,18 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+
+    #[test]
+    fn joined_puts_each_part_after_the_last_and_is_empty_for_none() {
+        test_support::locale();
+        let parts = |parts: &[&str]| joined(parts.iter().map(ToString::to_string));
+        assert_eq!(parts(&[]), "");
+        assert_eq!(parts(&["Currency"]), "Currency");
+        assert_eq!(
+            parts(&["Currency", "base", "inactive"]),
+            "Currency · base · inactive"
+        );
+    }
 
     #[test]
     fn ago_is_the_largest_whole_unit_since() {

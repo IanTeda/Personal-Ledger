@@ -11,7 +11,7 @@ use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 
 use super::units_pane::{DetailPane, PaneInput, detail_pane};
-use super::{Clock, UnitChange, UnitsOutcome, ago};
+use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::interactor::ReactivateUnit;
 use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
@@ -245,6 +245,10 @@ pub struct UnitLine {
     pub base_flag: Option<String>,
     /// `inactive` for a deactivated Unit, which is drawn dimmed.
     pub inactive_tag: Option<String>,
+    /// The kind, then the base and inactive flags that apply: `Currency · base`.
+    pub kind_meta: String,
+    /// The base and inactive flags that apply, `base · inactive`; empty for neither.
+    pub flags: String,
     pub selected: bool,
 }
 
@@ -401,20 +405,30 @@ impl UnitsPagePresenter {
 
         let unit_lines = units
             .iter()
-            .map(|unit| UnitLine {
-                id: unit.id,
-                code: unit.code.clone(),
-                name: unit.name.clone(),
-                kind: unit.kind.label(),
-                price_source: sources
-                    .iter()
-                    .find(|source| source.id == unit.link.source_id)
-                    .map(|source| source.name.to_string())
-                    .unwrap_or_default(),
-                is_base: unit.id == base,
-                base_flag: (unit.id == base).then(msg::units_flag_base),
-                inactive_tag: (!unit.is_active).then(msg::units_inactive),
-                selected: selection == Some(UnitsRow::Unit(unit.id)),
+            .map(|unit| {
+                let base_flag = (unit.id == base).then(msg::units_flag_base);
+                let inactive_tag = (!unit.is_active).then(msg::units_inactive);
+                let flags = [base_flag.clone(), inactive_tag.clone()];
+                UnitLine {
+                    id: unit.id,
+                    code: unit.code.clone(),
+                    name: unit.name.clone(),
+                    kind: unit.kind.label(),
+                    price_source: sources
+                        .iter()
+                        .find(|source| source.id == unit.link.source_id)
+                        .map(|source| source.name.to_string())
+                        .unwrap_or_default(),
+                    is_base: unit.id == base,
+                    kind_meta: joined(
+                        std::iter::once(unit.kind.label())
+                            .chain(flags.clone().into_iter().flatten()),
+                    ),
+                    flags: joined(flags.into_iter().flatten()),
+                    base_flag,
+                    inactive_tag,
+                    selected: selection == Some(UnitsRow::Unit(unit.id)),
+                }
             })
             .collect();
         let source_lines = sources
@@ -803,6 +817,20 @@ mod tests {
         );
         assert_eq!(view.units[0].base_flag.as_deref(), Some("base"));
         assert_eq!(view.units[1].base_flag, None);
+        assert_eq!(
+            (
+                view.units[0].kind_meta.as_str(),
+                view.units[0].flags.as_str()
+            ),
+            ("Currency · base", "base")
+        );
+        assert_eq!(
+            (
+                view.units[1].kind_meta.as_str(),
+                view.units[1].flags.as_str()
+            ),
+            ("Crypto", "")
+        );
         assert_eq!(view.scope, "3 units · synced");
         let sources: Vec<_> = view
             .price_sources
@@ -1211,6 +1239,8 @@ mod tests {
             page.view().units[1].inactive_tag.as_deref(),
             Some("inactive")
         );
+        assert_eq!(page.view().units[1].kind_meta, "Crypto · inactive");
+        assert_eq!(page.view().units[1].flags, "inactive");
 
         let calls = page.send(UnitsPageEvent::Reactivate);
 
@@ -1560,6 +1590,7 @@ mod tests {
                 "148,212.40 aud"
             )
         );
+        assert_eq!(row.detail, "symbol bitcoin · quoted in aud");
     }
 
     #[test]
