@@ -3,8 +3,13 @@
 //! (`render.rs`, `pane.rs`), and keeps the Ledger read copy in line after every event
 //! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
 //! what it wrote. The Settings View hosts it as any other page.
+//!
+//! A Unit's prices view (`prices.rs`) shows in place of the tables while it is open, on
+//! `lib-units`' prices Presenter: it takes the keys in its own keymap, and `Esc` closes it back
+//! to the tables with their selection as it was, before Settings would step back to the index.
 
 mod pane;
+mod prices;
 mod render;
 
 use std::rc::Rc;
@@ -15,7 +20,11 @@ use gpui::{
 };
 
 use lib_ledger::Domain;
-use lib_units::presenter::{UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel};
+use lib_units::UnitId;
+use lib_units::presenter::{
+    UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
+    UnitsPageViewModel,
+};
 use lib_viper::keymap::Keymap;
 
 use crate::units::ports::{self, DesktopPorts};
@@ -44,6 +53,9 @@ pub struct UnitsPage {
     deletion: lib_unit_deletion::SharedUnitDeletion,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<UnitsPageEvent>,
+    prices_keymap: Keymap<UnitPricesEvent>,
+    /// The Unit prices view, while it shows in place of the tables.
+    prices: Option<UnitPricesPresenter>,
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     menu_at: Point<Pixels>,
     _units_changed: Subscription,
@@ -56,6 +68,7 @@ impl UnitsPage {
         deletion: lib_unit_deletion::SharedUnitDeletion,
         ledger: Entity<LedgerStore>,
         keymap: Keymap<UnitsPageEvent>,
+        prices_keymap: Keymap<UnitPricesEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let presenter = UnitsPagePresenter::new(ports.clone(), Rc::new(Utc::now), keymap.clone());
@@ -68,6 +81,8 @@ impl UnitsPage {
             _accounts_changed: notify_on(&ledger, Domain::Accounts, cx),
             ledger,
             keymap,
+            prices_keymap,
+            prices: None,
             menu_at: Point::default(),
         }
     }
@@ -87,10 +102,62 @@ impl UnitsPage {
             deletion: self.deletion.clone(),
             ledger: self.ledger.clone(),
             cx,
+            prices: None,
         };
         self.presenter.handle(event, &mut router);
+        let prices = router.prices;
+        self.apply_prices(prices);
         ports::refresh(&self.ports, &self.ledger, cx);
         cx.notify();
+    }
+
+    /// A key or click on the prices view: `event` as one input, as [`Self::send`].
+    pub(in crate::units) fn send_prices(
+        &mut self,
+        event: UnitPricesEvent,
+        cx: &mut Context<'_, Self>,
+    ) {
+        crate::input::send(cx, |cx| self.handle_prices(event, cx));
+    }
+
+    fn handle_prices(&mut self, event: UnitPricesEvent, cx: &mut Context<'_, Self>) {
+        let Some(presenter) = &mut self.prices else {
+            return;
+        };
+        ports::refresh(&self.ports, &self.ledger, cx);
+        let mut router = PageRouter {
+            ports: self.ports.clone(),
+            deletion: self.deletion.clone(),
+            ledger: self.ledger.clone(),
+            cx,
+            prices: None,
+        };
+        presenter.handle(event, &mut router);
+        let prices = router.prices;
+        self.apply_prices(prices);
+        ports::refresh(&self.ports, &self.ledger, cx);
+        cx.notify();
+    }
+
+    /// Opens the prices view a Presenter asked for (`Some`) or closes it (`None`).
+    fn apply_prices(&mut self, prices: Option<Option<UnitId>>) {
+        match prices {
+            Some(Some(unit)) => {
+                self.prices = Some(UnitPricesPresenter::new(
+                    self.ports.clone(),
+                    Rc::new(Utc::now),
+                    self.prices_keymap.clone(),
+                    unit,
+                ));
+            }
+            Some(None) => self.prices = None,
+            None => {}
+        }
+    }
+
+    /// The prices view as drawn, while it shows.
+    pub fn prices_view_model(&self) -> Option<UnitPricesViewModel> {
+        self.prices.as_ref().map(UnitPricesPresenter::view_model)
     }
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
@@ -132,6 +199,13 @@ impl Page for UnitsPage {
     /// Every chord the Units keymap binds, the arrows and `g g` among them. The Shell has already
     /// taken its own keys.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        if self.prices.is_some() {
+            let Some(event) = self.prices_keymap.event(chord) else {
+                return false;
+            };
+            self.send_prices(event, cx);
+            return true;
+        }
         let Some(event) = self.keymap.event(chord) else {
             return false;
         };
@@ -145,8 +219,12 @@ impl Page for UnitsPage {
         true
     }
 
-    /// `Esc` closes an open row menu; otherwise it is left to Settings.
+    /// `Esc` closes the prices view or an open row menu; otherwise it is left to Settings.
     fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if self.prices.is_some() {
+            self.send_prices(UnitPricesEvent::Back, cx);
+            return true;
+        }
         if self.presenter.view_model().menu.is_none() {
             return false;
         }
@@ -157,6 +235,14 @@ impl Page for UnitsPage {
     /// The Presenter's legend, rebound keys included, which the default `page_status` and the `?`
     /// cheat sheet both read.
     fn hints(&self, _cx: &App) -> Vec<Hint> {
+        if let Some(view) = self.prices_view_model() {
+            return view
+                .hints
+                .into_iter()
+                .map(|hint| (hint.chord, hint.action))
+                .chain([("esc".to_string(), view.back)])
+                .collect();
+        }
         self.presenter
             .view_model()
             .hints
@@ -177,7 +263,11 @@ impl Page for UnitsPage {
         self.presenter.view_model().scope.into_any_element()
     }
 
+    /// The tables' detail pane, which gives way while the prices view shows.
     fn side_pane(&self, entity: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        if self.prices.is_some() {
+            return None;
+        }
         let view = self.view_model(cx);
         let pane = view.pane.as_ref()?;
         Some(detail_pane(pane, entity, cx))

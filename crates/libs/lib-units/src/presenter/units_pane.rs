@@ -53,7 +53,7 @@ pub struct Fact {
 }
 
 impl Fact {
-    fn plain(label: String, value: String) -> Self {
+    pub(super) fn plain(label: String, value: String) -> Self {
         Self {
             label,
             value,
@@ -204,7 +204,7 @@ fn code_of(units: &[UnitRow], id: UnitId) -> String {
 
 /// An amount at the Precision of the Unit it is in, followed by that Unit's code:
 /// `148,212.40 aud`. A Unit that is gone, a quote mid-delete, leaves the amount at its own places.
-fn amount(money: &Money, unit: Option<&UnitRow>) -> String {
+pub(super) fn amount(money: &Money, unit: Option<&UnitRow>) -> String {
     let (style, code) = unit.map_or((AmountStyle::own(), ""), |unit| {
         (
             AmountStyle::fixed(unit.precision.places()),

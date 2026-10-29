@@ -7,11 +7,11 @@ tui-units-list-heading-tag = { $visible } OF { $total }
 
 tui-units-summary-heading = SUMMARY
 
-## The price history regions, which have nothing to draw until prices are recorded.
+## The price history regions, which point at the selected unit's prices view.
 
 tui-units-weekly-close-heading = WEEKLY CLOSE
 tui-units-weekly-prices-heading = WEEKLY PRICES
-tui-units-price-history-empty = No price history is recorded yet.
+tui-units-price-history-open = Enter opens a unit's weekly prices.
 
 ## The keys box. Its key hints are lib-units' view model.
 

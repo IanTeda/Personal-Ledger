@@ -3948,13 +3948,20 @@ mod tests {
         let units = lib_units::keymap::UNITS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let unit_prices = lib_units::keymap::UNIT_PRICES_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         let bills = lib_bills::keymap::BILLS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
         let payees = lib_payees::keymap::PAYEES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
-        units.chain(bills).chain(payees).collect()
+        units
+            .chain(unit_prices)
+            .chain(bills)
+            .chain(payees)
+            .collect()
     }
 
     /// A default kept on a global key on purpose: `g` is the View-jump leader, so `g g` opens Tags

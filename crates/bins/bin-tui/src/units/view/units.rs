@@ -2,12 +2,16 @@
 //! §4a layout of `docs/ux/tui-mockups/07-units/README.md`. The left column holds the Units and
 //! Price Sources tables above the selected row's summary; the right holds the weekly close and
 //! weekly prices regions above the keys box. Every row, label and hint comes from the page view
-//! model; price history has no Presenter yet, so its two regions say so (#746's findings log).
+//! model; the two price regions point at the selected Unit's prices view.
+//!
+//! `enter` on a Unit (the `units.open` command) opens its Unit prices view (`prices.rs`) in place
+//! of both columns, on `lib-units`' prices Presenter; the Shell's back key closes it, through
+//! [`View::back`], back to the page with its selection as it was.
 //!
 //! Keys become chord text and are looked up in the shared Units keymap, so `[keybindings]`
-//! overrides reach them as on the Desktop. The arrows walk the tables and `Enter` edits, as the
-//! Desktop's router movements and double-click do. While a Dialog is open it takes every key
-//! ([`View::dialog_open`]), looked up first in `lib-shell`'s Dialog keymap, and draws over the
+//! overrides reach them as on the Desktop. The arrows walk the tables and `Enter` opens a Unit's
+//! prices or edits a Price Source, as the Desktop's keys do. While a Dialog is open it takes every
+//! key ([`View::dialog_open`]), looked up first in `lib-shell`'s Dialog keymap, and draws over the
 //! frame ([`View::render_dialog`]).
 //!
 //! At X-Large the page docks the detail pane at the View's right edge (TUI-055, `pane.rs`). The
@@ -19,10 +23,11 @@ use lib_list_cursor::Step;
 use lib_locale::format::upper;
 use lib_shell::{DialogCommand, WindowSize};
 use lib_toast::ToastKind;
-use lib_units::SharedPorts;
 use lib_units::presenter::{
-    SourceLine, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
+    SourceLine, UnitLine, UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel,
+    UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
 };
+use lib_units::{SharedPorts, UnitId};
 use lib_viper::keymap::Keymap;
 use ratatui::{
     Frame,
@@ -39,6 +44,7 @@ use crate::msg;
 use crate::units::router::Router;
 use crate::units::view::dialog::Dialog;
 use crate::units::view::pane::{self, PaneKeys};
+use crate::units::view::prices;
 use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
@@ -72,8 +78,9 @@ const SUMMARY_LABEL_WIDTH: usize = 16;
 /// Height of the weekly close region: heading, rule and the room its chart will take.
 const WEEKLY_CLOSE_HEIGHT: u16 = 12;
 
-/// Height of the keys box: heading, rule, the hints row, then one row per command hint.
-const KEYBIND_HINTS_HEIGHT: u16 = 3 + 3;
+/// Height of the keys box: heading, rule, two rows the hints wrap over, then one row per command
+/// hint.
+const KEYBIND_HINTS_HEIGHT: u16 = 4 + 3;
 
 /// What separates one key hint from the next.
 pub(super) const HINT_SEPARATOR: &str = "  \u{b7}  ";
@@ -83,8 +90,11 @@ pub struct UnitsView {
     presenter: UnitsPagePresenter,
     ports: TuiPorts,
     keymap: Keymap<UnitsPageEvent>,
+    prices_keymap: Keymap<UnitPricesEvent>,
     dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
+    /// The Unit prices view, while it shows in place of the page.
+    prices: Option<UnitPricesPresenter>,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
     /// Whether the page was last told it is docked: the one place the Window Size is remembered,
@@ -103,8 +113,10 @@ impl UnitsView {
             ),
             ports: setup.ports.clone(),
             keymap: setup.keymap.clone(),
+            prices_keymap: setup.prices_keymap.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
             dialog: None,
+            prices: None,
             toasts: Vec::new(),
             docked: false,
         }
@@ -115,16 +127,70 @@ impl UnitsView {
         self.presenter.view_model()
     }
 
-    /// Sends `event` to the page Presenter, opens any Dialog it asked for, and commits whatever it
-    /// wrote as one transaction.
+    /// The Unit prices view as drawn, while it shows.
+    pub fn prices_view_model(&self) -> Option<UnitPricesViewModel> {
+        self.prices.as_ref().map(UnitPricesPresenter::view_model)
+    }
+
+    /// Whether the Unit prices view shows in place of the page.
+    pub fn prices_open(&self) -> bool {
+        self.prices.is_some()
+    }
+
+    /// Sends `event` to the page Presenter, opens any Dialog or prices view it asked for, and
+    /// commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
         let mut router = Router::new(self.ports.clone(), &mut self.toasts);
         self.presenter.handle(event, &mut router);
-        let opened = router.opened.take();
+        let (opened, prices) = (router.opened.take(), router.prices.take());
         self.ports.borrow_mut().commit();
+        self.apply(opened, prices);
+    }
+
+    /// Sends `event` to the prices Presenter, as [`Self::send`] does to the page's.
+    fn send_to_prices(&mut self, event: UnitPricesEvent) {
+        let Some(presenter) = &mut self.prices else {
+            return;
+        };
+        let mut router = Router::new(self.ports.clone(), &mut self.toasts);
+        presenter.handle(event, &mut router);
+        let (opened, prices) = (router.opened.take(), router.prices.take());
+        self.ports.borrow_mut().commit();
+        self.apply(opened, prices);
+    }
+
+    /// Hosts the Dialog a Presenter opened, and opens or closes the prices view it asked for.
+    fn apply(&mut self, opened: Option<Dialog>, prices: Option<Option<UnitId>>) {
         if opened.is_some() {
             self.dialog = opened;
         }
+        match prices {
+            Some(Some(unit)) => {
+                self.prices = Some(UnitPricesPresenter::new(
+                    self.ports.clone(),
+                    std::rc::Rc::new(chrono::Utc::now),
+                    self.prices_keymap.clone(),
+                    unit,
+                ));
+            }
+            Some(None) => self.prices = None,
+            None => {}
+        }
+    }
+
+    /// The prices view's event for `key`: its chord in the prices keymap, or Home, End or a Page
+    /// key, which [`chord`] doesn't name.
+    fn prices_event(&self, key: KeyEvent) -> Option<UnitPricesEvent> {
+        if let Some(event) = chord(key).and_then(|chord| self.prices_keymap.event(&chord)) {
+            return Some(event);
+        }
+        Some(UnitPricesEvent::Move(match key.code {
+            KeyCode::Home => Step::First,
+            KeyCode::End => Step::Last,
+            KeyCode::PageDown => Step::HalfPageDown,
+            KeyCode::PageUp => Step::HalfPageUp,
+            _ => return None,
+        }))
     }
 
     /// Hands `key` to the open Dialog, commits what its confirm wrote, and once it closes tells
@@ -155,7 +221,7 @@ impl UnitsView {
             KeyCode::End => UnitsPageEvent::Move(Step::Last),
             KeyCode::PageDown => UnitsPageEvent::Move(Step::HalfPageDown),
             KeyCode::PageUp => UnitsPageEvent::Move(Step::HalfPageUp),
-            KeyCode::Enter => UnitsPageEvent::Edit,
+            KeyCode::Enter => UnitsPageEvent::Open,
             _ => return None,
         })
     }
@@ -191,6 +257,11 @@ impl View for UnitsView {
             self.send_to_dialog(key);
             return Some(Action::NoOp);
         }
+        if self.prices.is_some() {
+            let event = self.prices_event(key)?;
+            self.send_to_prices(event);
+            return Some(Action::NoOp);
+        }
         let event = self.page_event(key)?;
         self.send(event);
         Some(Action::NoOp)
@@ -209,6 +280,9 @@ impl View for UnitsView {
     }
 
     fn view(&self, frame: &mut Frame<'_>, area: Rect, _size: WindowSize, c: &Colours) {
+        if self.render_prices(frame, area, c) {
+            return;
+        }
         let view = self.presenter.view_model();
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -258,6 +332,20 @@ impl View for UnitsView {
         self.dialog.is_some()
     }
 
+    /// The back key closes the prices view before the Shell pops the View.
+    fn back(&mut self) -> bool {
+        if self.prices.is_none() {
+            return false;
+        }
+        self.send_to_prices(UnitPricesEvent::Back);
+        true
+    }
+
+    /// The prices view's keys while it shows, then the back key that closes it.
+    fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
+        self.prices_hints(back)
+    }
+
     fn render_dialog(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         if let Some(dialog) = &self.dialog {
             dialog.render(frame, area, &self.dialog_keymap, c);
@@ -266,6 +354,27 @@ impl View for UnitsView {
 }
 
 impl UnitsView {
+    /// Draws the Unit prices view over `area` while it shows, and says whether it did.
+    pub fn render_prices(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) -> bool {
+        let Some(view) = self.prices_view_model() else {
+            return false;
+        };
+        prices::render(frame, area, &view, c);
+        true
+    }
+
+    /// The prices view's legend, rebound keys included, then `back`; `None` while it is closed.
+    pub fn prices_hints(&self, back: &str) -> Option<Vec<(String, String)>> {
+        let view = self.prices_view_model()?;
+        Some(
+            view.hints
+                .into_iter()
+                .map(|hint| (hint.chord, hint.action))
+                .chain([(back.to_string(), view.back)])
+                .collect(),
+        )
+    }
+
     /// The detail pane for `view`'s selection in `area`, if the page is docked. Settings › Units
     /// draws it beside its own tables, as this View does beside its own.
     pub fn render_pane(
@@ -598,13 +707,14 @@ fn render_price_history(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
         ])
         .split(area);
 
-    render_empty_region(frame, rows[0], &msg::tui_units_weekly_close_heading(), c);
-    render_empty_region(frame, rows[2], &msg::tui_units_weekly_prices_heading(), c);
+    render_price_region(frame, rows[0], &msg::tui_units_weekly_close_heading(), c);
+    render_price_region(frame, rows[2], &msg::tui_units_weekly_prices_heading(), c);
     render_keybind_hints(frame, rows[4], view, c);
 }
 
-/// A price history region with nothing to draw yet: its heading, its rule and a dim note.
-fn render_empty_region(frame: &mut Frame<'_>, area: Rect, heading: &str, c: &Colours) {
+/// A price history region: its heading, its rule and a dim note that `enter` opens the selected
+/// Unit's prices view, which draws them.
+fn render_price_region(frame: &mut Frame<'_>, area: Rect, heading: &str, c: &Colours) {
     let [heading_row, rule, note] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -614,10 +724,7 @@ fn render_empty_region(frame: &mut Frame<'_>, area: Rect, heading: &str, c: &Col
     render_heading(frame, heading_row, heading, "", c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
     frame.render_widget(
-        Paragraph::new(Span::styled(
-            msg::tui_units_price_history_empty(),
-            c.muted(),
-        )),
+        Paragraph::new(Span::styled(msg::tui_units_price_history_open(), c.muted())),
         note,
     );
 }
@@ -636,19 +743,38 @@ fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
     render_heading(frame, rows[0], &msg::tui_units_hints_heading(), "", c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
+    // The hints fill the first row and carry on to the second, breaking only between hints.
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let mut spans = Vec::new();
-    for (index, hint) in view.hints.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(HINT_SEPARATOR, dim));
+    let width = usize::from(area.width);
+    let separator = HINT_SEPARATOR.chars().count();
+    let mut lines: Vec<(Vec<Span<'_>>, usize)> = Vec::new();
+    for hint in &view.hints {
+        let length = hint.chord.chars().count() + 1 + hint.action.chars().count();
+        let fits = lines
+            .last()
+            .is_some_and(|(_, used)| *used + separator + length <= width);
+        if !fits {
+            lines.push((Vec::new(), 0));
         }
-        spans.push(Span::styled(hint.chord.as_str(), bold));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(hint.action.as_str(), dim));
+        let Some((spans, used)) = lines.last_mut() else {
+            continue;
+        };
+        if *used > 0 {
+            spans.push(Span::styled(HINT_SEPARATOR, dim));
+            *used += separator;
+        }
+        spans.extend([
+            Span::styled(hint.chord.as_str(), bold),
+            Span::raw(" "),
+            Span::styled(hint.action.as_str(), dim),
+        ]);
+        *used += length;
     }
-    frame.render_widget(Paragraph::new(Line::from(spans)), rows[2]);
+    for ((spans, _), row) in lines.into_iter().zip(&rows[2..4]) {
+        frame.render_widget(Paragraph::new(Line::from(spans)), *row);
+    }
 
-    for (line, row) in command_hints.iter().zip(rows.iter().skip(3)) {
+    for (line, row) in command_hints.iter().zip(rows.iter().skip(4)) {
         frame.render_widget(Paragraph::new(Span::styled(line.as_str(), dim)), *row);
     }
 }
@@ -734,9 +860,7 @@ mod tests {
         );
         view.handle_key(key(KeyCode::Esc));
 
-        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
-            lib_units::UnitId::SEED_VAS,
-        )));
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
         view.handle_key(key(KeyCode::Char('d')));
         let footer = dialog_footer(&view);
         assert!(footer.ends_with("esc cancel"), "{footer}");
@@ -852,13 +976,111 @@ mod tests {
     }
 
     #[test]
-    fn the_price_history_regions_say_nothing_is_recorded() {
+    fn the_price_history_regions_point_at_the_prices_view() {
         let text = render(&units_view(), 96, 30);
         assert!(text.contains("WEEKLY CLOSE"), "{text}");
         assert!(text.contains("WEEKLY PRICES"), "{text}");
         assert!(
-            text.contains(&msg::tui_units_price_history_empty()),
+            text.contains(&msg::tui_units_price_history_open()),
             "{text}"
+        );
+    }
+
+    /// The Units View with btc's prices view open through `enter`.
+    fn prices_of_btc() -> UnitsView {
+        let mut view = units_view();
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        view.handle_key(key(KeyCode::Enter));
+        view
+    }
+
+    #[test]
+    fn enter_on_a_unit_opens_its_prices_view_drawn_from_the_presenter() {
+        let view = prices_of_btc();
+        let model = view.prices_view_model().expect("enter opens it");
+        let text = render(&view, 120, 50);
+
+        assert!(text.contains("btc · Bitcoin · prices"), "{text}");
+        assert!(text.contains(&model.window), "{text}");
+        assert!(text.contains("WEEKLY CLOSE"), "{text}");
+        assert!(text.contains("WEEKLY PRICES"), "{text}");
+        for fact in &model.facts {
+            assert!(
+                text.contains(&fact.value),
+                "{} missing:\n{text}",
+                fact.label
+            );
+        }
+        assert!(
+            text.contains(&model.rows[0].label),
+            "the newest week:\n{text}"
+        );
+        assert!(text.contains(&model.rows[0].close), "{text}");
+        assert!(text.contains('\u{2588}'), "candles are drawn:\n{text}");
+        assert!(
+            !text.contains("PRICE SOURCES"),
+            "the page's tables give way:\n{text}"
+        );
+    }
+
+    #[test]
+    fn brackets_step_the_window_and_back_returns_to_the_page_on_the_same_row() {
+        let mut view = prices_of_btc();
+        view.handle_key(key(KeyCode::Char('[')));
+        let earlier = view.prices_view_model().expect("still open");
+        assert_eq!(earlier.rows.len(), 48);
+        view.handle_key(key(KeyCode::Char(']')));
+        assert_eq!(view.prices_view_model().expect("open").rows.len(), 52);
+
+        assert!(view.back(), "back closes the prices view, not the View");
+        assert!(!view.prices_open());
+        let selected = view
+            .view_model()
+            .units
+            .into_iter()
+            .find(|unit| unit.selected);
+        assert_eq!(selected.map(|unit| unit.code).as_deref(), Some("btc"));
+        assert!(!view.back(), "a second back is the Shell's");
+    }
+
+    #[test]
+    fn a_unit_with_no_prices_shows_the_empty_state() {
+        let mut view = units_view();
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        view.handle_key(key(KeyCode::Enter));
+        let text = render(&view, 120, 50);
+        assert!(text.contains("vas has no weekly prices yet."), "{text}");
+    }
+
+    #[test]
+    fn p_in_the_prices_view_sets_a_manual_entry_units_price_and_the_table_shows_it() {
+        let mut view = units_view();
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        view.handle_key(key(KeyCode::Enter));
+        view.handle_key(key(KeyCode::Char('p')));
+        assert!(view.dialog_open());
+        for ch in "42".chars() {
+            view.handle_key(key(KeyCode::Char(ch)));
+        }
+        view.handle_key(key(KeyCode::Enter));
+
+        assert!(!view.dialog_open());
+        let model = view
+            .prices_view_model()
+            .expect("the prices view stays open");
+        assert_eq!(model.rows[0].close, "42.00");
+    }
+
+    #[test]
+    fn the_prices_hints_end_with_back() {
+        let view = prices_of_btc();
+        let hints = view.hints("esc").expect("the prices view names its keys");
+        assert_eq!(hints.last(), Some(&("esc".to_string(), "back".to_string())));
+        assert!(hints.contains(&("[".to_string(), "earlier".to_string())));
+        assert_eq!(
+            units_view().hints("esc"),
+            None,
+            "the page keeps the Shell's"
         );
     }
 
@@ -873,17 +1095,13 @@ mod tests {
     fn docked_on_btc() -> UnitsView {
         let mut view = units_view();
         view.set_window_size(WindowSize::XLarge);
-        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
-            lib_units::UnitId::SEED_BTC,
-        )));
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
         view
     }
 
     /// Selects btc, which an Account holds, and deactivates it through `d` and `enter`.
     fn deactivate_btc(view: &mut UnitsView) {
-        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
-            lib_units::UnitId::SEED_BTC,
-        )));
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
         view.handle_key(key(KeyCode::Char('d')));
         view.handle_key(key(KeyCode::Enter));
         assert!(!view.dialog_open(), "enter confirms the Deactivate Dialog");
@@ -920,9 +1138,7 @@ mod tests {
     fn at_x_large_p_on_a_manual_entry_unit_sets_its_price_and_the_pane_shows_it() {
         let mut view = units_view();
         view.set_window_size(WindowSize::XLarge);
-        view.send(UnitsPageEvent::Select(UnitsRow::Unit(
-            lib_units::UnitId::SEED_VAS,
-        )));
+        view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
         assert!(
             render(&view, 256, 72).contains("p Set price"),
             "the Unit's keys"

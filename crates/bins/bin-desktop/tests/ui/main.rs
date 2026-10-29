@@ -70,3 +70,5 @@ mod toasts_keyboard;
 mod toasts_mouse;
 mod transactions_keyboard;
 mod transactions_mouse;
+mod unit_prices_keyboard;
+mod unit_prices_mouse;

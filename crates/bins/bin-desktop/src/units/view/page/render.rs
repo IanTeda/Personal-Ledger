@@ -73,6 +73,9 @@ fn row_menu_click(entity: &Entity<UnitsPage>, row: UnitsRow) -> OnRowMenu {
 impl Render for UnitsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
+        if let Some(prices) = self.prices_view_model() {
+            return super::prices::prices_view(prices, &entity, cx);
+        }
         let view = self.view_model(cx);
         let menu_at = self.menu_at;
         let cx: &App = cx;
@@ -111,6 +114,7 @@ impl Render for UnitsPage {
                     .child(sources_table(&source_columns, &price_sources, &entity, cx)),
             )
             .children(menu.map(|menu| row_menu(menu, menu_at, &entity, cx)))
+            .into_any_element()
     }
 }
 

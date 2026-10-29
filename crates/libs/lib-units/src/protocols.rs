@@ -215,6 +215,15 @@ pub trait UnitsRouter: Notify {
     ///
     /// [`UnitsPageEvent::DialogClosed`]: crate::presenter::UnitsPageEvent::DialogClosed
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>);
+
+    /// Shows Unit `unit`'s prices view in place of the Units page's tables, on a
+    /// [`UnitPricesPresenter`] the Client builds on the shared ports.
+    ///
+    /// [`UnitPricesPresenter`]: crate::presenter::UnitPricesPresenter
+    fn open_prices(&mut self, unit: UnitId);
+
+    /// Closes the prices view, back to the Units page with its selection as it was.
+    fn close_prices(&mut self);
 }
 
 #[cfg(test)]

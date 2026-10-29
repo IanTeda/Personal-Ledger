@@ -22,7 +22,7 @@ pub use settings::{
     SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
     SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
     SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot,
+    SettingsTracingSnapshot, SettingsUnitsSnapshot, UnitPricesSnapshot,
 };
 pub use status::StatusSnapshot;
 pub use transactions::{ChipSnapshot, ImportRowSnapshot, ImportSnapshot, TransactionsSnapshot};

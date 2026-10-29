@@ -635,10 +635,15 @@ impl SettingsView {
         self.editor = Some(FieldEditor::new(field, draft, was));
     }
 
-    /// Closes whichever of a field open in place, the picker, the Clear logs confirm or an Edit
-    /// overlay is open (each takes every key, so at most one is); `false` when none was.
+    /// Closes whichever of a field open in place, the Unit prices view, the picker, the Clear logs
+    /// confirm or an Edit overlay is open (each takes every key, so at most one is); `false` when
+    /// none was.
     fn back_to_page(&mut self) -> bool {
         self.editor.take().is_some()
+            || self
+                .units_page
+                .as_mut()
+                .is_some_and(units::UnitsPage::close_prices)
             || self.picker.take().is_some()
             || self.logs.close_confirm()
             || self.sync_server.close_overlay()
@@ -677,8 +682,12 @@ impl View for SettingsView {
         if self.editor.is_some() {
             return self.handle_editor_key(key);
         }
-        // A Units Dialog takes every key, `[`, `]` and `p` included.
-        if let Some(page) = self.units_page.as_mut().filter(|page| page.dialog_open()) {
+        // A Units Dialog and the Unit prices view take every key, `[`, `]` and `p` included.
+        if let Some(page) = self
+            .units_page
+            .as_mut()
+            .filter(|page| page.dialog_open() || page.prices_open())
+        {
             return page.handle_key(key);
         }
         // The Clear logs confirm and an Edit overlay take every key, `[`, `]` and `p` included.
@@ -805,8 +814,14 @@ impl View for SettingsView {
     }
 
     fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
+        let prices = self
+            .units_page
+            .as_ref()
+            .and_then(|page| page.prices_hints(back));
         let hints = if let Some(editor) = &self.editor {
             editor.hints(back)
+        } else if let Some(prices) = prices {
+            prices
         } else if self.picker.is_some() {
             picker::hints(back)
         } else if self.overlay_open() {

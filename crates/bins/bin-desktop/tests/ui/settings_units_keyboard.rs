@@ -387,7 +387,7 @@ fn r_reactivates_the_selected_deactivated_unit(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("j d");
     type_word(&mut ui, "btc");
-    ui.press("enter enter");
+    ui.press("enter");
     assert_eq!(ui.inactive_unit_codes(), ["btc"]);
 
     ui.press("r");

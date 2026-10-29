@@ -21,7 +21,7 @@ use crate::shell::router::Root;
 #[doc(hidden)]
 pub use crate::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
-pub use crate::units::SettingsUnitsSnapshot;
+pub use crate::units::{SettingsUnitsSnapshot, UnitPricesSnapshot};
 
 pub use crate::categories::SettingsCategoriesSnapshot;
 
@@ -100,6 +100,17 @@ impl Root {
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
         self.views.settings.read(cx).units().read(cx).view_model(cx)
+    }
+
+    /// The Settings Units page's Unit prices view for a test; `None` while it is closed.
+    #[doc(hidden)]
+    pub fn unit_prices_snapshot(&self, cx: &gpui::App) -> Option<UnitPricesSnapshot> {
+        self.views
+            .settings
+            .read(cx)
+            .units()
+            .read(cx)
+            .prices_view_model()
     }
 
     /// The Settings Institutions page for a test, as the View builds it.

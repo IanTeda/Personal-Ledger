@@ -301,6 +301,7 @@ impl SettingsPages {
                 units.deletion,
                 ledger.clone(),
                 units.keymap,
+                units.prices_keymap,
                 cx,
             ),
             institutions: institutions_page(

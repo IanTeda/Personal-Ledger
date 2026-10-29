@@ -61,7 +61,7 @@ pub use snapshots::{
     SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
     SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,
-    TransactionsSnapshot,
+    TransactionsSnapshot, UnitPricesSnapshot,
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 

@@ -9,12 +9,15 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, REACTIVATE,
 };
 
-use crate::presenter::UnitsPageEvent;
+use crate::presenter::{UnitPricesEvent, UnitsPageEvent};
 
 pub const TEST_SOURCE: &str = "units.test_source";
 pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
 pub const SET_PRICE: &str = "units.set_price";
+pub const OPEN: &str = "units.open";
+pub const EARLIER: &str = "units.earlier";
+pub const LATER: &str = "units.later";
 
 /// The Units page's commands, with today's keys. The arrow, Home/End and Page keys move as `j`/`k`,
 /// `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it. `units.set_base` is new: setting the base Unit
@@ -121,11 +124,102 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
         chord: "p",
         event: UnitsPageEvent::SetPrice,
     },
+    Binding {
+        command: OPEN,
+        chord: "enter",
+        event: UnitsPageEvent::Open,
+    },
 ];
 
 /// The Units page's keymap under `config`'s overrides.
 pub fn units_page_keymap(config: &KeyBindingConfig) -> Keymap<UnitsPageEvent> {
     Keymap::new(UNITS_PAGE_BINDINGS, config)
+}
+
+/// The Unit prices view's commands. The moves walk the weeks as the page's walk its rows, and
+/// `units.set_price` is the page's own command, so one override moves both. `back` is not here:
+/// `esc` is a key the Shell keeps, which each Client hands the view as [`UnitPricesEvent::Back`].
+pub const UNIT_PRICES_BINDINGS: &[Binding<UnitPricesEvent>] = &[
+    Binding {
+        command: MOVE_DOWN,
+        chord: "j",
+        event: UnitPricesEvent::Move(Step::Next),
+    },
+    Binding {
+        command: MOVE_UP,
+        chord: "k",
+        event: UnitPricesEvent::Move(Step::Prev),
+    },
+    Binding {
+        command: MOVE_FIRST,
+        chord: "g g",
+        event: UnitPricesEvent::Move(Step::First),
+    },
+    Binding {
+        command: MOVE_LAST,
+        chord: "G",
+        event: UnitPricesEvent::Move(Step::Last),
+    },
+    Binding {
+        command: HALF_PAGE_DOWN,
+        chord: "ctrl+d",
+        event: UnitPricesEvent::Move(Step::HalfPageDown),
+    },
+    Binding {
+        command: HALF_PAGE_UP,
+        chord: "ctrl+u",
+        event: UnitPricesEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: ARROW_DOWN,
+        chord: "down",
+        event: UnitPricesEvent::Move(Step::Next),
+    },
+    Binding {
+        command: ARROW_UP,
+        chord: "up",
+        event: UnitPricesEvent::Move(Step::Prev),
+    },
+    Binding {
+        command: HOME,
+        chord: "home",
+        event: UnitPricesEvent::Move(Step::First),
+    },
+    Binding {
+        command: END,
+        chord: "end",
+        event: UnitPricesEvent::Move(Step::Last),
+    },
+    Binding {
+        command: PAGE_DOWN,
+        chord: "pagedown",
+        event: UnitPricesEvent::Move(Step::HalfPageDown),
+    },
+    Binding {
+        command: PAGE_UP,
+        chord: "pageup",
+        event: UnitPricesEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: EARLIER,
+        chord: "[",
+        event: UnitPricesEvent::Earlier,
+    },
+    Binding {
+        command: LATER,
+        chord: "]",
+        event: UnitPricesEvent::Later,
+    },
+    Binding {
+        command: SET_PRICE,
+        chord: "p",
+        event: UnitPricesEvent::SetPrice,
+    },
+];
+
+/// The Unit prices view's keymap under `config`'s overrides.
+pub fn unit_prices_keymap(config: &KeyBindingConfig) -> Keymap<UnitPricesEvent> {
+    Keymap::new(UNIT_PRICES_BINDINGS, config)
 }
 
 #[cfg(test)]
@@ -154,7 +248,26 @@ mod tests {
             keymap.event("pageup"),
             Some(UnitsPageEvent::Move(Step::HalfPageUp))
         );
+        assert_eq!(keymap.event("enter"), Some(UnitsPageEvent::Open));
         assert_eq!(keymap.event("q"), None);
+    }
+
+    #[test]
+    fn the_unit_prices_keys_step_the_window_and_share_set_price_with_the_page() {
+        let keymap = unit_prices_keymap(&KeyBindingConfig::default());
+        assert_eq!(keymap.event("["), Some(UnitPricesEvent::Earlier));
+        assert_eq!(keymap.event("]"), Some(UnitPricesEvent::Later));
+        assert_eq!(keymap.event("j"), Some(UnitPricesEvent::Move(Step::Next)));
+
+        let config = overriding("units.set_price", "P");
+        assert_eq!(
+            unit_prices_keymap(&config).event("P"),
+            Some(UnitPricesEvent::SetPrice)
+        );
+        assert_eq!(
+            units_page_keymap(&config).event("P"),
+            Some(UnitsPageEvent::SetPrice)
+        );
     }
 
     #[test]

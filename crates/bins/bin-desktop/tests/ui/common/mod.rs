@@ -21,6 +21,7 @@ use bin_desktop::{
         SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
         SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot,
         ShellBindings, ShellLogs, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
+        UnitPricesSnapshot,
     },
     theme,
 };
@@ -1497,6 +1498,11 @@ impl<'a> Harness<'a> {
     /// The Settings Units page's state, read back for assertions.
     pub fn settings_units(&mut self) -> SettingsUnitsSnapshot {
         self.read_app(Root::settings_units_snapshot)
+    }
+
+    /// The Settings Units page's Unit prices view; `None` while it is closed.
+    pub fn unit_prices(&mut self) -> Option<UnitPricesSnapshot> {
+        self.read_app(Root::unit_prices_snapshot)
     }
 
     /// The Units table's rows as `(code, name, type)`, as drawn.

@@ -256,6 +256,9 @@ mod tests {
         let units = lib_units::keymap::UNITS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let unit_prices = lib_units::keymap::UNIT_PRICES_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         let bills = lib_bills::keymap::BILLS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
@@ -278,6 +281,7 @@ mod tests {
             .iter()
             .map(|binding| (binding.command, binding.chord));
         units
+            .chain(unit_prices)
             .chain(bills)
             .chain(payees)
             .chain(institutions)

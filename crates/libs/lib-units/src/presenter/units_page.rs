@@ -13,7 +13,7 @@ use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use super::units_pane::{DetailPane, PaneInput, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago};
 use crate::interactor::ReactivateUnit;
-use crate::keymap::{NEXT_TABLE, SET_PRICE, TEST_SOURCE};
+use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg};
 
@@ -47,6 +47,8 @@ impl SourceKind {
 /// An action a row offers, in its menu and through its keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
+    /// Opens the Unit prices view.
+    Prices,
     EditUnit,
     SetPrice,
     ReactivateUnit,
@@ -57,22 +59,33 @@ pub enum MenuAction {
 }
 
 impl MenuAction {
-    /// A row's actions in menu order, the destructive one last. A Unit on Manual entry offers Set
-    /// price, since nothing else prices it; a deactivated Unit offers Reactivate, since it is
-    /// hidden from the pickers until then. The Manual entry row offers nothing and a built-in no
-    /// Delete.
+    /// A row's actions in menu order, the destructive one last. Every Unit offers its prices
+    /// first. A Unit on Manual entry offers Set price, since nothing else prices it; a deactivated
+    /// Unit offers Reactivate, since it is hidden from the pickers until then. The Manual entry
+    /// row offers nothing and a built-in no Delete.
     pub(super) fn for_row(row: Row<'_>) -> &'static [Self] {
         match row {
             Row::Unit(unit) => match (unit.link.source_id == MANUAL_ENTRY, unit.is_active) {
-                (true, true) => &[Self::EditUnit, Self::SetPrice, Self::DeleteUnit],
+                (true, true) => &[
+                    Self::Prices,
+                    Self::EditUnit,
+                    Self::SetPrice,
+                    Self::DeleteUnit,
+                ],
                 (true, false) => &[
+                    Self::Prices,
                     Self::EditUnit,
                     Self::SetPrice,
                     Self::ReactivateUnit,
                     Self::DeleteUnit,
                 ],
-                (false, true) => &[Self::EditUnit, Self::DeleteUnit],
-                (false, false) => &[Self::EditUnit, Self::ReactivateUnit, Self::DeleteUnit],
+                (false, true) => &[Self::Prices, Self::EditUnit, Self::DeleteUnit],
+                (false, false) => &[
+                    Self::Prices,
+                    Self::EditUnit,
+                    Self::ReactivateUnit,
+                    Self::DeleteUnit,
+                ],
             },
             Row::Source(_, SourceKind::Custom) => {
                 &[Self::TestSource, Self::EditSource, Self::DeleteSource]
@@ -84,6 +97,7 @@ impl MenuAction {
 
     fn label(self) -> String {
         match self {
+            Self::Prices => msg::units_menu_prices(),
             Self::EditUnit => msg::units_menu_edit_unit(),
             Self::SetPrice => msg::units_menu_set_price(),
             Self::ReactivateUnit => msg::units_menu_reactivate_unit(),
@@ -97,6 +111,7 @@ impl MenuAction {
     /// The label its detail pane button shows, shorter than the menu's.
     pub(super) fn pane_label(self) -> String {
         match self {
+            Self::Prices => msg::units_pane_prices(),
             Self::EditUnit => msg::units_pane_edit_unit(),
             Self::SetPrice => msg::units_pane_set_price(),
             Self::ReactivateUnit => msg::units_pane_reactivate_unit(),
@@ -110,6 +125,7 @@ impl MenuAction {
     /// A stable name (`edit-unit`), for a Client's element ids and tests.
     pub fn slug(self) -> &'static str {
         match self {
+            Self::Prices => "prices",
             Self::EditUnit => "edit-unit",
             Self::SetPrice => "set-price",
             Self::ReactivateUnit => "reactivate-unit",
@@ -161,6 +177,8 @@ pub enum UnitsPageEvent {
     SetBase,
     /// `p`: Set price on the selected Unit, when it is on Manual entry.
     SetPrice,
+    /// `enter`: the selected Unit's prices view, or the selected Price Source's Edit Dialog.
+    Open,
     /// A right-click on a row. A row with no actions opens no menu.
     OpenMenu(UnitsRow),
     CloseMenu,
@@ -343,6 +361,10 @@ impl UnitsPagePresenter {
             UnitsPageEvent::Test => self.test(router),
             UnitsPageEvent::SetBase => self.open(UnitsDialog::SetBaseUnit, router),
             UnitsPageEvent::SetPrice => self.run_on_selection(MenuAction::SetPrice, router),
+            UnitsPageEvent::Open => match self.selection() {
+                Some(UnitsRow::Unit(_)) => self.run_on_selection(MenuAction::Prices, router),
+                _ => self.edit(router),
+            },
             UnitsPageEvent::OpenMenu(row) => {
                 if self.with_row(row, |row| !MenuAction::for_row(row).is_empty()) == Some(true) {
                     self.select(row);
@@ -576,6 +598,7 @@ impl UnitsPagePresenter {
             return;
         }
         match (action, row) {
+            (MenuAction::Prices, UnitsRow::Unit(id)) => router.open_prices(id),
             (MenuAction::EditUnit, UnitsRow::Unit(id)) => {
                 self.open(UnitsDialog::EditUnit(id), router);
             }
@@ -685,6 +708,9 @@ impl UnitsPagePresenter {
             hint(chord(DELETE), msg::units_hint_delete()),
             hint(chord(NEW), msg::units_hint_new()),
         ];
+        if !on_source {
+            hints.push(hint(chord(OPEN), msg::units_hint_prices()));
+        }
         if set_price {
             hints.push(hint(chord(SET_PRICE), msg::units_hint_set_price()));
         }
@@ -917,6 +943,46 @@ mod tests {
     }
 
     #[test]
+    fn enter_opens_a_units_prices_and_edits_a_price_source() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(
+            page.send(UnitsPageEvent::Open),
+            [RouterCall::OpenPrices(UnitId::SEED_BTC)]
+        );
+        assert_eq!(
+            page.selected(),
+            "btc",
+            "the selection stays for the way back"
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        assert_eq!(
+            page.send(UnitsPageEvent::Open),
+            [RouterCall::OpenDialog(UnitsDialog::EditPriceSource(
+                COINGECKO
+            ))]
+        );
+    }
+
+    #[test]
+    fn every_units_menu_and_pane_offer_its_prices() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::OpenMenu(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(
+            page.send(UnitsPageEvent::Menu(MenuAction::Prices)),
+            [RouterCall::OpenPrices(UnitId::SEED_BTC)]
+        );
+        assert_eq!(
+            page.send(UnitsPageEvent::Action(
+                MenuAction::Prices,
+                UnitsRow::Unit(UnitId::SEED_VAS)
+            )),
+            [RouterCall::OpenPrices(UnitId::SEED_VAS)]
+        );
+    }
+
+    #[test]
     fn a_dialog_the_router_could_not_open_is_not_shown_as_open() {
         struct Refusing;
         impl UnitsRouter for Refusing {
@@ -924,6 +990,8 @@ mod tests {
                 false
             }
             fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
+            fn open_prices(&mut self, _unit: UnitId) {}
+            fn close_prices(&mut self) {}
         }
         impl lib_toast::Notify for Refusing {
             fn notify(&mut self, _notice: Notice) {}
@@ -995,13 +1063,14 @@ mod tests {
         assert_eq!(
             labels,
             [
+                "Prices",
                 "Edit unit…",
                 "Set price…",
                 "Reactivate unit",
                 "Delete unit…"
             ]
         );
-        assert!(menu.entries[3].destructive);
+        assert!(menu.entries[4].destructive);
         assert_eq!(page.selected(), "vas", "opening the menu selects its row");
 
         assert_eq!(
@@ -1031,17 +1100,20 @@ mod tests {
             .into_iter()
             .map(|entry| entry.label)
             .collect();
-        assert_eq!(labels, ["Edit unit…", "Set price…", "Delete unit…"]);
+        assert_eq!(
+            labels,
+            ["Prices", "Edit unit…", "Set price…", "Delete unit…"]
+        );
         assert_eq!(page.send(UnitsPageEvent::Menu(MenuAction::SetPrice)), open);
         let PaneGroup::Unit(unit) = &pane(&page)[0] else {
             panic!("UNIT first")
         };
         assert_eq!(
             button_slugs(&unit.buttons),
-            ["edit-unit", "set-price", "delete-unit"]
+            ["prices", "edit-unit", "set-price", "delete-unit"]
         );
         assert_eq!(
-            page.send(unit.buttons[1].event.clone()),
+            page.send(unit.buttons[2].event.clone()),
             open,
             "the pane button opens it"
         );
@@ -1061,7 +1133,14 @@ mod tests {
             .iter()
             .map(|entry| entry.action)
             .collect();
-        assert_eq!(actions, [MenuAction::EditUnit, MenuAction::DeleteUnit]);
+        assert_eq!(
+            actions,
+            [
+                MenuAction::Prices,
+                MenuAction::EditUnit,
+                MenuAction::DeleteUnit
+            ]
+        );
     }
 
     #[test]
@@ -1231,6 +1310,7 @@ mod tests {
                 ("E", "edit"),
                 ("d", "delete"),
                 ("n", "new"),
+                ("enter", "prices"),
                 ("p", "set price"),
                 ("t", "test source"),
                 ("tab", "price sources"),
@@ -1304,7 +1384,7 @@ mod tests {
         assert_eq!(unit.facts[0].value, "base");
         assert_eq!(
             button_slugs(&unit.buttons),
-            ["edit-unit", "set-price", "delete-unit"]
+            ["prices", "edit-unit", "set-price", "delete-unit"]
         );
         let source = source_group(&groups);
         assert_eq!(

@@ -1,12 +1,13 @@
-//! `impl UnitsRouter` for the Desktop: where the Units page's Presenter asks to go. A Dialog opens
-//! as an Entity in the Dialog host through the page's gpui context, which is why the Router is built for
-//! each `handle` call, and a Notice goes onto the bin's queue (`crate::notices`), which the
-//! input's `send` drains.
+//! `impl UnitsRouter` for the Desktop: where the Units page's and the Unit prices view's Presenters
+//! ask to go. A Dialog opens as an Entity in the Dialog host through the page's gpui context, which
+//! is why the Router is built for each `handle` call; the prices view to open or close is collected
+//! for the page to apply once `handle` returns; and a Notice goes onto the bin's queue
+//! (`crate::notices`), which the input's `send` drains.
 
 use gpui::Context;
 use lib_toast::{Notice, Notify};
 use lib_units::presenter::UnitsOutcome;
-use lib_units::{UnitsDialog as Which, UnitsRouter};
+use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
 
 use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
@@ -21,6 +22,8 @@ pub(super) struct PageRouter<'a, 'b> {
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub ledger: gpui::Entity<LedgerStore>,
     pub cx: &'a mut Context<'b, UnitsPage>,
+    /// Set once a Presenter asked to show a Unit's prices view (`Some`) or close it (`None`).
+    pub prices: Option<Option<UnitId>>,
 }
 
 impl UnitsRouter for PageRouter<'_, '_> {
@@ -56,6 +59,14 @@ impl UnitsRouter for PageRouter<'_, '_> {
 
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
     fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
+
+    fn open_prices(&mut self, unit: UnitId) {
+        self.prices = Some(Some(unit));
+    }
+
+    fn close_prices(&mut self) {
+        self.prices = Some(None);
+    }
 }
 
 impl Notify for PageRouter<'_, '_> {
@@ -72,8 +83,9 @@ pub fn units_page(
     deletion: lib_unit_deletion::SharedUnitDeletion,
     ledger: gpui::Entity<LedgerStore>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
+    prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| UnitsPage::new(ports, deletion, ledger, keymap, cx))
+    cx.new(|cx| UnitsPage::new(ports, deletion, ledger, keymap, prices_keymap, cx))
 }

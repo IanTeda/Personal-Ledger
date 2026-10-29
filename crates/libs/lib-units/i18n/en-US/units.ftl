@@ -17,6 +17,7 @@ units-none = —
 units-flag-base = base
 units-legend-base = base unit
 units-inactive = inactive
+units-menu-prices = Prices
 units-menu-edit-unit = Edit unit…
 units-menu-delete-unit = Delete unit…
 units-menu-reactivate-unit = Reactivate unit
@@ -32,6 +33,7 @@ units-hint-new = new
 units-hint-test-source = test source
 units-hint-test = test
 units-hint-set-price = set price
+units-hint-prices = prices
 units-hint-units = units
 units-hint-price-sources = price sources
 units-status-test-not-yet-built = test price source — not yet built
@@ -60,6 +62,7 @@ units-pane-accounts-total = Total
 units-pane-accounts-none = No accounts use this unit.
 units-pane-title = { $code } · { $name }
 units-pane-meta = { $kind } · valued in { $base }
+units-pane-prices = Prices
 units-pane-edit-unit = Edit unit
 units-pane-delete-unit = Delete unit
 units-pane-reactivate-unit = Reactivate unit
@@ -208,6 +211,35 @@ units-set-price-close-help = In { $code }, to { $places ->
     [one] { $places } place
    *[other] { $places } places
 }.
+
+## The Unit prices view: one Unit's weekly close chart over its weekly prices table, in a
+## 12-month window. `$from` and `$to` are the window's first and last weeks' Mondays.
+
+units-prices-title = { $code } · { $name } · prices
+units-prices-last-price = Last price
+units-prices-last-price-value = { $price } · { $age }
+units-prices-week-change = Week change
+units-prices-week-change-value = { $amount } ({ $percent }%)
+units-prices-range = 52w range
+units-prices-range-value = { $low } – { $high } { $code }
+units-prices-symbol = Symbol · priced in
+units-prices-symbol-value = { $symbol } · { $code }
+units-prices-chart-heading = Weekly close
+units-prices-table-heading = Weekly prices
+units-prices-window = { $from } – { $to }
+units-prices-column-week = Week
+units-prices-column-open = Open
+units-prices-column-high = High
+units-prices-column-low = Low
+units-prices-column-close = Close
+units-prices-column-change = Change
+units-prices-change = { $percent }%
+units-prices-empty = { $code } has no weekly prices yet.
+units-prices-window-empty = No weekly prices in this window.
+units-prices-hint-week = week
+units-prices-hint-earlier = earlier
+units-prices-hint-later = later
+units-prices-hint-back = back
 
 ## Refusals: an Interactor said no, shown in the open Dialog.
 

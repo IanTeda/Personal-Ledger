@@ -27,13 +27,19 @@ pub use view::page::UnitsPage;
 #[doc(hidden)]
 pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 
-/// What `shell::router::build` hands the Units module: its ports and its keymap under `[keybindings]`.
+/// The Unit prices view as the UI tests read it: its view model, while it shows.
+#[doc(hidden)]
+pub type UnitPricesSnapshot = lib_units::presenter::UnitPricesViewModel;
+
+/// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
+/// prices view's keymaps under `[keybindings]`.
 pub struct UnitsSetup {
     pub ports: DesktopPorts,
     /// The Unit Deletion module's port over these ports and the Institutions', which Delete unit
     /// writes through (#903).
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
+    pub prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
 }
 
 impl UnitsSetup {
@@ -49,6 +55,7 @@ impl UnitsSetup {
             deletion: crate::unit_deletion::deletion(&ports, institutions),
             ports,
             keymap: lib_units::keymap::units_page_keymap(config),
+            prices_keymap: lib_units::keymap::unit_prices_keymap(config),
         }
     }
 

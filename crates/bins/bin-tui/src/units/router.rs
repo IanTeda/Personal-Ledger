@@ -1,10 +1,11 @@
 //! `impl UnitsRouter` for the TUI. A Presenter's `handle` can't reach the Units View it runs in, so
-//! the Router collects what it asked for (a Dialog to open, the open one to close, Toasts) and the
-//! View applies them once `handle` returns. Built for each call, as on the Desktop.
+//! the Router collects what it asked for (a Dialog to open, the open one to close, the prices view
+//! to open or close, Toasts) and the View applies them once `handle` returns. Built for each call,
+//! as on the Desktop.
 
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_units::presenter::UnitsOutcome;
-use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
+use lib_units::{SharedPorts, UnitId, UnitsDialog as Which, UnitsRouter};
 
 use super::view::dialog::Dialog;
 
@@ -15,6 +16,8 @@ pub struct Router<'a> {
     pub opened: Option<Dialog>,
     /// Set once the open Dialog asked to close, with its confirmed outcome or `None` on cancel.
     pub closed: Option<Option<UnitsOutcome>>,
+    /// Set once a Presenter asked to show a Unit's prices view (`Some`) or close it (`None`).
+    pub prices: Option<Option<UnitId>>,
 }
 
 impl<'a> Router<'a> {
@@ -24,6 +27,7 @@ impl<'a> Router<'a> {
             toasts,
             opened: None,
             closed: None,
+            prices: None,
         }
     }
 }
@@ -36,6 +40,14 @@ impl UnitsRouter for Router<'_> {
 
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.closed = Some(outcome);
+    }
+
+    fn open_prices(&mut self, unit: UnitId) {
+        self.prices = Some(Some(unit));
+    }
+
+    fn close_prices(&mut self) {
+        self.prices = Some(None);
     }
 }
 

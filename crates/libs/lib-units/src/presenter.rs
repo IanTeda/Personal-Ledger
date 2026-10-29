@@ -1,6 +1,6 @@
-//! One Presenter per Units View: the Settings page and each of its Dialogs. Each takes events
-//! through `handle` and builds a plain-data view model through `view_model`, its text already
-//! localised from [`crate::msg`], so a View only draws. They share one set of ports
+//! One Presenter per Units View: the Settings page, the Unit prices view and each Dialog. Each
+//! takes events through `handle` and builds a plain-data view model through `view_model`, its text
+//! already localised from [`crate::msg`], so a View only draws. They share one set of ports
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`UnitsRouter`](crate::protocols::UnitsRouter) the Client passes in.
 //!
@@ -13,6 +13,7 @@ mod price_source_form;
 mod set_base_unit;
 mod set_price;
 mod unit_form;
+mod unit_prices;
 mod units_page;
 mod units_pane;
 
@@ -38,6 +39,9 @@ pub use price_source_form::{
 pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 pub use set_price::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};
 pub use unit_form::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
+pub use unit_prices::{
+    ChartWeek, PriceColumns, PriceRow, UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel,
+};
 pub use units_page::{
     ActivityLine, Hint, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,
     UnitColumns, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,

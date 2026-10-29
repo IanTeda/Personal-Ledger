@@ -13,7 +13,7 @@ use crate::theme::color;
 
 /// `width:400px` at the View's right edge.
 const PANE_WIDTH: gpui::Pixels = px(400.0);
-/// Every pane button is 112 x 34px, so three fill the 368px row with 8px gaps.
+/// Every pane button is 112 x 34px, so three fill the 368px row with 8px gaps and a fourth wraps.
 const PANE_BUTTON_WIDTH: gpui::Pixels = px(112.0);
 const PANE_BUTTON_HEIGHT: gpui::Pixels = px(34.0);
 const MONOSPACE: &str = "monospace";
@@ -130,6 +130,7 @@ fn note(text: String, cx: &App) -> impl IntoElement {
 fn buttons(buttons: &[PaneButton], entity: &Entity<UnitsPage>, cx: &App) -> impl IntoElement {
     div()
         .flex()
+        .flex_wrap()
         .gap(px(8.0))
         .mt(px(12.0))
         .children(buttons.iter().map(|button| {

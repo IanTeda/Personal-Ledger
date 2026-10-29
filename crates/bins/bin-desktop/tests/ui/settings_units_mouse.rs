@@ -125,7 +125,10 @@ fn a_right_click_opens_the_rows_menu_and_an_entry_runs_its_action(app: &mut Test
     let mut ui = on_units(app);
     ui.right_click("unit-row-1");
     assert_eq!(selected(&mut ui), "btc");
-    assert_eq!(menu(&mut ui), Some(vec!["edit-unit", "delete-unit"]));
+    assert_eq!(
+        menu(&mut ui),
+        Some(vec!["prices", "edit-unit", "delete-unit"])
+    );
     assert!(ui.is_drawn("settings-units-menu"));
 
     ui.click("settings-units-menu-delete-unit");
@@ -273,7 +276,12 @@ fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext)
     ui.right_click("unit-row-1");
     assert_eq!(
         menu(&mut ui),
-        Some(vec!["edit-unit", "reactivate-unit", "delete-unit"])
+        Some(vec![
+            "prices",
+            "edit-unit",
+            "reactivate-unit",
+            "delete-unit"
+        ])
     );
     ui.click("settings-units-menu-reactivate-unit");
     assert!(ui.inactive_unit_codes().is_empty());

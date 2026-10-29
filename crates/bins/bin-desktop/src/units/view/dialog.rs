@@ -215,6 +215,11 @@ impl UnitsRouter for DialogRouter {
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.closed = Some(outcome);
     }
+
+    /// A Dialog shows no prices view.
+    fn open_prices(&mut self, _unit: lib_units::UnitId) {}
+
+    fn close_prices(&mut self) {}
 }
 
 impl Notify for DialogRouter {

@@ -169,6 +169,8 @@ impl UnitsPorts for InMemoryPorts {
 pub enum RouterCall {
     OpenDialog(UnitsDialog),
     CloseDialog(Option<UnitsOutcome>),
+    OpenPrices(UnitId),
+    ClosePrices,
     Notice(Notice),
 }
 
@@ -194,6 +196,14 @@ impl UnitsRouter for RecordingRouter {
 
     fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+
+    fn open_prices(&mut self, unit: UnitId) {
+        self.calls.push(RouterCall::OpenPrices(unit));
+    }
+
+    fn close_prices(&mut self) {
+        self.calls.push(RouterCall::ClosePrices);
     }
 }
 

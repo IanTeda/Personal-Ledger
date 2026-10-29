@@ -10,7 +10,8 @@
 //! detail pane (TUI-055) at the View's right edge, and outcomes land in its ACTIVITY.
 //!
 //! `o` opens the full Units View, which `Shell` pushes Settings under, so `esc` there comes back
-//! to this page and row.
+//! to this page and row. `enter` on a Unit opens its Unit prices view in place of the tables, which
+//! then takes every key but the back key, which closes it.
 //!
 //! Real throughout: the rows, the flags and the usage note's counts are the Ledger's. `lib-units`
 //! has no default Unit, so the card's `default` chip has nothing to show.
@@ -27,7 +28,7 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::units::view::units::UnitsView;
 use crate::units::{TuiPorts, UnitsSetup};
-use crate::view::{Action, View};
+use crate::view::{Action, View as _};
 
 /// Widths of the Units table's CODE, NAME, PRICE SOURCE and TYPE columns; FLAGS takes the rest.
 const CODE_WIDTH: u16 = 6;
@@ -57,6 +58,7 @@ impl UnitsPage {
     /// `o` opens the Units View; every other key is the Units View's, a Dialog's included.
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
         if !self.view.dialog_open()
+            && !self.view.prices_open()
             && key.code == KeyCode::Char(OPEN_VIEW)
             && key.modifiers == KeyModifiers::NONE
         {
@@ -67,6 +69,21 @@ impl UnitsPage {
 
     pub(super) fn dialog_open(&self) -> bool {
         self.view.dialog_open()
+    }
+
+    /// Whether the Unit prices view shows in place of the tables.
+    pub(super) fn prices_open(&self) -> bool {
+        self.view.prices_open()
+    }
+
+    /// Closes the Unit prices view; `false` when it wasn't open.
+    pub(super) fn close_prices(&mut self) -> bool {
+        self.view.back()
+    }
+
+    /// The prices view's keys and `back`, while it shows.
+    pub(super) fn prices_hints(&self, back: &str) -> Option<Vec<(String, String)>> {
+        self.view.prices_hints(back)
     }
 
     pub(super) fn render_dialog(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -108,6 +125,9 @@ impl UnitsPage {
     }
 
     pub(super) fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+        if self.view.render_prices(frame, area, c) {
+            return;
+        }
         let view = self.view.view_model();
         list::render(
             frame,
@@ -311,6 +331,34 @@ mod tests {
         assert!(
             text.contains("ACTIVITY") && text.contains("n add unit"),
             "{text}"
+        );
+    }
+
+    #[test]
+    fn enter_on_a_unit_opens_its_prices_which_take_the_brackets_and_back_closes() {
+        crate::locale::init_for_tests();
+        let mut view = units_page(128);
+        view.handle_key(key(KeyCode::Char('j')));
+        view.handle_key(key(KeyCode::Enter));
+        let text = render_at(&view, 128, 69);
+        assert!(text.contains("btc · Bitcoin · prices"), "{text}");
+        assert!(!text.contains("n add unit"), "the tables give way:\n{text}");
+        let hints = view.hints("esc").expect("Settings names its keys");
+        assert!(hints.contains(&("[".into(), "earlier".into())), "{hints:?}");
+
+        view.handle_key(key(KeyCode::Char('[')));
+        assert_eq!(
+            view.selected(),
+            SettingsPage::Units,
+            "[ steps the window, not the page"
+        );
+
+        assert!(view.back(), "back closes the prices view");
+        let text = render_at(&view, 128, 69);
+        assert!(text.contains("Settings › Units"), "{text}");
+        assert!(
+            text.contains("btc is used by"),
+            "btc is still selected:\n{text}"
         );
     }
 

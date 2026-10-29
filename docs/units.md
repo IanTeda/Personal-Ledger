@@ -9,6 +9,7 @@ A Unit is the denomination you use to measure value in an account. Your bank acc
 - View and manage your holdings in each unit
 - Set optional pricing information for valuations
 - Set the price of a unit you price by hand, for this week or an earlier one
+- See a unit's weekly prices: a chart of its weekly closes over a table of each week's prices, a year at a time
 - Track multiple units without cross-unit conversion
 
 ## Terminology
@@ -67,6 +68,7 @@ The Units screen lists all units you've created with their names and types, and 
 - Precision is the *Precision* field of Add unit and Edit unit, a whole number from 0 to 18. Add unit starts it at 8 for Crypto and 2 for every other type, and follows the type you pick until you type a precision yourself; Edit unit never changes it for you. Changing a unit's precision changes only how its amounts show: they are rounded for display and kept as stored. A price is shown at its quote unit's precision, so a share priced under a dollar to three places, as some on the ASX are, shows to two places in AUD.
 - Inactive units are kept if they have historical transactions associated with them.
 - A unit on Manual entry is priced only by you. Select it and press `p`, or choose *Set price…* from its row menu or *Set price* in the detail pane. *Week* starts on today and takes any day of the week you mean, typed in your locale's short date form or as `YYYY-MM-DD`; the dialog shows the Monday that week starts on. *Close* is in the unit it is quoted in, at that unit's precision. Setting this week's price again overwrites it and widens the week's high and low; setting an earlier week replaces whatever that week had. A week that hasn't started yet is refused. A unit priced by a fetching source doesn't offer Set price.
+- A unit's prices open from the Units table: select the unit and press `Enter`, or choose *Prices* from its row menu or the detail pane. The view repeats the unit's price figures (its last price and how long ago it was written, the change on the week before, its 52-week range, and its symbol and the unit it is priced in), then charts a year of weekly closes, a candle for a week with an open, high and low and a tick for a week with only a close, over a table of the same weeks, newest first, with each week's open, high, low, close and its change on the week before. Press `[` to look a month further back and `]` to come a month forward again, no further than this week. On a unit you price by hand, `p` sets a price from here too. `Esc` takes you back to the Units table with the same unit selected. A unit with no prices yet says so.
 
 ## Scope
 
@@ -102,6 +104,7 @@ Intended features for Units. Ticked means built in at least one app; the tag say
 - [ ] UNT-007: Market pricing integration and valuation calculations
 - [ ] UNT-008: Cross-unit aggregate reporting and portfolio valuation
 - [x] UNT-009 (TUI, desktop): Set a Manual entry unit's price for the current or an earlier week
+- [x] UNT-010 (TUI, desktop): View a unit's weekly prices as a chart and a table, a year at a time, stepped back and forward by a month
 
 ## For developers
 

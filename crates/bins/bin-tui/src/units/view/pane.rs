@@ -7,7 +7,7 @@
 //! the selection is left out (Edit source on a Unit's link, where `e` edits the Unit), and a Unit's
 //! PRICE SOURCE names `tab` instead, which moves to the Price Sources table.
 
-use lib_units::keymap::{NEXT_TABLE, SET_PRICE, TEST_SOURCE};
+use lib_units::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
 use lib_units::presenter::{
     AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, MenuAction, PaneButton, PaneGroup,
     SourceGroup, UnitGroup, UnitsPageEvent, UnitsRow, ValueLine, ValuesGroup,
@@ -88,6 +88,7 @@ fn command(event: &UnitsPageEvent, selected: Option<UnitsRow>) -> Option<&'stati
         return None;
     };
     let command = match action {
+        MenuAction::Prices => OPEN,
         MenuAction::EditUnit | MenuAction::EditSource => EDIT,
         MenuAction::DeleteUnit | MenuAction::DeleteSource => DELETE,
         MenuAction::ReactivateUnit => REACTIVATE,
