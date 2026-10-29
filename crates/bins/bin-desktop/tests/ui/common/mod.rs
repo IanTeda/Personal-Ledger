@@ -1360,6 +1360,16 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Books a Payee called `name` behind the Import step's back, so committing an Import that
+    /// creates the same name is refused.
+    pub fn book_payee(&mut self, name: &str) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.book_payee_for_test(name, cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// Moves every Bill Plan to pay from Account `to`, so the Accounts they paid from can be
     /// deleted rather than refused.
     pub fn move_bill_plans_to(&mut self, to: AccountId) {

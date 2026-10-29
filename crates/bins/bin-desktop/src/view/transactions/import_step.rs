@@ -143,7 +143,10 @@ impl TransactionsView {
                         ),
                     )
                 }
-                Err(refusal) => (ToastKind::Error, refusal.to_string()),
+                Err(refusal) => (
+                    ToastKind::Error,
+                    lib_payees::presenter::refusal_text(&refusal),
+                ),
             };
             Queue.notify(Notice::Toast(kind, text));
         });

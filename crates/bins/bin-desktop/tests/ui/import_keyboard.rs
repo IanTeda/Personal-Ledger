@@ -157,6 +157,51 @@ pub(super) fn commit_the_candle_shop_as_a_new_payee(ui: &mut Harness<'_>) {
     assert_eq!(toast.text, "Imported 18 transactions");
 }
 
+/// A Payee booked with the Import's new name after the step opened refuses the commit: the Toast
+/// is an Error naming the clash in a Message, and the step stays open.
+#[gpui::test]
+fn a_refused_commit_raises_an_error_toast_naming_the_clash(app: &mut TestAppContext) {
+    let mut ui = on_import(app);
+    let candle = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .position(|row| row.raw == "SP AUSSIE CANDLE CO")
+        .expect("the seeded statement has the candle shop");
+    select_row(&mut ui, candle);
+    ui.press("n");
+    let to_review: Vec<usize> = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.status == "NeedsReview")
+        .map(|(index, _)| index)
+        .collect();
+    for index in to_review {
+        select_row(&mut ui, index);
+        ui.press("c j enter");
+    }
+    ui.book_payee("Aussie Candle Co");
+
+    ui.press("enter");
+
+    assert!(
+        ui.import().is_some(),
+        "a refused commit leaves the step open"
+    );
+    let toast = ui
+        .toasts()
+        .history
+        .first()
+        .cloned()
+        .expect("a Toast says so");
+    assert_eq!(toast.kind, "Error");
+    assert_eq!(toast.text, "Aussie Candle Co already exists");
+}
+
 #[gpui::test]
 fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
     app: &mut TestAppContext,

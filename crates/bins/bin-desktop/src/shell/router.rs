@@ -654,6 +654,13 @@ impl Root {
             .update(cx, |store, cx| store.add_location_in_for_test(unit, cx));
     }
 
+    /// Books a Payee called `name`, so an Import that creates it is refused.
+    #[doc(hidden)]
+    pub fn book_payee_for_test(&mut self, name: &str, cx: &mut App) {
+        self.ledger
+            .update(cx, |store, cx| store.book_payee_for_test(name, cx));
+    }
+
     /// Moves every Bill Plan to pay from Account `to`, so a test can delete the Account another Plan
     /// paid from instead of meeting the Bill Plans refusal.
     #[doc(hidden)]

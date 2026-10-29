@@ -24,9 +24,9 @@ fn count(n: usize) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// A refusal as the Dialogs show it. A blank name only keeps Save from confirming, and in-use
+/// A refusal as the Dialogs, and the Import step's Toast, show it. A blank name only keeps Save from confirming, and in-use
 /// comes back from Delete as its own refusal, so neither has text of its own.
-fn refusal_text(error: &PayeeError) -> String {
+pub fn refusal_text(error: &PayeeError) -> String {
     match error {
         PayeeError::DuplicateName(name) => msg::payees_error_name_taken(name),
         PayeeError::AliasTaken { alias, owner } => msg::payees_error_alias_taken(alias, owner),

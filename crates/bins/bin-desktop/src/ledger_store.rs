@@ -204,6 +204,35 @@ impl LedgerStore {
         });
     }
 
+    /// Books a Payee called `name` through the Import commit, so a test can meet the refusal of
+    /// an Import that creates the same name.
+    #[doc(hidden)]
+    pub fn book_payee_for_test(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        let (Some(account), Some(category)) = (
+            self.ledger.accounts().first().map(|account| account.id),
+            self.ledger.categories().first().map(|category| category.id),
+        ) else {
+            return;
+        };
+        let booking = lib_ledger::ImportBooking {
+            date: chrono::NaiveDate::default(),
+            description: name.to_owned(),
+            amount: "0".parse().unwrap_or_else(|_| lib_core::Money::mock()),
+            payee: lib_ledger::BookingPayee::Create {
+                name: name.to_owned(),
+                alias: None,
+            },
+            category_id: category,
+        };
+        let _ = self.apply(
+            cx,
+            lib_ledger::CommitImport {
+                account_id: account,
+                bookings: vec![booking],
+            },
+        );
+    }
+
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
     /// Institution names.
     pub fn name_usual_unit_for_test(
