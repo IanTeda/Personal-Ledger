@@ -528,6 +528,35 @@ fn at_x_large_the_pane_is_drawn_and_follows_the_selection(app: &mut TestAppConte
 }
 
 #[gpui::test]
+fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_and_accounts(
+    app: &mut TestAppContext,
+) {
+    use lib_units::presenter::PaneGroup;
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    ui.press("j");
+    let groups = ui.settings_units().pane.expect("docked").groups;
+
+    let slugs: Vec<_> = groups.iter().map(PaneGroup::slug).collect();
+    assert_eq!(slugs, ["unit", "source", "price", "accounts", "activity"]);
+    let PaneGroup::Unit(unit) = &groups[0] else {
+        panic!("UNIT first")
+    };
+    assert!(
+        unit.facts
+            .iter()
+            .any(|fact| fact.label == "Precision" && fact.value == "8"),
+        "{:?}",
+        unit.facts
+    );
+    let PaneGroup::Price(price) = &groups[2] else {
+        panic!("PRICE third")
+    };
+    let labels: Vec<_> = price.facts.iter().map(|fact| fact.label.as_str()).collect();
+    assert_eq!(labels, ["Last price", "Week change", "52w range"]);
+    assert!(ui.is_drawn("units-pane-price"));
+}
+
+#[gpui::test]
 fn at_x_large_an_outcome_lands_in_activity_without_a_toast(app: &mut TestAppContext) {
     let mut ui = on_units_at(app, WindowSize::XLarge);
     ui.drop_unit_users();

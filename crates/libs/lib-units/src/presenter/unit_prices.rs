@@ -7,7 +7,7 @@
 //! only; every figure a person reads is formatted here.
 
 use bigdecimal::{BigDecimal, Signed as _, ToPrimitive as _, Zero as _};
-use chrono::{Duration, Local, Months, NaiveDate};
+use chrono::{DateTime, Duration, Local, Months, NaiveDate, Utc};
 use lib_core::{Money, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_month_day};
@@ -251,64 +251,21 @@ impl UnitPricesPresenter {
         }
     }
 
-    /// The PRICE figures, which read the Unit's latest prices whatever the window.
+    /// The PRICE figures, which read the Unit's latest prices whatever the window, then its
+    /// symbol and the Unit it is priced in.
     fn facts(&self, unit: &UnitRow, quote: Option<&UnitRow>) -> Vec<Fact> {
-        let now = (self.clock)();
         let code = quote.map_or("", |quote| quote.code.as_str());
-        let last = unit.last_price();
-        let last_price = last.map_or_else(msg::units_none, |price| {
-            msg::units_prices_last_price_value(
-                &amount(&price.close, quote),
-                &ago(price.written_at, now),
-            )
-        });
-        let week_change = last
-            .and_then(|price| {
-                let before = previous(unit, price)?;
-                let difference = Money(&price.close.0 - &before.close.0);
-                let style = quoted(quote);
-                Some(msg::units_prices_week_change_value(
-                    &format!(
-                        "{} {code}",
-                        format_amount(&difference, style.with_plus()).text
-                    ),
-                    &percent(&change(unit, price)?),
-                ))
-            })
-            .unwrap_or_else(msg::units_none);
-        let range = last
-            .and_then(|price| {
-                let from = price.week - Duration::weeks(WINDOW_WEEKS - 1);
-                let year = unit.prices.iter().filter(|price| price.week >= from);
-                let low = year
-                    .clone()
-                    .map(|price| price.low.as_ref().unwrap_or(&price.close))
-                    .min()?;
-                let high = year
-                    .map(|price| price.high.as_ref().unwrap_or(&price.close))
-                    .max()?;
-                let style = quoted(quote);
-                Some(msg::units_prices_range_value(
-                    &format_amount(low, style).text,
-                    &format_amount(high, style).text,
-                    code,
-                ))
-            })
-            .unwrap_or_else(msg::units_none);
         let symbol = if unit.link.symbol.is_empty() {
             msg::units_none()
         } else {
             unit.link.symbol.clone()
         };
-        vec![
-            Fact::plain(msg::units_prices_last_price(), last_price),
-            Fact::plain(msg::units_prices_week_change(), week_change),
-            Fact::plain(msg::units_prices_range(), range),
-            Fact::plain(
-                msg::units_prices_symbol(),
-                msg::units_prices_symbol_value(&symbol, code),
-            ),
-        ]
+        let mut facts = price_figures(unit, quote, (self.clock)());
+        facts.push(Fact::plain(
+            msg::units_prices_symbol(),
+            msg::units_prices_symbol_value(&symbol, code),
+        ));
+        facts
     }
 
     fn hints(&self, manual: bool) -> Vec<Hint> {
@@ -364,6 +321,62 @@ impl UnitPricesPresenter {
             })
             .unwrap_or_default()
     }
+}
+
+/// A Unit's PRICE figures, which the Units page's docked pane shows too: its last price and that
+/// price's age, the week change from the week before's close, and the 52-week range, the lowest low
+/// or close and the highest high or close of the year of weeks ending with the last price's.
+pub(super) fn price_figures(
+    unit: &UnitRow,
+    quote: Option<&UnitRow>,
+    now: DateTime<Utc>,
+) -> Vec<Fact> {
+    let code = quote.map_or("", |quote| quote.code.as_str());
+    let last = unit.last_price();
+    let last_price = last.map_or_else(msg::units_none, |price| {
+        msg::units_prices_last_price_value(
+            &amount(&price.close, quote),
+            &ago(price.written_at, now),
+        )
+    });
+    let week_change = last
+        .and_then(|price| {
+            let before = previous(unit, price)?;
+            let difference = Money(&price.close.0 - &before.close.0);
+            let style = quoted(quote);
+            Some(msg::units_prices_week_change_value(
+                &format!(
+                    "{} {code}",
+                    format_amount(&difference, style.with_plus()).text
+                ),
+                &percent(&change(unit, price)?),
+            ))
+        })
+        .unwrap_or_else(msg::units_none);
+    let range = last
+        .and_then(|price| {
+            let from = price.week - Duration::weeks(WINDOW_WEEKS - 1);
+            let year = unit.prices.iter().filter(|price| price.week >= from);
+            let low = year
+                .clone()
+                .map(|price| price.low.as_ref().unwrap_or(&price.close))
+                .min()?;
+            let high = year
+                .map(|price| price.high.as_ref().unwrap_or(&price.close))
+                .max()?;
+            let style = quoted(quote);
+            Some(msg::units_prices_range_value(
+                &format_amount(low, style).text,
+                &format_amount(high, style).text,
+                code,
+            ))
+        })
+        .unwrap_or_else(msg::units_none);
+    vec![
+        Fact::plain(msg::units_prices_last_price(), last_price),
+        Fact::plain(msg::units_prices_week_change(), week_change),
+        Fact::plain(msg::units_prices_range(), range),
+    ]
 }
 
 /// A price's style: the quote Unit's Precision, or the price's own places when the quote is gone.
@@ -540,7 +553,7 @@ mod tests {
         let (_ports, shared) = stub();
         // Wednesday 31 Mar 2027: a month back is 28 Feb, and a month on from that is 28 Mar.
         let clock: Clock = std::rc::Rc::new(|| {
-            chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2027, 3, 31, 9, 30, 0)
+            chrono::TimeZone::with_ymd_and_hms(&Utc, 2027, 3, 31, 9, 30, 0)
                 .single()
                 .expect("a valid instant")
         });

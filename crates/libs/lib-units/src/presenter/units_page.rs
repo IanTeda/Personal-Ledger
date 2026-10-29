@@ -754,7 +754,7 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
     use crate::keymap::units_page_keymap;
-    use crate::presenter::{PaneButton, PaneGroup, SourceGroup};
+    use crate::presenter::{PaneButton, PaneGroup, PriceGroup, SourceGroup};
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
 
     struct Page {
@@ -1432,7 +1432,10 @@ mod tests {
         let page = docked();
         let groups = pane(&page);
 
-        assert_eq!(slugs(&groups), ["unit", "source", "accounts", "activity"]);
+        assert_eq!(
+            slugs(&groups),
+            ["unit", "source", "price", "accounts", "activity"]
+        );
         let PaneGroup::Unit(unit) = &groups[0] else {
             panic!("UNIT first")
         };
@@ -1483,6 +1486,102 @@ mod tests {
         );
     }
 
+    fn price_group(groups: &[PaneGroup]) -> PriceGroup {
+        groups
+            .iter()
+            .find_map(|group| match group {
+                PaneGroup::Price(price) => Some(price.clone()),
+                _ => None,
+            })
+            .expect("a PRICE group")
+    }
+
+    #[test]
+    fn a_selected_units_unit_group_shows_its_precision() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let PaneGroup::Unit(unit) = &pane(&page)[0] else {
+            panic!("UNIT first")
+        };
+
+        let precision = unit
+            .facts
+            .iter()
+            .find(|fact| fact.label == "Precision")
+            .map(|fact| fact.value.as_str());
+        assert_eq!(precision, Some("8"), "a satoshi's places");
+    }
+
+    #[test]
+    fn seeded_btc_shows_price_between_its_price_source_and_its_accounts() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let groups = pane(&page);
+
+        assert_eq!(
+            slugs(&groups),
+            ["unit", "source", "price", "accounts", "activity"]
+        );
+        let price = price_group(&groups);
+        assert_eq!(price.heading, "Price");
+        assert_eq!(price.empty, None);
+        let labels: Vec<_> = price.facts.iter().map(|fact| fact.label.as_str()).collect();
+        assert_eq!(labels, ["Last price", "Week change", "52w range"]);
+        assert_eq!(price.facts[0].value, "148,212.40 aud · 5 minutes ago");
+    }
+
+    #[test]
+    fn price_reads_the_week_change_and_the_lowest_and_highest_of_the_last_52_weeks() {
+        let mut page = docked();
+        {
+            let money = |text: &str| lib_core::Money(text.parse().expect("a decimal"));
+            let week = |y, m, d| chrono::NaiveDate::from_ymd_opt(y, m, d).expect("a valid date");
+            let price = |monday, close, high: Option<&str>| crate::WeeklyPrice {
+                week: monday,
+                close: money(close),
+                open: None,
+                high: high.map(money),
+                low: None,
+                written_at: test_support::now() - chrono::Duration::minutes(5),
+            };
+            let mut ports = page.ports.borrow_mut();
+            let vas = ports
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == UnitId::SEED_VAS)
+                .expect("the stub's vas");
+            vas.prices = vec![
+                // 53 weeks before the newest: out of the range.
+                price(week(2025, 10, 20), "50", None),
+                price(week(2026, 10, 12), "100", Some("120")),
+                price(week(2026, 10, 19), "110", None),
+            ];
+        }
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        let price = price_group(&pane(&page));
+
+        let values: Vec<_> = price.facts.iter().map(|fact| fact.value.as_str()).collect();
+        assert_eq!(
+            values,
+            [
+                "110.00 aud · 5 minutes ago",
+                "+10.00 aud (+10.00%)",
+                "100.00 – 120.00 aud",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_unit_with_no_weekly_prices_shows_the_price_groups_empty_message() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        let price = price_group(&pane(&page));
+
+        assert_eq!(price.facts, []);
+        assert_eq!(price.empty.as_deref(), Some("No weekly prices yet."));
+    }
+
     #[test]
     fn a_units_accounts_are_counted_and_valued_in_its_quote_unit() {
         let mut page = docked();
@@ -1504,8 +1603,8 @@ mod tests {
             panic!("UNIT first")
         };
         assert_eq!(unit.facts[1].value, "1 account · 9 transactions");
-        let PaneGroup::Accounts(accounts) = &groups[2] else {
-            panic!("ACCOUNTS third")
+        let PaneGroup::Accounts(accounts) = &groups[3] else {
+            panic!("ACCOUNTS fourth")
         };
         let row = &accounts.rows[0];
         assert_eq!(
@@ -1551,8 +1650,8 @@ mod tests {
 
         let source = source_group(&groups);
         assert_eq!(source.facts[3].value, "148,212 aud", "aud's 0 places");
-        let PaneGroup::Accounts(accounts) = &groups[2] else {
-            panic!("ACCOUNTS third")
+        let PaneGroup::Accounts(accounts) = &groups[3] else {
+            panic!("ACCOUNTS fourth")
         };
         // 0.4125 × 148,212.40 = 61,137.615: rounded for display, never as stored.
         assert_eq!(

@@ -444,7 +444,7 @@ fn manual_entry_opens_no_menu_and_no_dialog(app: &mut TestAppContext) {
 #[gpui::test]
 fn at_x_large_the_pane_draws_its_groups_and_its_buttons_open_the_dialogs(app: &mut TestAppContext) {
     let mut ui = on_units_at(app, WindowSize::XLarge);
-    for group in ["unit", "source", "accounts", "activity"] {
+    for group in ["unit", "source", "price", "accounts", "activity"] {
         assert!(ui.is_drawn(&format!("units-pane-{group}")), "{group}");
     }
 

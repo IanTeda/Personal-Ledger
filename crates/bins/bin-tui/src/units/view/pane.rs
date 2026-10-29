@@ -10,7 +10,7 @@
 use lib_units::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
 use lib_units::presenter::{
     AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, MenuAction, PaneButton, PaneGroup,
-    SourceGroup, UnitGroup, UnitsPageEvent, UnitsRow, ValueLine, ValuesGroup,
+    PriceGroup, SourceGroup, UnitGroup, UnitsPageEvent, UnitsRow, ValueLine, ValuesGroup,
 };
 use lib_viper::keymap::{DELETE, EDIT, Keymap, REACTIVATE};
 use ratatui::{
@@ -49,6 +49,7 @@ pub fn render(
         match group {
             PaneGroup::Unit(group) => unit_rows(&mut rows, group, keys, c),
             PaneGroup::Source(group) => source_rows(&mut rows, group, keys, c),
+            PaneGroup::Price(group) => price_rows(&mut rows, group, c),
             PaneGroup::Accounts(group) => accounts_rows(&mut rows, group, c),
             PaneGroup::Values(group) => values_rows(&mut rows, group, c),
             PaneGroup::Activity(group) => activity_rows(&mut rows, group, c),
@@ -125,6 +126,14 @@ fn source_rows(rows: &mut Vec<Row>, group: &SourceGroup, keys: &PaneKeys<'_>, c:
         (chord.to_string(), keys.sources.to_string())
     });
     key_row(rows, &group.buttons, to_sources, keys, c);
+}
+
+fn price_rows(rows: &mut Vec<Row>, group: &PriceGroup, c: &Colours) {
+    heading(rows, &group.heading, c);
+    rows.extend(group.facts.iter().map(|f| fact(f, c)));
+    if let Some(empty) = &group.empty {
+        rows.push(Row::Note(empty.clone()));
+    }
 }
 
 fn accounts_rows(rows: &mut Vec<Row>, group: &AccountsGroup, c: &Colours) {

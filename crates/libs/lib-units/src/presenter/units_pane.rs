@@ -1,5 +1,5 @@
 //! The detail pane the Units page docks at X-Large (DESKTOP-125, DESKTOP-140): a selected Unit's
-//! UNIT, PRICE SOURCE and ACCOUNTS groups, or a selected Price Source's PRICE SOURCE and VALUES,
+//! UNIT, PRICE SOURCE, PRICE and ACCOUNTS groups, or a selected Price Source's PRICE SOURCE and VALUES,
 //! then ACTIVITY. Built only while docked, as part of the page's view model.
 
 use chrono::{DateTime, Utc};
@@ -7,6 +7,7 @@ use lib_core::{Money, UnitId};
 use lib_locale::Label as _;
 use lib_locale::format::{AmountStyle, format_amount};
 
+use super::unit_prices::price_figures;
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
 use super::{ago, count, joined, updates_label};
 use crate::protocols::UnitsPorts;
@@ -26,6 +27,7 @@ pub struct DetailPane {
 pub enum PaneGroup {
     Unit(UnitGroup),
     Source(SourceGroup),
+    Price(PriceGroup),
     Accounts(AccountsGroup),
     Values(ValuesGroup),
     Activity(ActivityGroup),
@@ -37,6 +39,7 @@ impl PaneGroup {
         match self {
             Self::Unit(_) => "unit",
             Self::Source(_) => "source",
+            Self::Price(_) => "price",
             Self::Accounts(_) => "accounts",
             Self::Values(_) => "values",
             Self::Activity(_) => "activity",
@@ -86,7 +89,7 @@ pub struct UnitGroup {
     pub title: String,
     /// `Crypto · valued in aud`.
     pub meta: String,
-    /// FLAGS and Used by.
+    /// FLAGS, Used by and Precision.
     pub facts: Vec<Fact>,
     pub buttons: Vec<PaneButton>,
 }
@@ -102,6 +105,17 @@ pub struct SourceGroup {
     pub facts: Vec<Fact>,
     pub note: Option<String>,
     pub buttons: Vec<PaneButton>,
+}
+
+/// PRICE: a selected Unit's last price and its age, week change and 52-week range, as the Unit
+/// prices view heads its chart with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceGroup {
+    pub heading: String,
+    /// Empty with no Weekly Prices.
+    pub facts: Vec<Fact>,
+    /// What shows with no Weekly Prices.
+    pub empty: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +187,7 @@ pub(super) fn detail_pane(input: &PaneInput<'_>) -> DetailPane {
             Some(unit) => vec![
                 PaneGroup::Unit(unit_group(input, unit)),
                 PaneGroup::Source(linked_source(input, unit)),
+                PaneGroup::Price(price_group(input, unit)),
                 PaneGroup::Accounts(accounts_group(input, unit)),
             ],
             None => Vec::new(),
@@ -255,6 +270,7 @@ fn unit_group(input: &PaneInput<'_>, unit: &UnitRow) -> UnitGroup {
                 msg::units_pane_used_by(),
                 msg::units_pane_used_by_value(count(holdings.len()), i64::from(transactions)),
             ),
+            Fact::plain(msg::units_field_precision(), unit.precision.to_string()),
         ],
         buttons: buttons(Row::Unit(unit), UnitsRow::Unit(unit.id)),
     }
@@ -466,6 +482,20 @@ fn values_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> ValuesGroup 
         empty: rows.is_empty().then(msg::units_pane_values_none),
         rows,
         note,
+    }
+}
+
+/// A selected Unit's PRICE figures, or the empty Message before its first Weekly Price.
+fn price_group(input: &PaneInput<'_>, unit: &UnitRow) -> PriceGroup {
+    let priced = !unit.prices.is_empty();
+    PriceGroup {
+        heading: msg::units_pane_price(),
+        facts: if priced {
+            price_figures(unit, unit_of(input.units, unit.link.quote), input.now)
+        } else {
+            Vec::new()
+        },
+        empty: (!priced).then(msg::units_pane_price_none),
     }
 }
 

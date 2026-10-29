@@ -4,7 +4,7 @@
 
 use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
 use lib_units::presenter::{
-    AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, PaneButton, PaneGroup,
+    AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, PaneButton, PaneGroup, PriceGroup,
     SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
@@ -34,6 +34,7 @@ pub fn detail_pane(pane: &DetailPane, entity: &Entity<UnitsPage>, cx: &App) -> A
         .children(pane.groups.iter().map(|group| match group {
             PaneGroup::Unit(unit) => unit_group(unit, entity, cx),
             PaneGroup::Source(source) => source_group(source, entity, cx),
+            PaneGroup::Price(price) => price_group(price, cx),
             PaneGroup::Accounts(accounts) => accounts_group(accounts, cx),
             PaneGroup::Values(values) => values_group(values, cx),
             PaneGroup::Activity(activity) => activity_group(activity, cx),
@@ -185,6 +186,20 @@ fn source_group(group: &SourceGroup, entity: &Entity<UnitsPage>, cx: &App) -> An
             this.child(buttons(&group.buttons, entity, cx))
         });
     pane_group(&group.heading, body, "source", cx)
+}
+
+/// The last price and its age, week change and 52-week range, or a faint line before the first
+/// Weekly Price.
+fn price_group(group: &PriceGroup, cx: &App) -> AnyElement {
+    let body = match &group.empty {
+        Some(empty) => faint_line(empty.clone(), cx),
+        None => div()
+            .flex()
+            .flex_col()
+            .children(group.facts.iter().map(|row| fact(row, cx)))
+            .into_any_element(),
+    };
+    pane_group(&group.heading, body, "price", cx)
 }
 
 fn faint_line(text: String, cx: &App) -> AnyElement {

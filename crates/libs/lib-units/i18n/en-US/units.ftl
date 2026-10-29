@@ -60,6 +60,8 @@ units-pane-used-by-value = { $accounts ->
     [one] { $transactions } transaction
    *[other] { $transactions } transactions
 }
+units-pane-price = Price
+units-pane-price-none = No weekly prices yet.
 units-pane-accounts = Accounts
 units-pane-accounts-total = Total
 units-pane-accounts-none = No accounts use this unit.

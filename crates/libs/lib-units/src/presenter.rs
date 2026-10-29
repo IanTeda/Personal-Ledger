@@ -48,7 +48,7 @@ pub use units_page::{
 };
 pub use units_pane::{
     AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, NOT_FETCHED_GLYPH, PaneButton,
-    PaneGroup, SourceGroup, UnitGroup, ValueLine, ValuesGroup,
+    PaneGroup, PriceGroup, SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
 use crate::protocols::UnitsPorts;

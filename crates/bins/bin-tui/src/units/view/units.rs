@@ -1148,7 +1148,15 @@ mod tests {
         for heading in ["UNIT", "PRICE SOURCES", "ACCOUNTS", "ACTIVITY"] {
             assert!(text.contains(heading), "{heading} missing:\n{text}");
         }
+        assert!(
+            text.lines()
+                .any(|line| line.trim_end().ends_with("\u{2502} PRICE")),
+            "PRICE missing:\n{text}"
+        );
         assert!(text.contains("btc · Bitcoin"), "the UNIT title:\n{text}");
+        for figure in ["Precision", "Week change", "52w range"] {
+            assert!(text.contains(figure), "{figure} missing:\n{text}");
+        }
         assert!(text.contains("e Edit unit"), "the Unit's keys:\n{text}");
         assert!(
             text.contains("t Test"),
