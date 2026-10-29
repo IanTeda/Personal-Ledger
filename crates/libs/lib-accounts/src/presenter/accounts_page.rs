@@ -368,7 +368,7 @@ fn scope_note(accounts: &[Account], units: &[AccountUnit], base: Option<UnitId>)
         .base_unit
         .and_then(|id| units.iter().find(|unit| unit.id == id))
     {
-        let figure = format_amount(&net.base_net, AmountStyle::own());
+        let figure = format_amount(&net.base_net, AmountStyle::fixed(u32::from(base.precision)));
         let sign = if figure.is_negative { "-" } else { "" };
         parts.push(format!(
             "{} {sign}{} {}",
@@ -490,6 +490,21 @@ mod tests {
         let view = page.view();
         assert_eq!(view.status, "1 account");
         assert_eq!(view.scope, "1 account \u{b7} net worth 240.00 aud");
+    }
+
+    #[test]
+    fn the_net_worth_shows_at_the_base_units_precision() {
+        let (ports, shared) = stub();
+        for unit in &mut ports.borrow_mut().units.units {
+            if unit.id == UnitId::SEED_AUD {
+                unit.precision = 0;
+            }
+        }
+
+        assert_eq!(
+            Page::new(shared).view().scope,
+            "7 accounts \u{b7} net worth 83,996 aud \u{b7} vas, btc held separately"
+        );
     }
 
     #[test]

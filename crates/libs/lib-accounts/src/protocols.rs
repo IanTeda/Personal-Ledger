@@ -73,8 +73,10 @@ pub struct AccountUnit {
     pub code: String,
     /// A deactivated Unit takes no new Account, though one already on it keeps showing its code.
     pub is_active: bool,
-    /// A currency's opening balance is padded to two places; any other Unit keeps what was typed.
-    pub is_currency: bool,
+    /// The Unit's Precision (GLOSSARY): the places an amount in it shows at, and an opening balance
+    /// is padded to. The number, not `lib_units::Precision`, so `lib-accounts` needn't depend on the
+    /// Units crate.
+    pub precision: u8,
 }
 
 /// The Units on the Ledger and the base Unit. A read port, so `lib-accounts` needn't depend on the

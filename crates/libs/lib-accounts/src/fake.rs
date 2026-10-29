@@ -113,16 +113,16 @@ pub fn stub_institutions() -> Vec<AccountInstitution> {
 /// The stub Units the stub Accounts count in: aud (the base), the vas fund and btc.
 pub fn stub_units() -> Vec<AccountUnit> {
     [
-        (UnitId::SEED_AUD, "aud", true),
-        (UnitId::SEED_VAS, "vas", false),
-        (UnitId::SEED_BTC, "btc", false),
+        (UnitId::SEED_AUD, "aud", 2),
+        (UnitId::SEED_VAS, "vas", 2),
+        (UnitId::SEED_BTC, "btc", 8),
     ]
     .into_iter()
-    .map(|(id, code, is_currency)| AccountUnit {
+    .map(|(id, code, precision)| AccountUnit {
         id,
         code: code.to_string(),
         is_active: true,
-        is_currency,
+        precision,
     })
     .collect()
 }

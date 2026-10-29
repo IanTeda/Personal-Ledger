@@ -692,6 +692,8 @@ pub struct AccountFormSnapshot {
     pub account_type: Option<String>,
     pub unit: Option<String>,
     pub opening_balance: String,
+    /// An Edit's fixed balance, as shown; `None` on an Add.
+    pub balance: Option<String>,
     pub account_number: String,
     /// Whether any select's option list is showing.
     pub select_open: bool,
@@ -1549,6 +1551,7 @@ impl<'a> Harness<'a> {
             account_type: choice("type"),
             unit: choice("unit"),
             opening_balance: text("opening_balance"),
+            balance: choice("balance"),
             account_number: text("account_number"),
             select_open: text("select_open") == "true",
             valid: text("valid") == "true",

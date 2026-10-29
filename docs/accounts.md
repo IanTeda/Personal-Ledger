@@ -64,7 +64,7 @@ The typical workflow depends on which account kind you're working with:
 
 ## Adding, editing and deleting in the desktop app
 
-On the Accounts page, press `n` to add an account, `e` to edit the selected one or `d` to delete it. The add dialog asks for a name, an institution, a type, a unit, a starting balance and an optional account number. Editing can change the name, institution, type and account number. The unit, starting balance and opened date are fixed once the account exists.
+On the Accounts page, press `n` to add an account, `e` to edit the selected one or `d` to delete it. The add dialog asks for a name, an institution, a type, a unit, a starting balance and an optional account number. Editing can change the name, institution, type and account number. The unit, starting balance and opened date are fixed once the account exists. Amounts show at the unit's precision: a starting balance typed with fewer places is padded to it (`0.5` btc is kept as `0.50000000`), and one typed with more keeps every place.
 
 The edit and delete dialogs say how many transactions the account has, counted from the transactions themselves, so an import can't leave the figure wrong.
 

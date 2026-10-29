@@ -81,7 +81,7 @@ impl LedgerBackedPorts {
                 id: unit.id,
                 code: unit.code.clone(),
                 is_active: unit.is_active,
-                is_currency: unit.kind == lib_core::UnitKind::Currency,
+                precision: unit.precision.get(),
             })
             .collect();
         self.units.base = ledger.base_unit_row().map(|unit| unit.id);

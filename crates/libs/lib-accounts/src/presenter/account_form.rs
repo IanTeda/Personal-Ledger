@@ -108,6 +108,8 @@ struct Editing {
     id: AccountId,
     unit: String,
     balance: Money,
+    /// The Unit's Precision the balance shows at; `None` when the Unit is gone, so it shows as kept.
+    precision: Option<u8>,
     usage: Usage,
 }
 
@@ -208,18 +210,19 @@ impl AccountFormPresenter {
     /// as picked, so a change of Type leaves it; one no longer among the choices falls back to the
     /// Type's default, so the form still saves.
     pub fn edit(ports: SharedPorts, id: AccountId, today: NaiveDate) -> Option<Self> {
-        let (account, usage, unit_code) = {
+        let (account, usage, unit) = {
             let ports = ports.borrow();
             let account = ports.accounts().account(id)?;
             let usage = ports.usage().account_usage(id);
-            let unit_code = ports
+            let unit = ports
                 .units()
                 .account_units()
                 .into_iter()
-                .find(|unit| unit.id == account.unit)
-                .map(|unit| unit.code);
-            (account, usage, unit_code)
+                .find(|unit| unit.id == account.unit);
+            (account, usage, unit)
         };
+        let precision = unit.as_ref().map(|unit| unit.precision);
+        let unit_code = unit.map(|unit| unit.code);
         let mut form = Self::add(ports, &account.name, today);
         // A deactivated Unit takes no new Account, but the one already on it keeps showing.
         if !form.units.iter().any(|choice| choice.value == account.unit)
@@ -247,6 +250,7 @@ impl AccountFormPresenter {
             id,
             unit: unit_code.unwrap_or_default(),
             balance: account.balance.clone(),
+            precision,
             usage: Usage {
                 notice: msg::accounts_edit_usage_notice(
                     &lib_locale::format::format_year_month(
@@ -351,10 +355,9 @@ impl AccountFormPresenter {
                 placeholder: msg::accounts_balance_placeholder(),
                 focused: focus(AccountField::OpeningBalance),
             },
-            balance_read_only: self
-                .editing
-                .as_ref()
-                .map(|editing| format_amount(&editing.balance, AmountStyle::own()).text),
+            balance_read_only: self.editing.as_ref().map(|editing| {
+                format_amount(&editing.balance, balance_style(editing.precision)).text
+            }),
             account_number: TextFieldView {
                 label: msg::accounts_field_number(),
                 text: self.account_number.clone(),
@@ -474,14 +477,16 @@ impl AccountFormPresenter {
                     return;
                 };
                 let mut ports = self.ports.borrow_mut();
-                let is_currency = ports
+                // Padded, never rounded: places finer than the Precision are kept as typed. A Unit
+                // gone mid-form pads to cents, as a currency did before Units had a Precision.
+                let precision = ports
                     .units()
                     .account_units()
                     .iter()
                     .find(|row| row.id == unit)
-                    .is_none_or(|row| row.is_currency);
-                if is_currency && balance.0.fractional_digit_count() < 2 {
-                    balance = Money(balance.0.with_scale(2));
+                    .map_or(2, |row| row.precision);
+                if balance.0.fractional_digit_count() < i64::from(precision) {
+                    balance = Money(balance.0.with_scale(i64::from(precision)));
                 }
                 Ok(AddAccount(NewAccount {
                     draft,
@@ -497,6 +502,13 @@ impl AccountFormPresenter {
             Err(refusal) => self.error = Some(refusal),
         }
     }
+}
+
+/// An amount at its Unit's Precision, or at its own places when the Unit is gone.
+fn balance_style(precision: Option<u8>) -> AmountStyle {
+    precision.map_or_else(AmountStyle::own, |places| {
+        AmountStyle::fixed(u32::from(places))
+    })
 }
 
 /// Whether `text` could be the start of a decimal amount: digits, at most one `.`, and a `-` only
@@ -847,10 +859,34 @@ mod tests {
         assert_eq!(form.view_model().opening_balance.text, "-12.50");
     }
 
-    #[test]
-    fn an_add_pads_a_currency_balance_to_two_places_and_keeps_another_units() {
-        let (ports, shared) = stub();
+    /// Adds an Account named `name` on `unit` with `typed` as its opening balance, and returns the
+    /// balance it was stored with.
+    fn added_balance(shared: &SharedPorts, name_text: &str, unit: UnitId, typed: &str) -> String {
         let mut form = add(shared.clone());
+        send(
+            &mut form,
+            vec![
+                name(name_text),
+                AccountFormEvent::Unit(unit),
+                balance(typed),
+                AccountFormEvent::Confirm,
+            ],
+        );
+        let ports = shared.borrow();
+        ports
+            .accounts()
+            .accounts()
+            .into_iter()
+            .find(|account| account.name == name_text)
+            .expect("added")
+            .balance
+            .to_string()
+    }
+
+    #[test]
+    fn an_add_stores_what_was_typed_with_its_number_and_opened_today() {
+        let (ports, shared) = stub();
+        let mut form = add(shared);
         let calls = send(
             &mut form,
             vec![
@@ -870,28 +906,25 @@ mod tests {
         assert_eq!(added.account_number.as_deref(), Some("42"));
         assert_eq!(added.opened_at, today());
         assert_eq!(added.unit, UnitId::SEED_AUD);
+    }
 
-        let mut fund = add(shared);
-        send(
-            &mut fund,
-            vec![
-                name("Coins"),
-                AccountFormEvent::Unit(UnitId::SEED_BTC),
-                balance("0.4"),
-                AccountFormEvent::Confirm,
-            ],
-        );
-        let coins = ports
-            .borrow()
-            .accounts
-            .accounts()
-            .into_iter()
-            .find(|account| account.name == "Coins")
-            .expect("added");
+    #[test]
+    fn an_add_pads_the_balance_to_its_units_precision_and_keeps_finer_places_as_typed() {
+        let (_, shared) = stub();
+
         assert_eq!(
-            coins.balance.to_string(),
-            "0.4",
-            "not a currency, so as typed"
+            added_balance(&shared, "Coins", UnitId::SEED_BTC, "0.4"),
+            "0.40000000"
+        );
+        assert_eq!(
+            added_balance(&shared, "Fund", UnitId::SEED_VAS, "12"),
+            "12.00",
+            "any Kind pads, not only a currency"
+        );
+        assert_eq!(
+            added_balance(&shared, "Dust", UnitId::SEED_BTC, "0.123456789"),
+            "0.123456789",
+            "padding only: never rounded to the Precision"
         );
     }
 
@@ -954,6 +987,29 @@ mod tests {
         assert_eq!(saved.name, "Everyday");
         assert_eq!(saved.balance.to_string(), "4182.55");
         assert!(AccountFormPresenter::edit(shared, AccountId::new(), today()).is_none());
+    }
+
+    #[test]
+    fn edit_shows_the_balance_at_its_units_precision() {
+        let (ports, shared) = stub();
+        let bitcoin =
+            AccountFormPresenter::edit(shared.clone(), AccountId::seed(7), today()).expect("stub");
+        assert_eq!(
+            bitcoin.view_model().balance_read_only.as_deref(),
+            Some("0.41200000")
+        );
+
+        for unit in &mut ports.borrow_mut().units.units {
+            if unit.id == UnitId::SEED_AUD {
+                unit.precision = 0;
+            }
+        }
+        let everyday =
+            AccountFormPresenter::edit(shared, AccountId::seed(2), today()).expect("stub");
+        assert_eq!(
+            everyday.view_model().balance_read_only.as_deref(),
+            Some("4,183")
+        );
     }
 
     #[test]

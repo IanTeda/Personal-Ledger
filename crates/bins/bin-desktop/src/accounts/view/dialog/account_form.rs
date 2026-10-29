@@ -386,6 +386,10 @@ pub(super) fn readback(
         ("unit", chosen_label(&view.unit).unwrap_or_default()),
         ("unit_options", labels(&view.unit).join("|")),
         ("opening_balance", view.opening_balance.text.clone()),
+        (
+            "balance",
+            view.balance_read_only.clone().unwrap_or_default(),
+        ),
         ("account_number", view.account_number.text.clone()),
         ("select_open", select_open.to_string()),
         ("valid", view.frame.can_confirm.to_string()),

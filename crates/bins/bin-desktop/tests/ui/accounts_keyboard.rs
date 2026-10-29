@@ -210,6 +210,26 @@ fn editing_fixes_the_unit_and_balance_and_tab_skips_them(app: &mut TestAppContex
 }
 
 #[gpui::test]
+fn a_btc_balance_is_padded_to_its_precision_and_edit_shows_it_there(app: &mut TestAppContext) {
+    let mut ui = add_dialog(app);
+    ui.press("C o i n s tab down down down down");
+    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+    ui.press("tab tab tab 0 . 5 enter");
+    assert_eq!(ui.dialog(), None);
+
+    // Walk the page to the new Account; it is listed, so the walk ends on it.
+    for _ in 0..ui.settings_accounts().account_names.len() {
+        if ui.settings_accounts().selected_account.as_deref() == Some("Coins") {
+            break;
+        }
+        ui.press("j");
+    }
+    ui.press("e");
+    assert_eq!(ui.account_form().name, "Coins");
+    assert_eq!(ui.account_form().balance.as_deref(), Some("0.50000000"));
+}
+
+#[gpui::test]
 fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
     let name = ui
