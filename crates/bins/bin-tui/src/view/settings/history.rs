@@ -4,7 +4,9 @@
 //! band, dim and struck through, until a new edit discards them; the applied rows sit below it.
 //! The selected row names its action in the DEVICE column: `enter restore to here`, or `enter redo
 //! to here` on an undone one. Drawn by the list-page pattern ([`super::list`]), so it docks the
-//! detail pane at X-Large when #884 gives it one.
+//! detail pane at X-Large ([`super::pane`], TUI-057, DESKTOP-151): CHANGE, BEFORE → AFTER, and
+//! what restoring here undoes, or redoing to here reapplies on an undone row. It has no ACTIVITY,
+//! since History is the record.
 //!
 //! A wireframe: there is no undo stack yet, so the rows are [`CHANGES`], and `enter`, `u` and
 //! `ctrl r` flash the Shell's "not yet built". `u` and `ctrl r` are not bound app-wide: undo needs
@@ -23,6 +25,7 @@ use ratatui::{
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
+use super::pane::{Group, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -103,6 +106,10 @@ struct Change {
     what: &'static str,
     /// The device it was made on; `None` is this one.
     device: Option<&'static str>,
+    /// When another device's change reached this one.
+    synced: Option<NaiveTime>,
+    /// Each field it changed: its name, then its value before and after.
+    fields: &'static [(&'static str, &'static str, &'static str)],
 }
 
 const fn change(
@@ -116,6 +123,8 @@ const fn change(
         kind,
         what,
         device,
+        synced: None,
+        fields: &[],
     }
 }
 
@@ -143,18 +152,30 @@ const APPLIED: [Change; 9] = [
         "Added Camera House −4,380.00 · Everyday",
         None,
     ),
-    change(
-        NaiveTime::from_hms_opt(14, 5, 0),
-        Kind::Tags,
-        "Renamed tag holiday → travel",
-        None,
-    ),
-    change(
-        NaiveTime::from_hms_opt(13, 58, 0),
-        Kind::Bills,
-        "Marked Rates Q1 paid · 612.00",
-        Some("laptop"),
-    ),
+    Change {
+        fields: &[("name", "holiday", "travel")],
+        ..change(
+            NaiveTime::from_hms_opt(14, 5, 0),
+            Kind::Tags,
+            "Renamed tag holiday → travel",
+            None,
+        )
+    },
+    // TUI-057's selected row.
+    Change {
+        synced: NaiveTime::from_hms_opt(13, 59, 0),
+        fields: &[
+            ("status", "due", "paid"),
+            ("paid on", "—", "12 sep 2026"),
+            ("transaction", "—", "Rates Q1 −612.00"),
+        ],
+        ..change(
+            NaiveTime::from_hms_opt(13, 58, 0),
+            Kind::Bills,
+            "Marked Rates Q1 paid · 612.00",
+            Some("laptop"),
+        )
+    },
     change(
         NaiveTime::from_hms_opt(13, 51, 0),
         Kind::Transactions,
@@ -173,12 +194,15 @@ const APPLIED: [Change; 9] = [
         "Imported 6 rows · anz-sep.qif",
         None,
     ),
-    change(
-        NaiveTime::from_hms_opt(12, 2, 0),
-        Kind::Accounts,
-        "Created ANZ Offset · aud",
-        Some("laptop"),
-    ),
+    Change {
+        synced: NaiveTime::from_hms_opt(12, 4, 0),
+        ..change(
+            NaiveTime::from_hms_opt(12, 2, 0),
+            Kind::Accounts,
+            "Created ANZ Offset · aud",
+            Some("laptop"),
+        )
+    },
     change(
         NaiveTime::from_hms_opt(11, 47, 0),
         Kind::Transactions,
@@ -193,7 +217,7 @@ const APPLIED: [Change; 9] = [
     ),
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Undo,
     Redo,
@@ -297,7 +321,7 @@ impl list::Page for HistoryPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, _pane: bool, c: &Colours) {
         let [toolbar, _, body] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
@@ -382,6 +406,90 @@ impl list::Page for HistoryPage {
         };
         let notes = [msg::tui_settings_history_synced_note()];
         list::render(frame, body, &[table], None, &notes, focused, c);
+    }
+
+    fn pane(&self) -> Pane {
+        let (undone, applied) = self.visible();
+        let (change, is_undone) = match undone.get(self.selected) {
+            Some(change) => (*change, true),
+            None => match applied.get(self.selected - undone.len()) {
+                Some(change) => (*change, false),
+                None => return Pane::default(),
+            },
+        };
+        let time = change.time.map(format_time_minutes).unwrap_or_default();
+        let device = change
+            .device
+            .map_or_else(msg::tui_settings_history_this_device, str::to_string);
+        let mut about = Group::new(msg::tui_settings_pane_change())
+            .title(change.what)
+            .meta(
+                [
+                    change.kind.label(),
+                    device.clone(),
+                    msg::tui_settings_pane_today(&time),
+                ]
+                .join(" · "),
+            )
+            .fact(msg::tui_settings_pane_area(), change.kind.label())
+            .fact(msg::tui_settings_pane_device(), device);
+        if let Some(synced) = change.synced {
+            about = about.fact(msg::tui_settings_pane_synced(), format_time_minutes(synced));
+        }
+        let mut restore = keys::named(KEYS, &[Command::Restore]);
+        if is_undone {
+            for (_, hint) in &mut restore {
+                *hint = msg::tui_settings_pane_redo_to_here();
+            }
+        }
+        let about = about.keys(restore);
+
+        let mut fields = Group::new(msg::tui_settings_pane_before_after());
+        for (field, before, after) in change.fields {
+            fields = fields.fact(
+                (*field).to_string(),
+                Cell(vec![
+                    (format!("{before} → "), Tone::Plain),
+                    ((*after).to_string(), Tone::Bold),
+                ]),
+            );
+        }
+        if change.fields.is_empty() {
+            fields = fields.note(msg::tui_settings_pane_no_fields());
+        }
+
+        // Restoring an applied change undoes those applied after it; redoing an undone one
+        // reapplies it and those undone before it, which sit below it, newest first.
+        let (heading, between): (String, Vec<&Change>) = if is_undone {
+            (
+                msg::tui_settings_pane_redoing_reapplies(),
+                undone[self.selected..].to_vec(),
+            )
+        } else {
+            (
+                msg::tui_settings_pane_restoring_undoes(),
+                applied[..self.selected - undone.len()].to_vec(),
+            )
+        };
+        let mut effect = Group::new(heading);
+        for change in &between {
+            let time = change.time.map(format_time_minutes).unwrap_or_default();
+            effect = effect.line(super::pane::Line::Text(Cell(vec![
+                (crate::view::detail_pane::time_column(&time), Tone::Muted),
+                (change.what.to_string(), Tone::Plain),
+            ])));
+        }
+        let effect = if is_undone {
+            effect
+        } else if between.is_empty() {
+            effect.note(msg::tui_settings_pane_restoring_nothing())
+        } else {
+            effect.note(msg::tui_settings_pane_restoring_note())
+        };
+        Pane {
+            groups: vec![about, fields, effect],
+            activity: false,
+        }
     }
 }
 

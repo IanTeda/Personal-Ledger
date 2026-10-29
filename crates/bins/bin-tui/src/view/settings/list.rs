@@ -284,6 +284,14 @@ fn span(text: &str, tone: Tone, selected: bool, c: &Colours) -> Span<'static> {
     }
 }
 
+/// `cell`'s spans on an unselected row, for a line drawn outside a table.
+pub(super) fn spans(cell: &Cell, c: &Colours) -> Vec<Span<'static>> {
+    cell.0
+        .iter()
+        .map(|(text, tone)| span(text, *tone, false, c))
+        .collect()
+}
+
 fn align(paragraph: Paragraph<'_>, right: bool) -> Paragraph<'_> {
     if right {
         paragraph.alignment(Alignment::Right)
@@ -333,12 +341,7 @@ fn render_lines(frame: &mut Frame<'_>, area: Rect, lines: &[(String, Cell)], c: 
             Paragraph::new(Span::styled(label.as_str(), c.muted())),
             label_area,
         );
-        let spans: Vec<Span<'static>> = value
-            .0
-            .iter()
-            .map(|(text, tone)| span(text, *tone, false, c))
-            .collect();
-        frame.render_widget(Paragraph::new(Line::from(spans)), value_area);
+        frame.render_widget(Paragraph::new(Line::from(spans(value, c))), value_area);
     }
 }
 
@@ -408,5 +411,9 @@ pub(super) trait Page {
     /// The heading's note, counts derived from the rows.
     fn scope_note(&self) -> String;
     fn hints(&self) -> Vec<(String, String)>;
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours);
+    /// The page in `area`. With `pane` the detail pane docks beside it and names the selected
+    /// row, so the page draws no `selected` box of its own.
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, pane: bool, c: &Colours);
+    /// The detail pane for the selected row, which the page docks at X-Large ([`super::pane`]).
+    fn pane(&self) -> super::pane::Pane;
 }

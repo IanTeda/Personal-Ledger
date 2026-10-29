@@ -10,6 +10,7 @@ pub mod balance_checks;
 pub mod budgets;
 pub mod categories;
 pub mod dashboard;
+pub mod detail_pane;
 pub mod help;
 pub mod payees;
 pub mod reports;

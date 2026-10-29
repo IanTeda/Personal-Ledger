@@ -6,6 +6,10 @@
 //! `lib-institutions`, so `n`, `e` and `d` show the Shell's "not yet built" flash. The types are
 //! `lib_core::AccountType`, the one enum the Accounts page groups by, so the two pages cannot
 //! disagree. The counts are derived from the rows on each draw.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-141, [`super::pane`]) in place of the
+//! `selected` box: INSTITUTION, its ACCOUNTS with their balances read from the Accounts page's
+//! fixture, and ACTIVITY.
 
 use crossterm::event::KeyEvent;
 use lib_core::AccountType;
@@ -13,8 +17,10 @@ use lib_locale::Label as _;
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::accounts::GROUPS;
+use super::accounts::fixture::{self as accounts, BASE_UNIT};
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Detail, Page, Row, Table, Tone};
+use super::pane::{Group, Line, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -70,7 +76,7 @@ const FIXTURE: [FixtureInstitution; 6] = [
     },
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     New,
@@ -117,7 +123,7 @@ impl InstitutionsPage {
 }
 
 /// An Account type's name as the page spells it, lower case.
-fn type_name(kind: &AccountType) -> String {
+pub(super) fn type_name(kind: &AccountType) -> String {
     kind.label().to_lowercase()
 }
 
@@ -147,7 +153,7 @@ impl Page for InstitutionsPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, pane: bool, c: &Colours) {
         let rows = FIXTURE
             .iter()
             .enumerate()
@@ -218,7 +224,65 @@ impl Page for InstitutionsPage {
             ],
         };
         let notes = [msg::tui_settings_institutions_note_delete()];
-        list::render(frame, area, &[table], Some(&detail), &notes, focused, c);
+        let detail = (!pane).then_some(&detail);
+        list::render(frame, area, &[table], detail, &notes, focused, c);
+    }
+
+    fn pane(&self) -> Pane {
+        let institution = &FIXTURE[self.selected];
+        let count = i64::try_from(institution.accounts.len()).unwrap_or(i64::MAX);
+        let types = joined(institution.types.iter().map(type_name));
+        let about = Group::new(msg::tui_settings_pane_institution())
+            .title(institution.name)
+            .meta(joined([
+                types.clone(),
+                msg::tui_settings_pane_default_unit(institution.unit),
+            ]))
+            .fact(msg::tui_settings_institutions_types_label(), types)
+            .fact(
+                msg::tui_settings_institutions_unit_label(),
+                institution.unit,
+            )
+            .fact(
+                msg::tui_settings_pane_used_by(),
+                msg::tui_settings_pane_account_count(count),
+            )
+            .keys(keys::named(KEYS, &[Command::Edit, Command::Delete]));
+
+        let held: Vec<_> = accounts::accounts()
+            .into_iter()
+            .filter(|account| institution.accounts.contains(&account.name))
+            .collect();
+        let mut group = Group::new(msg::tui_settings_pane_accounts());
+        for account in &held {
+            group = group
+                .line(Line::Split(
+                    Cell::plain(account.name),
+                    Cell::plain(msg::tui_settings_pane_amount(
+                        &crate::format::money(&account.balance, account.places),
+                        account.unit,
+                    )),
+                ))
+                .line(Line::Text(Cell::muted(type_name(&account.kind))));
+        }
+        let group = if held.is_empty() {
+            group.note(msg::tui_settings_institutions_no_accounts())
+        } else {
+            let total = held.iter().fold(
+                lib_core::Money(bigdecimal::BigDecimal::default()),
+                |total, account| {
+                    lib_core::Money(total.0 + &account.balance.0 * &account.base_price.0)
+                },
+            );
+            group.line(Line::Split(
+                Cell::tone(msg::tui_settings_pane_total(), Tone::Bold),
+                Cell::tone(
+                    msg::tui_settings_pane_amount(&crate::format::money(&total, 2), BASE_UNIT),
+                    Tone::Bold,
+                ),
+            ))
+        };
+        Pane::with_activity(vec![about, group])
     }
 }
 

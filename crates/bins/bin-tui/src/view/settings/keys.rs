@@ -82,6 +82,16 @@ pub(super) fn hints<C>(table: &[Binding<C>]) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The `(keys, hint)` of each row in `table` that runs one of `commands`, in `commands`' order:
+/// the keys a detail pane names under a group ([`super::pane`]), so it names only keys that work.
+pub(super) fn named<C: PartialEq>(table: &[Binding<C>], commands: &[C]) -> Vec<(String, String)> {
+    commands
+        .iter()
+        .filter_map(|command| table.iter().find(|binding| binding.command == *command))
+        .map(|binding| (binding.label.to_string(), (binding.hint)()))
+        .collect()
+}
+
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;

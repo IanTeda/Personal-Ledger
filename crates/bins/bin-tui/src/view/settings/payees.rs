@@ -5,6 +5,10 @@
 //! A wireframe: the rows are the fixture's until #805's Payees chain moves the TUI onto
 //! `lib-payees`, so `n`, `e` and `d` show the Shell's "not yet built" flash. The count is derived
 //! from the rows on each draw.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-145, [`super::pane`]) in place of the
+//! `selected` box: PAYEE, MATCH RULES and ACTIVITY. The fixture holds no transactions, so the pane
+//! leaves out the Desktop's totals and RECENT TRANSACTIONS.
 
 use chrono::NaiveDate;
 use crossterm::event::KeyEvent;
@@ -12,6 +16,7 @@ use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Detail, Page, Row, Table, Tone};
+use super::pane::{Group, Line, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -59,7 +64,7 @@ const FIXTURE: [FixturePayee; 8] = [
     },
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     New,
@@ -135,7 +140,7 @@ impl Page for PayeesPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, pane: bool, c: &Colours) {
         let rows = FIXTURE
             .iter()
             .enumerate()
@@ -211,7 +216,36 @@ impl Page for PayeesPage {
             lines,
         };
         let notes = [msg::tui_settings_payees_note()];
-        list::render(frame, area, &[table], Some(&detail), &notes, focused, c);
+        let detail = (!pane).then_some(&detail);
+        list::render(frame, area, &[table], detail, &notes, focused, c);
+    }
+
+    fn pane(&self) -> Pane {
+        let payee = &FIXTURE[self.selected];
+        let mut about = Group::new(msg::tui_settings_pane_payee())
+            .title(payee.name)
+            .fact(msg::tui_settings_payees_default_label(), payee.category);
+        if let Some((alias, (year, month, day))) = payee.alias {
+            let renamed = NaiveDate::from_ymd_opt(year, month, day)
+                .map(crate::format::date)
+                .unwrap_or_default();
+            about = about.fact(
+                msg::tui_settings_payees_alias_label(),
+                Cell(vec![
+                    (alias.to_string(), Tone::Plain),
+                    (msg::tui_settings_payees_renamed(&renamed), Tone::Muted),
+                ]),
+            );
+        }
+        let about = about.keys(keys::named(KEYS, &[Command::Edit, Command::Delete]));
+        let mut rules = Group::new(msg::tui_settings_pane_match_rules());
+        for rule in payee.rules {
+            rules = rules.line(Line::Text(Cell::plain(*rule)));
+        }
+        if payee.rules.is_empty() {
+            rules = rules.note(msg::tui_settings_payees_no_rules());
+        }
+        Pane::with_activity(vec![about, rules])
     }
 }
 

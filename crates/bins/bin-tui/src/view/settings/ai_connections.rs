@@ -10,6 +10,9 @@
 //! built". `n` and `e` on a provider open the Add / Edit model provider overlay
 //! (`popup::settings::provider`), which the Settings View draws over the page and which takes
 //! every key while open; its API key is masked.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-148, [`super::pane`]) for the selected row of
+//! the block with focus: PROVIDER, or ASSISTANT, then ACTIVITY, from the same fixture.
 
 use chrono::NaiveDate;
 use chrono::NaiveTime;
@@ -24,6 +27,7 @@ use ratatui::{
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
+use super::pane::{Group, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::overlay::Outcome;
@@ -131,7 +135,7 @@ enum Block {
     Assistants,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     Block,
@@ -297,7 +301,7 @@ impl list::Page for AiConnectionsPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, _pane: bool, c: &Colours) {
         let providers = Table {
             heading: msg::tui_settings_ai_providers(),
             add: vec![("n".into(), msg::tui_settings_ai_add_provider())],
@@ -360,12 +364,7 @@ impl list::Page for AiConnectionsPage {
                     cells: vec![
                         Cell::plain(assistant.name),
                         Cell::plain(msg::tui_settings_ai_read_only()),
-                        Cell::muted(match assistant.seen {
-                            Seen::Today(time) => {
-                                msg::tui_settings_ai_seen_today(&format_time_minutes(time))
-                            }
-                            Seen::On(date) => crate::format::date(date),
-                        }),
+                        Cell::muted(seen(assistant.seen)),
                         assistant.status.cell(),
                     ],
                     selected: index == self.assistant,
@@ -439,6 +438,78 @@ impl list::Page for AiConnectionsPage {
             ))),
             server_note,
         );
+    }
+
+    fn pane(&self) -> Pane {
+        let group = match self.block {
+            Block::Providers => {
+                let provider = &PROVIDERS[self.provider];
+                let default = self.provider == DEFAULT_PROVIDER;
+                let mut title = vec![(provider.name.to_string(), Tone::Plain)];
+                if default {
+                    title.push((" ".into(), Tone::Plain));
+                    title.push((msg::tui_settings_ai_default(), Tone::Chip(true)));
+                }
+                // The default provider has no default to make.
+                let commands: &[Command] = if default {
+                    &[Command::Test, Command::Edit, Command::Remove]
+                } else {
+                    &[
+                        Command::Test,
+                        Command::Edit,
+                        Command::Default,
+                        Command::Remove,
+                    ]
+                };
+                Group::new(msg::tui_settings_pane_provider())
+                    .title(Cell(title))
+                    .fact(msg::tui_settings_ai_model(), provider.model)
+                    .fact(msg::tui_settings_ai_key(), provider.key)
+                    .fact(msg::tui_settings_ai_status(), provider.status.cell())
+                    .keys(relabel(
+                        keys::named(KEYS, commands),
+                        msg::tui_settings_hint_remove(),
+                    ))
+            }
+            Block::Assistants => {
+                let assistant = &ASSISTANTS[self.assistant];
+                Group::new(msg::tui_settings_pane_assistant())
+                    .title(assistant.name)
+                    .fact(
+                        msg::tui_settings_ai_access(),
+                        msg::tui_settings_ai_read_only(),
+                    )
+                    .fact(msg::tui_settings_ai_last_seen(), seen(assistant.seen))
+                    .fact(msg::tui_settings_ai_status(), assistant.status.cell())
+                    .keys(relabel(
+                        keys::named(KEYS, &[Command::Remove]),
+                        msg::tui_settings_pane_revoke(),
+                    ))
+            }
+        };
+        Pane::with_activity(vec![group])
+    }
+}
+
+/// `keys` with `x`'s shared `remove · revoke` hint narrowed to what it does on the selected row.
+fn relabel(keys: Vec<(String, String)>, remove: String) -> Vec<(String, String)> {
+    let shared = msg::tui_settings_hint_remove_revoke();
+    keys.into_iter()
+        .map(|(key, hint)| {
+            if hint == shared {
+                (key, remove.clone())
+            } else {
+                (key, hint)
+            }
+        })
+        .collect()
+}
+
+/// When an assistant was last seen, as its row says it.
+fn seen(seen: Seen) -> String {
+    match seen {
+        Seen::Today(time) => msg::tui_settings_ai_seen_today(&format_time_minutes(time)),
+        Seen::On(date) => crate::format::date(date),
     }
 }
 

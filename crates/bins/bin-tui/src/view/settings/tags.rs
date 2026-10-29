@@ -6,12 +6,17 @@
 //! A wireframe: the rows are the fixture's until #805's Tags chain moves the TUI onto `lib-tags`,
 //! so `n`, `e`, `x` and `m` show the Shell's "not yet built" flash. The counts are derived from
 //! the rows on each draw.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-144, [`super::pane`]) in place of the merge
+//! box: TAG, a likely duplicate's LIKELY DUPLICATE, and ACTIVITY. The fixture counts no
+//! transactions, so the pane leaves out the Desktop's Used by and Last used.
 
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Constraint, layout::Rect, style::Color};
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Detail, Page, Row, Table, Tone};
+use super::pane::{Group, Line, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -42,7 +47,7 @@ const fn tag(name: &'static str, colour: Color, duplicate_of: Option<&'static st
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     New,
@@ -132,7 +137,7 @@ impl Page for TagsPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, pane: bool, c: &Colours) {
         let rows = FIXTURE
             .iter()
             .enumerate()
@@ -178,8 +183,55 @@ impl Page for TagsPage {
             )],
         });
         let notes = [msg::tui_settings_tags_note()];
-        list::render(frame, area, &[table], detail.as_ref(), &notes, focused, c);
+        let detail = detail.as_ref().filter(|_| !pane);
+        list::render(frame, area, &[table], detail, &notes, focused, c);
     }
+
+    fn pane(&self) -> Pane {
+        let tag = &FIXTURE[self.selected];
+        let mut about = Group::new(msg::tui_settings_pane_tag()).title(swatched(tag));
+        if let Some(of) = tag.duplicate_of {
+            about = about.line(Line::Text(Cell::tone(
+                msg::tui_settings_tags_duplicate(of),
+                Tone::Accent,
+            )));
+        }
+        let colour = match tag.colour {
+            Color::Rgb(red, green, blue) => format!("#{red:02x}{green:02x}{blue:02x}"),
+            other => other.to_string(),
+        };
+        about = about.fact(
+            msg::tui_settings_pane_colour(),
+            Cell(vec![
+                ("■ ".to_string(), Tone::Swatch(tag.colour)),
+                (colour, Tone::Plain),
+            ]),
+        );
+        let commands: &[Command] = if tag.duplicate_of.is_some() {
+            &[Command::Merge, Command::Edit, Command::Remove]
+        } else {
+            &[Command::Edit, Command::Remove]
+        };
+        let mut groups = vec![about.keys(keys::named(KEYS, commands))];
+        if let Some(of) = tag.duplicate_of {
+            let original = FIXTURE.iter().find(|other| other.name == of);
+            let mut duplicate = Group::new(msg::tui_settings_pane_likely_duplicate())
+                .line(Line::Text(swatched(tag)));
+            if let Some(original) = original {
+                duplicate = duplicate.line(Line::Text(swatched(original)));
+            }
+            groups.push(duplicate.note(msg::tui_settings_tags_merge_effect(tag.name, of)));
+        }
+        Pane::with_activity(groups)
+    }
+}
+
+/// A Tag's swatch and name.
+fn swatched(tag: &FixtureTag) -> Cell {
+    Cell(vec![
+        ("■ ".to_string(), Tone::Swatch(tag.colour)),
+        (tag.name.to_string(), Tone::Plain),
+    ])
 }
 
 #[cfg(test)]

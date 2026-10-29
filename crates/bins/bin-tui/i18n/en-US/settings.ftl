@@ -695,3 +695,68 @@ tui-settings-hint-undo = undo
 tui-settings-hint-redo = redo
 tui-settings-hint-restore = restore to here
 tui-settings-hint-area-filter = area filter
+
+## The detail pane a list page docks at X-Large (#884, TUI-056, TUI-057, DESKTOP-141–151).
+
+tui-settings-pane-activity = Activity
+tui-settings-pane-activity-note = This session's { $page } outcomes, newest first. Errors still toast.
+tui-settings-pane-amount = { $amount } { $unit }
+tui-settings-pane-account = Account
+tui-settings-pane-balance = balance
+tui-settings-pane-offsets = offsets
+tui-settings-pane-transactions = transactions
+tui-settings-pane-last-transaction = last transaction
+tui-settings-pane-recent-transactions = Recent transactions
+tui-settings-pane-recent-note = Open ledger ({ $key }) shows them all.
+tui-settings-pane-no-transactions = No transactions yet.
+tui-settings-pane-change = Change
+tui-settings-pane-today = today { $time }
+tui-settings-pane-area = area
+tui-settings-pane-device = device
+tui-settings-pane-synced = synced
+tui-settings-pane-before-after = Before → after
+tui-settings-pane-no-fields = This change keeps no field-by-field record.
+tui-settings-pane-restoring-undoes = Restoring here undoes
+tui-settings-pane-restoring-nothing = Nothing: this is the current state.
+tui-settings-pane-restoring-note = They stay greyed above the marker until a new edit clears them.
+tui-settings-pane-redoing-reapplies = Redoing to here reapplies
+tui-settings-pane-institution = Institution
+tui-settings-pane-default-unit = default unit { $unit }
+tui-settings-pane-used-by = used by
+tui-settings-pane-account-count = { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+}
+tui-settings-pane-accounts = Accounts
+tui-settings-pane-total = Total
+tui-settings-pane-category = Category
+tui-settings-pane-top-level = top level
+tui-settings-pane-under = under { $parent }
+tui-settings-pane-path = path
+tui-settings-pane-subcategories = Subcategories
+tui-settings-pane-leaf-note = Only leaf categories can be picked on a transaction, so { $name } itself can't.
+tui-settings-pane-tag = Tag
+tui-settings-pane-colour = colour
+tui-settings-pane-likely-duplicate = Likely duplicate
+tui-settings-pane-payee = Payee
+tui-settings-pane-document-type = Document type
+tui-settings-pane-file-count = { $count ->
+    [one] { $count } file
+   *[other] { $count } files
+}
+tui-settings-pane-type-filter = type filter
+tui-settings-pane-place = { $place } of { $count }
+tui-settings-pane-location = Location
+tui-settings-pane-area-of = { $location } · area { $place } of { $count }
+tui-settings-pane-items = items
+tui-settings-pane-areas = Areas
+tui-settings-pane-provider = Provider
+tui-settings-pane-assistant = Assistant
+tui-settings-pane-revoke = revoke
+tui-settings-pane-tracks = tracks
+tui-settings-pane-remind = remind
+tui-settings-pane-tax-year = tax year
+tui-settings-pane-redo-to-here = redo to here
+tui-settings-pane-subcategories-label = subcategories
+tui-settings-pane-match-rules = Match rules
+tui-settings-pane-area-group = Area

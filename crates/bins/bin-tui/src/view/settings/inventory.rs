@@ -8,12 +8,17 @@
 //! `lib-inventory`, so `n`, `a`, `e` and `x` show the Shell's "not yet built" flash; expanding,
 //! collapsing and reordering are real but last only while the page does. The counts are derived
 //! from the tree on each draw.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-147, [`super::pane`]): AREA, or a location's
+//! LOCATION and AREAS, then ACTIVITY. The fixture counts items but holds none, so the pane leaves
+//! out the Desktop's value, documents and ITEMS · BY VALUE.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Page, Row, Table, Tone};
+use super::pane::{Group, Line as PaneLine, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -60,7 +65,7 @@ enum Line {
     Area(usize, usize),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     Fold,
@@ -221,7 +226,7 @@ impl Page for InventoryPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, _pane: bool, c: &Colours) {
         let rows = self
             .lines()
             .into_iter()
@@ -283,6 +288,55 @@ impl Page for InventoryPage {
             msg::tui_settings_inventory_note_remove(),
         ];
         list::render(frame, area, &[table], None, &notes, focused, c);
+    }
+
+    fn pane(&self) -> Pane {
+        let groups = match self.lines().get(self.selected).copied() {
+            Some(Line::Location(index)) => {
+                let location = &self.locations[index];
+                let items: i64 = location.areas.iter().map(|(_, items)| items).sum();
+                let about = Group::new(msg::tui_settings_pane_location())
+                    .title(location.name)
+                    .meta(msg::tui_settings_inventory_counts(
+                        i64::try_from(location.areas.len()).unwrap_or(i64::MAX),
+                        &crate::format::count(items),
+                    ))
+                    .keys(keys::named(
+                        KEYS,
+                        &[Command::NewArea, Command::Edit, Command::Remove],
+                    ));
+                let mut areas = Group::new(msg::tui_settings_pane_areas());
+                for (name, items) in &location.areas {
+                    areas = areas.line(PaneLine::Split(
+                        Cell::plain(*name),
+                        Cell::muted(crate::format::count(*items)),
+                    ));
+                }
+                vec![about, areas]
+            }
+            Some(Line::Area(location, area)) => {
+                let location = &self.locations[location];
+                let (name, items) = location.areas[area];
+                vec![
+                    Group::new(msg::tui_settings_pane_area_group())
+                        .title(name)
+                        .meta(msg::tui_settings_pane_area_of(
+                            location.name,
+                            &crate::format::count(i64::try_from(area + 1).unwrap_or(i64::MAX)),
+                            &crate::format::count(
+                                i64::try_from(location.areas.len()).unwrap_or(i64::MAX),
+                            ),
+                        ))
+                        .fact(msg::tui_settings_pane_items(), crate::format::count(items))
+                        .keys(keys::named(
+                            KEYS,
+                            &[Command::Move, Command::Edit, Command::Remove],
+                        )),
+                ]
+            }
+            None => Vec::new(),
+        };
+        Pane::with_activity(groups)
     }
 }
 

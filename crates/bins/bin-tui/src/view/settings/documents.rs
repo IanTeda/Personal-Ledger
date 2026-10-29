@@ -5,12 +5,17 @@
 //! A wireframe: the types are the fixture's until #805's Documents chain moves the TUI onto
 //! `lib-documents`, so `n`, `e` and `x` show the Shell's "not yet built" flash; reordering is real
 //! but lasts only while the page does. The counts are derived from the rows on each draw.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-146, [`super::pane`]): DOCUMENT TYPE and
+//! ACTIVITY. The fixture counts files but holds none, so the pane leaves out the Desktop's NEXT
+//! DATES.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Page, Row, Table};
+use super::pane::{Group, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -70,7 +75,7 @@ fn fixture() -> Vec<FixtureType> {
     ]
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     Move,
@@ -178,36 +183,19 @@ impl Page for DocumentsPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, _pane: bool, c: &Colours) {
         let rows = self
             .types
             .iter()
             .enumerate()
             .map(|(index, kind)| {
-                let (tracks, remind) = match kind.tracks {
-                    Some((tracks, lead)) => (
-                        Cell::plain(match tracks {
-                            Tracks::Renews => msg::tui_settings_documents_renews(),
-                            Tracks::Ends => msg::tui_settings_documents_ends(),
-                            Tracks::Expires => msg::tui_settings_documents_expires(),
-                        }),
-                        Cell::plain(match lead {
-                            Lead::Days(n) => msg::tui_settings_documents_lead_days(n),
-                            Lead::Months(n) => msg::tui_settings_documents_lead_months(n),
-                        }),
-                    ),
-                    None => (dash(), dash()),
-                };
+                let (tracks, remind) = tracking(kind);
                 Row::Item {
                     cells: vec![
                         Cell::plain(kind.name),
                         tracks,
                         remind,
-                        Cell::plain(if kind.tax_year {
-                            msg::tui_settings_documents_yes()
-                        } else {
-                            msg::tui_settings_documents_no()
-                        }),
+                        Cell::plain(yes_no(kind.tax_year)),
                         Cell::plain(crate::format::count(kind.files)),
                     ],
                     selected: index == self.selected,
@@ -246,6 +234,55 @@ impl Page for DocumentsPage {
             msg::tui_settings_documents_note_remove(&crate::format::count(UNTYPED)),
         ];
         list::render(frame, area, &[table], None, &notes, focused, c);
+    }
+
+    fn pane(&self) -> Pane {
+        let Some(kind) = self.types.get(self.selected) else {
+            return Pane::with_activity(Vec::new());
+        };
+        let (tracks, remind) = tracking(kind);
+        let place = msg::tui_settings_pane_place(
+            &crate::format::count(i64::try_from(self.selected + 1).unwrap_or(i64::MAX)),
+            &crate::format::count(i64::try_from(self.types.len()).unwrap_or(i64::MAX)),
+        );
+        let about = Group::new(msg::tui_settings_pane_document_type())
+            .title(kind.name)
+            .meta(msg::tui_settings_pane_file_count(kind.files))
+            .fact(msg::tui_settings_pane_tracks(), tracks)
+            .fact(msg::tui_settings_pane_remind(), remind)
+            .fact(msg::tui_settings_pane_tax_year(), yes_no(kind.tax_year))
+            .fact(msg::tui_settings_pane_type_filter(), place)
+            .keys(keys::named(
+                KEYS,
+                &[Command::Move, Command::Edit, Command::Remove],
+            ));
+        Pane::with_activity(vec![about])
+    }
+}
+
+/// The date a type tracks and how far ahead it reminds, or a dash for each when it tracks none.
+fn tracking(kind: &FixtureType) -> (Cell, Cell) {
+    match kind.tracks {
+        Some((tracks, lead)) => (
+            Cell::plain(match tracks {
+                Tracks::Renews => msg::tui_settings_documents_renews(),
+                Tracks::Ends => msg::tui_settings_documents_ends(),
+                Tracks::Expires => msg::tui_settings_documents_expires(),
+            }),
+            Cell::plain(match lead {
+                Lead::Days(n) => msg::tui_settings_documents_lead_days(n),
+                Lead::Months(n) => msg::tui_settings_documents_lead_months(n),
+            }),
+        ),
+        None => (dash(), dash()),
+    }
+}
+
+fn yes_no(yes: bool) -> String {
+    if yes {
+        msg::tui_settings_documents_yes()
+    } else {
+        msg::tui_settings_documents_no()
     }
 }
 

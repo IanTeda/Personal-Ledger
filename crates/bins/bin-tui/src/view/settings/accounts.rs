@@ -6,16 +6,21 @@
 //! `lib-accounts`, so `n`, `e`, `d` and `enter` show the Shell's "not yet built" flash. `o` opens
 //! the Accounts View, which `Shell` pushes Settings under, so `esc` there comes back to this
 //! page and row. The counts and net worth are derived from the rows on each draw.
+//!
+//! At X-Large the page docks its detail pane (TUI-056, DESKTOP-142, [`super::pane`]): ACCOUNT,
+//! RECENT TRANSACTIONS and ACTIVITY for the selected Account, drawn from the same fixture.
 
-mod fixture;
+pub(super) mod fixture;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money};
 use lib_locale::Label as _;
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 
+use super::institutions::type_name;
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Row, Table, Tone};
+use super::pane::{Group, Line, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -35,7 +40,13 @@ const INSTITUTION_WIDTH: u16 = 18;
 const UNIT_WIDTH: u16 = 6;
 const BALANCE_WIDTH: u16 = 15;
 
-#[derive(Debug, Clone, Copy)]
+/// How many transactions the pane's RECENT TRANSACTIONS lists, as DESKTOP-142 does.
+const RECENT: usize = 4;
+
+/// Width of a recent transaction's day column in the pane.
+const DAY_WIDTH: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     Ledger,
@@ -141,6 +152,84 @@ impl AccountsPage {
         list::render(frame, area, &[self.table()], None, &notes, focused, c);
     }
 
+    /// The detail pane for the selected Account: what it is and its keys, then its latest
+    /// transactions, then ACTIVITY.
+    pub(super) fn pane(&self) -> Pane {
+        let Some(account) = self.accounts.get(self.selected) else {
+            return Pane::with_activity(Vec::new());
+        };
+        let mut about = Group::new(msg::tui_settings_pane_account())
+            .title(account.name)
+            .meta(
+                [
+                    type_name(&account.kind),
+                    account.institution.to_string(),
+                    account.unit.to_string(),
+                ]
+                .join(" · "),
+            )
+            .fact(
+                msg::tui_settings_pane_balance(),
+                Cell::tone(
+                    msg::tui_settings_pane_amount(
+                        &crate::format::money(&account.balance, account.places),
+                        account.unit,
+                    ),
+                    tone(&account.balance),
+                ),
+            );
+        if let Some(offsets) = account.offsets {
+            about = about.fact(msg::tui_settings_pane_offsets(), offsets);
+        }
+        about = about.fact(
+            msg::tui_settings_pane_transactions(),
+            crate::format::count(account.transactions),
+        );
+        if let Some(last) = account.recent.first().and_then(|r| day(r.on)) {
+            about = about.fact(
+                msg::tui_settings_pane_last_transaction(),
+                crate::format::date(last),
+            );
+        }
+        let about = about.keys(keys::named(
+            KEYS,
+            &[Command::Ledger, Command::Edit, Command::Delete],
+        ));
+
+        let mut recent = Group::new(msg::tui_settings_pane_recent_transactions());
+        for transaction in account.recent.iter().take(RECENT) {
+            let on = day(transaction.on)
+                .map(crate::format::day_month)
+                .unwrap_or_default();
+            let amount = Money(bigdecimal::BigDecimal::new(
+                transaction.minor.into(),
+                account.places,
+            ));
+            let mut text = crate::format::money(&amount, account.places);
+            if transaction.minor > 0 {
+                text.insert(0, '+');
+            }
+            recent = recent.line(Line::Split(
+                Cell(vec![
+                    (format!("{on:<DAY_WIDTH$}"), Tone::Muted),
+                    (transaction.what.to_string(), Tone::Plain),
+                ]),
+                Cell::tone(text, tone(&amount)),
+            ));
+        }
+        let recent = if account.recent.is_empty() {
+            recent.note(msg::tui_settings_pane_no_transactions())
+        } else {
+            let key = keys::named(KEYS, &[Command::Ledger])
+                .into_iter()
+                .next()
+                .map(|(key, _)| key)
+                .unwrap_or_default();
+            recent.note(msg::tui_settings_pane_recent_note(&key))
+        };
+        Pane::with_activity(vec![about, recent])
+    }
+
     fn table(&self) -> Table {
         let mut rows = Vec::new();
         for kind in GROUPS {
@@ -182,6 +271,20 @@ impl AccountsPage {
             ],
             rows,
         }
+    }
+}
+
+/// A fixture day, `None` if it isn't one.
+fn day((year, month, day): (i32, u32, u32)) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+}
+
+/// Negative amounts in the accent, as the table draws them.
+fn tone(amount: &Money) -> Tone {
+    if amount.0 < bigdecimal::BigDecimal::default() {
+        Tone::Negative
+    } else {
+        Tone::Plain
     }
 }
 

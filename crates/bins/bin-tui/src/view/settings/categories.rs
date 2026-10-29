@@ -5,6 +5,10 @@
 //! A wireframe: the tree is the fixture's until #805's Categories chain moves the TUI onto
 //! `lib-categories`, so `n`, `s`, `e` and `d` show the Shell's "not yet built" flash. The counts
 //! and the depth are derived from the tree on each draw. Expanding and collapsing is real.
+//!
+//! At X-Large the page docks its detail pane (DESKTOP-143, [`super::pane`]): CATEGORY, a parent's
+//! SUBCATEGORIES, and ACTIVITY, from the same tree. The fixture counts no transactions, so the
+//! pane leaves out the Desktop's Used by.
 
 use std::collections::HashSet;
 
@@ -13,6 +17,7 @@ use ratatui::{Frame, layout::Constraint, layout::Rect};
 
 use super::keys::{self, Binding, Press};
 use super::list::{self, Cell, Column, Page, Row, Table, Tone};
+use super::pane::{Group, Line, Pane};
 use crate::colours::Colours;
 use crate::msg;
 use crate::view::Action;
@@ -77,7 +82,7 @@ fn depth(nodes: &[Node]) -> usize {
         .unwrap_or(0)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Row,
     Fold,
@@ -265,7 +270,7 @@ impl Page for CategoriesPage {
         keys::hints(KEYS)
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, c: &Colours) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool, _pane: bool, c: &Colours) {
         let visible = self.visible();
         let kinds = [
             msg::tui_settings_categories_expense(),
@@ -299,6 +304,78 @@ impl Page for CategoriesPage {
         let notes = [msg::tui_settings_categories_note()];
         list::render(frame, area, &tables, None, &notes, focused, c);
     }
+
+    fn pane(&self) -> Pane {
+        let visible = self.visible();
+        let Some(flat) = visible.get(self.selected) else {
+            return Pane::with_activity(Vec::new());
+        };
+        let kind = [
+            msg::tui_settings_categories_expense(),
+            msg::tui_settings_categories_income(),
+        ][flat.tree]
+            .clone();
+        let names: Vec<&str> = flat.path.split('/').skip(1).collect();
+        let mut meta = vec![kind.clone()];
+        match names
+            .len()
+            .checked_sub(2)
+            .and_then(|parent| names.get(parent))
+        {
+            Some(parent) => meta.push(msg::tui_settings_pane_under(parent)),
+            None => meta.push(msg::tui_settings_pane_top_level()),
+        }
+        let subcategories =
+            msg::tui_settings_categories_subcategories(i64::try_from(flat.children).unwrap_or(0));
+        if flat.children > 0 {
+            meta.push(subcategories.clone());
+        }
+        let path = std::iter::once(kind)
+            .chain(names.iter().map(|name| (*name).to_string()))
+            .collect::<Vec<_>>()
+            .join(" › ");
+        let mut about = Group::new(msg::tui_settings_pane_category())
+            .title(flat.name)
+            .meta(meta.join(" · "))
+            .fact(msg::tui_settings_pane_path(), path);
+        // A leaf takes no subcategory here, as the Desktop drops Subcategory + on one.
+        let commands: &[Command] = if flat.children > 0 {
+            about = about.fact(msg::tui_settings_pane_subcategories_label(), subcategories);
+            &[Command::NewSub, Command::Edit, Command::Delete]
+        } else {
+            &[Command::Edit, Command::Delete]
+        };
+        let mut groups = vec![about.keys(keys::named(KEYS, commands))];
+        if let Some(node) = node(&flat.path).filter(|node| !node.children.is_empty()) {
+            let mut children = Group::new(msg::tui_settings_pane_subcategories());
+            for child in node.children {
+                let note = if child.children.is_empty() {
+                    String::new()
+                } else {
+                    msg::tui_settings_categories_subcategories(
+                        i64::try_from(child.children.len()).unwrap_or(i64::MAX),
+                    )
+                };
+                children = children.line(Line::Split(Cell::plain(child.name), Cell::muted(note)));
+            }
+            groups.push(children.note(msg::tui_settings_pane_leaf_note(flat.name)));
+        }
+        Pane::with_activity(groups)
+    }
+}
+
+/// The node at `path`, a tree's index then the names from its root, as [`Flat::path`] holds it.
+fn node(path: &str) -> Option<&'static Node> {
+    let mut parts = path.split('/');
+    let tree: usize = parts.next()?.parse().ok()?;
+    let mut nodes: &'static [Node] = TREES.get(tree)?;
+    let mut found = None;
+    for name in parts {
+        let node = nodes.iter().find(|node| node.name == name)?;
+        nodes = node.children;
+        found = Some(node);
+    }
+    found
 }
 
 #[cfg(test)]

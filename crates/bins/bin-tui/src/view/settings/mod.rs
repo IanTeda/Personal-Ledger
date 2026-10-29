@@ -35,7 +35,9 @@
 //! Dialogs are `lib-units`'; Accounts reads a fixture until the TUI moves onto `lib-accounts`
 //! ([`accounts`]), and Institutions, Categories, Tags, Payees, Documents and Inventory do the same
 //! on [`list::Page`]. `o` opens the full View where there is one, which `Shell` pushes Settings
-//! under, so the back key there returns to the same page and row.
+//! under, so the back key there returns to the same page and row. At X-Large every list page
+//! docks a detail pane for its selected row at the View's right edge (#884): Units' from its
+//! Presenter, the rest from their fixtures ([`pane`]).
 //!
 //! Logs and About are this-device pages with something real behind them: Logs reads the
 //! `LogBuffer` `main` hands `Shell`, which passes it to each Settings View it builds ([`logs`]),
@@ -69,6 +71,7 @@ mod keys;
 mod ledger;
 mod list;
 mod logs;
+mod pane;
 mod payees;
 mod picker;
 mod sync_server;
@@ -493,6 +496,15 @@ impl SettingsView {
         self.selected.get()
     }
 
+    /// The detail pane `page` docks at X-Large when it draws one from its fixture: Accounts and
+    /// the pages on [`list::Page`]. Units' comes from its Presenter, and a form page docks none.
+    fn fixture_pane(&self, page: SettingsPage) -> Option<pane::Pane> {
+        match page {
+            SettingsPage::Accounts => Some(self.accounts.pane()),
+            page => self.ledger_page(page).map(list::Page::pane),
+        }
+    }
+
     /// Whether the index docks beside the page: at Large and X-Large.
     fn docked(&self) -> bool {
         self.size != WindowSize::Medium
@@ -841,7 +853,7 @@ impl View for SettingsView {
         if size == WindowSize::Medium {
             match self.showing {
                 Showing::Index => index::render(frame, inner, self.selected(), self.ledger_open, c),
-                Showing::Page => self.render_page(frame, inner, false, true, c),
+                Showing::Page => self.render_page(frame, inner, false, true, false, c),
             }
         } else {
             let index_focused = self.showing == Showing::Index;
@@ -859,21 +871,35 @@ impl View for SettingsView {
                 self.ledger_open,
                 c,
             );
-            let page = match &self.units_page {
-                // X-Large docks the Units detail pane at the View's right edge (TUI-055).
-                Some(units) if self.selected() == SettingsPage::Units && units.has_pane() => {
-                    let [page, _, pane] = Layout::horizontal([
-                        Constraint::Min(0),
-                        Constraint::Length(1),
-                        Constraint::Length(crate::units::view::pane::WIDTH),
-                    ])
-                    .areas(page);
+            // X-Large docks a list page's detail pane at the View's right edge (TUI-055–057).
+            let split = |page: Rect| {
+                let [page, _, pane] = Layout::horizontal([
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Length(crate::view::detail_pane::WIDTH),
+                ])
+                .areas(page);
+                (page, pane)
+            };
+            let selected = self.selected();
+            let fixture_pane = (size == WindowSize::XLarge)
+                .then(|| self.fixture_pane(selected))
+                .flatten();
+            let docks_pane = fixture_pane.is_some();
+            let page = match (&self.units_page, fixture_pane) {
+                (Some(units), _) if selected == SettingsPage::Units && units.has_pane() => {
+                    let (page, pane) = split(page);
                     units.render_pane(frame, pane, c);
+                    page
+                }
+                (_, Some(fixture)) => {
+                    let (page, pane) = split(page);
+                    pane::render(frame, pane, &fixture, &selected.label(), c);
                     page
                 }
                 _ => page,
             };
-            self.render_page(frame, page, true, !index_focused, c);
+            self.render_page(frame, page, true, !index_focused, docks_pane, c);
         }
         if let Some(picker) = &self.picker {
             frame.render_widget(crate::popup::Dim, area);
@@ -909,6 +935,7 @@ impl SettingsView {
         area: Rect,
         docked: bool,
         focused: bool,
+        pane: bool,
         c: &Colours,
     ) {
         let page = self.selected();
@@ -971,7 +998,7 @@ impl SettingsView {
             SettingsPage::About => self.about.render(frame, body, focused, c),
             page => {
                 if let Some(page) = self.ledger_page(page) {
-                    page.render(frame, body, focused, c);
+                    page.render(frame, body, focused, pane, c);
                 }
             }
         }
@@ -1380,6 +1407,144 @@ mod tests {
             Some(Action::SetSetting(SettingField::Owner, None)),
             "owner, the field left selected, is still selected"
         );
+    }
+
+    /// The detail pane's columns of `text`, rendered at 256 columns: the 53 at the right edge.
+    fn pane_of(text: &str) -> String {
+        text.lines()
+            .map(|line| line.chars().skip(256 - 53).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn accounts_docks_tui_056s_pane_at_x_large() {
+        crate::locale::init_for_tests();
+        let mut view = at(WindowSize::XLarge, Some(SettingsPage::Accounts));
+        press(&mut view, &[KeyCode::Char('j')]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        for needle in [
+            "ACCOUNT",
+            "ANZ Offset",
+            "bank · ANZ · aud",
+            "61,204.10 aud",
+            "offsets           Home Loan",
+            "212",
+            "enter open ledger  ·  e edit  ·  d delete",
+            "RECENT TRANSACTIONS",
+            "Interest",
+            "+84.12",
+            "\u{2212}3,412.00",
+            "Open ledger (enter) shows them all.",
+            "ACTIVITY",
+            "This session's Accounts outcomes",
+        ] {
+            assert!(pane.contains(needle), "{needle} missing:\n{pane}");
+        }
+    }
+
+    #[test]
+    fn history_docks_tui_057s_pane_with_no_activity() {
+        crate::locale::init_for_tests();
+        let mut view = at(WindowSize::XLarge, Some(SettingsPage::History));
+        // Past the two undone changes and two applied ones to Marked Rates Q1 paid.
+        press(&mut view, &[KeyCode::Char('j'); 4]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        for needle in [
+            "CHANGE",
+            "Marked Rates Q1 paid",
+            "bills · laptop · today",
+            "synced",
+            "enter restore to here",
+            "BEFORE → AFTER",
+            "due → paid",
+            "RESTORING HERE UNDOES",
+            "Added Camera House",
+            "Renamed tag holiday → travel",
+        ] {
+            assert!(pane.contains(needle), "{needle} missing:\n{pane}");
+        }
+        assert!(!pane.contains("ACTIVITY"), "{pane}");
+
+        // An undone change offers redo, and lists what redoing reapplies.
+        press(&mut view, &[KeyCode::Home]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        assert!(pane.contains("enter redo to here"), "{pane}");
+        assert!(pane.contains("REDOING TO HERE REAPPLIES"), "{pane}");
+    }
+
+    #[test]
+    fn every_list_page_docks_a_pane_at_x_large_and_a_form_page_none() {
+        crate::locale::init_for_tests();
+        let list_pages = [
+            SettingsPage::Institutions,
+            SettingsPage::Accounts,
+            SettingsPage::Categories,
+            SettingsPage::Tags,
+            SettingsPage::Payees,
+            SettingsPage::Documents,
+            SettingsPage::Inventory,
+            SettingsPage::AiConnections,
+        ];
+        for page in list_pages {
+            let pane = pane_of(&render_at(&at(WindowSize::XLarge, Some(page)), 256, 72));
+            assert!(pane.contains("ACTIVITY"), "{page:?} docks no pane:\n{pane}");
+            let large = render_at(&at(WindowSize::Large, Some(page)), 213, 53);
+            assert!(!large.contains("ACTIVITY"), "{page:?} docks at Large");
+        }
+        let general = render_at(
+            &at(WindowSize::XLarge, Some(SettingsPage::General)),
+            256,
+            72,
+        );
+        assert!(!general.contains("ACTIVITY"));
+    }
+
+    #[test]
+    fn the_pane_takes_the_place_of_the_selected_box() {
+        crate::locale::init_for_tests();
+        let page = Some(SettingsPage::Institutions);
+        let large = render_at(&at(WindowSize::Large, page), 213, 53);
+        assert!(large.contains("selected · American Express"), "{large}");
+        let x_large = render_at(&at(WindowSize::XLarge, page), 256, 72);
+        assert!(
+            !x_large.contains("selected · American Express"),
+            "{x_large}"
+        );
+        let pane = pane_of(&x_large);
+        for needle in ["INSTITUTION", "American Express", "Amex Platinum", "Total"] {
+            assert!(pane.contains(needle), "{needle} missing:\n{pane}");
+        }
+    }
+
+    #[test]
+    fn a_pane_names_only_the_keys_that_act_on_its_row() {
+        crate::locale::init_for_tests();
+        // Housing has a subcategory, so `s` adds one; Rent, a leaf, takes none here.
+        let mut view = at(WindowSize::XLarge, Some(SettingsPage::Categories));
+        let pane = pane_of(&render_at(&view, 256, 72));
+        assert!(pane.contains("s add sub"), "{pane}");
+        assert!(pane.contains("SUBCATEGORIES"), "{pane}");
+        press(&mut view, &[KeyCode::Char('j')]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        assert!(pane.contains("under Housing"), "{pane}");
+        assert!(!pane.contains("s add sub"), "{pane}");
+
+        // Only a likely duplicate merges.
+        let mut view = at(WindowSize::XLarge, Some(SettingsPage::Tags));
+        assert!(!pane_of(&render_at(&view, 256, 72)).contains("m merge"));
+        press(&mut view, &[KeyCode::Char('j'); 4]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        assert!(pane.contains("m merge"), "{pane}");
+        assert!(pane.contains("LIKELY DUPLICATE"), "{pane}");
+
+        // `x` removes a provider and revokes an assistant.
+        let mut view = at(WindowSize::XLarge, Some(SettingsPage::AiConnections));
+        assert!(pane_of(&render_at(&view, 256, 72)).contains("x remove"));
+        press(&mut view, &[KeyCode::Tab]);
+        let pane = pane_of(&render_at(&view, 256, 72));
+        assert!(pane.contains("x revoke"), "{pane}");
+        assert!(pane.contains("ASSISTANT"), "{pane}");
     }
 
     #[test]

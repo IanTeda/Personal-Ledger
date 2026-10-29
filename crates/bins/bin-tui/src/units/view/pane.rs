@@ -7,7 +7,6 @@
 //! the selection is left out (Edit source on a Unit's link, where `e` edits the Unit), and a Unit's
 //! PRICE SOURCE names `tab` instead, which moves to the Price Sources table.
 
-use lib_locale::format::upper;
 use lib_units::keymap::{NEXT_TABLE, TEST_SOURCE};
 use lib_units::presenter::{
     AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, MenuAction, PaneButton, PaneGroup,
@@ -16,23 +15,14 @@ use lib_units::presenter::{
 use lib_viper::keymap::{DELETE, EDIT, Keymap, REACTIVATE};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    layout::Rect,
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph},
 };
 
-use super::units::HINT_SEPARATOR;
 use crate::colours::Colours;
+use crate::view::detail_pane::{self, Row, bold, dim, heading};
 
-/// The pane's width in columns, its border included: the Desktop's 400px at 7.5px a column.
-pub const WIDTH: u16 = 53;
-
-/// Width of a fact's label column, as TUI-055 draws it.
-const LABEL_WIDTH: usize = 18;
-
-/// Width of an ACTIVITY line's time column: `HH:MM` and a space.
-const TIME_WIDTH: usize = 6;
+pub use crate::view::detail_pane::WIDTH;
 
 /// What the pane needs beyond the Presenter's `DetailPane` to name its keys.
 pub struct PaneKeys<'a> {
@@ -43,17 +33,6 @@ pub struct PaneKeys<'a> {
     pub sources: &'a str,
 }
 
-/// One row of the pane, top to bottom.
-enum Row {
-    Text(Line<'static>),
-    /// A line with a second one right-aligned beside it.
-    Split(Line<'static>, Line<'static>),
-    /// A dim sentence, word-wrapped to the pane's width since a note reads poorly clipped.
-    Note(String),
-    Rule,
-    Blank,
-}
-
 /// Draws `pane` in `area`, behind a left border. Rows past the bottom clip.
 pub fn render(
     frame: &mut Frame<'_>,
@@ -62,12 +41,6 @@ pub fn render(
     keys: &PaneKeys<'_>,
     c: &Colours,
 ) {
-    let block = Block::new()
-        .borders(Borders::LEFT)
-        .padding(Padding::horizontal(1));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let mut rows = Vec::new();
     for (index, group) in pane.groups.iter().enumerate() {
         if index > 0 {
@@ -81,84 +54,14 @@ pub fn render(
             PaneGroup::Activity(group) => activity_rows(&mut rows, group, c),
         }
     }
-
-    let width = usize::from(inner.width);
-    let rows = rows.into_iter().flat_map(|row| match row {
-        Row::Note(text) => wrap(&text, width)
-            .into_iter()
-            .map(|line| Row::Text(dim(line, c)))
-            .collect(),
-        row => vec![row],
-    });
-    for (row, y) in rows.zip(inner.y..inner.bottom()) {
-        let area = Rect {
-            y,
-            height: 1,
-            ..inner
-        };
-        match row {
-            Row::Text(line) => frame.render_widget(Paragraph::new(line), area),
-            Row::Split(left, right) => {
-                let width = u16::try_from(right.width()).unwrap_or(u16::MAX);
-                let [left_area, right_area] =
-                    Layout::horizontal([Constraint::Min(0), Constraint::Length(width)])
-                        .spacing(1)
-                        .areas(area);
-                frame.render_widget(Paragraph::new(left), left_area);
-                frame.render_widget(
-                    Paragraph::new(right).alignment(Alignment::Right),
-                    right_area,
-                );
-            }
-            Row::Note(_) => {}
-            Row::Rule => frame.render_widget(Block::new().borders(Borders::BOTTOM), area),
-            Row::Blank => {}
-        }
-    }
+    detail_pane::render(frame, area, rows, c);
 }
 
-/// `text` broken at spaces into lines no wider than `width`; a word wider than that clips.
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
-    for word in text.split_whitespace() {
-        match lines.last_mut() {
-            Some(line) if line.chars().count() + 1 + word.chars().count() <= width => {
-                line.push(' ');
-                line.push_str(word);
-            }
-            _ => lines.push(word.to_string()),
-        }
-    }
-    lines
-}
-
-fn heading(rows: &mut Vec<Row>, heading: &str, c: &Colours) {
-    rows.push(Row::Text(dim(upper(heading), c)));
-    rows.push(Row::Rule);
-}
-
-fn dim(text: String, c: &Colours) -> Line<'static> {
-    Line::from(Span::styled(text, c.muted()))
-}
-
-fn bold(text: String) -> Line<'static> {
-    Line::from(Span::styled(
-        text,
-        Style::default().add_modifier(Modifier::BOLD),
-    ))
-}
-
-/// A fact: its label dim in a fixed column, then its value. A monospace value needs nothing more
-/// in a terminal.
 fn fact(fact: &Fact, c: &Colours) -> Row {
-    Row::Text(Line::from(vec![
-        Span::styled(format!("{:<LABEL_WIDTH$}", fact.label), c.muted()),
-        Span::raw(fact.value.clone()),
-    ]))
+    detail_pane::fact(&fact.label, vec![Span::raw(fact.value.clone())], c)
 }
 
-/// The keys under a group: each button's chord bold and its label dim, `extra` after them. No row
-/// when nothing is left.
+/// The keys under a group: each button that a key reaches from the selection, `extra` after them.
 fn key_row(
     rows: &mut Vec<Row>,
     buttons: &[PaneButton],
@@ -174,23 +77,8 @@ fn key_row(
         })
         .chain(extra)
         .filter(|(chord, _)| !chord.is_empty())
-        .collect::<Vec<_>>();
-    if named.is_empty() {
-        return;
-    }
-    let mut spans = Vec::new();
-    for (index, (chord, label)) in named.into_iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(HINT_SEPARATOR, c.muted()));
-        }
-        spans.push(Span::styled(
-            chord,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(label, c.muted()));
-    }
-    rows.push(Row::Text(Line::from(spans)));
+        .collect();
+    detail_pane::key_row(rows, named, c);
 }
 
 /// The command whose key does what `event` does with `selected` selected, or `None` when no key
@@ -304,10 +192,7 @@ fn value_rows(rows: &mut Vec<Row>, line: &ValueLine, c: &Colours) {
 fn activity_rows(rows: &mut Vec<Row>, group: &ActivityGroup, c: &Colours) {
     heading(rows, &group.heading, c);
     for line in &group.lines {
-        rows.push(Row::Text(Line::from(vec![
-            Span::styled(format!("{:<TIME_WIDTH$}", line.time), c.muted()),
-            Span::raw(line.text.clone()),
-        ])));
+        rows.push(detail_pane::timed(&line.time, line.text.clone(), c));
     }
     rows.push(Row::Note(group.note.clone()));
 }
@@ -317,15 +202,6 @@ mod tests {
     use lib_units::{COINGECKO, UnitId};
 
     use super::*;
-
-    #[test]
-    fn a_note_wraps_at_spaces() {
-        assert_eq!(
-            wrap("This session's outcomes, newest first.", 20),
-            ["This session's", "outcomes, newest", "first."]
-        );
-        assert_eq!(wrap("", 20), Vec::<String>::new());
-    }
 
     #[test]
     fn a_button_names_the_key_that_does_it_from_the_selection() {
