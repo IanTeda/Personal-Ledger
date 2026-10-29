@@ -181,7 +181,7 @@ fn match_split_refuses_a_non_candidate() {
         due,
         far,
     );
-    assert_eq!(result, Err(BillError::NotACandidate));
+    assert_eq!(result, Err(Error::NotACandidate));
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn skip_snapshots_the_planned_amount_and_unskip_reverses() {
     let e = entry(&w.entries, due).unwrap();
     assert_eq!(amount(e, &w.plans, &w.splits), Some(cents_money(15_000)));
     unskip(&mut w.entries, due).unwrap();
-    assert_eq!(unskip(&mut w.entries, due), Err(BillError::NotSkipped));
+    assert_eq!(unskip(&mut w.entries, due), Err(Error::NotSkipped));
 }
 
 #[test]

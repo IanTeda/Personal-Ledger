@@ -4,7 +4,7 @@
 
 use bigdecimal::Signed;
 use chrono::NaiveDate;
-use lib_bills::{BillError, BillScheduleEntry, EntryId, Resolution, SplitRef};
+use lib_bills::{BillScheduleEntry, EntryId, Error, Resolution, SplitRef};
 use lib_core::{Money, TransactionId, TransactionStatus};
 use lib_transactions::{Split, Transaction};
 
@@ -26,7 +26,7 @@ impl PayBill {
     /// # Errors
     /// `EntryNotFound` or `EntryNotOpen` for an entry that is gone or settled, `PlanNotFound` for
     /// a Plan that is gone, and `AmountNotPositive` for an amount of zero or less.
-    pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId, BillError> {
+    pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId, Error> {
         self.run_as(TransactionId::new(), payments)
     }
 
@@ -38,7 +38,7 @@ impl PayBill {
         self,
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
-    ) -> Result<TransactionId, BillError> {
+    ) -> Result<TransactionId, Error> {
         let (plan, due, date) = (self.entry.plan_id, self.entry.due, self.date);
         let outcome = self.apply(transaction_id, payments);
         match &outcome {
@@ -60,16 +60,16 @@ impl PayBill {
         self,
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
-    ) -> Result<TransactionId, BillError> {
-        let entry = payments.entry(self.entry).ok_or(BillError::EntryNotFound)?;
+    ) -> Result<TransactionId, Error> {
+        let entry = payments.entry(self.entry).ok_or(Error::EntryNotFound)?;
         if !entry.is_open() {
-            return Err(BillError::EntryNotOpen);
+            return Err(Error::EntryNotOpen);
         }
         let plan = payments
             .bill_plan(self.entry.plan_id)
-            .ok_or(BillError::PlanNotFound)?;
+            .ok_or(Error::PlanNotFound)?;
         if !self.amount.0.is_positive() {
-            return Err(BillError::AmountNotPositive);
+            return Err(Error::AmountNotPositive);
         }
         let transaction = Transaction {
             id: transaction_id,
@@ -231,13 +231,13 @@ mod tests {
             .run(&mut PortsPayments(ports.clone()))
         };
 
-        assert_eq!(pay(due, cents(0)), Err(BillError::AmountNotPositive));
-        assert_eq!(pay(due, cents(-100)), Err(BillError::AmountNotPositive));
+        assert_eq!(pay(due, cents(0)), Err(Error::AmountNotPositive));
+        assert_eq!(pay(due, cents(-100)), Err(Error::AmountNotPositive));
         let gone = EntryId {
             plan_id: BillPlanId::seed(9_999),
             due: today(),
         };
-        assert_eq!(pay(gone, cents(100)), Err(BillError::EntryNotFound));
+        assert_eq!(pay(gone, cents(100)), Err(Error::EntryNotFound));
         assert_eq!(*ports.borrow(), before);
     }
 
@@ -255,6 +255,6 @@ mod tests {
         };
 
         assert!(pay().is_ok());
-        assert_eq!(pay(), Err(BillError::EntryNotOpen));
+        assert_eq!(pay(), Err(Error::EntryNotOpen));
     }
 }

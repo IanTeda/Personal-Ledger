@@ -1,6 +1,6 @@
 //! One Interactor per Bills intent, each a request value whose `run` takes the ports it needs.
 //! Each reads the Plans and entries, applies `bills`' rules to a copy, and writes back only the
-//! rows that changed, so a refusal leaves the ports untouched. Refusals are [`BillError`]s.
+//! rows that changed, so a refusal leaves the ports untouched. Refusals are [`Error`]s.
 //!
 //! Pay it directly isn't here: it writes a Transaction too, so it is `lib-bill-payments`' `PayBill`.
 

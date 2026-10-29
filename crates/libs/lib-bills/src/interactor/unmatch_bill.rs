@@ -2,7 +2,7 @@
 
 use super::Rows;
 use crate::protocols::BillsRepository;
-use crate::{BillError, EntryId, unmatch};
+use crate::{EntryId, Error, unmatch};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnmatchBill {
@@ -14,7 +14,7 @@ impl UnmatchBill {
     ///
     /// # Errors
     /// `EntryNotFound` for an entry that is gone and `NotPaid` for one that isn't Paid.
-    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
         let outcome = self.apply(bills);
         let (plan, due) = (self.entry.plan_id, self.entry.due);
         match &outcome {
@@ -26,7 +26,7 @@ impl UnmatchBill {
         outcome
     }
 
-    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
         let mut rows = Rows::read(bills);
         unmatch(&mut rows.entries, self.entry)?;
         rows.write_back(bills);
@@ -69,7 +69,7 @@ mod tests {
 
         assert_eq!(
             UnmatchBill { entry: telstra }.run(&mut ports.bills),
-            Err(BillError::NotPaid)
+            Err(Error::NotPaid)
         );
         assert_eq!(ports.bills, before);
     }

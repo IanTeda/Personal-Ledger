@@ -15,41 +15,6 @@ fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
 }
 
-/// Errors for Bill Plan and Bill Schedule operations.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum BillError {
-    #[error("a bill plan needs a name")]
-    NameRequired,
-    #[error("a bill plan's category must be an expense category with no children")]
-    CategoryNotExpenseLeaf,
-    #[error("a bill plan needs an account that takes transactions")]
-    AccountRequired,
-    #[error("the unit must be the account's unit")]
-    UnitMismatch,
-    /// Carries the locked Unit.
-    #[error("the unit is locked at {0}")]
-    UnitLocked(UnitId),
-    #[error("the planned amount must be greater than zero")]
-    AmountNotPositive,
-    #[error("ends on can't be before first due")]
-    EndsBeforeFirstDue,
-    #[error("a one-shot bill plan has no ends on date")]
-    EndsOnForOneShot,
-    #[error("bill plan not found")]
-    PlanNotFound,
-    #[error("bill schedule entry not found")]
-    EntryNotFound,
-    /// Paid, Skipped or superseded already, or a preview with no row behind it.
-    #[error("this bill schedule entry isn't open")]
-    EntryNotOpen,
-    #[error("that split can't be matched to this bill")]
-    NotACandidate,
-    #[error("this bill schedule entry isn't paid")]
-    NotPaid,
-    #[error("this bill schedule entry isn't skipped")]
-    NotSkipped,
-}
-
 /// What the Add and Edit dialogs submit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BillPlanDraft {
@@ -71,30 +36,30 @@ fn validate(
     draft: &BillPlanDraft,
     categories: &[BillCategory],
     accounts: &[BillAccount],
-) -> Result<String, BillError> {
+) -> Result<String, Error> {
     let name = draft.name.trim();
     if name.is_empty() {
-        return Err(BillError::NameRequired);
+        return Err(Error::NameRequired);
     }
     let is_expense_leaf = categories
         .iter()
         .any(|c| c.id == draft.category_id && c.is_expense && c.is_leaf);
     if !is_expense_leaf {
-        return Err(BillError::CategoryNotExpenseLeaf);
+        return Err(Error::CategoryNotExpenseLeaf);
     }
     let account = accounts
         .iter()
         .find(|a| a.id == draft.account_id && a.takes_transactions)
-        .ok_or(BillError::AccountRequired)?;
+        .ok_or(Error::AccountRequired)?;
     if account.unit != draft.unit {
-        return Err(BillError::UnitMismatch);
+        return Err(Error::UnitMismatch);
     }
     if !draft.planned_amount.0.is_positive() {
-        return Err(BillError::AmountNotPositive);
+        return Err(Error::AmountNotPositive);
     }
     match draft.ends_on {
-        Some(_) if draft.recurrence == Recurrence::OneShot => Err(BillError::EndsOnForOneShot),
-        Some(ends_on) if ends_on < draft.first_due => Err(BillError::EndsBeforeFirstDue),
+        Some(_) if draft.recurrence == Recurrence::OneShot => Err(Error::EndsOnForOneShot),
+        Some(ends_on) if ends_on < draft.first_due => Err(Error::EndsBeforeFirstDue),
         _ => Ok(name.to_string()),
     }
 }
@@ -107,7 +72,7 @@ pub fn insert_plan(
     categories: &[BillCategory],
     accounts: &[BillAccount],
     today: NaiveDate,
-) -> Result<BillPlanId, BillError> {
+) -> Result<BillPlanId, Error> {
     insert_plan_as(
         BillPlanId::new(),
         plans,
@@ -128,7 +93,7 @@ pub(crate) fn insert_plan_as(
     categories: &[BillCategory],
     accounts: &[BillAccount],
     today: NaiveDate,
-) -> Result<BillPlanId, BillError> {
+) -> Result<BillPlanId, Error> {
     let name = validate(draft, categories, accounts)?;
     let plan = BillPlan {
         id,
@@ -162,13 +127,13 @@ pub fn edit_plan(
     categories: &[BillCategory],
     accounts: &[BillAccount],
     today: NaiveDate,
-) -> Result<(), BillError> {
+) -> Result<(), Error> {
     let plan = plans
         .iter_mut()
         .find(|p| p.id == id)
-        .ok_or(BillError::PlanNotFound)?;
+        .ok_or(Error::PlanNotFound)?;
     if draft.unit != plan.unit {
-        return Err(BillError::UnitLocked(plan.unit));
+        return Err(Error::UnitLocked(plan.unit));
     }
     let name = validate(draft, categories, accounts)?;
     let reschedules = (draft.recurrence, draft.first_due, draft.ends_on)
@@ -199,11 +164,11 @@ pub fn set_active(
     id: BillPlanId,
     is_active: bool,
     today: NaiveDate,
-) -> Result<(), BillError> {
+) -> Result<(), Error> {
     let plan = plans
         .iter_mut()
         .find(|p| p.id == id)
-        .ok_or(BillError::PlanNotFound)?;
+        .ok_or(Error::PlanNotFound)?;
     if plan.is_active == is_active {
         return Ok(());
     }
@@ -222,12 +187,12 @@ fn open_entry<'a>(
     plans: &'a [BillPlan],
     entries: &[BillScheduleEntry],
     id: EntryId,
-) -> Result<&'a BillPlan, BillError> {
-    let found = entry(entries, id).ok_or(BillError::EntryNotFound)?;
+) -> Result<&'a BillPlan, Error> {
+    let found = entry(entries, id).ok_or(Error::EntryNotFound)?;
     if !found.is_open() {
-        return Err(BillError::EntryNotOpen);
+        return Err(Error::EntryNotOpen);
     }
-    get(plans, id.plan_id).ok_or(BillError::PlanNotFound)
+    get(plans, id.plan_id).ok_or(Error::PlanNotFound)
 }
 
 /// Category `id`'s full path, as a View names a Bill Plan's Category: for a module that reads the
@@ -329,10 +294,10 @@ pub fn match_split(
     categories: &[BillCategory],
     id: EntryId,
     split: SplitRef,
-) -> Result<(), BillError> {
+) -> Result<(), Error> {
     open_entry(plans, entries, id)?;
     if !match_candidates(plans, entries, splits, accounts, categories, id).contains(&split) {
-        return Err(BillError::NotACandidate);
+        return Err(Error::NotACandidate);
     }
     if let Some(found) = entry_mut(entries, id) {
         found.resolution = Resolution::Paid(split);
@@ -345,7 +310,7 @@ pub fn skip(
     plans: &[BillPlan],
     entries: &mut [BillScheduleEntry],
     id: EntryId,
-) -> Result<(), BillError> {
+) -> Result<(), Error> {
     let planned = open_entry(plans, entries, id)?.planned_amount.clone();
     if let Some(found) = entry_mut(entries, id) {
         found.resolution = Resolution::Skipped { planned };
@@ -354,20 +319,20 @@ pub fn skip(
 }
 
 /// Undoes Paid: clears the Match and leaves the Transaction in place.
-pub fn unmatch(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), BillError> {
-    let found = entry_mut(entries, id).ok_or(BillError::EntryNotFound)?;
+pub fn unmatch(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Error> {
+    let found = entry_mut(entries, id).ok_or(Error::EntryNotFound)?;
     if !matches!(found.resolution, Resolution::Paid(_)) {
-        return Err(BillError::NotPaid);
+        return Err(Error::NotPaid);
     }
     found.resolution = Resolution::Unresolved;
     Ok(())
 }
 
 /// Undoes Skipped.
-pub fn unskip(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), BillError> {
-    let found = entry_mut(entries, id).ok_or(BillError::EntryNotFound)?;
+pub fn unskip(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Error> {
+    let found = entry_mut(entries, id).ok_or(Error::EntryNotFound)?;
     if !matches!(found.resolution, Resolution::Skipped { .. }) {
-        return Err(BillError::NotSkipped);
+        return Err(Error::NotSkipped);
     }
     found.resolution = Resolution::Unresolved;
     Ok(())
@@ -848,7 +813,7 @@ mod tests {
 
     // --- validation ---
 
-    fn refused(change: impl Fn(&mut BillPlanDraft)) -> BillError {
+    fn refused(change: impl Fn(&mut BillPlanDraft)) -> Error {
         let mut w = empty();
         let mut d = draft(Recurrence::Monthly, today());
         change(&mut d);
@@ -865,43 +830,40 @@ mod tests {
 
     #[test]
     fn validation_refuses_bad_drafts() {
-        assert_eq!(refused(|d| d.name = "  ".into()), BillError::NameRequired);
+        assert_eq!(refused(|d| d.name = "  ".into()), Error::NameRequired);
         // Salary is Income; Utilities has children.
         assert_eq!(
             refused(|d| d.category_id = CategoryId::seed(11)),
-            BillError::CategoryNotExpenseLeaf
+            Error::CategoryNotExpenseLeaf
         );
         assert_eq!(
             refused(|d| d.category_id = CategoryId::seed(3)),
-            BillError::CategoryNotExpenseLeaf
+            Error::CategoryNotExpenseLeaf
         );
         // Home Loan takes no Transactions.
         assert_eq!(
             refused(|d| d.account_id = AccountId::seed(5)),
-            BillError::AccountRequired
+            Error::AccountRequired
         );
         assert_eq!(
             refused(|d| d.account_id = AccountId::seed(99)),
-            BillError::AccountRequired
+            Error::AccountRequired
         );
-        assert_eq!(
-            refused(|d| d.unit = UnitId::SEED_BTC),
-            BillError::UnitMismatch
-        );
+        assert_eq!(refused(|d| d.unit = UnitId::SEED_BTC), Error::UnitMismatch);
         assert_eq!(
             refused(|d| d.planned_amount = cents_money(0)),
-            BillError::AmountNotPositive
+            Error::AmountNotPositive
         );
         assert_eq!(
             refused(|d| d.ends_on = Some(date(2026, 1, 1))),
-            BillError::EndsBeforeFirstDue
+            Error::EndsBeforeFirstDue
         );
         assert_eq!(
             refused(|d| {
                 d.recurrence = Recurrence::OneShot;
                 d.ends_on = Some(date(2027, 1, 1));
             }),
-            BillError::EndsOnForOneShot
+            Error::EndsOnForOneShot
         );
     }
 
@@ -914,7 +876,7 @@ mod tests {
         let (c, a) = (w.categories.clone(), w.accounts.clone());
         assert_eq!(
             edit_plan(&mut w.plans, &mut w.entries, pid, &edit, &c, &a, today()),
-            Err(BillError::UnitLocked(UnitId::SEED_AUD))
+            Err(Error::UnitLocked(UnitId::SEED_AUD))
         );
     }
 

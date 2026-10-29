@@ -100,7 +100,7 @@ These are the rules Claude follows and a review checks against.
 ### Interactor
 
 - One Interactor per user intent, in its own file.
-- Reaches storage only through the ports in `protocols.rs`. Refusals are variants of the crate's error type: typed, never strings. It lives in `error.rs`, or beside the Entity when the Entity's own rules raise it (`lib-bills`' `BillError` in `bills.rs`, `lib-payees`' `PayeeError` in `entity.rs`).
+- Reaches storage only through the ports in `protocols.rs`. Refusals are variants of the crate's error type: typed, never strings. It lives in `error.rs`, or beside the Entity when the Entity's own rules raise it (`lib-payees`' `PayeeError` in `entity.rs`).
 - Knows nothing about Views, Presenters, Messages or keys.
 - Enforces every rule itself, even one a Presenter already keeps a person from reaching (the Delete unit Dialog always offers a new base Unit, so `BaseUnitNeeded` is reachable only through the Interactor). A refusal no Client can reach is tested at the Interactor.
 

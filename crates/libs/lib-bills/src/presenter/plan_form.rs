@@ -20,7 +20,7 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 use super::{cycle, recurrence_label};
 use crate::interactor::{AddBillPlan, EditBillPlan};
 use crate::protocols::{BillsOutcome, BillsRouter, SharedPorts};
-use crate::{AmountKind, BillError, BillPlanDraft, Recurrence, msg};
+use crate::{AmountKind, BillPlanDraft, Error, Recurrence, msg};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -668,23 +668,23 @@ fn decimal_characters(text: &str) -> String {
 
 /// A refused Save. The form's own checks catch most of these first; what's left is a choice the
 /// selects couldn't fill (no expense Category, no Account in the Unit) or a Plan gone under it.
-fn refusal_text(refusal: &BillError) -> String {
+fn refusal_text(refusal: &Error) -> String {
     match refusal {
-        BillError::NameRequired => msg::bills_plan_error_name(),
-        BillError::CategoryNotExpenseLeaf => msg::bills_plan_error_category(),
-        BillError::AccountRequired | BillError::UnitMismatch => msg::bills_plan_error_account(),
-        BillError::AmountNotPositive => msg::bills_plan_error_amount(),
-        BillError::EndsBeforeFirstDue => msg::bills_plan_error_ends_before_first_due(),
-        BillError::PlanNotFound => msg::bills_plan_error_gone(),
+        Error::NameRequired => msg::bills_plan_error_name(),
+        Error::CategoryNotExpenseLeaf => msg::bills_plan_error_category(),
+        Error::AccountRequired | Error::UnitMismatch => msg::bills_plan_error_account(),
+        Error::AmountNotPositive => msg::bills_plan_error_amount(),
+        Error::EndsBeforeFirstDue => msg::bills_plan_error_ends_before_first_due(),
+        Error::PlanNotFound => msg::bills_plan_error_gone(),
         // Not reachable from the form: One-shot hides Ends On, Edit locks the Unit, and the rest
         // come from settlement.
-        BillError::UnitLocked(_)
-        | BillError::EndsOnForOneShot
-        | BillError::EntryNotFound
-        | BillError::EntryNotOpen
-        | BillError::NotACandidate
-        | BillError::NotPaid
-        | BillError::NotSkipped => msg::bills_plan_error_other(),
+        Error::UnitLocked(_)
+        | Error::EndsOnForOneShot
+        | Error::EntryNotFound
+        | Error::EntryNotOpen
+        | Error::NotACandidate
+        | Error::NotPaid
+        | Error::NotSkipped => msg::bills_plan_error_other(),
     }
 }
 

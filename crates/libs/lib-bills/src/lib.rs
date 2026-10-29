@@ -37,6 +37,7 @@ pub mod bills;
     reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
 )]
 pub mod contract;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -50,6 +51,7 @@ pub use protocols::{
 };
 
 pub use bills::*;
+pub use error::{Error, Result};
 pub mod history;
 pub use history::*;
 pub mod seed;

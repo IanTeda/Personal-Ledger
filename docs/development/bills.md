@@ -26,7 +26,7 @@ In memory the entry holds its Match as `Resolution::Paid(SplitRef)`. On disk the
 
 The module, as `docs/development/viper-architecture.md` lays one out:
 
-- **Interactors** (`interactor/`) — `PopulateSchedule`, `AddBillPlan`, `EditBillPlan` (with its activation), `MatchBill` and the `MatchCandidates` read Pay opens on, `SkipBill`, `UnmatchBill` and `UnskipBill`. Each reads the Plans and entries, applies the rules to a copy and writes back only the rows that changed; refusals are `BillError`.
+- **Interactors** (`interactor/`) — `PopulateSchedule`, `AddBillPlan`, `EditBillPlan` (with its activation), `MatchBill` and the `MatchCandidates` read Pay opens on, `SkipBill`, `UnmatchBill` and `UnskipBill`. Each reads the Plans and entries, applies the rules to a copy and writes back only the rows that changed; refusals are `lib_bills::Error`.
 - **Presenters** (`presenter/`) — `BillsPagePresenter` (the header, tabs and status line, holding `SchedulePresenter` and `PlannerPresenter`, and generating a month the Client crosses into), `PlanFormPresenter` (8c) and `SkipPresenter` (8e).
 - **`protocols.rs`** — the ports, `BillUnits` for Unit codes, `BillsPorts` (the set the Presenters share) and `BillsRouter` (the Plan form, Skip, Pay, `show_transaction`, and the Shell's Notices through `Notify`).
 - **`keymap.rs`** — the page's default keys, `bills.`-namespaced where only Bills has the command; **`i18n/`** — the `bills-` Messages.

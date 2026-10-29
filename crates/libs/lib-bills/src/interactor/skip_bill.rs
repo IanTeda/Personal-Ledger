@@ -3,7 +3,7 @@
 
 use super::Rows;
 use crate::protocols::BillsRepository;
-use crate::{BillError, EntryId, skip};
+use crate::{EntryId, Error, skip};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SkipBill {
@@ -16,7 +16,7 @@ impl SkipBill {
     /// # Errors
     /// `EntryNotFound` for an entry that is gone, `EntryNotOpen` for one already settled or
     /// superseded, and `PlanNotFound` for an entry whose Plan is gone.
-    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
         let outcome = self.apply(bills);
         let (plan, due) = (self.entry.plan_id, self.entry.due);
         match &outcome {
@@ -28,7 +28,7 @@ impl SkipBill {
         outcome
     }
 
-    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), BillError> {
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
         let mut rows = Rows::read(bills);
         skip(&rows.plans, &mut rows.entries, self.entry)?;
         rows.write_back(bills);
@@ -72,7 +72,7 @@ mod tests {
 
         assert_eq!(
             SkipBill { entry: origin }.run(&mut ports.bills),
-            Err(BillError::EntryNotOpen)
+            Err(Error::EntryNotOpen)
         );
         let missing = EntryId {
             plan_id: BillPlanId::seed(9_999),
@@ -80,7 +80,7 @@ mod tests {
         };
         assert_eq!(
             SkipBill { entry: missing }.run(&mut ports.bills),
-            Err(BillError::EntryNotFound)
+            Err(Error::EntryNotFound)
         );
         assert_eq!(ports.bills, before);
     }

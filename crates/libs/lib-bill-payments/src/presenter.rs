@@ -16,7 +16,7 @@
 use chrono::{Duration, NaiveDate};
 use lib_bills::interactor::MatchBill;
 use lib_bills::presenter::money;
-use lib_bills::{BillError, EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
+use lib_bills::{EntryId, Error, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
 use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
@@ -428,9 +428,9 @@ fn decimal_characters(text: &str) -> String {
 
 /// A refused confirm. The panel's own checks catch a bad amount first, so what's left is an entry
 /// settled, superseded or gone under the Dialog, or a candidate no longer one.
-fn refusal_text(refusal: &BillError) -> String {
+fn refusal_text(refusal: &Error) -> String {
     match refusal {
-        BillError::AmountNotPositive => msg::bill_payments_pay_error_amount(),
+        Error::AmountNotPositive => msg::bill_payments_pay_error_amount(),
         _ => msg::bill_payments_pay_error_gone(),
     }
 }

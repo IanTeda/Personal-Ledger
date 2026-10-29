@@ -6,7 +6,7 @@ use lib_core::BillPlanId;
 
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillsRepository};
-use crate::{BillError, BillPlanDraft, edit_plan, set_active};
+use crate::{BillPlanDraft, Error, edit_plan, set_active};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditBillPlan {
@@ -28,7 +28,7 @@ impl EditBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), BillError> {
+    ) -> Result<(), Error> {
         let (id, is_active) = (self.id, self.is_active);
         let outcome = self.apply(bills, accounts, categories);
         match &outcome {
@@ -45,7 +45,7 @@ impl EditBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), BillError> {
+    ) -> Result<(), Error> {
         let mut rows = Rows::read(bills);
         edit_plan(
             &mut rows.plans,
@@ -92,7 +92,7 @@ mod tests {
         id: BillPlanId,
         draft: BillPlanDraft,
         is_active: bool,
-    ) -> Result<(), BillError> {
+    ) -> Result<(), Error> {
         EditBillPlan {
             id,
             draft,
@@ -194,7 +194,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(refused, Err(BillError::UnitLocked(UnitId::SEED_AUD)));
+        assert_eq!(refused, Err(Error::UnitLocked(UnitId::SEED_AUD)));
         assert_eq!(ports.bills, before);
         assert_eq!(
             edit(
@@ -203,7 +203,7 @@ mod tests {
                 draft(Recurrence::Monthly, today()),
                 true
             ),
-            Err(BillError::PlanNotFound)
+            Err(Error::PlanNotFound)
         );
     }
 }

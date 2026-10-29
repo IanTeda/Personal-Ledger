@@ -6,7 +6,7 @@ use lib_core::BillPlanId;
 
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillsRepository};
-use crate::{BillError, BillPlanDraft, insert_plan};
+use crate::{BillPlanDraft, Error, insert_plan};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddBillPlan {
@@ -25,7 +25,7 @@ impl AddBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<BillPlanId, BillError> {
+    ) -> Result<BillPlanId, Error> {
         let outcome = self.apply(bills, accounts, categories);
         match &outcome {
             Ok(id) => tracing::info!(bill_plan_id = %id, "Added a Bill Plan"),
@@ -39,7 +39,7 @@ impl AddBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<BillPlanId, BillError> {
+    ) -> Result<BillPlanId, Error> {
         let mut rows = Rows::read(bills);
         let id = insert_plan(
             &mut rows.plans,
@@ -65,7 +65,7 @@ mod tests {
     fn add(
         ports: &mut crate::fake::InMemoryPorts,
         draft: BillPlanDraft,
-    ) -> Result<BillPlanId, BillError> {
+    ) -> Result<BillPlanId, Error> {
         let ports = &mut *ports;
         AddBillPlan {
             draft,
@@ -105,7 +105,7 @@ mod tests {
             },
         );
 
-        assert_eq!(refused, Err(BillError::CategoryNotExpenseLeaf));
+        assert_eq!(refused, Err(Error::CategoryNotExpenseLeaf));
         assert_eq!(ports.bills, before);
     }
 }
