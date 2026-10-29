@@ -24,8 +24,16 @@ The fixed, descriptive grouping a Unit carries, one of six: **Currency** (fiat m
 _Avoid_: Fiat, Stock, Share, ETF, Precious metal, Other, asset class.
 
 **Price Source**:
-Where a Unit's prices come from, listed under the Units on the Units Settings page: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a Custom source a person adds, or Manual entry, the fallback that never fetches. A built-in can be renamed and retimed but never deleted; a Custom source can be added, edited and deleted. Each Unit links to one source with its own symbol and quote Unit, and keeps only its last price. Pricing never converts between Units.
+Where a Unit's prices come from, listed under the Units on the Units Settings page: a built-in source (CoinGecko, Yahoo Finance, Frankfurter), a Custom source a person adds, or Manual entry, the fallback that never fetches. A built-in can be renamed and retimed but never deleted; a Custom source can be added, edited and deleted. Each Unit links to one source with its own symbol and quote Unit, and keeps its prices as Weekly Prices (see below). Pricing never converts between Units.
 _Avoid_: feed, provider, exchange.
+
+**Weekly Price**:
+A Unit's price for one ISO week (Monday to Sunday, the same in every Locale), named by that week's Monday and stated in the Unit's quote Unit: a close, with an optional open, high and low. A Unit holds at most one per week and keeps every one it has had. The current week's Weekly Price is provisional: each new price for the Unit overwrites its close and widens its high and low, and it becomes final when the week ends. A Unit's last price is the close of its newest Weekly Price. Changing a Unit's quote Unit clears its Weekly Prices, since they were stated in the old one; changing its Price Source, Manual entry included, keeps them.
+_Avoid_: price history, quote, candle, tick.
+
+**Precision**:
+The number of decimal places a Unit's amounts are shown and entered to (AUD 2, BTC 8). A price shows at its quote Unit's Precision, since it is an amount in that Unit.
+_Avoid_: decimals, scale, places.
 
 **Ledger**:
 The complete set of Accounts, Institutions, Units, Categories, Payees, Tags,

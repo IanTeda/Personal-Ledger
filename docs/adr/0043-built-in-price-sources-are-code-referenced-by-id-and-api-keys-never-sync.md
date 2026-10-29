@@ -19,3 +19,7 @@ Referencing built-ins by id means an app update that fixes a provider's address 
 ## Amendment: API keys default to the OS keychain
 
 Decided in the [VIPER transition grilling](https://github.com/IanTeda/Personal-Ledger/issues/745). A Client keeps each API key in the OS keychain through the `keyring` crate: Keychain on macOS, Credential Manager on Windows, Secret Service (gnome-keyring or KWallet) on Linux. The key never goes into the database, the static config file or the Git backup. A key can't be hashed, since it has to be sent in plain form, and a secret in the config file sits on the same disk as the database it would protect. A password in the UI was rejected: it adds a prompt at every start, and a forgotten password loses every key. On a machine with no keychain, such as a headless Linux machine without Secret Service, the key field says so and stores nothing, and that source's Units stay on Manual entry; an encrypted-file fallback waits until someone needs it. Building this belongs with the Price Source fetching work, since nothing reads a key until fetching exists. The `price_sources` table holds Custom sources only and never a key.
+
+## Amendment: Units keep Weekly Prices
+
+The "last price only" on a Unit's link is superseded by [ADR-0052](0052-units-keep-a-weekly-price-history.md): a Unit keeps a Weekly Price per ISO week, and its last price is the newest one's close.
