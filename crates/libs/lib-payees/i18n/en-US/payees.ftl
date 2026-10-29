@@ -62,7 +62,7 @@ payees-edit-usage-callout = { $count ->
 ## The Delete payee Dialog (6d). A Payee nothing names is deleted; one in use can only be
 ## deactivated, and an inactive one in use is offered reactivation. A Payee whose use can't be
 ## counted is offered what one in use is, with an `-unchecked` warning. `$name` is the Payee's name,
-## `$count` the Splits carrying it, `$rules` its match rules.
+## `$splits` the Splits carrying it, `$bill_plans` the Bill Plans naming it, `$rules` its match rules.
 
 payees-delete-title = Delete payee — { $name }
 payees-delete-submit = Delete payee
@@ -74,17 +74,49 @@ payees-delete-callout = { $rules ->
 }
 payees-deactivate-title = Deactivate payee — { $name }
 payees-deactivate-submit = Deactivate payee
-payees-deactivate-warning = This payee is used by <strong>{ $count ->
-    [one] { $count } transaction
-   *[other] { $count } transactions
+payees-deactivate-warning = This payee is used by <strong>{ $splits ->
+    [0] { $bill_plans ->
+        [one] { $bill_plans } bill plan
+       *[other] { $bill_plans } bill plans
+    }
+   *[other] { $bill_plans ->
+        [0] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        }
+        [one] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        } and { $bill_plans } bill plan
+       *[other] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        } and { $bill_plans } bill plans
+    }
 }</strong>, so it can't be deleted — only deactivated.
 payees-deactivate-warning-unchecked = What uses this payee <strong>couldn't be checked</strong>, so it can't be deleted — only deactivated.
 payees-deactivate-callout = It stays on the list and in the Transactions filter, dimmed, and its transactions keep it. Its match rules stop matching on import. You can reactivate it later.
 payees-reactivate-title = Reactivate payee — { $name }
 payees-reactivate-submit = Reactivate payee
-payees-reactivate-warning = This payee is inactive and used by <strong>{ $count ->
-    [one] { $count } transaction
-   *[other] { $count } transactions
+payees-reactivate-warning = This payee is inactive and used by <strong>{ $splits ->
+    [0] { $bill_plans ->
+        [one] { $bill_plans } bill plan
+       *[other] { $bill_plans } bill plans
+    }
+   *[other] { $bill_plans ->
+        [0] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        }
+        [one] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        } and { $bill_plans } bill plan
+       *[other] { $splits ->
+            [one] { $splits } transaction
+           *[other] { $splits } transactions
+        } and { $bill_plans } bill plans
+    }
 }</strong>.
 payees-reactivate-warning-unchecked = This payee is inactive, and what uses it <strong>couldn't be checked</strong>.
 payees-reactivate-callout = Reactivating counts it again and its match rules match on import again.

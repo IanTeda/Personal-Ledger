@@ -120,7 +120,7 @@ impl DeletePayeePresenter {
                 msg::payees_deactivate_submit(),
                 self.uses
                     .map_or_else(msg::payees_deactivate_warning_unchecked, |uses| {
-                        msg::payees_deactivate_warning(count(uses.splits))
+                        msg::payees_deactivate_warning(count(uses.splits), count(uses.bill_plans))
                     }),
                 msg::payees_deactivate_callout(),
             ),
@@ -129,7 +129,7 @@ impl DeletePayeePresenter {
                 msg::payees_reactivate_submit(),
                 self.uses
                     .map_or_else(msg::payees_reactivate_warning_unchecked, |uses| {
-                        msg::payees_reactivate_warning(count(uses.splits))
+                        msg::payees_reactivate_warning(count(uses.splits), count(uses.bill_plans))
                     }),
                 msg::payees_reactivate_callout(),
             ),
@@ -240,6 +240,10 @@ mod tests {
             splits,
             bill_plans: 0,
         }
+    }
+
+    fn used_by(splits: usize, bill_plans: usize) -> PayeeUse {
+        PayeeUse { splits, bill_plans }
     }
 
     fn send(dialog: &mut DeletePayeePresenter, events: Vec<DeletePayeeEvent>) -> Vec<RouterCall> {
@@ -384,6 +388,43 @@ mod tests {
             .iter()
             .map(|segment| segment.text.as_str())
             .collect()
+    }
+
+    #[test]
+    fn the_warnings_count_what_names_the_payee() {
+        let (ports, shared) = stub();
+        let warnings = |id, uses| {
+            ports.borrow_mut().usage.uses.insert(id, uses);
+            let view = DeletePayeePresenter::new(shared.clone(), id)
+                .expect("a stub Payee")
+                .view_model();
+            plain(&view.warning)
+        };
+
+        assert_eq!(
+            warnings(NETFLIX, used_by(0, 1)),
+            "This payee is used by 1 bill plan, so it can't be deleted — only deactivated."
+        );
+        assert_eq!(
+            warnings(NETFLIX, used_by(0, 3)),
+            "This payee is used by 3 bill plans, so it can't be deleted — only deactivated."
+        );
+        assert_eq!(
+            warnings(NETFLIX, used_by(2, 1)),
+            "This payee is used by 2 transactions and 1 bill plan, so it can't be deleted — only deactivated."
+        );
+        assert_eq!(
+            warnings(NETFLIX, used_by(1, 0)),
+            "This payee is used by 1 transaction, so it can't be deleted — only deactivated."
+        );
+        assert_eq!(
+            warnings(DON_QUIJOTE, used_by(0, 2)),
+            "This payee is inactive and used by 2 bill plans."
+        );
+        assert_eq!(
+            warnings(DON_QUIJOTE, used_by(4, 2)),
+            "This payee is inactive and used by 4 transactions and 2 bill plans."
+        );
     }
 
     #[test]
