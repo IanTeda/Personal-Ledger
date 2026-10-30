@@ -272,7 +272,7 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    /// Settings › Units on the stub Ledger, with the Shell's draw at `width` told it.
+    /// Settings › Units on the stub seed, with the Shell's draw at `width` told it.
     fn units_page(width: u16) -> SettingsView {
         let mut view = SettingsView::with_units(&stub_units());
         view.update(&Action::OpenSettingsPage(SettingsPage::Units));

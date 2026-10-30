@@ -7,9 +7,9 @@
 //! on each draw. Committing a new one opens the base unit guard (TUI-021,
 //! `popup::settings::guard`), which sets it through `lib-units`' Set base unit Presenter.
 //!
-//! THIS LEDGER's counts are derived on each draw: the Units from the Units store, and accounts,
-//! transactions and institutions from the Ledger the Units ports read usage from, the stub Ledger
-//! until those domains have adapters (#746).
+//! THIS LEDGER's counts are derived on each draw from the Open Ledger's stores: the Units from the
+//! Units store, and accounts, transactions and institutions from the stores the Units ports read
+//! usage from (#922).
 
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -287,12 +287,15 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
 /// THIS LEDGER: a 4-cell box of counts, each derived on this draw.
 fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &TuiPorts, c: &Colours) {
     let ports = units.borrow();
-    let ledger = ports.ledger();
+    let stores = ports.stores();
     let cells = [
-        (msg::tui_settings_ledger_accounts(), ledger.accounts().len()),
+        (
+            msg::tui_settings_ledger_accounts(),
+            stores.accounts.accounts().accounts().len(),
+        ),
         (
             msg::tui_settings_ledger_transactions(),
-            ledger.transactions().len(),
+            stores.transactions.all_transactions().len(),
         ),
         (
             msg::tui_settings_ledger_units(),
@@ -300,7 +303,7 @@ fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &TuiPorts, c: &C
         ),
         (
             msg::tui_settings_ledger_institutions(),
-            ledger.institutions().len(),
+            stores.institutions.institutions().institutions().len(),
         ),
     ];
     let block = Block::bordered()

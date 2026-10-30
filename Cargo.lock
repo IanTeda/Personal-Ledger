@@ -798,7 +798,6 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_database",
- "lib_ledger",
  "lib_list_cursor",
  "lib_locale",
  "lib_locale_build",

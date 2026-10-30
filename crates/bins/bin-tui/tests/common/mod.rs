@@ -57,6 +57,18 @@ pub fn shell_on(
     (shell, report)
 }
 
+/// A Ledger file at `path`, created and seeded as `:new` would, then changed by `edit` and saved.
+pub fn ledger_file_with(path: &Path, edit: impl FnOnce(&mut lib_database::Storage)) {
+    let storage = lib_database::open_storage(path, chrono::Local::now().date_naive(), "Personal");
+    assert!(storage.is_ok(), "a new Ledger opens");
+    let Ok(mut storage) = storage else { return };
+    edit(&mut storage);
+    Commit::commit(&storage.pending);
+    assert!(storage.writer.flush().is_ok(), "the writer is running");
+    let failed = storage.failures.try_recv();
+    assert!(failed.is_err(), "the edit was written: {failed:?}");
+}
+
 /// A `Shell` as `main` starts it: no Ledger open, and `file` the configured Ledger file a bare
 /// `:open` opens, if any.
 pub fn cold_shell(file: Option<&Path>) -> Shell {

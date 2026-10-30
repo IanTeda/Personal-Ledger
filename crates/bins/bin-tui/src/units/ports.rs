@@ -1,20 +1,21 @@
 //! The Units ports as the TUI holds them: the store `build_shell` is given, with `UnitUsage` and
 //! `UnitHoldings` answered by the stores opened beside it (#887), so a delete is checked against
-//! what the Ledger file holds. The TUI's other Views still draw their own fixtures, so no read copy
+//! what the Ledger file holds. Settings › Ledger and the base Unit guard count rows in the same
+//! stores (#922). The TUI's other Views still draw their own fixtures, so no read copy
 //! needs refreshing after a write.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_core::UnitId;
-use lib_ledger::Ledger;
 use lib_units::{
     BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitHoldings, UnitRepository,
     UnitUsage, UnitUse, UnitsPorts,
 };
 
 use lib_database::{
-    AccountsStore, BillsStore, Commit, InstitutionsStore, InventoryStore, UnitsStore,
+    AccountsStore, BillsStore, Commit, InstitutionsStore, InventoryStore, TransactionsStore,
+    UnitsStore,
 };
 
 /// The Units ports the Units View and its Dialogs share.
@@ -27,16 +28,18 @@ pub struct LedgerBackedPorts {
     store: Box<dyn UnitsStore>,
     usage: StoredUsage,
     commit: Rc<dyn Commit>,
-    ledger: Ledger,
 }
 
 /// What names each Unit, read from the stores of the domains that name one: the Accounts, Bill
-/// Plans, Locations and Institutions. No Budget names one, since Budgets don't persist (#811).
+/// Plans, Locations and Institutions. No Budget names one, since Budgets don't persist (#811). The
+/// Transactions are held for their count alone, which Settings › Ledger and the base Unit guard
+/// quote.
 pub struct StoredUsage {
     pub accounts: Box<dyn AccountsStore>,
     pub bills: Box<dyn BillsStore>,
     pub inventory: Box<dyn InventoryStore>,
     pub institutions: Box<dyn InstitutionsStore>,
+    pub transactions: Box<dyn TransactionsStore>,
 }
 
 impl UnitUsage for StoredUsage {
@@ -74,19 +77,17 @@ impl LedgerBackedPorts {
         store: Box<dyn UnitsStore>,
         usage: StoredUsage,
         commit: Rc<dyn Commit>,
-        ledger: Ledger,
     ) -> TuiPorts {
         Rc::new(RefCell::new(Self {
             store,
             usage,
             commit,
-            ledger,
         }))
     }
 
-    /// The stub Ledger Settings › General counts rows in, until it counts them in the stores.
-    pub fn ledger(&self) -> &Ledger {
-        &self.ledger
+    /// The stores beside the Units, whose rows Settings › Ledger and the base Unit guard count.
+    pub fn stores(&self) -> &StoredUsage {
+        &self.usage
     }
 
     /// Ends the Interactor call just made, if any, as one transaction.

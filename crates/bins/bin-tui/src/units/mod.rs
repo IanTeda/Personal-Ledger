@@ -21,7 +21,6 @@ use std::rc::Rc;
 
 use lib_config::KeyBindingConfig;
 use lib_database::{Commit, FakeStores, Stores, UnitsStore};
-use lib_ledger::Ledger;
 use lib_shell::DialogCommand;
 use lib_units::keymap::{unit_prices_keymap, units_page_keymap};
 use lib_units::presenter::{UnitPricesEvent, UnitsPageEvent};
@@ -47,7 +46,7 @@ impl UnitsSetup {
         config: &KeyBindingConfig,
     ) -> Self {
         Self {
-            ports: LedgerBackedPorts::shared(store, usage, commit, Ledger::stub()),
+            ports: LedgerBackedPorts::shared(store, usage, commit),
             keymap: units_page_keymap(config),
             prices_keymap: unit_prices_keymap(config),
             dialog_keymap: lib_shell::dialog_keymap(config),
@@ -72,6 +71,7 @@ impl UnitsSetup {
             bills,
             inventory,
             institutions,
+            transactions,
             commit,
             failures,
             ..
@@ -81,6 +81,7 @@ impl UnitsSetup {
             bills,
             inventory,
             institutions,
+            transactions,
         };
         (Self::new(units, usage, commit, config), failures)
     }

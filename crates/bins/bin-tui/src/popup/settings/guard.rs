@@ -1,4 +1,4 @@
-//! The base unit guard (TUI-021): committing a new base unit on Settings › General opens it, since
+//! The base unit guard (TUI-021): committing a new base unit on Settings › Ledger opens it, since
 //! every reported total is converted again when the base changes. It states what changes and asks
 //! you to type the new Unit's code; `enter` stays dim until the text matches exactly, and
 //! `ctrl p` goes to Settings › Units for the price sources instead. (`p` is the card's key, but a
@@ -9,7 +9,7 @@
 //! offers the Presenter's choices, opening the guard chooses one, and the typed confirmation is
 //! the TUI's one extra step before the Presenter's confirm.
 //!
-//! Transactions and accounts are counted from the Ledger the Units ports read usage from. The
+//! Transactions and accounts are counted in the Open Ledger's stores (#922). The
 //! months converted again and the missing prices need the conversion queries, which don't exist
 //! yet, so those stay worked examples, each marked `// wireframe:`.
 
@@ -85,8 +85,8 @@ impl BaseUnitGuardPopup {
                 .iter()
                 .map(|choice| choice.value)
                 .find(|id| code(*id).as_deref() == Some(to))?;
-            let ledger = held.ledger();
-            let accounts = ledger.accounts();
+            let stores = held.stores();
+            let accounts = stores.accounts.accounts().accounts();
             let already = accounts
                 .iter()
                 .filter(|account| account.unit == to_id)
@@ -94,7 +94,7 @@ impl BaseUnitGuardPopup {
             (
                 from,
                 to_id,
-                ledger.transactions().len(),
+                stores.transactions.all_transactions().len(),
                 accounts.len(),
                 already,
             )
