@@ -95,3 +95,18 @@ pub fn accounts_page(
     } = setup;
     cx.new(|cx| AccountsPage::new(ports, deletion, ledger, clock, keymap, cx))
 }
+
+/// `accounts new|edit|delete [<account name>]` on the Accounts page, once `Root` has opened it: the
+/// palette's way into the page, so `Root` reaches the page through this module rather than its
+/// methods.
+pub fn run_command(
+    page: &gpui::Entity<AccountsPage>,
+    command_name: &str,
+    verb: crate::navigation::command::AccountsVerb,
+    argument: &str,
+    cx: &mut gpui::App,
+) {
+    page.update(cx, |page, cx| {
+        page.run_command(command_name, verb, argument, cx);
+    });
+}

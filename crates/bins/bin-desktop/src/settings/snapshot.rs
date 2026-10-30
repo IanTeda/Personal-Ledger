@@ -5,7 +5,7 @@
 use gpui::App;
 
 use super::state::SettingsView;
-use crate::settings::SettingsFocus;
+use crate::settings::{SettingsFocus, display::DisplayPage};
 
 /// The Settings shell's state: the page on show and the dialog open over it. Each page's own state
 /// is its own snapshot (`settings_<page>_snapshot`), so a change to one domain edits one struct.
@@ -48,7 +48,7 @@ impl SettingsView {
     }
 
     pub fn display_snapshot(&self, cx: &App) -> SettingsDisplaySnapshot {
-        let page = self.display_page().read(cx);
+        let page = self.page::<DisplayPage>().read(cx);
         let display = page.preferences();
         SettingsDisplaySnapshot {
             display_field: page.field_focus(),

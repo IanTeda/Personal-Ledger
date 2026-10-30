@@ -277,8 +277,8 @@ impl<T: Page> PageHandle for Entity<T> {
 }
 
 /// The Entity of every Settings page. Settings builds them and `Root` reaches them only through
-/// the typed accessors on [`SettingsView`], for the palette commands that drive a page, the
-/// Tracing capture feed and the test snapshots.
+/// [`SettingsView::page`], for a module Router's entry point, the Tracing capture feed and the
+/// test snapshots.
 pub struct SettingsPages {
     pub general: Entity<GeneralPage>,
     pub display: Entity<DisplayPage>,

@@ -6,6 +6,7 @@ use lib_shell::{NavInput, ShellCommand, ToastInput};
 
 use super::{Root, explorer::explorer_start_dir};
 use crate::{
+    accounts::AccountsPage,
     navigation::{
         command::{self, AccountsVerb, BudgetsVerb, CommandEffect, Entry, ModulePage},
         explorer::FileExplorer,
@@ -259,8 +260,9 @@ impl Root {
         }
     }
 
-    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, whose Entity then
-    /// opens the same dialog its `n`/`e`/`d` and buttons do.
+    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, then hands the
+    /// command to the Accounts module's Router, which opens the same dialog the page's `n`/`e`/`d`
+    /// and buttons do.
     pub(super) fn run_accounts_command(
         &mut self,
         command_name: &str,
@@ -269,8 +271,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) {
         self.open_settings_page(SettingsPage::Accounts, cx);
-        self.accounts_page(cx).update(cx, |page, cx| {
-            page.run_command(command_name, verb, argument, cx);
-        });
+        let page = self.views.settings.read(cx).page::<AccountsPage>();
+        crate::accounts::router::run_command(&page, command_name, verb, argument, cx);
     }
 }

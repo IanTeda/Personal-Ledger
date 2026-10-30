@@ -10,26 +10,16 @@
 
 use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
 use crate::{
-    accounts::AccountsPage,
-    categories::CategoriesPage,
-    institutions::InstitutionsPage,
-    inventory::InventoryPage,
     ledger_store::LedgerStore,
     navigation::movement::Movement,
-    payees::PayeesPage,
-    settings::display::{DisplayPage, DisplayPreferences},
-    settings::documents::DocumentsPage,
-    settings::general::GeneralPage,
-    settings::pages::{PageFrame, PageHandle, SettingsPages, SettingsSetup},
+    settings::display::DisplayPreferences,
+    settings::pages::{Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::picker::PagePicker,
-    settings::tracing::TracingPage,
     settings::{SettingsFocus, SettingsPage},
     shell::view::{
         statusline::{PageStatus, owned_hints},
         window_size::WindowSize,
     },
-    tags::TagsPage,
-    units::UnitsPage,
     view::event::{Reveal, ViewEvent, ViewMode},
     view::help::HelpGroup,
 };
@@ -89,59 +79,21 @@ impl SettingsView {
         &self.pages
     }
 
-    /// The Accounts page's Entity, for the `accounts` command.
-    pub fn accounts(&self) -> &Entity<AccountsPage> {
-        &self.pages.accounts
-    }
-
-    /// The Categories page's Entity, for the Settings snapshots.
-    pub fn categories(&self) -> &Entity<CategoriesPage> {
-        &self.pages.categories
-    }
-
-    /// The Payees page's Entity, for the Settings snapshots.
-    pub fn payees(&self) -> &Entity<PayeesPage> {
-        &self.pages.payees
-    }
-
-    /// The Tags page's Entity, for the `tags merge` command and the Settings snapshots.
-    pub fn tags(&self) -> &Entity<TagsPage> {
-        &self.pages.tags
-    }
-
-    /// The Document Types page's Entity, for the Settings snapshots.
-    pub fn documents(&self) -> &Entity<DocumentsPage> {
-        &self.pages.documents
-    }
-
-    /// The Inventory page's Entity, for the Settings snapshots.
-    pub fn inventory(&self) -> &Entity<InventoryPage> {
-        &self.pages.inventory
-    }
-
-    /// The General page's Entity, for the Settings snapshots.
-    pub fn general(&self) -> &Entity<GeneralPage> {
-        &self.pages.general
-    }
-
-    /// The Display page's Entity, for the Settings snapshots.
-    pub fn display_page(&self) -> &Entity<DisplayPage> {
-        &self.pages.display
-    }
-
-    /// The Units page's Entity, for the Settings snapshots.
-    pub fn units(&self) -> &Entity<UnitsPage> {
-        &self.pages.units
-    }
-
-    /// The Tracing page's Entity, for `Root`'s capture feed and the Settings snapshots.
-    pub fn tracing(&self) -> &Entity<TracingPage> {
-        &self.pages.tracing
-    }
-
-    /// The Institutions page's Entity, for the Settings snapshots.
-    pub fn institutions(&self) -> &Entity<InstitutionsPage> {
-        &self.pages.institutions
+    /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point, the
+    /// Tracing capture feed and the Settings snapshots. Found through `T::PAGE`, so a new page needs
+    /// no accessor of its own (ADR-0037's 2026-10-30 amendment).
+    #[expect(
+        clippy::expect_used,
+        reason = "SettingsPages::get and T::PAGE can't disagree, and page_returns_the_page_for_every_settings_page checks each page"
+    )]
+    pub fn page<T: Page>(&self) -> Entity<T> {
+        self.pages
+            .get(T::PAGE)
+            .view()
+            .downcast::<T>()
+            // The `AnyView` handed back isn't `Debug`, so `expect` needs it dropped.
+            .map_err(drop)
+            .expect("`SettingsPages::get` hands back `T::PAGE`'s page, which is a `T`")
     }
 
     /// The open page, while it has focus: the page, rather than this View, then takes its keys,
@@ -606,5 +558,85 @@ impl SettingsView {
         self.pages
             .display
             .update(cx, |page, cx| page.set_preferences(display, cx));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{AppContext as _, EntityId, TestAppContext};
+
+    use super::*;
+    use crate::{
+        accounts::AccountsPage,
+        categories::CategoriesPage,
+        institutions::InstitutionsPage,
+        inventory::InventoryPage,
+        payees::PayeesPage,
+        settings::{
+            about::AboutPage, data_backup::DataBackupPage, display::DisplayPage,
+            documents::DocumentsPage, general::GeneralPage, sync_server::SyncServerPage,
+            tracing::TracingPage,
+        },
+        tags::TagsPage,
+        units::UnitsPage,
+    };
+
+    /// `page::<T>()`'s Entity, and `T::PAGE`, for the page type that draws `page`. The match is
+    /// exhaustive, so a new page fails to compile here until it is covered.
+    fn typed(view: &SettingsView, page: SettingsPage) -> (EntityId, SettingsPage) {
+        fn found<T: Page>(view: &SettingsView) -> (EntityId, SettingsPage) {
+            (view.page::<T>().entity_id(), T::PAGE)
+        }
+        match page {
+            SettingsPage::General => found::<GeneralPage>(view),
+            SettingsPage::Display => found::<DisplayPage>(view),
+            SettingsPage::Units => found::<UnitsPage>(view),
+            SettingsPage::Institutions => found::<InstitutionsPage>(view),
+            SettingsPage::Accounts => found::<AccountsPage>(view),
+            SettingsPage::Categories => found::<CategoriesPage>(view),
+            SettingsPage::Tags => found::<TagsPage>(view),
+            SettingsPage::Payees => found::<PayeesPage>(view),
+            SettingsPage::Documents => found::<DocumentsPage>(view),
+            SettingsPage::Inventory => found::<InventoryPage>(view),
+            SettingsPage::SyncServer => found::<SyncServerPage>(view),
+            SettingsPage::DataBackup => found::<DataBackupPage>(view),
+            SettingsPage::Tracing => found::<TracingPage>(view),
+            SettingsPage::About => found::<AboutPage>(view),
+        }
+    }
+
+    #[gpui::test]
+    fn page_returns_the_page_for_every_settings_page(cx: &mut TestAppContext) {
+        crate::locale::init_for_tests();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date");
+        let storage = crate::ledger_store::LedgerSetup::stub(today);
+        let setup = SettingsSetup {
+            units: crate::units::UnitsSetup::stub(&storage),
+            institutions: crate::institutions::InstitutionsSetup::stub(&storage),
+            payees: crate::payees::PayeesSetup::stub(&storage),
+            accounts: crate::accounts::AccountsSetup::stub(&storage),
+            categories: crate::categories::CategoriesSetup::stub(&storage),
+            tags: crate::tags::TagsSetup::stub(&storage),
+            inventory: crate::inventory::InventorySetup::stub(&storage),
+        };
+        let ledger =
+            cx.new(|_| LedgerStore::with_storage(lib_ledger::Ledger::stub_on(today), storage));
+        let clock = lib_core::Clock::fixed(today);
+        let view = cx.new(|cx| SettingsView::new(&ledger, &clock, setup, cx));
+
+        view.read_with(cx, |view, _| {
+            for page in SettingsPage::ALL {
+                let (entity, named) = typed(view, page);
+                assert_eq!(
+                    named, page,
+                    "the type drawing {page:?} names it as its page"
+                );
+                assert_eq!(
+                    entity,
+                    view.pages.get(page).view().entity_id(),
+                    "page::<T>() for {page:?} is the page Settings shows"
+                );
+            }
+        });
     }
 }

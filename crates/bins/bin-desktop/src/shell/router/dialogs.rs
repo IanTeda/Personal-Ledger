@@ -1,16 +1,11 @@
 //! The Dialog host plumbing of `Root`: opening, closing and confirming, the Bills, Budgets and
-//! Documents Dialogs it still confirms by variant, and the page accessors the palette commands
-//! and snapshots use. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
+//! Documents Dialogs it still confirms by variant. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
 
 use super::Root;
-use crate::inventory::InventoryPage;
-use crate::view::help::{HelpDialog, HelpGroup};
-use crate::{
-    accounts::AccountsPage,
-    shell::view::dialog_host::{
-        Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
-    },
+use crate::shell::view::dialog_host::{
+    Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
 };
+use crate::view::help::{HelpDialog, HelpGroup};
 use gpui::Context;
 use lib_shell::DialogInput;
 
@@ -135,16 +130,6 @@ impl Root {
             // Hosted: confirmed above through the opener's confirm.
             Some(OpenDialog::Tracing(_) | OpenDialog::DocumentTypes(_)) | None => {}
         }
-    }
-
-    /// The Inventory page's Entity, which the Settings View owns.
-    pub(super) fn inventory_page(&self, cx: &gpui::App) -> gpui::Entity<InventoryPage> {
-        self.views.settings.read(cx).inventory().clone()
-    }
-
-    /// The Accounts page's Entity, which the Settings View owns.
-    pub(super) fn accounts_page(&self, cx: &gpui::App) -> gpui::Entity<AccountsPage> {
-        self.views.settings.read(cx).accounts().clone()
     }
 
     /// The cancel button: closes the Dialog without applying it, as one input.

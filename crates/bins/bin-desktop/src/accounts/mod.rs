@@ -14,7 +14,7 @@
 //! `AccountsStore`.
 
 pub mod ports;
-mod router;
+pub(crate) mod router;
 mod view;
 
 pub use ports::{DesktopPorts, LedgerBackedPorts};

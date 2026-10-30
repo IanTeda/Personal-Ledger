@@ -118,10 +118,10 @@ impl AccountsPage {
         self.presenter.view_model()
     }
 
-    /// `accounts new|edit|delete [<account name>]`, once `Root` has opened the page: the same
-    /// Dialog the page's `n`/`e`/`d` and buttons open. A name that fits nothing or several
+    /// `accounts new|edit|delete [<account name>]`, through [`crate::accounts::router::run_command`]:
+    /// the same Dialog the page's `n`/`e`/`d` and buttons open. A name that fits nothing or several
     /// Accounts puts a status-line message naming the problem.
-    pub fn run_command(
+    pub(in crate::accounts) fn run_command(
         &mut self,
         command_name: &str,
         verb: AccountsVerb,

@@ -22,6 +22,12 @@ use crate::shell::router::Root;
 pub use crate::tags::SettingsTagsSnapshot;
 #[doc(hidden)]
 pub use crate::units::{SettingsUnitsSnapshot, UnitPricesSnapshot};
+use crate::{
+    accounts::AccountsPage, categories::CategoriesPage, institutions::InstitutionsPage,
+    inventory::InventoryPage, payees::PayeesPage, settings::documents::DocumentsPage,
+    settings::general::GeneralPage, settings::tracing::TracingPage, tags::TagsPage,
+    units::UnitsPage,
+};
 
 pub use crate::categories::SettingsCategoriesSnapshot;
 
@@ -42,7 +48,7 @@ impl Root {
         self.views
             .settings
             .read(cx)
-            .accounts()
+            .page::<AccountsPage>()
             .read(cx)
             .snapshot(cx)
     }
@@ -53,7 +59,7 @@ impl Root {
         self.views
             .settings
             .read(cx)
-            .categories()
+            .page::<CategoriesPage>()
             .read(cx)
             .snapshot(cx)
     }
@@ -61,7 +67,12 @@ impl Root {
     /// The Settings Payees page for a test.
     #[doc(hidden)]
     pub fn settings_payees_snapshot(&self, cx: &gpui::App) -> SettingsPayeesSnapshot {
-        self.views.settings.read(cx).payees().read(cx).snapshot(cx)
+        self.views
+            .settings
+            .read(cx)
+            .page::<PayeesPage>()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Document Types page for a test.
@@ -73,7 +84,7 @@ impl Root {
         self.views
             .settings
             .read(cx)
-            .documents()
+            .page::<DocumentsPage>()
             .read(cx)
             .snapshot(cx)
     }
@@ -81,25 +92,45 @@ impl Root {
     /// The Settings Inventory page for a test.
     #[doc(hidden)]
     pub fn settings_inventory_snapshot(&self, cx: &gpui::App) -> SettingsInventorySnapshot {
-        self.inventory_page(cx).read(cx).snapshot(cx)
+        self.views
+            .settings
+            .read(cx)
+            .page::<InventoryPage>()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Tags page for a test.
     #[doc(hidden)]
     pub fn settings_tags_snapshot(&self, cx: &gpui::App) -> SettingsTagsSnapshot {
-        self.views.settings.read(cx).tags().read(cx).snapshot(cx)
+        self.views
+            .settings
+            .read(cx)
+            .page::<TagsPage>()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings General page for a test.
     #[doc(hidden)]
     pub fn settings_general_snapshot(&self, cx: &gpui::App) -> SettingsGeneralSnapshot {
-        self.views.settings.read(cx).general().read(cx).snapshot(cx)
+        self.views
+            .settings
+            .read(cx)
+            .page::<GeneralPage>()
+            .read(cx)
+            .snapshot(cx)
     }
 
     /// The Settings Units page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
-        self.views.settings.read(cx).units().read(cx).view_model(cx)
+        self.views
+            .settings
+            .read(cx)
+            .page::<UnitsPage>()
+            .read(cx)
+            .view_model(cx)
     }
 
     /// The Settings Units page's Unit prices view for a test; `None` while it is closed.
@@ -108,7 +139,7 @@ impl Root {
         self.views
             .settings
             .read(cx)
-            .units()
+            .page::<UnitsPage>()
             .read(cx)
             .prices_view_model()
     }
@@ -119,7 +150,7 @@ impl Root {
         self.views
             .settings
             .read(cx)
-            .institutions()
+            .page::<InstitutionsPage>()
             .read(cx)
             .snapshot(cx)
     }
@@ -133,6 +164,11 @@ impl Root {
     /// The Settings Tracing page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_tracing_snapshot(&self, cx: &gpui::App) -> SettingsTracingSnapshot {
-        self.views.settings.read(cx).tracing().read(cx).snapshot()
+        self.views
+            .settings
+            .read(cx)
+            .page::<TracingPage>()
+            .read(cx)
+            .snapshot()
     }
 }
