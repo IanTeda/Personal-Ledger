@@ -5,7 +5,8 @@
 //!
 //! The Categories page writes the repository through `lib-categories`' Interactors. What the
 //! module reaches of domains not yet persisted goes through the Ledger, in [`LedgerPorts`]: the
-//! usage its Dialogs quote, the Monthly budget the Add and Edit Dialogs save into the Personal
+//! Budgets half of the usage its Dialogs quote (the Splits half is the Transactions store's,
+//! #926), the Monthly budget the Add and Edit Dialogs save into the Personal
 //! spending Budget (#811), and Category delete, the reassign port, answered by running
 //! `lib_ledger::DeleteCategory` through `LedgerStore::apply`, whose shims carry its writes to the
 //! Categories, Payees, Transactions and Bills stores in the one commit (Q6, until `lib-reassign`,
@@ -116,18 +117,13 @@ impl LedgerPorts<'_> {
 }
 
 impl CategoryUsage for LedgerPorts<'_> {
-    /// The Splits counted from the Ledger's read copy of the Transactions, and the Budgets holding
-    /// a Category Limit for it from its Budgets.
+    /// The Splits counted by the Transactions store (#926), and the Budgets holding a Category
+    /// Limit for it from the Ledger's Budgets, until they persist (#811).
     fn category_usage(&self, id: CategoryId) -> CategoryUse {
-        let ledger = self.ledger();
+        let ledger_store = self.ledger.read(self.cx);
         CategoryUse {
-            splits: ledger
-                .transactions()
-                .iter()
-                .flat_map(|transaction| &transaction.splits)
-                .filter(|split| split.category_id == id)
-                .count(),
-            budgets: ledger.budgets().limit_count(id),
+            splits: ledger_store.category_splits(id),
+            budgets: ledger_store.ledger().budgets().limit_count(id),
         }
     }
 }

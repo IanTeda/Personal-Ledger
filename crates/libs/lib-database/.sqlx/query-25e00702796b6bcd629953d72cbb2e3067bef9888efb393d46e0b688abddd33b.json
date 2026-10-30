@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"splits!: i64\" FROM splits WHERE category_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "splits!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "25e00702796b6bcd629953d72cbb2e3067bef9888efb393d46e0b688abddd33b"
+}

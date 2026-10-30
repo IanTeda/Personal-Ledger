@@ -32,7 +32,10 @@ use std::sync::mpsc;
 use chrono::NaiveDate;
 use lib_accounts::{AccountRepository, AccountUsage};
 use lib_bills::fake::InMemoryBills;
-use lib_bills::{BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository};
+use lib_bills::{
+    BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository, BillSplit,
+    BillTransactions, SplitRef,
+};
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
 use lib_core::{CategoryId, InstitutionId, LocationId, TagId, UnitId};
@@ -52,7 +55,7 @@ use lib_units::{
 };
 
 use crate::adapter::payees::bill_payees;
-use crate::adapter::{accounts, categories};
+use crate::adapter::{accounts, categories, transactions};
 use crate::{
     AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
     InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter,
@@ -679,6 +682,26 @@ pub trait TransactionsStore {
         self.transactions_mut().upsert_transaction(transaction);
     }
 
+    /// The Splits dated `from` to `to`: `lib-bills`' `BillTransactions::splits_between`.
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        transactions::splits_between(&self.all_transactions(), from, to)
+    }
+
+    /// The Split `split` names: `lib-bills`' `BillTransactions::paid_split`.
+    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        transactions::paid_split(&self.all_transactions(), split)
+    }
+
+    /// The Splits filed under Category `id`: the Splits half of `lib-categories`' `CategoryUsage`.
+    /// An in-memory store counts its own rows; the adapter counts in the file.
+    fn category_splits(&self, id: CategoryId) -> usize {
+        self.all_transactions()
+            .iter()
+            .flat_map(|transaction| &transaction.splits)
+            .filter(|split| split.category_id == id)
+            .count()
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -695,6 +718,18 @@ impl TransactionsStore for TransactionsAdapter {
         self
     }
 
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        BillTransactions::splits_between(self, from, to)
+    }
+
+    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        BillTransactions::paid_split(self, split)
+    }
+
+    fn category_splits(&self, id: CategoryId) -> usize {
+        TransactionsAdapter::category_splits(self, id)
+    }
+
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
     }
@@ -708,6 +743,18 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
         (**self).transactions_mut()
+    }
+
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        (**self).bill_splits_between(from, to)
+    }
+
+    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        (**self).bill_paid_split(split)
+    }
+
+    fn category_splits(&self, id: CategoryId) -> usize {
+        (**self).category_splits(id)
     }
 
     fn reload(&mut self) -> Result<()> {

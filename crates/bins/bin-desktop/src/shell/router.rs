@@ -196,6 +196,7 @@ pub fn build(
         payees.clone(),
         accounts.clone(),
         categories.clone(),
+        transactions.clone(),
     );
     let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let tags_setup = crate::tags::TagsSetup::new(tags.clone(), &bindings.keybindings);

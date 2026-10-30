@@ -1,5 +1,6 @@
 //! The Transactions adapter: `lib-transactions`' repository port over the `transactions`, `splits`
-//! and `split_tags` tables (ADR-0046).
+//! and `split_tags` tables, `lib-bills`' `BillTransactions` read port from the same rows, and the
+//! Splits half of `lib-categories`' `CategoryUsage`, counted in the file (ADR-0046, #926).
 //!
 //! It loads every row into memory, blocking, and serves reads from there. A port write changes
 //! memory at once and joins the [`PendingWrites`] every adapter shares, which the bin commits
@@ -120,20 +121,59 @@ impl TransactionRepository for TransactionsAdapter {
 /// Bills' read port, answered from the rows in memory, each Split flattened as Bills reads it.
 impl BillTransactions for TransactionsAdapter {
     fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        self.rows
-            .iter()
-            .filter(|row| (from..=to).contains(&row.date))
-            .flat_map(bill_splits)
-            .collect()
+        splits_between(&self.rows, from, to)
     }
 
     fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        let row = self
-            .rows
-            .iter()
-            .find(|row| row.id == split.transaction_id)?;
-        bill_splits(row).nth(split.split_index)
+        paid_split(&self.rows, split)
     }
+}
+
+impl TransactionsAdapter {
+    /// The Splits filed under Category `id` in the file, blocking: what the last commit left, not
+    /// a write still pending. It only words the Categories Dialogs, so a count that can't be read
+    /// is logged and answered as 0, as `CategoryUsage` allows.
+    pub fn category_splits(&self, id: CategoryId) -> usize {
+        self.pending
+            .writer()
+            .run(move |pool| async move {
+                let count = sqlx::query_scalar!(
+                    r#"SELECT COUNT(*) AS "splits!: i64" FROM splits WHERE category_id = ?"#,
+                    id
+                )
+                .fetch_one(&pool)
+                .await?;
+                usize::try_from(count).map_err(|_| {
+                    Error::Validation(format!("Category {id}'s Splits count is {count}"))
+                })
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, category = %id, "Failed to count the Splits filed under a Category");
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// `transactions`' Splits dated `from` to `to`, as Bills reads them: the one place a store answers
+/// `BillTransactions::splits_between` from.
+pub(crate) fn splits_between(
+    transactions: &[Transaction],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Vec<BillSplit> {
+    transactions
+        .iter()
+        .filter(|row| (from..=to).contains(&row.date))
+        .flat_map(bill_splits)
+        .collect()
+}
+
+/// The Split `split` names among `transactions`, as Bills reads it.
+pub(crate) fn paid_split(transactions: &[Transaction], split: SplitRef) -> Option<BillSplit> {
+    let row = transactions
+        .iter()
+        .find(|row| row.id == split.transaction_id)?;
+    bill_splits(row).nth(split.split_index)
 }
 
 /// `transaction`'s Splits as Bills reads them, each with its Transaction's date, Account and memo.
@@ -437,10 +477,7 @@ mod tests {
     ) {
         let mut factory = AdapterFactory::new(options);
         let mut adapter = factory.create(InMemoryTransactions::default());
-        let seeded =
-            lib_ledger::Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
-                .transactions()
-                .to_vec();
+        let seeded = stub_transactions();
         let tagged = seeded
             .iter()
             .find(|transaction| transaction.splits.iter().any(|s| !s.tag_ids.is_empty()))
@@ -463,6 +500,118 @@ mod tests {
             })
             .expect("the counts read");
         assert_eq!(left, (0, 0));
+    }
+
+    fn stub_transactions() -> Vec<Transaction> {
+        lib_ledger::Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
+            .transactions()
+            .to_vec()
+    }
+
+    /// Bills reads the stored Splits flattened as the in-memory store flattens its own, after a
+    /// reload as before it.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn bills_read_the_splits_back_after_a_reload(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let seeded = stub_transactions();
+        let memory = InMemoryTransactions {
+            transactions: seeded.clone(),
+        };
+        let adapter = factory.create(memory.clone());
+        let adapter = factory.reload(adapter);
+
+        let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
+        let splits = adapter.splits_between(from, to);
+        assert_eq!(
+            splits,
+            crate::TransactionsStore::bill_splits_between(&memory, from, to)
+        );
+        assert_eq!(
+            splits.len(),
+            seeded.iter().map(|t| t.splits.len()).sum::<usize>()
+        );
+
+        let split = seeded
+            .iter()
+            .find(|transaction| transaction.is_split())
+            .expect("the stub has a split Transaction");
+        let window = adapter.splits_between(split.date, split.date);
+        assert!(window.iter().all(|read| read.date == split.date));
+        assert!(
+            window
+                .iter()
+                .any(|read| read.split.transaction_id == split.id)
+        );
+
+        let second = SplitRef {
+            transaction_id: split.id,
+            split_index: 1,
+        };
+        let paid = adapter
+            .paid_split(second)
+            .expect("its second Split is read");
+        assert_eq!(
+            Some(paid.clone()),
+            crate::TransactionsStore::bill_paid_split(&memory, second)
+        );
+        assert_eq!(
+            (paid.date, paid.account_id, &paid.description),
+            (split.date, split.account_id, &split.description)
+        );
+        assert_eq!(paid.amount, split.splits[1].amount);
+        assert_eq!(paid.category_id, split.splits[1].category_id);
+        assert_eq!(paid.payee_id, split.splits[1].payee_id);
+        assert_eq!(
+            adapter.paid_split(SplitRef {
+                transaction_id: TransactionId::new(),
+                split_index: 0,
+            }),
+            None
+        );
+    }
+
+    /// The count is the file's: a Split written is counted once committed, as the in-memory
+    /// store counts its own rows.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_category_splits_are_counted_in_the_file(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let seeded = stub_transactions();
+        let mut memory = InMemoryTransactions {
+            transactions: seeded.clone(),
+        };
+        let mut adapter = factory.create(memory.clone());
+        let category = seeded[0].splits[0].category_id;
+        let before = adapter.category_splits(category);
+        assert!(before > 0, "the stub files a Split under it");
+        assert_eq!(
+            before,
+            crate::TransactionsStore::category_splits(&memory, category)
+        );
+
+        let mut booked = seeded[0].clone();
+        booked.id = TransactionId::new();
+        booked.splits.truncate(1);
+        TransactionRepository::upsert_transaction(&mut adapter, booked.clone());
+        TransactionRepository::upsert_transaction(&mut memory, booked);
+        assert_eq!(
+            adapter.category_splits(category),
+            before,
+            "a write still pending isn't in the file"
+        );
+        factory.commit(&mut adapter);
+
+        assert_eq!(adapter.category_splits(category), before + 1);
+        assert_eq!(
+            crate::TransactionsStore::category_splits(&memory, category),
+            before + 1
+        );
+        assert_eq!(adapter.category_splits(CategoryId::new()), 0);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

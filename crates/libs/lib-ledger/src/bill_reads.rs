@@ -5,9 +5,9 @@
 //!   `BillAccounts` its Accounts adapter's (#853), and `BillCategories` and `PayeeCategories` its
 //!   Categories adapter's (#858); [`bill_payees`], [`bill_accounts`] and [`bill_categories`] stay
 //!   for the stub's own Bills seed, each flag filled by its owning domain's rule, so the rule lives
-//!   once (`docs/development/viper-architecture.md`, Rules > Dependencies). The Transactions read
-//!   port is `lib-database`'s; [`Ledger::bill_splits`] flattens the Ledger's copy the same way, for
-//!   a Client that copies Bills' reads from the Ledger.
+//!   once (`docs/development/viper-architecture.md`, Rules > Dependencies). `BillTransactions` is
+//!   `lib-database`'s Transactions store's (#926); [`Ledger::bill_splits`] flattens the Ledger's copy
+//!   the same way for the Dashboard, which reads the copy until its own slice.
 //! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
 //!   Ledger keeps a copy for the Dashboard, the rail badge, Budgets and Documents. It goes when
 //!   the last of them reads Bills through `lib-bills`.

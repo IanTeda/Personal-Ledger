@@ -62,6 +62,10 @@ impl LedgerSetup {
         let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let transactions: SharedTransactionsStore =
+            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
+                transactions: ledger.transactions().to_vec(),
+            }));
         Self {
             tags: crate::tags::ports::in_memory(&ledger),
             inventory: crate::inventory::ports::in_memory(&ledger),
@@ -69,15 +73,14 @@ impl LedgerSetup {
                 &ledger,
                 accounts.clone(),
             ),
-            transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-                transactions: ledger.transactions().to_vec(),
-            })),
             bills: LedgerBackedPorts::in_memory(
                 &ledger,
                 payees.clone(),
                 accounts.clone(),
                 categories.clone(),
+                transactions.clone(),
             ),
+            transactions,
             accounts,
             categories,
             payees,
@@ -115,9 +118,10 @@ impl LedgerStore {
     /// `ledger` with its own Institutions, Accounts, Categories, Payees, Transactions and Bills in
     /// memory as the ports, for a test that needs no storage.
     pub fn new(ledger: Ledger) -> Self {
-        let transactions = lib_transactions::fake::InMemoryTransactions {
-            transactions: ledger.transactions().to_vec(),
-        };
+        let transactions: SharedTransactionsStore =
+            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
+                transactions: ledger.transactions().to_vec(),
+            }));
         let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
@@ -126,6 +130,7 @@ impl LedgerStore {
             payees.clone(),
             accounts.clone(),
             categories.clone(),
+            transactions.clone(),
         );
         Self {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(
@@ -138,7 +143,7 @@ impl LedgerStore {
             inventory: crate::inventory::ports::in_memory(&ledger),
             ledger,
             payees,
-            transactions: Rc::new(RefCell::new(transactions)),
+            transactions,
             bills,
         }
     }
@@ -171,6 +176,12 @@ impl LedgerStore {
 
     pub fn ledger(&self) -> &Ledger {
         &self.ledger
+    }
+
+    /// The Splits filed under Category `id`, as the Transactions store counts them: in the file for
+    /// the adapter (#926). The Splits half of `lib-categories`' `CategoryUsage`.
+    pub fn category_splits(&self, id: lib_core::CategoryId) -> usize {
+        self.transactions.borrow().category_splits(id)
     }
 
     /// The leaves a Split may be filed under, as Import's Category select offers them: read from
@@ -755,13 +766,14 @@ mod tests {
             Box::new(storage.institutions),
             accounts.clone(),
         );
+        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let bills = LedgerBackedPorts::shared(
             Rc::new(RefCell::new(storage.bills)),
             payees.clone(),
             accounts.clone(),
             categories.clone(),
+            transactions.clone(),
         );
-        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let deletion =
             crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills);
