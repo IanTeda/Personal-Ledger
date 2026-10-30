@@ -1,5 +1,6 @@
 //! The Units adapter: `lib-units`' Units, Price Sources and base Unit ports over the `units`,
-//! `unit_prices`, `price_sources` and `ledger` tables (ADR-0046).
+//! `unit_prices`, `price_sources` and `ledger` tables, and `lib-transactions`' `TransactionUnits`
+//! read port from the same rows (ADR-0046, #925).
 //!
 //! It loads every row into memory, blocking, and serves reads from there. A port write changes
 //! memory at once and joins the [`PendingWrites`] every adapter shares, which the bin commits
@@ -12,6 +13,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
+use lib_transactions::TransactionUnits;
 use lib_units::{
     BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
     PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
@@ -229,6 +231,16 @@ impl BaseUnitRepository for StoredBaseUnit {
     fn set_base_unit(&mut self, id: UnitId) {
         self.id = id;
         self.pending.push(UnitsChange::SetBaseUnit(id));
+    }
+}
+
+impl TransactionUnits for UnitsAdapter {
+    fn transaction_unit_code(&self, id: UnitId) -> Option<String> {
+        self.units
+            .rows
+            .iter()
+            .find(|unit| unit.id == id)
+            .map(|unit| unit.code.clone())
     }
 }
 
@@ -587,6 +599,7 @@ mod tests {
 
     use super::*;
     use crate::commit::Commit;
+    use crate::test_support::TransactionReadsFactory;
     use crate::writer::{Gate, WriteFailure};
 
     impl StoredPorts for UnitsAdapter {
@@ -613,6 +626,38 @@ mod tests {
                 failures,
             }
         }
+    }
+
+    /// `lib-transactions`' read check: each Unit is stored like the stub's first, with no price
+    /// history and priced by Manual entry, and the first is the base Unit, which each is quoted in.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn transactions_read_the_units_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        fn store(writer: &Writer, rows: Vec<lib_transactions::TransactionUnit>) {
+            let template = InMemoryPorts::stub(Utc::now())
+                .units
+                .units
+                .into_iter()
+                .next()
+                .expect("the stub has a Unit");
+            let base = rows.first().expect("a Unit to store").id;
+            let units = rows
+                .into_iter()
+                .map(|row| UnitRow {
+                    id: row.id,
+                    name: row.code.to_uppercase(),
+                    code: row.code,
+                    link: PriceLink::manual(base),
+                    prices: Vec::new(),
+                    ..template.clone()
+                })
+                .collect();
+            UnitsAdapter::seed(writer, units, Vec::new(), base).expect("the Units are written");
+        }
+        lib_transactions::contract::unit_codes_read_back(&mut TransactionReadsFactory::new(
+            options,
+            store,
+            |pending| UnitsAdapter::load(pending).expect("the rows load"),
+        ));
     }
 
     impl PortsFactory for AdapterFactory {

@@ -1,7 +1,7 @@
 //! The Accounts adapter: `lib-accounts`' repository and `AccountUsage` ports over the `accounts`
 //! table, and the reads other modules make of the same rows: `lib-units`' `UnitHoldings` and the
-//! Accounts half of its `UnitUsage`, `lib-bills`' `BillAccounts` and `lib-institutions`'
-//! `InstitutionUsage` (ADR-0046, #853).
+//! Accounts half of its `UnitUsage`, `lib-bills`' `BillAccounts`, `lib-institutions`'
+//! `InstitutionUsage` and `lib-transactions`' `TransactionAccounts` (ADR-0046, #853, #925).
 //!
 //! It loads every Account into memory, blocking, and serves the rows from there, in the order they
 //! were added. A port write changes memory at once and joins the [`PendingWrites`] every adapter
@@ -22,6 +22,7 @@ use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse};
 use lib_bills::{BillAccount, BillAccounts};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_institutions::{InstitutionUsage, InstitutionUse};
+use lib_transactions::{TransactionAccount, TransactionAccounts};
 use lib_units::{Holding, UnitHoldings, UnitUsage, UnitUse};
 use sqlx::SqliteConnection;
 
@@ -223,6 +224,20 @@ impl BillAccounts for AccountsAdapter {
     }
 }
 
+impl TransactionAccounts for AccountsAdapter {
+    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
+        self.accounts
+            .rows
+            .iter()
+            .map(|account| TransactionAccount {
+                id: account.id,
+                name: account.name.clone(),
+                unit: account.unit,
+            })
+            .collect()
+    }
+}
+
 /// The Accounts in `accounts` whose Unit is `unit`, in order, as the Units page lists them, each
 /// with the Transactions `transactions` says are booked to it.
 pub(crate) fn holdings(
@@ -416,6 +431,7 @@ mod tests {
 
     use super::*;
     use crate::commit::Commit;
+    use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
     use crate::{BillsAdapter, InstitutionsAdapter, TransactionsAdapter, UnitsAdapter};
 
@@ -758,6 +774,45 @@ mod tests {
             0,
             "its Balance Check went with it"
         );
+    }
+
+    /// `lib-transactions`' read check: each Account is stored as a Cash Account at the Personal
+    /// Institution, the stub's Units and Institutions stored first.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn transactions_read_the_accounts_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        fn store(writer: &Writer, rows: Vec<TransactionAccount>) {
+            UnitsAdapter::seed_from(
+                writer,
+                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+            )
+            .expect("the stub Units are written");
+            InstitutionsAdapter::seed(writer, crate::seed::stub_institutions())
+                .expect("the stub Institutions are written");
+            let template = default_accounts()
+                .into_iter()
+                .next()
+                .expect("the stub has an Account");
+            let accounts = rows
+                .into_iter()
+                .map(|row| Account {
+                    id: row.id,
+                    name: row.name,
+                    unit: row.unit,
+                    institution: InstitutionId::SEED_PERSONAL,
+                    account_type: AccountType::Cash,
+                    ..template.clone()
+                })
+                .collect();
+            AccountsAdapter::seed(writer, accounts).expect("the Accounts are written");
+        }
+        lib_transactions::contract::accounts_read_back(&mut TransactionReadsFactory::new(
+            options,
+            store,
+            |pending| AccountsAdapter::load(pending).expect("the rows load"),
+        ));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

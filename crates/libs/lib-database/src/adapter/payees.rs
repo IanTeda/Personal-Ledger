@@ -1,5 +1,6 @@
 //! The Payees adapter: `lib-payees`' Payee repository and `PayeeUsage` ports over the `payees` and
-//! `payee_aliases` tables, and `lib-bills`' `BillPayees` read port from the same rows (ADR-0046).
+//! `payee_aliases` tables, and `lib-bills`' `BillPayees` and `lib-transactions`'
+//! `TransactionPayees` read ports from the same rows (ADR-0046, #925).
 //!
 //! It loads every Payee and its aliases into memory, blocking, and serves the rows from there. A
 //! port write changes memory at once and joins the [`PendingWrites`] every adapter shares, which
@@ -15,6 +16,7 @@
 use lib_bills::{BillPayee, BillPayees};
 use lib_core::{CategoryId, PayeeId, RowID};
 use lib_payees::{Payee, PayeeRepository, PayeeUsage, PayeeUse, PortsMut};
+use lib_transactions::{TransactionPayee, TransactionPayees};
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
@@ -160,6 +162,19 @@ impl PayeeUsage for StoredUsage {
                 tracing::error!(%error, payee = %id, "Failed to count what names a Payee");
             })
             .ok()
+    }
+}
+
+impl TransactionPayees for PayeesAdapter {
+    fn transaction_payees(&self) -> Vec<TransactionPayee> {
+        self.payees
+            .rows
+            .iter()
+            .map(|payee| TransactionPayee {
+                id: payee.id,
+                name: payee.name.clone(),
+            })
+            .collect()
     }
 }
 
@@ -312,6 +327,7 @@ mod tests {
 
     use super::*;
     use crate::commit::Commit;
+    use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
     use crate::{BillsAdapter, TransactionsAdapter};
 
@@ -347,6 +363,32 @@ mod tests {
             self.writer.flush().expect("the writer is running");
             self.failures.try_iter().collect()
         }
+    }
+
+    /// `lib-transactions`' read check: each Payee is stored active, with no aliases or default.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn transactions_read_the_payees_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        fn store(writer: &Writer, rows: Vec<TransactionPayee>) {
+            let payees = rows
+                .into_iter()
+                .map(|row| Payee {
+                    id: row.id,
+                    name: row.name,
+                    aliases: Vec::new(),
+                    default_category: None,
+                    is_active: true,
+                })
+                .collect();
+            PayeesAdapter::seed(writer, payees).expect("the Payees are written");
+        }
+        lib_transactions::contract::payees_read_back(&mut TransactionReadsFactory::new(
+            options,
+            store,
+            |pending| PayeesAdapter::load(pending).expect("the rows load"),
+        ));
     }
 
     fn day() -> NaiveDate {

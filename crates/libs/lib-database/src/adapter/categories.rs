@@ -1,6 +1,7 @@
 //! The Categories adapter: `lib-categories`' repository port over the `categories` table, and the
-//! reads other modules make of the same rows: `lib-bills`' `BillCategories` and `lib-payees`'
-//! `PayeeCategories`, each flag filled by `lib-categories`' own rule (ADR-0046, #858).
+//! reads other modules make of the same rows: `lib-bills`' `BillCategories`, `lib-payees`'
+//! `PayeeCategories` and `lib-transactions`' `TransactionCategories`, each flag and path filled by
+//! `lib-categories`' own rule (ADR-0046, #858, #925).
 //!
 //! It loads every Category into memory, blocking, and serves the rows from there in tree order,
 //! siblings in the order they were added (rowid order, which an upsert keeps). A port write
@@ -17,6 +18,7 @@ use lib_bills::{BillCategories, BillCategory};
 use lib_categories::{Category, CategoryRepository, tree_order};
 use lib_core::{CategoryId, CategoryTypes};
 use lib_payees::{PayeeCategories, PayeeCategory};
+use lib_transactions::{TransactionCategories, TransactionCategory};
 use sqlx::SqliteConnection;
 
 use crate::Result;
@@ -128,6 +130,22 @@ impl BillCategories for CategoriesAdapter {
 impl PayeeCategories for CategoriesAdapter {
     fn payee_categories(&self) -> Vec<PayeeCategory> {
         payee_categories(&self.categories())
+    }
+}
+
+impl TransactionCategories for CategoriesAdapter {
+    fn transaction_categories(&self) -> Vec<TransactionCategory> {
+        let categories = self.categories();
+        categories
+            .iter()
+            .map(|category| TransactionCategory {
+                id: category.id,
+                name: category.name.clone(),
+                parent: category.parent,
+                path: lib_categories::path(&categories, category.id)
+                    .unwrap_or_else(|| category.name.clone()),
+            })
+            .collect()
     }
 }
 
@@ -260,6 +278,7 @@ mod tests {
 
     use super::*;
     use crate::commit::Commit;
+    use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
     use crate::{PayeesAdapter, TransactionsAdapter};
 
@@ -422,6 +441,31 @@ mod tests {
         assert_eq!(failures[0].domains, [Domain::Categories]);
         categories.reload().expect("the rows load");
         assert_eq!(categories.categories(), stored);
+    }
+
+    /// `lib-transactions`' read check: each Category is stored as an Expense.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn transactions_read_the_categories_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        fn store(writer: &Writer, rows: Vec<TransactionCategory>) {
+            let categories = rows
+                .into_iter()
+                .map(|row| Category {
+                    id: row.id,
+                    name: row.name,
+                    parent: row.parent,
+                    category_type: CategoryTypes::Expense,
+                })
+                .collect();
+            CategoriesAdapter::seed(writer, categories).expect("the Categories are written");
+        }
+        lib_transactions::contract::categories_read_back_in_tree_order(
+            &mut TransactionReadsFactory::new(options, store, |pending| {
+                CategoriesAdapter::load(pending).expect("the rows load")
+            }),
+        );
     }
 
     fn day() -> NaiveDate {

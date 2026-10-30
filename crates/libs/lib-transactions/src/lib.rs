@@ -3,8 +3,9 @@
 //! stay with the Client.
 //!
 //! A ports-only VIPER module so far (`docs/development/viper-architecture.md`, #774): the
-//! repository port in `protocols`, which `lib-database` implements, its in-memory twin and the
-//! stub seed in `fake`, and the contract both keep in `contract`.
+//! repository port and the read ports for the other domains' rows in `protocols`, which
+//! `lib-database` implements, their in-memory twins and the stub seed in `fake`, and the contract
+//! both keep in `contract`.
 //!
 //! A Transaction is a single-entry record of an amount against one Account on a date; its
 //! Splits carry the amounts and Categories, and the Unit is its Account's.
@@ -18,7 +19,11 @@ pub mod contract;
 pub mod fake;
 pub mod protocols;
 
-pub use protocols::TransactionRepository;
+pub use protocols::{
+    TransactionAccount, TransactionAccounts, TransactionCategories, TransactionCategory,
+    TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
+    TransactionUnit, TransactionUnits,
+};
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;

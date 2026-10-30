@@ -4,13 +4,24 @@
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
 //! the port, reloads as a restart would, and expects the same rows back.
+//!
+//! The read ports' checks run on a [`ReadsFactory`] instead: the rows they read are other domains',
+//! so a check hands the factory the rows as Transactions read them, the factory stores them as their
+//! own domain would, and the check expects them answered the same, before and after a reload.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionId, TransactionStatus};
+use lib_core::{
+    AccountId, CategoryId, HexColor, Money, PayeeId, TagId, TransactionId, TransactionStatus,
+    UnitId,
+};
 
-use crate::fake::InMemoryTransactions;
-use crate::{Split, Transaction, TransactionRepository};
+use crate::fake::{InMemoryTransactionReads, InMemoryTransactions};
+use crate::{
+    Split, Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
+    TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
+    TransactionTag, TransactionTags, TransactionUnit, TransactionUnits,
+};
 
 /// Builds the port a contract check runs on.
 pub trait PortsFactory {
@@ -71,6 +82,116 @@ impl PortsFactory for InMemoryFactory {
     fn recover(&mut self, _ports: InMemoryTransactions) -> (InMemoryTransactions, usize) {
         let committed = self.committed.clone().expect("create ran first");
         (committed, std::mem::take(&mut self.failures))
+    }
+}
+
+/// Builds the read port a read check runs on, over rows of type `Row`.
+pub trait ReadsFactory<Row> {
+    type Reads;
+
+    /// A read port over `rows`, stored in the order given as their own domain stores them, and
+    /// loaded. Each Category comes after its parent, with its path, and every Account names one
+    /// of the stub's Units (aud, btc or vas).
+    fn create(&mut self, rows: Vec<Row>) -> Self::Reads;
+
+    /// Loads a fresh read port from wherever [`Self::create`] stored the rows, as a restart would.
+    fn reload(&mut self, reads: Self::Reads) -> Self::Reads;
+}
+
+/// The in-memory reads are their own storage, so a reload hands them back as they are. They hold
+/// the rows as answered, so the Categories are put in tree order as they are stored.
+#[derive(Debug, Default)]
+pub struct InMemoryReadsFactory;
+
+/// `categories` depth-first from each top-level one, siblings in the order given.
+fn tree_order(categories: &[TransactionCategory]) -> Vec<TransactionCategory> {
+    fn walk(
+        categories: &[TransactionCategory],
+        parent: Option<CategoryId>,
+        out: &mut Vec<TransactionCategory>,
+    ) {
+        for category in categories.iter().filter(|row| row.parent == parent) {
+            out.push(category.clone());
+            walk(categories, Some(category.id), out);
+        }
+    }
+    let mut out = Vec::with_capacity(categories.len());
+    walk(categories, None, &mut out);
+    out
+}
+
+impl ReadsFactory<TransactionAccount> for InMemoryReadsFactory {
+    type Reads = InMemoryTransactionReads;
+
+    fn create(&mut self, rows: Vec<TransactionAccount>) -> InMemoryTransactionReads {
+        InMemoryTransactionReads {
+            accounts: rows,
+            ..InMemoryTransactionReads::default()
+        }
+    }
+
+    fn reload(&mut self, reads: InMemoryTransactionReads) -> InMemoryTransactionReads {
+        reads
+    }
+}
+
+impl ReadsFactory<TransactionCategory> for InMemoryReadsFactory {
+    type Reads = InMemoryTransactionReads;
+
+    fn create(&mut self, rows: Vec<TransactionCategory>) -> InMemoryTransactionReads {
+        InMemoryTransactionReads {
+            categories: tree_order(&rows),
+            ..InMemoryTransactionReads::default()
+        }
+    }
+
+    fn reload(&mut self, reads: InMemoryTransactionReads) -> InMemoryTransactionReads {
+        reads
+    }
+}
+
+impl ReadsFactory<TransactionPayee> for InMemoryReadsFactory {
+    type Reads = InMemoryTransactionReads;
+
+    fn create(&mut self, rows: Vec<TransactionPayee>) -> InMemoryTransactionReads {
+        InMemoryTransactionReads {
+            payees: rows,
+            ..InMemoryTransactionReads::default()
+        }
+    }
+
+    fn reload(&mut self, reads: InMemoryTransactionReads) -> InMemoryTransactionReads {
+        reads
+    }
+}
+
+impl ReadsFactory<TransactionTag> for InMemoryReadsFactory {
+    type Reads = InMemoryTransactionReads;
+
+    fn create(&mut self, rows: Vec<TransactionTag>) -> InMemoryTransactionReads {
+        InMemoryTransactionReads {
+            tags: rows,
+            ..InMemoryTransactionReads::default()
+        }
+    }
+
+    fn reload(&mut self, reads: InMemoryTransactionReads) -> InMemoryTransactionReads {
+        reads
+    }
+}
+
+impl ReadsFactory<TransactionUnit> for InMemoryReadsFactory {
+    type Reads = InMemoryTransactionReads;
+
+    fn create(&mut self, rows: Vec<TransactionUnit>) -> InMemoryTransactionReads {
+        InMemoryTransactionReads {
+            units: rows,
+            ..InMemoryTransactionReads::default()
+        }
+    }
+
+    fn reload(&mut self, reads: InMemoryTransactionReads) -> InMemoryTransactionReads {
+        reads
     }
 }
 
@@ -186,6 +307,139 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     assert_eq!(snapshot(&ports), stored, "the refused write is gone");
 }
 
+/// Every Account is answered with its name and Unit, in the order stored, and again after a
+/// reload.
+pub fn accounts_read_back<F>(factory: &mut F)
+where
+    F: ReadsFactory<TransactionAccount>,
+    F::Reads: TransactionAccounts,
+{
+    let account = |id: u32, name: &str, unit: UnitId| TransactionAccount {
+        id: AccountId::seed(id),
+        name: name.into(),
+        unit,
+    };
+    let stored = vec![
+        account(7, "Offset", UnitId::SEED_AUD),
+        account(3, "Cold wallet", UnitId::SEED_BTC),
+        account(5, "Amex", UnitId::SEED_AUD),
+    ];
+
+    let reads = factory.create(stored.clone());
+    assert_eq!(reads.transaction_accounts(), stored);
+    let reads = factory.reload(reads);
+    assert_eq!(reads.transaction_accounts(), stored);
+}
+
+/// Every Category is answered with its parent and path in tree order, whatever order they were
+/// added in, and again after a reload.
+pub fn categories_read_back_in_tree_order<F>(factory: &mut F)
+where
+    F: ReadsFactory<TransactionCategory>,
+    F::Reads: TransactionCategories,
+{
+    // The path separator is `lib-categories`' rule, which the answering side fills.
+    let category = |id: u32, name: &str, parent: Option<u32>, path: &str| TransactionCategory {
+        id: CategoryId::seed(id),
+        name: name.into(),
+        parent: parent.map(CategoryId::seed),
+        path: path.into(),
+    };
+    let housing = category(1, "Housing", None, "Housing");
+    let rent = category(2, "Rent", Some(1), "Housing \u{203a} Rent");
+    let utilities = category(3, "Utilities", Some(1), "Housing \u{203a} Utilities");
+    let power = category(
+        4,
+        "Power",
+        Some(3),
+        "Housing \u{203a} Utilities \u{203a} Power",
+    );
+    let food = category(5, "Food", None, "Food");
+    let groceries = category(6, "Groceries", Some(5), "Food \u{203a} Groceries");
+    let added = vec![
+        housing.clone(),
+        food.clone(),
+        utilities.clone(),
+        groceries.clone(),
+        rent.clone(),
+        power.clone(),
+    ];
+    let tree = vec![housing, utilities, power, rent, food, groceries];
+
+    let reads = factory.create(added);
+    assert_eq!(reads.transaction_categories(), tree);
+    let reads = factory.reload(reads);
+    assert_eq!(reads.transaction_categories(), tree);
+}
+
+/// Every Payee is answered with its name, in the order stored, and again after a reload.
+pub fn payees_read_back<F>(factory: &mut F)
+where
+    F: ReadsFactory<TransactionPayee>,
+    F::Reads: TransactionPayees,
+{
+    let payee = |id: u32, name: &str| TransactionPayee {
+        id: PayeeId::seed(id),
+        name: name.into(),
+    };
+    let stored = vec![payee(4, "Woolworths"), payee(2, "BP"), payee(9, "Origin")];
+
+    let reads = factory.create(stored.clone());
+    assert_eq!(reads.transaction_payees(), stored);
+    let reads = factory.reload(reads);
+    assert_eq!(reads.transaction_payees(), stored);
+}
+
+/// Every Tag is answered with its name and colour, or none, in the order stored, and again after a
+/// reload.
+pub fn tags_read_back<F>(factory: &mut F)
+where
+    F: ReadsFactory<TransactionTag>,
+    F::Reads: TransactionTags,
+{
+    let tag = |id: u32, name: &str, color: Option<&str>| TransactionTag {
+        id: TagId::seed(id),
+        name: name.into(),
+        color: color.map(|hex| HexColor::parse(hex).expect("a colour")),
+    };
+    let stored = vec![
+        tag(6, "japan-trip", Some("#1f6feb")),
+        tag(2, "work", None),
+        tag(4, "tax", Some("#ae1800")),
+    ];
+
+    let reads = factory.create(stored.clone());
+    assert_eq!(reads.transaction_tags(), stored);
+    let reads = factory.reload(reads);
+    assert_eq!(reads.transaction_tags(), stored);
+}
+
+/// Each Unit's code is answered by its id, and again after a reload; a Unit not stored has none.
+pub fn unit_codes_read_back<F>(factory: &mut F)
+where
+    F: ReadsFactory<TransactionUnit>,
+    F::Reads: TransactionUnits,
+{
+    let unit = |id: u32, code: &str| TransactionUnit {
+        id: UnitId::seed(id),
+        code: code.into(),
+    };
+    let stored = vec![unit(11, "aud"), unit(12, "usd"), unit(13, "btc")];
+    let codes = |reads: &F::Reads| -> Vec<Option<String>> {
+        stored
+            .iter()
+            .map(|unit| reads.transaction_unit_code(unit.id))
+            .collect()
+    };
+    let expected: Vec<_> = stored.iter().map(|unit| Some(unit.code.clone())).collect();
+
+    let reads = factory.create(stored.clone());
+    assert_eq!(codes(&reads), expected);
+    assert_eq!(reads.transaction_unit_code(UnitId::seed(99)), None);
+    let reads = factory.reload(reads);
+    assert_eq!(codes(&reads), expected);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +457,30 @@ mod tests {
     #[test]
     fn in_memory_a_failed_write_reloads_and_reports() {
         a_failed_write_reloads_and_reports(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_accounts_read_back() {
+        accounts_read_back(&mut InMemoryReadsFactory);
+    }
+
+    #[test]
+    fn in_memory_categories_read_back_in_tree_order() {
+        categories_read_back_in_tree_order(&mut InMemoryReadsFactory);
+    }
+
+    #[test]
+    fn in_memory_payees_read_back() {
+        payees_read_back(&mut InMemoryReadsFactory);
+    }
+
+    #[test]
+    fn in_memory_tags_read_back() {
+        tags_read_back(&mut InMemoryReadsFactory);
+    }
+
+    #[test]
+    fn in_memory_unit_codes_read_back() {
+        unit_codes_read_back(&mut InMemoryReadsFactory);
     }
 }

@@ -1,11 +1,65 @@
 //! Rows the legacy readers' tests total ([`crate::Payees::totals`],
 //! [`crate::Budgets::current_progress`]) and the Balance Checks and Budgets name, written straight
 //! to the tables since the Transactions, Accounts and Categories adapters take their domain crates'
-//! ids.
+//! ids. Also the factory `lib-transactions`' read checks run each adapter on.
+
+use std::sync::mpsc;
 
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteConnectOptions;
 
-use crate::writer::Writer;
+use crate::commit::{Commit, PendingWrites};
+use crate::writer::{WriteFailure, Writer};
+
+/// An adapter on one test database, as `lib-transactions`' read checks run it: `store` writes the
+/// rows they hand over as their own domain's, with whatever those rows name, and `load` loads the
+/// adapter that answers them. A reload commits, loads afresh, and fails the check if the writer
+/// reported a failure, so a write SQLite refuses can't pass unseen.
+pub(crate) struct TransactionReadsFactory<Row, Reads> {
+    writer: Writer,
+    pending: PendingWrites,
+    failures: mpsc::Receiver<WriteFailure>,
+    store: fn(&Writer, Vec<Row>),
+    load: fn(PendingWrites) -> Reads,
+}
+
+impl<Row, Reads> TransactionReadsFactory<Row, Reads> {
+    pub(crate) fn new(
+        options: SqliteConnectOptions,
+        store: fn(&Writer, Vec<Row>),
+        load: fn(PendingWrites) -> Reads,
+    ) -> Self {
+        let (writer, failures) = Writer::spawn(options).expect("the test database opens");
+        Self {
+            pending: PendingWrites::new(writer.clone()),
+            writer,
+            failures,
+            store,
+            load,
+        }
+    }
+}
+
+impl<Row, Reads> lib_transactions::contract::ReadsFactory<Row>
+    for TransactionReadsFactory<Row, Reads>
+{
+    type Reads = Reads;
+
+    fn create(&mut self, rows: Vec<Row>) -> Reads {
+        (self.store)(&self.writer, rows);
+        (self.load)(self.pending.clone())
+    }
+
+    fn reload(&mut self, _reads: Reads) -> Reads {
+        self.pending.commit();
+        let fresh = (self.load)(self.pending.clone());
+        self.writer.flush().expect("the writer is running");
+        if let Some(failure) = self.failures.try_iter().next() {
+            panic!("a write failed: {failure:?}");
+        }
+        fresh
+    }
+}
 
 /// Stores the stub's Units, Institutions, Accounts, Categories and Tags, which an adapter test's
 /// Transactions, Bill Plans and Payees name by foreign key (#853, #858, #862).

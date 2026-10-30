@@ -102,7 +102,8 @@ pub use commit::{Commit, InMemoryCommit, PendingWrites};
 pub mod writer;
 pub use writer::{Domain, WriteFailure, Writer};
 
-/// Test-only rows for the readers that total Transactions.
+/// Test-only rows for the readers that total Transactions, and the factory `lib-transactions`' read
+/// checks run the adapters on.
 #[cfg(test)]
 mod test_support;
 

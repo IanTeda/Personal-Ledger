@@ -1,5 +1,5 @@
-//! The Tags adapter: `lib-tags`' repository and `TagUsage` ports over the `tags` table (ADR-0046,
-//! #862).
+//! The Tags adapter: `lib-tags`' repository and `TagUsage` ports over the `tags` table, and
+//! `lib-transactions`' `TransactionTags` read port from the same rows (ADR-0046, #862, #925).
 //!
 //! It loads every Tag into memory, blocking, and serves the rows from there in the order they were
 //! added (rowid order, which an upsert keeps). A port write changes memory at once and joins the
@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 use lib_core::{HexColor, Money, TagId, Total, TransactionId, UnitId};
 use lib_tags::{Tag, TagRepository, TagUsage, TagUse};
+use lib_transactions::{TransactionTag, TransactionTags};
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
@@ -142,6 +143,20 @@ impl TagRepository for StoredTags {
             None => self.rows.push(tag.clone()),
         }
         self.pending.push(TagsChange::Upsert(tag));
+    }
+}
+
+impl TransactionTags for TagsAdapter {
+    fn transaction_tags(&self) -> Vec<TransactionTag> {
+        self.tags
+            .rows
+            .iter()
+            .map(|tag| TransactionTag {
+                id: tag.id,
+                name: tag.name.clone(),
+                color: tag.color.clone(),
+            })
+            .collect()
     }
 }
 
@@ -339,6 +354,7 @@ mod tests {
     use super::*;
     use crate::TransactionsAdapter;
     use crate::commit::Commit;
+    use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
 
     impl StoredPorts for TagsAdapter {
@@ -377,6 +393,28 @@ mod tests {
             self.writer.flush().expect("the writer is running");
             self.failures.try_iter().collect()
         }
+    }
+
+    /// `lib-transactions`' read check: each Tag is stored active.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn transactions_read_the_tags_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        fn store(writer: &Writer, rows: Vec<TransactionTag>) {
+            let tags = rows
+                .into_iter()
+                .map(|row| Tag {
+                    id: row.id,
+                    name: row.name,
+                    color: row.color,
+                    is_active: true,
+                })
+                .collect();
+            TagsAdapter::seed(writer, tags).expect("the Tags are written");
+        }
+        lib_transactions::contract::tags_read_back(&mut TransactionReadsFactory::new(
+            options,
+            store,
+            |pending| TagsAdapter::load(pending).expect("the rows load"),
+        ));
     }
 
     fn day() -> NaiveDate {
