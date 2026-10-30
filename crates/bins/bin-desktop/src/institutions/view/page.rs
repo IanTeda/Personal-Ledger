@@ -20,6 +20,7 @@ use lib_viper::keymap::Keymap;
 use crate::institutions::SettingsInstitutionsSnapshot;
 use crate::institutions::ports::{self, DesktopPorts};
 use crate::institutions::router::PageRouter;
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -112,10 +113,13 @@ impl InstitutionsPage {
         self.menu_at = at;
         self.click(InstitutionsPageEvent::OpenMenu(id), cx);
     }
+}
 
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> SettingsInstitutionsSnapshot {
-        let view = self.view_model(cx);
+impl PageSnapshot for SettingsInstitutionsSnapshot {
+    type Page = InstitutionsPage;
+
+    fn read(page: &InstitutionsPage, cx: &App) -> Self {
+        let view = page.view_model(cx);
         SettingsInstitutionsSnapshot {
             menu: view.menu.as_ref().map(|menu| {
                 menu.entries

@@ -19,7 +19,7 @@ pub use documents::DocumentsSnapshot;
 pub use overlays::{ToastSnapshot, ToastsSnapshot};
 pub use palette::PaletteSnapshot;
 pub use settings::{
-    SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
+    PageSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
     SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
     SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
     SettingsTracingSnapshot, SettingsUnitsSnapshot, UnitPricesSnapshot,

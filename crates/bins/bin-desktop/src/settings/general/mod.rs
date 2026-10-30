@@ -12,6 +12,7 @@ use lib_ledger::Domain;
 use lib_units::UnitsPorts as _;
 use lib_units::interactor::SetBaseUnit;
 
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     settings::{SettingsPage, hints::settings_general_hints, page::PageRowClicked, pages::Page},
@@ -95,18 +96,21 @@ impl GeneralPage {
         let next = crate::settings::step_choice(&ids, self.base_unit(cx), delta);
         self.set_base_unit(next, cx);
     }
+}
+
+impl PageSnapshot for SettingsGeneralSnapshot {
+    type Page = GeneralPage;
 
     /// The select's state for a test: the base Unit's code and the options' codes in order.
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &gpui::App) -> SettingsGeneralSnapshot {
+    fn read(page: &GeneralPage, cx: &gpui::App) -> Self {
         SettingsGeneralSnapshot {
-            base_unit: self
+            base_unit: page
                 .ledger
                 .read(cx)
                 .ledger()
                 .base_unit_row()
                 .map(|unit| unit.code.clone()),
-            options: self
+            options: page
                 .unit_options(cx)
                 .into_iter()
                 .map(|(_, code, _)| code)

@@ -14,6 +14,7 @@ pub mod form;
 pub(crate) mod render;
 
 use crate::settings::SettingsPage;
+use crate::settings::snapshot::PageSnapshot;
 use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
@@ -250,19 +251,18 @@ impl DocumentsPage {
         };
         open_dialog(dialog, Self::land, cx);
     }
+}
 
-    // -----------------------------------------------------------------------------------------
-    // Tests
-    // -----------------------------------------------------------------------------------------
+impl PageSnapshot for SettingsDocumentTypesSnapshot {
+    type Page = DocumentsPage;
 
     /// The type names in order, the selected row's name, and each type's Filed file count.
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> SettingsDocumentTypesSnapshot {
-        let rows = self.types(cx);
+    fn read(page: &DocumentsPage, cx: &App) -> Self {
+        let rows = page.types(cx);
         SettingsDocumentTypesSnapshot {
             document_type_names: rows.iter().map(|row| row.name.clone()).collect(),
             document_type_ids: rows.iter().map(|row| row.id).collect(),
-            selected_document_type: self
+            selected_document_type: page
                 .selected_id(cx)
                 .and_then(|id| types::get(rows, id))
                 .map(|row| row.name.clone()),

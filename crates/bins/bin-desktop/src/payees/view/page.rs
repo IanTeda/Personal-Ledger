@@ -15,6 +15,7 @@ use lib_viper::keymap::Keymap;
 use crate::payees::SettingsPayeesSnapshot;
 use crate::payees::ports::{self, DesktopPorts};
 use crate::payees::router::PageRouter;
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -103,10 +104,13 @@ impl PayeesPage {
         self.send(event, cx);
         cx.emit(PageRowClicked);
     }
+}
 
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> SettingsPayeesSnapshot {
-        let view = self.view_model(cx);
+impl PageSnapshot for SettingsPayeesSnapshot {
+    type Page = PayeesPage;
+
+    fn read(page: &PayeesPage, cx: &App) -> Self {
+        let view = page.view_model(cx);
         SettingsPayeesSnapshot {
             selected_payee: view
                 .rows

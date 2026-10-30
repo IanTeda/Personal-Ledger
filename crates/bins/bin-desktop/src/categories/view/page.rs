@@ -18,6 +18,7 @@ use lib_viper::keymap::Keymap;
 use crate::categories::ports;
 use crate::categories::router::PageRouter;
 use crate::categories::{CategoriesSetup, SettingsCategoriesSnapshot};
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -105,12 +106,15 @@ impl CategoriesPage {
         self.send(event, cx);
         cx.emit(PageRowClicked);
     }
+}
+
+impl PageSnapshot for SettingsCategoriesSnapshot {
+    type Page = CategoriesPage;
 
     /// The Categories in the store's tree order, and the selected row's name.
-    #[doc(hidden)]
-    pub fn snapshot(&self, _cx: &App) -> SettingsCategoriesSnapshot {
-        let categories = self.categories.borrow().categories();
-        let selected = self.view_model().selected;
+    fn read(page: &CategoriesPage, _cx: &App) -> Self {
+        let categories = page.categories.borrow().categories();
+        let selected = page.view_model().selected;
         SettingsCategoriesSnapshot {
             selected_category: categories
                 .iter()

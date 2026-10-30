@@ -16,12 +16,8 @@ use bin_desktop::{
     persistence::PersistedState,
     shell::router::{
         self, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, HelpGroup,
-        ImportSnapshot, Root, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
-        SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
-        SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
-        SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot,
-        ShellBindings, ShellLogs, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
-        UnitPricesSnapshot,
+        ImportSnapshot, PageSnapshot, Root, SettingsSnapshot, SettingsUnitsSnapshot, ShellBindings,
+        ShellLogs, StatusSnapshot, ToastsSnapshot, TransactionsSnapshot,
     },
     theme,
 };
@@ -1427,7 +1423,7 @@ impl<'a> Harness<'a> {
     }
 
     /// The Settings shell's state (page and open dialog), read back for assertions.
-    pub fn settings(&mut self) -> SettingsSnapshot {
+    pub fn settings_frame(&mut self) -> SettingsSnapshot {
         self.read_app(Root::settings_snapshot)
     }
 
@@ -1445,69 +1441,15 @@ impl<'a> Harness<'a> {
             .map(str::to_string)
     }
 
-    /// The Settings Accounts page's state, read back for assertions.
-    pub fn settings_accounts(&mut self) -> SettingsAccountsSnapshot {
-        self.read_app(Root::settings_accounts_snapshot)
-    }
-
-    /// The Settings Categories page's state, read back for assertions.
-    pub fn settings_categories(&mut self) -> SettingsCategoriesSnapshot {
-        self.read_app(Root::settings_categories_snapshot)
-    }
-
-    /// The Settings Display page's state, read back for assertions.
-    pub fn settings_display(&mut self) -> SettingsDisplaySnapshot {
-        self.read_app(Root::settings_display_snapshot)
-    }
-
-    /// The Settings DocumentTypes page's state, read back for assertions.
-    pub fn settings_document_types(&mut self) -> SettingsDocumentTypesSnapshot {
-        self.read_app(Root::settings_document_types_snapshot)
-    }
-
-    /// The Settings Institutions page's state, read back for assertions.
-    pub fn settings_institutions(&mut self) -> SettingsInstitutionsSnapshot {
-        self.read_app(Root::settings_institutions_snapshot)
-    }
-
-    /// The Settings Inventory page's state, read back for assertions.
-    pub fn settings_inventory(&mut self) -> SettingsInventorySnapshot {
-        self.read_app(Root::settings_inventory_snapshot)
-    }
-
-    /// The Settings Payees page's state, read back for assertions.
-    pub fn settings_payees(&mut self) -> SettingsPayeesSnapshot {
-        self.read_app(Root::settings_payees_snapshot)
-    }
-
-    /// The Settings Tags page's state, read back for assertions.
-    pub fn settings_tags(&mut self) -> SettingsTagsSnapshot {
-        self.read_app(Root::settings_tags_snapshot)
-    }
-
-    /// The Settings Tracing page's state, read back for assertions.
-    pub fn settings_tracing(&mut self) -> SettingsTracingSnapshot {
-        self.read_app(Root::settings_tracing_snapshot)
-    }
-
-    /// The Settings General page's state, read back for assertions.
-    pub fn settings_general(&mut self) -> SettingsGeneralSnapshot {
-        self.read_app(Root::settings_general_snapshot)
-    }
-
-    /// The Settings Units page's state, read back for assertions.
-    pub fn settings_units(&mut self) -> SettingsUnitsSnapshot {
-        self.read_app(Root::settings_units_snapshot)
-    }
-
-    /// The Settings Units page's Unit prices view; `None` while it is closed.
-    pub fn unit_prices(&mut self) -> Option<UnitPricesSnapshot> {
-        self.read_app(Root::unit_prices_snapshot)
+    /// A Settings page's state, read back for assertions: `h.settings::<SettingsTagsSnapshot>()`,
+    /// or `Option<UnitPricesSnapshot>` for the Unit prices view, `None` while it is closed.
+    pub fn settings<S: PageSnapshot>(&mut self) -> S {
+        self.read_app(Root::settings_page_snapshot::<S>)
     }
 
     /// The Units table's rows as `(code, name, type)`, as drawn.
     pub fn unit_rows(&mut self) -> Vec<(String, String, String)> {
-        self.settings_units()
+        self.settings::<SettingsUnitsSnapshot>()
             .units
             .into_iter()
             .map(|unit| (unit.code, unit.name, unit.kind))
@@ -1524,7 +1466,7 @@ impl<'a> Harness<'a> {
 
     /// The code of the Unit the ◆ marks: the base Unit.
     pub fn base_unit_code(&mut self) -> Option<String> {
-        self.settings_units()
+        self.settings::<SettingsUnitsSnapshot>()
             .units
             .into_iter()
             .find(|unit| unit.is_base)
@@ -1533,7 +1475,7 @@ impl<'a> Harness<'a> {
 
     /// The codes of the deactivated Units, drawn dimmed and tagged.
     pub fn inactive_unit_codes(&mut self) -> Vec<String> {
-        self.settings_units()
+        self.settings::<SettingsUnitsSnapshot>()
             .units
             .into_iter()
             .filter(|unit| unit.inactive_tag.is_some())

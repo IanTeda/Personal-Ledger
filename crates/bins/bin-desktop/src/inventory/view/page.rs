@@ -23,6 +23,7 @@ use lib_viper::keymap::Keymap;
 use crate::inventory::ports;
 use crate::inventory::router::PageRouter;
 use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -137,21 +138,24 @@ impl InventoryPage {
                 .unwrap_or_default(),
         }
     }
+}
+
+impl PageSnapshot for SettingsInventorySnapshot {
+    type Page = InventoryPage;
 
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
     /// Area's Item count.
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> SettingsInventorySnapshot {
-        let inventory = self.inventory.borrow().inventory();
-        let view = self.view_model();
-        let ledger = self.ledger.read(cx).ledger();
+    fn read(page: &InventoryPage, cx: &App) -> Self {
+        let inventory = page.inventory.borrow().inventory();
+        let view = page.view_model();
+        let ledger = page.ledger.read(cx).ledger();
         SettingsInventorySnapshot {
             inventory_rows: view
                 .rows
                 .iter()
-                .map(|line| self.row_label(line.row))
+                .map(|line| page.row_label(line.row))
                 .collect(),
-            selected_inventory: view.selected.map(|row| self.row_label(row)),
+            selected_inventory: view.selected.map(|row| page.row_label(row)),
             inventory_areas: inventory
                 .locations
                 .iter()
@@ -168,7 +172,7 @@ impl InventoryPage {
                 .collect(),
             inventory_menu: view.menu.map(|menu| {
                 (
-                    self.row_label(menu.row),
+                    page.row_label(menu.row),
                     menu.entries
                         .iter()
                         .map(|entry| slug(entry.action).to_string())

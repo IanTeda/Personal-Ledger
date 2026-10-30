@@ -17,11 +17,14 @@ pub mod ports;
 mod router;
 mod view;
 
+use gpui::App;
 use lib_database::UnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
 pub(crate) use view::dialog::{DialogRouter, Landed, help, refusal};
 pub use view::page::UnitsPage;
+
+use crate::settings::snapshot::PageSnapshot;
 
 /// The Units page as the UI tests read it: its view model.
 #[doc(hidden)]
@@ -30,6 +33,23 @@ pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 /// The Unit prices view as the UI tests read it: its view model, while it shows.
 #[doc(hidden)]
 pub type UnitPricesSnapshot = lib_units::presenter::UnitPricesViewModel;
+
+impl PageSnapshot for SettingsUnitsSnapshot {
+    type Page = UnitsPage;
+
+    fn read(page: &UnitsPage, cx: &App) -> Self {
+        page.view_model(cx)
+    }
+}
+
+/// `None` while the Unit prices view is closed.
+impl PageSnapshot for Option<UnitPricesSnapshot> {
+    type Page = UnitsPage;
+
+    fn read(page: &UnitsPage, _cx: &App) -> Self {
+        page.prices_view_model()
+    }
+}
 
 /// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
 /// prices view's keymaps under `[keybindings]`.

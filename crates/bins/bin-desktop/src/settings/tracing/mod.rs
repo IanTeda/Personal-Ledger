@@ -12,6 +12,7 @@ pub mod dialogs;
 pub mod log;
 mod render;
 
+use crate::settings::snapshot::PageSnapshot;
 use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
@@ -168,25 +169,24 @@ impl TracingPage {
         cx.emit(ViewEvent::SetStatus(None));
         open_dialog(TracingDialog::ClearLogs, Self::land, cx);
     }
+}
 
-    // -----------------------------------------------------------------------------------------
-    // Tests
-    // -----------------------------------------------------------------------------------------
+impl PageSnapshot for SettingsTracingSnapshot {
+    type Page = TracingPage;
 
     /// The Tracing page's state.
-    #[doc(hidden)]
-    pub fn snapshot(&self) -> SettingsTracingSnapshot {
+    fn read(page: &TracingPage, _cx: &App) -> Self {
         SettingsTracingSnapshot {
-            tracing_level: format!("{:?}", self.log.level()),
-            log_line_count: self.log.visible().len(),
-            log_lines: self
+            tracing_level: format!("{:?}", page.log.level()),
+            log_line_count: page.log.visible().len(),
+            log_lines: page
                 .log
                 .visible()
                 .iter()
                 .map(|entry| log::body(entry))
                 .collect(),
-            log_hidden_count: self.log.hidden_count(),
-            log_scroll_top: self.log_list.logical_scroll_top().item_ix,
+            log_hidden_count: page.log.hidden_count(),
+            log_scroll_top: page.log_list.logical_scroll_top().item_ix,
         }
     }
 }

@@ -57,11 +57,11 @@ pub use log_feed::LOG_COALESCE;
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
     DashboardBillSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot, ImportSnapshot,
-    PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
-    SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
-    SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,
-    TransactionsSnapshot, UnitPricesSnapshot,
+    PageSnapshot, PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
+    SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
+    SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
+    SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot,
+    StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot, UnitPricesSnapshot,
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 

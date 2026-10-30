@@ -18,6 +18,7 @@ use crate::account_deletion::DeletionStores;
 use crate::accounts::SettingsAccountsSnapshot;
 use crate::accounts::ports::{self, DesktopPorts};
 use crate::accounts::router::PageRouter;
+use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::command::AccountsVerb,
@@ -142,10 +143,13 @@ impl AccountsPage {
             cx,
         );
     }
+}
 
-    #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> SettingsAccountsSnapshot {
-        let view = self.view_model(cx);
+impl PageSnapshot for SettingsAccountsSnapshot {
+    type Page = AccountsPage;
+
+    fn read(page: &AccountsPage, cx: &App) -> Self {
+        let view = page.view_model(cx);
         let lines = || view.groups.iter().flat_map(|group| &group.lines);
         SettingsAccountsSnapshot {
             selected_account: lines()

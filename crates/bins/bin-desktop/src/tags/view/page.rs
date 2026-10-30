@@ -13,6 +13,7 @@ use lib_tags::TagsOutcome;
 use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
 use lib_viper::keymap::Keymap;
 
+use crate::settings::snapshot::PageSnapshot;
 use crate::tags::router::PageRouter;
 use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
 use crate::{
@@ -100,11 +101,14 @@ impl TagsPage {
         self.send(event, cx);
         cx.emit(PageRowClicked);
     }
+}
+
+impl PageSnapshot for SettingsTagsSnapshot {
+    type Page = TagsPage;
 
     /// The Tags A–Z, their ids and the selected row's name.
-    #[doc(hidden)]
-    pub fn snapshot(&self, _cx: &App) -> SettingsTagsSnapshot {
-        let view = self.view_model();
+    fn read(page: &TagsPage, _cx: &App) -> Self {
+        let view = page.view_model();
         SettingsTagsSnapshot {
             selected_tag: view
                 .rows
