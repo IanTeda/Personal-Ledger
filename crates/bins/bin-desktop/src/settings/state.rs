@@ -315,11 +315,7 @@ impl SettingsView {
             Reveal::Account(_) => SettingsPage::Accounts,
             Reveal::Payee(_) => SettingsPage::Payees,
             // The rest belong to other Views.
-            Reveal::AccountTransactions(_)
-            | Reveal::Transaction(_)
-            | Reveal::BillEntry(_)
-            | Reveal::BillPlan(_)
-            | Reveal::BillsPeriod(_) => return,
+            Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => return,
         };
         self.open_page(page, cx);
         self.pages.get(page).reveal(reveal, cx);

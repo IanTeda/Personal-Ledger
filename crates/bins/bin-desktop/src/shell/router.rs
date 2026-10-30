@@ -377,6 +377,7 @@ impl Root {
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
         let transactions_view =
             cx.new(|cx| TransactionsPage::new(transactions_ports, &ledger, clock.clone(), cx));
+        crate::transactions::router::install(&transactions_view, cx);
         let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());

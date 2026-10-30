@@ -8,6 +8,7 @@ use gpui::Context;
 use lib_accounts::{AccountsDialog as Which, AccountsOutcome, AccountsRouter};
 use lib_core::AccountId;
 use lib_toast::{Notice, Notify};
+use lib_transactions::query::TransactionFilters;
 
 use super::ports::DesktopPorts;
 use super::view::dialog::AccountsDialog;
@@ -16,7 +17,6 @@ use crate::account_deletion::DeletionStores;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
-use crate::view::event::{Reveal, ViewEvent};
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
@@ -60,11 +60,12 @@ impl AccountsRouter for PageRouter<'_, '_> {
         )
     }
 
-    /// Asks `Root` for the Account's ledger: the Transactions filtered to it, from their first
-    /// row. The selection is untouched, so returning to Accounts finds the same row selected.
+    /// Shows the Account's ledger through the Transactions entry point: the Transactions
+    /// filtered to it, from their first row. The selection is untouched, so returning to Accounts
+    /// finds the same row selected.
     fn open_ledger(&mut self, id: AccountId) {
-        self.cx
-            .emit(ViewEvent::Reveal(Reveal::AccountTransactions(id)));
+        let filters = TransactionFilters::for_account(self.clock.today(), id);
+        crate::transactions::router::show_filtered(self.cx, filters);
     }
 
     /// The page closes no Dialog: the Dialog's own Presenter closes it through the host.

@@ -311,10 +311,7 @@ impl BillsPage {
             Reveal::BillEntry(id) => BillsPageEvent::RevealEntry(id),
             Reveal::BillPlan(id) => BillsPageEvent::RevealPlan(id),
             Reveal::BillsPeriod(period) => BillsPageEvent::RevealPeriod(period),
-            Reveal::Transaction(_)
-            | Reveal::Account(_)
-            | Reveal::AccountTransactions(_)
-            | Reveal::Payee(_) => return,
+            Reveal::Account(_) | Reveal::Payee(_) => return,
         };
         self.send(event, cx);
     }

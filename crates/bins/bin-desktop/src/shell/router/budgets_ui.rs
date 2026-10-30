@@ -235,7 +235,7 @@ impl Root {
     }
 
     /// 9d's `open in Transactions →`: Transactions filtered to the Category, the month and the
-    /// Budget's on-budget Accounts, following [`Self::open_payee_transactions`].
+    /// Budget's on-budget Accounts, through `transactions::router::show_filtered`.
     pub(super) fn open_budgets_detail_transactions(&mut self, cx: &mut gpui::App) {
         let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() else {
             return;
@@ -247,9 +247,9 @@ impl Root {
             .get(self.budgets_current(cx))
             .map(|budget| budget.account_ids.clone())
             .unwrap_or_default();
-        self.open_transactions_filtered(
-            TransactionFilters::for_budget_category(category_id, month, &account_ids),
+        crate::transactions::router::show_filtered(
             cx,
+            TransactionFilters::for_budget_category(category_id, month, &account_ids),
         );
     }
 

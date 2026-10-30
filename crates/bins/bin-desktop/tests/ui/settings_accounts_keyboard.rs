@@ -171,8 +171,10 @@ fn enter_opens_the_selected_accounts_ledger(app: &mut TestAppContext) {
         .selected_account
         .expect("seeded accounts");
 
+    let before = ui.commits();
     ui.press("enter");
     assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
     let page = ui.transactions();
     assert_eq!(page.selected, 0);
     assert!(

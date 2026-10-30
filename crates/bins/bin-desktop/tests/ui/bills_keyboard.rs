@@ -228,8 +228,19 @@ fn enter_on_a_paid_row_opens_its_transaction(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
 
     // The last row is the Paid one.
+    let before = ui.commits();
     ui.press("shift-g enter");
+
     assert_eq!(ui.noun(), Noun::Transactions);
+    let page = ui.transactions();
+    assert_eq!(page.search, "");
+    assert!(page.visible > 0, "the Paid row's Transaction is visible");
+    assert!(
+        !page.payees[page.selected].is_empty(),
+        "the Transaction is the one selected"
+    );
+    // `shift-g` and `enter` are one input each; the hand-off is part of the second.
+    assert_eq!(ui.commits(), before + 2);
 }
 
 #[gpui::test]

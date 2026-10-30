@@ -41,7 +41,7 @@ Each Split carries:
 
 - `src/view/transactions/` — today's Transactions View, reading the `Ledger` read copy of the Transactions, refreshed from the port after each commit and on rollback, newest first.
 - `src/transactions/ports.rs` — the forwarding shim, `forward`: each `LedgerCommand`'s `UpsertTransaction` goes to the port in the same commit as the command. Writers carried: Import commit, Tag delete and merge, Category reassign. Account delete writes through `lib-account-deletion`'s port instead (#854), and `DeleteTransaction` left `LedgerChange` with it.
-- `src/transactions/router.rs` — `show(cx, id)`, the entry point other modules' Routers call (the Bills Router's `show_transaction`). It emits today's `Reveal::Transaction(id)` until the View migrates.
+- `src/transactions/router.rs` — `show(cx, id)` and `show_filtered(cx, filters)`, the entry point other modules' Routers call: the Bills Router's `show_transaction`, Documents' Transaction link, Accounts' `open_ledger` and the Budgets detail's "open in Transactions". Each hands the page an event inside the caller's input and asks the Shell to show the page.
 - Each of these is a stand-in with its removal condition in the VIPER doc's [During the transition](viper-architecture.md#during-the-transition).
 
 ## Status workflow

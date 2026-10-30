@@ -86,6 +86,32 @@ fn enter_opens_the_category_detail_and_escape_closes_it(app: &mut TestAppContext
 }
 
 #[gpui::test]
+fn the_detail_transactions_key_shows_the_category_s_transactions_in_one_commit(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+    ui.press("j enter");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Detail"));
+
+    let before = ui.commits();
+    ui.press("t");
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.budgets().dialog, None, "the hand-off closes the detail");
+    let page = ui.transactions();
+    assert_eq!(page.selected, 0);
+    assert!(page.filters_changed, "the list is filtered to the Category");
+    assert!(
+        page.chips
+            .iter()
+            .any(|chip| chip.active && chip.label.starts_with("category")),
+        "the Category chip is active: {:?}",
+        page.chips
+    );
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
+}
+
+#[gpui::test]
 fn the_detail_edit_key_opens_the_limit_dialog(app: &mut TestAppContext) {
     let mut ui = on_budgets(app);
 

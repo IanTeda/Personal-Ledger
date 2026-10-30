@@ -825,8 +825,12 @@ impl DocumentsView {
     /// Hands off to the record a Link points at, with it selected. There is no back-history: `g f`
     /// returns to Documents.
     pub fn goto_link(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
+        if let DocumentLink::Transaction(id) = link {
+            crate::transactions::router::show(cx, id);
+            return;
+        }
         cx.emit(match link {
-            DocumentLink::Transaction(id) => ViewEvent::Reveal(Reveal::Transaction(id)),
+            DocumentLink::Transaction(_) => return,
             DocumentLink::Account(id) => ViewEvent::Reveal(Reveal::Account(id)),
             DocumentLink::Payee(id) => ViewEvent::Reveal(Reveal::Payee(id)),
             DocumentLink::BillPlan(id) => ViewEvent::Reveal(Reveal::BillPlan(id)),

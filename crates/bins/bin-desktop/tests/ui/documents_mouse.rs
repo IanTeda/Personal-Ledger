@@ -173,9 +173,17 @@ fn a_transaction_link_opens_transactions(app: &mut TestAppContext) {
     focus_row(&mut ui, "receipt-camera-house.pdf");
 
     // Linked to an Inventory item first, then the purchase Transaction.
+    let before = ui.commits();
     ui.click("documents-link-1");
 
     assert_eq!(ui.noun(), Noun::Transactions);
+    let page = ui.transactions();
+    assert!(page.visible > 0, "the linked Transaction is visible");
+    assert!(
+        !page.payees[page.selected].is_empty(),
+        "the linked Transaction is the one selected"
+    );
+    assert_eq!(ui.commits(), before + 1, "the click is one input");
 }
 
 #[gpui::test]

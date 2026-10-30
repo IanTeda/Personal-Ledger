@@ -2,7 +2,7 @@
 //! `cx.emit` and never holds a handle to `Root` (ADR-0032): `Root` subscribes to each View
 //! and handles every event in one place (`shell/router/view_events.rs`).
 
-use lib_core::{AccountId, BillPlanId, PayeeId, TransactionId};
+use lib_core::{AccountId, BillPlanId, PayeeId};
 use lib_toast::ToastKind;
 
 use crate::{
@@ -75,8 +75,6 @@ impl ViewMode {
 /// A record one View hands off to the View that owns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reveal {
-    /// A Transaction, by id, selected on the Transactions page.
-    Transaction(TransactionId),
     /// A Bill Schedule entry, selected on the Schedule tab in the period that shows it.
     BillEntry(EntryId),
     /// A Bill Plan, by id, selected on the Planner tab.
@@ -85,8 +83,6 @@ pub enum Reveal {
     BillsPeriod(Period),
     /// An Account, by id, selected on Settings › Accounts.
     Account(AccountId),
-    /// An Account's ledger: Transactions filtered to the Account, from their first row.
-    AccountTransactions(AccountId),
     /// A Payee, by id, selected on Settings › Payees.
     Payee(PayeeId),
 }
@@ -95,7 +91,6 @@ impl Reveal {
     /// The destination that owns the record.
     pub fn noun(self) -> Noun {
         match self {
-            Self::Transaction(_) | Self::AccountTransactions(_) => Noun::Transactions,
             Self::BillEntry(_) | Self::BillPlan(_) | Self::BillsPeriod(_) => Noun::Bills,
             Self::Account(_) | Self::Payee(_) => Noun::Settings,
         }

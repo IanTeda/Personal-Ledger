@@ -19,7 +19,7 @@
 use gpui::UniformListScrollHandle;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription};
 
-use lib_core::{Clock, DateStyle};
+use lib_core::{Clock, DateStyle, TransactionId};
 use lib_ledger::Domain;
 use lib_list_cursor::Step;
 use lib_shell::DialogCommand;
@@ -36,12 +36,12 @@ use crate::{
     form::select::SelectState,
     form::viper::{chosen_label, labels},
     ledger_store::{LedgerChanged, LedgerStore},
-    navigation::{chord::chord, movement::Movement},
+    navigation::{chord::chord, movement::Movement, nav::Noun},
     notices::Queue,
     settings::display::{RowDensity, StatusGlyphs},
     shell::view::statusline::{PageStatus, owned_hints},
     view::{
-        event::{Reveal, ViewEvent, ViewMode},
+        event::{ViewEvent, ViewMode},
         format,
         help::HelpGroup,
     },
@@ -251,29 +251,42 @@ impl TransactionsPage {
     }
 
     /// The page has just become the destination. A Search left open when the page was left doesn't
-    /// come back with it.
+    /// come back with it. Not an input of its own: it writes nothing, and the navigation that
+    /// entered the page is the input (or follows the hand-off's, whose commit has landed).
     pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(TransactionsPageEvent::Entered, cx);
+        self.handle(TransactionsPageEvent::Entered, cx);
     }
 
-    /// Shows what another View handed off: an Account's Transactions, or a Transaction, selected.
-    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        let event = match reveal {
-            Reveal::Transaction(id) => TransactionsPageEvent::RevealTransaction(id),
-            Reveal::AccountTransactions(id) => TransactionsPageEvent::RevealAccount(id),
-            Reveal::Account(_)
-            | Reveal::Payee(_)
-            | Reveal::BillEntry(_)
-            | Reveal::BillPlan(_)
-            | Reveal::BillsPeriod(_) => return,
-        };
-        self.send(event, cx);
+    /// Transaction `id` selected, the date range widened to reach it: [`router::show`]'s half on
+    /// the page, which then asks the Shell to make the page the destination.
+    ///
+    /// [`router::show`]: crate::transactions::router::show
+    pub(crate) fn show(&mut self, id: TransactionId, cx: &mut Context<'_, Self>) {
+        self.hand_off(TransactionsPageEvent::RevealTransaction(id), cx);
     }
 
-    /// The table filtered to `filters` from its first row, with no Search or draft left over: the
-    /// "View transactions" links of Payees, Tags and the Budgets detail.
-    pub fn show_filtered(&mut self, filters: TransactionFilters, cx: &mut Context<'_, Self>) {
-        self.send(TransactionsPageEvent::ShowFiltered(filters), cx);
+    /// The table filtered to `filters` from its first row, with no Search or draft left over:
+    /// [`router::show_filtered`]'s half on the page.
+    ///
+    /// [`router::show_filtered`]: crate::transactions::router::show_filtered
+    pub(crate) fn show_filtered(
+        &mut self,
+        filters: TransactionFilters,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.hand_off(TransactionsPageEvent::ShowFiltered(filters), cx);
+    }
+
+    /// Hands `event` to the Presenter, then asks the Shell to show the page. Another module's
+    /// input is already being sent, so the hand-off runs inside it and its one commit; one from a
+    /// View that isn't a module yet is an input of its own.
+    fn hand_off(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) {
+        if crate::input::sending(cx) {
+            self.handle(event, cx);
+        } else {
+            self.send(event, cx);
+        }
+        cx.emit(ViewEvent::Navigate(Noun::Transactions));
     }
 
     /// Puts the table back on its first row, after an Import commit lands on the page. Not an input

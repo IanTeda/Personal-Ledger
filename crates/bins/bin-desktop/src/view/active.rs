@@ -227,11 +227,11 @@ impl ActiveViewEntity {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            // `Root` makes Transactions the destination first, which closes the step.
-            Self::Import(_) | Self::Shell(_) => {}
+            // Transactions is reached through its entry point, not a `Reveal`. `Root` makes
+            // Transactions the destination first, which closes the step.
+            Self::Transactions(_) | Self::Import(_) | Self::Shell(_) => {}
         }
     }
 

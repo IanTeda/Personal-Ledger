@@ -1,17 +1,14 @@
-//! The Transactions destination's cross-cutting wiring: the rows other pages read, `:import`, and
-//! the "View transactions" links that land on the page filtered. The page itself is the
+//! The Transactions destination's cross-cutting wiring: the rows other pages read and `:import`.
+//! Hand-offs into the page go through `crate::transactions::router`, and the page itself is the
 //! Transactions module's (`crate::transactions`).
 
 use super::Root;
-use lib_core::{PayeeId, TagId};
 use lib_shell::NavInput;
 
 use crate::{
     navigation::nav::{FocusZone, Noun},
     transactions::Transaction,
 };
-use lib_transactions::query::TransactionFilters;
-
 use gpui::App;
 
 impl Root {
@@ -27,27 +24,5 @@ impl Root {
         self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
         self.views.import.update(cx, |view, cx| view.open(cx));
-    }
-
-    /// The Transactions page filtered to `filters` from its first row: the "View transactions"
-    /// links of Accounts, Payees, Tags and the Budgets detail.
-    pub(super) fn open_transactions_filtered(&mut self, filters: TransactionFilters, cx: &mut App) {
-        self.views
-            .transactions
-            .update(cx, |view, cx| view.show_filtered(filters, cx));
-        self.navigate(NavInput::Show(Noun::Transactions));
-        self.reset_view_scroll(cx);
-    }
-
-    /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
-    /// a name substring that would over-match ("BP").
-    pub(super) fn open_payee_transactions(&mut self, id: PayeeId, cx: &mut App) {
-        self.open_transactions_filtered(TransactionFilters::for_payee(self.today, id), cx);
-    }
-
-    /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
-    /// name substring that would over-match ("trip").
-    pub(super) fn open_tag_transactions(&mut self, id: TagId, cx: &mut App) {
-        self.open_transactions_filtered(TransactionFilters::for_tag(self.today, id), cx);
     }
 }
