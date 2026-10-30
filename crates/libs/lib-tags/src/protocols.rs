@@ -119,8 +119,9 @@ pub enum TagsDialog {
     AddTag,
     EditTag(TagId),
     RemoveTag(TagId),
-    /// Either select is empty until chosen: the palette's `tags merge` opens with neither, the
-    /// page's merge on a flagged Tag with both, on any other Tag with only the source.
+    /// Either select is empty until chosen: the `merge` key, which the palette's `tags merge` runs
+    /// on the page's last-selected row, opens on a flagged Tag with both and on any other Tag with
+    /// only the source. With no Tag selected neither opens the Dialog.
     MergeTags {
         source: Option<TagId>,
         target: Option<TagId>,
