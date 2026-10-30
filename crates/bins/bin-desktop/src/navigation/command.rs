@@ -84,6 +84,15 @@ pub enum CommandEffect {
     NotYetBuilt,
 }
 
+impl CommandEffect {
+    /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
+    /// rather than more of the query. The one predicate [`split_input`] and the palette's Tab
+    /// completion both read; a keymap event can't carry an argument, so only the Accounts verbs do.
+    pub fn takes_argument(&self) -> bool {
+        matches!(self, Self::Accounts(_))
+    }
+}
+
 /// The page a module Command runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModulePage {
@@ -221,7 +230,7 @@ impl Command {
     /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
     /// rather than more of the query -- see [`split_input`].
     pub fn takes_argument(&self) -> bool {
-        matches!(self.effect, CommandEffect::Accounts(_))
+        self.effect.takes_argument()
     }
 }
 
@@ -572,7 +581,7 @@ impl Entry {
     /// Whether text typed after the command name is an argument. Only a [`COMMANDS`] row takes
     /// one: a keymap event can't carry it.
     pub fn takes_argument(&self) -> bool {
-        matches!(self.effect, CommandEffect::Accounts(_))
+        self.effect.takes_argument()
     }
 
     /// `command` as a row, its key read live where a keymap binds the same event: the Accounts

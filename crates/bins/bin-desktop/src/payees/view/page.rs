@@ -63,6 +63,12 @@ impl PayeesPage {
         }
     }
 
+    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input.
+    fn take(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) -> bool {
+        self.send(event, cx);
+        true
+    }
+
     /// A key or click on the page: `event` as one input, committed once it is handled.
     pub(in crate::payees) fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
@@ -132,8 +138,7 @@ impl Page for PayeesPage {
         let Some(event) = self.keymap.event(chord) else {
             return false;
         };
-        self.send(event, cx);
-        true
+        self.take(event, cx)
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends.
@@ -141,8 +146,7 @@ impl Page for PayeesPage {
         let Some(event) = self.keymap.event_for(command) else {
             return false;
         };
-        self.send(event, cx);
-        true
+        self.take(event, cx)
     }
 
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves

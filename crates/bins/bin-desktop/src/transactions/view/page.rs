@@ -191,11 +191,7 @@ impl TransactionsPage {
         let Some(event) = self.keymap.event(chord) else {
             return false;
         };
-        if matches!(event, TransactionsPageEvent::OpenFilter(_)) {
-            self.filter_anchor = ChipField::Account;
-        }
-        self.send(event, cx);
-        true
+        self.take(event, cx)
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends, the filter
@@ -204,6 +200,12 @@ impl TransactionsPage {
         let Some(event) = self.keymap.event_for(command) else {
             return false;
         };
+        self.take(event, cx)
+    }
+
+    /// The one dispatch a keymap event takes into the page, from a key or a palette Command: the
+    /// filter opens at Account as `f` opens it.
+    fn take(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) -> bool {
         if matches!(event, TransactionsPageEvent::OpenFilter(_)) {
             self.filter_anchor = ChipField::Account;
         }

@@ -191,7 +191,7 @@ impl BillsPage {
         };
         let (_, chosen) = select_key(self.select_state(field), &select, key);
         match chosen {
-            Some(choice) => self.send(
+            Some(choice) => self.handle(
                 BillsPageEvent::Schedule(ScheduleEvent::Filter(field, choice)),
                 cx,
             ),
@@ -245,6 +245,13 @@ impl BillsPage {
         let Some(event) = self.keymap.event(chord) else {
             return false;
         };
+        crate::input::send(cx, |cx| self.take(event, cx));
+        true
+    }
+
+    /// The one dispatch a keymap event takes into the page, from a key or a palette Command.
+    /// Inside an input already, as [`Self::send`].
+    fn take(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
         match event {
             BillsPageEvent::Move(step) if self.filter_focused() => match step {
                 Step::Next => self.filter_key(DialogKey::Down, cx),
@@ -252,9 +259,8 @@ impl BillsPage {
                 _ => {}
             },
             BillsPageEvent::Open if self.filter_focused() => self.filter_key(DialogKey::Enter, cx),
-            event => self.send(event, cx),
+            event => self.handle(event, cx),
         }
-        true
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends, on the tab it
@@ -269,7 +275,7 @@ impl BillsPage {
             if let Some(tab) = other_tab {
                 self.handle(BillsPageEvent::ShowTab(tab), cx);
             }
-            self.handle(event, cx);
+            self.take(event, cx);
         });
         true
     }

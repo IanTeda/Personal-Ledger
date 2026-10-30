@@ -70,6 +70,15 @@ impl InventoryPage {
         }
     }
 
+    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input, unless the page doesn't take it now.
+    fn take(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) -> bool {
+        if !self.presenter.takes(&event) {
+            return false;
+        }
+        self.send(event, cx);
+        true
+    }
+
     /// A key or click on the page: `event` as one input, committed once it is handled.
     pub(in crate::inventory) fn send(
         &mut self,
@@ -224,11 +233,7 @@ impl Page for InventoryPage {
         let Some(event) = self.keymap.event(chord) else {
             return false;
         };
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
+        self.take(event, cx)
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends, if the page
@@ -237,11 +242,7 @@ impl Page for InventoryPage {
         let Some(event) = self.keymap.event_for(command) else {
             return false;
         };
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
+        self.take(event, cx)
     }
 
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
