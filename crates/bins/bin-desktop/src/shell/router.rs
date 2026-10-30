@@ -668,6 +668,27 @@ impl Root {
         });
     }
 
+    /// Removes every Tag, so a test can reach the Tags page with nothing to select.
+    #[doc(hidden)]
+    pub fn empty_tags_for_test(&mut self, cx: &mut App) {
+        let ids: Vec<_> = self
+            .ledger
+            .read(cx)
+            .ledger()
+            .tags()
+            .iter()
+            .map(|tag| tag.id)
+            .collect();
+        self.ledger.update(cx, |store, cx| {
+            for id in ids {
+                assert!(
+                    store.apply(cx, lib_ledger::RemoveTag(id)).is_ok(),
+                    "a Tag listed a moment ago must still be removable"
+                );
+            }
+        });
+    }
+
     /// Leaves no Unit in use by an Account, a Bill Plan or a Budget, so a test can delete a
     /// seeded Unit instead of meeting the in-use refusal.
     #[doc(hidden)]

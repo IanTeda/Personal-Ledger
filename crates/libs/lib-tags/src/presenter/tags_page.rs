@@ -104,6 +104,15 @@ impl TagsPagePresenter {
         }
     }
 
+    /// Whether the page takes `event` now: Edit, Remove and Merge act on the selected Tag, so with
+    /// no Tag to act on the page refuses them rather than ignoring them.
+    pub fn takes(&self, event: &TagsPageEvent) -> bool {
+        !matches!(
+            event,
+            TagsPageEvent::Edit | TagsPageEvent::Remove | TagsPageEvent::Merge
+        ) || self.selected().is_some()
+    }
+
     pub fn handle(&mut self, event: TagsPageEvent, router: &mut dyn TagsRouter) {
         match event {
             TagsPageEvent::Move(step) => {

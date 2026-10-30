@@ -62,8 +62,11 @@ impl TagsPage {
         }
     }
 
-    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input.
+    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input, unless the page doesn't take it now.
     fn take(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) -> bool {
+        if !self.presenter.takes(&event) {
+            return false;
+        }
         self.send(event, cx);
         true
     }

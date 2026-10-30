@@ -57,6 +57,7 @@ desktop-status-close-file-explorer = { $key } close file explorer
 
 desktop-status-not-a-jump = { $keys } is not a jump
 desktop-status-command-not-yet-built = :{ $command } — not yet built
+desktop-status-command-refused = :{ $command } — not available here right now
 
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 

@@ -1341,6 +1341,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Removes every Tag so the Tags page has nothing to select.
+    pub fn empty_tags(&mut self) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.empty_tags_for_test(cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// Leaves no Unit in use, so a seeded Unit can be deleted rather than deactivated.
     pub fn drop_unit_users(&mut self) {
         self.shell.update(self.cx, |shell, cx| {

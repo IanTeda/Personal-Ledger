@@ -116,7 +116,9 @@ impl Root {
                 command: name,
             } => {
                 self.navigate(NavInput::ExitMode);
-                self.run_module_command(page, name, cx);
+                if !self.run_module_command(page, name, cx) {
+                    self.set_status(crate::msg::desktop_status_command_refused(command.name));
+                }
             }
             CommandEffect::Import => {
                 self.navigate(NavInput::ExitMode);
@@ -222,31 +224,31 @@ impl Root {
 
     /// A module Command from the palette: opens `page` (Settings' page with focus in it, or the
     /// noun), whose module Router sends the event its keymap binds `command` to, inside one
-    /// [`crate::input::send`] as the key's is.
+    /// [`crate::input::send`] as the key's is. Whether the page took it.
     fn run_module_command(
         &mut self,
         page: ModulePage,
         command: &'static str,
         cx: &mut Context<'_, Self>,
-    ) {
+    ) -> bool {
         match page {
             ModulePage::Settings(section) => {
                 self.open_settings_page(section, cx);
                 self.views
                     .settings
-                    .update(cx, |view, cx| view.module_command(section, command, cx));
+                    .update(cx, |view, cx| view.module_command(section, command, cx))
             }
             ModulePage::Bills => {
                 self.show_noun(Noun::Bills, cx);
                 self.views
                     .bills
-                    .update(cx, |page, cx| page.module_command(command, cx));
+                    .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Transactions => {
                 self.show_noun(Noun::Transactions, cx);
                 self.views
                     .transactions
-                    .update(cx, |page, cx| page.module_command(command, cx));
+                    .update(cx, |page, cx| page.module_command(command, cx))
             }
         }
     }

@@ -128,9 +128,16 @@ impl CategoriesPagePresenter {
     }
 
     /// Whether the page takes `event` from its keymap, rather than the Client's frame having it:
-    /// `left` with nothing to fold or climb to is the Settings index's again.
+    /// `left` with nothing to fold or climb to is the Settings index's again, and Edit, Delete and
+    /// New child with no Category selected have nothing to act on.
     pub fn takes(&self, event: &CategoriesPageEvent) -> bool {
-        *event != CategoriesPageEvent::Collapse || self.collapse_target().is_some()
+        match event {
+            CategoriesPageEvent::Collapse => self.collapse_target().is_some(),
+            CategoriesPageEvent::Edit
+            | CategoriesPageEvent::Delete
+            | CategoriesPageEvent::NewChild => self.selected().is_some(),
+            _ => true,
+        }
     }
 
     pub fn handle(&mut self, event: CategoriesPageEvent, router: &mut dyn CategoriesRouter) {

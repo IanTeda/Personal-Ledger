@@ -393,6 +393,43 @@ fn tags_merge_runs_the_tags_merge_binding(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn tags_merge_with_no_tag_says_it_is_not_available_and_opens_no_dialog(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.empty_tags();
+
+    run(&mut ui, "tags merge");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.read(|s| s.status_message()).as_deref(),
+        Some(":tags merge \u{2014} not available here right now")
+    );
+}
+
+#[gpui::test]
+fn a_categories_command_the_page_does_not_take_says_so(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    // Nothing is selected until the page is moved in, so there is no Category to add under.
+    run(&mut ui, "categories new-child");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.read(|s| s.status_message()).as_deref(),
+        Some(":categories new-child \u{2014} not available here right now")
+    );
+}
+
+#[gpui::test]
+fn an_accepted_module_command_sets_no_status(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    run(&mut ui, "tags merge");
+
+    assert_eq!(ui.read(|s| s.status_message()), None);
+}
+
+#[gpui::test]
 fn messages_still_opens_the_toast_history(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
 
