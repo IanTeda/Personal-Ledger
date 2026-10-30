@@ -132,6 +132,15 @@ impl Page for PayeesPage {
         true
     }
 
+    /// A palette Command, by its keymap `command` name: the event its key sends.
+    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        self.send(event, cx);
+        true
+    }
+
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
     /// the page where it is: there is no hand-off from a Payee.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {

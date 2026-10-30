@@ -14,86 +14,34 @@ use crate::presenter::AccountsPageEvent;
 /// The Accounts page's commands, with today's keys. The arrow, Home/End and Page keys move as
 /// `j`/`k`, `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it.
 pub const ACCOUNTS_PAGE_BINDINGS: &[Binding<AccountsPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: AccountsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: AccountsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: AccountsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: AccountsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: AccountsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: AccountsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: AccountsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: AccountsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: AccountsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: AccountsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: AccountsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: AccountsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: AccountsPageEvent::OpenLedger,
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: AccountsPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: AccountsPageEvent::Edit,
-    },
-    Binding {
-        command: DELETE,
-        chord: "d",
-        event: AccountsPageEvent::Delete,
-    },
+    Binding::hidden(MOVE_DOWN, "j", AccountsPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", AccountsPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", AccountsPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", AccountsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        AccountsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        AccountsPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", AccountsPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", AccountsPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", AccountsPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", AccountsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        AccountsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(PAGE_UP, "pageup", AccountsPageEvent::Move(Step::HalfPageUp)),
+    Binding::hidden(SELECT, "enter", AccountsPageEvent::OpenLedger),
+    Binding::hidden(NEW, "n", AccountsPageEvent::New),
+    Binding::hidden(EDIT, "e", AccountsPageEvent::Edit),
+    Binding::hidden(DELETE, "d", AccountsPageEvent::Delete),
 ];
 
 /// The Accounts page's keymap under `config`'s overrides.

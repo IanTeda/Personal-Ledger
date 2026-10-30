@@ -20,6 +20,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
+use lib_locale::msg;
+
 use crate::navigation::Noun;
 
 pub const HELP: &str = "help";
@@ -82,189 +84,168 @@ impl ShellCommand {
 }
 
 /// The global keymap's commands with their default keys. `toast_history` is unbound unless
-/// `[keybindings]` sets it.
+/// `[keybindings]` sets it. The palette lists every command the Shell keeps but `back` and the
+/// palette's own `:`; the ones it falls back on are a list's movement and `enter`, and `insert`.
 pub const GLOBAL_BINDINGS: &[Binding<ShellCommand>] = &[
-    Binding {
-        command: HELP,
-        chord: "?",
-        event: ShellCommand::Help,
-    },
-    Binding {
-        command: OPEN_COMMAND_POPUP,
-        chord: ":",
-        event: ShellCommand::Command,
-    },
-    Binding {
-        command: SEARCH,
-        chord: "/",
-        event: ShellCommand::Search,
-    },
-    Binding {
-        command: TOGGLE_RAIL,
-        chord: "b",
-        event: ShellCommand::ToggleRail,
-    },
-    Binding {
-        command: FOCUS_PREVIOUS,
-        chord: "shift+tab",
-        event: ShellCommand::FocusPrevious,
-    },
-    Binding {
-        command: BACK,
-        chord: "esc",
-        event: ShellCommand::Back,
-    },
+    Binding::listed(HELP, "?", ShellCommand::Help, "help", msg::command_help),
+    Binding::hidden(OPEN_COMMAND_POPUP, ":", ShellCommand::Command),
+    Binding::listed(
+        SEARCH,
+        "/",
+        ShellCommand::Search,
+        "search",
+        msg::command_search,
+    ),
+    Binding::listed(
+        TOGGLE_RAIL,
+        "b",
+        ShellCommand::ToggleRail,
+        "toggle-rail",
+        msg::command_toggle_rail,
+    ),
+    Binding::listed(
+        FOCUS_PREVIOUS,
+        "shift+tab",
+        ShellCommand::FocusPrevious,
+        "focus-previous",
+        msg::command_focus_previous,
+    ),
+    Binding::hidden(BACK, "esc", ShellCommand::Back),
     // Not `esc`: a sticky Error Toast must not vanish on the key that backs out of a Dialog.
-    Binding {
-        command: DISMISS_TOASTS,
-        chord: "ctrl+l",
-        event: ShellCommand::DismissToasts,
-    },
-    Binding {
-        command: TOAST_HISTORY,
-        chord: "",
-        event: ShellCommand::ToastHistory,
-    },
-    Binding {
-        command: JUMP_DASHBOARD,
-        chord: "g d",
-        event: ShellCommand::Jump(Noun::Dashboard),
-    },
-    Binding {
-        command: JUMP_TRANSACTIONS,
-        chord: "g l",
-        event: ShellCommand::Jump(Noun::Transactions),
-    },
-    Binding {
-        command: JUMP_DOCUMENTS,
-        chord: "g f",
-        event: ShellCommand::Jump(Noun::Documents),
-    },
-    Binding {
-        command: JUMP_NOTIFICATIONS,
-        chord: "g a",
-        event: ShellCommand::Jump(Noun::Notifications),
-    },
-    Binding {
-        command: JUMP_CASH,
-        chord: "g c",
-        event: ShellCommand::Jump(Noun::Cash),
-    },
-    Binding {
-        command: JUMP_INVENTORY,
-        chord: "g o",
-        event: ShellCommand::Jump(Noun::Inventory),
-    },
-    Binding {
-        command: JUMP_LOANS,
-        chord: "g n",
-        event: ShellCommand::Jump(Noun::Loans),
-    },
-    Binding {
-        command: JUMP_CREDIT_CARDS,
-        chord: "g k",
-        event: ShellCommand::Jump(Noun::CreditCards),
-    },
-    Binding {
-        command: JUMP_INVESTMENTS,
-        chord: "g i",
-        event: ShellCommand::Jump(Noun::Investments),
-    },
-    Binding {
-        command: JUMP_BILLS,
-        chord: "g w",
-        event: ShellCommand::Jump(Noun::Bills),
-    },
-    Binding {
-        command: JUMP_BUDGETS,
-        chord: "g b",
-        event: ShellCommand::Jump(Noun::Budgets),
-    },
-    Binding {
-        command: JUMP_REPORTS,
-        chord: "g r",
-        event: ShellCommand::Jump(Noun::Reports),
-    },
-    Binding {
-        command: JUMP_SETTINGS,
-        chord: "g s",
-        event: ShellCommand::Jump(Noun::Settings),
-    },
-    Binding {
-        command: INSERT,
-        chord: "a",
-        event: ShellCommand::Insert,
-    },
-    Binding {
-        command: FOCUS_NEXT,
-        chord: "tab",
-        event: ShellCommand::FocusNext,
-    },
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: ShellCommand::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: ShellCommand::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: ShellCommand::Move(Step::Prev),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: ShellCommand::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: ShellCommand::Move(Step::First),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: ShellCommand::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: ShellCommand::Move(Step::Last),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: ShellCommand::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: ShellCommand::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: ShellCommand::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: ShellCommand::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: ShellCommand::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: ShellCommand::Select,
-    },
+    Binding::listed(
+        DISMISS_TOASTS,
+        "ctrl+l",
+        ShellCommand::DismissToasts,
+        "dismiss all",
+        msg::command_dismiss_toasts,
+    ),
+    Binding::listed(
+        TOAST_HISTORY,
+        "",
+        ShellCommand::ToastHistory,
+        "toasts",
+        msg::command_toast_history,
+    ),
+    Binding::listed(
+        JUMP_DASHBOARD,
+        "g d",
+        ShellCommand::Jump(Noun::Dashboard),
+        "dashboard",
+        msg::command_jump_dashboard,
+    ),
+    Binding::listed(
+        JUMP_TRANSACTIONS,
+        "g l",
+        ShellCommand::Jump(Noun::Transactions),
+        "transactions",
+        msg::command_jump_transactions,
+    ),
+    Binding::listed(
+        JUMP_DOCUMENTS,
+        "g f",
+        ShellCommand::Jump(Noun::Documents),
+        "documents",
+        msg::command_jump_documents,
+    ),
+    Binding::listed(
+        JUMP_NOTIFICATIONS,
+        "g a",
+        ShellCommand::Jump(Noun::Notifications),
+        "notifications",
+        msg::command_jump_notifications,
+    ),
+    Binding::listed(
+        JUMP_CASH,
+        "g c",
+        ShellCommand::Jump(Noun::Cash),
+        "cash",
+        msg::command_jump_cash,
+    ),
+    Binding::listed(
+        JUMP_INVENTORY,
+        "g o",
+        ShellCommand::Jump(Noun::Inventory),
+        "inventory",
+        msg::command_jump_inventory,
+    ),
+    Binding::listed(
+        JUMP_LOANS,
+        "g n",
+        ShellCommand::Jump(Noun::Loans),
+        "loans",
+        msg::command_jump_loans,
+    ),
+    Binding::listed(
+        JUMP_CREDIT_CARDS,
+        "g k",
+        ShellCommand::Jump(Noun::CreditCards),
+        "credit-cards",
+        msg::command_jump_credit_cards,
+    ),
+    Binding::listed(
+        JUMP_INVESTMENTS,
+        "g i",
+        ShellCommand::Jump(Noun::Investments),
+        "investments",
+        msg::command_jump_investments,
+    ),
+    Binding::listed(
+        JUMP_BILLS,
+        "g w",
+        ShellCommand::Jump(Noun::Bills),
+        "bills",
+        msg::command_jump_bills,
+    ),
+    Binding::listed(
+        JUMP_BUDGETS,
+        "g b",
+        ShellCommand::Jump(Noun::Budgets),
+        "budgets",
+        msg::command_jump_budgets,
+    ),
+    Binding::listed(
+        JUMP_REPORTS,
+        "g r",
+        ShellCommand::Jump(Noun::Reports),
+        "reports",
+        msg::command_jump_reports,
+    ),
+    Binding::listed(
+        JUMP_SETTINGS,
+        "g s",
+        ShellCommand::Jump(Noun::Settings),
+        "settings",
+        msg::command_jump_settings,
+    ),
+    Binding::hidden(INSERT, "a", ShellCommand::Insert),
+    Binding::listed(
+        FOCUS_NEXT,
+        "tab",
+        ShellCommand::FocusNext,
+        "focus-next",
+        msg::command_focus_next,
+    ),
+    Binding::hidden(MOVE_DOWN, "j", ShellCommand::Move(Step::Next)),
+    Binding::hidden(ARROW_DOWN, "down", ShellCommand::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", ShellCommand::Move(Step::Prev)),
+    Binding::hidden(ARROW_UP, "up", ShellCommand::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", ShellCommand::Move(Step::First)),
+    Binding::hidden(HOME, "home", ShellCommand::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", ShellCommand::Move(Step::Last)),
+    Binding::hidden(END, "end", ShellCommand::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        ShellCommand::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        ShellCommand::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(HALF_PAGE_UP, "ctrl+u", ShellCommand::Move(Step::HalfPageUp)),
+    Binding::hidden(PAGE_UP, "pageup", ShellCommand::Move(Step::HalfPageUp)),
+    Binding::hidden(SELECT, "enter", ShellCommand::Select),
 ];
 
 /// The global keymap under `config`'s overrides.

@@ -318,3 +318,14 @@ units-price-source-delete-fallback = { $count ->
    *[other] { $count } units fall back to Manual entry and keep their last prices: { $codes }.
 }
 units-price-source-delete-confirm-label = Type { $name } to confirm
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+units-command-new = add a Unit
+units-command-edit = edit the selected Unit
+units-command-delete = delete the selected Unit
+units-command-reactivate = reactivate the selected Unit
+units-command-test-source = test the selected price source
+units-command-next-table = move between the Units and the price sources
+units-command-set-base = choose the base Unit
+units-command-set-price = set a price for the selected Unit

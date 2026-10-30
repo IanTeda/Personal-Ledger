@@ -217,3 +217,209 @@ fn running_the_same_command_twice_keeps_one_history_entry(app: &mut TestAppConte
         vec!["bills".to_string()]
     );
 }
+
+/// Types `text` into whatever has the keys, a space as `space`.
+fn type_text(ui: &mut Harness<'_>, text: &str) {
+    for ch in text.chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+}
+
+/// Runs `command` from a freshly opened palette.
+fn run(ui: &mut Harness<'_>, command: &str) {
+    open_palette(ui);
+    type_text(ui, command);
+    assert_eq!(
+        palette(ui).expect("open").selected,
+        Some(command),
+        "{command} is the top match"
+    );
+    ui.press("enter");
+}
+
+/// The key column `name`'s row draws while the palette is open at rest.
+fn key_of(ui: &mut Harness<'_>, name: &str) -> String {
+    let open = open_palette(ui);
+    let row = open
+        .matches
+        .iter()
+        .position(|matched| *matched == name)
+        .expect("the command is listed");
+    ui.press("escape");
+    open.keys[row].clone()
+}
+
+#[gpui::test]
+fn a_rebound_key_shows_in_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("jump_dashboard", "g h"));
+
+    assert_eq!(key_of(&mut ui, "dashboard"), "g h");
+    assert_eq!(key_of(&mut ui, "units set-base"), "B");
+}
+
+#[gpui::test]
+fn an_unbound_command_shows_a_dash(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    assert_eq!(key_of(&mut ui, "toasts"), "\u{2014}");
+}
+
+#[gpui::test]
+fn the_global_keymaps_commands_are_listed(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let open = open_palette(&mut ui);
+
+    for name in [
+        "help",
+        "search",
+        "toggle-rail",
+        "focus-next",
+        "focus-previous",
+        "dismiss all",
+        "toasts",
+    ] {
+        assert!(open.matches.contains(&name), "{name}");
+    }
+    for hidden in ["back", "insert", "open_command_popup"] {
+        assert!(!open.matches.contains(&hidden), "{hidden}");
+    }
+}
+
+#[gpui::test]
+fn help_runs_from_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    run(&mut ui, "help");
+
+    assert!(ui.read(|s| s.help_open()));
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Dialog);
+}
+
+#[gpui::test]
+fn search_runs_from_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g l");
+
+    run(&mut ui, "search");
+
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Search);
+}
+
+#[gpui::test]
+fn toggle_rail_runs_from_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let before = ui.rail();
+
+    run(&mut ui, "toggle-rail");
+
+    assert_ne!(ui.rail(), before);
+}
+
+#[gpui::test]
+fn focus_next_and_focus_previous_run_from_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let start = ui.read(|s| s.nav().focus());
+
+    run(&mut ui, "focus-next");
+    let next = ui.read(|s| s.nav().focus());
+    assert_ne!(next, start);
+
+    run(&mut ui, "focus-previous");
+    assert_eq!(ui.read(|s| s.nav().focus()), start);
+}
+
+#[gpui::test]
+fn units_set_base_runs_on_the_units_page_from_another_view_in_one_input(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    open_palette(&mut ui);
+    type_text(&mut ui, "units set-base");
+    let commits = ui.commits();
+
+    ui.press("enter");
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.dialog(), Some("SetBaseUnit"));
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Dialog);
+    assert_eq!(
+        ui.commits() - commits,
+        1,
+        "the event is sent once, as `B` sends it"
+    );
+}
+
+#[gpui::test]
+fn payees_delete_runs_on_the_payees_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    run(&mut ui, "payees delete");
+
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
+}
+
+#[gpui::test]
+fn bills_pay_runs_on_the_row_the_bills_page_last_had_selected(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g w");
+    let row = ui
+        .bills()
+        .rows
+        .iter()
+        .position(|row| row.plan == "Telstra Internet")
+        .expect("Telstra Internet is due this month");
+    for _ in 0..row {
+        ui.press("j");
+    }
+    ui.press("g d");
+
+    run(&mut ui, "bills pay");
+
+    assert_eq!(ui.noun(), Noun::Bills);
+    assert_eq!(ui.bills().dialog.as_deref(), Some("Pay"));
+}
+
+#[gpui::test]
+fn tags_merge_runs_the_tags_merge_binding(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    run(&mut ui, "tags merge");
+
+    assert_eq!(ui.dialog(), Some("MergeTags"));
+}
+
+#[gpui::test]
+fn messages_still_opens_the_toast_history(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    run(&mut ui, "messages");
+
+    assert!(ui.toasts().history_open);
+}
+
+#[gpui::test]
+fn a_bills_command_of_the_other_tab_shows_that_tab_first(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g w");
+    assert_eq!(ui.bills().tab, "Schedule");
+
+    run(&mut ui, "bills edit");
+
+    assert_eq!(ui.bills().tab, "Planner");
+    assert_eq!(ui.bills().dialog.as_deref(), Some("Edit"));
+}
+
+#[gpui::test]
+fn a_units_command_closes_an_open_prices_view_first(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s j j l j enter");
+    assert!(ui.unit_prices().is_some(), "enter opens the prices view");
+
+    run(&mut ui, "units set-base");
+
+    assert!(ui.unit_prices().is_none());
+    assert_eq!(ui.dialog(), Some("SetBaseUnit"));
+}

@@ -10,6 +10,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP,
 };
 
+use crate::msg;
+
 use crate::presenter::InventoryPageEvent;
 
 /// Remove the selected Location or Area, opening the Remove Dialog on it.
@@ -28,106 +30,66 @@ pub const COLLAPSE: &str = "inventory.collapse";
 /// The Inventory page's commands, with today's keys. The arrow, Home/End and Page keys move as
 /// `j`/`k`, `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it.
 pub const INVENTORY_PAGE_BINDINGS: &[Binding<InventoryPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: InventoryPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: InventoryPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: InventoryPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: InventoryPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: InventoryPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: InventoryPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: InventoryPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: InventoryPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: InventoryPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: InventoryPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: InventoryPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: InventoryPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: InventoryPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: InventoryPageEvent::Edit,
-    },
-    Binding {
-        command: REMOVE,
-        chord: "x",
-        event: InventoryPageEvent::Remove,
-    },
-    Binding {
-        command: ADD_AREA,
-        chord: "a",
-        event: InventoryPageEvent::AddArea,
-    },
-    Binding {
-        command: MOVE_AREA_DOWN,
-        chord: "J",
-        event: InventoryPageEvent::MoveArea(1),
-    },
-    Binding {
-        command: MOVE_AREA_UP,
-        chord: "K",
-        event: InventoryPageEvent::MoveArea(-1),
-    },
-    Binding {
-        command: EXPAND,
-        chord: "right",
-        event: InventoryPageEvent::Expand,
-    },
-    Binding {
-        command: COLLAPSE,
-        chord: "left",
-        event: InventoryPageEvent::Collapse,
-    },
+    Binding::hidden(MOVE_DOWN, "j", InventoryPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", InventoryPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", InventoryPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", InventoryPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        InventoryPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        InventoryPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", InventoryPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", InventoryPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", InventoryPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", InventoryPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        InventoryPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        PAGE_UP,
+        "pageup",
+        InventoryPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::listed(
+        NEW,
+        "n",
+        InventoryPageEvent::New,
+        "inventory new",
+        msg::inventory_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        InventoryPageEvent::Edit,
+        "inventory edit",
+        msg::inventory_command_edit,
+    ),
+    Binding::listed(
+        REMOVE,
+        "x",
+        InventoryPageEvent::Remove,
+        "inventory remove",
+        msg::inventory_command_remove,
+    ),
+    Binding::listed(
+        ADD_AREA,
+        "a",
+        InventoryPageEvent::AddArea,
+        "inventory add-area",
+        msg::inventory_command_add_area,
+    ),
+    Binding::hidden(MOVE_AREA_DOWN, "J", InventoryPageEvent::MoveArea(1)),
+    Binding::hidden(MOVE_AREA_UP, "K", InventoryPageEvent::MoveArea(-1)),
+    Binding::hidden(EXPAND, "right", InventoryPageEvent::Expand),
+    Binding::hidden(COLLAPSE, "left", InventoryPageEvent::Collapse),
 ];
 
 /// The Inventory page's keymap under `config`'s overrides.

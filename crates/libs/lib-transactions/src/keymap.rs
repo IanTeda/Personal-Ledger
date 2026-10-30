@@ -10,6 +10,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
+use crate::msg;
+
 use crate::presenter::TransactionsPageEvent;
 
 pub const FILTER: &str = "transactions.filter";
@@ -19,11 +21,7 @@ const fn moves(
     chord: &'static str,
     step: Step,
 ) -> Binding<TransactionsPageEvent> {
-    Binding {
-        command,
-        chord,
-        event: TransactionsPageEvent::Move(step),
-    }
+    Binding::hidden(command, chord, TransactionsPageEvent::Move(step))
 }
 
 /// The Transactions page's commands, with today's keys. The arrow, Home/End and Page keys move as
@@ -42,26 +40,28 @@ pub const TRANSACTIONS_PAGE_BINDINGS: &[Binding<TransactionsPageEvent>] = &[
     moves(END, "end", Step::Last),
     moves(PAGE_DOWN, "pagedown", Step::HalfPageDown),
     moves(PAGE_UP, "pageup", Step::HalfPageUp),
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: TransactionsPageEvent::Open,
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: TransactionsPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: TransactionsPageEvent::Edit,
-    },
-    Binding {
-        command: FILTER,
-        chord: "f",
-        event: TransactionsPageEvent::OpenFilter(None),
-    },
+    Binding::hidden(SELECT, "enter", TransactionsPageEvent::Open),
+    Binding::listed(
+        NEW,
+        "n",
+        TransactionsPageEvent::New,
+        "transactions new",
+        msg::transactions_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        TransactionsPageEvent::Edit,
+        "transactions edit",
+        msg::transactions_command_edit,
+    ),
+    Binding::listed(
+        FILTER,
+        "f",
+        TransactionsPageEvent::OpenFilter(None),
+        "transactions filter",
+        msg::transactions_command_filter,
+    ),
 ];
 
 /// The Transactions page's keymap under `config`'s overrides.

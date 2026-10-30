@@ -214,6 +214,22 @@ impl Page for UnitsPage {
         true
     }
 
+    /// A palette Command, by its keymap `command` name: the event its key sends on the page. An
+    /// open prices view closes first, in the same input, so the Command acts on the page the
+    /// user then sees.
+    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        crate::input::send(cx, |cx| {
+            if self.prices.is_some() {
+                self.handle_prices(UnitPricesEvent::Back, cx);
+            }
+            self.handle(event, cx);
+        });
+        true
+    }
+
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
     /// the page where it is.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {

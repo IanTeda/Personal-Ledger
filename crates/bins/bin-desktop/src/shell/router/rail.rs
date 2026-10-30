@@ -69,7 +69,7 @@ impl Root {
     /// A primary-rail row's click (`shell::view::rail::primary::PrimaryRail`'s `on_row_click`), expanded or
     /// collapsed alike. A direct `NavState::set_noun`, not a browse-then-commit -- the same
     /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
-    /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
+    /// (`Self::run_command`'s noun Commands, through `Self::show_noun`) both make, so rail click,
     /// `g`-jump and the palette land in the same state per acceptance criterion 1.
     pub(super) fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<'_, Self>) {
         let noun_before = self.nav().noun();

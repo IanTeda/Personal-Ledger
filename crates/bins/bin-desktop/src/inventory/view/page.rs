@@ -227,6 +227,19 @@ impl Page for InventoryPage {
         true
     }
 
+    /// A palette Command, by its keymap `command` name: the event its key sends, if the page
+    /// takes it now, as [`Self::module_key`] asks.
+    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        if !self.presenter.takes(&event) {
+            return false;
+        }
+        self.send(event, cx);
+        true
+    }
+
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
     /// the page where it is: there is no hand-off from a row.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {

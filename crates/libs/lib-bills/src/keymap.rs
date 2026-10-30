@@ -10,6 +10,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
+use crate::msg;
+
 use crate::BillStatus;
 use crate::presenter::{BillsPageEvent, PlannerEvent, ScheduleEvent};
 
@@ -26,16 +28,21 @@ pub const CHIP_OVERDUE: &str = "bills.chip_overdue";
 pub const CHIP_DUE: &str = "bills.chip_due";
 pub const CHIP_UPCOMING: &str = "bills.chip_upcoming";
 
+/// A Schedule command, which the palette lists as `name`.
 const fn schedule(
     command: &'static str,
     chord: &'static str,
     event: ScheduleEvent,
+    name: &'static str,
+    description: fn() -> String,
 ) -> Binding<BillsPageEvent> {
-    Binding {
+    Binding::listed(
         command,
         chord,
-        event: BillsPageEvent::Schedule(event),
-    }
+        BillsPageEvent::Schedule(event),
+        name,
+        description,
+    )
 }
 
 /// The Bills page's commands, with today's keys. A Schedule command does nothing on the Planner,
@@ -43,108 +50,128 @@ const fn schedule(
 /// and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it; `select` opens the
 /// row.
 pub const BILLS_PAGE_BINDINGS: &[Binding<BillsPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: BillsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: BillsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: BillsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: BillsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: BillsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: BillsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: BillsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: BillsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: BillsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: BillsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: BillsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: BillsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: BillsPageEvent::Open,
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: BillsPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: BillsPageEvent::Planner(PlannerEvent::Edit),
-    },
-    Binding {
-        command: NEXT_TAB,
-        chord: "tab",
-        event: BillsPageEvent::NextTab,
-    },
-    schedule(PAY, "p", ScheduleEvent::Pay),
-    schedule(SKIP, "s", ScheduleEvent::Skip),
-    schedule(PREVIOUS_PERIOD, "[", ScheduleEvent::PrevPeriod),
-    schedule(NEXT_PERIOD, "]", ScheduleEvent::NextPeriod),
-    schedule(ALL, "0", ScheduleEvent::ToggleAll),
-    schedule(FILTERS, "f", ScheduleEvent::CycleFilter),
-    schedule(CHIP_PAID, "1", ScheduleEvent::ToggleChip(BillStatus::Paid)),
+    Binding::hidden(MOVE_DOWN, "j", BillsPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", BillsPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", BillsPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", BillsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        BillsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        BillsPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", BillsPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", BillsPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", BillsPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", BillsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        BillsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(PAGE_UP, "pageup", BillsPageEvent::Move(Step::HalfPageUp)),
+    Binding::hidden(SELECT, "enter", BillsPageEvent::Open),
+    Binding::listed(
+        NEW,
+        "n",
+        BillsPageEvent::New,
+        "bills new",
+        msg::bills_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        BillsPageEvent::Planner(PlannerEvent::Edit),
+        "bills edit",
+        msg::bills_command_edit,
+    ),
+    Binding::listed(
+        NEXT_TAB,
+        "tab",
+        BillsPageEvent::NextTab,
+        "bills next-tab",
+        msg::bills_command_next_tab,
+    ),
+    schedule(
+        PAY,
+        "p",
+        ScheduleEvent::Pay,
+        "bills pay",
+        msg::bills_command_pay,
+    ),
+    schedule(
+        SKIP,
+        "s",
+        ScheduleEvent::Skip,
+        "bills skip",
+        msg::bills_command_skip,
+    ),
+    schedule(
+        PREVIOUS_PERIOD,
+        "[",
+        ScheduleEvent::PrevPeriod,
+        "bills previous-period",
+        msg::bills_command_previous_period,
+    ),
+    schedule(
+        NEXT_PERIOD,
+        "]",
+        ScheduleEvent::NextPeriod,
+        "bills next-period",
+        msg::bills_command_next_period,
+    ),
+    schedule(
+        ALL,
+        "0",
+        ScheduleEvent::ToggleAll,
+        "bills all",
+        msg::bills_command_all,
+    ),
+    schedule(
+        FILTERS,
+        "f",
+        ScheduleEvent::CycleFilter,
+        "bills filters",
+        msg::bills_command_filters,
+    ),
+    schedule(
+        CHIP_PAID,
+        "1",
+        ScheduleEvent::ToggleChip(BillStatus::Paid),
+        "bills show-paid",
+        msg::bills_command_show_paid,
+    ),
     schedule(
         CHIP_SKIPPED,
         "2",
         ScheduleEvent::ToggleChip(BillStatus::Skipped),
+        "bills show-skipped",
+        msg::bills_command_show_skipped,
     ),
     schedule(
         CHIP_OVERDUE,
         "3",
         ScheduleEvent::ToggleChip(BillStatus::Overdue),
+        "bills show-overdue",
+        msg::bills_command_show_overdue,
     ),
-    schedule(CHIP_DUE, "4", ScheduleEvent::ToggleChip(BillStatus::Due)),
+    schedule(
+        CHIP_DUE,
+        "4",
+        ScheduleEvent::ToggleChip(BillStatus::Due),
+        "bills show-due",
+        msg::bills_command_show_due,
+    ),
     schedule(
         CHIP_UPCOMING,
         "5",
         ScheduleEvent::ToggleChip(BillStatus::Upcoming),
+        "bills show-upcoming",
+        msg::bills_command_show_upcoming,
     ),
 ];
 

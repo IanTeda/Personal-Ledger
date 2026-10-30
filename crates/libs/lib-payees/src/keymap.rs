@@ -8,91 +8,59 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
+use crate::msg;
+
 use crate::presenter::PayeesPageEvent;
 
 /// The Payees page's commands, with today's keys. The arrow, Home/End and Page keys move as
 /// `j`/`k`, `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it.
 pub const PAYEES_PAGE_BINDINGS: &[Binding<PayeesPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: PayeesPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: PayeesPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: PayeesPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: PayeesPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: PayeesPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: PayeesPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: PayeesPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: PayeesPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: PayeesPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: PayeesPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: PayeesPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: PayeesPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: PayeesPageEvent::OpenTransactions,
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: PayeesPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: PayeesPageEvent::Edit,
-    },
-    Binding {
-        command: DELETE,
-        chord: "d",
-        event: PayeesPageEvent::Delete,
-    },
+    Binding::hidden(MOVE_DOWN, "j", PayeesPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", PayeesPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", PayeesPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", PayeesPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        PayeesPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        PayeesPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", PayeesPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", PayeesPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", PayeesPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", PayeesPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        PayeesPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(PAGE_UP, "pageup", PayeesPageEvent::Move(Step::HalfPageUp)),
+    Binding::hidden(SELECT, "enter", PayeesPageEvent::OpenTransactions),
+    Binding::listed(
+        NEW,
+        "n",
+        PayeesPageEvent::New,
+        "payees new",
+        msg::payees_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        PayeesPageEvent::Edit,
+        "payees edit",
+        msg::payees_command_edit,
+    ),
+    Binding::listed(
+        DELETE,
+        "d",
+        PayeesPageEvent::Delete,
+        "payees delete",
+        msg::payees_command_delete,
+    ),
 ];
 
 /// The Payees page's keymap under `config`'s overrides.

@@ -37,8 +37,6 @@ pub enum TagsPageEvent {
     EditRow(TagId),
     RemoveRow(TagId),
     MergeRow(TagId),
-    /// The palette's `tags merge`: the Merge Dialog with neither Tag chosen.
-    OpenMerge,
     /// The open Dialog closed, with what its confirm did or `None` when cancelled.
     DialogClosed(Option<TagsOutcome>),
 }
@@ -145,7 +143,6 @@ impl TagsPagePresenter {
                 self.select(id);
                 self.open_merge(Some(id), router);
             }
-            TagsPageEvent::OpenMerge => self.open_merge(None, router),
             TagsPageEvent::DialogClosed(outcome) => {
                 self.open_dialog = None;
                 // A save selects its Tag and a merge its target; a remove's selection falls to
@@ -493,13 +490,6 @@ mod tests {
             page.send(TagsPageEvent::Merge),
             [RouterCall::OpenDialog(TagsDialog::MergeTags {
                 source: Some(SHARED),
-                target: None,
-            })]
-        );
-        assert_eq!(
-            page.send(TagsPageEvent::OpenMerge),
-            [RouterCall::OpenDialog(TagsDialog::MergeTags {
-                source: None,
                 target: None,
             })]
         );

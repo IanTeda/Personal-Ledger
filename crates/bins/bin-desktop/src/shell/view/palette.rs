@@ -11,7 +11,7 @@
 use gpui::{App, BoxShadow, div, point, prelude::*, px};
 
 use crate::{
-    navigation::command::{self, Command, Domain},
+    navigation::command::{self, Domain, Entry},
     shell::view::window_size,
     theme::color,
 };
@@ -44,23 +44,26 @@ const MAX_ROWS_HEIGHT: gpui::Pixels = px(448.0);
 
 /// One row of the resting/filtered list: a domain header (resting state only) or a command
 /// entry -- mirrors `bin-tui`'s own `popup::command::Row` exactly.
-enum Row {
+enum Row<'a> {
     Header(Domain),
-    Entry(&'static Command),
+    Entry(&'a Entry),
 }
 
-/// State for the floating command palette: its input buffer and result selection. Filtering and
-/// ranking are recomputed from `input`/`COMMANDS` on every call rather than cached, matching
+/// State for the floating command palette: its entries, input buffer and result selection. The
+/// entries are read once, as it opens, under the `[keybindings]` in effect, so each shows its live
+/// key. Filtering and ranking are recomputed from `input`/`entries` on every call rather than cached, matching
 /// `navigation/nav.rs`'s own "never tracked as its own field, so it can never drift out of sync" idiom --
 /// the registry is small enough that this costs nothing.
 #[derive(Default)]
 pub struct Palette {
+    /// Every Command the palette lists ([`command::entries`]).
+    entries: Vec<Entry>,
     input: String,
     /// Index into [`Self::matches`], clamped there rather than here.
     selected: usize,
     /// Previously run command names, most-recent-first, deduplicated -- `Root` owns the
     /// durable copy (this instance is discarded when the palette closes) and clones it in on
-    /// [`Self::with_history`], mirroring the "`Root` owns `Option<Palette>`" split the module
+    /// [`Self::new`], mirroring the "`Root` owns `Option<Palette>`" split the module
     /// doc describes: history outlives any one palette session.
     history: Vec<String>,
     /// How far `^r` has walked back into [`Self::history`] -- `None` before the first press.
@@ -74,14 +77,11 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// A fresh palette pre-loaded with `history` for `^r` to cycle through -- see
-    /// [`Self::cycle_history_back`].
-    pub fn with_history(history: Vec<String>) -> Self {
+    /// A fresh palette listing `entries`, pre-loaded with `history` for `^r` to cycle through --
+    /// see [`Self::cycle_history_back`].
+    pub fn new(entries: Vec<Entry>, history: Vec<String>) -> Self {
         Self {
+            entries,
             history,
             ..Self::default()
         }
@@ -119,10 +119,13 @@ impl Palette {
     /// (any argument already typed is kept). A no-op when nothing is selected (the filtered set
     /// is empty).
     pub fn complete_selected(&mut self) {
-        if let Some(command) = self.selected_command() {
+        if let Some((name, takes_argument)) = self
+            .selected_command()
+            .map(|command| (command.name, command.takes_argument()))
+        {
             let argument = self.argument().to_string();
-            self.input = command.name.to_string();
-            if command.takes_argument() {
+            self.input = name.to_string();
+            if takes_argument {
                 self.input.push(' ');
                 self.input.push_str(&argument);
             }
@@ -164,12 +167,14 @@ impl Palette {
     }
 
     /// Every registered command matching the current input case-insensitively, against its
-    /// name, description or owning [`Command::domain`], ranked by [`match_rank`] -- ties keep
-    /// [`command::all`]'s own registration order (`Vec::sort_by_key` is stable).
-    fn matches(&self) -> Vec<&'static Command> {
+    /// name, description or owning [`Entry::domain`], ranked by [`match_rank`] -- ties keep
+    /// [`command::entries`]' own order (`Vec::sort_by_key` is stable).
+    fn matches(&self) -> Vec<&Entry> {
         let (query, _) = command::split_input(&self.input);
         let needle = query.to_lowercase();
-        let mut matches: Vec<_> = command::all()
+        let mut matches: Vec<_> = self
+            .entries
+            .iter()
             .filter(|command| {
                 needle.is_empty()
                     || command.name.to_lowercase().contains(&needle)
@@ -187,7 +192,7 @@ impl Palette {
     /// ranking beats grouping. Domain headers are inserted purely for display: they don't
     /// consume a `selected` index, which continues to count entries only (`Self::matches`'s own
     /// order), the same way `bin-tui`'s `selected` skips its own `Row::Header` rows.
-    fn rows(&self) -> Vec<Row> {
+    fn rows(&self) -> Vec<Row<'_>> {
         let matches = self.matches();
         if self.input.is_empty() {
             let mut rows = Vec::with_capacity(matches.len() * 2);
@@ -211,8 +216,14 @@ impl Palette {
         self.matches().iter().map(|command| command.name).collect()
     }
 
+    /// The key column of every command the current input matches, as drawn, in ranked order.
+    #[doc(hidden)]
+    pub fn match_keys(&self) -> Vec<String> {
+        self.matches().into_iter().map(drawn_key).collect()
+    }
+
     /// The command the current selection would run on `Enter`.
-    pub fn selected_command(&self) -> Option<&'static Command> {
+    pub fn selected_command(&self) -> Option<&Entry> {
         self.matches().get(self.selected).copied()
     }
 
@@ -289,7 +300,7 @@ impl Palette {
                         blur_radius: px(32.0),
                         spread_radius: px(0.0),
                     }])
-                    .child(input_row(&self.input, match_count, cx))
+                    .child(input_row(&self.input, match_count, self.entries.len(), cx))
                     .child(div().h(px(2.0)).bg(color::foreground(cx)))
                     .child(
                         div()
@@ -311,9 +322,9 @@ impl Palette {
 /// Ranks `command` against a (lowercased, possibly empty) `needle` -- mirrors `bin-tui`'s own
 /// `match_rank` exactly: `0` for a name that starts with the needle (the resting, empty-query
 /// case ties every command here, so registration order wins outright), `1` for the needle
-/// appearing anywhere in the name or the owning [`Command::domain`] (and not already tier `0`),
+/// appearing anywhere in the name or the owning [`Entry::domain`] (and not already tier `0`),
 /// `2` for a match found only in the description.
-fn match_rank(command: &Command, needle: &str) -> u8 {
+fn match_rank(command: &Entry, needle: &str) -> u8 {
     let name = command.name.to_lowercase();
     if needle.is_empty() || name.starts_with(needle) {
         0
@@ -339,7 +350,7 @@ fn domain_header(domain: Domain, cx: &App) -> impl IntoElement {
 
 /// The "1d" spec's input row: leading `:` (matching the key that opens it; the spec draws `>`), the live query with a block caret, right-aligned
 /// match count.
-fn input_row(input: &str, match_count: usize, cx: &App) -> impl IntoElement {
+fn input_row(input: &str, match_count: usize, total: usize, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -359,7 +370,7 @@ fn input_row(input: &str, match_count: usize, cx: &App) -> impl IntoElement {
                 .text_color(color::muted(cx))
                 .child(crate::msg::desktop_palette_match_count(
                     &match_count.to_string(),
-                    &command::COMMANDS.len().to_string(),
+                    &total.to_string(),
                 )),
         )
 }
@@ -368,12 +379,7 @@ fn input_row(input: &str, match_count: usize, cx: &App) -> impl IntoElement {
 /// column (an em dash when the command has none), then the description -- selected styling
 /// inverts per the "1d" spec ("Selected result: ink fill, ground text, accent-on-dark
 /// substring").
-fn result_row(
-    command: &'static Command,
-    needle: &str,
-    selected: bool,
-    cx: &App,
-) -> impl IntoElement {
+fn result_row(command: &Entry, needle: &str, selected: bool, cx: &App) -> impl IntoElement {
     let (bg, text, matched, description_color, binding_color) = if selected {
         (
             Some(color::selection_background(cx)),
@@ -412,7 +418,7 @@ fn result_row(
                 .flex_none()
                 .text_size(px(11.5))
                 .text_color(binding_color)
-                .child(command.binding.unwrap_or("\u{2014}")),
+                .child(drawn_key(command)),
         )
         .child(
             div()
@@ -423,6 +429,14 @@ fn result_row(
                 .text_color(description_color)
                 .child((command.description)()),
         )
+}
+
+/// The key column's text: the live key, or an em dash while unbound (the TUI's `Chord::NONE`).
+fn drawn_key(command: &Entry) -> String {
+    command
+        .key
+        .clone()
+        .unwrap_or_else(|| "\u{2014}".to_string())
 }
 
 /// The "1d" spec's footer hint row, below the rule under the result list: every key the palette
@@ -487,9 +501,17 @@ fn highlighted_name(
 mod tests {
     use super::*;
 
+    fn entries() -> Vec<Entry> {
+        command::entries(&lib_config::KeyBindingConfig::default())
+    }
+
     fn new_palette() -> Palette {
         crate::locale::init_for_tests();
-        Palette::new()
+        Palette::new(entries(), Vec::new())
+    }
+
+    fn with_history(history: Vec<String>) -> Palette {
+        Palette::new(entries(), history)
     }
 
     #[test]
@@ -519,8 +541,9 @@ mod tests {
     #[test]
     fn resting_state_lists_every_command_in_registration_order() {
         let palette = new_palette();
-        assert_eq!(palette.matches().len(), command::COMMANDS.len());
-        assert_eq!(palette.matches()[0].name, command::COMMANDS[0].name);
+        let entries = entries();
+        assert_eq!(palette.matches().len(), entries.len());
+        assert_eq!(palette.matches()[0].name, entries[0].name);
     }
 
     #[test]
@@ -531,7 +554,7 @@ mod tests {
             .iter()
             .filter(|row| matches!(row, Row::Header(_)))
             .count();
-        let domain_count = command::COMMANDS
+        let domain_count = entries()
             .iter()
             .map(|command| command.domain)
             .collect::<std::collections::HashSet<_>>()
@@ -578,7 +601,7 @@ mod tests {
         }
         let matches = palette.matches();
         assert!(!matches.is_empty());
-        assert!(matches.len() < command::COMMANDS.len());
+        assert!(matches.len() < entries().len());
         assert!(matches.iter().all(|c| c.name.contains("tags")));
     }
 
@@ -678,16 +701,14 @@ mod tests {
 
     #[test]
     fn ctrl_r_recalls_the_most_recent_command_first() {
-        let mut palette =
-            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
+        let mut palette = with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
         assert_eq!(palette.input(), "accounts new");
     }
 
     #[test]
     fn repeated_ctrl_r_walks_further_back_and_clamps_at_the_oldest() {
-        let mut palette =
-            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
+        let mut palette = with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
         palette.cycle_history_back();
         assert_eq!(palette.input(), "accounts");
@@ -697,8 +718,7 @@ mod tests {
 
     #[test]
     fn editing_after_a_recall_resets_the_history_cursor() {
-        let mut palette =
-            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
+        let mut palette = with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
         palette.cycle_history_back();
         assert_eq!(palette.input(), "accounts");

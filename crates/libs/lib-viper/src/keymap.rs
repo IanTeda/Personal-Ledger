@@ -7,22 +7,87 @@
 //! A chord is text as `[keybindings]` writes it: modifiers joined to the key with `+`
 //! (`ctrl+d`), and a sequence of keys separated by a space (`g g`). Each Client turns its toolkit's
 //! key into that text before looking it up, so both share one keymap.
+//!
+//! The keymap is also the command palette's table: each binding says whether the palette lists its
+//! Command ([`Palette`]), so a module can't add a key and forget its palette entry.
 
 use lib_config::KeyBindingConfig;
 
-/// One command: its name in `[keybindings]`, its chord when nothing overrides it, and its event. An
-/// empty chord leaves the command unbound until `[keybindings]` sets one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One command: its name in `[keybindings]`, its chord when nothing overrides it, its event, and
+/// whether the command palette lists it. An empty chord leaves the command unbound until
+/// `[keybindings]` sets one.
+#[derive(Debug, Clone)]
 pub struct Binding<E> {
     pub command: &'static str,
     pub chord: &'static str,
     pub event: E,
+    pub palette: Palette,
+}
+
+impl<E> Binding<E> {
+    /// A binding the palette doesn't list: a movement, or a key whose meaning hangs on the row.
+    pub const fn hidden(command: &'static str, chord: &'static str, event: E) -> Self {
+        Self {
+            command,
+            chord,
+            event,
+            palette: Palette::Hidden,
+        }
+    }
+
+    /// A binding the palette lists as `name`, described by the `description` Message.
+    pub const fn listed(
+        command: &'static str,
+        chord: &'static str,
+        event: E,
+        name: &'static str,
+        description: fn() -> String,
+    ) -> Self {
+        Self {
+            command,
+            chord,
+            event,
+            palette: Palette::Listed { name, description },
+        }
+    }
+}
+
+/// Whether the command palette lists a binding's Command.
+#[derive(Debug, Clone, Copy)]
+pub enum Palette {
+    /// Listed under `name`, as typed: `<domain> <verb>` in kebab case (`units set-base`), a stable
+    /// English id, never a Message. `description` is the module's Message for it.
+    Listed {
+        name: &'static str,
+        description: fn() -> String,
+    },
+    /// Not listed: list movement, `select`, and keys that mean something only on the row they
+    /// act on. A Dialog's bindings are all hidden.
+    Hidden,
+}
+
+/// One Command the palette lists, as a keymap holds it: the chord is the live one, empty while
+/// unbound.
+#[derive(Debug, Clone, Copy)]
+pub struct Listed<'a> {
+    pub command: &'static str,
+    pub name: &'static str,
+    pub description: fn() -> String,
+    pub chord: &'a str,
 }
 
 /// A module's bindings with any overrides applied, looked up by chord.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Keymap<E> {
-    bindings: Vec<(String, &'static str, E)>,
+    bindings: Vec<Bound<E>>,
+}
+
+#[derive(Debug, Clone)]
+struct Bound<E> {
+    chord: String,
+    command: &'static str,
+    event: E,
+    palette: Palette,
 }
 
 impl<E: Clone> Keymap<E> {
@@ -32,7 +97,12 @@ impl<E: Clone> Keymap<E> {
             .iter()
             .map(|binding| {
                 let chord = config.key_for(binding.command).unwrap_or(binding.chord);
-                (chord.to_string(), binding.command, binding.event.clone())
+                Bound {
+                    chord: chord.to_string(),
+                    command: binding.command,
+                    event: binding.event.clone(),
+                    palette: binding.palette,
+                }
             })
             .collect();
         Self { bindings }
@@ -45,15 +115,25 @@ impl<E: Clone> Keymap<E> {
         }
         self.bindings
             .iter()
-            .find(|(bound, ..)| bound == chord)
-            .map(|(.., event)| event.clone())
+            .find(|bound| bound.chord == chord)
+            .map(|bound| bound.event.clone())
+    }
+
+    /// The event `command` sends, whatever its chord: the palette runs a Command by name, so it
+    /// reaches the same event its key does, bound or not.
+    pub fn event_for(&self, command: &str) -> Option<E> {
+        self.bindings
+            .iter()
+            .find(|bound| bound.command == command)
+            .map(|bound| bound.event.clone())
     }
 
     /// Whether `chord` begins a bound sequence (the `g` of `g g`), so the Client waits for the
     /// next key before looking the whole sequence up.
     pub fn is_prefix(&self, chord: &str) -> bool {
-        self.bindings.iter().any(|(bound, ..)| {
+        self.bindings.iter().any(|bound| {
             bound
+                .chord
                 .strip_prefix(chord)
                 .is_some_and(|rest| rest.starts_with(' '))
         })
@@ -63,8 +143,23 @@ impl<E: Clone> Keymap<E> {
     pub fn chord(&self, command: &str) -> Option<&str> {
         self.bindings
             .iter()
-            .find(|(_, name, _)| *name == command)
-            .map(|(chord, ..)| chord.as_str())
+            .find(|bound| bound.command == command)
+            .map(|bound| bound.chord.as_str())
+    }
+
+    /// The Commands the palette lists, in binding order, each with its live chord.
+    pub fn listed(&self) -> impl Iterator<Item = Listed<'_>> {
+        self.bindings
+            .iter()
+            .filter_map(|bound| match bound.palette {
+                Palette::Listed { name, description } => Some(Listed {
+                    command: bound.command,
+                    name,
+                    description,
+                    chord: &bound.chord,
+                }),
+                Palette::Hidden => None,
+            })
     }
 }
 
@@ -110,17 +205,19 @@ mod tests {
         Delete,
     }
 
+    fn delete_description() -> String {
+        "delete the selected row".to_string()
+    }
+
     const BINDINGS: &[Binding<Event>] = &[
-        Binding {
-            command: NEW,
-            chord: "n",
-            event: Event::New,
-        },
-        Binding {
-            command: DELETE,
-            chord: "d",
-            event: Event::Delete,
-        },
+        Binding::hidden(NEW, "n", Event::New),
+        Binding::listed(
+            DELETE,
+            "d",
+            Event::Delete,
+            "rows delete",
+            delete_description,
+        ),
     ];
 
     #[test]
@@ -136,11 +233,7 @@ mod tests {
     #[test]
     fn a_sequences_first_key_is_a_prefix_and_a_whole_chord_is_not() {
         // `edit`, since the `[keybindings]` defaults bind `new` to `n`.
-        let bindings = [Binding {
-            command: EDIT,
-            chord: "g n",
-            event: Event::New,
-        }];
+        let bindings = [Binding::hidden(EDIT, "g n", Event::New)];
         let keymap = Keymap::new(&bindings, &KeyBindingConfig::default());
 
         assert!(keymap.is_prefix("g"));
@@ -163,5 +256,37 @@ mod tests {
         assert_eq!(keymap.event("ctrl+x"), Some(Event::Delete));
         assert_eq!(keymap.event("d"), None, "the default no longer binds");
         assert_eq!(keymap.event("n"), Some(Event::New));
+    }
+
+    #[test]
+    fn a_command_reaches_its_event_by_name_under_any_chord() {
+        let keymap = Keymap::new(BINDINGS, &KeyBindingConfig::default());
+        assert_eq!(keymap.event_for(DELETE), Some(Event::Delete));
+        assert_eq!(keymap.event_for("unbound"), None);
+
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(DELETE.to_string(), "ctrl+x".to_string());
+        assert_eq!(
+            Keymap::new(BINDINGS, &config).event_for(DELETE),
+            Some(Event::Delete),
+            "an override moves the key, not the name"
+        );
+    }
+
+    #[test]
+    fn only_listed_commands_are_listed_each_with_its_live_chord() {
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(DELETE.to_string(), "ctrl+x".to_string());
+        let keymap = Keymap::new(BINDINGS, &config);
+
+        let listed: Vec<_> = keymap
+            .listed()
+            .map(|listed| (listed.command, listed.name, listed.chord))
+            .collect();
+        assert_eq!(listed, [(DELETE, "rows delete", "ctrl+x")]);
     }
 }

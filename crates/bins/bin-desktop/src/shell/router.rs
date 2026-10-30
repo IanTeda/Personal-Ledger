@@ -286,6 +286,9 @@ pub struct Root {
     /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
     /// so `^r` can reach commands run in an earlier palette session.
     command_history: Vec<String>,
+    /// The `[keybindings]` in effect, which the palette reads each Command's live key from as it
+    /// opens.
+    keybindings: lib_config::KeyBindingConfig,
     /// The "1e" file explorer's own state -- `Some` only while `:open`'s dialog is on screen,
     /// mirroring `Option<Palette>`. `NavState::mode` stays `InputMode::Command` for as long as
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
@@ -465,6 +468,7 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             command_history: Vec::new(),
+            keybindings: lib_config::KeyBindingConfig::default(),
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
             ledger,
@@ -621,10 +625,12 @@ impl Root {
         self.views.settings.read(cx).display(cx)
     }
 
-    /// The global keys and the keys every module Dialog shares, under `config`'s overrides.
+    /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
+    /// the palette's key column reads too.
     /// The Transactions filter popover reads its keys through the Dialog keymap too, until it is a
     /// module Dialog (#923).
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
+        self.keybindings = config.clone();
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
         self.views

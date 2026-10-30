@@ -9,6 +9,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, REACTIVATE,
 };
 
+use crate::msg;
+
 use crate::presenter::{UnitPricesEvent, UnitsPageEvent};
 
 pub const TEST_SOURCE: &str = "units.test_source";
@@ -24,111 +26,87 @@ pub const LATER: &str = "units.later";
 /// was only the General page's select. Its `B` is capital because `b` is the Desktop's rail toggle,
 /// and a module's default must not be a Client's global key (each bin's clash test checks).
 pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: UnitsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: UnitsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: UnitsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: UnitsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: UnitsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: UnitsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: UnitsPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: UnitsPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: UnitsPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: UnitsPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: UnitsPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: UnitsPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: UnitsPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: UnitsPageEvent::Edit,
-    },
-    Binding {
-        command: DELETE,
-        chord: "d",
-        event: UnitsPageEvent::Delete,
-    },
-    Binding {
-        command: REACTIVATE,
-        chord: "r",
-        event: UnitsPageEvent::Reactivate,
-    },
-    Binding {
-        command: TEST_SOURCE,
-        chord: "t",
-        event: UnitsPageEvent::Test,
-    },
-    Binding {
-        command: NEXT_TABLE,
-        chord: "tab",
-        event: UnitsPageEvent::NextTable,
-    },
-    Binding {
-        command: SET_BASE,
-        chord: "B",
-        event: UnitsPageEvent::SetBase,
-    },
-    Binding {
-        command: SET_PRICE,
-        chord: "p",
-        event: UnitsPageEvent::SetPrice,
-    },
-    Binding {
-        command: OPEN,
-        chord: "enter",
-        event: UnitsPageEvent::Open,
-    },
+    Binding::hidden(MOVE_DOWN, "j", UnitsPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", UnitsPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", UnitsPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", UnitsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        UnitsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        UnitsPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", UnitsPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", UnitsPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", UnitsPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", UnitsPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        UnitsPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(PAGE_UP, "pageup", UnitsPageEvent::Move(Step::HalfPageUp)),
+    Binding::listed(
+        NEW,
+        "n",
+        UnitsPageEvent::New,
+        "units new",
+        msg::units_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        UnitsPageEvent::Edit,
+        "units edit",
+        msg::units_command_edit,
+    ),
+    Binding::listed(
+        DELETE,
+        "d",
+        UnitsPageEvent::Delete,
+        "units delete",
+        msg::units_command_delete,
+    ),
+    Binding::listed(
+        REACTIVATE,
+        "r",
+        UnitsPageEvent::Reactivate,
+        "units reactivate",
+        msg::units_command_reactivate,
+    ),
+    Binding::listed(
+        TEST_SOURCE,
+        "t",
+        UnitsPageEvent::Test,
+        "units test-source",
+        msg::units_command_test_source,
+    ),
+    Binding::listed(
+        NEXT_TABLE,
+        "tab",
+        UnitsPageEvent::NextTable,
+        "units next-table",
+        msg::units_command_next_table,
+    ),
+    Binding::listed(
+        SET_BASE,
+        "B",
+        UnitsPageEvent::SetBase,
+        "units set-base",
+        msg::units_command_set_base,
+    ),
+    Binding::listed(
+        SET_PRICE,
+        "p",
+        UnitsPageEvent::SetPrice,
+        "units set-price",
+        msg::units_command_set_price,
+    ),
+    Binding::hidden(OPEN, "enter", UnitsPageEvent::Open),
 ];
 
 /// The Units page's keymap under `config`'s overrides.
@@ -140,81 +118,33 @@ pub fn units_page_keymap(config: &KeyBindingConfig) -> Keymap<UnitsPageEvent> {
 /// `units.set_price` is the page's own command, so one override moves both. `back` is not here:
 /// `esc` is a key the Shell keeps, which each Client hands the view as [`UnitPricesEvent::Back`].
 pub const UNIT_PRICES_BINDINGS: &[Binding<UnitPricesEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: UnitPricesEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: UnitPricesEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: UnitPricesEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: UnitPricesEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: UnitPricesEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: UnitPricesEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: UnitPricesEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: UnitPricesEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: UnitPricesEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: UnitPricesEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: UnitPricesEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: UnitPricesEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: EARLIER,
-        chord: "[",
-        event: UnitPricesEvent::Earlier,
-    },
-    Binding {
-        command: LATER,
-        chord: "]",
-        event: UnitPricesEvent::Later,
-    },
-    Binding {
-        command: SET_PRICE,
-        chord: "p",
-        event: UnitPricesEvent::SetPrice,
-    },
+    Binding::hidden(MOVE_DOWN, "j", UnitPricesEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", UnitPricesEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", UnitPricesEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", UnitPricesEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        UnitPricesEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        UnitPricesEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", UnitPricesEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", UnitPricesEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", UnitPricesEvent::Move(Step::First)),
+    Binding::hidden(END, "end", UnitPricesEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        UnitPricesEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(PAGE_UP, "pageup", UnitPricesEvent::Move(Step::HalfPageUp)),
+    Binding::hidden(EARLIER, "[", UnitPricesEvent::Earlier),
+    Binding::hidden(LATER, "]", UnitPricesEvent::Later),
+    Binding::hidden(SET_PRICE, "p", UnitPricesEvent::SetPrice),
 ];
 
 /// The Unit prices view's keymap under `config`'s overrides.

@@ -91,11 +91,6 @@ impl TagsPage {
         self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
-    /// The palette's `tags merge`: the Merge Dialog with neither Tag chosen.
-    pub fn open_merge_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(TagsPageEvent::OpenMerge, cx);
-    }
-
     pub fn view_model(&self) -> TagsPageViewModel {
         self.presenter.view_model()
     }
@@ -129,6 +124,15 @@ impl Page for TagsPage {
     /// taken its own keys.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         let Some(event) = self.keymap.event(chord) else {
+            return false;
+        };
+        self.send(event, cx);
+        true
+    }
+
+    /// A palette Command, by its keymap `command` name: the event its key sends.
+    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
             return false;
         };
         self.send(event, cx);

@@ -28,41 +28,13 @@ pub enum DialogCommand {
 
 /// The Dialog keymap's commands with their default keys.
 pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
-    Binding {
-        command: SELECT,
-        chord: "enter",
-        event: DialogCommand::Select,
-    },
-    Binding {
-        command: BACK,
-        chord: "esc",
-        event: DialogCommand::Back,
-    },
-    Binding {
-        command: NEXT_FIELD,
-        chord: "tab",
-        event: DialogCommand::NextField,
-    },
-    Binding {
-        command: PREVIOUS_FIELD,
-        chord: "shift+tab",
-        event: DialogCommand::PreviousField,
-    },
-    Binding {
-        command: SELECT_NEXT,
-        chord: "down",
-        event: DialogCommand::SelectNext,
-    },
-    Binding {
-        command: SELECT_PREVIOUS,
-        chord: "up",
-        event: DialogCommand::SelectPrevious,
-    },
-    Binding {
-        command: SUBMIT,
-        chord: "ctrl+enter",
-        event: DialogCommand::Submit,
-    },
+    Binding::hidden(SELECT, "enter", DialogCommand::Select),
+    Binding::hidden(BACK, "esc", DialogCommand::Back),
+    Binding::hidden(NEXT_FIELD, "tab", DialogCommand::NextField),
+    Binding::hidden(PREVIOUS_FIELD, "shift+tab", DialogCommand::PreviousField),
+    Binding::hidden(SELECT_NEXT, "down", DialogCommand::SelectNext),
+    Binding::hidden(SELECT_PREVIOUS, "up", DialogCommand::SelectPrevious),
+    Binding::hidden(SUBMIT, "ctrl+enter", DialogCommand::Submit),
 ];
 
 /// The Dialog keymap under `config`'s overrides.

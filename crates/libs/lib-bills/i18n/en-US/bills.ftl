@@ -165,3 +165,20 @@ bills-skip-body = The { $due } entry is marked Skipped, not Paid. It's left out 
 bills-skip-body-one-shot = The { $due } entry is marked Skipped, not Paid: this one-time bill is cancelled. It's left out of { $name }'s figures entirely rather than counted as costing nothing.
 bills-skip-submit = Skip this cycle
 bills-skip-error-gone = This bill can no longer be skipped.
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+bills-command-new = add a Bill Plan
+bills-command-edit = edit the selected Bill Plan
+bills-command-next-tab = switch between the Schedule and the Planner
+bills-command-pay = pay the selected Bill
+bills-command-skip = skip the selected Bill
+bills-command-previous-period = show the month before
+bills-command-next-period = show the month after
+bills-command-all = show every month, or one again
+bills-command-filters = move to the next scope select
+bills-command-show-paid = show or hide Paid Bills
+bills-command-show-skipped = show or hide Skipped Bills
+bills-command-show-overdue = show or hide Overdue Bills
+bills-command-show-due = show or hide Due Bills
+bills-command-show-upcoming = show or hide Upcoming Bills

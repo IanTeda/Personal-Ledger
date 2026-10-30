@@ -68,6 +68,18 @@ pub enum BillsPageEvent {
     DialogClosed(Option<BillsOutcome>),
 }
 
+impl BillsPageEvent {
+    /// The tab this event acts on, for one that does nothing on the other (the palette shows it
+    /// first); `None` for an event either tab takes.
+    pub fn tab(&self) -> Option<BillsTab> {
+        match self {
+            Self::Schedule(_) => Some(BillsTab::Schedule),
+            Self::Planner(_) => Some(BillsTab::Planner),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BillsPageViewModel {
     /// `+ Add bill plan`.
@@ -773,5 +785,18 @@ mod tests {
         page.send(BillsPageEvent::Entered);
 
         assert!(stored(&page));
+    }
+
+    #[test]
+    fn a_tab_scoped_event_names_its_tab_and_a_shared_one_none() {
+        assert_eq!(
+            BillsPageEvent::Schedule(ScheduleEvent::Pay).tab(),
+            Some(BillsTab::Schedule)
+        );
+        assert_eq!(
+            BillsPageEvent::Planner(PlannerEvent::Edit).tab(),
+            Some(BillsTab::Planner)
+        );
+        assert_eq!(BillsPageEvent::New.tab(), None);
     }
 }

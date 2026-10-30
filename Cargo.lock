@@ -4984,6 +4984,7 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_list_cursor",
+ "lib_locale",
  "lib_toast",
  "lib_viper",
  "serde",

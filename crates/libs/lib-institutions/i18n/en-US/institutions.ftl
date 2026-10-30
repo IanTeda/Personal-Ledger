@@ -77,3 +77,9 @@ institutions-delete-used-by = Used by { $count ->
 institutions-delete-used-by-hint = Change those accounts' institution first, then delete this one.
 institutions-delete-and-more = and { $count } more
 institutions-delete-close = Close
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+institutions-command-new = add an Institution
+institutions-command-edit = edit the selected Institution
+institutions-command-delete = delete the selected Institution

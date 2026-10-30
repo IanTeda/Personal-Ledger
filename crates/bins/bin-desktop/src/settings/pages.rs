@@ -89,6 +89,12 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
         false
     }
 
+    /// A palette Command the page's module keymap binds, by its `command` name: the page sends the
+    /// event the key would. Only a page that is a module's View has one.
+    fn module_command(&mut self, _command: &str, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
     /// A key the page claims ahead of the Shell's fallback and Settings' focus keys.
     fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
@@ -162,6 +168,7 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
 /// [`Page`] over a page's `Entity`: what the Settings View calls, without knowing which page.
 pub trait PageHandle {
     fn module_key(&self, chord: &str, cx: &mut App) -> bool;
+    fn module_command(&self, command: &str, cx: &mut App) -> bool;
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool;
@@ -186,6 +193,10 @@ pub trait PageHandle {
 impl<T: Page> PageHandle for Entity<T> {
     fn module_key(&self, chord: &str, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.module_key(chord, cx))
+    }
+
+    fn module_command(&self, command: &str, cx: &mut App) -> bool {
+        self.update(cx, |page, cx| page.module_command(command, cx))
     }
 
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {

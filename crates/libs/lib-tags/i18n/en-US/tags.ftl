@@ -109,3 +109,10 @@ tags-merge-submit-empty = Merge
 
 tags-refusal-gone = This tag has since been removed.
 tags-refusal-merge-into-itself = A tag can't be merged into itself.
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+tags-command-new = add a Tag
+tags-command-edit = edit the selected Tag
+tags-command-remove = remove the selected Tag
+tags-command-merge = fold one Tag into another, retagging its Transactions

@@ -122,3 +122,9 @@ payees-reactivate-warning = This payee is inactive and used by <strong>{ $splits
 payees-reactivate-warning-unchecked = This payee is inactive, and what uses it <strong>couldn't be checked</strong>.
 payees-reactivate-callout = Reactivating counts it again and its match rules match on import again.
 payees-delete-confirm-label = Type { $name } to confirm
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+payees-command-new = add a Payee
+payees-command-edit = edit the selected Payee
+payees-command-delete = delete the selected Payee

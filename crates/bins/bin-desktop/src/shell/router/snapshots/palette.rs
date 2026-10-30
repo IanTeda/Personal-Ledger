@@ -9,6 +9,8 @@ use crate::shell::router::Root;
 pub struct PaletteSnapshot {
     pub input: String,
     pub matches: Vec<&'static str>,
+    /// Each match's key column, as drawn (`—` while unbound).
+    pub keys: Vec<String>,
     pub selected: Option<&'static str>,
 }
 
@@ -19,6 +21,7 @@ impl Root {
         self.state.palette.as_ref().map(|palette| PaletteSnapshot {
             input: palette.input().to_string(),
             matches: palette.match_names(),
+            keys: palette.match_keys(),
             selected: palette.selected_command().map(|command| command.name),
         })
     }

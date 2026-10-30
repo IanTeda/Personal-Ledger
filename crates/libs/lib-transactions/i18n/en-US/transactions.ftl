@@ -81,3 +81,9 @@ transactions-hint-filter = filter
 transactions-open-not-yet-built = open transaction — not yet built
 transactions-add-not-yet-built = add transaction — not yet built
 transactions-edit-not-yet-built = edit transaction — not yet built
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+transactions-command-new = add a Transaction
+transactions-command-edit = edit the selected Transaction
+transactions-command-filter = filter the Transactions

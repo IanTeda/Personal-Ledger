@@ -119,6 +119,10 @@ _Avoid_: notification (reserved for anything operating-system level), alert, mes
 A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
 _Avoid_: modal (as a noun), popup, window.
 
+**Command**:
+A named action the user can run. Every Command is reachable by its typed name in the command palette, and it can also be bound to a key, which the user can change.
+_Avoid_: action, shortcut (a shortcut is the key, not the Command).
+
 **Refusal**:
 The Ledger declining a request because a rule forbids it, such as deleting the only Unit or deactivating the base Unit. The person is told why in the Dialog and nothing changes. Distinct from a failure the person didn't cause, such as a write that didn't save, which always raises an Error Toast.
 _Avoid_: validation error, rejection.

@@ -132,3 +132,10 @@ inventory-toast-area-added = Added area "{ $name }"
 inventory-toast-area-saved = Saved area "{ $name }"
 inventory-toast-area-removed = Removed area "{ $name }"
 inventory-toast-area-removed-moved = Removed area "{ $name }" and moved its { $items } to "{ $destination }"
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+inventory-command-new = add a Location
+inventory-command-edit = edit the selected row
+inventory-command-remove = remove the selected row
+inventory-command-add-area = add an Area to the selected Location

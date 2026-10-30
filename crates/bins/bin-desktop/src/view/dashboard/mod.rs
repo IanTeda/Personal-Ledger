@@ -17,7 +17,7 @@ use gpui_component::chart::{LineChart, PieChart};
 use crate::{bills::EntryId, msg, theme::color};
 
 /// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
-/// name, which `Root` looks up in `command::COMMANDS` and runs as the palette would.
+/// name, which `Root` looks up with `command::find` and runs as the palette would.
 pub type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
 
 /// A Bill row's click: hands off to the Bills Schedule tab with that entry selected.

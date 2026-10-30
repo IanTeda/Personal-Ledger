@@ -2,17 +2,17 @@
 //! command registry itself (`navigation::command`).
 
 use gpui::{App, Context};
-use lib_shell::{NavInput, ToastInput};
+use lib_shell::{NavInput, ShellCommand, ToastInput};
 
 use super::{Root, explorer::explorer_start_dir};
 use crate::{
     navigation::{
-        command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
+        command::{self, AccountsVerb, BudgetsVerb, CommandEffect, Entry, ModulePage},
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
     settings::SettingsPage,
-    shell::view::palette::Palette,
+    shell::view::{palette::Palette, window_size::WindowSize},
     view::budgets::manage_dialog::ManageAction,
 };
 
@@ -32,8 +32,8 @@ impl Root {
     /// `Root`-side `command.name == "open"` string match that couldn't express opening a
     /// `Root`-owned dialog).
     ///
-    /// [`CommandEffect::Navigate`] resets the view's scroll when it lands on a different noun,
-    /// matching every other navigation entry point (`g`-jumps, rail `Enter`).
+    /// A noun's Command (a `g` jump's) resets the view's scroll only when it lands on a different
+    /// noun, as rail `Enter` does.
     /// [`CommandEffect::NotYetBuilt`] shows the same "not yet built" message
     /// `docs/ux/tui-mockups/navigation.md` describes for its own popup, reusing the status line's
     /// existing `status_message` slot (the "1d" spec's own COMMAND-mode status line has no
@@ -46,10 +46,14 @@ impl Root {
     /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
     /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
     /// `Self::handle_key_down`'s `escape` arm).
+    ///
+    /// [`CommandEffect::Shell`] runs as its global key does, at `window_size` (the rail toggle
+    /// reads it); [`CommandEffect::Module`] opens its page and sends its event there.
     pub(super) fn run_command(
         &mut self,
-        command: &'static Command,
+        command: &Entry,
         argument: &str,
+        window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) {
         // History keeps what was typed, argument and all, so `^r` recalls `accounts delete Home
@@ -69,14 +73,6 @@ impl Root {
                     explorer_start_dir(),
                     self.explorer_filters,
                 ));
-            }
-            CommandEffect::Navigate(noun) => {
-                self.navigate(NavInput::ExitMode);
-                let noun_before = self.nav().noun();
-                self.navigate(NavInput::Show(noun));
-                if self.nav().noun() != noun_before {
-                    self.reset_view_scroll(cx);
-                }
             }
             CommandEffect::OpenSettingsPage(section) => {
                 self.navigate(NavInput::ExitMode);
@@ -98,23 +94,28 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.presenter.toast(ToastInput::DismissNewest);
             }
-            CommandEffect::DismissAllToasts => {
-                self.navigate(NavInput::ExitMode);
-                self.presenter.toast(ToastInput::DismissAll);
-            }
             CommandEffect::SetToasts(on) => {
                 self.navigate(NavInput::ExitMode);
                 self.set_toasts_on(on, cx);
             }
-            CommandEffect::OpenToastHistory => {
+            CommandEffect::Shell(shell_command) => {
                 self.navigate(NavInput::ExitMode);
-                self.open_toast_history();
+                match shell_command {
+                    // The Presenter takes this key for itself, so its command never reaches
+                    // `run_global`.
+                    ShellCommand::DismissToasts => self.presenter.toast(ToastInput::DismissAll),
+                    ShellCommand::Jump(noun) => self.show_noun(noun, cx),
+                    shell_command => {
+                        self.run_global(shell_command, window_size, cx);
+                    }
+                }
             }
-            CommandEffect::MergeTags => {
+            CommandEffect::Module {
+                page,
+                command: name,
+            } => {
                 self.navigate(NavInput::ExitMode);
-                self.open_settings_page(SettingsPage::Tags, cx);
-                let tags = self.views.settings.read(cx).tags().clone();
-                tags.update(cx, |page, cx| page.open_merge_dialog(cx));
+                self.run_module_command(page, name, cx);
             }
             CommandEffect::Import => {
                 self.navigate(NavInput::ExitMode);
@@ -126,11 +127,7 @@ impl Root {
             }
             CommandEffect::Budgets(verb) => {
                 self.navigate(NavInput::ExitMode);
-                let noun_before = self.nav().noun();
-                self.navigate(NavInput::Show(Noun::Budgets));
-                if noun_before != Noun::Budgets {
-                    self.reset_view_scroll(cx);
-                }
+                self.show_noun(Noun::Budgets, cx);
                 match verb {
                     BudgetsVerb::Switch => self.open_budgets_switcher(cx),
                     BudgetsVerb::New => self.open_budgets_new(cx),
@@ -185,11 +182,12 @@ impl Root {
         command_name: &'static str,
         cx: &mut Context<'_, Self>,
     ) {
-        let Some(command) = command::all().find(|command| command.name == command_name) else {
+        let Some(command) = command::find(command_name, &self.keybindings) else {
             return;
         };
         self.navigate(NavInput::EnterMode(InputMode::Command));
-        self.run_command(command, "", cx);
+        // `open` and `new` read no Window Size: only the rail toggle does.
+        self.run_command(&command, "", WindowSize::Large, cx);
         if let Some(change) = self.state.pending_colour_change.take() {
             change.apply(cx);
         }
@@ -198,7 +196,10 @@ impl Root {
 
     pub(super) fn open_palette(&mut self) {
         self.navigate(NavInput::EnterMode(InputMode::Command));
-        self.state.palette = Some(Palette::with_history(self.command_history.clone()));
+        self.state.palette = Some(Palette::new(
+            command::entries(&self.keybindings),
+            self.command_history.clone(),
+        ));
     }
 }
 
@@ -216,6 +217,46 @@ impl Root {
         self.views
             .settings
             .update(cx, |view, cx| view.open_page(section, cx));
+    }
+
+    /// A module Command from the palette: opens `page` (Settings' page with focus in it, or the
+    /// noun), whose module Router sends the event its keymap binds `command` to, inside one
+    /// [`crate::input::send`] as the key's is.
+    fn run_module_command(
+        &mut self,
+        page: ModulePage,
+        command: &'static str,
+        cx: &mut Context<'_, Self>,
+    ) {
+        match page {
+            ModulePage::Settings(section) => {
+                self.open_settings_page(section, cx);
+                self.views
+                    .settings
+                    .update(cx, |view, cx| view.module_command(section, command, cx));
+            }
+            ModulePage::Bills => {
+                self.show_noun(Noun::Bills, cx);
+                self.views
+                    .bills
+                    .update(cx, |page, cx| page.module_command(command, cx));
+            }
+            ModulePage::Transactions => {
+                self.show_noun(Noun::Transactions, cx);
+                self.views
+                    .transactions
+                    .update(cx, |page, cx| page.module_command(command, cx));
+            }
+        }
+    }
+
+    /// Shows `noun`, resetting the View's scroll when it wasn't already showing.
+    fn show_noun(&mut self, noun: Noun, cx: &mut App) {
+        let noun_before = self.nav().noun();
+        self.navigate(NavInput::Show(noun));
+        if noun_before != noun {
+            self.reset_view_scroll(cx);
+        }
     }
 
     /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, whose Entity then

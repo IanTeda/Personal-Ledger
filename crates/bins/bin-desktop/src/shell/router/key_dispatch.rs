@@ -82,7 +82,7 @@ impl Root {
 
     /// Acts on a global command, one the Shell keeps or one it fell back on. Returns whether the
     /// window needs redrawing.
-    fn run_global(
+    pub(super) fn run_global(
         &mut self,
         command: ShellCommand,
         window_size: WindowSize,
@@ -204,7 +204,12 @@ impl Root {
     /// Everything else is swallowed here rather than falling through to the zone/movement
     /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
     /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
-    fn handle_palette_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    fn handle_palette_key(
+        &mut self,
+        keystroke: &Keystroke,
+        window_size: WindowSize,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         let Some(palette) = self.state.palette.as_mut() else {
             return false;
         };
@@ -231,11 +236,11 @@ impl Root {
                 true
             }
             "enter" => {
-                let command = palette.selected_command();
+                let command = palette.selected_command().cloned();
                 let argument = palette.argument().to_string();
                 self.state.palette = None;
                 match command {
-                    Some(command) => self.run_command(command, &argument, cx),
+                    Some(command) => self.run_command(&command, &argument, window_size, cx),
                     // No result to run (an empty registry match) -- there's nothing left for
                     // `run_command` to do, so leave Command mode directly instead.
                     None => self.navigate(NavInput::ExitMode),
@@ -372,7 +377,9 @@ impl KeyRoute for Keys<'_, '_> {
             return Some(true);
         }
         let taken = match mode {
-            InputMode::Command => shell.handle_palette_key(self.keystroke, self.cx),
+            InputMode::Command => {
+                shell.handle_palette_key(self.keystroke, self.window_size, self.cx)
+            }
             InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
             // Only a View opens a filter popover, and it reads the popover's keys above; what it
             // leaves is swallowed, as is every key in Insert, which has no input surface yet.

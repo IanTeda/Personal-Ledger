@@ -79,21 +79,9 @@ mod tests {
     use crate::keymap::{BACK, Binding, SELECT_NEXT, SELECT_PREVIOUS};
 
     const BINDINGS: &[Binding<()>] = &[
-        Binding {
-            command: BACK,
-            chord: "esc",
-            event: (),
-        },
-        Binding {
-            command: SELECT_NEXT,
-            chord: "down",
-            event: (),
-        },
-        Binding {
-            command: SELECT_PREVIOUS,
-            chord: "up",
-            event: (),
-        },
+        Binding::hidden(BACK, "esc", ()),
+        Binding::hidden(SELECT_NEXT, "down", ()),
+        Binding::hidden(SELECT_PREVIOUS, "up", ()),
     ];
 
     fn frame() -> DialogFrame {

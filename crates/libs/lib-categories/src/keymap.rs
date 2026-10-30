@@ -9,6 +9,8 @@ use lib_viper::keymap::{
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP,
 };
 
+use crate::msg;
+
 use crate::presenter::CategoriesPageEvent;
 
 /// Add a sub-category under the selected Category.
@@ -21,96 +23,64 @@ pub const COLLAPSE: &str = "categories.collapse";
 /// The Categories page's commands, with today's keys. The arrow, Home/End and Page keys move as
 /// `j`/`k`, `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it.
 pub const CATEGORIES_PAGE_BINDINGS: &[Binding<CategoriesPageEvent>] = &[
-    Binding {
-        command: MOVE_DOWN,
-        chord: "j",
-        event: CategoriesPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: MOVE_UP,
-        chord: "k",
-        event: CategoriesPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: MOVE_FIRST,
-        chord: "g g",
-        event: CategoriesPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: MOVE_LAST,
-        chord: "G",
-        event: CategoriesPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: HALF_PAGE_DOWN,
-        chord: "ctrl+d",
-        event: CategoriesPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: HALF_PAGE_UP,
-        chord: "ctrl+u",
-        event: CategoriesPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: ARROW_DOWN,
-        chord: "down",
-        event: CategoriesPageEvent::Move(Step::Next),
-    },
-    Binding {
-        command: ARROW_UP,
-        chord: "up",
-        event: CategoriesPageEvent::Move(Step::Prev),
-    },
-    Binding {
-        command: HOME,
-        chord: "home",
-        event: CategoriesPageEvent::Move(Step::First),
-    },
-    Binding {
-        command: END,
-        chord: "end",
-        event: CategoriesPageEvent::Move(Step::Last),
-    },
-    Binding {
-        command: PAGE_DOWN,
-        chord: "pagedown",
-        event: CategoriesPageEvent::Move(Step::HalfPageDown),
-    },
-    Binding {
-        command: PAGE_UP,
-        chord: "pageup",
-        event: CategoriesPageEvent::Move(Step::HalfPageUp),
-    },
-    Binding {
-        command: NEW,
-        chord: "n",
-        event: CategoriesPageEvent::New,
-    },
-    Binding {
-        command: EDIT,
-        chord: "e",
-        event: CategoriesPageEvent::Edit,
-    },
-    Binding {
-        command: DELETE,
-        chord: "d",
-        event: CategoriesPageEvent::Delete,
-    },
-    Binding {
-        command: NEW_CHILD,
-        chord: "N",
-        event: CategoriesPageEvent::NewChild,
-    },
-    Binding {
-        command: EXPAND,
-        chord: "right",
-        event: CategoriesPageEvent::Expand,
-    },
-    Binding {
-        command: COLLAPSE,
-        chord: "left",
-        event: CategoriesPageEvent::Collapse,
-    },
+    Binding::hidden(MOVE_DOWN, "j", CategoriesPageEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", CategoriesPageEvent::Move(Step::Prev)),
+    Binding::hidden(MOVE_FIRST, "g g", CategoriesPageEvent::Move(Step::First)),
+    Binding::hidden(MOVE_LAST, "G", CategoriesPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        HALF_PAGE_DOWN,
+        "ctrl+d",
+        CategoriesPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        HALF_PAGE_UP,
+        "ctrl+u",
+        CategoriesPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::hidden(ARROW_DOWN, "down", CategoriesPageEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", CategoriesPageEvent::Move(Step::Prev)),
+    Binding::hidden(HOME, "home", CategoriesPageEvent::Move(Step::First)),
+    Binding::hidden(END, "end", CategoriesPageEvent::Move(Step::Last)),
+    Binding::hidden(
+        PAGE_DOWN,
+        "pagedown",
+        CategoriesPageEvent::Move(Step::HalfPageDown),
+    ),
+    Binding::hidden(
+        PAGE_UP,
+        "pageup",
+        CategoriesPageEvent::Move(Step::HalfPageUp),
+    ),
+    Binding::listed(
+        NEW,
+        "n",
+        CategoriesPageEvent::New,
+        "categories new",
+        msg::categories_command_new,
+    ),
+    Binding::listed(
+        EDIT,
+        "e",
+        CategoriesPageEvent::Edit,
+        "categories edit",
+        msg::categories_command_edit,
+    ),
+    Binding::listed(
+        DELETE,
+        "d",
+        CategoriesPageEvent::Delete,
+        "categories delete",
+        msg::categories_command_delete,
+    ),
+    Binding::listed(
+        NEW_CHILD,
+        "N",
+        CategoriesPageEvent::NewChild,
+        "categories new-child",
+        msg::categories_command_new_child,
+    ),
+    Binding::hidden(EXPAND, "right", CategoriesPageEvent::Expand),
+    Binding::hidden(COLLAPSE, "left", CategoriesPageEvent::Collapse),
 ];
 
 /// The Categories page's keymap under `config`'s overrides.

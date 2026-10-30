@@ -209,6 +209,21 @@ impl SettingsView {
         taken
     }
 
+    /// A palette Command on `section`'s page, by its keymap `command` name. Whether the page has it.
+    pub fn module_command(
+        &mut self,
+        section: SettingsPage,
+        command: &str,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        self.sync_frame(cx);
+        let taken = self.pages.get(section).module_command(command, cx);
+        if taken {
+            cx.notify();
+        }
+        taken
+    }
+
     /// Settings' own keys ahead of the Shell's fallback, in order: the focused page's keys (the Display page's
     /// controls and Colour Theme grid and Tracing's among them), then the index-and-page focus
     /// keys. The page goes first, since a page's `h`/`l` must win over the focus keys' `h`. `false`

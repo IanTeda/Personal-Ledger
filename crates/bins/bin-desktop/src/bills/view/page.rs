@@ -257,6 +257,23 @@ impl BillsPage {
         true
     }
 
+    /// A palette Command, by its keymap `command` name: the event its key sends, on the tab it
+    /// belongs to. A Command of the other tab switches to it first, in the same input, since its
+    /// key does nothing there.
+    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        let other_tab = event.tab().filter(|tab| *tab != self.presenter.tab());
+        crate::input::send(cx, |cx| {
+            if let Some(tab) = other_tab {
+                self.handle(BillsPageEvent::ShowTab(tab), cx);
+            }
+            self.handle(event, cx);
+        });
+        true
+    }
+
     /// Every Bills key is the keymap's.
     pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false

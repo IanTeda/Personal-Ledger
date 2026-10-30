@@ -97,3 +97,10 @@ categories-refusal-uncategorised-in-use = Uncategorised can't be deleted while t
 categories-refusal-budget-not-a-leaf = Only an expense category with no subcategories can have a monthly budget.
 categories-refusal-budget-read-only = The budget is read-only, so its monthly amount can't change.
 categories-refusal-budget-unavailable = The monthly budget couldn't be saved.
+
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the palette shows them.
+
+categories-command-new = add a Category
+categories-command-edit = edit the selected Category
+categories-command-delete = delete the selected Category
+categories-command-new-child = add a Category under the selected one

@@ -198,6 +198,19 @@ impl TransactionsPage {
         true
     }
 
+    /// A palette Command, by its keymap `command` name: the event its key sends, the filter
+    /// opening at Account as `f` opens it.
+    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        if matches!(event, TransactionsPageEvent::OpenFilter(_)) {
+            self.filter_anchor = ChipField::Account;
+        }
+        self.send(event, cx);
+        true
+    }
+
     /// Every key while the filter popover is open (the page entered `InputMode::Filter` for it),
     /// but `Esc`, which comes back as [`Self::escape`].
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
