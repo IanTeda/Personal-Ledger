@@ -25,8 +25,10 @@ use gpui::{
     AnyElement, App, Context, Pixels, UniformListScrollHandle, Window, div, point, prelude::*, px,
 };
 
+use lib_transactions::presenter::{ChipField, FilterPresenter, FilterViewModel};
+
 use crate::{
-    transactions::{self, chips::FilterField, chips::Footer, rows::RowView},
+    transactions::{self, rows::RowView, summary::Footer},
     view::format,
 };
 use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};
@@ -90,23 +92,18 @@ impl Render for TransactionsView {
                 });
                 on_click
             };
-        let chip = |handler: fn(
-            &mut TransactionsView,
-            FilterField,
-            &mut Context<'_, TransactionsView>,
-        )| {
-            let entity = entity.clone();
-            let on_click: OnChipClick = Rc::new(move |field, _window, cx| {
-                entity.update(cx, |view, cx| handler(view, field, cx));
-            });
-            on_click
-        };
+        let chip =
+            |handler: fn(&mut TransactionsView, ChipField, &mut Context<'_, TransactionsView>)| {
+                let entity = entity.clone();
+                let on_click: OnChipClick = Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |view, cx| handler(view, field, cx));
+                });
+                on_click
+            };
 
         let popover = self
-            .state
-            .filter_form
-            .as_ref()
-            .map(|form| self.popover(form, window, &entity, cx));
+            .filter_view()
+            .map(|view| self.popover(view, window, &entity, cx));
         let cx: &App = cx;
         let state = &self.state;
         let ledger = self.ledger(cx);
@@ -117,14 +114,13 @@ impl Render for TransactionsView {
             &state.search,
         );
         let rows = transactions::rows::build_rows(&visible, &ledger, &self.prefs());
-        let footer = transactions::chips::footer(&visible, &state.filters, &ledger);
-        let chips =
-            transactions::chips::chips(&state.filters, &ledger, self.today, self.date_style);
+        let footer = transactions::summary::footer(&visible, &state.filters, &ledger);
+        let chips = FilterPresenter::chips(&ledger, &state.filters, self.today, self.date_style);
         let page = render(
             TransactionsPageProps {
-                dimmed: state.filter_form.is_some(),
+                dimmed: state.filter.is_some(),
                 header: HeaderProps {
-                    count_line: transactions::chips::count_line(self.transactions(cx)),
+                    count_line: transactions::summary::count_line(self.transactions(cx)),
                     chips,
                     show_clear: !state.filters.is_default(self.today),
                     search: state.search.clone(),
@@ -162,7 +158,7 @@ impl TransactionsView {
     /// window; before any chip has been painted, at a fixed spot.
     fn popover(
         &self,
-        form: &transactions::filter_form::FilterForm,
+        view: FilterViewModel,
         window: &Window,
         entity: &gpui::Entity<Self>,
         cx: &App,
@@ -204,14 +200,10 @@ impl TransactionsView {
             }
             None => (px(300.0), px(200.0)),
         };
-        let options = self.filter_options(cx);
         let card = filter_popover::render(
             PopoverProps {
-                form,
-                options: &options,
-                start_hint: form.start_hint(self.today, self.date_style),
-                end_hint: form.end_hint(self.today, self.date_style),
-                can_apply: form.is_valid(self.today, self.date_style),
+                view,
+                list: self.state.filter_list.as_ref(),
                 left,
                 top,
                 on_field_click,

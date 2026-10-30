@@ -4,12 +4,11 @@
 //! line (#774); the stub seed is `lib_transactions::fake`'s, joined to the other stubs by
 //! `lib_ledger::default_transactions`.
 
-pub(crate) mod chips;
-pub(crate) mod filter_form;
 pub(crate) mod ports;
 pub(crate) mod query;
 pub(crate) mod router;
 pub(crate) mod rows;
+pub(crate) mod summary;
 
 #[cfg(test)]
 pub use lib_ledger::default_transactions;

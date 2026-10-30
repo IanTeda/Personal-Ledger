@@ -7,7 +7,7 @@ use gpui::{AnyElement, App, div, prelude::*, px};
 
 use crate::{
     theme::color,
-    transactions::chips::{Footer, FooterTotal},
+    transactions::summary::{Footer, FooterTotal},
 };
 
 /// `padding:11px 28px; border-top:2px solid rgba(32,30,29,.38); background:#eae9e9`.

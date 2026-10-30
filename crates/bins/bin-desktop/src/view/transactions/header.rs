@@ -12,22 +12,20 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
 
-use crate::{
-    navigation::nav::Noun,
-    theme::color,
-    transactions::chips::{Chip, FilterField},
-};
+use lib_transactions::presenter::{ChipField, ChipView};
+
+use crate::{navigation::nav::Noun, theme::color};
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnChipClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
+pub type OnChipClick = Rc<dyn Fn(ChipField, &mut Window, &mut App)>;
 /// Where each chip was last painted, in window coordinates: written while painting, read by
 /// `Root` to anchor the filter popover under the chip that opened it.
-pub type ChipBounds = Rc<RefCell<HashMap<FilterField, Bounds<Pixels>>>>;
+pub type ChipBounds = Rc<RefCell<HashMap<ChipField, Bounds<Pixels>>>>;
 
 pub struct HeaderProps {
     /// `700 transactions across 4 accounts`.
     pub count_line: String,
-    pub chips: Vec<Chip>,
+    pub chips: Vec<ChipView>,
     /// Whether the filters differ from the defaults, so `clear filters` has something to do.
     pub show_clear: bool,
     /// The search text.
@@ -159,7 +157,7 @@ fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
 /// would otherwise also open the popover.
 fn chip(
     index: usize,
-    chip: Chip,
+    chip: ChipView,
     on_click: OnChipClick,
     on_clear: OnChipClick,
     bounds_store: ChipBounds,

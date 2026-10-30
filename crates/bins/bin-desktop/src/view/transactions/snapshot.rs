@@ -2,6 +2,7 @@
 //! Transactions Entity from its own state (ADR-0037).
 
 use gpui::App;
+use lib_transactions::presenter::{FilterField, FilterPresenter};
 
 use super::state::TransactionsView;
 use crate::transactions;
@@ -51,9 +52,8 @@ impl TransactionsView {
             &state.search,
         );
         let rows = transactions::rows::build_rows(&visible, &ledger, &self.prefs());
-        let chips =
-            transactions::chips::chips(&state.filters, &ledger, self.today, self.date_style);
-        let form = state.filter_form.as_ref();
+        let chips = FilterPresenter::chips(&ledger, &state.filters, self.today, self.date_style);
+        let filter = self.filter_view();
         TransactionsSnapshot {
             visible: rows.len(),
             selected: transactions::rows::clamp_selection(state.selected, rows.len()),
@@ -67,10 +67,16 @@ impl TransactionsView {
                 })
                 .collect(),
             filters_changed: !state.filters.is_default(self.today),
-            filter_open: form.is_some(),
-            filter_focus: form.map(|form| format!("{:?}", form.focused)),
-            draft_status: form.map(|form| format!("{:?}", form.status)),
-            account_list_open: form.is_some_and(|form| form.account.is_open()),
+            filter_open: filter.is_some(),
+            filter_focus: filter.as_ref().map(|view| format!("{:?}", view.focused)),
+            draft_status: filter
+                .as_ref()
+                .and_then(|view| view.status.chosen)
+                .map(|status| format!("{status:?}")),
+            account_list_open: state
+                .filter_list
+                .as_ref()
+                .is_some_and(|(field, list)| *field == FilterField::Account && list.is_open()),
         }
     }
 }

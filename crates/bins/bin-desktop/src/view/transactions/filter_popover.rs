@@ -1,8 +1,8 @@
 //! The **4b** filter popover (`docs/ux/desktop-mockups/03-transactions/README.md`): a 400px card *anchored*
 //! just below the chip row (not centred like the dialogs and the palette), over a transparent
 //! full-window layer that cancels it when clicked. It holds one field per filter dimension and
-//! edits a draft (`transactions::filter_form::FilterForm`); nothing reaches the applied filters until
-//! **apply**.
+//! draws the view model of `lib_transactions`' `FilterPresenter`, which holds the draft; nothing
+//! reaches the applied filters until **apply**.
 //!
 //! Account and Category are the shared dropdown (`form::select_field`); Payee and Tag are
 //! plain text; From and To are text dates that show an accent border and a hint while unparseable
@@ -14,33 +14,33 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};
 
+use lib_transactions::presenter::{FilterField, FilterViewModel, status_filter_label};
+use lib_viper::view::TextFieldView;
+
+use super::state::select_labels;
 use crate::{
     dialog,
     form::fields::segmented_control,
     form::{
         dialog_fields::{label, text_field, two_up},
+        select::SelectState,
         select_field::{self, SelectFieldProps},
     },
     theme::color,
-    transactions::filter_form::{FilterForm, FormField, FormOptions},
     transactions::query::StatusFilter,
 };
 
-pub type OnFieldClick = Rc<dyn Fn(FormField, &mut Window, &mut App)>;
-pub type OnOptionClick = Rc<dyn Fn(FormField, usize, &mut Window, &mut App)>;
+pub type OnFieldClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
+pub type OnOptionClick = Rc<dyn Fn(FilterField, usize, &mut Window, &mut App)>;
 pub type OnStatusClick = Rc<dyn Fn(StatusFilter, &mut Window, &mut App)>;
 
 /// The card's width: the bundle's own 400px.
 const WIDTH: Pixels = px(400.0);
 
 pub struct PopoverProps<'a> {
-    pub form: &'a FilterForm,
-    pub options: &'a FormOptions,
-    /// The hint under From / To while its text is not a date.
-    pub start_hint: Option<String>,
-    pub end_hint: Option<String>,
-    /// Whether **apply** may run (both dates parse).
-    pub can_apply: bool,
+    pub view: FilterViewModel,
+    /// A select's open list, and the field it belongs to.
+    pub list: Option<&'a (FilterField, SelectState)>,
     /// The card's top-left corner in window coordinates: just below the triggering chip.
     pub left: Pixels,
     pub top: Pixels,
@@ -55,11 +55,8 @@ pub struct PopoverProps<'a> {
 
 pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
     let PopoverProps {
-        form,
-        options,
-        start_hint,
-        end_hint,
-        can_apply,
+        view,
+        list,
         left,
         top,
         on_field_click,
@@ -70,12 +67,23 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
         on_cancel,
     } = props;
 
-    let focused = |field: FormField| form.focused == field;
-    let click = |field: FormField| -> dialog::OnClick {
+    // A select shows its own open list, else its choice closed.
+    let select = |field: FilterField| -> (Vec<String>, SelectState) {
+        let (options, chosen) = select_labels(&view, field);
+        let state = match list {
+            Some((at, state)) if *at == field => state.clone(),
+            _ => SelectState::new(chosen),
+        };
+        (options, state)
+    };
+    let (account_options, account_state) = select(FilterField::Account);
+    let (category_options, category_state) = select(FilterField::Category);
+    let can_apply = view.frame.can_confirm;
+    let click = |field: FilterField| -> dialog::OnClick {
         let on_field_click = on_field_click.clone();
         Rc::new(move |window: &mut Window, cx: &mut App| on_field_click(field, window, cx))
     };
-    let option_click = |field: FormField| -> select_field::OnOptionClick {
+    let option_click = |field: FilterField| -> select_field::OnOptionClick {
         let on_option_click = on_option_click.clone();
         Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
             on_option_click(field, index, window, cx)
@@ -109,7 +117,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .border_color(color::structural_rule(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(13.5))
-                .child(crate::msg::desktop_transactions_filter_title()),
+                .child(view.frame.title.clone()),
         )
         .child(
             div()
@@ -121,74 +129,69 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .child(select_field::render(
                     SelectFieldProps {
                         id: "filter-account".into(),
-                        label: lib_locale::msg::column_account().into(),
-                        options: options.for_field(FormField::Account),
-                        state: &form.account,
-                        focused: focused(FormField::Account),
+                        label: view.account.label.clone().into(),
+                        options: &account_options,
+                        state: &account_state,
+                        focused: view.account.focused,
                         accent: false,
                         read_only: None,
-                        on_field_click: click(FormField::Account),
-                        on_option_click: option_click(FormField::Account),
+                        on_field_click: click(FilterField::Account),
+                        on_option_click: option_click(FilterField::Account),
                     },
                     cx,
                 ))
                 .child(select_field::render(
                     SelectFieldProps {
                         id: "filter-category".into(),
-                        label: lib_locale::msg::column_category().into(),
-                        options: options.for_field(FormField::Category),
-                        state: &form.category,
-                        focused: focused(FormField::Category),
+                        label: view.category.label.clone().into(),
+                        options: &category_options,
+                        state: &category_state,
+                        focused: view.category.focused,
                         accent: false,
                         read_only: None,
-                        on_field_click: click(FormField::Category),
-                        on_option_click: option_click(FormField::Category),
+                        on_field_click: click(FilterField::Category),
+                        on_option_click: option_click(FilterField::Category),
                     },
                     cx,
                 ))
                 .child(text_field(
                     "filter-payee",
-                    label(lib_locale::msg::column_payee()),
-                    &form.payee,
-                    &crate::msg::desktop_transactions_filter_any_payee(),
-                    focused(FormField::Payee),
-                    click(FormField::Payee),
+                    label(view.payee.label.clone()),
+                    &view.payee.text,
+                    &view.payee.placeholder,
+                    view.payee.focused,
+                    click(FilterField::Payee),
                     cx,
                 ))
                 .child(text_field(
                     "filter-tag",
-                    label(crate::msg::desktop_transactions_field_tag()),
-                    &form.tag,
-                    &crate::msg::desktop_transactions_filter_any_tag(),
-                    focused(FormField::Tag),
-                    click(FormField::Tag),
+                    label(view.tag.label.clone()),
+                    &view.tag.text,
+                    &view.tag.placeholder,
+                    view.tag.focused,
+                    click(FilterField::Tag),
                     cx,
                 ))
                 .child(two_up([
                     date_field(
                         "filter-from",
-                        lib_locale::msg::column_from(),
-                        &form.from,
-                        &crate::msg::desktop_transactions_filter_no_start(),
-                        focused(FormField::From),
-                        start_hint,
-                        click(FormField::From),
+                        &view.from,
+                        view.from_error.clone(),
+                        click(FilterField::From),
                         cx,
                     ),
                     date_field(
                         "filter-to",
-                        crate::msg::desktop_transactions_field_to(),
-                        &form.to,
-                        &crate::msg::desktop_transactions_filter_no_end(),
-                        focused(FormField::To),
-                        end_hint,
-                        click(FormField::To),
+                        &view.to,
+                        view.to_error.clone(),
+                        click(FilterField::To),
                         cx,
                     ),
                 ]))
                 .child(status_field(
-                    form.status,
-                    focused(FormField::Status),
+                    &view.status.label,
+                    view.status.chosen.unwrap_or_default(),
+                    view.status.focused,
                     {
                         let on_status_click = on_status_click.clone();
                         Rc::new(
@@ -209,8 +212,13 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .py(px(14.0))
                 .border_t(px(1.0))
                 .border_color(color::hairline(cx))
-                .child(reset_button(on_reset, cx))
-                .child(apply_button(can_apply, on_apply, cx)),
+                .child(reset_button(view.reset.clone(), on_reset, cx))
+                .child(apply_button(
+                    view.frame.submit.clone(),
+                    can_apply,
+                    on_apply,
+                    cx,
+                )),
         );
 
     div()
@@ -224,20 +232,20 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
 
 /// A From / To field: the label over a text box, the box turning `negative` with a hint beneath it
 /// while the text is not a date, and `accent` while focused.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a stateless GPUI render fn takes each value and handler it wires, plus the App the Colour Theme is read from"
-)]
 fn date_field(
     id: &'static str,
-    title: String,
-    value: &str,
-    placeholder: &str,
-    focused: bool,
+    field: &TextFieldView,
     error: Option<String>,
     on_click: dialog::OnClick,
     cx: &App,
 ) -> AnyElement {
+    let TextFieldView {
+        label: title,
+        text: value,
+        placeholder,
+        focused,
+    } = field;
+    let focused = *focused;
     let caret = if focused { "\u{2502}" } else { "" };
     let (text, text_color) = if value.is_empty() {
         (
@@ -260,7 +268,7 @@ fn date_field(
     div()
         .flex_1()
         .min_w(px(0.0))
-        .child(label(title))
+        .child(label(title.clone()))
         .child(
             div()
                 .id(id)
@@ -290,13 +298,14 @@ fn date_field(
 /// The Status field: the label over the shared segmented control, ringed in accent while focused
 /// (`Left` / `Right` step it).
 fn status_field(
+    title: &str,
     current: StatusFilter,
     focused: bool,
     on_click: OnStatusClick,
     cx: &App,
 ) -> AnyElement {
     div()
-        .child(label(lib_locale::msg::column_status()))
+        .child(label(title.to_string()))
         .child(
             div()
                 .p(px(2.0))
@@ -310,7 +319,7 @@ fn status_field(
                     "filter-status",
                     &StatusFilter::ALL,
                     current,
-                    crate::transactions::query::status_filter_label,
+                    status_filter_label,
                     on_click,
                     cx,
                 )),
@@ -319,7 +328,7 @@ fn status_field(
 }
 
 /// `reset`: the ghost button.
-fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
+fn reset_button(text: String, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
         .id("filter-reset")
@@ -333,11 +342,16 @@ fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
         .text_color(color::foreground(cx))
         .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_hint_reset())
+        .child(text)
 }
 
 /// `apply`: the primary button with its `enter` hint, at 45% opacity and inert while a date is bad.
-fn apply_button(enabled: bool, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
+fn apply_button(
+    text: String,
+    enabled: bool,
+    on_click: dialog::OnClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id("filter-apply")
         .debug_selector(|| "filter-apply".to_string())
@@ -354,7 +368,7 @@ fn apply_button(enabled: bool, on_click: dialog::OnClick, cx: &App) -> impl Into
         .when(enabled, |this| {
             this.on_click(move |_event, window, cx| on_click(window, cx))
         })
-        .child(crate::msg::desktop_hint_apply())
+        .child(text)
         .child(
             div()
                 .opacity(0.75)

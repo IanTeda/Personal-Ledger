@@ -248,7 +248,7 @@ pub fn build(
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
-    shell.set_keymaps(&bindings.keybindings);
+    shell.set_keymaps(&bindings.keybindings, cx);
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
     shell.listen_for_write_failures(failures, cx);
@@ -619,9 +619,15 @@ impl Root {
     }
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides.
-    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
+    /// The Transactions filter popover reads its keys through the Dialog keymap too, until it is a
+    /// module Dialog (#923).
+    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
+        let keymap = self.state.dialog_keymap.clone();
+        self.views
+            .transactions
+            .update(cx, |view, _| view.set_dialog_keymap(keymap));
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file

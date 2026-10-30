@@ -14,7 +14,7 @@ use std::path::Path;
 
 use chrono::NaiveDate;
 use lib_core::{DateStyle, DocumentId};
-use lib_locale::format::format_date_input;
+use lib_locale::format::{format_date_input, parse_optional_date};
 
 use crate::{
     documents::types::DocumentTypeRow,
@@ -26,7 +26,6 @@ use crate::{
     form::select::SelectKey,
     form::select::SelectState,
     shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    transactions::filter_form::parse_date,
 };
 
 /// The Add and Edit forms' fields, in `Tab` order. Edit has no Path.
@@ -375,12 +374,12 @@ impl DocumentForm {
                 }
             };
         }
-        problems.date = match parse_date(self.date.text(), today, date_style) {
+        problems.date = match parse_optional_date(self.date.text(), today, date_style) {
             Err(hint) => Some(FieldProblem::Date(hint)),
             Ok(_) => None,
         };
         if self.key_kind().is_some() {
-            problems.key_date = match parse_date(self.key_date.text(), today, date_style) {
+            problems.key_date = match parse_optional_date(self.key_date.text(), today, date_style) {
                 Err(hint) => Some(FieldProblem::Date(hint)),
                 Ok(None) => Some(FieldProblem::Date(String::new())),
                 Ok(Some(_)) => None,
@@ -398,7 +397,8 @@ impl DocumentForm {
     /// the Path (Add), the dates. What a Path points at (a missing, unsupported or duplicate file)
     /// is `Root`'s to check, with the Library and the disk, when the form is applied.
     pub fn is_complete(&self) -> bool {
-        let readable = |field: &TextField| parse_date(field.text(), self.today, self.date_style);
+        let readable =
+            |field: &TextField| parse_optional_date(field.text(), self.today, self.date_style);
         !self.title.is_blank()
             && (self.is_edit || !self.path.is_blank())
             && readable(&self.date).is_ok()
@@ -407,7 +407,7 @@ impl DocumentForm {
 
     /// The form's values as a [`NewDocument`], or `None` while it cannot be saved.
     pub fn build(&self) -> Option<NewDocument> {
-        let date = parse_date(self.date.text(), self.today, self.date_style)
+        let date = parse_optional_date(self.date.text(), self.today, self.date_style)
             .ok()?
             .unwrap_or(self.today);
         Some(NewDocument {
@@ -424,7 +424,8 @@ impl DocumentForm {
         let Some(kind) = self.key_kind() else {
             return Some(None);
         };
-        let date = parse_date(self.key_date.text(), self.today, self.date_style).ok()??;
+        let date =
+            parse_optional_date(self.key_date.text(), self.today, self.date_style).ok()??;
         Some(Some(KeyDate {
             kind,
             date,
@@ -640,7 +641,7 @@ impl FactsForm {
 
     pub fn problems(&self) -> FactsProblems {
         FactsProblems {
-            date: parse_date(self.date.text(), self.today, self.date_style).err(),
+            date: parse_optional_date(self.date.text(), self.today, self.date_style).err(),
             total: !self.total.is_blank() && parse_total(self.total.text()).is_none(),
         }
     }
@@ -656,7 +657,7 @@ impl FactsForm {
         let total = self.total.text().trim();
         Some(documents::ExtractedFacts {
             merchant: (!merchant.is_empty()).then(|| merchant.to_string()),
-            date: parse_date(self.date.text(), self.today, self.date_style).ok()?,
+            date: parse_optional_date(self.date.text(), self.today, self.date_style).ok()?,
             total: if total.is_empty() {
                 None
             } else {
@@ -955,7 +956,7 @@ mod tests {
         );
         assert_eq!(by_year.doc_type(), DocumentType::OTHER);
         assert_eq!(
-            parse_date(by_year.date.text(), day(2026, 9, 12), None),
+            parse_optional_date(by_year.date.text(), day(2026, 9, 12), None),
             Ok(Some(day(2025, 6, 30)))
         );
     }

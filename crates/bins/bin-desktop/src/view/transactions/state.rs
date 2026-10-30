@@ -1,6 +1,8 @@
 //! The Transactions destination's Entity (ADR-0032, ADR-0037). [`TransactionsView`] owns the page's
 //! own state: the selected row, the table's scroll, the filters, the search and the filter
-//! popover's draft. It reads the rows through `LedgerStore`, and the Accounts, Categories, Payees
+//! popover, which runs on `lib_transactions`' `FilterPresenter` (#928): the Entity opens it on a
+//! draft of the applied filters, hands it the popover's keys (read through the Shell's Dialog
+//! keymap) and clicks, and takes the filters it applies. It reads the rows through `LedgerStore`, and the Accounts, Categories, Payees
 //! and Tags its chips and filter choices draw on through theirs. The Import View is its own Entity
 //! (`view::import`). It renders itself (`impl Render` in `super`), handles
 //! its own keys, `Esc`, Search and movement, and reaches `Root` only through [`ViewEvent`].
@@ -13,6 +15,11 @@ use gpui::{
 
 use lib_core::DateStyle;
 use lib_list_cursor::Step;
+use lib_shell::DialogCommand;
+use lib_transactions::presenter::{
+    ChipField, FilterEvent, FilterField, FilterOutcome, FilterPresenter, FilterViewModel,
+};
+use lib_viper::keymap::Keymap;
 
 use super::{
     header::ChipBounds,
@@ -21,14 +28,14 @@ use super::{
 use lib_payees::Payee;
 
 use crate::{
+    form::select::SelectState,
+    form::viper::{chosen_label, labels},
     ledger_store::{LedgerStore, notify_on},
-    navigation::movement::Movement,
+    navigation::{chord::chord, movement::Movement},
     settings::display::{RowDensity, StatusGlyphs},
     shell::view::statusline::{PageStatus, owned_hints},
     transactions::{
         self, Transaction,
-        chips::FilterField,
-        filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
         query::{Ledger, StatusFilter, TransactionFilters},
         rows::DisplayPrefs,
     },
@@ -52,11 +59,15 @@ pub struct TransactionsState {
     pub filters: TransactionFilters,
     /// The search box's text, separate from the filters.
     pub search: String,
-    /// The filter popover's draft, `Some` while it is open (`InputMode::Filter`, which the View
-    /// entered). Kept apart from [`Self::filters`] until **apply**.
-    pub filter_form: Option<FilterForm>,
+    /// The filter popover's Presenter, holding its draft, `Some` while it is open
+    /// (`InputMode::Filter`, which the View entered). Kept apart from [`Self::filters`] until
+    /// **apply**.
+    pub filter: Option<FilterPresenter>,
+    /// A popover select's open list and highlight, the View's widget state: the field it belongs
+    /// to and the list, which shows the Presenter's choice.
+    pub filter_list: Option<(FilterField, SelectState)>,
     /// The chip that opened the popover, which it anchors under.
-    pub filter_anchor: FilterField,
+    pub filter_anchor: ChipField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     pub chip_bounds: ChipBounds,
 }
@@ -68,8 +79,9 @@ impl TransactionsState {
             scroll: UniformListScrollHandle::new(),
             filters: TransactionFilters::defaults(today),
             search: String::new(),
-            filter_form: None,
-            filter_anchor: FilterField::Account,
+            filter: None,
+            filter_list: None,
+            filter_anchor: ChipField::Account,
             chip_bounds: ChipBounds::default(),
         }
     }
@@ -90,6 +102,9 @@ pub struct TransactionsView {
     pub(super) date_style: Option<DateStyle>,
     pub(super) glyphs: StatusGlyphs,
     pub(super) density: RowDensity,
+    /// The Shell's Dialog keymap, which the filter popover reads its keys through. Pushed by
+    /// `Root`, which builds it under `[keybindings]`.
+    dialog_keymap: Keymap<DialogCommand>,
     /// Whether the View's Search is open (`InputMode::Search`, which the View entered).
     pub(super) searching: bool,
     pub(super) state: TransactionsState,
@@ -118,6 +133,7 @@ impl TransactionsView {
             date_style: None,
             glyphs: StatusGlyphs::default(),
             density: RowDensity::default(),
+            dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
             searching: false,
             state: TransactionsState::new(today),
             _accounts_changed,
@@ -150,6 +166,11 @@ impl TransactionsView {
         self.glyphs = glyphs;
         self.density = density;
         cx.notify();
+    }
+
+    /// Follows a change to the Dialog keymap's `[keybindings]`.
+    pub fn set_dialog_keymap(&mut self, keymap: Keymap<DialogCommand>) {
+        self.dialog_keymap = keymap;
     }
 
     pub fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
@@ -191,24 +212,13 @@ impl TransactionsView {
         .len()
     }
 
-    /// The Account, Category, Payee and Tag selects' options, read live from the stores.
-    pub(super) fn filter_options(&self, cx: &App) -> FormOptions {
-        let ledger = self.ledger(cx);
-        FormOptions::new(
-            ledger.accounts,
-            ledger.categories,
-            ledger.payees,
-            ledger.tags,
-        )
-    }
-
     /// Keys the page claims before the Shell's fallback: every key but `Esc` while the filter
     /// popover is open (the View entered `InputMode::Filter` for it).
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "escape" {
             return false;
         }
-        if self.state.filter_form.is_some() {
+        if self.state.filter.is_some() {
             return self.filter_key(keystroke, cx);
         }
         false
@@ -278,11 +288,8 @@ impl TransactionsView {
     /// discarded), then the Search (its text is cleared, the map's decision: search is cleared by
     /// `Esc` or by emptying the box).
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if let Some(form) = self.state.filter_form.as_mut() {
-            if !form.close_open_select() {
-                self.close_filter_popover(cx);
-            }
-            cx.notify();
+        if self.state.filter.is_some() {
+            self.filter_back(cx);
             return true;
         }
         if self.searching {
@@ -364,7 +371,7 @@ impl TransactionsView {
         filters.to = filters.to.map(|to| to.max(date));
         self.state.filters = filters;
         self.state.search.clear();
-        self.state.filter_form = None;
+        self.close_filter();
         let index = transactions::query::query(
             &self.ledger(cx),
             self.transactions(cx),
@@ -385,7 +392,7 @@ impl TransactionsView {
     /// The status line's legend (the filter popover's or the page's), and its right-hand text.
     pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
-            hints: owned_hints(if self.state.filter_form.is_some() {
+            hints: owned_hints(if self.state.filter.is_some() {
                 filter_hints()
             } else {
                 transactions_hints()
@@ -399,7 +406,7 @@ impl TransactionsView {
     pub fn show_filtered(&mut self, filters: TransactionFilters, cx: &mut Context<'_, Self>) {
         self.state.filters = filters;
         self.state.search.clear();
-        self.state.filter_form = None;
+        self.close_filter();
         self.reset_selection();
         cx.notify();
     }
@@ -423,70 +430,256 @@ impl TransactionsView {
     /// field and anchors under the first chip.
     pub(super) fn open_filter_popover(
         &mut self,
-        chip: Option<FilterField>,
+        chip: Option<ChipField>,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.filter_options(cx);
-        let mut form =
-            FilterForm::from_filters(&self.state.filters, &options, self.today, self.date_style);
-        form.focused = chip.map(FormField::for_chip).unwrap_or_default();
-        self.state.filter_anchor = chip.unwrap_or(FilterField::Account);
-        self.state.filter_form = Some(form);
+        let presenter = FilterPresenter::open(
+            &self.ledger(cx),
+            &self.state.filters,
+            chip,
+            self.today,
+            self.date_style,
+        );
+        self.state.filter_anchor = chip.unwrap_or(ChipField::Account);
+        self.state.filter = Some(presenter);
+        self.state.filter_list = None;
         cx.emit(ViewEvent::EnterMode(ViewMode::Filter));
         cx.notify();
     }
 
     /// Discards the popover's draft and leaves the mode it opened.
     pub(super) fn close_filter_popover(&mut self, cx: &mut Context<'_, Self>) {
-        self.state.filter_form = None;
+        self.close_filter();
         cx.emit(ViewEvent::ExitMode);
         cx.notify();
     }
 
-    /// Keys while the filter popover is open. `Tab` / `Shift-Tab` move between fields; a focused
-    /// select takes `Up` / `Down` / `Enter` / `Space` as the shared dropdown does; the Status control
-    /// steps with `Left` / `Right` (or `Space`); text fields take typing and `Backspace`; `Enter`
-    /// applies (from a select it opens or commits the list instead, so `Tab` off it first); `Ctrl-r`
-    /// resets the draft. `Esc` comes back as [`Self::escape`].
-    fn filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        let options = self.filter_options(cx);
-        let (today, date_style) = (self.today, self.date_style);
-        let Some(form) = self.state.filter_form.as_mut() else {
-            return false;
-        };
-        let (handled, apply) = filter_key(form, keystroke, &options, today, date_style);
-        if apply {
-            self.apply_filter_form(cx);
-        }
-        cx.notify();
-        handled
+    /// Drops the popover and its open list, without leaving a mode.
+    fn close_filter(&mut self) {
+        self.state.filter = None;
+        self.state.filter_list = None;
     }
 
-    /// **apply**: commits the draft to the applied filters, closes the popover and puts the table
-    /// back on its first row. A no-op while a date does not parse.
-    pub(super) fn apply_filter_form(&mut self, cx: &mut Context<'_, Self>) {
-        let options = self.filter_options(cx);
-        let Some(filters) = self
-            .state
-            .filter_form
-            .as_ref()
-            .and_then(|form| form.to_filters(&options, self.today, self.date_style))
-        else {
+    /// The open popover's view model.
+    pub(super) fn filter_view(&self) -> Option<FilterViewModel> {
+        self.state.filter.as_ref().map(FilterPresenter::view_model)
+    }
+
+    /// Hands `event` to the popover's Presenter: **apply** commits the filters it hands back,
+    /// closes the popover and puts the table back on its first row, and a cancel discards the
+    /// draft. An open list on a field that has lost focus closes.
+    fn send_filter(&mut self, event: FilterEvent, cx: &mut Context<'_, Self>) {
+        let Some(presenter) = self.state.filter.as_mut() else {
             return;
         };
-        self.state.filters = filters;
-        self.close_filter_popover(cx);
-        self.reset_selection();
+        match presenter.handle(event) {
+            Some(FilterOutcome::Applied(filters)) => {
+                self.state.filters = filters;
+                self.close_filter_popover(cx);
+                self.reset_selection();
+            }
+            Some(FilterOutcome::Cancelled) => self.close_filter_popover(cx),
+            None => {
+                let focused = presenter.focused();
+                if self
+                    .state
+                    .filter_list
+                    .as_ref()
+                    .is_some_and(|(field, _)| *field != focused)
+                {
+                    self.state.filter_list = None;
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Keys while the filter popover is open, read through the Dialog keymap: `next_field` and
+    /// `previous_field` move between fields, `select_next` and `select_previous` step a closed
+    /// select or move an open list's highlight, `select` opens or commits a select's list and
+    /// otherwise applies, and `submit` applies from anywhere. Any other key is the field's own:
+    /// `Space` on a select or the Status control, `Left` / `Right` on Status, `Ctrl-r` reset,
+    /// and typing or `Backspace` in a text field. `Esc` comes back as [`Self::escape`].
+    fn filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        match chord(keystroke).and_then(|chord| self.dialog_keymap.event(&chord)) {
+            Some(command) => {
+                self.filter_command(command, cx);
+                true
+            }
+            None => self.filter_typed(keystroke, cx),
+        }
+    }
+
+    fn filter_command(&mut self, command: DialogCommand, cx: &mut Context<'_, Self>) {
+        let Some(focused) = self.state.filter.as_ref().map(FilterPresenter::focused) else {
+            return;
+        };
+        match command {
+            DialogCommand::Back => self.filter_back(cx),
+            DialogCommand::Submit => self.send_filter(FilterEvent::Apply, cx),
+            DialogCommand::Select if focused.is_select() => self.activate_list(focused, cx),
+            DialogCommand::Select => self.send_filter(FilterEvent::Apply, cx),
+            DialogCommand::NextField | DialogCommand::PreviousField => {
+                self.commit_list(cx);
+                let event = if command == DialogCommand::NextField {
+                    FilterEvent::NextField
+                } else {
+                    FilterEvent::PreviousField
+                };
+                self.send_filter(event, cx);
+            }
+            DialogCommand::SelectNext | DialogCommand::SelectPrevious => {
+                let delta = if command == DialogCommand::SelectNext {
+                    1
+                } else {
+                    -1
+                };
+                if let Some(view) = self.filter_view()
+                    && let Some(list) = self.open_list(&view, focused)
+                {
+                    let options = select_labels(&view, focused).0;
+                    list.move_highlight(&options, delta);
+                    cx.notify();
+                } else if delta > 0 {
+                    self.send_filter(FilterEvent::SelectNext, cx);
+                } else {
+                    self.send_filter(FilterEvent::SelectPrevious, cx);
+                }
+            }
+        }
+    }
+
+    /// A key the Dialog keymap doesn't bind: the focused field's own.
+    fn filter_typed(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let Some(focused) = self.state.filter.as_ref().map(FilterPresenter::focused) else {
+            return false;
+        };
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control && keystroke.key == "r" {
+            self.send_filter(FilterEvent::Reset, cx);
+            return true;
+        }
+        let status = focused == FilterField::Status;
+        match keystroke.key.as_str() {
+            "left" if status => self.send_filter(FilterEvent::StatusPrevious, cx),
+            "right" | "space" if status => self.send_filter(FilterEvent::StatusNext, cx),
+            "space" if focused.is_select() => self.activate_list(focused, cx),
+            "backspace" => self.send_filter(FilterEvent::Backspace, cx),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    self.send_filter(FilterEvent::Type(ch), cx);
+                }
+            }
+        }
+        true
+    }
+
+    /// `back`: an open list closes first; otherwise the popover is cancelled, its draft discarded.
+    fn filter_back(&mut self, cx: &mut Context<'_, Self>) {
+        match self.state.filter_list.as_mut() {
+            Some((_, list)) if list.is_open() => {
+                list.cancel();
+                cx.notify();
+            }
+            _ => self.send_filter(FilterEvent::Cancel, cx),
+        }
+    }
+
+    /// `field`'s list, showing the Presenter's choice: kept while it still does, else a closed
+    /// one.
+    fn list(&mut self, view: &FilterViewModel, field: FilterField) -> &mut SelectState {
+        let chosen = select_labels(view, field).1;
+        let kept = self
+            .state
+            .filter_list
+            .as_ref()
+            .is_some_and(|(at, list)| *at == field && list.value() == chosen.as_deref());
+        if !kept {
+            self.state.filter_list = Some((field, SelectState::new(chosen)));
+        }
+        &mut self
+            .state
+            .filter_list
+            .get_or_insert_with(|| (field, SelectState::default()))
+            .1
+    }
+
+    /// `field`'s list, while it is open.
+    fn open_list(
+        &mut self,
+        view: &FilterViewModel,
+        field: FilterField,
+    ) -> Option<&mut SelectState> {
+        Some(self.list(view, field)).filter(|list| list.is_open())
+    }
+
+    /// `select` or `Space` on a select: opens its list, or commits an open list's highlight.
+    fn activate_list(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
+        let Some(view) = self.filter_view() else {
+            return;
+        };
+        if self.open_list(&view, field).is_some() {
+            self.commit_list(cx);
+        } else {
+            let options = select_labels(&view, field).0;
+            self.list(&view, field).open(&options);
+            cx.notify();
+        }
+    }
+
+    /// Commits the focused select's open list, if any, sending the highlighted choice.
+    fn commit_list(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(view) = self.filter_view() else {
+            return;
+        };
+        let field = view.focused;
+        let options = select_labels(&view, field).0;
+        let Some(list) = self.open_list(&view, field) else {
+            return;
+        };
+        list.commit(&options);
+        let chosen = list.value().map(str::to_string);
+        self.send_choice(&view, field, chosen, cx);
+    }
+
+    /// Sends the Presenter the choice labelled `label` on `field`'s select.
+    fn send_choice(
+        &mut self,
+        view: &FilterViewModel,
+        field: FilterField,
+        label: Option<String>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let Some(label) = label else {
+            return;
+        };
+        let event = match field {
+            FilterField::Account => find(&view.account.options, &label).map(FilterEvent::Account),
+            FilterField::Category => {
+                find(&view.category.options, &label).map(FilterEvent::Category)
+            }
+            _ => None,
+        };
+        match event {
+            Some(event) => self.send_filter(event, cx),
+            None => cx.notify(),
+        }
     }
 
     /// A click on a filter chip (or its `▾`): opens the popover on that chip's field.
-    pub(super) fn click_chip(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
+    pub(super) fn click_chip(&mut self, field: ChipField, cx: &mut Context<'_, Self>) {
         self.open_filter_popover(Some(field), cx);
     }
 
     /// The `✕` on an accent chip: resets just that filter.
-    pub(super) fn clear_chip(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        transactions::chips::clear_field(&mut self.state.filters, field, self.today);
+    pub(super) fn clear_chip(&mut self, field: ChipField, cx: &mut Context<'_, Self>) {
+        FilterPresenter::clear_chip(&mut self.state.filters, field, self.today);
         self.reset_selection();
         cx.notify();
     }
@@ -494,7 +687,7 @@ impl TransactionsView {
     /// `clear filters`: every filter back to its default. The search text is separate state and is
     /// left alone.
     pub(super) fn clear_all(&mut self, cx: &mut Context<'_, Self>) {
-        self.state.filters = TransactionFilters::defaults(self.today);
+        FilterPresenter::clear_all(&mut self.state.filters, self.today);
         self.reset_selection();
         cx.notify();
     }
@@ -520,94 +713,72 @@ impl TransactionsView {
 
     /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
     /// list.
-    pub(super) fn click_filter_field(&mut self, field: FormField, cx: &mut Context<'_, Self>) {
-        let options = self.filter_options(cx);
-        if let Some(form) = self.state.filter_form.as_mut() {
-            if field.is_select() {
-                form.click_select(field, &options);
+    pub(super) fn click_filter_field(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
+        self.send_filter(FilterEvent::Focus(field), cx);
+        let Some(view) = self.filter_view() else {
+            return;
+        };
+        if field.is_select() {
+            let options = select_labels(&view, field).0;
+            let list = self.list(&view, field);
+            if list.is_open() {
+                list.cancel();
             } else {
-                form.focus(field);
+                list.open(&options);
             }
         }
         cx.notify();
     }
 
+    /// A click on row `index` of a select's open list.
     pub(super) fn click_filter_option(
         &mut self,
-        field: FormField,
+        field: FilterField,
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.filter_options(cx);
-        if let Some(form) = self.state.filter_form.as_mut() {
-            form.choose_option(field, index, &options);
-        }
-        cx.notify();
+        let Some(view) = self.filter_view() else {
+            return;
+        };
+        let options = select_labels(&view, field).0;
+        let list = self.list(&view, field);
+        list.choose(&options, index);
+        let chosen = list.value().map(str::to_string);
+        self.send_choice(&view, field, chosen, cx);
     }
 
     pub(super) fn click_filter_status(&mut self, status: StatusFilter, cx: &mut Context<'_, Self>) {
-        if let Some(form) = self.state.filter_form.as_mut() {
-            form.focus(FormField::Status);
-            form.status = status;
-        }
-        cx.notify();
+        self.send_filter(FilterEvent::Status(status), cx);
     }
 
     /// `reset`: the draft back to the defaults; the applied filters are untouched.
     pub(super) fn reset_filter_form(&mut self, cx: &mut Context<'_, Self>) {
-        let options = self.filter_options(cx);
-        let (today, date_style) = (self.today, self.date_style);
-        if let Some(form) = self.state.filter_form.as_mut() {
-            form.reset(&options, today, date_style);
-        }
-        cx.notify();
+        self.send_filter(FilterEvent::Reset, cx);
+    }
+
+    /// **apply**: a no-op while a date does not parse.
+    pub(super) fn apply_filter_form(&mut self, cx: &mut Context<'_, Self>) {
+        self.send_filter(FilterEvent::Apply, cx);
     }
 }
 
-/// The popover's key table, applied to the draft. Returns whether the key was handled, and whether
-/// it asks for **apply** (which the caller runs once the draft is no longer borrowed).
-fn filter_key(
-    form: &mut FilterForm,
-    keystroke: &Keystroke,
-    options: &FormOptions,
-    today: NaiveDate,
-    date_style: Option<DateStyle>,
-) -> (bool, bool) {
-    let modifiers = &keystroke.modifiers;
-    if modifiers.control && keystroke.key == "r" {
-        form.reset(options, today, date_style);
-        return (true, false);
+/// `field`'s option labels and its chosen option's label, as the list keys them; empty for a
+/// field that isn't a select.
+pub(super) fn select_labels(
+    view: &FilterViewModel,
+    field: FilterField,
+) -> (Vec<String>, Option<String>) {
+    match field {
+        FilterField::Account => (labels(&view.account), chosen_label(&view.account)),
+        FilterField::Category => (labels(&view.category), chosen_label(&view.category)),
+        _ => (Vec::new(), None),
     }
-    match keystroke.key.as_str() {
-        "tab" => form.cycle_focus(modifiers.shift, options),
-        "up" => {
-            form.handle_select_key(FilterSelectKey::Up, options);
-        }
-        "down" => {
-            form.handle_select_key(FilterSelectKey::Down, options);
-        }
-        "left" if form.focused == FormField::Status => form.step_status(-1),
-        "right" if form.focused == FormField::Status => form.step_status(1),
-        "space" if form.focused.is_select() => {
-            form.handle_select_key(FilterSelectKey::Activate, options);
-        }
-        "space" if form.focused == FormField::Status => form.step_status(1),
-        "enter" if form.focused.is_select() => {
-            form.handle_select_key(FilterSelectKey::Activate, options);
-        }
-        "enter" => return (true, true),
-        "backspace" => form.backspace(),
-        _ => {
-            if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                return (false, false);
-            }
-            if let Some(text) = keystroke.key_char.as_deref()
-                && text.chars().count() == 1
-                && let Some(ch) = text.chars().next()
-            {
-                form.push_char(ch);
-            }
-        }
-    }
-    (true, false)
+}
+
+/// The value of the option labelled `label`.
+fn find<T: Clone>(options: &[lib_viper::view::Choice<T>], label: &str) -> Option<T> {
+    options
+        .iter()
+        .find(|choice| choice.label == label)
+        .map(|choice| choice.value.clone())
 }
