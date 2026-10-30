@@ -256,12 +256,13 @@ impl TransactionsPagePresenter {
                     }
                     return;
                 }
-                // A hand-off closes the popover, its draft discarded.
+                // A hand-off, or the page entered again, closes the popover, its draft discarded.
                 TransactionsPageEvent::RevealTransaction(_)
                 | TransactionsPageEvent::RevealAccount(_)
                 | TransactionsPageEvent::ShowFiltered(_)
-                | TransactionsPageEvent::SetDateStyle(_)
-                | TransactionsPageEvent::Entered => {}
+                | TransactionsPageEvent::Entered => self.filter = None,
+                // The draft's dates follow a new style, so what was typed still reads as meant.
+                TransactionsPageEvent::SetDateStyle(style) => filter.set_date_style(style),
                 // The popover is modal: nothing else on the page is reached while it is open.
                 _ => return,
             }
@@ -270,8 +271,8 @@ impl TransactionsPagePresenter {
         match event {
             TransactionsPageEvent::Move(step) => {
                 let len = self.row_count();
-                self.selected =
-                    lib_list_cursor::step_by(self.selected(), len, step, self.half_page);
+                let at = self.selected.min(len.saturating_sub(1));
+                self.selected = lib_list_cursor::step_by(at, len, step, self.half_page);
             }
             TransactionsPageEvent::Select(index) => self.selected = index,
             TransactionsPageEvent::Open => {
@@ -283,7 +284,10 @@ impl TransactionsPagePresenter {
             TransactionsPageEvent::Edit => {
                 notify.notify(Notice::Status(msg::transactions_edit_not_yet_built()));
             }
+            // A chip clicked while the Search is open leaves the Search, its text kept, as `Enter`
+            // would: the popover's mode takes the Search's place.
             TransactionsPageEvent::OpenFilter(chip) => {
+                self.searching = false;
                 self.filter = Some(FilterPresenter::open(
                     &*self.ports.borrow(),
                     &self.filters,
@@ -394,8 +398,9 @@ impl TransactionsPagePresenter {
         }
     }
 
-    /// The page's legend, its chords read from the keymap so an override shows.
-    fn hints(&self) -> Vec<Hint> {
+    /// The page's legend, its chords read from the keymap so an override shows. The status line
+    /// reads it on every draw, so it reads no rows.
+    pub fn hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
         let hint = |chord: String, action: String| Hint { chord, action };
         vec![
@@ -1058,5 +1063,54 @@ mod tests {
                 pair("F", "filter"),
             ]
         );
+    }
+
+    #[test]
+    fn a_chip_opened_over_the_search_leaves_it_with_its_text_kept() {
+        let mut page = Page::new();
+        page.search("rent");
+
+        page.send(TransactionsPageEvent::OpenFilter(Some(ChipField::Payee)));
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Cancel));
+
+        let view = page.view();
+        assert!(!view.searching, "the popover took the Search's place");
+        assert_eq!(view.search, "rent");
+        assert_eq!(page.ids(), [RENT]);
+    }
+
+    #[test]
+    fn entering_the_page_again_closes_a_popover_left_open() {
+        let mut page = Page::new();
+        page.send(TransactionsPageEvent::OpenFilter(None));
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Focus(
+            FilterField::Payee,
+        )));
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Type('x')));
+
+        page.send(TransactionsPageEvent::Entered);
+
+        assert!(page.view().filter.is_none());
+        assert!(!page.view().filters_changed, "its draft is discarded");
+    }
+
+    #[test]
+    fn a_new_date_style_reaches_the_open_popover() {
+        let mut page = Page::new();
+        page.send(TransactionsPageEvent::OpenFilter(Some(ChipField::Date)));
+
+        page.send(TransactionsPageEvent::SetDateStyle(Some(DateStyle::Iso)));
+
+        let view = page.view();
+        let filter = view.filter.expect("the popover stays open");
+        assert_eq!(filter.from.text, "2026-01-01");
+        assert_eq!(view.rows[0].date, "2026-09-18");
+    }
+
+    #[test]
+    fn the_legend_is_read_without_the_rows() {
+        let page = Page::new();
+
+        assert_eq!(page.presenter.hints(), page.view().hints);
     }
 }

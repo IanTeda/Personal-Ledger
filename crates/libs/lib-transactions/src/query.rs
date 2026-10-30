@@ -63,12 +63,12 @@ impl StatusFilter {
 /// (case-insensitively, trimmed); an empty one means "any".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionFilters {
-    /// An an Account id.
+    /// An Account id.
     pub account: Option<AccountId>,
-    /// Exactly these an Account ids; empty is "any". A Budget's on-budget Accounts, which the
+    /// Exactly these Account ids; empty is "any". A Budget's on-budget Accounts, which the
     /// single-Account filter can't say.
     pub account_ids: Vec<AccountId>,
-    /// A a Category id; a parent matches its descendants.
+    /// A Category id; a parent matches its descendants.
     pub category: Option<CategoryId>,
     pub payee: String,
     /// An exact Payee id: what "view transactions" on the Payees page hands over.

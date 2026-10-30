@@ -695,11 +695,7 @@ pub trait TransactionsStore {
     /// The Splits filed under Category `id`: the Splits half of `lib-categories`' `CategoryUsage`.
     /// An in-memory store counts its own rows; the adapter counts in the file.
     fn category_splits(&self, id: CategoryId) -> usize {
-        self.all_transactions()
-            .iter()
-            .flat_map(|transaction| &transaction.splits)
-            .filter(|split| split.category_id == id)
-            .count()
+        transactions::category_splits(&self.all_transactions(), id)
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -763,6 +759,7 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 }
 
 /// Memory is all there is, so a reload has nothing to read.
+/// Reads its rows in place, so Bills' Schedule, which asks once per entry, copies none of them.
 impl TransactionsStore for InMemoryTransactions {
     fn transactions(&self) -> &dyn TransactionRepository {
         self
@@ -770,6 +767,18 @@ impl TransactionsStore for InMemoryTransactions {
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
         self
+    }
+
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        transactions::splits_between(&self.transactions, from, to)
+    }
+
+    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        transactions::paid_split(&self.transactions, split)
+    }
+
+    fn category_splits(&self, id: CategoryId) -> usize {
+        transactions::category_splits(&self.transactions, id)
     }
 
     fn reload(&mut self) -> Result<()> {

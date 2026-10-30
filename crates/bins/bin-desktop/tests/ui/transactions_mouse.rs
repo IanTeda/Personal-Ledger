@@ -70,6 +70,28 @@ fn clicking_a_chip_opens_the_popover_on_its_field(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn a_chip_clicked_while_searching_takes_the_search_s_place(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.click("transactions-search");
+    ui.press("k u r a");
+
+    ui.click("transactions-chip-2");
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Filter);
+    ui.press("escape");
+
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Normal);
+    let page = ui.transactions();
+    assert!(!page.filter_open);
+    assert_eq!(page.search, "kura", "the Search's text is kept");
+    ui.press("j");
+    assert_eq!(
+        ui.transactions().search,
+        "kura",
+        "a key after the popover moves the rows, not types into the Search"
+    );
+}
+
+#[gpui::test]
 fn clicking_a_text_field_focuses_it_and_apply_filters(app: &mut TestAppContext) {
     let mut ui = on_transactions(app);
     let all = ui.transactions().visible;

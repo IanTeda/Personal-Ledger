@@ -1,6 +1,6 @@
 //! The Transaction record and its Splits (`docs/transactions.md`, the glossary's Transaction and
-//! Split), `gpui`-free and I/O-free, shared by the Desktop and the TUI. Filtering and rendering
-//! stay with the Client; the query engine behind the Transactions table is `query`.
+//! Split), `gpui`-free and I/O-free, shared by the Desktop and the TUI. The query engine behind the
+//! Transactions table is `query`; drawing, mouse and scroll stay with the Client.
 //!
 //! A VIPER module in the making (`docs/development/viper-architecture.md`, #774, #923): the
 //! repository port and the read ports for the other domains' rows in `protocols`, which

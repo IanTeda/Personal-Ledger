@@ -123,6 +123,9 @@ pub struct FilterPresenter {
     date_style: Option<DateStyle>,
     choices: Choices,
     account: Option<AccountId>,
+    /// A Budget's on-budget Accounts from the Budgets detail's hand-off, which no field shows: kept
+    /// through the draft until the Account select is changed or the draft reset.
+    account_ids: Vec<AccountId>,
     category: Option<CategoryId>,
     payee: String,
     /// The Payees page's hand-off id, kept while `payee` reads its name.
@@ -190,6 +193,7 @@ impl FilterPresenter {
             date_style,
             choices,
             account: None,
+            account_ids: Vec::new(),
             category: None,
             payee: String::new(),
             payee_id: None,
@@ -212,6 +216,7 @@ impl FilterPresenter {
         );
         let (tag, tag_id) = prefill(&filters.tag, named(&self.choices.tags, filters.tag_id));
         self.account = filters.account;
+        self.account_ids.clone_from(&filters.account_ids);
         self.category = filters.category;
         self.payee = payee;
         self.payee_id = payee_id;
@@ -221,12 +226,34 @@ impl FilterPresenter {
             .from
             .map(|date| format_date_input(date, self.date_style))
             .unwrap_or_default();
-        self.to = match filters.to {
+        self.to = self.to_text(filters.to);
+        self.status = filters.status;
+    }
+
+    /// To as the draft shows it: today as the word `today`.
+    fn to_text(&self, to: Option<NaiveDate>) -> String {
+        match to {
             Some(date) if date == self.today => lib_locale::msg::date_word_today(),
             Some(date) => format_date_input(date, self.date_style),
             None => String::new(),
-        };
-        self.status = filters.status;
+        }
+    }
+
+    /// Follows a change to the Display Preference while the popover is open: From and To are read
+    /// in the old style and shown in the new, so a day-first date isn't read month-first. Text
+    /// that isn't a date yet is left as typed.
+    pub fn set_date_style(&mut self, date_style: Option<DateStyle>) {
+        let from = self.parse(&self.from);
+        let to = self.parse(&self.to);
+        self.date_style = date_style;
+        if let Ok(from) = from {
+            self.from = from
+                .map(|date| format_date_input(date, date_style))
+                .unwrap_or_default();
+        }
+        if let Ok(to) = to {
+            self.to = self.to_text(to);
+        }
     }
 
     pub fn focused(&self) -> FilterField {
@@ -251,6 +278,7 @@ impl FilterPresenter {
             FilterEvent::Account(id) => {
                 if self.choices.accounts.iter().any(|c| c.value == id) {
                     self.account = id;
+                    self.account_ids.clear();
                 }
             }
             FilterEvent::Category(id) => {
@@ -293,6 +321,7 @@ impl FilterPresenter {
         match self.focused {
             FilterField::Account => {
                 self.account = stepped(&values(&self.choices.accounts), self.account, delta);
+                self.account_ids.clear();
             }
             FilterField::Category => {
                 self.category = stepped(&values(&self.choices.categories), self.category, delta);
@@ -322,7 +351,7 @@ impl FilterPresenter {
         let (tag, tag_id) = resolve(&self.tag, named(&self.choices.tags, self.tag_id));
         Some(TransactionFilters {
             account: self.account,
-            account_ids: Vec::new(),
+            account_ids: self.account_ids.clone(),
             category: self.category,
             payee,
             payee_id,
@@ -427,13 +456,20 @@ impl FilterPresenter {
             + TransactionTags,
     {
         let defaults = TransactionFilters::defaults(today);
-        let account = filters.account.map(|id| {
-            reads
-                .transaction_accounts()
-                .into_iter()
-                .find(|account| account.id == id)
-                .map_or_else(msg::transactions_chip_unknown, |account| account.name)
-        });
+        // A Budget's Account set, which the single-Account filter can't say, reads as its size.
+        let account = match filters.account {
+            Some(id) => Some(
+                reads
+                    .transaction_accounts()
+                    .into_iter()
+                    .find(|account| account.id == id)
+                    .map_or_else(msg::transactions_chip_unknown, |account| account.name),
+            ),
+            None if !filters.account_ids.is_empty() => Some(msg::transactions_chip_some_accounts(
+                i64::try_from(filters.account_ids.len()).unwrap_or(i64::MAX),
+            )),
+            None => None,
+        };
         let category = filters.category.map(|id| {
             reads
                 .transaction_categories()
@@ -515,7 +551,10 @@ impl FilterPresenter {
     pub fn clear_chip(filters: &mut TransactionFilters, chip: ChipField, today: NaiveDate) {
         let defaults = TransactionFilters::defaults(today);
         match chip {
-            ChipField::Account => filters.account = defaults.account,
+            ChipField::Account => {
+                filters.account = defaults.account;
+                filters.account_ids = defaults.account_ids;
+            }
             ChipField::Category => filters.category = defaults.category,
             ChipField::Payee => {
                 filters.payee = defaults.payee;
@@ -1147,5 +1186,68 @@ mod tests {
         };
         FilterPresenter::clear_all(&mut filters, today());
         assert_eq!(filters, TransactionFilters::defaults(today()));
+    }
+
+    #[test]
+    fn a_budget_s_accounts_survive_apply_until_the_account_select_changes() {
+        let budget = TransactionFilters::for_budget_category(
+            FOOD,
+            lib_core::Period::of(today()),
+            &[EVERYDAY, WALLET],
+        );
+        au(|| {
+            let mut presenter = open(&budget);
+            presenter.handle(FilterEvent::Status(StatusFilter::Open));
+            assert_eq!(
+                applied(&mut presenter).account_ids,
+                [EVERYDAY, WALLET],
+                "a draft that leaves the Account alone keeps the Budget's"
+            );
+
+            presenter.handle(FilterEvent::Account(Some(WALLET)));
+            let filters = applied(&mut presenter);
+            assert_eq!(filters.account, Some(WALLET));
+            assert!(filters.account_ids.is_empty(), "the select replaces them");
+        });
+    }
+
+    #[test]
+    fn a_budget_s_accounts_are_an_accent_account_chip_its_clear_drops() {
+        let mut filters = TransactionFilters::for_budget_category(
+            FOOD,
+            lib_core::Period::of(today()),
+            &[EVERYDAY, WALLET],
+        );
+        au(|| {
+            let chips = FilterPresenter::chips(&reads(), &filters, today(), None);
+            assert_eq!(chips[0].label, "account: 2 accounts");
+            assert!(chips[0].active);
+        });
+
+        FilterPresenter::clear_chip(&mut filters, ChipField::Account, today());
+
+        assert!(filters.account_ids.is_empty());
+    }
+
+    #[test]
+    fn a_new_date_style_shows_the_draft_s_dates_in_it() {
+        au(|| {
+            let mut presenter = FilterPresenter::open(
+                &reads(),
+                &TransactionFilters::defaults(today()),
+                None,
+                today(),
+                None,
+            );
+            type_into(&mut presenter, FilterField::From, "4/3/2025");
+            type_into(&mut presenter, FilterField::Payee, "wool");
+
+            presenter.set_date_style(Some(DateStyle::Iso));
+
+            let view = presenter.view_model();
+            assert_eq!(view.from.text, "2025-03-04", "read day-first, shown ISO");
+            assert_eq!(view.payee.text, "wool");
+            assert_eq!(applied(&mut presenter).from, Some(date(2025, 3, 4)));
+        });
     }
 }

@@ -153,11 +153,12 @@ impl TransactionsPage {
         let reveal = matches!(event, TransactionsPageEvent::RevealTransaction(_));
         self.presenter.handle(event, &mut Queue);
 
+        // A popover opened over the Search takes its mode's place, so only the popover's is
+        // entered: leaving the Search's too would drop the Shell to Normal under the popover.
         if !filtering && self.presenter.is_filtering() {
             self.filter_list = None;
             cx.emit(ViewEvent::EnterMode(ViewMode::Filter));
-        }
-        if (filtering && !self.presenter.is_filtering())
+        } else if (filtering && !self.presenter.is_filtering())
             || (searching && !self.presenter.is_searching())
         {
             self.filter_list = None;
@@ -319,8 +320,8 @@ impl TransactionsPage {
         let hints = if self.presenter.is_filtering() {
             owned_hints(filter_hints())
         } else {
-            self.view_model()
-                .hints
+            self.presenter
+                .hints()
                 .into_iter()
                 .map(|hint| (hint.chord, hint.action))
                 .collect()

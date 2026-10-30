@@ -132,7 +132,7 @@ impl BillTransactions for TransactionsAdapter {
 impl TransactionsAdapter {
     /// The Splits filed under Category `id` in the file, blocking: what the last commit left, not
     /// a write still pending. It only words the Categories Dialogs, so a count that can't be read
-    /// is logged and answered as 0, as `CategoryUsage` allows.
+    /// is logged and answered from the rows in memory, rather than as a 0 that would say none.
     pub fn category_splits(&self, id: CategoryId) -> usize {
         self.pending
             .writer()
@@ -147,11 +147,20 @@ impl TransactionsAdapter {
                     Error::Validation(format!("Category {id}'s Splits count is {count}"))
                 })
             })
-            .inspect_err(|error| {
+            .unwrap_or_else(|error| {
                 tracing::error!(%error, category = %id, "Failed to count the Splits filed under a Category");
+                category_splits(&self.rows, id)
             })
-            .unwrap_or_default()
     }
+}
+
+/// The Splits among `transactions` filed under Category `id`: how a store counts what it holds.
+pub(crate) fn category_splits(transactions: &[Transaction], id: CategoryId) -> usize {
+    transactions
+        .iter()
+        .flat_map(|transaction| &transaction.splits)
+        .filter(|split| split.category_id == id)
+        .count()
 }
 
 /// `transactions`' Splits dated `from` to `to`, as Bills reads them: the one place a store answers

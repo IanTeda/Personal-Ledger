@@ -11,6 +11,11 @@ transactions-chip-payee = payee: { $value }
 transactions-chip-tag = tag: { $value }
 transactions-chip-status = status: { $value }
 transactions-chip-all-accounts = all accounts
+# A Budget's on-budget Accounts, which the Budgets detail's hand-off narrows to.
+transactions-chip-some-accounts = { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+}
 transactions-chip-any = any
 transactions-chip-unknown = unknown
 
