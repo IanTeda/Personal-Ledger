@@ -4,6 +4,7 @@
 //! The dialogs open from the Settings Accounts page; state is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsAccountsSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -15,9 +16,9 @@ fn on_accounts(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("j j j j");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -86,7 +87,10 @@ fn the_opening_balance_only_takes_a_decimal_amount(app: &mut TestAppContext) {
 #[gpui::test]
 fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
-    let before = ui.settings_accounts().account_names.len();
+    let before = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
 
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("AddAccount"));
@@ -96,7 +100,7 @@ fn enter_confirms_only_once_the_form_is_valid(app: &mut TestAppContext) {
     ui.press("o k");
     assert!(ui.account_form().valid);
     ui.press("enter");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before + 1);
     assert_eq!(mode(&mut ui), InputMode::Normal);
@@ -218,8 +222,17 @@ fn a_btc_balance_is_padded_to_its_precision_and_edit_shows_it_there(app: &mut Te
     assert_eq!(ui.dialog(), None);
 
     // Walk the page to the new Account; it is listed, so the walk ends on it.
-    for _ in 0..ui.settings_accounts().account_names.len() {
-        if ui.settings_accounts().selected_account.as_deref() == Some("Coins") {
+    for _ in 0..ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len()
+    {
+        if ui
+            .settings::<SettingsAccountsSnapshot>()
+            .selected_account
+            .as_deref()
+            == Some("Coins")
+        {
             break;
         }
         ui.press("j");
@@ -233,7 +246,7 @@ fn a_btc_balance_is_padded_to_its_precision_and_edit_shows_it_there(app: &mut Te
 fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
 
@@ -241,7 +254,7 @@ fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
     assert_eq!(ui.account_form().name, name);
     ui.press("backspace");
     ui.press("enter");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), None);
     let mut shorter = name.clone();
     shorter.pop();

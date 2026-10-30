@@ -5,6 +5,7 @@
 //! read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsAccountsSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -19,9 +20,9 @@ fn in_accounts(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press("j j j j");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -40,27 +41,30 @@ fn type_text(ui: &mut Harness<'_>, text: &str) {
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
 
-    let first = ui.settings_accounts().selected_account;
+    let first = ui.settings::<SettingsAccountsSnapshot>().selected_account;
     assert_eq!(
         first.as_deref(),
-        ui.settings_accounts()
+        ui.settings::<SettingsAccountsSnapshot>()
             .account_names
             .first()
             .map(String::as_str)
     );
     ui.press("j");
     assert_eq!(
-        ui.settings_accounts().selected_account,
-        Some(ui.settings_accounts().account_names[1].clone())
+        ui.settings::<SettingsAccountsSnapshot>().selected_account,
+        Some(ui.settings::<SettingsAccountsSnapshot>().account_names[1].clone())
     );
     ui.press("shift-g");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(
         accounts_page.selected_account.as_ref(),
         accounts_page.account_names.last()
     );
     ui.press("g g");
-    assert_eq!(ui.settings_accounts().selected_account, first);
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().selected_account,
+        first
+    );
 }
 
 #[gpui::test]
@@ -78,13 +82,16 @@ fn n_opens_add_account_and_escape_cancels_it(app: &mut TestAppContext) {
 #[gpui::test]
 fn typing_a_name_and_pressing_enter_adds_the_account(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
-    let before = ui.settings_accounts().account_names.len();
+    let before = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
 
     ui.press("n");
     ui.press("r a i n y");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("rainy"));
     ui.press("enter");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before + 1);
     assert!(
@@ -107,7 +114,9 @@ fn a_cash_account_added_from_the_keyboard_names_the_personal_institution(app: &m
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_accounts().selected_account.as_deref(),
+        ui.settings::<SettingsAccountsSnapshot>()
+            .selected_account
+            .as_deref(),
         Some("tin")
     );
 
@@ -120,7 +129,7 @@ fn a_cash_account_added_from_the_keyboard_names_the_personal_institution(app: &m
 fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
 
@@ -129,7 +138,7 @@ fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppCo
     assert_eq!(ui.dialog_value("name").as_deref(), Some(name.as_str()));
     ui.press("x");
     ui.press("enter");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert!(accounts_page.account_names.contains(&format!("{name}x")));
 }
@@ -137,9 +146,12 @@ fn e_edits_the_selected_account_and_enter_saves_the_new_name(app: &mut TestAppCo
 #[gpui::test]
 fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
-    let before = ui.settings_accounts().account_names.len();
+    let before = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
 
@@ -147,7 +159,12 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
     assert_eq!(ui.dialog(), Some("DeleteAccount"));
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("DeleteAccount"));
-    assert_eq!(ui.settings_accounts().account_names.len(), before);
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .len(),
+        before
+    );
     for ch in name.chars() {
         ui.press(&if ch == ' ' {
             "space".to_string()
@@ -157,7 +174,7 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
     }
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some(name.as_str()));
     ui.press("enter");
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(accounts_page.account_names.len(), before - 1);
     assert!(!accounts_page.account_names.contains(&name));
@@ -167,7 +184,7 @@ fn d_deletes_an_account_only_once_its_name_is_typed_back(app: &mut TestAppContex
 fn enter_opens_the_selected_accounts_ledger(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
 
@@ -185,8 +202,11 @@ fn enter_opens_the_selected_accounts_ledger(app: &mut TestAppContext) {
     );
 
     ui.press("g s");
-    assert_eq!(ui.settings().page, "Accounts");
-    assert_eq!(ui.settings_accounts().selected_account, Some(name));
+    assert_eq!(ui.settings_frame().page, "Accounts");
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().selected_account,
+        Some(name)
+    );
 }
 
 #[gpui::test]
@@ -194,11 +214,15 @@ fn h_steps_back_to_the_index_and_the_page_keys_stop(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
 
     ui.press("h");
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
     ui.press("n");
     assert_eq!(ui.dialog(), None);
     ui.press("j");
-    assert_eq!(ui.settings().page, "Categories", "j walks the index again");
+    assert_eq!(
+        ui.settings_frame().page,
+        "Categories",
+        "j walks the index again"
+    );
 }
 
 #[gpui::test]
@@ -207,13 +231,13 @@ fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
 
     ui.press("/");
     assert_eq!(mode(&mut ui), InputMode::Normal);
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
 fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
-    let names = ui.settings_accounts().account_names;
+    let names = ui.settings::<SettingsAccountsSnapshot>().account_names;
     // ANZ Offset: no Bill Plan pays from it.
     ui.press("j j");
     let name = names[2].clone();
@@ -223,7 +247,9 @@ fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut 
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_accounts().selected_account.as_ref(),
+        ui.settings::<SettingsAccountsSnapshot>()
+            .selected_account
+            .as_ref(),
         names.get(3),
         "the next account slid into the deleted row"
     );
@@ -238,18 +264,21 @@ fn deleting_an_account_toasts_and_selects_the_row_that_took_its_place(app: &mut 
 #[gpui::test]
 fn the_accounts_command_opens_the_page_and_its_dialog(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    let name = ui.settings_accounts().account_names[2].clone();
+    let name = ui.settings::<SettingsAccountsSnapshot>().account_names[2].clone();
 
     ui.press(":");
     type_text(&mut ui, &format!("accounts edit {name}"));
     ui.press("enter");
     assert_eq!(ui.noun(), Noun::Settings);
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "Accounts");
     assert!(page.page_focused);
     assert_eq!(ui.dialog(), Some("EditAccount"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some(name.as_str()));
-    assert_eq!(ui.settings_accounts().selected_account, Some(name));
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().selected_account,
+        Some(name)
+    );
     assert_eq!(mode(&mut ui), InputMode::Dialog);
 }
 
@@ -260,7 +289,7 @@ fn the_accounts_command_names_an_account_it_cannot_find(app: &mut TestAppContext
     ui.press(":");
     type_text(&mut ui, "accounts delete rainy");
     ui.press("enter");
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "Accounts");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
@@ -281,7 +310,10 @@ fn the_status_line_shows_the_page_legend_and_the_account_count(app: &mut TestApp
         })
         .unwrap_or_default();
     assert_eq!(keys, ["j/k", "enter", "e", "d", "n"]);
-    let accounts = ui.settings_accounts().account_names.len();
+    let accounts = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
     assert!(right.contains(&accounts.to_string()), "{right}");
 }
 
@@ -296,7 +328,7 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     // Deactivate btc from the Units page: it is in use by an Account, so Delete offers it.
     ui.press("escape");
     ui.press("k k");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     ui.press("j");
     ui.press("d");
@@ -304,7 +336,7 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     ui.press("enter");
     ui.press("escape");
     ui.press("j j");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
     ui.press("n");
 
@@ -319,20 +351,25 @@ fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppCo
     ui.press("g s");
     ui.press("j j j j");
     ui.press("l");
-    let stored = ui.settings_accounts().account_names;
+    let stored = ui.settings::<SettingsAccountsSnapshot>().account_names;
 
     ui.press("n");
     ui.press("r a i n y");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_accounts().account_names.len(),
+        ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .len(),
         stored.len() + 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();
 
-    assert_eq!(ui.settings_accounts().account_names, stored);
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().account_names,
+        stored
+    );
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to accounts, so they are back as last saved"
@@ -352,7 +389,7 @@ fn adding_an_account_commits_once_through_the_shim(app: &mut TestAppContext) {
 
     assert_eq!(ui.commits(), before + 1);
     assert!(
-        ui.settings_accounts()
+        ui.settings::<SettingsAccountsSnapshot>()
             .account_names
             .iter()
             .any(|name| name == "rainy")
@@ -365,7 +402,7 @@ fn adding_an_account_commits_once_through_the_shim(app: &mut TestAppContext) {
 fn deleting_an_account_quotes_its_counts_and_commits_once(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
 
@@ -388,7 +425,11 @@ fn deleting_an_account_quotes_its_counts_and_commits_once(app: &mut TestAppConte
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.commits(), before + 1);
-    assert!(!ui.settings_accounts().account_names.contains(&name));
+    assert!(
+        !ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .contains(&name)
+    );
     assert!(ui.toasts().history.first().is_some_and(|toast| toast.text
         == format!("Deleted account {name} \u{b7} {transactions} transactions deleted")));
 }
@@ -399,7 +440,7 @@ fn an_account_a_bill_plan_pays_from_cannot_be_deleted(app: &mut TestAppContext) 
     let mut ui = in_accounts(app);
     ui.press("j");
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
     assert_eq!(name, "ANZ Everyday");
@@ -418,7 +459,11 @@ fn an_account_a_bill_plan_pays_from_cannot_be_deleted(app: &mut TestAppContext) 
     );
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
-    assert!(ui.settings_accounts().account_names.contains(&name));
+    assert!(
+        ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .contains(&name)
+    );
 }
 
 #[gpui::test]

@@ -3,6 +3,7 @@
 //! under the fields at the Medium floor. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
+use bin_desktop::shell::router::SettingsDisplaySnapshot;
 
 use bin_desktop::WindowSize;
 use common::Harness;
@@ -13,7 +14,7 @@ fn on_display(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-Display");
-    assert_eq!(ui.settings().page, "Display");
+    assert_eq!(ui.settings_frame().page, "Display");
     ui
 }
 
@@ -22,9 +23,14 @@ fn clicking_a_date_format_option_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-date-style-4");
-    assert_eq!(ui.settings_display().date_style.as_deref(), Some("Iso"));
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .date_style
+            .as_deref(),
+        Some("Iso")
+    );
     ui.click("display-date-style-0");
-    assert_eq!(ui.settings_display().date_style, None);
+    assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
 }
 
 #[gpui::test]
@@ -32,9 +38,15 @@ fn clicking_a_row_density_option_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-row-density-0");
-    assert_eq!(ui.settings_display().row_density, "Compact");
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().row_density,
+        "Compact"
+    );
     ui.click("display-row-density-2");
-    assert_eq!(ui.settings_display().row_density, "Roomy");
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().row_density,
+        "Roomy"
+    );
 }
 
 #[gpui::test]
@@ -42,9 +54,15 @@ fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-status-glyphs-1");
-    assert_eq!(ui.settings_display().status_glyphs, "AsciiFallback");
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
+        "AsciiFallback"
+    );
     ui.click("display-status-glyphs-0");
-    assert_eq!(ui.settings_display().status_glyphs, "Unicode");
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
+        "Unicode"
+    );
 }
 
 #[gpui::test]
@@ -52,9 +70,15 @@ fn clicking_the_sidebar_checkbox_toggles_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-start-sidebar-minimised");
-    assert!(ui.settings_display().start_sidebar_minimised);
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
     ui.click("display-start-sidebar-minimised");
-    assert!(!ui.settings_display().start_sidebar_minimised);
+    assert!(
+        !ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
 }
 
 #[gpui::test]
@@ -62,9 +86,9 @@ fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-toasts-1");
-    assert!(!ui.settings_display().toasts_on);
+    assert!(!ui.settings::<SettingsDisplaySnapshot>().toasts_on);
     ui.click("display-toasts-0");
-    assert!(ui.settings_display().toasts_on);
+    assert!(ui.settings::<SettingsDisplaySnapshot>().toasts_on);
 }
 
 #[gpui::test]
@@ -94,7 +118,7 @@ fn the_preview_stacks_under_the_fields_only_at_the_medium_floor(app: &mut TestAp
     ui.resize_to(WindowSize::Medium);
     ui.press("g s");
     ui.click("settings-index-page-Display");
-    assert_eq!(ui.settings().page, "Display");
+    assert_eq!(ui.settings_frame().page, "Display");
 
     let fields = ui.bounds("display-fields");
     let preview = ui.bounds("display-preview");

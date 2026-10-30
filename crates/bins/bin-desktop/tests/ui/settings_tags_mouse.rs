@@ -2,6 +2,7 @@
 //! the dialogs' buttons. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
+use bin_desktop::shell::router::SettingsTagsSnapshot;
 use lib_core::TagId;
 
 use bin_desktop::navigation::nav::InputMode;
@@ -12,7 +13,7 @@ fn on_tags(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-Tags");
-    assert_eq!(ui.settings().page, "Tags");
+    assert_eq!(ui.settings_frame().page, "Tags");
     ui
 }
 
@@ -36,14 +37,14 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
 #[gpui::test]
 fn the_add_dialog_confirm_is_inert_until_a_name_is_typed(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
-    let before = ui.settings_tags().tag_names.len();
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names.len();
 
     ui.click("settings-tags-add");
     ui.click("add-tag-confirm");
     assert_eq!(ui.dialog(), Some("AddTag"));
     ui.press("z e b r a");
     ui.click("add-tag-confirm");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before + 1);
     assert_eq!(tags_page.selected_tag.as_deref(), Some("zebra"));
@@ -53,9 +54,9 @@ fn the_add_dialog_confirm_is_inert_until_a_name_is_typed(app: &mut TestAppContex
 fn clicking_a_row_selects_it(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
 
-    let first = ui.settings_tags().selected_tag;
+    let first = ui.settings::<SettingsTagsSnapshot>().selected_tag;
     ui.click(&format!("settings-tags-row-{}", TagId::seed(2)));
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(tags_page.selected_tag.as_deref(), Some("shared"));
     assert_ne!(first, tags_page.selected_tag);
 }
@@ -76,7 +77,7 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
     let mut ui = on_tags(app);
     // A new Tag is unused, so Remove needs no typed name.
     ui.press("l n z e b r a enter");
-    let snapshot = ui.settings_tags();
+    let snapshot = ui.settings::<SettingsTagsSnapshot>();
     let before = snapshot.tag_names.len();
     let zebra = snapshot
         .tag_names
@@ -91,7 +92,7 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
     assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-remove-{zebra}"));
     ui.click("remove-tag-confirm");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
@@ -100,7 +101,7 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
 #[gpui::test]
 fn the_merge_action_on_a_flagged_duplicate_merges_it_away(app: &mut TestAppContext) {
     let mut ui = on_tags(app);
-    let before = ui.settings_tags().tag_names.len();
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names.len();
 
     ui.click(&format!("settings-tags-merge-{}", TagId::seed(9)));
     assert_eq!(ui.dialog(), Some("MergeTags"));
@@ -109,7 +110,7 @@ fn the_merge_action_on_a_flagged_duplicate_merges_it_away(app: &mut TestAppConte
     assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-merge-{}", TagId::seed(9)));
     ui.click("merge-tags-confirm");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before - 1);
 }

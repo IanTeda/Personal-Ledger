@@ -8,6 +8,7 @@
 )]
 
 use super::common;
+use bin_desktop::shell::router::UnitPricesSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::PaletteSnapshot;
@@ -416,10 +417,13 @@ fn a_bills_command_of_the_other_tab_shows_that_tab_first(app: &mut TestAppContex
 fn a_units_command_closes_an_open_prices_view_first(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s j j l j enter");
-    assert!(ui.unit_prices().is_some(), "enter opens the prices view");
+    assert!(
+        ui.settings::<Option<UnitPricesSnapshot>>().is_some(),
+        "enter opens the prices view"
+    );
 
     run(&mut ui, "units set-base");
 
-    assert!(ui.unit_prices().is_none());
+    assert!(ui.settings::<Option<UnitPricesSnapshot>>().is_none());
     assert_eq!(ui.dialog(), Some("SetBaseUnit"));
 }

@@ -320,8 +320,8 @@ fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
 /// Takes `ui` to the Settings Units page, a module's View, with keyboard focus on it.
 fn to_units(ui: &mut Harness<'_>) {
     ui.press("g s j j l");
-    assert_eq!(ui.settings().page, "Units");
-    assert!(ui.settings().page_focused);
+    assert_eq!(ui.settings_frame().page, "Units");
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
@@ -375,7 +375,7 @@ fn a_module_binding_wins_over_its_hosts_own_key(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("AddUnit"));
     ui.press("escape");
     assert!(
-        ui.settings().page_focused,
+        ui.settings_frame().page_focused,
         "Settings' own `h` didn't step back to the index"
     );
 }

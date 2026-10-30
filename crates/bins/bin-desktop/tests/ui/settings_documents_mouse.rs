@@ -2,6 +2,7 @@
 //! tagged with `debug_selector` are clicked.
 
 use super::common;
+use bin_desktop::shell::router::SettingsDocumentTypesSnapshot;
 use lib_core::DocumentTypeId;
 
 use common::Harness;
@@ -11,7 +12,7 @@ fn on_documents(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-Documents");
-    assert_eq!(ui.settings().page, "Documents");
+    assert_eq!(ui.settings_frame().page, "Documents");
     ui
 }
 
@@ -23,8 +24,8 @@ fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
         "settings-documents-row-{}",
         DocumentTypeId::seed(4)
     ));
-    let document_types_page = ui.settings_document_types();
-    let page = ui.settings();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
+    let page = ui.settings_frame();
     assert_eq!(
         document_types_page.selected_document_type.as_deref(),
         Some("Insurance")
@@ -40,7 +41,7 @@ fn the_edit_action_opens_the_edit_dialog_and_save_applies_it(app: &mut TestAppCo
         "settings-documents-edit-{}",
         DocumentTypeId::seed(6)
     ));
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(
         document_types_page.selected_document_type.as_deref(),
         Some("Contracts")
@@ -83,14 +84,14 @@ fn the_remove_action_opens_the_dialog_and_other_has_no_button(app: &mut TestAppC
         "settings-documents-remove-{}",
         DocumentTypeId::seed(3)
     ));
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(
         document_types_page.selected_document_type.as_deref(),
         Some("Tax")
     );
     assert_eq!(ui.dialog(), Some("RemoveDocumentType"));
     ui.click("remove-document-type-confirm");
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 8);
     assert_eq!(document_types_page.document_type_files.last(), Some(&33));
@@ -110,7 +111,7 @@ fn the_destination_dropdown_picks_with_a_click(app: &mut TestAppContext) {
     ui.click("document-type-destination-option-2");
     ui.click("remove-document-type-confirm");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_files[2], 18 + 31);
     assert_eq!(document_types_page.document_type_files.last(), Some(&2));
 }
@@ -125,7 +126,7 @@ fn cancel_closes_the_remove_dialog_without_removing(app: &mut TestAppContext) {
     ));
     ui.click("remove-document-type-cancel");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 9);
 }
@@ -135,7 +136,7 @@ fn the_add_button_opens_the_dialog_and_the_controls_click(app: &mut TestAppConte
     let mut ui = on_documents(app);
 
     ui.click("settings-documents-add");
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert!(page.page_focused);
     assert_eq!(ui.dialog(), Some("AddDocumentType"));
     // Name is empty, so the confirm does nothing.
@@ -148,7 +149,7 @@ fn the_add_button_opens_the_dialog_and_the_controls_click(app: &mut TestAppConte
     ui.click("document-type-financial-year");
     ui.click("add-document-type-confirm");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         document_types_page
@@ -167,5 +168,10 @@ fn cancel_closes_the_add_dialog(app: &mut TestAppContext) {
     ui.click("add-document-type-cancel");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_document_types().document_type_names.len(), 9);
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names
+            .len(),
+        9
+    );
 }

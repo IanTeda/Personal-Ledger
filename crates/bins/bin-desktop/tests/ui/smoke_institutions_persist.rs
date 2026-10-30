@@ -5,6 +5,7 @@
 //! (`mise run end-to-end-ui smoke`).
 
 use super::common;
+use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
 use common::{Harness, config_for};
@@ -15,7 +16,7 @@ fn institution_names(ui: &mut Harness<'_>) -> Vec<String> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Institutions");
-    ui.settings_institutions()
+    ui.settings::<SettingsInstitutionsSnapshot>()
         .institutions
         .into_iter()
         .map(|row| row.0)
@@ -52,7 +53,7 @@ fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         ui.press("B a n k space X enter");
         assert_eq!(ui.dialog(), None, "the Add Dialog confirmed");
         let names = ui
-            .settings_institutions()
+            .settings::<SettingsInstitutionsSnapshot>()
             .institutions
             .into_iter()
             .map(|row| row.0)

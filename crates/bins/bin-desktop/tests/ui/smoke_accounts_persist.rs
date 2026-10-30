@@ -10,6 +10,7 @@
 )]
 
 use super::common;
+use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsUnitsSnapshot};
 
 use bin_desktop::{WindowSize, navigation::nav::Noun};
 use common::{Harness, config_for};
@@ -20,7 +21,7 @@ fn account_names(ui: &mut Harness<'_>) -> Vec<String> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Accounts");
-    ui.settings_accounts().account_names
+    ui.settings::<SettingsAccountsSnapshot>().account_names
 }
 
 /// The names in the base Unit's ACCOUNTS group on the docked Units page.
@@ -28,7 +29,7 @@ fn base_unit_holdings(ui: &mut Harness<'_>) -> Vec<String> {
     ui.press("g s");
     ui.click("settings-index-Units");
     ui.click("unit-row-0");
-    ui.settings_units()
+    ui.settings::<SettingsUnitsSnapshot>()
         .pane
         .expect("docked")
         .groups
@@ -58,7 +59,7 @@ fn an_added_account_is_there_after_a_restart(app: &mut TestAppContext) {
         assert_eq!(ui.dialog(), Some("AddAccount"));
         ui.press("r a i n y enter");
         assert_eq!(ui.dialog(), None, "the Add Dialog confirmed");
-        let names = ui.settings_accounts().account_names;
+        let names = ui.settings::<SettingsAccountsSnapshot>().account_names;
         assert_eq!(names.len(), before.len() + 1);
         assert!(names.contains(&"rainy".to_string()));
         bin_desktop::quit(&writer);

@@ -3,6 +3,7 @@
 //! Settings snapshot.
 
 use super::common;
+use bin_desktop::shell::router::SettingsCategoriesSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -13,9 +14,9 @@ fn on_categories(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("j j j j j");
-    assert_eq!(ui.settings().page, "Categories");
+    assert_eq!(ui.settings_frame().page, "Categories");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -23,7 +24,7 @@ fn on_categories(app: &mut TestAppContext) -> Harness<'_> {
 fn opens_on_the_categories_page_with_no_row_selected(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
-    let categories_page = ui.settings_categories();
+    let categories_page = ui.settings::<SettingsCategoriesSnapshot>();
     assert!(!categories_page.category_names.is_empty());
     assert_eq!(categories_page.selected_category, None);
     assert_eq!(ui.dialog(), None);
@@ -34,7 +35,11 @@ fn j_moves_the_selection_onto_a_category(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
     ui.press("j");
-    assert!(ui.settings_categories().selected_category.is_some());
+    assert!(
+        ui.settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .is_some()
+    );
 }
 
 #[gpui::test]
@@ -64,13 +69,16 @@ fn shift_n_and_n_open_the_add_dialog(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_new_category_is_added_by_typing_its_name(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
-    let before = ui.settings_categories().category_names.len();
+    let before = ui
+        .settings::<SettingsCategoriesSnapshot>()
+        .category_names
+        .len();
 
     ui.press("n");
     ui.press("p e t s");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("pets"));
     ui.press("enter");
-    let categories_page = ui.settings_categories();
+    let categories_page = ui.settings::<SettingsCategoriesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(categories_page.category_names.len(), before + 1);
     assert!(
@@ -90,7 +98,9 @@ fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) 
     assert_eq!(ui.dialog(), None);
     ui.press("right");
     assert_eq!(
-        ui.settings_categories().selected_category.as_deref(),
+        ui.settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref(),
         Some("Rent")
     );
     ui.press("d");

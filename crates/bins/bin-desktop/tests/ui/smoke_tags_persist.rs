@@ -4,6 +4,7 @@
 //! at a parent ticket's close and before a merge to `main` (`mise run end-to-end-ui smoke`).
 
 use super::common;
+use bin_desktop::shell::router::SettingsTagsSnapshot;
 
 use common::{Harness, config_for};
 use gpui::TestAppContext;
@@ -12,7 +13,7 @@ use gpui::TestAppContext;
 fn in_tags(ui: &mut Harness<'_>) {
     ui.press("g s");
     ui.press("j j j j j j");
-    assert_eq!(ui.settings().page, "Tags");
+    assert_eq!(ui.settings_frame().page, "Tags");
     ui.press("l");
 }
 
@@ -20,7 +21,7 @@ fn in_tags(ui: &mut Harness<'_>) {
 fn select(ui: &mut Harness<'_>, name: &str) {
     ui.press("g g");
     let position = ui
-        .settings_tags()
+        .settings::<SettingsTagsSnapshot>()
         .tag_names
         .iter()
         .position(|row| row == name);
@@ -28,7 +29,12 @@ fn select(ui: &mut Harness<'_>, name: &str) {
     for _ in 0..position.unwrap_or(0) {
         ui.press("j");
     }
-    assert_eq!(ui.settings_tags().selected_tag.as_deref(), Some(name));
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref(),
+        Some(name)
+    );
 }
 
 #[gpui::test]
@@ -52,7 +58,7 @@ fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestA
         assert_eq!(ui.dialog(), None, "the Remove Dialog confirmed");
         ui.settle_writes();
 
-        let names = ui.settings_tags().tag_names;
+        let names = ui.settings::<SettingsTagsSnapshot>().tag_names;
         assert!(names.iter().any(|name| name == "holiday"));
         assert!(!names.iter().any(|name| name == "shared"));
         bin_desktop::quit(&writer);
@@ -62,7 +68,7 @@ fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestA
     let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     in_tags(&mut ui);
-    assert_eq!(ui.settings_tags().tag_names, names);
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, names);
 
     // A Tag the stub's Splits still carry asks for its name: its usage is the adapter's count.
     select(&mut ui, "reimbursable");

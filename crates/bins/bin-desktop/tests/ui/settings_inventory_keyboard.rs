@@ -3,6 +3,7 @@
 //! State is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsInventorySnapshot;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -16,9 +17,9 @@ fn in_inventory(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press("j j j j j j j j j");
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -26,11 +27,11 @@ fn in_inventory(app: &mut TestAppContext) -> Harness<'_> {
 fn the_page_follows_documents_and_starts_collapsed_on_the_first_location(app: &mut TestAppContext) {
     let mut ui = in_inventory(app);
 
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert_eq!(inventory_page.inventory_rows, [ELM, STORAGE, HILUX]);
     assert_eq!(inventory_page.selected_inventory.as_deref(), Some(ELM));
     ui.press("j");
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
 }
 
 #[gpui::test]
@@ -38,7 +39,7 @@ fn the_palette_opens_the_page(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press(": s e t t i n g s space i n v e n t o r y enter");
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
 }
 
 #[gpui::test]
@@ -46,7 +47,7 @@ fn right_opens_a_location_then_steps_into_its_areas(app: &mut TestAppContext) {
     let mut ui = in_inventory(app);
 
     ui.press("right");
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert!(
         inventory_page.inventory_rows.len() > 2,
         "the Areas are listed"
@@ -55,7 +56,11 @@ fn right_opens_a_location_then_steps_into_its_areas(app: &mut TestAppContext) {
     let first_area = inventory_page.inventory_rows[1].clone();
     assert!(first_area.starts_with("area:"));
     ui.press("right");
-    assert_eq!(ui.settings_inventory().selected_inventory, Some(first_area));
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory,
+        Some(first_area)
+    );
 }
 
 #[gpui::test]
@@ -63,11 +68,13 @@ fn j_and_k_walk_locations_and_areas_as_one_list_without_the_add_row(app: &mut Te
     let mut ui = in_inventory(app);
 
     ui.press("right");
-    let rows = ui.settings_inventory().inventory_rows;
+    let rows = ui.settings::<SettingsInventorySnapshot>().inventory_rows;
     for row in rows.iter().skip(1) {
         ui.press("j");
         assert_eq!(
-            ui.settings_inventory().selected_inventory.as_ref(),
+            ui.settings::<SettingsInventorySnapshot>()
+                .selected_inventory
+                .as_ref(),
             Some(row)
         );
     }
@@ -77,22 +84,28 @@ fn j_and_k_walk_locations_and_areas_as_one_list_without_the_add_row(app: &mut Te
     assert_eq!(rows.last().map(String::as_str), Some(HILUX));
     ui.press("j");
     assert_eq!(
-        ui.settings_inventory().selected_inventory.as_deref(),
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .as_deref(),
         Some(HILUX)
     );
     ui.press("g g");
     assert_eq!(
-        ui.settings_inventory().selected_inventory.as_deref(),
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .as_deref(),
         Some(ELM)
     );
     ui.press("shift-g");
     assert_eq!(
-        ui.settings_inventory().selected_inventory.as_deref(),
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .as_deref(),
         Some(HILUX)
     );
     ui.press("k k");
     assert!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .selected_inventory
             .is_some_and(|row| row.starts_with("area:"))
     );
@@ -104,25 +117,25 @@ fn left_climbs_from_an_area_and_then_closes_the_location(app: &mut TestAppContex
 
     ui.press("right right");
     assert!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .selected_inventory
             .is_some_and(|row| row.starts_with("area:"))
     );
     ui.press("left");
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert_eq!(inventory_page.selected_inventory.as_deref(), Some(ELM));
     assert!(
         inventory_page.inventory_rows.len() > 2,
         "still open after climbing"
     );
     ui.press("left");
-    let inventory_page = ui.settings_inventory();
-    let page = ui.settings();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
+    let page = ui.settings_frame();
     assert_eq!(inventory_page.inventory_rows, [ELM, STORAGE, HILUX]);
     assert!(page.page_focused, "closing a Location keeps focus");
     // A closed Location has nothing to fold, so left hands focus back to the index.
     ui.press("left");
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
@@ -130,19 +143,30 @@ fn shift_j_and_shift_k_reorder_areas_within_their_location(app: &mut TestAppCont
     let mut ui = in_inventory(app);
 
     ui.press("right right");
-    let before = ui.settings_inventory().inventory_areas[0].1.clone();
+    let before = ui.settings::<SettingsInventorySnapshot>().inventory_areas[0]
+        .1
+        .clone();
     let moved = before[0].clone();
     ui.press("shift-j");
-    let after = ui.settings_inventory().inventory_areas[0].1.clone();
+    let after = ui.settings::<SettingsInventorySnapshot>().inventory_areas[0]
+        .1
+        .clone();
     assert_eq!(after[1], moved);
     assert_eq!(after[0], before[1]);
     ui.press("shift-k");
-    assert_eq!(ui.settings_inventory().inventory_areas[0].1, before);
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>().inventory_areas[0].1,
+        before
+    );
     // At the top edge it is a no-op.
     ui.press("shift-k");
-    assert_eq!(ui.settings_inventory().inventory_areas[0].1, before);
     assert_eq!(
-        ui.settings_inventory().selected_inventory,
+        ui.settings::<SettingsInventorySnapshot>().inventory_areas[0].1,
+        before
+    );
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory,
         Some(format!("area:{moved}"))
     );
 }
@@ -150,12 +174,17 @@ fn shift_j_and_shift_k_reorder_areas_within_their_location(app: &mut TestAppCont
 #[gpui::test]
 fn shift_j_is_inert_on_a_location_row_and_at_the_last_area(app: &mut TestAppContext) {
     let mut ui = in_inventory(app);
-    let areas = ui.settings_inventory().inventory_areas;
+    let areas = ui.settings::<SettingsInventorySnapshot>().inventory_areas;
 
     ui.press("shift-j");
-    assert_eq!(ui.settings_inventory().inventory_areas, areas);
     assert_eq!(
-        ui.settings_inventory().selected_inventory.as_deref(),
+        ui.settings::<SettingsInventorySnapshot>().inventory_areas,
+        areas
+    );
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .as_deref(),
         Some(ELM)
     );
 
@@ -164,7 +193,10 @@ fn shift_j_is_inert_on_a_location_row_and_at_the_last_area(app: &mut TestAppCont
         ui.press("j");
     }
     ui.press("shift-j");
-    assert_eq!(ui.settings_inventory().inventory_areas, areas);
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>().inventory_areas,
+        areas
+    );
 }
 
 #[gpui::test]
@@ -175,7 +207,10 @@ fn n_e_and_x_open_the_location_dialogs_and_escape_cancels(app: &mut TestAppConte
     assert_eq!(ui.dialog(), Some("AddLocation"));
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
-    assert!(ui.settings().page_focused, "focus returns to the page");
+    assert!(
+        ui.settings_frame().page_focused,
+        "focus returns to the page"
+    );
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditLocation"));
     ui.press("escape x");
@@ -187,7 +222,7 @@ fn n_e_and_x_open_the_location_dialogs_and_escape_cancels(app: &mut TestAppConte
 }
 
 fn names(ui: &mut Harness<'_>) -> Vec<String> {
-    ui.settings_inventory()
+    ui.settings::<SettingsInventorySnapshot>()
         .inventory_locations
         .into_iter()
         .map(|(name, ..)| name)
@@ -205,7 +240,7 @@ fn add_needs_a_name_then_adds_expands_selects_and_toasts(app: &mut TestAppContex
         "enter is inert with no name"
     );
     ui.press("c a b i n enter");
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert_eq!(ui.dialog(), None);
     let added = inventory_page.inventory_locations.last().cloned().unwrap();
     assert_eq!(added, ("cabin".to_string(), "aud".to_string(), None));
@@ -236,10 +271,16 @@ fn add_refuses_a_name_another_location_has_ignoring_case(app: &mut TestAppContex
 #[gpui::test]
 fn edit_saves_the_name_and_keeps_the_unit_and_cover(app: &mut TestAppContext) {
     let mut ui = in_inventory(app);
-    let before = ui.settings_inventory().inventory_locations[0].clone();
+    let before = ui
+        .settings::<SettingsInventorySnapshot>()
+        .inventory_locations[0]
+        .clone();
 
     ui.press("e x enter");
-    let after = ui.settings_inventory().inventory_locations[0].clone();
+    let after = ui
+        .settings::<SettingsInventorySnapshot>()
+        .inventory_locations[0]
+        .clone();
     assert_eq!(after.0, format!("{}x", before.0));
     assert_eq!(after.1, before.1);
     assert_eq!(after.2, before.2, "the cover Settings doesn't show is kept");
@@ -263,7 +304,11 @@ fn removing_an_empty_location_is_a_plain_confirm(app: &mut TestAppContext) {
             .iter()
             .any(|t| t.text == "Removed location \"cabin\"")
     );
-    assert!(ui.settings_inventory().selected_inventory.is_some());
+    assert!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .is_some()
+    );
 }
 
 #[gpui::test]
@@ -277,7 +322,7 @@ fn removing_a_location_with_contents_asks_for_its_name_typed(app: &mut TestAppCo
         "enter is inert until the name is typed"
     );
     ui.press("1 2 space shift-e l m space shift-s t space c o n t e n t s enter");
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         inventory_page
@@ -302,7 +347,11 @@ fn the_last_location_can_be_removed(app: &mut TestAppContext) {
     assert_eq!(names(&mut ui), vec!["one".to_string()]);
     ui.press("x enter");
     assert!(names(&mut ui).is_empty());
-    assert_eq!(ui.settings_inventory().selected_inventory, None);
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory,
+        None
+    );
 }
 
 #[gpui::test]
@@ -310,7 +359,7 @@ fn a_expands_a_collapsed_location_and_works_from_an_area(app: &mut TestAppContex
     let mut ui = in_inventory(app);
 
     ui.press("a");
-    let inventory_page = ui.settings_inventory();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert!(
         inventory_page.inventory_rows.len() > 2,
         "a opens the Location"
@@ -319,7 +368,7 @@ fn a_expands_a_collapsed_location_and_works_from_an_area(app: &mut TestAppContex
     ui.press("escape right right");
     ui.press("a");
     assert_eq!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .selected_inventory
             .as_deref()
             .map(|r| r.starts_with("area:")),
@@ -334,8 +383,8 @@ fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppConte
     ui.empty_inventory();
     ui.press("g s");
     ui.press("j j j j j j j j j l");
-    let inventory_page = ui.settings_inventory();
-    let page = ui.settings();
+    let inventory_page = ui.settings::<SettingsInventorySnapshot>();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "Inventory");
     assert!(inventory_page.inventory_rows.is_empty());
     assert_eq!(inventory_page.selected_inventory, None);
@@ -343,7 +392,11 @@ fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppConte
     ui.press("e x");
     assert_eq!(ui.dialog(), None);
     ui.press("j k shift-j right");
-    assert!(ui.settings_inventory().inventory_rows.is_empty());
+    assert!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .inventory_rows
+            .is_empty()
+    );
     ui.press("a");
     let toasts = ui.toasts();
     assert_eq!(
@@ -359,10 +412,10 @@ fn the_page_has_no_effect_on_keys_while_the_index_has_focus(app: &mut TestAppCon
     let mut ui = in_inventory(app);
 
     ui.press("escape");
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
     ui.press("n a e x");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
 }
 
 /// 12 Elm St opened, its first Area selected.
@@ -370,7 +423,7 @@ fn on_first_area(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = in_inventory(app);
     ui.press("right right");
     assert!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .selected_inventory
             .is_some_and(|r| r.starts_with("area:"))
     );
@@ -378,11 +431,13 @@ fn on_first_area(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 fn area_names(ui: &mut Harness<'_>, location: usize) -> Vec<String> {
-    ui.settings_inventory().inventory_areas[location].1.clone()
+    ui.settings::<SettingsInventorySnapshot>().inventory_areas[location]
+        .1
+        .clone()
 }
 
 fn area_items(ui: &mut Harness<'_>, name: &str) -> usize {
-    ui.settings_inventory()
+    ui.settings::<SettingsInventorySnapshot>()
         .inventory_area_items
         .iter()
         .find(|(area, _)| area == name)
@@ -403,7 +458,7 @@ fn add_area_appends_it_last_selects_it_and_updates_the_count(app: &mut TestAppCo
         "an empty name keeps the dialog open"
     );
     ui.press("a t t i c enter");
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(ui.dialog(), None);
     assert!(page.page_focused, "focus returns to the page");
     assert_eq!(area_names(&mut ui, 0).len(), before + 1);
@@ -412,7 +467,9 @@ fn add_area_appends_it_last_selects_it_and_updates_the_count(app: &mut TestAppCo
         Some("attic")
     );
     assert_eq!(
-        ui.settings_inventory().selected_inventory.as_deref(),
+        ui.settings::<SettingsInventorySnapshot>()
+            .selected_inventory
+            .as_deref(),
         Some("area:attic")
     );
     assert_eq!(area_items(&mut ui, "attic"), 0);
@@ -489,7 +546,7 @@ fn removing_an_empty_area_is_a_plain_confirm(app: &mut TestAppContext) {
             .any(|toast| toast.text == "Removed area \"attic\"")
     );
     assert!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .selected_inventory
             .is_some_and(|r| r.starts_with("area:"))
     );
@@ -504,7 +561,7 @@ fn removing_an_area_with_items_moves_them_to_the_area_above_by_default(app: &mut
     let moving = area_items(&mut ui, &second);
     let first_before = area_items(&mut ui, &first);
     let total = ui
-        .settings_inventory()
+        .settings::<SettingsInventorySnapshot>()
         .inventory_area_items
         .iter()
         .map(|r| r.1)
@@ -517,7 +574,7 @@ fn removing_an_area_with_items_moves_them_to_the_area_above_by_default(app: &mut
     assert!(!area_names(&mut ui, 0).contains(&second));
     assert_eq!(area_items(&mut ui, &first), first_before + moving);
     assert_eq!(
-        ui.settings_inventory()
+        ui.settings::<SettingsInventorySnapshot>()
             .inventory_area_items
             .iter()
             .map(|r| r.1)
@@ -559,7 +616,7 @@ fn the_last_area_with_items_is_blocked_and_nothing_changes(app: &mut TestAppCont
     assert_eq!(area_names(&mut ui, 1).len(), 1);
     ui.press("x escape");
     assert_eq!(ui.dialog(), None);
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
@@ -633,7 +690,7 @@ fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
     );
     ui.press("g s");
     ui.press("j j j j j j j j j l");
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("x");
     ui.press("1 2 space shift-e l m space shift-s t space c o n t e n t s");
 

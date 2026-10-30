@@ -4,6 +4,7 @@
 //! ticket's close and before a merge to `main` (`mise run end-to-end-ui smoke`).
 
 use super::common;
+use bin_desktop::shell::router::SettingsCategoriesSnapshot;
 
 use common::{Harness, config_for};
 use gpui::TestAppContext;
@@ -12,7 +13,7 @@ use gpui::TestAppContext;
 fn on_page(ui: &mut Harness<'_>, presses: &str, page: &str) {
     ui.press("g s");
     ui.press(presses);
-    assert_eq!(ui.settings().page, page);
+    assert_eq!(ui.settings_frame().page, page);
     ui.press("l");
 }
 
@@ -48,7 +49,7 @@ fn an_added_category_is_there_after_a_restart_and_a_payee_may_default_to_it(
         on_page(&mut ui, "j j j j j", "Categories");
         ui.press("n p e t s enter");
         assert_eq!(ui.dialog(), None, "the Add Dialog confirmed");
-        let names = ui.settings_categories().category_names;
+        let names = ui.settings::<SettingsCategoriesSnapshot>().category_names;
         assert!(names.iter().any(|name| name == "pets"));
         bin_desktop::quit(&writer);
         names
@@ -62,5 +63,8 @@ fn an_added_category_is_there_after_a_restart_and_a_payee_may_default_to_it(
     );
     // The index keeps its place, two below Categories.
     on_page(&mut ui, "k k", "Categories");
-    assert_eq!(ui.settings_categories().category_names, names);
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_names,
+        names
+    );
 }

@@ -2,6 +2,7 @@
 //! the empty states. Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
+use bin_desktop::shell::router::SettingsTracingSnapshot;
 
 use common::{Harness, log_entry};
 use gpui::TestAppContext;
@@ -11,7 +12,7 @@ use tracing::Level;
 fn on_page(mut ui: Harness<'_>) -> Harness<'_> {
     ui.press("g s");
     ui.click("settings-index-Tracing");
-    assert_eq!(ui.settings().page, "Tracing");
+    assert_eq!(ui.settings_frame().page, "Tracing");
     ui
 }
 
@@ -25,18 +26,27 @@ fn captured() -> LogBuffer {
 #[gpui::test]
 fn clicking_a_level_radio_filters_the_box(app: &mut TestAppContext) {
     let mut ui = on_page(Harness::with_logs(app, captured(), Some(Levels::INFO)));
-    assert_eq!(ui.settings_tracing().log_line_count, 1);
+    assert_eq!(ui.settings::<SettingsTracingSnapshot>().log_line_count, 1);
 
     ui.click("tracing-level-debug");
-    assert_eq!(ui.settings_tracing().tracing_level, "Debug");
-    assert_eq!(ui.settings_tracing().log_line_count, 2);
+    assert_eq!(
+        ui.settings::<SettingsTracingSnapshot>().tracing_level,
+        "Debug"
+    );
+    assert_eq!(ui.settings::<SettingsTracingSnapshot>().log_line_count, 2);
     ui.click("tracing-level-error");
-    assert_eq!(ui.settings_tracing().tracing_level, "Error");
-    assert_eq!(ui.settings_tracing().log_line_count, 0);
+    assert_eq!(
+        ui.settings::<SettingsTracingSnapshot>().tracing_level,
+        "Error"
+    );
+    assert_eq!(ui.settings::<SettingsTracingSnapshot>().log_line_count, 0);
     ui.click("tracing-level-warn");
-    assert_eq!(ui.settings_tracing().log_line_count, 1);
+    assert_eq!(ui.settings::<SettingsTracingSnapshot>().log_line_count, 1);
     ui.click("tracing-level-info");
-    assert_eq!(ui.settings_tracing().tracing_level, "Info");
+    assert_eq!(
+        ui.settings::<SettingsTracingSnapshot>().tracing_level,
+        "Info"
+    );
 }
 
 #[gpui::test]
@@ -59,7 +69,7 @@ fn an_empty_capture_shows_the_empty_state(app: &mut TestAppContext) {
 fn a_filter_hiding_everything_shows_the_empty_state(app: &mut TestAppContext) {
     let mut ui = on_page(Harness::with_logs(app, captured(), Some(Levels::ERROR)));
     assert!(ui.is_drawn("tracing-log-empty"));
-    assert_eq!(ui.settings_tracing().log_hidden_count, 2);
+    assert_eq!(ui.settings::<SettingsTracingSnapshot>().log_hidden_count, 2);
 }
 
 #[gpui::test]
@@ -70,7 +80,7 @@ fn clear_logs_asks_and_cancel_keeps_the_entries(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("ClearLogs"));
     ui.click("clear-logs-cancel");
 
-    let tracing_page = ui.settings_tracing();
+    let tracing_page = ui.settings::<SettingsTracingSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 2);
 }
@@ -82,7 +92,7 @@ fn confirming_clear_logs_empties_the_box(app: &mut TestAppContext) {
     ui.click("settings-clear-logs");
     ui.click("clear-logs-confirm");
 
-    let tracing_page = ui.settings_tracing();
+    let tracing_page = ui.settings::<SettingsTracingSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tracing_page.log_line_count, 0);
     assert_eq!(

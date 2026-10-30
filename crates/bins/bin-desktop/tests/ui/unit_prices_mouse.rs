@@ -2,6 +2,7 @@
 //! only: the Prices menu entry and pane button open it, and a click on a week's row selects it.
 
 use super::common;
+use bin_desktop::shell::router::UnitPricesSnapshot;
 
 use bin_desktop::WindowSize;
 use common::Harness;
@@ -13,7 +14,7 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
     ui.resize_to(size);
     ui.press("g s");
     ui.click("settings-index-Units");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui
 }
 
@@ -23,7 +24,9 @@ fn the_prices_menu_entry_opens_the_rows_unit(app: &mut TestAppContext) {
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-prices");
 
-    let prices = ui.unit_prices().expect("the menu entry opens it");
+    let prices = ui
+        .settings::<Option<UnitPricesSnapshot>>()
+        .expect("the menu entry opens it");
     assert_eq!(prices.unit, UnitId::SEED_BTC);
 }
 
@@ -33,7 +36,12 @@ fn the_pane_button_opens_the_selected_units_prices(app: &mut TestAppContext) {
     ui.click("unit-row-1");
     ui.click("units-pane-prices");
 
-    assert_eq!(ui.unit_prices().expect("open").unit, UnitId::SEED_BTC);
+    assert_eq!(
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .unit,
+        UnitId::SEED_BTC
+    );
     assert!(ui.is_drawn("unit-prices-chart"));
 }
 
@@ -44,5 +52,10 @@ fn a_click_on_a_weeks_row_selects_it(app: &mut TestAppContext) {
     ui.click("settings-units-menu-prices");
 
     ui.click("unit-prices-row-2");
-    assert!(ui.unit_prices().expect("open").rows[2].selected);
+    assert!(
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .rows[2]
+            .selected
+    );
 }

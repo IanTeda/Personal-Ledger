@@ -5,6 +5,7 @@
 //! and before a merge to `main` (`mise run end-to-end-ui smoke`).
 
 use super::common;
+use bin_desktop::shell::router::SettingsInventorySnapshot;
 
 use common::{Harness, config_for};
 use gpui::TestAppContext;
@@ -13,7 +14,7 @@ use gpui::TestAppContext;
 fn in_inventory(ui: &mut Harness<'_>) {
     ui.press("g s");
     ui.press("j j j j j j j j j");
-    assert_eq!(ui.settings().page, "Inventory");
+    assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("l");
 }
 
@@ -25,7 +26,7 @@ type Shown = (
 );
 
 fn shown(ui: &mut Harness<'_>) -> Shown {
-    let page = ui.settings_inventory();
+    let page = ui.settings::<SettingsInventorySnapshot>();
     (
         page.inventory_locations,
         page.inventory_areas,

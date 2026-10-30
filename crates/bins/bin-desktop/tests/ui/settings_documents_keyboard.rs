@@ -2,6 +2,7 @@
 //! State is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsDocumentTypesSnapshot;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -12,9 +13,9 @@ fn in_documents(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press("j j j j j j j j");
-    assert_eq!(ui.settings().page, "Documents");
+    assert_eq!(ui.settings_frame().page, "Documents");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -22,7 +23,7 @@ fn in_documents(app: &mut TestAppContext) -> Harness<'_> {
 fn the_page_lists_the_nine_seeded_types_ending_with_other(app: &mut TestAppContext) {
     let mut ui = in_documents(app);
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_names.len(), 9);
     assert_eq!(
         document_types_page
@@ -41,25 +42,35 @@ fn the_page_lists_the_nine_seeded_types_ending_with_other(app: &mut TestAppConte
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_documents(app);
 
-    let names = ui.settings_document_types().document_type_names;
+    let names = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
     ui.press("j");
     assert_eq!(
-        ui.settings_document_types().selected_document_type.as_ref(),
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .selected_document_type
+            .as_ref(),
         names.get(1)
     );
     ui.press("shift-g");
     assert_eq!(
-        ui.settings_document_types().selected_document_type.as_ref(),
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .selected_document_type
+            .as_ref(),
         names.last()
     );
     ui.press("k");
     assert_eq!(
-        ui.settings_document_types().selected_document_type.as_ref(),
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .selected_document_type
+            .as_ref(),
         names.get(7)
     );
     ui.press("g g");
     assert_eq!(
-        ui.settings_document_types().selected_document_type.as_ref(),
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .selected_document_type
+            .as_ref(),
         names.first()
     );
 }
@@ -69,7 +80,7 @@ fn shift_j_and_shift_k_reorder_the_selected_type(app: &mut TestAppContext) {
     let mut ui = in_documents(app);
 
     ui.press("shift-j");
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_names[0], "Statements");
     assert_eq!(document_types_page.document_type_names[1], "Receipts");
     assert_eq!(
@@ -78,13 +89,15 @@ fn shift_j_and_shift_k_reorder_the_selected_type(app: &mut TestAppContext) {
     );
     ui.press("shift-k");
     assert_eq!(
-        ui.settings_document_types().document_type_names[0],
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names[0],
         "Receipts"
     );
     // Already first: nothing moves.
     ui.press("shift-k");
     assert_eq!(
-        ui.settings_document_types().document_type_names[0],
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names[0],
         "Receipts"
     );
 }
@@ -95,12 +108,12 @@ fn other_reorders_but_x_on_it_removes_nothing_and_says_why(app: &mut TestAppCont
 
     ui.press("shift-g");
     ui.press("shift-k");
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_names[7], "Other");
     assert_eq!(document_types_page.document_type_names.len(), 9);
     ui.press("x");
-    let document_types_page = ui.settings_document_types();
-    let page = ui.settings();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
+    let page = ui.settings_frame();
     assert_eq!(document_types_page.document_type_names.len(), 9);
     assert_eq!(
         page.status_message.as_deref(),
@@ -120,7 +133,7 @@ fn n_opens_the_add_dialog_and_enter_adds_a_type_at_the_end(app: &mut TestAppCont
     ui.press("l e a s e s");
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 10);
     assert_eq!(
@@ -144,7 +157,12 @@ fn add_refuses_a_name_another_type_has_ignoring_case(app: &mut TestAppContext) {
     ui.press("t a x");
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("AddDocumentType"));
-    assert_eq!(ui.settings_document_types().document_type_names.len(), 9);
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names
+            .len(),
+        9
+    );
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
 }
@@ -160,7 +178,7 @@ fn edit_renames_keeping_the_row_and_its_files(app: &mut TestAppContext) {
     ui.press("t a x e s");
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names[2], "taxes");
     assert_eq!(document_types_page.document_type_files[2], 31);
@@ -181,7 +199,11 @@ fn edit_keeps_its_own_name_valid_in_another_case(app: &mut TestAppContext) {
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_document_types().document_type_names[2], "TAX");
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names[2],
+        "TAX"
+    );
 }
 
 #[gpui::test]
@@ -193,7 +215,7 @@ fn x_asks_for_a_destination_and_moves_the_files_to_other(app: &mut TestAppContex
     assert_eq!(ui.dialog(), Some("RemoveDocumentType"));
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 8);
     assert!(
@@ -215,7 +237,7 @@ fn the_destination_can_be_changed_with_the_arrow_keys(app: &mut TestAppContext) 
     ui.press("down");
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_files[0], 186 + 31);
     assert_eq!(document_types_page.document_type_files.last(), Some(&2));
 }
@@ -232,7 +254,7 @@ fn x_on_a_type_with_no_files_removes_it_with_a_plain_confirm(app: &mut TestAppCo
     assert_eq!(ui.dialog(), Some("RemoveDocumentType"));
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(document_types_page.document_type_names.len(), 9);
     assert_eq!(
         document_types_page.document_type_files.iter().sum::<u32>(),
@@ -247,7 +269,7 @@ fn escape_cancels_remove_and_changes_nothing(app: &mut TestAppContext) {
     ui.press("x");
     ui.press("escape");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 9);
 }
@@ -261,7 +283,7 @@ fn x_on_other_opens_the_notice_and_enter_closes_it(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("DefaultNotice"));
     ui.press("enter");
 
-    let document_types_page = ui.settings_document_types();
+    let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(document_types_page.document_type_names.len(), 9);
 }
@@ -279,16 +301,21 @@ fn removing_a_type_in_settings_keeps_every_document_in_the_library(app: &mut Tes
         ui.press("g f");
         let rows = ui.documents().library_rows;
         ui.press("g s");
-        if !ui.settings().page_focused {
+        if !ui.settings_frame().page_focused {
             ui.press("l");
         }
-        assert_eq!(ui.settings().page, "Documents");
+        assert_eq!(ui.settings_frame().page, "Documents");
         rows
     };
     ui.press("j j");
     ui.press("x");
     ui.press("enter");
-    assert_eq!(ui.settings_document_types().document_type_names.len(), 8);
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names
+            .len(),
+        8
+    );
 
     assert_eq!(library_rows(&mut ui), before);
 }
@@ -301,7 +328,7 @@ fn a_type_added_in_settings_gets_a_facet_on_the_documents_rail(app: &mut TestApp
     ui.press("enter");
     // The new type is the last row, after the nine seeded ones.
     let added = ui
-        .settings_document_types()
+        .settings::<SettingsDocumentTypesSnapshot>()
         .document_type_ids
         .last()
         .copied()
@@ -325,7 +352,7 @@ fn removing_the_type_a_library_is_scoped_to_falls_back_to_all_documents(app: &mu
     ui.press("l e a s e s");
     ui.press("enter");
     let added = ui
-        .settings_document_types()
+        .settings::<SettingsDocumentTypesSnapshot>()
         .document_type_ids
         .last()
         .copied()
@@ -338,7 +365,7 @@ fn removing_the_type_a_library_is_scoped_to_falls_back_to_all_documents(app: &mu
     assert_eq!(ui.documents().scope, format!("type:{added}"));
 
     ui.press("g s");
-    if !ui.settings().page_focused {
+    if !ui.settings_frame().page_focused {
         ui.press("l");
     }
     // The added type is selected, has no Filed files, and goes on a plain confirm.

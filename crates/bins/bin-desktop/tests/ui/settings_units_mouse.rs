@@ -9,6 +9,7 @@
 )]
 
 use super::common;
+use bin_desktop::shell::router::SettingsUnitsSnapshot;
 
 use bin_desktop::{WindowSize, navigation::nav::Noun};
 use common::Harness;
@@ -22,7 +23,7 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Units");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui
 }
 
@@ -47,7 +48,7 @@ fn a_notice_queued_while_a_dialog_handles_a_click_shows_once_the_click_returns(
 
 /// The selected row: a Unit's code or a Price Source's name.
 fn selected(ui: &mut Harness<'_>) -> String {
-    let page = ui.settings_units();
+    let page = ui.settings::<SettingsUnitsSnapshot>();
     page.units
         .iter()
         .find(|unit| unit.selected)
@@ -70,7 +71,7 @@ fn a_click_on_a_units_last_price_selects_its_row(app: &mut TestAppContext) {
 
 /// The open row menu's entries as their slugs.
 fn menu(ui: &mut Harness<'_>) -> Option<Vec<&'static str>> {
-    ui.settings_units().menu.map(|menu| {
+    ui.settings::<SettingsUnitsSnapshot>().menu.map(|menu| {
         menu.entries
             .into_iter()
             .map(|entry| entry.action.slug())
@@ -80,7 +81,7 @@ fn menu(ui: &mut Harness<'_>) -> Option<Vec<&'static str>> {
 
 fn source_row(ui: &mut Harness<'_>, name: &str) -> String {
     let index = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .price_sources
         .iter()
         .position(|source| source.name == name)
@@ -93,10 +94,10 @@ fn clicking_the_units_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-Accounts");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
 
     ui.click("settings-index-Units");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     assert!(ui.is_drawn("settings-units-table"));
     assert!(ui.is_drawn("settings-price-sources-table"));
 }
@@ -104,11 +105,11 @@ fn clicking_the_units_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
 #[gpui::test]
 fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_units(app);
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
 
     ui.click("unit-row-2");
     assert_eq!(selected(&mut ui), "vas");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     let row = source_row(&mut ui, "Frankfurter");
     ui.click(&row);
     assert_eq!(selected(&mut ui), "Frankfurter");
@@ -423,7 +424,7 @@ fn a_built_ins_updates_control_and_save_button_rename_it(app: &mut TestAppContex
 
     assert_eq!(ui.dialog(), None);
     let names: Vec<String> = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .price_sources
         .into_iter()
         .map(|source| source.name)
@@ -464,7 +465,7 @@ fn at_x_large_the_pane_draws_its_groups_and_its_buttons_open_the_dialogs(app: &m
 fn at_x_large_the_pane_draws_a_units_accounts(app: &mut TestAppContext) {
     let mut ui = on_units_at(app, WindowSize::XLarge);
     ui.click("unit-row-1");
-    let page = ui.settings_units();
+    let page = ui.settings::<SettingsUnitsSnapshot>();
     let accounts = page
         .pane
         .expect("docked")
@@ -583,7 +584,7 @@ fn the_set_price_menu_entry_and_pane_button_open_set_price_and_confirm_sets_it(
 
     assert_eq!(ui.dialog(), None);
     let prices: Vec<_> = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .pane
         .expect("docked at X-Large")
         .groups

@@ -11,8 +11,8 @@ fn on_page(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-DataBackup");
-    assert_eq!(ui.settings().page, "DataBackup");
-    assert_eq!(ui.settings().status_message, None);
+    assert_eq!(ui.settings_frame().page, "DataBackup");
+    assert_eq!(ui.settings_frame().status_message, None);
     ui
 }
 
@@ -21,7 +21,10 @@ fn backup_now_reports_in_the_status_line(app: &mut TestAppContext) {
     let mut ui = on_page(app);
 
     ui.click("settings-backup-now");
-    let message = ui.settings().status_message.expect("a status message");
+    let message = ui
+        .settings_frame()
+        .status_message
+        .expect("a status message");
     assert!(message.to_lowercase().contains("backup"), "{message}");
 }
 
@@ -30,6 +33,9 @@ fn export_ledger_reports_in_the_status_line(app: &mut TestAppContext) {
     let mut ui = on_page(app);
 
     ui.click("settings-export-ledger");
-    let message = ui.settings().status_message.expect("a status message");
+    let message = ui
+        .settings_frame()
+        .status_message
+        .expect("a status message");
     assert!(message.to_lowercase().contains("export"), "{message}");
 }

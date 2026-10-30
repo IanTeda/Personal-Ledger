@@ -13,7 +13,7 @@ use gpui::TestAppContext;
 fn add_unit(ui: &mut Harness<'_>, code: &str, name: &str) {
     ui.press("g s j j l");
     assert_eq!(ui.noun(), Noun::Settings);
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui.press("n");
     type_word(ui, code);
     ui.press("tab tab");

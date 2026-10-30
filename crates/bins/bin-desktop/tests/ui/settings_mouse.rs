@@ -27,11 +27,11 @@ fn clicking_an_index_entry_swaps_the_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
     ui.click("settings-index-Accounts");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.click("settings-index-About");
-    assert_eq!(ui.settings().page, "About");
+    assert_eq!(ui.settings_frame().page, "About");
     ui.click("settings-index-General");
-    assert_eq!(ui.settings().page, "General");
+    assert_eq!(ui.settings_frame().page, "General");
 }
 
 #[gpui::test]
@@ -41,14 +41,14 @@ fn at_medium_an_index_row_opens_its_page_and_the_crumb_goes_back(app: &mut TestA
     ui.press("g s");
 
     ui.click("settings-index-page-Units");
-    let settings = ui.settings();
+    let settings = ui.settings_frame();
     assert_eq!(settings.page, "Units");
     assert!(settings.page_focused);
     assert!(ui.is_drawn("settings-page"));
 
     ui.click("settings-crumb-index");
     assert!(ui.is_drawn("settings-index-page"));
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
 }
 
 #[gpui::test]
@@ -62,7 +62,7 @@ fn at_medium_the_caret_opens_the_picker_and_a_row_jumps_to_its_page(app: &mut Te
     assert!(ui.is_drawn("settings-picker-About"));
 
     ui.click("settings-picker-Tracing");
-    let settings = ui.settings();
+    let settings = ui.settings_frame();
     assert_eq!(settings.page, "Tracing");
     assert_eq!(settings.picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
@@ -74,7 +74,7 @@ fn at_x_large_the_docked_index_swaps_the_capped_page(app: &mut TestAppContext) {
     ui.resize_to(WindowSize::XLarge);
 
     ui.click("settings-index-Display");
-    assert_eq!(ui.settings().page, "Display");
+    assert_eq!(ui.settings_frame().page, "Display");
     let page = ui.bounds("settings-page");
     assert_eq!(
         page.size.width,
@@ -115,7 +115,7 @@ fn at_medium_the_index_page_has_a_scrollbar_and_scrolls_by_wheel(app: &mut TestA
     assert!(index_row_bottom_on_show(&mut ui));
 
     ui.click("settings-index-page-About");
-    assert_eq!(ui.settings().page, "About");
+    assert_eq!(ui.settings_frame().page, "About");
 }
 
 #[gpui::test]

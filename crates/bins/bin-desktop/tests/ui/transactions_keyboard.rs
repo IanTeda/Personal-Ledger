@@ -3,6 +3,7 @@
 //! and the status message back from `Root`, never pixels.
 
 use super::common;
+use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -341,9 +342,9 @@ fn a_bills_paid_row_reveal_clears_the_search(app: &mut TestAppContext) {
 )]
 fn delete_the_first_account(ui: &mut Harness<'_>) {
     ui.press("g s j j j j l");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("seeded accounts");
     ui.press("d");
@@ -439,20 +440,26 @@ fn a_payee_renamed_on_the_payees_page_shows_on_the_list(app: &mut TestAppContext
     ui.press("g l");
     let listed = ui.transactions().payees;
     ui.press("g s j j j j j j j l");
-    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_frame().page, "Payees");
     // The first Payee on the page that the list shows.
     let is_listed = |name: &str| {
         listed
             .iter()
             .any(|payee| payee.split(" +").next() == Some(name))
     };
-    let mut name = ui.settings_payees().selected_payee.expect("seeded payees");
+    let mut name = ui
+        .settings::<SettingsPayeesSnapshot>()
+        .selected_payee
+        .expect("seeded payees");
     for _ in 0..100 {
         if is_listed(&name) {
             break;
         }
         ui.press("j");
-        name = ui.settings_payees().selected_payee.expect("seeded payees");
+        name = ui
+            .settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .expect("seeded payees");
     }
     ui.press("g l");
     let shown = |ui: &mut Harness<'_>, name: &str| {
@@ -466,11 +473,13 @@ fn a_payee_renamed_on_the_payees_page_shows_on_the_list(app: &mut TestAppContext
     assert!(before > 0, "{name} has Transactions this year");
 
     ui.press("g s");
-    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_frame().page, "Payees");
     ui.press("l e x enter");
     let renamed = format!("{name}x");
     assert_eq!(
-        ui.settings_payees().selected_payee.as_deref(),
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
         Some(renamed.as_str())
     );
     ui.press("g l");

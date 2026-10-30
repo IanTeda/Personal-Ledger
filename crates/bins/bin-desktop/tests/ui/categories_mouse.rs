@@ -3,6 +3,7 @@
 //! back from the Settings snapshot.
 
 use super::common;
+use bin_desktop::shell::router::SettingsCategoriesSnapshot;
 use lib_core::CategoryId;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -14,7 +15,7 @@ fn on_categories(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Categories");
-    assert_eq!(ui.settings().page, "Categories");
+    assert_eq!(ui.settings_frame().page, "Categories");
     ui
 }
 
@@ -39,7 +40,7 @@ fn an_edit_action_selects_the_row_and_opens_its_dialog(app: &mut TestAppContext)
     let mut ui = on_categories(app);
 
     ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(1)));
-    let categories_page = ui.settings_categories();
+    let categories_page = ui.settings::<SettingsCategoriesSnapshot>();
     assert_eq!(ui.dialog(), Some("EditCategory"));
     assert_eq!(ui.dialog_value("name"), categories_page.selected_category);
     ui.click("edit-category-cancel");

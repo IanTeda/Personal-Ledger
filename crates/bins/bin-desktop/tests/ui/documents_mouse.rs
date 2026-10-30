@@ -9,6 +9,7 @@
 )]
 
 use super::common;
+use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -123,9 +124,9 @@ fn an_account_link_selects_the_account_on_its_settings_page(app: &mut TestAppCon
 
     ui.click("documents-link-0");
 
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     assert!(
-        ui.settings_accounts()
+        ui.settings::<SettingsAccountsSnapshot>()
             .selected_account
             .is_some_and(|name| name.contains("Amex")),
         "the Amex statement's Account is selected"
@@ -139,9 +140,9 @@ fn a_payee_link_selects_the_payee_on_its_settings_page(app: &mut TestAppContext)
 
     ui.click("documents-link-0");
 
-    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_frame().page, "Payees");
     assert!(
-        ui.settings_payees()
+        ui.settings::<SettingsPayeesSnapshot>()
             .selected_payee
             .is_some_and(|name| name.contains("AAMI")),
         "the policy's Payee is selected"

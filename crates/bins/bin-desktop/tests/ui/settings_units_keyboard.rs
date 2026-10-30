@@ -4,6 +4,7 @@
 //! Deactivate for a Unit in use, validation) are the Presenter tests' in `lib-units`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsUnitsSnapshot;
 
 use bin_desktop::{
     WindowSize, WindowSizeExt,
@@ -31,14 +32,14 @@ fn to_units(ui: &mut Harness<'_>) {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("j j");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 /// The selected row: a Unit's code or a Price Source's name.
 fn selected(ui: &mut Harness<'_>) -> String {
-    let page = ui.settings_units();
+    let page = ui.settings::<SettingsUnitsSnapshot>();
     page.units
         .iter()
         .find(|unit| unit.selected)
@@ -65,11 +66,11 @@ fn type_word(ui: &mut Harness<'_>, word: &str) {
 fn j_j_from_the_index_swaps_to_units_and_l_steps_into_it(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s j j");
-    assert_eq!(ui.settings().page, "Units");
-    assert!(!ui.settings().page_focused);
+    assert_eq!(ui.settings_frame().page, "Units");
+    assert!(!ui.settings_frame().page_focused);
 
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
 }
@@ -436,7 +437,7 @@ fn a_custom_price_source_is_added_by_typing_tab_and_left_right(app: &mut TestApp
 
     assert_eq!(ui.dialog(), None);
     let names: Vec<String> = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .price_sources
         .into_iter()
         .map(|source| source.name)
@@ -480,18 +481,18 @@ fn a_custom_source_is_deleted_once_its_name_is_typed_back(app: &mut TestAppConte
 fn escape_closes_an_open_row_menu_before_leaving_the_page(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.right_click("unit-row-0");
-    assert!(ui.settings_units().menu.is_some());
+    assert!(ui.settings::<SettingsUnitsSnapshot>().menu.is_some());
 
     ui.press("escape");
-    assert_eq!(ui.settings_units().menu, None);
-    assert!(ui.settings().page_focused);
+    assert_eq!(ui.settings::<SettingsUnitsSnapshot>().menu, None);
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
 fn the_units_table_draws_each_units_last_price_and_its_age_under_last(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     let last: Vec<_> = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .units
         .into_iter()
         .map(|unit| (unit.last_price, unit.last_age))
@@ -534,7 +535,11 @@ fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_a
     use lib_units::presenter::PaneGroup;
     let mut ui = on_units_at(app, WindowSize::XLarge);
     ui.press("j");
-    let groups = ui.settings_units().pane.expect("docked").groups;
+    let groups = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .pane
+        .expect("docked")
+        .groups;
 
     let slugs: Vec<_> = groups.iter().map(PaneGroup::slug).collect();
     assert_eq!(slugs, ["unit", "source", "price", "accounts", "activity"]);
@@ -565,7 +570,7 @@ fn at_x_large_an_outcome_lands_in_activity_without_a_toast(app: &mut TestAppCont
     ui.press("enter");
 
     let activity: Vec<String> = ui
-        .settings_units()
+        .settings::<SettingsUnitsSnapshot>()
         .activity
         .into_iter()
         .map(|line| line.text)
@@ -596,7 +601,7 @@ fn both_tables_fill_the_page_from_the_medium_floor_to_x_large(app: &mut TestAppC
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Medium);
     ui.press("g s j j enter");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     // The page's width in a window at Medium's 720px floor, where the tables stop shrinking.
     const MIN_WIDTH: gpui::Pixels = gpui::px(610.0);
     let floor = gpui::size(gpui::px(720.0), gpui::px(800.0));
@@ -978,7 +983,7 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
 /// The selected Unit's Last price in the docked pane's PRICE SOURCE group.
 fn pane_last_price(ui: &mut Harness<'_>) -> Option<String> {
     use lib_units::presenter::PaneGroup;
-    ui.settings_units()
+    ui.settings::<SettingsUnitsSnapshot>()
         .pane?
         .groups
         .into_iter()
@@ -1015,7 +1020,7 @@ fn p_on_a_manual_entry_unit_sets_this_weeks_price_and_the_pane_shows_it(app: &mu
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(pane_last_price(&mut ui).as_deref(), Some("42.00 aud"));
-    let activity = ui.settings_units().activity;
+    let activity = ui.settings::<SettingsUnitsSnapshot>().activity;
     assert!(
         activity[0].text.starts_with("Set the price of vas"),
         "{activity:?}"

@@ -14,7 +14,7 @@ fn on_about(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("shift-g");
-    assert_eq!(ui.settings().page, "About");
+    assert_eq!(ui.settings_frame().page, "About");
     ui
 }
 
@@ -22,7 +22,7 @@ fn on_about(app: &mut TestAppContext) -> Harness<'_> {
 fn shift_g_from_the_index_swaps_to_about_with_focus_on_the_index(app: &mut TestAppContext) {
     let mut ui = on_about(app);
 
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
     assert_eq!(ui.dialog(), None);
@@ -43,7 +43,7 @@ fn stepping_into_about_is_a_quiet_no_op(app: &mut TestAppContext) {
     ui.press("l");
     ui.press("enter");
 
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
     assert_eq!(page.status_message, None);
@@ -57,7 +57,7 @@ fn movement_keys_at_the_bottom_of_the_index_leave_about_unchanged(app: &mut Test
 
     ui.press("j j shift-g");
 
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
     assert_eq!(ui.dialog(), None);
@@ -71,18 +71,18 @@ fn escape_returns_focus_to_the_index_before_reaching_about(app: &mut TestAppCont
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 
     ui.press("escape");
-    let after_escape = ui.settings();
+    let after_escape = ui.settings_frame();
     assert!(!after_escape.page_focused);
     assert_eq!(after_escape.page, "General");
 
     ui.press("shift-g");
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
     ui.press("escape");
     assert_eq!(ui.noun(), Noun::Settings);
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
 }

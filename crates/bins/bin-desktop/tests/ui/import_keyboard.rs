@@ -3,6 +3,7 @@
 //! `Root`.
 
 use super::common;
+use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -226,8 +227,8 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
 
     ui.press("g s");
     ui.press("j j j j j j j");
-    assert_eq!(ui.settings().page, "Payees");
-    let page = ui.settings_payees();
+    assert_eq!(ui.settings_frame().page, "Payees");
+    let page = ui.settings::<SettingsPayeesSnapshot>();
     let row = page
         .payee_names
         .iter()
@@ -245,14 +246,16 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
 )]
 fn everyday_dialog_counts(ui: &mut Harness<'_>) -> (usize, usize) {
     ui.press("g s");
-    if ui.settings().page != "Accounts" {
+    if ui.settings_frame().page != "Accounts" {
         ui.press("j j j j");
     }
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
     ui.press("g g j");
     assert_eq!(
-        ui.settings_accounts().selected_account.as_deref(),
+        ui.settings::<SettingsAccountsSnapshot>()
+            .selected_account
+            .as_deref(),
         Some("ANZ Everyday")
     );
     let mut count = |key: &str, dialog: &str| {

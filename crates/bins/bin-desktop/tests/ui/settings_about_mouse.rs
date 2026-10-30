@@ -18,11 +18,11 @@ fn on_settings(app: &mut TestAppContext) -> Harness<'_> {
 #[gpui::test]
 fn clicking_the_about_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
-    assert_ne!(ui.settings().page, "About", "must not start on About");
+    assert_ne!(ui.settings_frame().page, "About", "must not start on About");
 
     ui.click("settings-index-About");
 
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
     assert_eq!(ui.dialog(), None);
@@ -34,11 +34,11 @@ fn clicking_about_from_another_page_focuses_the_index(app: &mut TestAppContext) 
     let mut ui = on_settings(app);
     ui.click("settings-index-Display");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 
     ui.click("settings-index-About");
 
-    let page = ui.settings();
+    let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);
 }

@@ -3,6 +3,7 @@
 //! buttons in its two states. State is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -13,7 +14,7 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click(&format!("settings-index-{page}"));
-    assert_eq!(ui.settings().page, page);
+    assert_eq!(ui.settings_frame().page, page);
     ui
 }
 
@@ -31,7 +32,12 @@ fn row_action(ui: &mut Harness<'_>, row: &str, action: &str) {
 fn the_page_draws_seven_rows_the_personal_institution_first(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
 
-    assert_eq!(ui.settings_institutions().institutions.len(), 7);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len(),
+        7
+    );
     assert!(ui.is_drawn("settings-institutions-row-6"));
     ui.click("institution-edit-0");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Personal"));
@@ -42,7 +48,7 @@ fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_the_delete_dialog(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
 
     ui.click("institution-edit-2");
     assert_eq!(ui.dialog(), Some("EditInstitution"));
@@ -54,12 +60,17 @@ fn the_edit_link_opens_the_edit_dialog_and_the_delete_link_the_delete_dialog(
     ui.click("institution-delete-2");
     assert_eq!(ui.dialog(), Some("DeleteInstitution"));
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("American Express")
     );
     ui.click("delete-institution-close");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_institutions().institutions, before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
 }
 
 #[gpui::test]
@@ -71,17 +82,19 @@ fn a_right_click_opens_the_rows_menu_and_edit_opens_the_dialog_on_that_row(
     ui.right_click("settings-institutions-row-3");
     assert!(ui.is_drawn("settings-institutions-menu"));
     assert_eq!(
-        ui.settings_institutions().menu,
+        ui.settings::<SettingsInstitutionsSnapshot>().menu,
         Some(vec!["edit-institution", "delete-institution"])
     );
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("Vanguard Investments")
     );
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui.click("settings-institutions-menu-edit-institution");
 
-    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.settings::<SettingsInstitutionsSnapshot>().menu, None);
     assert_eq!(ui.dialog(), Some("EditInstitution"));
     assert_eq!(
         ui.dialog_value("name").as_deref(),
@@ -102,12 +115,12 @@ fn the_menus_delete_opens_the_delete_dialog_and_a_press_outside_closes_the_menu(
     ui.click("delete-institution-close");
     assert_eq!(ui.dialog(), None);
 
-    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.settings::<SettingsInstitutionsSnapshot>().menu, None);
 
     ui.right_click("settings-institutions-row-1");
-    assert!(ui.settings_institutions().menu.is_some());
+    assert!(ui.settings::<SettingsInstitutionsSnapshot>().menu.is_some());
     ui.click("settings-institutions-row-0");
-    assert_eq!(ui.settings_institutions().menu, None);
+    assert_eq!(ui.settings::<SettingsInstitutionsSnapshot>().menu, None);
     assert_eq!(ui.dialog(), None);
 }
 
@@ -151,7 +164,7 @@ fn the_delete_button_enables_on_the_name_typed_back_and_removes_the_row(app: &mu
     ui.click("delete-institution-confirm");
 
     assert_eq!(ui.dialog(), None);
-    let page = ui.settings_institutions();
+    let page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(page.institutions.len(), 6);
     assert_eq!(
         page.selected_institution.as_deref(),
@@ -162,14 +175,17 @@ fn the_delete_button_enables_on_the_name_typed_back_and_removes_the_row(app: &mu
 #[gpui::test]
 fn cancel_closes_the_delete_dialog_with_nothing_removed(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
 
     row_action(&mut ui, "settings-institutions-row-6", "delete-institution");
     ui.press("S u p e r a n n u a t i o n space F u n d");
     ui.click("delete-institution-cancel");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_institutions().institutions, before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
 }
 
 #[gpui::test]
@@ -193,7 +209,7 @@ fn the_edit_dialogs_buttons_save_a_rename_and_a_refused_one_stays_open(app: &mut
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions[2],
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions[2],
         ("Amex".to_string(), "credit card \u{b7} cash".to_string())
     );
 }
@@ -234,7 +250,10 @@ fn the_add_institution_button_needs_a_name_and_a_product_then_adds_the_row(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions.len();
+    let before = ui
+        .settings::<SettingsInstitutionsSnapshot>()
+        .institutions
+        .len();
 
     ui.click("settings-add-institution");
     ui.click("add-institution-confirm");
@@ -242,7 +261,7 @@ fn the_add_institution_button_needs_a_name_and_a_product_then_adds_the_row(
     ui.press("n e w");
     ui.click("add-institution-chip-offset");
     ui.click("add-institution-confirm");
-    let institutions_page = ui.settings_institutions();
+    let institutions_page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(institutions_page.institutions.len(), before + 1);
     assert_eq!(
@@ -254,14 +273,22 @@ fn the_add_institution_button_needs_a_name_and_a_product_then_adds_the_row(
 #[gpui::test]
 fn an_institution_with_no_product_cannot_be_added(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions.len();
+    let before = ui
+        .settings::<SettingsInstitutionsSnapshot>()
+        .institutions
+        .len();
 
     ui.click("settings-add-institution");
     ui.press("n e w");
     ui.click("add-institution-chip-savings");
     ui.click("add-institution-confirm");
     assert_eq!(ui.dialog(), Some("AddInstitution"));
-    assert_eq!(ui.settings_institutions().institutions.len(), before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len(),
+        before
+    );
 }
 
 #[gpui::test]
@@ -270,7 +297,7 @@ fn a_row_click_selects_its_institution_and_a_row_button_leaves_the_selection_on_
 ) {
     let mut ui = on_page(app, "Institutions");
     let names: Vec<String> = ui
-        .settings_institutions()
+        .settings::<SettingsInstitutionsSnapshot>()
         .institutions
         .into_iter()
         .map(|row| row.0)
@@ -278,12 +305,16 @@ fn a_row_click_selects_its_institution_and_a_row_button_leaves_the_selection_on_
 
     ui.click("settings-institutions-row-2");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.get(2)
     );
     ui.click("institution-delete-4");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.get(4)
     );
     assert_eq!(ui.dialog(), Some("DeleteInstitution"));
@@ -296,12 +327,12 @@ fn escape_closes_the_open_menu_before_it_leaves_the_page(app: &mut TestAppContex
     let mut ui = on_page(app, "Institutions");
 
     ui.right_click("settings-institutions-row-1");
-    assert!(ui.settings_institutions().menu.is_some());
+    assert!(ui.settings::<SettingsInstitutionsSnapshot>().menu.is_some());
     ui.press("escape");
 
-    assert_eq!(ui.settings_institutions().menu, None);
-    assert_eq!(ui.settings().page, "Institutions");
-    assert!(ui.settings().page_focused);
+    assert_eq!(ui.settings::<SettingsInstitutionsSnapshot>().menu, None);
+    assert_eq!(ui.settings_frame().page, "Institutions");
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
@@ -322,7 +353,10 @@ fn the_usual_unit_select_opens_closes_and_picks_a_unit_by_click(app: &mut TestAp
 #[gpui::test]
 fn a_usual_unit_is_saved_reopens_intact_and_clears_back_to_none(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
-    let last = ui.settings_institutions().institutions.len();
+    let last = ui
+        .settings::<SettingsInstitutionsSnapshot>()
+        .institutions
+        .len();
 
     ui.click("settings-add-institution");
     ui.press("b r o k e r");

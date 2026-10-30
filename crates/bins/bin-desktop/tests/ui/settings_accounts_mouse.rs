@@ -3,6 +3,7 @@
 //! tagged with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsAccountsSnapshot;
 use lib_core::AccountId;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -19,7 +20,7 @@ fn on_accounts(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click("settings-index-Accounts");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui
 }
 
@@ -39,9 +40,9 @@ fn the_add_button_opens_the_dialog_and_cancel_closes_it(app: &mut TestAppContext
 fn clicking_an_account_row_selects_it(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
-    let first = ui.settings_accounts().selected_account;
+    let first = ui.settings::<SettingsAccountsSnapshot>().selected_account;
     ui.click(&format!("settings-accounts-row-{}", AccountId::seed(2)));
-    let second = ui.settings_accounts().selected_account;
+    let second = ui.settings::<SettingsAccountsSnapshot>().selected_account;
     assert!(second.is_some());
     assert_ne!(first, second);
 }
@@ -51,7 +52,7 @@ fn an_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
 
     ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(2)));
-    let accounts_page = ui.settings_accounts();
+    let accounts_page = ui.settings::<SettingsAccountsSnapshot>();
     assert_eq!(ui.dialog(), Some("EditAccount"));
     assert_eq!(ui.dialog_value("name"), accounts_page.selected_account);
     ui.click("edit-account-cancel");
@@ -61,13 +62,21 @@ fn an_edit_action_opens_its_dialog_with_the_name(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_delete_action_needs_the_name_typed_back(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
-    let before = ui.settings_accounts().account_names.len();
+    let before = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
 
     ui.click(&format!("settings-accounts-delete-{}", AccountId::seed(2)));
     assert_eq!(ui.dialog(), Some("DeleteAccount"));
     ui.click("delete-account-confirm");
     assert_eq!(ui.dialog(), Some("DeleteAccount"));
-    assert_eq!(ui.settings_accounts().account_names.len(), before);
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .len(),
+        before
+    );
     ui.click("delete-account-cancel");
     assert_eq!(ui.dialog(), None);
 }
@@ -78,7 +87,7 @@ fn clicking_an_account_row_opens_its_ledger(app: &mut TestAppContext) {
 
     ui.click(&format!("settings-accounts-row-{}", AccountId::seed(2)));
     let name = ui
-        .settings_accounts()
+        .settings::<SettingsAccountsSnapshot>()
         .selected_account
         .expect("the clicked row is selected");
     assert_eq!(ui.noun(), Noun::Transactions);
@@ -101,7 +110,7 @@ fn an_edit_action_saved_keeps_the_edited_account_selected(app: &mut TestAppConte
     assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert_eq!(
-        ui.settings_accounts().selected_account,
+        ui.settings::<SettingsAccountsSnapshot>().selected_account,
         Some(format!("{name}x"))
     );
 }
@@ -118,7 +127,9 @@ fn a_cash_account_added_by_click_names_the_personal_institution(app: &mut TestAp
     ui.click("add-account-confirm");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_accounts().selected_account.as_deref(),
+        ui.settings::<SettingsAccountsSnapshot>()
+            .selected_account
+            .as_deref(),
         Some("tin")
     );
 
@@ -134,7 +145,7 @@ fn a_new_account_defaults_to_the_base_unit_set_on_general(app: &mut TestAppConte
     ui.press("g s");
     ui.click("settings-general-base-unit-btc");
     ui.press("j j j j");
-    assert_eq!(ui.settings().page, "Accounts");
+    assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
 
     ui.press("n");
@@ -179,7 +190,10 @@ fn an_account_on_a_deactivated_unit_still_edits_with_its_unit(app: &mut TestAppC
 #[gpui::test]
 fn a_delete_confirmed_by_click_commits_once(app: &mut TestAppContext) {
     let mut ui = on_accounts(app);
-    let before = ui.settings_accounts().account_names.len();
+    let before = ui
+        .settings::<SettingsAccountsSnapshot>()
+        .account_names
+        .len();
 
     ui.click(&format!("settings-accounts-delete-{}", AccountId::seed(1)));
     assert_eq!(ui.dialog(), Some("DeleteAccount"));
@@ -189,7 +203,7 @@ fn a_delete_confirmed_by_click_commits_once(app: &mut TestAppContext) {
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.commits(), commits + 1);
-    let names = ui.settings_accounts().account_names;
+    let names = ui.settings::<SettingsAccountsSnapshot>().account_names;
     assert_eq!(names.len(), before - 1);
     assert!(!names.iter().any(|name| name == "Wallet"));
 }

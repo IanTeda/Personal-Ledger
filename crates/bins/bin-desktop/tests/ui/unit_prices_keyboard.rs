@@ -4,6 +4,7 @@
 //! figure rules are the Presenter tests' in `lib-units`.
 
 use super::common;
+use bin_desktop::shell::router::{SettingsUnitsSnapshot, UnitPricesSnapshot};
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -15,7 +16,7 @@ fn on_btc(app: &mut TestAppContext) -> Harness<'_> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.press("j j");
-    assert_eq!(ui.settings().page, "Units");
+    assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     ui.press("j");
     assert_eq!(selected(&mut ui), "btc");
@@ -23,7 +24,7 @@ fn on_btc(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 fn selected(ui: &mut Harness<'_>) -> String {
-    ui.settings_units()
+    ui.settings::<SettingsUnitsSnapshot>()
         .units
         .into_iter()
         .find(|unit| unit.selected)
@@ -36,7 +37,9 @@ fn enter_opens_btcs_prices_drawn_in_place_of_the_tables(app: &mut TestAppContext
     let mut ui = on_btc(app);
     ui.press("enter");
 
-    let prices = ui.unit_prices().expect("enter opens the prices view");
+    let prices = ui
+        .settings::<Option<UnitPricesSnapshot>>()
+        .expect("enter opens the prices view");
     assert_eq!(prices.title, "btc · Bitcoin · prices");
     assert_eq!(prices.rows.len(), 52, "seeded btc has a year of weeks");
     for selector in [
@@ -54,18 +57,27 @@ fn enter_opens_btcs_prices_drawn_in_place_of_the_tables(app: &mut TestAppContext
 fn brackets_step_the_window_a_month_and_stop_at_the_current_week(app: &mut TestAppContext) {
     let mut ui = on_btc(app);
     ui.press("enter");
-    let newest = |ui: &mut Harness<'_>| ui.unit_prices().expect("open").rows[0].week;
+    let newest = |ui: &mut Harness<'_>| {
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .rows[0]
+            .week
+    };
     let current = newest(&mut ui);
 
     ui.press("[");
     let earlier = newest(&mut ui);
     assert!(earlier < current, "[ steps back");
     assert_eq!(
-        ui.settings().page,
+        ui.settings_frame().page,
         "Units",
         "[ steps the window, not the page"
     );
-    assert!(ui.unit_prices().expect("open").can_go_later);
+    assert!(
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .can_go_later
+    );
 
     ui.press("]");
     assert_eq!(newest(&mut ui), current);
@@ -78,7 +90,12 @@ fn j_walks_the_weeks_and_the_status_line_names_the_views_keys(app: &mut TestAppC
     let mut ui = on_btc(app);
     ui.press("enter");
     ui.press("j");
-    assert!(ui.unit_prices().expect("open").rows[1].selected);
+    assert!(
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .rows[1]
+            .selected
+    );
 
     let hints = ui.status().expect("the page has a status line").hints;
     for (key, action) in [("[", "earlier"), ("]", "later"), ("esc", "back")] {
@@ -95,10 +112,10 @@ fn escape_returns_to_the_tables_with_the_same_unit_selected(app: &mut TestAppCon
     ui.press("enter");
     ui.press("escape");
 
-    assert!(ui.unit_prices().is_none());
-    assert_eq!(ui.settings().page, "Units");
+    assert!(ui.settings::<Option<UnitPricesSnapshot>>().is_none());
+    assert_eq!(ui.settings_frame().page, "Units");
     assert!(
-        ui.settings().page_focused,
+        ui.settings_frame().page_focused,
         "Esc closed only the prices view"
     );
     assert_eq!(selected(&mut ui), "btc");
@@ -112,7 +129,10 @@ fn a_unit_with_no_prices_shows_the_empty_state_and_p_sets_one(app: &mut TestAppC
     assert_eq!(selected(&mut ui), "vas");
     ui.press("enter");
     assert_eq!(
-        ui.unit_prices().expect("open").empty.as_deref(),
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .empty
+            .as_deref(),
         Some("vas has no weekly prices yet.")
     );
     assert!(ui.is_drawn("unit-prices-empty"));
@@ -123,7 +143,9 @@ fn a_unit_with_no_prices_shows_the_empty_state_and_p_sets_one(app: &mut TestAppC
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    let prices = ui.unit_prices().expect("the prices view stays open");
+    let prices = ui
+        .settings::<Option<UnitPricesSnapshot>>()
+        .expect("the prices view stays open");
     assert_eq!(prices.empty, None);
     assert_eq!(prices.rows[0].close, "42.00");
 }

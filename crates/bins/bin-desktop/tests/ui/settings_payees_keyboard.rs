@@ -2,6 +2,7 @@
 //! with what confirming each one does. State is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsPayeesSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -21,9 +22,9 @@ fn in_payees(app: &mut TestAppContext) -> Harness<'_> {
 fn to_payees(ui: &mut Harness<'_>) {
     ui.press("g s");
     ui.press("j j j j j j j");
-    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_frame().page, "Payees");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 /// The newest Toast's text, if one is showing.
@@ -35,16 +36,41 @@ fn last_toast(ui: &mut Harness<'_>) -> Option<String> {
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 
-    let names = ui.settings_payees().payee_names;
-    assert_eq!(ui.settings_payees().selected_payee.as_ref(), names.first());
+    let names = ui.settings::<SettingsPayeesSnapshot>().payee_names;
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_ref(),
+        names.first()
+    );
     ui.press("j");
-    assert_eq!(ui.settings_payees().selected_payee.as_ref(), names.get(1));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_ref(),
+        names.get(1)
+    );
     ui.press("k");
-    assert_eq!(ui.settings_payees().selected_payee.as_ref(), names.first());
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_ref(),
+        names.first()
+    );
     ui.press("shift-g");
-    assert_eq!(ui.settings_payees().selected_payee.as_ref(), names.last());
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_ref(),
+        names.last()
+    );
     ui.press("g g");
-    assert_eq!(ui.settings_payees().selected_payee.as_ref(), names.first());
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_ref(),
+        names.first()
+    );
 }
 
 #[gpui::test]
@@ -62,13 +88,13 @@ fn n_opens_add_payee_and_escape_cancels_it(app: &mut TestAppContext) {
 #[gpui::test]
 fn typing_a_name_and_pressing_enter_adds_and_selects_the_payee(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    let before = ui.settings_payees().payee_names.len();
+    let before = ui.settings::<SettingsPayeesSnapshot>().payee_names.len();
 
     ui.press("n");
     ui.press("z o o");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("zoo"));
     ui.press("enter");
-    let payees_page = ui.settings_payees();
+    let payees_page = ui.settings::<SettingsPayeesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(payees_page.payee_names.len(), before + 1);
     assert_eq!(payees_page.selected_payee.as_deref(), Some("zoo"));
@@ -77,17 +103,20 @@ fn typing_a_name_and_pressing_enter_adds_and_selects_the_payee(app: &mut TestApp
 #[gpui::test]
 fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    let before = ui.settings_payees().payee_names.len();
+    let before = ui.settings::<SettingsPayeesSnapshot>().payee_names.len();
 
     ui.press("n enter");
     assert_eq!(ui.dialog(), Some("AddPayee"));
-    assert_eq!(ui.settings_payees().payee_names.len(), before);
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>().payee_names.len(),
+        before
+    );
 }
 
 #[gpui::test]
 fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    let selected = ui.settings_payees().selected_payee;
+    let selected = ui.settings::<SettingsPayeesSnapshot>().selected_payee;
 
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditPayee"));
@@ -97,7 +126,10 @@ fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppCont
     assert_eq!(ui.dialog_value("name"), renamed);
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_payees().selected_payee, renamed);
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>().selected_payee,
+        renamed
+    );
 }
 
 #[gpui::test]
@@ -106,17 +138,17 @@ fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppCont
     ui.press("g s");
     ui.press("j j j j j j j");
     ui.press("l");
-    let stored = ui.settings_payees().payee_names;
+    let stored = ui.settings::<SettingsPayeesSnapshot>().payee_names;
 
     ui.press("n z o o enter");
     assert_eq!(
-        ui.settings_payees().payee_names.len(),
+        ui.settings::<SettingsPayeesSnapshot>().payee_names.len(),
         stored.len() + 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();
 
-    assert_eq!(ui.settings_payees().payee_names, stored);
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, stored);
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to payees, so they are back as last saved"
@@ -127,7 +159,7 @@ fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppCont
 fn on_payee(ui: &mut Harness<'_>, name: &str) {
     to_payees(ui);
     let row = ui
-        .settings_payees()
+        .settings::<SettingsPayeesSnapshot>()
         .payee_names
         .iter()
         .position(|payee| payee == name)
@@ -137,7 +169,12 @@ fn on_payee(ui: &mut Harness<'_>, name: &str) {
     for _ in 0..row {
         ui.press("j");
     }
-    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some(name));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some(name)
+    );
 }
 
 #[gpui::test]
@@ -150,7 +187,7 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
     let writer = storage.writer.clone();
     let mut ui = Harness::with_storage_counting_payees_unused(app, storage);
     on_payee(&mut ui, "Woolworths");
-    let stored = ui.settings_payees().payee_names;
+    let stored = ui.settings::<SettingsPayeesSnapshot>().payee_names;
 
     ui.press("d");
     assert_eq!(
@@ -167,7 +204,7 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
     writer.flush().expect("the writer is running");
     ui.settle_writes();
 
-    assert_eq!(ui.settings_payees().payee_names, stored);
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, stored);
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to payees, so they are back as last saved"
@@ -211,7 +248,7 @@ fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
     // A new Payee is unused, so the dialog hard-deletes it.
     ui.press("n z o o enter");
-    let before = ui.settings_payees().payee_names.len();
+    let before = ui.settings::<SettingsPayeesSnapshot>().payee_names.len();
 
     ui.press("d");
     assert_eq!(ui.dialog(), Some("DeletePayee"));
@@ -220,7 +257,7 @@ fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
     ui.press("z o o");
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some("zoo"));
     ui.press("enter");
-    let payees_page = ui.settings_payees();
+    let payees_page = ui.settings::<SettingsPayeesSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(payees_page.payee_names.len(), before - 1);
     assert!(!payees_page.payee_names.iter().any(|name| name == "zoo"));
@@ -231,18 +268,23 @@ fn d_deletes_an_unused_payee_once_its_name_is_typed(app: &mut TestAppContext) {
 #[gpui::test]
 fn d_on_a_used_payee_deactivates_it_and_keeps_it_listed(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    let before = ui.settings_payees().payee_names;
+    let before = ui.settings::<SettingsPayeesSnapshot>().payee_names;
     let used = "Woolworths";
     let position = before.iter().position(|name| name == used);
     assert!(position.is_some());
 
     ui.press(&vec!["j"; position.unwrap_or(0)].join(" "));
-    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some(used));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some(used)
+    );
     ui.press("d");
     ui.press("W o o l w o r t h s");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_payees().payee_names, before);
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, before);
     assert_eq!(
         last_toast(&mut ui).as_deref(),
         Some("Deactivated payee Woolworths")
@@ -254,7 +296,7 @@ fn enter_shows_the_selected_payees_transactions_in_one_commit(app: &mut TestAppC
     let mut ui = in_payees(app);
     ui.press("j");
     let selected = ui
-        .settings_payees()
+        .settings::<SettingsPayeesSnapshot>()
         .selected_payee
         .expect("a stub Payee is selected");
 
@@ -276,7 +318,10 @@ fn enter_shows_the_selected_payees_transactions_in_one_commit(app: &mut TestAppC
 
     // Back on Payees, the same row is still selected.
     ui.press("g s");
-    assert_eq!(ui.settings_payees().selected_payee, Some(selected));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>().selected_payee,
+        Some(selected)
+    );
 }
 
 #[gpui::test]
@@ -284,11 +329,15 @@ fn h_steps_back_to_the_index_and_the_page_keys_stop(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 
     ui.press("h");
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
     ui.press("n");
     assert_eq!(ui.dialog(), None);
     ui.press("j");
-    assert_eq!(ui.settings().page, "Documents", "j walks the index again");
+    assert_eq!(
+        ui.settings_frame().page,
+        "Documents",
+        "j walks the index again"
+    );
 }
 
 #[gpui::test]
@@ -297,18 +346,21 @@ fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
 
     ui.press("/");
     assert_eq!(mode(&mut ui), InputMode::Normal);
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
 fn a_selection_survives_leaving_the_page_and_coming_back(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
     ui.press("j j");
-    let selected = ui.settings_payees().selected_payee;
+    let selected = ui.settings::<SettingsPayeesSnapshot>().selected_payee;
 
     ui.press("h");
     ui.press("l");
-    assert_eq!(ui.settings_payees().selected_payee, selected);
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>().selected_payee,
+        selected
+    );
 }
 
 /// The status line's hint keys, in order; empty when the line has no page content.
@@ -373,7 +425,12 @@ fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
     assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
     ui.press("ctrl-enter");
     assert_eq!(ui.dialog(), None, "submit confirms from the select");
-    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("zoo"));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some("zoo")
+    );
 
     ui.press("e");
     assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
@@ -433,9 +490,14 @@ fn a_documents_payee_link_lands_on_the_selected_payee(app: &mut TestAppContext) 
     ui.press("enter");
 
     assert_eq!(ui.noun(), Noun::Settings);
-    assert_eq!(ui.settings().page, "Payees");
-    assert!(ui.settings().page_focused);
-    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some("AAMI"));
+    assert_eq!(ui.settings_frame().page, "Payees");
+    assert!(ui.settings_frame().page_focused);
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some("AAMI")
+    );
     ui.press("e");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("AAMI"));
 }

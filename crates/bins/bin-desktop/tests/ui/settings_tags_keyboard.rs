@@ -2,6 +2,7 @@
 //! the merge dialog. State is read back from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsTagsSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -16,9 +17,9 @@ fn in_tags(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.press("j j j j j j");
-    assert_eq!(ui.settings().page, "Tags");
+    assert_eq!(ui.settings_frame().page, "Tags");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -33,21 +34,33 @@ fn slash_is_inert_on_the_page(app: &mut TestAppContext) {
 
     ui.press("/");
     assert_eq!(mode(&mut ui), InputMode::Normal);
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
 }
 
 #[gpui::test]
 fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
 
-    let names = ui.settings_tags().tag_names;
-    assert_eq!(ui.settings_tags().selected_tag.as_ref(), names.first());
+    let names = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>().selected_tag.as_ref(),
+        names.first()
+    );
     ui.press("j");
-    assert_eq!(ui.settings_tags().selected_tag.as_ref(), names.get(1));
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>().selected_tag.as_ref(),
+        names.get(1)
+    );
     ui.press("shift-g");
-    assert_eq!(ui.settings_tags().selected_tag.as_ref(), names.last());
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>().selected_tag.as_ref(),
+        names.last()
+    );
     ui.press("g g");
-    assert_eq!(ui.settings_tags().selected_tag.as_ref(), names.first());
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>().selected_tag.as_ref(),
+        names.first()
+    );
 }
 
 #[gpui::test]
@@ -66,7 +79,7 @@ fn n_opens_add_tag_and_escape_cancels_it(app: &mut TestAppContext) {
 fn enter_shows_the_selected_tags_transactions_in_one_commit(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
     let selected = ui
-        .settings_tags()
+        .settings::<SettingsTagsSnapshot>()
         .selected_tag
         .expect("a stub Tag is selected");
 
@@ -88,19 +101,22 @@ fn enter_shows_the_selected_tags_transactions_in_one_commit(app: &mut TestAppCon
 
     // Back on Tags, the same row is still selected.
     ui.press("g s");
-    assert_eq!(ui.settings_tags().selected_tag, Some(selected));
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>().selected_tag,
+        Some(selected)
+    );
 }
 
 #[gpui::test]
 fn typing_a_name_and_pressing_enter_adds_and_selects_the_tag(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
-    let before = ui.settings_tags().tag_names.len();
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names.len();
 
     ui.press("n");
     ui.press("z e b r a");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("zebra"));
     ui.press("enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before + 1);
     assert_eq!(tags_page.selected_tag.as_deref(), Some("zebra"));
@@ -109,10 +125,10 @@ fn typing_a_name_and_pressing_enter_adds_and_selects_the_tag(app: &mut TestAppCo
 #[gpui::test]
 fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
-    let before = ui.settings_tags().tag_names.len();
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names.len();
 
     ui.press("n enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), Some("AddTag"));
     assert_eq!(tags_page.tag_names.len(), before);
 }
@@ -120,7 +136,7 @@ fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
 #[gpui::test]
 fn e_edits_the_selected_tag_and_enter_saves_the_new_name(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
-    let selected = ui.settings_tags().selected_tag;
+    let selected = ui.settings::<SettingsTagsSnapshot>().selected_tag;
 
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditTag"));
@@ -131,7 +147,7 @@ fn e_edits_the_selected_tag_and_enter_saves_the_new_name(app: &mut TestAppContex
         selected.map(|name| format!("{name}x"))
     );
     ui.press("enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         tags_page.selected_tag,
@@ -148,14 +164,19 @@ fn x_removes_an_unused_tag_without_typing_its_name(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
     // A new Tag is unused, so `enter` removes it without its name typed.
     ui.press("n z e b r a enter");
-    let before = ui.settings_tags().tag_names;
-    assert_eq!(ui.settings_tags().selected_tag.as_deref(), Some("zebra"));
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref(),
+        Some("zebra")
+    );
 
     ui.press("x");
     assert_eq!(ui.dialog(), Some("RemoveTag"));
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some(""));
     ui.press("enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(tags_page.tag_names.len(), before.len() - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
@@ -164,20 +185,25 @@ fn x_removes_an_unused_tag_without_typing_its_name(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_used_tag_is_removed_only_once_its_name_is_typed(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
-    let before = ui.settings_tags().tag_names;
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names;
     let used = "shared";
     let position = before.iter().position(|name| name == used);
     assert!(position.is_some());
 
     ui.press(&vec!["j"; position.unwrap_or(0)].join(" "));
-    assert_eq!(ui.settings_tags().selected_tag.as_deref(), Some(used));
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref(),
+        Some(used)
+    );
     ui.press("x");
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("RemoveTag"));
     ui.press("s h a r e d");
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some(used));
     ui.press("enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert!(!tags_page.tag_names.iter().any(|name| name == used));
 }
@@ -189,7 +215,9 @@ fn m_on_a_flagged_duplicate_opens_merge_with_both_tags_chosen(app: &mut TestAppC
     // Work Trip duplicates work-trip; they sort last.
     ui.press("shift-g");
     assert_eq!(
-        ui.settings_tags().selected_tag.as_deref(),
+        ui.settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref(),
         Some("work-trip")
     );
     ui.press("k");
@@ -204,7 +232,7 @@ fn m_on_a_flagged_duplicate_opens_merge_with_both_tags_chosen(app: &mut TestAppC
 #[gpui::test]
 fn enter_in_the_merge_dialog_merges_the_duplicate_away(app: &mut TestAppContext) {
     let mut ui = in_tags(app);
-    let before = ui.settings_tags().tag_names.len();
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names.len();
 
     ui.press("shift-g k m");
     let Some((source, target)) = merge_pair(&mut ui) else {
@@ -212,7 +240,7 @@ fn enter_in_the_merge_dialog_merges_the_duplicate_away(app: &mut TestAppContext)
     };
     let commits = ui.commits();
     ui.press("enter");
-    let tags_page = ui.settings_tags();
+    let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.commits(),
@@ -237,17 +265,17 @@ fn a_failed_write_puts_the_tags_back_with_an_error_toast(app: &mut TestAppContex
     ui.press("g s");
     ui.press("j j j j j j");
     ui.press("l");
-    let stored = ui.settings_tags().tag_names;
+    let stored = ui.settings::<SettingsTagsSnapshot>().tag_names;
 
     ui.press("n z e b r a enter");
     assert_eq!(
-        ui.settings_tags().tag_names.len(),
+        ui.settings::<SettingsTagsSnapshot>().tag_names.len(),
         stored.len() + 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();
 
-    assert_eq!(ui.settings_tags().tag_names, stored);
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, stored);
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to tags, so they are back as last saved"

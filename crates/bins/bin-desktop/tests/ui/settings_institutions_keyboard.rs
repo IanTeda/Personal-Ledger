@@ -4,6 +4,7 @@
 //! from `Root`.
 
 use super::common;
+use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -14,7 +15,7 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
     ui.click(&format!("settings-index-{page}"));
-    assert_eq!(ui.settings().page, page);
+    assert_eq!(ui.settings_frame().page, page);
     ui
 }
 
@@ -22,7 +23,7 @@ fn on_page<'a>(app: &'a mut TestAppContext, page: &str) -> Harness<'a> {
 fn in_institutions(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = on_page(app, "Institutions");
     ui.press("l");
-    assert!(ui.settings().page_focused);
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
@@ -42,33 +43,43 @@ fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
 
     let names: Vec<String> = ui
-        .settings_institutions()
+        .settings::<SettingsInstitutionsSnapshot>()
         .institutions
         .into_iter()
         .map(|row| row.0)
         .collect();
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.first()
     );
     ui.press("j");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.get(1)
     );
     ui.press("k");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.first()
     );
     ui.press("shift-g");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.last()
     );
     ui.press("g g");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_ref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_ref(),
         names.first()
     );
 }
@@ -77,7 +88,7 @@ fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
 fn the_page_lists_seven_institutions_the_personal_one_first(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
 
-    let page = ui.settings_institutions();
+    let page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(page.institutions.len(), 7);
     assert_eq!(
         page.institutions.first(),
@@ -106,7 +117,9 @@ fn adding_an_institution_selects_it_and_raises_a_toast(app: &mut TestAppContext)
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("bank")
     );
     assert_eq!(
@@ -160,7 +173,7 @@ fn enter_saves_an_edit_selects_the_row_and_raises_a_toast(app: &mut TestAppConte
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    let page = ui.settings_institutions();
+    let page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(page.selected_institution.as_deref(), Some("Amex"));
     assert_eq!(page.institutions[1].0, "Amex");
     assert_eq!(page.institutions.len(), 7);
@@ -175,19 +188,22 @@ fn a_rename_to_a_name_another_holds_is_refused_and_a_change_of_capitals_is_accep
     app: &mut TestAppContext,
 ) {
     let mut ui = in_institutions(app);
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
 
     ui.press("j e");
     retype_name(&mut ui, "american express");
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("EditInstitution"));
-    assert_eq!(ui.settings_institutions().institutions, before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
 
     retype_name(&mut ui, "anz banking group");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions[1].0,
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions[1].0,
         "anz banking group"
     );
 }
@@ -195,18 +211,23 @@ fn a_rename_to_a_name_another_holds_is_refused_and_a_change_of_capitals_is_accep
 #[gpui::test]
 fn escape_cancels_an_edit_with_nothing_changed_and_focus_back_on_the_row(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
 
     ui.press("e");
     retype_name(&mut ui, "Changed");
     ui.press("escape");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_institutions().institutions, before);
-    assert!(ui.settings().page_focused);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
+    assert!(ui.settings_frame().page_focused);
     ui.press("j");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("ANZ Banking Group")
     );
 }
@@ -229,7 +250,7 @@ fn type_name(ui: &mut Harness<'_>, name: &str) {
 #[gpui::test]
 fn d_opens_the_refused_dialog_for_an_institution_an_account_names(app: &mut TestAppContext) {
     let mut ui = in_institutions(app);
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
     ui.press("j");
 
     ui.press("d");
@@ -259,7 +280,10 @@ fn d_opens_the_refused_dialog_for_an_institution_an_account_names(app: &mut Test
     );
     ui.press("enter");
     assert_eq!(ui.dialog(), None, "Enter is Close");
-    assert_eq!(ui.settings_institutions().institutions, before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
 }
 
 #[gpui::test]
@@ -267,7 +291,7 @@ fn escape_cancels_a_delete_with_nothing_changed_and_focus_back_on_the_row(
     app: &mut TestAppContext,
 ) {
     let mut ui = in_institutions(app);
-    let before = ui.settings_institutions().institutions;
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
     ui.press("shift-g");
 
     ui.press("d");
@@ -276,10 +300,15 @@ fn escape_cancels_a_delete_with_nothing_changed_and_focus_back_on_the_row(
     ui.press("escape");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.settings_institutions().institutions, before);
-    assert!(ui.settings().page_focused);
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
+    assert!(ui.settings_frame().page_focused);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("Superannuation Fund")
     );
 }
@@ -317,7 +346,7 @@ fn delete_waits_for_the_name_typed_back_exactly_then_removes_the_row(app: &mut T
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    let page = ui.settings_institutions();
+    let page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(page.institutions.len(), 6);
     assert!(
         page.institutions
@@ -345,7 +374,9 @@ fn deleting_a_row_that_is_not_last_selects_the_next_row(app: &mut TestAppContext
     }
     ui.press("k");
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("alpha")
     );
 
@@ -355,7 +386,9 @@ fn deleting_a_row_that_is_not_last_selects_the_next_row(app: &mut TestAppContext
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().selected_institution.as_deref(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .selected_institution
+            .as_deref(),
         Some("beta")
     );
 }
@@ -382,7 +415,10 @@ fn a_rebound_new_key_shows_on_the_status_line_and_in_the_cheat_sheet(app: &mut T
 #[gpui::test]
 fn add_institution_types_a_name_and_enter_adds_the_row(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions.len();
+    let before = ui
+        .settings::<SettingsInstitutionsSnapshot>()
+        .institutions
+        .len();
 
     ui.click("settings-add-institution");
     ui.press("b a n k");
@@ -390,7 +426,7 @@ fn add_institution_types_a_name_and_enter_adds_the_row(app: &mut TestAppContext)
     ui.press("backspace");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("ban"));
     ui.press("enter");
-    let institutions_page = ui.settings_institutions();
+    let institutions_page = ui.settings::<SettingsInstitutionsSnapshot>();
     assert_eq!(ui.dialog(), None);
     assert_eq!(institutions_page.institutions.len(), before + 1);
     assert_eq!(
@@ -405,12 +441,20 @@ fn add_institution_types_a_name_and_enter_adds_the_row(app: &mut TestAppContext)
 #[gpui::test]
 fn add_institution_enter_does_nothing_without_a_name(app: &mut TestAppContext) {
     let mut ui = on_page(app, "Institutions");
-    let before = ui.settings_institutions().institutions.len();
+    let before = ui
+        .settings::<SettingsInstitutionsSnapshot>()
+        .institutions
+        .len();
 
     ui.click("settings-add-institution");
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("AddInstitution"));
-    assert_eq!(ui.settings_institutions().institutions.len(), before);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len(),
+        before
+    );
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
 }
@@ -420,19 +464,24 @@ fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestA
     let mut ui = Harness::with_failing_institutions(app);
     ui.press("g s");
     ui.click("settings-index-Institutions");
-    let stored = ui.settings_institutions().institutions;
+    let stored = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
 
     ui.click("settings-add-institution");
     ui.press("b a n k enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions.len(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len(),
         stored.len() + 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();
 
-    assert_eq!(ui.settings_institutions().institutions, stored);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        stored
+    );
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text
@@ -446,7 +495,7 @@ fn a_failed_delete_puts_the_institution_back_with_an_error_toast(app: &mut TestA
     ui.press("g s");
     ui.click("settings-index-Institutions");
     ui.press("l");
-    let stored = ui.settings_institutions().institutions;
+    let stored = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
     ui.press("shift-g");
 
     ui.press("d");
@@ -454,13 +503,18 @@ fn a_failed_delete_puts_the_institution_back_with_an_error_toast(app: &mut TestA
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.settings_institutions().institutions.len(),
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len(),
         stored.len() - 1,
         "memory runs ahead of the file until the failure is heard"
     );
     ui.settle_writes();
 
-    assert_eq!(ui.settings_institutions().institutions, stored);
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        stored
+    );
     assert!(ui.toasts().visible.into_iter().any(|toast| {
         toast.kind == "Error"
             && toast.text

@@ -9,6 +9,7 @@
 )]
 
 use super::common;
+use bin_desktop::shell::router::SettingsPayeesSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
 use common::{Harness, config_for};
@@ -18,14 +19,14 @@ use gpui::TestAppContext;
 fn on_payees(ui: &mut Harness<'_>) {
     ui.press("g s");
     ui.press("j j j j j j j");
-    assert_eq!(ui.settings().page, "Payees");
+    assert_eq!(ui.settings_frame().page, "Payees");
     ui.press("l");
 }
 
 /// Moves the selection to the row named `name`, wherever the A–Z order puts it.
 fn select(ui: &mut Harness<'_>, name: &str) {
     let row = ui
-        .settings_payees()
+        .settings::<SettingsPayeesSnapshot>()
         .payee_names
         .iter()
         .position(|payee| payee == name)
@@ -34,7 +35,12 @@ fn select(ui: &mut Harness<'_>, name: &str) {
     for _ in 0..row {
         ui.press("j");
     }
-    assert_eq!(ui.settings_payees().selected_payee.as_deref(), Some(name));
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some(name)
+    );
 }
 
 /// The Payee the Telstra Internet Bill Plan's Edit Dialog shows.
@@ -78,7 +84,7 @@ fn an_added_and_a_renamed_payee_are_there_after_a_restart(app: &mut TestAppConte
         select(&mut ui, "Telstra");
         ui.press("e x enter");
         assert_eq!(ui.dialog(), None, "the Edit Dialog confirmed");
-        let names = ui.settings_payees().payee_names;
+        let names = ui.settings::<SettingsPayeesSnapshot>().payee_names;
         assert!(names.iter().any(|name| name == "zoo"));
         assert!(names.iter().any(|name| name == "Telstrax"));
         bin_desktop::quit(&writer);
@@ -88,7 +94,7 @@ fn an_added_and_a_renamed_payee_are_there_after_a_restart(app: &mut TestAppConte
     let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     on_payees(&mut ui);
-    assert_eq!(ui.settings_payees().payee_names, names);
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, names);
     assert_eq!(
         telstra_internet_payee(&mut ui),
         "Telstrax",

@@ -10,7 +10,7 @@ fn on_sync_server(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-SyncServer");
-    assert_eq!(ui.settings().page, "SyncServer");
+    assert_eq!(ui.settings_frame().page, "SyncServer");
     ui
 }
 
@@ -18,16 +18,19 @@ fn on_sync_server(app: &mut TestAppContext) -> Harness<'_> {
 fn clicking_the_sync_server_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
     let mut ui = on_sync_server(app);
 
-    assert!(!ui.settings().page_focused);
+    assert!(!ui.settings_frame().page_focused);
     assert!(ui.is_drawn("settings-sync-now"));
 }
 
 #[gpui::test]
 fn sync_now_reports_in_the_status_line_without_syncing(app: &mut TestAppContext) {
     let mut ui = on_sync_server(app);
-    assert_eq!(ui.settings().status_message, None);
+    assert_eq!(ui.settings_frame().status_message, None);
 
     ui.click("settings-sync-now");
-    let message = ui.settings().status_message.expect("a status message");
+    let message = ui
+        .settings_frame()
+        .status_message
+        .expect("a status message");
     assert!(message.to_lowercase().contains("sync"), "{message}");
 }
