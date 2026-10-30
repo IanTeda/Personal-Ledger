@@ -49,16 +49,16 @@ Press `g` then `t` to jump to Transactions from anywhere. For the full set of ke
 
 ## Feature set and requirements
 
-Intended features for Transactions. Ticked means built.
+Intended features for Transactions. Ticked means the Desktop does it. The Desktop lists, filters and searches Transactions today; its `n`, `e` and `Enter` keys say that adding, editing and opening one isn't built yet.
 
-- [x] TXN-001: Record a single-entry transaction with date, amount, category, account, and status
-- [x] TXN-002: Split a transaction across multiple categories
-- [x] TXN-003: Assign an optional payee to each split
-- [x] TXN-004: Assign multiple tags to a transaction
-- [x] TXN-005: Move a transaction between accounts (same currency only)
+- [ ] TXN-001: Record a single-entry transaction with date, amount, category, account, and status
+- [ ] TXN-002: Split a transaction across multiple categories
+- [ ] TXN-003: Assign an optional payee to each split
+- [ ] TXN-004: Assign multiple tags to a transaction
+- [ ] TXN-005: Move a transaction between accounts (same currency only)
 - [x] TXN-006: Filter and search transactions by date, account, category, payee, status, or tags
-- [x] TXN-007: Set a Flagged marker, independent of status
-- [x] TXN-008: Move a transaction through Open/Cleared/Reconciled workflow
+- [ ] TXN-007: Set a Flagged marker, independent of status
+- [ ] TXN-008: Move a transaction through Open/Cleared/Reconciled workflow
 - [ ] TXN-009: Reconciliation screen for formal reconciliation against statements
 - [ ] TXN-010: Import transactions from CSV or bank feeds
 
