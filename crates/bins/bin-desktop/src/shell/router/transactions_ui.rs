@@ -19,15 +19,13 @@ impl Root {
         self.ledger.read(cx).ledger().transactions()
     }
 
-    /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
-    /// page (#284).
+    /// `:import`: opens the stubbed 6e step on the seeded statement, the Import View shown in place
+    /// of the Transactions list (#284, #924).
     pub(super) fn open_import(&mut self, cx: &mut App) {
         self.navigate(NavInput::Show(Noun::Transactions));
         self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
-        self.views
-            .transactions
-            .update(cx, |view, cx| view.open_import(cx));
+        self.views.import.update(cx, |view, cx| view.open(cx));
     }
 
     /// The Transactions page filtered to `filters` from its first row: the "View transactions"

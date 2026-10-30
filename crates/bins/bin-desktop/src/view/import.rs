@@ -8,9 +8,14 @@
 //! row, and any row whose select is open, shows the two selects. Their lists open inline beneath
 //! the cell, the row growing to hold them, like the dialogs' shared select.
 
+pub mod snapshot;
+pub mod state;
+
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Rgba, ScrollHandle, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, Context, Rgba, ScrollHandle, SharedString, Window, div, prelude::*, px,
+};
 
 use lib_locale::format::upper;
 
@@ -59,7 +64,51 @@ pub fn payee_choices(payees: &[Payee], raw: &str) -> PayeeChoices {
     PayeeChoices::new(payees, raw, create_label)
 }
 
-pub fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) -> AnyElement {
+impl Render for state::ImportView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let Some(import) = self.state.as_ref() else {
+            return gpui::Empty.into_any_element();
+        };
+        let entity = cx.entity();
+        let plain = |handler: fn(&mut state::ImportView, &mut Context<'_, state::ImportView>)| {
+            let entity = entity.clone();
+            let on_click: OnClick = Rc::new(move |_window, cx| entity.update(cx, handler));
+            on_click
+        };
+        let indexed =
+            |handler: fn(&mut state::ImportView, usize, &mut Context<'_, state::ImportView>)| {
+                let entity = entity.clone();
+                let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |view, cx| handler(view, index, cx));
+                });
+                on_click
+            };
+        let on_select_click: OnSelectClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, select: RowSelect, _window, cx| {
+                entity.update(cx, |view, cx| view.click_select(index, select, cx));
+            })
+        };
+        let categories = self.categories(cx);
+        render(
+            &self.scroll,
+            ImportPageProps {
+                state: import,
+                payees: self.payees(cx),
+                categories: &categories,
+                on_row_click: indexed(state::ImportView::click_row),
+                on_select_click,
+                on_option_click: indexed(state::ImportView::click_option),
+                on_remember_click: plain(state::ImportView::click_remember),
+                on_back_click: plain(state::ImportView::click_back),
+                on_continue_click: plain(state::ImportView::continue_import),
+            },
+            cx,
+        )
+    }
+}
+
+fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) -> AnyElement {
     div()
         .id("import")
         .flex_1()

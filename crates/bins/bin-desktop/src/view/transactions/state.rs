@@ -1,13 +1,13 @@
 //! The Transactions destination's Entity (ADR-0032, ADR-0037). [`TransactionsView`] owns the page's
-//! own state: the selected row, the table's scroll, the filters, the search, the filter popover's
-//! draft and the Import step that takes the page over while it is open. It reads the rows through
-//! `LedgerStore`, and the Accounts, Categories, Payees and Tags its chips, filter choices
-//! and Import selects draw on through theirs. It renders itself (`impl Render` in `super`), handles
+//! own state: the selected row, the table's scroll, the filters, the search and the filter
+//! popover's draft. It reads the rows through `LedgerStore`, and the Accounts, Categories, Payees
+//! and Tags its chips and filter choices draw on through theirs. The Import View is its own Entity
+//! (`view::import`). It renders itself (`impl Render` in `super`), handles
 //! its own keys, `Esc`, Search and movement, and reaches `Root` only through [`ViewEvent`].
 
 use chrono::NaiveDate;
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
+    App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription,
     UniformListScrollHandle,
 };
 
@@ -21,7 +21,6 @@ use super::{
 use lib_payees::Payee;
 
 use crate::{
-    import::ImportState,
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::display::{RowDensity, StatusGlyphs},
@@ -36,7 +35,6 @@ use crate::{
     view::{
         event::{Reveal, ViewEvent, ViewMode},
         format,
-        import::import_hints,
     },
 };
 use lib_ledger::Domain;
@@ -61,9 +59,6 @@ pub struct TransactionsState {
     pub filter_anchor: FilterField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     pub chip_bounds: ChipBounds,
-    /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the page
-    /// (`:import`). Dropped when the page becomes the destination again.
-    pub import: Option<ImportState>,
 }
 
 impl TransactionsState {
@@ -76,12 +71,11 @@ impl TransactionsState {
             filter_form: None,
             filter_anchor: FilterField::Account,
             chip_bounds: ChipBounds::default(),
-            import: None,
         }
     }
 }
 
-/// The store Entities the Transactions page reads, and the Ledger an Import commits through.
+/// The store Entities the Transactions page reads.
 #[derive(Clone)]
 pub struct TransactionsSources {
     pub ledger: Entity<LedgerStore>,
@@ -98,8 +92,6 @@ pub struct TransactionsView {
     pub(super) density: RowDensity,
     /// Whether the View's Search is open (`InputMode::Search`, which the View entered).
     pub(super) searching: bool,
-    /// The Import step's own scroll, reset as it opens and as the page becomes the destination.
-    pub(super) import_scroll: ScrollHandle,
     pub(super) state: TransactionsState,
     /// Repaints the page when the Accounts its rows and filters name change.
     _accounts_changed: Subscription,
@@ -127,7 +119,6 @@ impl TransactionsView {
             glyphs: StatusGlyphs::default(),
             density: RowDensity::default(),
             searching: false,
-            import_scroll: ScrollHandle::new(),
             state: TransactionsState::new(today),
             _accounts_changed,
             _payees_changed,
@@ -138,11 +129,6 @@ impl TransactionsView {
 
     pub fn state(&self) -> &TransactionsState {
         &self.state
-    }
-
-    /// Whether the Import step shows in place of the page.
-    pub fn import_open(&self) -> bool {
-        self.state.import.is_some()
     }
 
     /// Follows a change to the Display Preferences.
@@ -170,7 +156,7 @@ impl TransactionsView {
         self.sources.ledger.read(cx).ledger().transactions()
     }
 
-    pub(super) fn payees<'a>(&self, cx: &'a App) -> &'a [Payee] {
+    fn payees<'a>(&self, cx: &'a App) -> &'a [Payee] {
         self.sources.ledger.read(cx).ledger().payees()
     }
 
@@ -216,18 +202,14 @@ impl TransactionsView {
         )
     }
 
-    /// Keys the page claims before the Shell's fallback: every key but `Esc` while the filter popover is
-    /// open (the View entered `InputMode::Filter` for it), and the Import step's keys while it
-    /// shows.
+    /// Keys the page claims before the Shell's fallback: every key but `Esc` while the filter
+    /// popover is open (the View entered `InputMode::Filter` for it).
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "escape" {
             return false;
         }
         if self.state.filter_form.is_some() {
             return self.filter_key(keystroke, cx);
-        }
-        if self.state.import.is_some() {
-            return self.import_key(keystroke, cx);
         }
         false
     }
@@ -252,8 +234,7 @@ impl TransactionsView {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` move the table's row selection and keep it in view;
-    /// `Enter` would open the transaction, which the bundle designs no screen for. The Import step
-    /// keeps this movement for the keys it leaves to the Shell.
+    /// `Enter` would open the transaction, which the bundle designs no screen for.
     ///
     /// The scroll strategy follows the research note: a non-strict `scroll_to_item` applies its
     /// strategy only when the row was off-screen, so stepping down uses `Bottom` and stepping up
@@ -295,7 +276,7 @@ impl TransactionsView {
 
     /// `Esc`: the filter popover's open list first, then the popover itself (its draft is
     /// discarded), then the Search (its text is cleared, the map's decision: search is cleared by
-    /// `Esc` or by emptying the box), then the Import step's open select, then the step itself.
+    /// `Esc` or by emptying the box).
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         if let Some(form) = self.state.filter_form.as_mut() {
             if !form.close_open_select() {
@@ -308,10 +289,6 @@ impl TransactionsView {
             self.state.search.clear();
             self.reset_selection();
             self.stop_search(cx);
-            return true;
-        }
-        if self.state.import.is_some() {
-            self.import_escape(cx);
             return true;
         }
         false
@@ -354,11 +331,9 @@ impl TransactionsView {
         true
     }
 
-    /// The page has just become the destination. An Import step left open when the page was left
-    /// doesn't come back with it, and neither does a Search.
+    /// The page has just become the destination. A Search left open when the page was left doesn't
+    /// come back with it.
     pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.state.import = None;
-        self.import_scroll.set_offset(gpui::Point::default());
         if self.searching {
             self.stop_search(cx);
         }
@@ -407,22 +382,8 @@ impl TransactionsView {
         cx.notify();
     }
 
-    /// The status line's legend (the Import step's, the filter popover's or the page's), and its
-    /// right-hand text.
+    /// The status line's legend (the filter popover's or the page's), and its right-hand text.
     pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        if let Some(import) = self.state.import.as_ref() {
-            let pending = crate::import::summary(&import.rows).needs_review;
-            return Some(PageStatus {
-                hints: owned_hints(import_hints()),
-                right: if pending == 0 {
-                    crate::msg::desktop_import_status_ready()
-                } else {
-                    crate::msg::desktop_import_status_pending(
-                        i64::try_from(pending).unwrap_or(i64::MAX),
-                    )
-                },
-            });
-        }
         Some(PageStatus {
             hints: owned_hints(if self.state.filter_form.is_some() {
                 filter_hints()
@@ -450,8 +411,9 @@ impl TransactionsView {
     }
 
     /// Puts the table back on its first row: called whenever the filters or the search change what
-    /// is visible, since the old selection no longer points at the same row.
-    pub(super) fn reset_selection(&mut self) {
+    /// is visible, since the old selection no longer points at the same row, and after an Import
+    /// commit lands on the page.
+    pub(crate) fn reset_selection(&mut self) {
         self.state.selected = 0;
         self.state.scroll.scroll_to_item(0, ScrollStrategy::Top);
     }

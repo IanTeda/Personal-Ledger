@@ -11,7 +11,7 @@ use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
     budgets::state::BudgetsView, dashboard::state::DashboardView, documents::state::DocumentsView,
-    event::Reveal, transactions::state::TransactionsView,
+    event::Reveal, import::state::ImportView, transactions::state::TransactionsView,
 };
 use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
@@ -27,8 +27,11 @@ pub enum ActiveViewEntity {
     Dashboard(Entity<DashboardView>),
     Bills(Entity<BillsPage>),
     Budgets(Entity<BudgetsView>),
-    /// The Transactions page, and the Import step that takes it over while it is open.
+    /// The Transactions list.
     Transactions(Entity<TransactionsView>),
+    /// The Transactions destination's Import View, shown in place of the list while it is open: a
+    /// legacy Entity until #810 makes Import a module.
+    Import(Entity<ImportView>),
     Documents(Entity<DocumentsView>),
     /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
     /// forwarded to by the View; `Root` still draws the other pages with Ledger data and handles
@@ -52,6 +55,7 @@ pub struct ViewEntities {
     pub bills: Entity<BillsPage>,
     pub budgets: Entity<BudgetsView>,
     pub transactions: Entity<TransactionsView>,
+    pub import: Entity<ImportView>,
     pub documents: Entity<DocumentsView>,
     pub settings: Entity<SettingsView>,
 }
@@ -62,9 +66,8 @@ impl ActiveViewEntity {
         match view {
             ActiveView::Bills => Self::Bills(views.bills.clone()),
             ActiveView::Budgets => Self::Budgets(views.budgets.clone()),
-            ActiveView::Transactions | ActiveView::Import => {
-                Self::Transactions(views.transactions.clone())
-            }
+            ActiveView::Transactions => Self::Transactions(views.transactions.clone()),
+            ActiveView::Import => Self::Import(views.import.clone()),
             ActiveView::Dashboard => Self::Dashboard(views.dashboard.clone()),
             ActiveView::Documents => Self::Documents(views.documents.clone()),
             ActiveView::Settings(_) => Self::Settings(views.settings.clone()),
@@ -100,6 +103,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.clone().into_any_element(),
             Self::Budgets(view) => view.clone().into_any_element(),
             Self::Transactions(view) => view.clone().into_any_element(),
+            Self::Import(view) => view.clone().into_any_element(),
             Self::Shell(_) => gpui::Empty.into_any_element(),
         }
     }
@@ -113,6 +117,7 @@ impl ActiveViewEntity {
             Self::Dashboard(_)
             | Self::Budgets(_)
             | Self::Transactions(_)
+            | Self::Import(_)
             | Self::Documents(_)
             | Self::Shell(_) => false,
         }
@@ -125,6 +130,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            Self::Import(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Shell(_) => false,
@@ -140,7 +146,8 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            Self::Shell(_) => false,
+            // The step takes its keys ahead of the Shell's fallback.
+            Self::Import(_) | Self::Shell(_) => false,
         }
     }
 
@@ -154,7 +161,8 @@ impl ActiveViewEntity {
             }
             Self::Documents(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            Self::Shell(_) => {}
+            // `j`/`k` are the step's own keys; it has no jumps or half pages.
+            Self::Import(_) | Self::Shell(_) => {}
         }
     }
 
@@ -165,6 +173,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.escape(cx)),
+            Self::Import(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Shell(_) => false,
@@ -180,7 +189,7 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Shell(_) => false,
+            Self::Import(_) | Self::Shell(_) => false,
         }
     }
 
@@ -193,7 +202,7 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
-            Self::Shell(_) => false,
+            Self::Import(_) | Self::Shell(_) => false,
         }
     }
 
@@ -204,6 +213,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.on_enter(cx)),
+            Self::Import(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Shell(_) => {}
@@ -219,15 +229,19 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Shell(_) => {}
+            // `Root` makes Transactions the destination first, which closes the step.
+            Self::Import(_) | Self::Shell(_) => {}
         }
     }
 
     /// The narrowest the View lays out at, when it has content that must not squeeze (the
-    /// Transactions table). A View area narrower than this scrolls sideways (ADR-0042).
+    /// Transactions table, whose width the Import View keeps). A View area narrower than this
+    /// scrolls sideways (ADR-0042).
     pub fn min_width(&self) -> Option<gpui::Pixels> {
         match self {
-            Self::Transactions(_) => Some(crate::view::transactions::table::min_width()),
+            Self::Transactions(_) | Self::Import(_) => {
+                Some(crate::view::transactions::table::min_width())
+            }
             _ => None,
         }
     }
@@ -239,6 +253,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.read(cx).page_status(cx),
             Self::Budgets(view) => view.read(cx).page_status(cx),
             Self::Transactions(view) => view.read(cx).page_status(cx),
+            Self::Import(view) => view.read(cx).page_status(cx),
             Self::Documents(view) => view.read(cx).page_status(cx),
             Self::Settings(view) => view.read(cx).page_status(cx),
             Self::Shell(_) => None,
@@ -252,7 +267,11 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.read(cx).help_group(cx),
             Self::Documents(view) => view.read(cx).help_group(cx),
             Self::Settings(view) => view.read(cx).help_group(cx),
-            Self::Dashboard(_) | Self::Budgets(_) | Self::Transactions(_) | Self::Shell(_) => None,
+            Self::Dashboard(_)
+            | Self::Budgets(_)
+            | Self::Transactions(_)
+            | Self::Import(_)
+            | Self::Shell(_) => None,
         }
     }
 }

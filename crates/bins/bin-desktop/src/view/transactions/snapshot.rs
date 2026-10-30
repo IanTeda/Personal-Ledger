@@ -1,5 +1,5 @@
-//! What the integration tests read back of the Transactions page and its Import step (ADR-0030),
-//! built by the Transactions Entity from its own state (ADR-0037).
+//! What the integration tests read back of the Transactions page (ADR-0030), built by the
+//! Transactions Entity from its own state (ADR-0037).
 
 use gpui::App;
 
@@ -38,27 +38,6 @@ pub struct TransactionsSnapshot {
     pub account_list_open: bool,
 }
 
-/// One Import row: the raw statement text and its status.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportRowSnapshot {
-    pub raw: String,
-    /// `RuleMatch`, `NewPayee`, `Matched` or `NeedsReview`.
-    pub status: String,
-}
-
-/// The Import step's state.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportSnapshot {
-    pub rows: Vec<ImportRowSnapshot>,
-    pub selected: usize,
-    pub remember: bool,
-    /// `Payee` or `Category` while a row's select is open.
-    pub open_select: Option<String>,
-    pub can_continue: bool,
-}
-
 impl TransactionsView {
     /// The page for a test, built the way the render builds its rows.
     #[doc(hidden)]
@@ -93,28 +72,5 @@ impl TransactionsView {
             draft_status: form.map(|form| format!("{:?}", form.status)),
             account_list_open: form.is_some_and(|form| form.account.is_open()),
         }
-    }
-
-    /// The Import step for a test; `None` while it is not showing.
-    #[doc(hidden)]
-    pub fn import_snapshot(&self) -> Option<ImportSnapshot> {
-        let state = self.state.import.as_ref()?;
-        Some(ImportSnapshot {
-            rows: state
-                .rows
-                .iter()
-                .map(|row| ImportRowSnapshot {
-                    raw: row.raw.clone(),
-                    status: format!("{:?}", row.status()),
-                })
-                .collect(),
-            selected: state.selected,
-            remember: state.remember,
-            open_select: state
-                .open_select
-                .as_ref()
-                .map(|(_, select, _)| format!("{select:?}")),
-            can_continue: state.can_continue(),
-        })
     }
 }

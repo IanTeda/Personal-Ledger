@@ -5,7 +5,8 @@
 //! This module owns the page's frame: the `header` (title, count line, add button, chip row,
 //! search), the `table` (column header and virtualised rows) and the `footer`, stacked as a fixed
 //! header, a fixed column header, the one flexing list and a fixed footer, with the filter popover
-//! drawn over the window while it is open. While the Import step is open it shows instead.
+//! drawn over the window while it is open. The Import View shows in its place while it is open
+//! (`view::import`).
 //!
 //! [`state::TransactionsView`] renders the page itself (ADR-0037): every action is a call back into
 //! the Transactions Entity, so keyboard and mouse reach the same methods.
@@ -14,7 +15,6 @@ mod filter_popover;
 mod footer;
 mod header;
 pub(crate) mod hints;
-mod import_step;
 pub mod snapshot;
 pub mod state;
 pub(crate) mod table;
@@ -26,9 +26,8 @@ use gpui::{
 };
 
 use crate::{
-    import::RowSelect,
     transactions::{self, chips::FilterField, chips::Footer, rows::RowView},
-    view::{format, import as import_view},
+    view::format,
 };
 use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};
 use header::{HeaderProps, OnChipClick, OnPlainClick};
@@ -102,31 +101,6 @@ impl Render for TransactionsView {
             });
             on_click
         };
-
-        if let Some(import) = self.state.import.as_ref() {
-            let on_select_click: import_view::OnSelectClick = {
-                let entity = entity.clone();
-                Rc::new(move |index, select: RowSelect, _window, cx| {
-                    entity.update(cx, |view, cx| view.click_import_select(index, select, cx));
-                })
-            };
-            let categories = self.import_categories(cx);
-            return import_view::render(
-                &self.import_scroll,
-                import_view::ImportPageProps {
-                    state: import,
-                    payees: self.payees(cx),
-                    categories: &categories,
-                    on_row_click: indexed(TransactionsView::click_import_row),
-                    on_select_click,
-                    on_option_click: indexed(TransactionsView::click_import_option),
-                    on_remember_click: plain(TransactionsView::click_import_remember),
-                    on_back_click: plain(TransactionsView::click_import_back),
-                    on_continue_click: plain(TransactionsView::continue_import),
-                },
-                cx,
-            );
-        }
 
         let popover = self
             .state

@@ -202,6 +202,21 @@ fn a_refused_commit_raises_an_error_toast_naming_the_clash(app: &mut TestAppCont
     assert_eq!(toast.text, "Aussie Candle Co already exists");
 }
 
+/// The Import View and the Transactions list are separate Entities, so the commit's landing on
+/// the list's first row is a hand-off between them.
+#[gpui::test]
+fn a_commit_lands_on_the_transactions_list_from_its_first_row(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g l");
+    ui.press("j j j");
+    assert_eq!(ui.transactions().selected, 3);
+
+    commit_the_candle_shop_as_a_new_payee(&mut ui);
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.transactions().selected, 0);
+}
+
 #[gpui::test]
 fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
     app: &mut TestAppContext,

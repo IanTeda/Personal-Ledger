@@ -76,6 +76,7 @@ type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
 
 use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
+use crate::view::import::state::{ImportCommitted, ImportView};
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
@@ -376,6 +377,16 @@ impl Root {
         let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
+        let import_view = cx.new(|cx| ImportView::new(ledger.clone(), &clock, cx));
+        // The status line reads the step's state, and which View shows turns on it being open.
+        let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
+        // A commit lands on the Transactions list, from its first row.
+        let import_committed = cx.subscribe(&import_view, |shell, _, _: &ImportCommitted, cx| {
+            shell.views.transactions.update(cx, |view, cx| {
+                view.reset_selection();
+                cx.notify();
+            });
+        });
         let budgets_current = ledger
             .read(cx)
             .ledger()
@@ -462,6 +473,7 @@ impl Root {
                 bills: bills_view,
                 budgets: budgets_view,
                 transactions: transactions_view,
+                import: import_view,
                 documents: documents_view,
                 settings: settings_view,
             },
@@ -474,6 +486,8 @@ impl Root {
                 bills_view_observer,
                 transactions_subscription,
                 transactions_view_observer,
+                import_view_observer,
+                import_committed,
                 documents_subscription,
                 documents_view_observer,
                 tags_subscription,
@@ -739,7 +753,7 @@ impl Root {
         ActiveView::derive(
             self.nav().noun(),
             self.views.settings.read(cx).selected_section(),
-            self.views.transactions.read(cx).import_open(),
+            self.views.import.read(cx).is_open(),
         )
     }
 
