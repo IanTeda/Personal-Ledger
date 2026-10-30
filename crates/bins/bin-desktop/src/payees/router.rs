@@ -7,6 +7,7 @@ use gpui::Context;
 use lib_payees::presenter::PayeesPageEvent;
 use lib_payees::{PayeesDialog as Which, PayeesOutcome, PayeesRouter};
 use lib_toast::{Notice, Notify};
+use lib_transactions::query::TransactionFilters;
 
 use super::ports::DesktopPorts;
 use super::view::dialog::PayeesDialog;
@@ -18,6 +19,7 @@ use crate::shell::view::dialog_entity::host_dialog;
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
     pub ledger: gpui::Entity<LedgerStore>,
+    pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, PayeesPage>,
 }
 
@@ -37,6 +39,13 @@ impl PayeesRouter for PageRouter<'_, '_> {
         true
     }
 
+    /// Shows the Payee's Transactions through the Transactions entry point: the page
+    /// filtered to it, from its first row.
+    fn open_transactions(&mut self, id: lib_core::PayeeId) {
+        let filters = TransactionFilters::for_payee(self.clock.today(), id);
+        crate::transactions::router::show_filtered(self.cx, filters);
+    }
+
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
     fn close_dialog(&mut self, _outcome: Option<PayeesOutcome>) {}
 }
@@ -53,9 +62,10 @@ impl Notify for PageRouter<'_, '_> {
 pub fn payees_page(
     ports: DesktopPorts,
     ledger: gpui::Entity<LedgerStore>,
+    clock: lib_core::Clock,
     keymap: lib_viper::keymap::Keymap<PayeesPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<PayeesPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| PayeesPage::new(ports, ledger, keymap, cx))
+    cx.new(|cx| PayeesPage::new(ports, ledger, clock, keymap, cx))
 }

@@ -11,7 +11,7 @@
 use lib_core::{HexColor, TagId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
 
 use super::count;
 use crate::keymap::{MERGE, REMOVE};
@@ -26,6 +26,8 @@ pub enum TagsPageEvent {
     Move(Step),
     /// A click on a row.
     Select(TagId),
+    /// Shows the selected row's Transactions.
+    OpenTransactions,
     /// New opens Add; Edit, Remove and Merge act on the selected Tag.
     New,
     Edit,
@@ -110,6 +112,11 @@ impl TagsPagePresenter {
                 self.selected = step_id(&self.ids(), self.selected(), step)
             }
             TagsPageEvent::Select(id) => self.select(id),
+            TagsPageEvent::OpenTransactions => {
+                if let Some(id) = self.selected() {
+                    router.open_transactions(id);
+                }
+            }
             TagsPageEvent::New => self.open(TagsDialog::AddTag, router),
             TagsPageEvent::Edit => {
                 if let Some(id) = self.selected() {
@@ -242,6 +249,10 @@ impl TagsPagePresenter {
                 format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
                 msg::tags_hint_row(),
             ),
+            hint(
+                self.chord(SELECT).to_string(),
+                msg::tags_hint_open_transactions(),
+            ),
             hint(self.chord(EDIT).to_string(), msg::tags_hint_edit()),
             hint(self.chord(REMOVE).to_string(), msg::tags_hint_remove()),
             hint(self.chord(MERGE).to_string(), msg::tags_hint_merge()),
@@ -325,6 +336,19 @@ mod tests {
             .iter()
             .map(|segment| segment.text.as_str())
             .collect()
+    }
+
+    #[test]
+    fn open_transactions_asks_the_router_for_the_selected_rows_transactions() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+
+        page.send(TagsPageEvent::Move(Step::Last));
+        let selected = page.presenter.selected().expect("a stub row is selected");
+        assert_eq!(
+            page.send(TagsPageEvent::OpenTransactions),
+            [RouterCall::OpenTransactions(selected)]
+        );
     }
 
     #[test]
@@ -515,6 +539,9 @@ mod tests {
             fn open_dialog(&mut self, _dialog: TagsDialog) -> bool {
                 false
             }
+            fn open_transactions(&mut self, id: TagId) {
+                self.0.open_transactions(id);
+            }
             fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
                 self.0.close_dialog(outcome);
             }
@@ -592,6 +619,7 @@ mod tests {
             hints(&KeyBindingConfig::default()),
             [
                 row("j/k", "row"),
+                row("enter", "transactions"),
                 row("e", "edit"),
                 row("x", "remove"),
                 row("m", "merge"),
@@ -602,7 +630,7 @@ mod tests {
         config.bindings.insert("tags.merge".into(), "u".into());
         config.bindings.insert("tags.remove".into(), "d".into());
         let rebound = hints(&config);
-        assert_eq!(rebound[2], row("d", "remove"));
-        assert_eq!(rebound[3], row("u", "merge"));
+        assert_eq!(rebound[3], row("d", "remove"));
+        assert_eq!(rebound[4], row("u", "merge"));
     }
 }

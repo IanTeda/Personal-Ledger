@@ -155,6 +155,10 @@ pub trait TagsRouter: Notify {
     /// Tag removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: TagsDialog) -> bool;
 
+    /// Shows the Transactions of the Tag `id`: the Transactions page filtered to it, from its
+    /// first row.
+    fn open_transactions(&mut self, id: TagId);
+
     /// Closes the open Tags Dialog. `outcome` is what its confirm did, `None` when it was
     /// cancelled; the Client hands it to the page as [`TagsPageEvent::DialogClosed`].
     ///

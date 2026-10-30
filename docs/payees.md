@@ -39,6 +39,7 @@ When recording a transaction, type the payee name and Personal Ledger creates it
 In the desktop app, open the Payees page in Settings (press `g` `s` and pick Payees, or run `:payees`). Clicking a payee's name on a document also opens the page with that payee selected. On the page:
 
 - Move up and down the list with `j` and `k` or the arrow keys, jump to the top or bottom with `g` `g` and `G` (or `Home` and `End`), and move half a page with `ctrl+d` and `ctrl+u` (or `Page Down` and `Page Up`). Clicking a row selects it.
+- Press `Enter` to see the selected payee's transactions, listed from the first row.
 - Press `n` to add a payee, `e` to edit the selected one, or `d` to delete, deactivate or reactivate it. Each row's `edit` and `delete` links do the same for that row. If you've changed these keys under `[keybindings]` in your settings, the page follows your keys.
 - In the add and edit dialogs, `Tab` and `Shift+Tab` move between the fields. Type a match rule and press `Enter` to add it (that adds the rule, it doesn't save the dialog), click a rule's `✕` to remove it, or press `Backspace` in the empty rule box to remove the last one. Press `ctrl+Enter` to save from any field, or `Esc` to close without saving.
 - If the name is already taken, or another payee already has the match rule you typed, the dialog tells you which and won't save until you change it.

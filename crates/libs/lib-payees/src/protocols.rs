@@ -126,6 +126,10 @@ pub trait PayeesRouter: Notify {
     /// opened: a Dialog on a Payee removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: PayeesDialog) -> bool;
 
+    /// Shows the Transactions of the Payee `id`: the Transactions page filtered to it, from its
+    /// first row.
+    fn open_transactions(&mut self, id: PayeeId);
+
     /// Closes the open Payees Dialog. `outcome` is what its confirm did, `None` when it was
     /// cancelled; the Client hands it to the page as [`PayeesPageEvent::DialogClosed`].
     ///

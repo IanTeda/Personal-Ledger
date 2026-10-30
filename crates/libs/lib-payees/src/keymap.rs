@@ -5,7 +5,7 @@ use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP,
+    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
 use crate::presenter::PayeesPageEvent;
@@ -72,6 +72,11 @@ pub const PAYEES_PAGE_BINDINGS: &[Binding<PayeesPageEvent>] = &[
         command: PAGE_UP,
         chord: "pageup",
         event: PayeesPageEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: SELECT,
+        chord: "enter",
+        event: PayeesPageEvent::OpenTransactions,
     },
     Binding {
         command: NEW,

@@ -8,7 +8,7 @@
 use lib_core::PayeeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
-use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
 
 use super::count;
 use crate::protocols::{PayeeChange, PayeesDialog, PayeesOutcome, PayeesRouter, SharedPorts};
@@ -20,6 +20,8 @@ pub enum PayeesPageEvent {
     Move(Step),
     /// A click on a row.
     Select(PayeeId),
+    /// Shows the selected row's Transactions.
+    OpenTransactions,
     /// New opens Add; Edit and Delete act on the selected Payee.
     New,
     Edit,
@@ -112,6 +114,11 @@ impl PayeesPagePresenter {
                 self.selected = step_id(&self.ids(), self.selected(), step);
             }
             PayeesPageEvent::Select(id) | PayeesPageEvent::Reveal(id) => self.select(id),
+            PayeesPageEvent::OpenTransactions => {
+                if let Some(id) = self.selected() {
+                    router.open_transactions(id);
+                }
+            }
             PayeesPageEvent::New => self.open(PayeesDialog::AddPayee, router),
             PayeesPageEvent::Edit => {
                 if let Some(id) = self.selected() {
@@ -247,6 +254,10 @@ impl PayeesPagePresenter {
                 format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
                 msg::payees_hint_row(),
             ),
+            hint(
+                self.chord(SELECT).to_string(),
+                msg::payees_hint_open_transactions(),
+            ),
             hint(self.chord(EDIT).to_string(), msg::payees_hint_edit()),
             hint(self.chord(DELETE).to_string(), msg::payees_hint_delete()),
             hint(self.chord(NEW).to_string(), msg::payees_hint_new()),
@@ -301,6 +312,19 @@ mod tests {
 
     fn open(dialog: PayeesDialog) -> Vec<RouterCall> {
         vec![RouterCall::OpenDialog(dialog)]
+    }
+
+    #[test]
+    fn open_transactions_asks_the_router_for_the_selected_rows_transactions() {
+        let (_, shared) = stub();
+        let mut page = Page::new(shared);
+
+        page.send(PayeesPageEvent::Move(Step::Last));
+        let selected = page.presenter.selected().expect("a stub row is selected");
+        assert_eq!(
+            page.send(PayeesPageEvent::OpenTransactions),
+            [RouterCall::OpenTransactions(selected)]
+        );
     }
 
     #[test]
@@ -438,6 +462,6 @@ mod tests {
         );
         assert_eq!(view.selected, None);
         let chords: Vec<&str> = view.hints.iter().map(|hint| hint.chord.as_str()).collect();
-        assert_eq!(chords, ["j/k", "e", "d", "a"]);
+        assert_eq!(chords, ["j/k", "enter", "e", "d", "a"]);
     }
 }

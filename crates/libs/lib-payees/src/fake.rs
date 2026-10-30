@@ -146,6 +146,7 @@ impl PayeesPorts for InMemoryPorts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RouterCall {
     OpenDialog(PayeesDialog),
+    OpenTransactions(PayeeId),
     CloseDialog(Option<PayeesOutcome>),
     Notice(Notice),
 }
@@ -168,6 +169,10 @@ impl PayeesRouter for RecordingRouter {
     fn open_dialog(&mut self, dialog: PayeesDialog) -> bool {
         self.calls.push(RouterCall::OpenDialog(dialog));
         true
+    }
+
+    fn open_transactions(&mut self, id: PayeeId) {
+        self.calls.push(RouterCall::OpenTransactions(id));
     }
 
     fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {

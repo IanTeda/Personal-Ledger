@@ -6,6 +6,7 @@
 use gpui::{Context, Entity};
 use lib_tags::{SharedPorts, TagsDialog as Which, TagsOutcome, TagsRouter};
 use lib_toast::{Notice, Notify};
+use lib_transactions::query::TransactionFilters;
 
 use super::TagsSetup;
 use super::view::dialog::TagsDialog;
@@ -17,6 +18,7 @@ use crate::shell::view::dialog_entity::host_dialog;
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: SharedPorts,
     pub ledger: Entity<LedgerStore>,
+    pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, TagsPage>,
 }
 
@@ -36,6 +38,13 @@ impl TagsRouter for PageRouter<'_, '_> {
         true
     }
 
+    /// Shows the Tag's Transactions through the Transactions entry point: the page
+    /// filtered to it, from its first row.
+    fn open_transactions(&mut self, id: lib_core::TagId) {
+        let filters = TransactionFilters::for_tag(self.clock.today(), id);
+        crate::transactions::router::show_filtered(self.cx, filters);
+    }
+
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
     fn close_dialog(&mut self, _outcome: Option<TagsOutcome>) {}
 }
@@ -52,10 +61,11 @@ impl Notify for PageRouter<'_, '_> {
 pub fn tags_page(
     setup: TagsSetup,
     ledger: Entity<LedgerStore>,
+    clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> Entity<TagsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| TagsPage::new(setup, ledger, cx))
+    cx.new(|cx| TagsPage::new(setup, ledger, clock, cx))
 }
 
 /// What a Tags Dialog's Presenter asks: closing, and Notices, which go onto the bin's queue for
@@ -70,6 +80,8 @@ impl TagsRouter for DialogRouter {
     fn open_dialog(&mut self, _dialog: Which) -> bool {
         false
     }
+
+    fn open_transactions(&mut self, _id: lib_core::TagId) {}
 
     fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
         self.closed = Some(outcome);

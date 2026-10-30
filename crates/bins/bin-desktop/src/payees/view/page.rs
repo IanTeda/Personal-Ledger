@@ -35,6 +35,7 @@ pub struct PayeesPage {
     presenter: PayeesPagePresenter,
     ports: DesktopPorts,
     ledger: Entity<LedgerStore>,
+    clock: lib_core::Clock,
     keymap: Keymap<PayeesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -49,6 +50,7 @@ impl PayeesPage {
     pub fn new(
         ports: DesktopPorts,
         ledger: Entity<LedgerStore>,
+        clock: lib_core::Clock,
         keymap: Keymap<PayeesPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -59,6 +61,7 @@ impl PayeesPage {
             _payees_changed: notify_on(&ledger, Domain::Payees, cx),
             _categories_changed: notify_on(&ledger, Domain::Categories, cx),
             ledger,
+            clock,
             keymap,
             page_focused: false,
         }
@@ -77,6 +80,7 @@ impl PayeesPage {
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
+            clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);

@@ -38,6 +38,7 @@ tags-footnote = Tags are free-form and can be applied to any number of transacti
 ## The status-line legend while the page has focus.
 
 tags-hint-row = row
+tags-hint-open-transactions = transactions
 tags-hint-edit = edit
 tags-hint-remove = remove
 tags-hint-merge = merge

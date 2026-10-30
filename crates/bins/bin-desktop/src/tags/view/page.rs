@@ -35,6 +35,7 @@ pub struct TagsPage {
     presenter: TagsPagePresenter,
     ports: SharedPorts,
     ledger: Entity<LedgerStore>,
+    clock: lib_core::Clock,
     keymap: Keymap<TagsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -46,7 +47,12 @@ pub struct TagsPage {
 }
 
 impl TagsPage {
-    pub fn new(setup: TagsSetup, ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+    pub fn new(
+        setup: TagsSetup,
+        ledger: Entity<LedgerStore>,
+        clock: lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
         let ports = ports::shared(&setup.store);
         Self {
             presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
@@ -54,6 +60,7 @@ impl TagsPage {
             _tags_changed: notify_on(&ledger, Domain::Tags, cx),
             _transactions_changed: notify_on(&ledger, Domain::Transactions, cx),
             ledger,
+            clock,
             keymap: setup.keymap,
             page_focused: false,
         }
@@ -72,6 +79,7 @@ impl TagsPage {
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
+            clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);

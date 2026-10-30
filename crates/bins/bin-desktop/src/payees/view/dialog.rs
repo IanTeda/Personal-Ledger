@@ -134,6 +134,8 @@ impl PayeesRouter for DialogRouter {
         false
     }
 
+    fn open_transactions(&mut self, _id: lib_core::PayeeId) {}
+
     fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {
         self.closed = Some(outcome);
     }

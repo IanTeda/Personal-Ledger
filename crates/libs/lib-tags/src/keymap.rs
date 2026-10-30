@@ -6,7 +6,7 @@ use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP,
+    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
 use crate::presenter::TagsPageEvent;
@@ -78,6 +78,11 @@ pub const TAGS_PAGE_BINDINGS: &[Binding<TagsPageEvent>] = &[
         command: PAGE_UP,
         chord: "pageup",
         event: TagsPageEvent::Move(Step::HalfPageUp),
+    },
+    Binding {
+        command: SELECT,
+        chord: "enter",
+        event: TagsPageEvent::OpenTransactions,
     },
     Binding {
         command: NEW,

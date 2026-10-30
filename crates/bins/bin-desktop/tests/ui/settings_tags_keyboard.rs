@@ -3,7 +3,7 @@
 
 use super::common;
 
-use bin_desktop::navigation::nav::InputMode;
+use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -60,6 +60,35 @@ fn n_opens_add_tag_and_escape_cancels_it(app: &mut TestAppContext) {
     ui.press("escape");
     assert_eq!(ui.dialog(), None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn enter_shows_the_selected_tags_transactions_in_one_commit(app: &mut TestAppContext) {
+    let mut ui = in_tags(app);
+    let selected = ui
+        .settings_tags()
+        .selected_tag
+        .expect("a stub Tag is selected");
+
+    let before = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
+    let page = ui.transactions();
+    assert_eq!(page.selected, 0);
+    assert!(page.filters_changed, "the list is filtered to the Tag");
+    assert!(
+        page.chips
+            .iter()
+            .any(|chip| chip.active && chip.label.contains(&selected)),
+        "a chip names {selected}: {:?}",
+        page.chips
+    );
+
+    // Back on Tags, the same row is still selected.
+    ui.press("g s");
+    assert_eq!(ui.settings_tags().selected_tag, Some(selected));
 }
 
 #[gpui::test]

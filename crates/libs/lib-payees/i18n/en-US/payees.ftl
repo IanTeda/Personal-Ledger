@@ -29,6 +29,7 @@ payees-footnote = Payees without a default category need one picked each time. M
 ## The page's legend.
 
 payees-hint-row = row
+payees-hint-open-transactions = transactions
 payees-hint-edit = edit
 payees-hint-delete = delete
 payees-hint-new = new

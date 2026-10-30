@@ -250,15 +250,33 @@ fn d_on_a_used_payee_deactivates_it_and_keeps_it_listed(app: &mut TestAppContext
 }
 
 #[gpui::test]
-fn enter_has_no_hand_off_and_keeps_the_row_selected(app: &mut TestAppContext) {
+fn enter_shows_the_selected_payees_transactions_in_one_commit(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
     ui.press("j");
-    let selected = ui.settings_payees().selected_payee;
+    let selected = ui
+        .settings_payees()
+        .selected_payee
+        .expect("a stub Payee is selected");
 
+    let before = ui.commits();
     ui.press("enter");
-    assert_eq!(ui.noun(), Noun::Settings);
-    assert_eq!(ui.settings_payees().selected_payee, selected);
-    assert!(ui.settings().page_focused);
+
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
+    let page = ui.transactions();
+    assert_eq!(page.selected, 0);
+    assert!(page.filters_changed, "the list is filtered to the Payee");
+    assert!(page.visible > 0, "the stub books to {selected}");
+    // A split Transaction shows its first Payee and a `+n`, so the rows aren't all the one name.
+    assert!(
+        page.payees.contains(&selected),
+        "{selected}'s Transactions show: {:?}",
+        page.payees
+    );
+
+    // Back on Payees, the same row is still selected.
+    ui.press("g s");
+    assert_eq!(ui.settings_payees().selected_payee, Some(selected));
 }
 
 #[gpui::test]
@@ -309,7 +327,7 @@ fn status_right(ui: &mut Harness<'_>) -> String {
 fn the_status_line_shows_the_page_legend_and_the_payee_count(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 
-    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+    assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "n"]);
     // A leading count, then the without-default-category tally after a middle dot.
     let right = status_right(&mut ui);
     assert!(right.starts_with(|c: char| c.is_ascii_digit()), "{right}");
@@ -325,7 +343,7 @@ fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
     assert_eq!(hint_keys(&mut ui), ["esc", "enter", "tab"]);
     assert_eq!(status_right(&mut ui), page_right);
     ui.press("escape");
-    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+    assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "n"]);
 
     ui.press("e");
     assert_eq!(hint_keys(&mut ui), ["esc", "enter", "tab"]);
@@ -334,7 +352,7 @@ fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
     ui.press("d");
     assert_eq!(hint_keys(&mut ui), ["esc", "enter"]);
     ui.press("escape");
-    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "n"]);
+    assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "n"]);
 }
 
 #[gpui::test]
@@ -435,7 +453,7 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
     ui.press("g s");
     ui.press("j j j j j j j");
     ui.press("l");
-    assert_eq!(hint_keys(&mut ui), ["j/k", "e", "d", "ctrl+n"]);
+    assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "ctrl+n"]);
 
     ui.assert_cheat_sheet_matches_status("Settings keys");
 }

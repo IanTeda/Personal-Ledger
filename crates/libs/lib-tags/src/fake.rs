@@ -154,6 +154,7 @@ impl TagReassign for InMemoryReassign {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RouterCall {
     OpenDialog(TagsDialog),
+    OpenTransactions(TagId),
     CloseDialog(Option<TagsOutcome>),
     Notice(Notice),
 }
@@ -176,6 +177,10 @@ impl TagsRouter for RecordingRouter {
     fn open_dialog(&mut self, dialog: TagsDialog) -> bool {
         self.calls.push(RouterCall::OpenDialog(dialog));
         true
+    }
+
+    fn open_transactions(&mut self, id: TagId) {
+        self.calls.push(RouterCall::OpenTransactions(id));
     }
 
     fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
