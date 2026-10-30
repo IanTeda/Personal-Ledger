@@ -77,6 +77,20 @@ The Dialog host amendment above left every Settings page with a `DialogForm` + `
 
 Consequences: a new Dialog adds its command enum, its `LedgerCommand` impl and its Outcome's Toast, and no adapter. The per-page `apply.rs` unit tests become tests of the command's `run` and of `confirm_ledger`. The headless UI tests never crossed the seam and don't change.
 
+## Amendment (2026-10-30): a Settings page's identity stays on `SettingsPage`, and `Page` holds only its View
+
+The page trait above left a page's identity, the forwarders to it and its strays spread over `settings/page.rs`, `settings/state.rs`, `shell/router/` and the test harness, so adding a page touched about 10 files. [#721](https://github.com/IanTeda/Personal-Ledger/issues/721) proposed moving each page's metadata into its `Page` impl. Decided in its grilling, against that proposal:
+
+- **Identity is Presenter and Router data.** `SettingsPage` keeps the order (`ALL`), the persisted `id`, the label, the description, the scope note, `has_controls` and, from #911, the scope group (This device or This Ledger). It stays `gpui`-free, so slice 12 (#815) can lift it into the Settings module unchanged. Navigation reads a page's label with no page built (`ActiveView<SettingsPage>`, the palette's Domain names), so the label can't live on a View. `icon` stays on `SettingsPage` for now as View data that stays in the bin when the rest is lifted. Which page owns a revealed record is a Router decision: `SettingsPage::for_reveal`.
+- **`Page` is the View.** The trait holds only what the page draws and the keys it takes: `FILLS_PAGE`, `FULL_WIDTH`, `set_page_focused(focused, cx)` (Display's focus hooks move into Display), with `EventEmitter<PageRowClicked>` as a supertrait so every page's row clicks are followed and `page_status` defaulting to `hints()` and `status_note()`. Page metadata does not go into `Page` impls.
+- **One typed accessor.** `SettingsView::page::<T: Page>()` finds a page through `T::PAGE` and replaces the per-page accessors. The root Router reaches a page's commands (Tags merge, Accounts commands) through that module's Router, not the page's methods. The Tracing log feed stays a special case on the accessor until slice 12.
+- **Snapshots are keyed on their type.** A `PageSnapshot` trait, implemented beside each snapshot, gives one `Root::settings_page_snapshot::<S>()` and one `Harness::settings::<S>()`, so the typed snapshots the UI tests read (ADR-0030) need no forwarder per page.
+- **Palette page commands stay written out.** `COMMANDS` is `const`, so a test checks that each page in `SettingsPage::ALL` has a `settings <id>` command that opens it.
+
+Considered: identity in each `Page` impl (rejected: it puts Presenter data in a `gpui` View, which slice 12 would move back out) and a single `PageMeta` table (rejected: it puts `DesktopIcon`, a View type, inside the identity, for little gain over the matches).
+
+Consequences: a new page adds an arm to each `SettingsPage` match and to `SettingsPages::get`, its `Page` impl and its snapshot's `PageSnapshot` impl, and nothing in `shell/router/` or the harness.
+
 ## Amendment (2026-10-30): the keymap is the command palette's table
 
 The 2026-10-30 Settings page amendment ("a Settings page's identity stays on `SettingsPage`") kept `COMMANDS` a `const` table, its rows written out. The palette then showed each key as a fixed default, so a `[keybindings]` override never reached it, and it had no entry for most global commands or any module page Command. Decided in the grilling of [#846](https://github.com/IanTeda/Personal-Ledger/issues/846), partly reversing that amendment:
