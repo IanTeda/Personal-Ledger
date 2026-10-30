@@ -17,7 +17,6 @@ mod institution_reads;
 mod inventory_commands;
 mod inventory_reads;
 mod payee_reads;
-pub mod query;
 mod repository;
 pub mod seed;
 mod tag_commands;

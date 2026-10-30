@@ -1,6 +1,6 @@
 //! The Transaction record and its Splits (`docs/transactions.md`, the glossary's Transaction and
 //! Split), `gpui`-free and I/O-free, shared by the Desktop and the TUI. Filtering and rendering
-//! stay with the Client.
+//! stay with the Client; the query engine behind the Transactions table is `query`.
 //!
 //! A ports-only VIPER module so far (`docs/development/viper-architecture.md`, #774): the
 //! repository port and the read ports for the other domains' rows in `protocols`, which
@@ -18,6 +18,7 @@
 pub mod contract;
 pub mod fake;
 pub mod protocols;
+pub mod query;
 
 pub use protocols::{
     TransactionAccount, TransactionAccounts, TransactionCategories, TransactionCategory,

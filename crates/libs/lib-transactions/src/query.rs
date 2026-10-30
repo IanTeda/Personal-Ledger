@@ -30,12 +30,10 @@ use bigdecimal::BigDecimal;
 use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionStatus, UnitId};
 
-use lib_accounts::Account;
-use lib_categories::{self as categories, Category};
-use lib_payees::Payee;
-use lib_tags::Tag;
-use lib_transactions::{Split, Transaction};
-use lib_units::UnitRow;
+use crate::{
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionCategory,
+    TransactionPayee, TransactionPayees, TransactionTag, TransactionTags, TransactionUnits,
+};
 
 /// The Status filter: all, or exactly one of the three Transaction Statuses. (Flagged is not a
 /// status and has no filter here; see the map's fog.)
@@ -65,18 +63,18 @@ impl StatusFilter {
 /// (case-insensitively, trimmed); an empty one means "any".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionFilters {
-    /// An [`Account::id`].
+    /// An an Account id.
     pub account: Option<AccountId>,
-    /// Exactly these [`Account::id`]s; empty is "any". A Budget's on-budget Accounts, which the
+    /// Exactly these an Account ids; empty is "any". A Budget's on-budget Accounts, which the
     /// single-Account filter can't say.
     pub account_ids: Vec<AccountId>,
-    /// A [`Category::id`]; a parent matches its descendants.
+    /// A a Category id; a parent matches its descendants.
     pub category: Option<CategoryId>,
     pub payee: String,
-    /// An exact [`Payee::id`]: what "view transactions" on the Payees page hands over.
+    /// An exact Payee id: what "view transactions" on the Payees page hands over.
     pub payee_id: Option<PayeeId>,
     pub tag: String,
-    /// An exact [`Tag::id`]: what "view transactions" on the Tags page hands over.
+    /// An exact Tag id: what "view transactions" on the Tags page hands over.
     pub tag_id: Option<TagId>,
     /// Inclusive lower bound; `None` is unbounded.
     pub from: Option<NaiveDate>,
@@ -173,16 +171,6 @@ impl TransactionFilters {
     }
 }
 
-/// The reference data the engine reads. Borrowed, so a caller builds it from whatever `Shell` owns.
-pub struct Ledger<'a> {
-    pub accounts: &'a [Account],
-    pub categories: &'a [Category],
-    pub payees: &'a [Payee],
-    pub tags: &'a [Tag],
-    /// Read to turn an Account's Unit id into the code the total names.
-    pub units: &'a [UnitRow],
-}
-
 /// One row of the table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VisibleRow<'a> {
@@ -207,6 +195,22 @@ pub struct Visible<'a> {
     pub ledger_size: usize,
 }
 
+/// `id` and every Category nested under it, at any depth: what a filter on a parent matches.
+fn descendants_inclusive(categories: &[TransactionCategory], id: CategoryId) -> Vec<CategoryId> {
+    let mut found = vec![id];
+    let mut index = 0;
+    while index < found.len() {
+        let current = found[index];
+        for category in categories {
+            if category.parent == Some(current) && !found.contains(&category.id) {
+                found.push(category.id);
+            }
+        }
+        index += 1;
+    }
+    found
+}
+
 fn zero() -> Money {
     Money(BigDecimal::new(0.into(), 2))
 }
@@ -222,15 +226,13 @@ struct Names {
 }
 
 impl Names {
-    fn new(ledger: &Ledger<'_>) -> Self {
+    fn new(payees: &[TransactionPayee], tags: &[TransactionTag]) -> Self {
         Self {
-            payees: ledger
-                .payees
+            payees: payees
                 .iter()
                 .map(|payee| (payee.id, payee.name.to_lowercase()))
                 .collect(),
-            tags: ledger
-                .tags
+            tags: tags
                 .iter()
                 .map(|tag| (tag.id, tag.name.to_lowercase()))
                 .collect(),
@@ -249,11 +251,11 @@ struct SplitFilter {
 }
 
 impl SplitFilter {
-    fn new(ledger: &Ledger<'_>, filters: &TransactionFilters) -> Self {
+    fn new(categories: &[TransactionCategory], filters: &TransactionFilters) -> Self {
         Self {
             categories: filters
                 .category
-                .map(|id| categories::descendants_inclusive(ledger.categories, id)),
+                .map(|id| descendants_inclusive(categories, id)),
             payee: filters.payee.trim().to_lowercase(),
             payee_id: filters.payee_id,
             tag: filters.tag.trim().to_lowercase(),
@@ -348,14 +350,24 @@ fn search_matches(names: &Names, transaction: &Transaction, needle: &str) -> boo
 
 /// Applies `filters` and `search` to `transactions` (which are already newest first, and stay in
 /// that order), returning the visible rows with amounts, the running total and the footer total.
-pub fn query<'a>(
-    ledger: &Ledger<'_>,
+///
+/// The Accounts, Categories, Payees, Tags and Units it reads come through the read ports, so the
+/// caller answers them from whatever it holds (the Desktop's stores, an adapter, `fake`).
+pub fn query<'a, R>(
+    reads: &R,
     transactions: &'a [Transaction],
     filters: &TransactionFilters,
     search: &str,
-) -> Visible<'a> {
-    let names = Names::new(ledger);
-    let split_filter = SplitFilter::new(ledger, filters);
+) -> Visible<'a>
+where
+    R: TransactionAccounts
+        + TransactionCategories
+        + TransactionPayees
+        + TransactionTags
+        + TransactionUnits,
+{
+    let names = Names::new(&reads.transaction_payees(), &reads.transaction_tags());
+    let split_filter = SplitFilter::new(&reads.transaction_categories(), filters);
     let needle = search.trim().to_lowercase();
 
     let mut rows: Vec<VisibleRow<'a>> = Vec::new();
@@ -389,9 +401,9 @@ pub fn query<'a>(
         });
     }
 
+    let accounts = reads.transaction_accounts();
     let unit_of = |account_id: AccountId| -> Option<UnitId> {
-        ledger
-            .accounts
+        accounts
             .iter()
             .find(|account| account.id == account_id)
             .map(|account| account.unit)
@@ -403,8 +415,8 @@ pub fn query<'a>(
                 .all(|row| unit_of(row.transaction.account_id) == *unit)
         })
         .map(|unit| {
-            unit.and_then(|id| ledger.units.iter().find(|row| row.id == id))
-                .map_or_else(String::new, |row| row.code.clone())
+            unit.and_then(|id| reads.transaction_unit_code(id))
+                .unwrap_or_default()
         });
 
     let total = match (&single_unit, rows.is_empty()) {
@@ -432,58 +444,126 @@ pub fn query<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::seed::default_transactions;
+    use std::cell::RefCell;
+
     use chrono::Duration;
-    use lib_accounts::default_accounts;
-    use lib_categories::default_categories;
-    use lib_payees::{self as payees, default_payees};
-    use lib_tags::{self as tags, default_tags};
-    use lib_units::default_units;
+    use lib_core::AccountType;
+
+    use super::*;
+    use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, stub_transactions};
+    use crate::{TransactionAccount, TransactionUnit};
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
     }
 
+    /// Answers the seed's names with rows it makes as they are asked for, so the stub Transactions
+    /// can be generated here without the other domains' crates.
+    struct Mint(RefCell<InMemoryTransactionReads>);
+
+    impl SeedNames for Mint {
+        fn category(&self, name: &str) -> Option<CategoryId> {
+            let mut reads = self.0.borrow_mut();
+            if let Some(row) = reads.categories.iter().find(|row| row.name == name) {
+                return Some(row.id);
+            }
+            let id = CategoryId::seed(reads.categories.len() as u32 + 1);
+            reads.categories.push(TransactionCategory {
+                id,
+                name: name.to_string(),
+                parent: None,
+                path: name.to_string(),
+            });
+            Some(id)
+        }
+
+        fn payee(&self, name: &str) -> Option<PayeeId> {
+            let mut reads = self.0.borrow_mut();
+            if let Some(row) = reads.payees.iter().find(|row| row.name == name) {
+                return Some(row.id);
+            }
+            let id = PayeeId::seed(reads.payees.len() as u32 + 1);
+            reads.payees.push(TransactionPayee {
+                id,
+                name: name.to_string(),
+            });
+            Some(id)
+        }
+
+        fn tag(&self, name: &str) -> Option<TagId> {
+            let mut reads = self.0.borrow_mut();
+            if let Some(row) = reads.tags.iter().find(|row| row.name == name) {
+                return Some(row.id);
+            }
+            let id = TagId::seed(reads.tags.len() as u32 + 1);
+            reads.tags.push(TransactionTag {
+                id,
+                name: name.to_string(),
+                color: None,
+            });
+            Some(id)
+        }
+    }
+
     struct World {
-        accounts: Vec<Account>,
-        categories: Vec<Category>,
-        payees: Vec<Payee>,
-        tags: Vec<Tag>,
+        reads: InMemoryTransactionReads,
         transactions: Vec<Transaction>,
-        units: Vec<UnitRow>,
     }
 
     impl World {
+        /// The stub Accounts that take Transactions and the stub's counts for them.
         fn seeded() -> Self {
-            let accounts = default_accounts();
-            let categories = default_categories();
-            let payees = default_payees();
-            let tags = default_tags();
-            let transactions =
-                default_transactions(&accounts, &categories, &payees, &tags, today());
-            Self {
-                accounts,
-                categories,
-                payees,
-                tags,
-                transactions,
-                units: default_units(chrono::Utc::now()),
+            let stub = [
+                (1, "Wallet", AccountType::Cash, 96),
+                (2, "ANZ Everyday", AccountType::Bank, 312),
+                (3, "ANZ Offset", AccountType::Bank, 88),
+                (4, "Amex Platinum", AccountType::CreditCard, 204),
+            ];
+            let seed_accounts: Vec<SeedAccount> = stub
+                .iter()
+                .map(|(id, name, account_type, count)| SeedAccount {
+                    id: AccountId::seed(*id),
+                    name: (*name).to_string(),
+                    account_type: account_type.clone(),
+                    transaction_count: *count,
+                })
+                .collect();
+            let mint = Mint(RefCell::new(InMemoryTransactionReads::default()));
+            let transactions = stub_transactions(&seed_accounts, &mint, today());
+            // The one tree the rules read: Groceries and Dining sit under Food.
+            let food = mint.category("Food").unwrap();
+            let mut reads = mint.0.into_inner();
+            for category in &mut reads.categories {
+                if matches!(category.name.as_str(), "Groceries" | "Dining") {
+                    category.parent = Some(food);
+                }
             }
-        }
-
-        fn ledger(&self) -> Ledger<'_> {
-            Ledger {
-                accounts: &self.accounts,
-                categories: &self.categories,
-                payees: &self.payees,
-                tags: &self.tags,
-                units: &self.units,
+            reads.accounts = seed_accounts
+                .iter()
+                .map(|account| TransactionAccount {
+                    id: account.id,
+                    name: account.name.clone(),
+                    unit: UnitId::SEED_AUD,
+                })
+                .collect();
+            reads.units = vec![
+                TransactionUnit {
+                    id: UnitId::SEED_AUD,
+                    code: "aud".to_string(),
+                },
+                TransactionUnit {
+                    id: UnitId::SEED_BTC,
+                    code: "btc".to_string(),
+                },
+            ];
+            Self {
+                reads,
+                transactions,
             }
         }
 
         fn run(&self, filters: &TransactionFilters, search: &str) -> Visible<'_> {
-            query(&self.ledger(), &self.transactions, filters, search)
+            query(&self.reads, &self.transactions, filters, search)
         }
 
         /// Filters with no bounds and nothing set, so a test isolates one dimension.
@@ -496,11 +576,34 @@ mod tests {
         }
 
         fn account(&self, name: &str) -> AccountId {
-            self.accounts.iter().find(|a| a.name == name).unwrap().id
+            self.reads
+                .accounts
+                .iter()
+                .find(|a| a.name == name)
+                .unwrap()
+                .id
         }
 
         fn category(&self, name: &str) -> CategoryId {
-            categories::find_by_name(&self.categories, name).unwrap()
+            self.reads
+                .categories
+                .iter()
+                .find(|c| c.name == name)
+                .unwrap()
+                .id
+        }
+
+        fn payee(&self, name: &str) -> PayeeId {
+            self.reads
+                .payees
+                .iter()
+                .find(|p| p.name == name)
+                .unwrap()
+                .id
+        }
+
+        fn tag(&self, name: &str) -> TagId {
+            self.reads.tags.iter().find(|t| t.name == name).unwrap().id
         }
     }
 
@@ -687,7 +790,7 @@ mod tests {
         let world = World::seeded();
         let mut filters = world.open();
         filters.payee = "  WOOL ".to_string();
-        let woolworths = payees::find_by_name(&world.payees, "Woolworths").unwrap();
+        let woolworths = world.payee("Woolworths");
         let visible = world.run(&filters, "");
         assert!(!visible.rows.is_empty());
         for row in &visible.rows {
@@ -701,7 +804,7 @@ mod tests {
 
         let mut filters = world.open();
         filters.tag = "JAPAN".to_string();
-        let japan = tags::find_by_name(&world.tags, "Japan Trip 2026").unwrap();
+        let japan = world.tag("Japan Trip 2026");
         let visible = world.run(&filters, "");
         assert!(!visible.rows.is_empty());
         for row in &visible.rows {
@@ -725,7 +828,7 @@ mod tests {
     #[test]
     fn a_payee_id_filter_matches_exactly_that_payee() {
         let world = World::seeded();
-        let bp = payees::find_by_name(&world.payees, "BP").unwrap();
+        let bp = world.payee("BP");
         let filters = TransactionFilters {
             from: None,
             to: None,
@@ -752,7 +855,7 @@ mod tests {
     #[test]
     fn a_tag_id_filter_matches_exactly_that_tag_and_sums_its_splits() {
         let world = World::seeded();
-        let japan = tags::find_by_name(&world.tags, "Japan Trip 2026").unwrap();
+        let japan = world.tag("Japan Trip 2026");
         let filters = TransactionFilters {
             from: None,
             to: None,
@@ -907,7 +1010,7 @@ mod tests {
 
     fn one_account_world(units: [UnitId; 2]) -> World {
         let mut world = World::seeded();
-        for account in &mut world.accounts {
+        for account in &mut world.reads.accounts {
             match account.name.as_str() {
                 "ANZ Everyday" => account.unit = units[0],
                 "Amex Platinum" => account.unit = units[1],
@@ -1041,12 +1144,7 @@ mod tests {
     #[test]
     fn a_budget_category_filter_bounds_the_month_and_the_budgets_accounts() {
         let world = World::seeded();
-        let dining = world
-            .categories
-            .iter()
-            .find(|c| c.name == "Dining")
-            .map(|c| c.id)
-            .unwrap();
+        let dining = world.category("Dining");
         let anz = world.account("ANZ Everyday");
         let month = lib_core::Period::of(today());
         let filters = TransactionFilters::for_budget_category(dining, month, &[anz]);
