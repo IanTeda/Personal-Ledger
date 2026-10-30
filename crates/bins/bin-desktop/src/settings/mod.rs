@@ -114,7 +114,8 @@ impl Render for SettingsView {
         let content = page.view().into_any_element();
         let pane = page.side_pane(cx);
         // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
-        let fills = selected.fills_page();
+        let fills = page.fills_page();
+        let full_width = page.full_width();
         let body = div()
             .id("settings-body")
             .flex_1()
@@ -156,7 +157,7 @@ impl Render for SettingsView {
         } else {
             plain_heading(selected, cx).into_any_element()
         };
-        let body = body.child(section_block(selected, heading, meta, content, cx));
+        let body = body.child(section_block(heading, meta, content, fills, full_width, cx));
         // A page can dock a pane at the View's right edge (Units' detail pane at X-Large).
         div()
             .id("settings")
@@ -180,24 +181,24 @@ impl Render for SettingsView {
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
 /// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
 /// margin ownership is how this gap goes missing, so it's carried on a single edge, here). The
-/// whole block caps at [`CONTENT_MAX_WIDTH`], except Units, whose tables fill the View's width
-/// down to their 610px minimum.
+/// whole block caps at [`CONTENT_MAX_WIDTH`], except a [`pages::Page::FULL_WIDTH`] page (Units, whose
+/// tables fill the View's width down to their 610px minimum). A [`pages::Page::FILLS_PAGE`] page
+/// fills the body's height.
 fn section_block(
-    section: SettingsPage,
     heading: AnyElement,
     meta: AnyElement,
     content: AnyElement,
+    fills: bool,
+    full_width: bool,
     cx: &App,
 ) -> impl IntoElement {
     div()
         .debug_selector(|| "settings-page".to_string())
         .w_full()
-        .when(section != SettingsPage::Units, |this| {
-            this.max_w(CONTENT_MAX_WIDTH)
-        })
+        .when(!full_width, |this| this.max_w(CONTENT_MAX_WIDTH))
         .flex()
         .flex_col()
-        .when(section.fills_page(), |this| this.flex_1().min_h(px(0.0)))
+        .when(fills, |this| this.flex_1().min_h(px(0.0)))
         .mb(px(48.0))
         .child(
             div()

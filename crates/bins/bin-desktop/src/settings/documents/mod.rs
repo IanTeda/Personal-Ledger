@@ -14,11 +14,7 @@ pub mod form;
 pub(crate) mod render;
 
 use crate::settings::SettingsPage;
-use crate::settings::{
-    page::PageRowClicked,
-    pages::{Page, focus_on_row_click},
-    state::SettingsView,
-};
+use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{AnyElement, IntoElement as _};
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_core::DocumentTypeId;
@@ -31,7 +27,7 @@ use crate::{
     settings::hints::settings_documents_hints,
     shell::view::{
         dialog_host::open_dialog,
-        statusline::{Hint, PageStatus, owned_hints},
+        statusline::{Hint, owned_hints},
     },
     view::event::ViewEvent,
 };
@@ -131,14 +127,11 @@ impl Page for DocumentsPage {
     }
 
     /// The page's legend and its type and file counts.
-    fn page_status(&self, cx: &App) -> Option<PageStatus> {
-        Some(PageStatus {
-            hints: owned_hints(settings_documents_hints()),
-            right: scope_text(self.types(cx)),
-        })
+    fn status_note(&self, cx: &App) -> String {
+        scope_text(self.types(cx))
     }
 
-    fn set_page_focused(&mut self, focused: bool) {
+    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
     }
 
@@ -148,13 +141,6 @@ impl Page for DocumentsPage {
 
     fn heading_meta(&self, cx: &App) -> AnyElement {
         self.scope_note(cx).into_any_element()
-    }
-
-    fn subscribe_row_clicks(
-        entity: &Entity<Self>,
-        cx: &mut Context<'_, SettingsView>,
-    ) -> Option<Subscription> {
-        focus_on_row_click(entity, cx)
     }
 }
 

@@ -311,11 +311,8 @@ impl SettingsView {
 
     /// Opens the page that owns the record, with focus in it, and has the page show it.
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        let page = match reveal {
-            Reveal::Account(_) => SettingsPage::Accounts,
-            Reveal::Payee(_) => SettingsPage::Payees,
-            // The rest belong to other Views.
-            Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => return,
+        let Some(page) = SettingsPage::for_reveal(&reveal) else {
+            return;
         };
         self.open_page(page, cx);
         self.pages.get(page).reveal(reveal, cx);
@@ -399,13 +396,15 @@ impl SettingsView {
             self.scroll_handle.set_offset(gpui::Point::default());
         }
         let changed = self.selected_section != section;
+        if changed {
+            self.pages
+                .get(self.selected_section)
+                .set_page_focused(false, cx);
+        }
         self.selected_section = section;
         if changed {
             cx.emit(ViewEvent::SettingsPageChanged(section));
         }
-        self.pages
-            .display
-            .update(cx, |page, cx| page.clear_focus(cx));
     }
 
     /// Moves focus from the index rail into the open page (`l`/`enter`). A page with nothing to
@@ -416,18 +415,16 @@ impl SettingsView {
             return;
         }
         self.focus = SettingsFocus::Page;
-        if self.selected_section == SettingsPage::Display {
-            self.pages
-                .display
-                .update(cx, |page, cx| page.focus_first(cx));
-        }
+        self.pages
+            .get(self.selected_section)
+            .set_page_focused(true, cx);
     }
 
     fn focus_index(&mut self, cx: &mut Context<'_, Self>) {
         self.focus = SettingsFocus::Index;
         self.pages
-            .display
-            .update(cx, |page, cx| page.clear_focus(cx));
+            .get(self.selected_section)
+            .set_page_focused(false, cx);
         self.reveal_index_row();
     }
 

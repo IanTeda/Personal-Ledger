@@ -6,11 +6,14 @@ mod render;
 use gpui::EventEmitter;
 
 use crate::{
-    settings::{SettingsPage, pages::Page},
+    settings::{SettingsPage, page::PageRowClicked, pages::Page},
     view::event::ViewEvent,
 };
 
 impl EventEmitter<ViewEvent> for AboutPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for AboutPage {}
 
 /// The About page.
 #[derive(Debug, Default)]

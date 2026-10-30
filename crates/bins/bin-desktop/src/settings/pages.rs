@@ -66,11 +66,22 @@ pub struct PageFrame {
     pub body_width: f32,
 }
 
-/// One Settings page. Every method but [`Self::PAGE`] has a default, so a page writes only what it
-/// handles.
-pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
+/// One Settings page's View: what it draws and the keys it takes. Its identity (order, id, label,
+/// scope note) stays on [`SettingsPage`], which the page names through [`Self::PAGE`]. Every item
+/// but `PAGE` has a default, so a page writes only what it handles. Every page emits
+/// [`PageRowClicked`], which the Settings View follows to hand the page focus; a page without rows
+/// never emits it.
+pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> + Sized {
     /// The page's place in the index; the defaults read its scope note.
     const PAGE: SettingsPage;
+
+    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
+    /// rather than the body scrolling the whole page.
+    const FILLS_PAGE: bool = false;
+
+    /// Whether the page draws past [`super::CONTENT_MAX_WIDTH`] to the View's width (Units'
+    /// tables, down to their 610px minimum).
+    const FULL_WIDTH: bool = false;
 
     /// A key the page's module keymap takes, by its `chord`, ahead of every key of Settings' own
     /// (step 4 of `crate::input`'s route). Only a page that is a module's View has one.
@@ -111,8 +122,9 @@ pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
     /// Shows a record another View handed off.
     fn reveal(&mut self, _reveal: Reveal, _cx: &mut Context<'_, Self>) {}
 
-    /// Told whether the page, not the index rail, holds keyboard focus, as the View draws it.
-    fn set_page_focused(&mut self, _focused: bool) {}
+    /// Told whether the page, not the index rail, holds keyboard focus, as the View draws it and
+    /// as focus moves in or out.
+    fn set_page_focused(&mut self, _focused: bool, _cx: &mut Context<'_, Self>) {}
 
     fn set_frame(&mut self, _frame: PageFrame, _cx: &mut Context<'_, Self>) {}
 
@@ -132,34 +144,19 @@ pub trait Page: Render + EventEmitter<ViewEvent> + Sized {
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: self.hints(cx),
-            right: Self::PAGE.scope_note(),
+            right: self.status_note(cx),
         })
+    }
+
+    /// The status line's right-aligned note while the page has focus.
+    fn status_note(&self, _cx: &App) -> String {
+        Self::PAGE.scope_note()
     }
 
     /// A pane drawn at the View's right edge, beside the page.
     fn side_pane(&self, _entity: &Entity<Self>, _cx: &App) -> Option<AnyElement> {
         None
     }
-
-    /// Subscribes the Settings View to the page's row clicks, for a page with rows.
-    fn subscribe_row_clicks(
-        _entity: &Entity<Self>,
-        _cx: &mut Context<'_, SettingsView>,
-    ) -> Option<Subscription> {
-        None
-    }
-}
-
-/// Subscribes the Settings View to a page's [`PageRowClicked`], which hands the page focus.
-pub fn focus_on_row_click<T: Page + EventEmitter<PageRowClicked>>(
-    entity: &Entity<T>,
-    cx: &mut Context<'_, SettingsView>,
-) -> Option<Subscription> {
-    Some(
-        cx.subscribe(entity, |view, _page, _event: &PageRowClicked, cx| {
-            view.focus_page_from_click(cx)
-        }),
-    )
 }
 
 /// [`Page`] over a page's `Entity`: what the Settings View calls, without knowing which page.
@@ -174,6 +171,8 @@ pub trait PageHandle {
     fn reveal(&self, reveal: Reveal, cx: &mut App);
     fn set_page_focused(&self, focused: bool, cx: &mut App);
     fn set_frame(&self, frame: PageFrame, cx: &mut App);
+    fn fills_page(&self) -> bool;
+    fn full_width(&self) -> bool;
     fn heading_meta(&self, cx: &App) -> AnyElement;
     fn hints(&self, cx: &App) -> Vec<Hint>;
     fn page_status(&self, cx: &App) -> Option<PageStatus>;
@@ -218,11 +217,19 @@ impl<T: Page> PageHandle for Entity<T> {
     }
 
     fn set_page_focused(&self, focused: bool, cx: &mut App) {
-        self.update(cx, |page, _| page.set_page_focused(focused));
+        self.update(cx, |page, cx| page.set_page_focused(focused, cx));
     }
 
     fn set_frame(&self, frame: PageFrame, cx: &mut App) {
         self.update(cx, |page, cx| page.set_frame(frame, cx));
+    }
+
+    fn fills_page(&self) -> bool {
+        T::FILLS_PAGE
+    }
+
+    fn full_width(&self) -> bool {
+        T::FULL_WIDTH
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {
@@ -246,14 +253,15 @@ impl<T: Page> PageHandle for Entity<T> {
     }
 
     fn subscribe(&self, cx: &mut Context<'_, SettingsView>) -> Vec<Subscription> {
-        let mut subscriptions = vec![
+        vec![
             cx.subscribe(self, |_view, _page, event: &ViewEvent, cx| {
                 cx.emit(event.clone());
             }),
             cx.observe(self, |_view, _page, cx| cx.notify()),
-        ];
-        subscriptions.extend(T::subscribe_row_clicks(self, cx));
-        subscriptions
+            cx.subscribe(self, |view, _page, _event: &PageRowClicked, cx| {
+                view.focus_page_from_click(cx);
+            }),
+        ]
     }
 }
 

@@ -35,8 +35,7 @@ use crate::{
     settings::{
         SettingsPage,
         page::PageRowClicked,
-        pages::{Page, PageFrame, focus_on_row_click},
-        state::SettingsView,
+        pages::{Page, PageFrame},
     },
     shell::view::{statusline::Hint, window_size::WindowSize},
     view::event::ViewEvent,
@@ -195,6 +194,8 @@ impl UnitsPage {
 
 impl Page for UnitsPage {
     const PAGE: SettingsPage = SettingsPage::Units;
+    /// The tables fill the View's width, down to their 610px minimum.
+    const FULL_WIDTH: bool = true;
 
     /// Every chord the Units keymap binds, the arrows and `g g` among them. The Shell has already
     /// taken its own keys.
@@ -271,12 +272,5 @@ impl Page for UnitsPage {
         let view = self.view_model(cx);
         let pane = view.pane.as_ref()?;
         Some(detail_pane(pane, entity, cx))
-    }
-
-    fn subscribe_row_clicks(
-        entity: &Entity<Self>,
-        cx: &mut Context<'_, SettingsView>,
-    ) -> Option<Subscription> {
-        focus_on_row_click(entity, cx)
     }
 }

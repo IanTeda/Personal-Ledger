@@ -22,12 +22,15 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::command::AccountsVerb,
     navigation::movement::Movement,
-    settings::{SettingsPage, pages::Page},
-    shell::view::statusline::{Hint, PageStatus},
+    settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::statusline::Hint,
     view::event::{Reveal, ViewEvent},
 };
 
 impl EventEmitter<ViewEvent> for AccountsPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for AccountsPage {}
 
 pub struct AccountsPage {
     presenter: AccountsPagePresenter,
@@ -184,16 +187,12 @@ impl Page for AccountsPage {
         legend(self.view_model(cx).hints)
     }
 
-    /// The page's legend and its account count.
-    fn page_status(&self, cx: &App) -> Option<PageStatus> {
-        let view = self.view_model(cx);
-        Some(PageStatus {
-            hints: legend(view.hints),
-            right: view.status,
-        })
+    /// The page's account count.
+    fn status_note(&self, cx: &App) -> String {
+        self.view_model(cx).status
     }
 
-    fn set_page_focused(&mut self, focused: bool) {
+    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
     }
 

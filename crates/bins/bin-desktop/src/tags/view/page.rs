@@ -18,13 +18,8 @@ use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        page::PageRowClicked,
-        pages::{Page, focus_on_row_click},
-        state::SettingsView,
-    },
-    shell::view::statusline::{Hint, PageStatus},
+    settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::statusline::Hint,
     view::event::ViewEvent,
 };
 
@@ -151,27 +146,16 @@ impl Page for TagsPage {
         legend(self.view_model().hints)
     }
 
-    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        let view = self.view_model();
-        Some(PageStatus {
-            hints: legend(view.hints),
-            right: view.status,
-        })
+    fn status_note(&self, _cx: &App) -> String {
+        self.view_model().status
     }
 
-    fn set_page_focused(&mut self, focused: bool) {
+    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {
         render::scope_note(&self.view_model().scope, cx)
-    }
-
-    fn subscribe_row_clicks(
-        entity: &Entity<Self>,
-        cx: &mut Context<'_, SettingsView>,
-    ) -> Option<Subscription> {
-        focus_on_row_click(entity, cx)
     }
 }
 

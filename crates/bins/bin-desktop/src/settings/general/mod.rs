@@ -14,13 +14,16 @@ use lib_units::interactor::SetBaseUnit;
 
 use crate::{
     ledger_store::{LedgerStore, notify_on},
-    settings::{SettingsPage, hints::settings_general_hints, pages::Page},
+    settings::{SettingsPage, hints::settings_general_hints, page::PageRowClicked, pages::Page},
     shell::view::statusline::{Hint, owned_hints},
     units::DesktopPorts,
     view::event::ViewEvent,
 };
 
 impl EventEmitter<ViewEvent> for GeneralPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for GeneralPage {}
 
 /// The General page. It reads the Ledger for the *Base unit* select and holds only whether the
 /// keyboard is on the page, which draws the select focused.
@@ -135,7 +138,7 @@ impl Page for GeneralPage {
         true
     }
 
-    fn set_page_focused(&mut self, focused: bool) {
+    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
     }
 

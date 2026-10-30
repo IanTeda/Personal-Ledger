@@ -8,11 +8,14 @@ mod render;
 use gpui::{Context, EventEmitter};
 
 use crate::{
-    settings::{SettingsPage, pages::Page},
+    settings::{SettingsPage, page::PageRowClicked, pages::Page},
     view::event::ViewEvent,
 };
 
 impl EventEmitter<ViewEvent> for SyncServerPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for SyncServerPage {}
 
 /// The Sync server page. It holds no state: the values it shows are the mockup's own.
 #[derive(Debug, Default)]

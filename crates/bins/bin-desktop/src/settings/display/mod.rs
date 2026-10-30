@@ -19,6 +19,7 @@ use crate::{
     settings::{
         SettingsPage,
         hints::{settings_colour_grid_hints, settings_display_hints},
+        page::PageRowClicked,
         pages::{Page, PageFrame},
         step_choice,
     },
@@ -36,6 +37,9 @@ pub const DISPLAY_FIELD_COUNT: usize = 5;
 pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
 
 impl EventEmitter<ViewEvent> for DisplayPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for DisplayPage {}
 
 impl Page for DisplayPage {
     const PAGE: SettingsPage = SettingsPage::Display;
@@ -69,6 +73,23 @@ impl Page for DisplayPage {
         self.leave_colour_theme_grid();
         cx.notify();
         true
+    }
+
+    /// Focus arriving puts the keyboard on the first control, as `l`/`enter` from the index does;
+    /// focus leaving, for the index or another page, takes it off the controls and the grid. The
+    /// View tells the page on every draw, so only a change moves the focus.
+    fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
+        if focused == self.page_focused {
+            return;
+        }
+        self.page_focused = focused;
+        if focused {
+            self.field_focus = Some(0);
+        } else {
+            self.field_focus = None;
+            self.colour_theme_focus = None;
+        }
+        cx.notify();
     }
 
     fn set_frame(&mut self, frame: PageFrame, _cx: &mut Context<'_, Self>) {
@@ -105,6 +126,8 @@ pub struct DisplayPage {
     colour_theme_focus: Option<usize>,
     /// The page body's width, which sets the Colour Theme grid's columns, told by `set_frame`.
     body_width: f32,
+    /// Whether the page holds keyboard focus, told by `set_page_focused`.
+    page_focused: bool,
 }
 
 impl DisplayPage {
@@ -124,19 +147,6 @@ impl DisplayPage {
     /// `Root`, which made the change itself.
     pub fn set_preferences(&mut self, preferences: DisplayPreferences, cx: &mut Context<'_, Self>) {
         self.preferences = preferences;
-        cx.notify();
-    }
-
-    /// Focus arrives on the page's first control, as `l`/`enter` from the index does.
-    pub fn focus_first(&mut self, cx: &mut Context<'_, Self>) {
-        self.field_focus = Some(0);
-        cx.notify();
-    }
-
-    /// Focus leaves the page's controls and grid, as it does for the index or another page.
-    pub fn clear_focus(&mut self, cx: &mut Context<'_, Self>) {
-        self.field_focus = None;
-        self.colour_theme_focus = None;
         cx.notify();
     }
 

@@ -1,6 +1,6 @@
 //! The page enum: which pages Settings has, their index order, and their label, scope note and id.
 
-use crate::assets::icon::DesktopIcon;
+use crate::{assets::icon::DesktopIcon, view::event::Reveal};
 
 /// A click on a row of a Settings page, which hands the page keyboard focus. Every page with rows
 /// emits it, and the Settings View, which owns the focus, follows it.
@@ -30,12 +30,6 @@ pub enum SettingsPage {
 }
 
 impl SettingsPage {
-    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
-    /// rather than the body scrolling the whole page.
-    pub fn fills_page(self) -> bool {
-        self == Self::Tracing
-    }
-
     /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
     /// Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup ·
     /// Tracing (Logs) · About`).
@@ -142,29 +136,6 @@ impl SettingsPage {
         }
     }
 
-    /// The Desktop Settings Surface ticket that builds this section's real content -- this
-    /// scaffold (issue #173) only lays out the frame, so every section is a placeholder until
-    /// its own ticket lands. `LedgerUnits`'s own #176 is gone along with the section it built
-    /// (issue #189).
-    pub fn placeholder_issue(self) -> u32 {
-        match self {
-            Self::General => 175,
-            Self::Units => 177,
-            Self::Institutions => 178,
-            Self::Accounts => 416,
-            Self::Categories => 417,
-            Self::Tags => 418,
-            Self::Payees => 419,
-            Self::Documents => 480,
-            Self::Inventory => 493,
-            Self::Display => 179,
-            Self::SyncServer => 180,
-            Self::DataBackup => 181,
-            Self::Tracing => 182,
-            Self::About => 183,
-        }
-    }
-
     /// This section's position among [`Self::ALL`].
     #[expect(
         clippy::expect_used,
@@ -205,6 +176,16 @@ impl SettingsPage {
             .into_iter()
             .find(|section| section.id() == id)
             .unwrap_or_default()
+    }
+
+    /// The page that owns a revealed record, or `None` for a record another View owns. Which page
+    /// shows a record is a Router decision, so it sits with the page's identity, not on a page.
+    pub fn for_reveal(reveal: &Reveal) -> Option<Self> {
+        match reveal {
+            Reveal::Account(_) => Some(Self::Accounts),
+            Reveal::Payee(_) => Some(Self::Payees),
+            Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => None,
+        }
     }
 
     /// Whether this page holds anything the keyboard can move into. `l`/`enter` on the index is a
@@ -279,12 +260,19 @@ mod tests {
     }
 
     #[test]
-    fn every_section_has_a_distinct_placeholder_issue() {
-        let issues: std::collections::HashSet<_> = SettingsPage::ALL
-            .iter()
-            .map(|section| section.placeholder_issue())
-            .collect();
-        assert_eq!(issues.len(), SettingsPage::ALL.len());
+    fn a_revealed_account_or_payee_opens_its_page_and_a_bills_record_opens_none() {
+        assert_eq!(
+            SettingsPage::for_reveal(&Reveal::Account(lib_core::AccountId::new())),
+            Some(SettingsPage::Accounts)
+        );
+        assert_eq!(
+            SettingsPage::for_reveal(&Reveal::Payee(lib_core::PayeeId::new())),
+            Some(SettingsPage::Payees)
+        );
+        assert_eq!(
+            SettingsPage::for_reveal(&Reveal::BillPlan(lib_core::BillPlanId::new())),
+            None
+        );
     }
 
     #[test]

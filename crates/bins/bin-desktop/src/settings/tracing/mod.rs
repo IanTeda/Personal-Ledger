@@ -12,7 +12,7 @@ pub mod dialogs;
 pub mod log;
 mod render;
 
-use crate::settings::pages::Page;
+use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
@@ -31,6 +31,9 @@ use log::{LogChange, LogView, TracingLevel};
 pub const LOG_LINE_STEP: Pixels = px(17.6);
 
 impl EventEmitter<ViewEvent> for TracingPage {}
+
+/// The page has no rows, so it never emits a row click.
+impl EventEmitter<PageRowClicked> for TracingPage {}
 
 /// The Tracing page. `log_list` is the virtualised list that shows `log`, and must be kept in
 /// step with it by [`Self::pull_log`], [`Self::replace_log`] and the edits below.
@@ -112,6 +115,8 @@ impl TracingPage {
 
 impl Page for TracingPage {
     const PAGE: SettingsPage = SettingsPage::Tracing;
+    /// The log box fills the page and scrolls itself.
+    const FILLS_PAGE: bool = true;
 
     /// The page's keys, ahead of the focus keys so `h` steps the level rather than leaving
     /// (Display's radio grammar; `esc` leaves): `h`/`l` the level, `j`/`k` a line, `J`/`K` a

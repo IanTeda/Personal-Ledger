@@ -23,13 +23,8 @@ use crate::institutions::router::PageRouter;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        page::PageRowClicked,
-        pages::{Page, focus_on_row_click},
-        state::SettingsView,
-    },
-    shell::view::statusline::{Hint, PageStatus},
+    settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::statusline::Hint,
     view::event::ViewEvent,
 };
 
@@ -175,27 +170,16 @@ impl Page for InstitutionsPage {
         legend(self.view_model(cx).hints)
     }
 
-    fn page_status(&self, cx: &App) -> Option<PageStatus> {
-        let view = self.view_model(cx);
-        Some(PageStatus {
-            hints: legend(view.hints),
-            right: view.scope,
-        })
+    fn status_note(&self, cx: &App) -> String {
+        self.view_model(cx).scope
     }
 
-    fn set_page_focused(&mut self, focused: bool) {
+    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {
         self.view_model(cx).scope.into_any_element()
-    }
-
-    fn subscribe_row_clicks(
-        entity: &Entity<Self>,
-        cx: &mut Context<'_, SettingsView>,
-    ) -> Option<Subscription> {
-        focus_on_row_click(entity, cx)
     }
 }
 
