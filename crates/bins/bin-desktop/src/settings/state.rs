@@ -357,17 +357,17 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// Swaps the page on show. A new page starts at its top, with no control focused.
+    /// Swaps the page on show. A new page starts at its top, with no control focused. The page
+    /// showing loses focus even when it is the one selected again, so `:settings display` on
+    /// Display puts the keyboard back on its first control.
     fn select_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
         if self.selected_section != section {
             self.scroll_handle.set_offset(gpui::Point::default());
         }
         let changed = self.selected_section != section;
-        if changed {
-            self.pages
-                .get(self.selected_section)
-                .set_page_focused(false, cx);
-        }
+        self.pages
+            .get(self.selected_section)
+            .set_page_focused(false, cx);
         self.selected_section = section;
         if changed {
             cx.emit(ViewEvent::SettingsPageChanged(section));

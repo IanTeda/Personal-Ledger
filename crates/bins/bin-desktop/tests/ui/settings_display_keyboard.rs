@@ -242,3 +242,23 @@ fn h_in_the_first_grid_column_steps_out_to_the_index(app: &mut TestAppContext) {
     assert!(!page.page_focused);
     assert_eq!(display_page.colour_theme_focus, None);
 }
+
+#[gpui::test]
+fn settings_display_from_the_palette_puts_focus_back_on_the_first_control(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_display(app);
+    ui.press("j j j j j");
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .colour_theme_focus
+            .is_some()
+    );
+
+    ui.press(": s e t t i n g s space d i s p l a y enter");
+
+    let display_page = ui.settings::<SettingsDisplaySnapshot>();
+    assert_eq!(display_page.colour_theme_focus, None);
+    assert_eq!(display_page.display_field, Some(0));
+    assert!(ui.settings_frame().page_focused);
+}
