@@ -19,10 +19,9 @@ use gpui::{
 };
 use gpui_component::scroll::Scrollbar;
 
-use crate::{
-    theme::color,
-    transactions::rows::{RowView, TagsCell},
-};
+use lib_transactions::presenter::{EMPTY_CELL, RowView, TagsCell};
+
+use crate::{settings::display::StatusGlyphs, theme::color, view::format};
 
 pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
@@ -122,12 +121,13 @@ pub fn column_header(cx: &App) -> impl IntoElement {
 }
 
 /// The scrolling body: a `uniform_list` of `rows`, `selected` drawn dark, every row `row_height`
-/// tall. `flex_1` and a zero minimum height let it take exactly the space between the fixed header
+/// tall and its status marks in `glyphs`. `flex_1` and a zero minimum height let it take exactly the space between the fixed header
 /// above and whatever sits below. An empty result shows a message instead of an empty list.
 pub fn rows(
     rows: Rc<Vec<RowView>>,
     selected: usize,
     row_height: Pixels,
+    glyphs: StatusGlyphs,
     scroll: UniformListScrollHandle,
     on_row_click: OnRowClick,
     cx: &App,
@@ -148,7 +148,7 @@ pub fn rows(
         "transactions-rows",
         count,
         // Called for the visible range, and once for row 0 to measure: a pure function of the
-        // index, with every cell already formatted (see `transactions::rows::build_rows`).
+        // index, with every cell already formatted by the page's Presenter.
         move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
             range
                 .map(|index| {
@@ -157,6 +157,7 @@ pub fn rows(
                         &rows[index],
                         index == selected,
                         row_height,
+                        glyphs,
                         on_row_click.clone(),
                         cx,
                     )
@@ -192,6 +193,7 @@ fn row(
     view: &RowView,
     selected: bool,
     height: Pixels,
+    glyphs: StatusGlyphs,
     on_click: OnRowClick,
     cx: &App,
 ) -> AnyElement {
@@ -248,7 +250,7 @@ fn row(
                 .w(STATUS_WIDTH)
                 .flex_none()
                 .text_color(primary)
-                .child(view.status_glyph),
+                .child(format::status_glyph(&view.status, glyphs)),
         )
         .child(
             div()
@@ -256,7 +258,7 @@ fn row(
                 .flex_none()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(primary)
-                .children(view.flag_glyph),
+                .children(view.flagged.then(|| format::flag_glyph(glyphs))),
         )
         .child(
             div()
@@ -342,9 +344,7 @@ fn tags_cell(
         .items_center()
         .gap(px(4.0));
     match tags {
-        TagsCell::None => cell
-            .text_color(tertiary)
-            .child(crate::transactions::rows::EMPTY_CELL),
+        TagsCell::None => cell.text_color(tertiary).child(EMPTY_CELL),
         TagsCell::Chips { first, color, more } => {
             let chip = div()
                 .min_w(px(0.0))

@@ -11,7 +11,6 @@ pub(crate) mod format;
 pub mod help;
 pub mod import;
 pub mod placeholder;
-pub mod transactions;
 
 use gpui::{ScrollHandle, point, px};
 

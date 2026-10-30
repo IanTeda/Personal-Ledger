@@ -1,14 +1,19 @@
-//! One Presenter per Transactions View and Dialog. So far the filter popover's
-//! ([`FilterPresenter`]), with the chip labels and clears the page's chip row reads; the page's own
-//! comes with the list's move (#923). Each takes events through `handle` and builds a plain-data
-//! view model through `view_model`, its text already localised from [`crate::msg`], so a View only
-//! draws.
+//! One Presenter per Transactions View and Dialog: the page's ([`TransactionsPagePresenter`]) and
+//! the filter popover's it holds while the popover is open ([`FilterPresenter`]), with the chip
+//! labels and clears the page's chip row reads. Each takes events through `handle` and builds a
+//! plain-data view model through `view_model`, its text already localised from [`crate::msg`], so a
+//! View only draws.
 
 mod filter;
+mod transactions_page;
 
 pub use filter::{
     ChipField, ChipView, FilterEvent, FilterField, FilterOutcome, FilterPresenter, FilterViewModel,
     status_filter_label,
+};
+pub use transactions_page::{
+    EMPTY_CELL, FooterTotal, FooterView, Hint, RowView, TagsCell, TransactionsPageEvent,
+    TransactionsPagePresenter, TransactionsPageViewModel,
 };
 
 #[cfg(test)]

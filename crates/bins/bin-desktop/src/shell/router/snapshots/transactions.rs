@@ -3,9 +3,9 @@
 
 use crate::shell::router::Root;
 #[doc(hidden)]
-pub use crate::view::import::snapshot::{ImportRowSnapshot, ImportSnapshot};
+pub use crate::transactions::view::snapshot::{ChipSnapshot, TransactionsSnapshot};
 #[doc(hidden)]
-pub use crate::view::transactions::snapshot::{ChipSnapshot, TransactionsSnapshot};
+pub use crate::view::import::snapshot::{ImportRowSnapshot, ImportSnapshot};
 
 impl Root {
     /// The Transactions page for a test, as its Entity builds it.

@@ -15,6 +15,9 @@ use lib_locale::format::{AmountStyle, format_amount, format_date};
 
 use crate::settings::display::{RowDensity, StatusGlyphs};
 
+/// The mark for an empty table cell, as the Transactions table writes it.
+pub const EMPTY_CELL: &str = lib_transactions::presenter::EMPTY_CELL;
+
 /// A date in the chosen style, or in the Locale's default form when there is none. `Iso` is
 /// always `2026-09-12`; the others follow the Locale (`12 Sept 2026` in `en-AU`).
 pub fn date(date: NaiveDate, style: Option<DateStyle>) -> String {

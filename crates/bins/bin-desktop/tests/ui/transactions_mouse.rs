@@ -277,3 +277,35 @@ fn at_the_medium_floor_the_table_scrolls_sideways_inside_the_view(app: &mut Test
         "the status line never scrolls"
     );
 }
+
+/// Clicks `selector` and asserts the click committed exactly once.
+fn click_committing_once(ui: &mut Harness<'_>, selector: &str) {
+    let before = ui.commits();
+    ui.click(selector);
+    assert_eq!(
+        ui.commits(),
+        before + 1,
+        "a click on {selector} is one input"
+    );
+}
+
+#[gpui::test]
+fn each_click_is_one_input_that_commits_once(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+
+    for selector in [
+        "transactions-row-2",
+        "transactions-add",
+        "transactions-chip-2",
+        "filter-account",
+        "filter-account-option-1",
+        "filter-status-2",
+        "filter-apply",
+        "transactions-chip-clear-0",
+        "transactions-clear-filters",
+        "transactions-search",
+    ] {
+        click_committing_once(&mut ui, selector);
+    }
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Search);
+}

@@ -280,6 +280,9 @@ mod tests {
         let inventory = lib_inventory::keymap::INVENTORY_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let transactions = lib_transactions::keymap::TRANSACTIONS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         units
             .chain(unit_prices)
             .chain(bills)
@@ -289,6 +292,7 @@ mod tests {
             .chain(categories)
             .chain(tags)
             .chain(inventory)
+            .chain(transactions)
             .collect()
     }
 

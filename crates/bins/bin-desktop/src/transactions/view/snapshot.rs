@@ -1,11 +1,10 @@
-//! What the integration tests read back of the Transactions page (ADR-0030), built by the
-//! Transactions Entity from its own state (ADR-0037).
+//! What the integration tests read back of the Transactions page (ADR-0030), read from the view
+//! model its Presenter builds.
 
 use gpui::App;
-use lib_transactions::presenter::{FilterField, FilterPresenter};
+use lib_transactions::presenter::FilterField;
 
-use super::state::TransactionsView;
-use crate::transactions;
+use super::page::TransactionsPage;
 
 /// One filter chip as the header shows it.
 #[doc(hidden)]
@@ -39,41 +38,32 @@ pub struct TransactionsSnapshot {
     pub account_list_open: bool,
 }
 
-impl TransactionsView {
-    /// The page for a test, built the way the render builds its rows.
+impl TransactionsPage {
+    /// The page for a test, read from the view model it draws.
     #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> TransactionsSnapshot {
-        let state = &self.state;
-        let ledger = self.ledger(cx);
-        let visible = transactions::query::query(
-            &ledger,
-            self.transactions(cx),
-            &state.filters,
-            &state.search,
-        );
-        let rows = transactions::rows::build_rows(&visible, &ledger, &self.prefs());
-        let chips = FilterPresenter::chips(&ledger, &state.filters, self.today, self.date_style);
-        let filter = self.filter_view();
+    pub fn snapshot(&self, _cx: &App) -> TransactionsSnapshot {
+        let view = self.view_model();
+        let filter = view.filter.as_ref();
         TransactionsSnapshot {
-            visible: rows.len(),
-            selected: transactions::rows::clamp_selection(state.selected, rows.len()),
-            payees: rows.into_iter().map(|row| row.payee).collect(),
-            search: state.search.clone(),
-            chips: chips
-                .into_iter()
+            visible: view.rows.len(),
+            selected: view.selected,
+            payees: view.rows.iter().map(|row| row.payee.clone()).collect(),
+            search: view.search.clone(),
+            chips: view
+                .chips
+                .iter()
                 .map(|chip| ChipSnapshot {
-                    label: chip.label,
+                    label: chip.label.clone(),
                     active: chip.active,
                 })
                 .collect(),
-            filters_changed: !state.filters.is_default(self.today),
+            filters_changed: view.filters_changed,
             filter_open: filter.is_some(),
-            filter_focus: filter.as_ref().map(|view| format!("{:?}", view.focused)),
+            filter_focus: filter.map(|view| format!("{:?}", view.focused)),
             draft_status: filter
-                .as_ref()
                 .and_then(|view| view.status.chosen)
                 .map(|status| format!("{status:?}")),
-            account_list_open: state
+            account_list_open: self
                 .filter_list
                 .as_ref()
                 .is_some_and(|(field, list)| *field == FilterField::Account && list.is_open()),

@@ -16,7 +16,7 @@ use lib_locale::format::{format_month, upper};
 use crate::{
     budgets::{History, HistoryCell, HistoryMonth, HistoryRow},
     theme::color,
-    transactions::rows::EMPTY_CELL,
+    view::format::EMPTY_CELL,
     view::format::amount,
 };
 use lib_categories::{self, Category};

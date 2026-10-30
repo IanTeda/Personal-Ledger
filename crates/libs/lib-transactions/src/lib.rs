@@ -5,8 +5,8 @@
 //! A VIPER module in the making (`docs/development/viper-architecture.md`, #774, #923): the
 //! repository port and the read ports for the other domains' rows in `protocols`, which
 //! `lib-database` implements, their in-memory twins and the stub seed in `fake`, and the contract
-//! both keep in `contract`. Its first Presenter is the filter popover's (`presenter`), with its
-//! Messages in `msg`.
+//! both keep in `contract`. Its Presenters, the page's and the filter popover's, are in
+//! `presenter`, the page's keys in `keymap`, and their Messages in `msg`.
 //!
 //! A Transaction is a single-entry record of an amount against one Account on a date; its
 //! Splits carry the amounts and Categories, and the Unit is its Account's.
@@ -18,15 +18,17 @@
 )]
 pub mod contract;
 pub mod fake;
+pub mod keymap;
 pub mod msg;
 pub mod presenter;
 pub mod protocols;
 pub mod query;
 
+pub use protocols::SharedPorts;
 pub use protocols::{
     TransactionAccount, TransactionAccounts, TransactionCategories, TransactionCategory,
     TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
-    TransactionUnit, TransactionUnits,
+    TransactionUnit, TransactionUnits, TransactionsPorts,
 };
 
 use bigdecimal::BigDecimal;

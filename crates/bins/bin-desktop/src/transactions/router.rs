@@ -1,7 +1,7 @@
-//! The Transactions module's entry points for other modules' Routers. The Transactions View isn't
-//! a VIPER module yet, so [`show`] hands off the way every View does today, a
-//! [`Reveal::Transaction`] the Shell routes to the Transactions page (#778's stand-in until that
-//! View migrates).
+//! The Transactions module's entry points for other modules' Routers. Halfway (#923): the page is
+//! a module, but [`show`] still hands off the way every View does today, a
+//! [`Reveal::Transaction`] the Shell routes to the page, which turns it into a Presenter event.
+//! The next ticket makes this the one entry point every caller uses.
 
 use gpui::{Context, EventEmitter};
 use lib_core::TransactionId;

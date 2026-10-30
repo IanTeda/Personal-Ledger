@@ -149,7 +149,11 @@ impl FilterPresenter {
         date_style: Option<DateStyle>,
     ) -> Self
     where
-        R: TransactionAccounts + TransactionCategories + TransactionPayees + TransactionTags,
+        R: ?Sized
+            + TransactionAccounts
+            + TransactionCategories
+            + TransactionPayees
+            + TransactionTags,
     {
         let choices = Choices {
             accounts: std::iter::once(Choice {
@@ -416,7 +420,11 @@ impl FilterPresenter {
         date_style: Option<DateStyle>,
     ) -> Vec<ChipView>
     where
-        R: TransactionAccounts + TransactionCategories + TransactionPayees + TransactionTags,
+        R: ?Sized
+            + TransactionAccounts
+            + TransactionCategories
+            + TransactionPayees
+            + TransactionTags,
     {
         let defaults = TransactionFilters::defaults(today);
         let account = filters.account.map(|id| {

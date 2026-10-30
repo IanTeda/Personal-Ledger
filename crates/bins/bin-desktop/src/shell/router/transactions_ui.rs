@@ -1,6 +1,6 @@
 //! The Transactions destination's cross-cutting wiring: the rows other pages read, `:import`, and
-//! the "View transactions" links that land on the page filtered. The page itself renders and
-//! handles its own input in its Entity (`view::transactions`, ADR-0037).
+//! the "View transactions" links that land on the page filtered. The page itself is the
+//! Transactions module's (`crate::transactions`).
 
 use super::Root;
 use lib_core::{PayeeId, TagId};
@@ -8,8 +8,9 @@ use lib_shell::NavInput;
 
 use crate::{
     navigation::nav::{FocusZone, Noun},
-    transactions::{Transaction, query::TransactionFilters},
+    transactions::Transaction,
 };
+use lib_transactions::query::TransactionFilters;
 
 use gpui::App;
 

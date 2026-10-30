@@ -11,10 +11,11 @@ use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
     budgets::state::BudgetsView, dashboard::state::DashboardView, documents::state::DocumentsView,
-    event::Reveal, import::state::ImportView, transactions::state::TransactionsView,
+    event::Reveal, import::state::ImportView,
 };
 use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
+use crate::transactions::TransactionsPage;
 use crate::{
     navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
     shell::view::statusline::PageStatus,
@@ -28,7 +29,7 @@ pub enum ActiveViewEntity {
     Bills(Entity<BillsPage>),
     Budgets(Entity<BudgetsView>),
     /// The Transactions list.
-    Transactions(Entity<TransactionsView>),
+    Transactions(Entity<TransactionsPage>),
     /// The Transactions destination's Import View, shown in place of the list while it is open: a
     /// legacy Entity until #810 makes Import a module.
     Import(Entity<ImportView>),
@@ -54,7 +55,7 @@ pub struct ViewEntities {
     pub dashboard: Entity<DashboardView>,
     pub bills: Entity<BillsPage>,
     pub budgets: Entity<BudgetsView>,
-    pub transactions: Entity<TransactionsView>,
+    pub transactions: Entity<TransactionsPage>,
     pub import: Entity<ImportView>,
     pub documents: Entity<DocumentsView>,
     pub settings: Entity<SettingsView>,
@@ -108,15 +109,15 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the focused module's keymap takes, by `chord`: the Bills page's, or a Settings page
-    /// that is a module's View. Returns whether it took the key.
+    /// A key the focused module's keymap takes, by `chord`: the Bills or Transactions page's, or a
+    /// Settings page that is a module's View. Returns whether it took the key.
     pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Dashboard(_)
             | Self::Budgets(_)
-            | Self::Transactions(_)
             | Self::Import(_)
             | Self::Documents(_)
             | Self::Shell(_) => false,
@@ -240,7 +241,7 @@ impl ActiveViewEntity {
     pub fn min_width(&self) -> Option<gpui::Pixels> {
         match self {
             Self::Transactions(_) | Self::Import(_) => {
-                Some(crate::view::transactions::table::min_width())
+                Some(crate::transactions::view::table::min_width())
             }
             _ => None,
         }
@@ -265,13 +266,10 @@ impl ActiveViewEntity {
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
         match self {
             Self::Bills(view) => view.read(cx).help_group(cx),
+            Self::Transactions(view) => view.read(cx).help_group(cx),
             Self::Documents(view) => view.read(cx).help_group(cx),
             Self::Settings(view) => view.read(cx).help_group(cx),
-            Self::Dashboard(_)
-            | Self::Budgets(_)
-            | Self::Transactions(_)
-            | Self::Import(_)
-            | Self::Shell(_) => None,
+            Self::Dashboard(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => None,
         }
     }
 }

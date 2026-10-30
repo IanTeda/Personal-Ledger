@@ -76,8 +76,8 @@ type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
 
 use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
+use crate::transactions::TransactionsPage;
 use crate::view::import::state::{ImportCommitted, ImportView};
-use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
@@ -343,6 +343,15 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let today = clock.today();
+        // The Transactions page reads the stores, not the Ledger's read copies (#923).
+        let transactions_ports = crate::transactions::ports::DesktopPorts::shared(
+            storage.transactions.clone(),
+            storage.accounts.clone(),
+            storage.categories.clone(),
+            storage.payees.clone(),
+            storage.tags.clone(),
+            settings.units.ports.clone(),
+        );
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -366,15 +375,8 @@ impl Root {
         let settings_subscription = Self::view_event_subscription(&settings_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let transactions_view = cx.new(|cx| {
-            TransactionsView::new(
-                TransactionsSources {
-                    ledger: ledger.clone(),
-                },
-                &clock,
-                cx,
-            )
-        });
+        let transactions_view =
+            cx.new(|cx| TransactionsPage::new(transactions_ports, &ledger, clock.clone(), cx));
         let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
@@ -383,10 +385,10 @@ impl Root {
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         // A commit lands on the Transactions list, from its first row.
         let import_committed = cx.subscribe(&import_view, |shell, _, _: &ImportCommitted, cx| {
-            shell.views.transactions.update(cx, |view, cx| {
-                view.reset_selection();
-                cx.notify();
-            });
+            shell
+                .views
+                .transactions
+                .update(cx, |view, cx| view.reset_selection(cx));
         });
         let budgets_current = ledger
             .read(cx)
@@ -624,10 +626,9 @@ impl Root {
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
-        let keymap = self.state.dialog_keymap.clone();
         self.views
             .transactions
-            .update(cx, |view, _| view.set_dialog_keymap(keymap));
+            .update(cx, |view, _| view.set_keymaps(config));
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file
@@ -811,7 +812,7 @@ mod tests {
     };
     use crate::transactions;
     use crate::transactions::Transaction;
-    use crate::view::transactions::hints::{filter_hints, transactions_hints};
+    use crate::transactions::view::hints::filter_hints;
     use chrono::Local;
     use lib_accounts::Account;
 
@@ -916,7 +917,6 @@ mod tests {
             for (_, action) in settings_plain_page_hints()
                 .into_iter()
                 .chain(filter_hints())
-                .chain(transactions_hints())
             {
                 assert!(action.starts_with('['), "{action}");
             }

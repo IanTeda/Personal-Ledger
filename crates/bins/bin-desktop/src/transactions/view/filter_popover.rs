@@ -17,7 +17,7 @@ use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point,
 use lib_transactions::presenter::{FilterField, FilterViewModel, status_filter_label};
 use lib_viper::view::TextFieldView;
 
-use super::state::select_labels;
+use super::page::select_labels;
 use crate::{
     dialog,
     form::fields::segmented_control,
@@ -27,8 +27,8 @@ use crate::{
         select_field::{self, SelectFieldProps},
     },
     theme::color,
-    transactions::query::StatusFilter,
 };
+use lib_transactions::query::StatusFilter;
 
 pub type OnFieldClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
 pub type OnOptionClick = Rc<dyn Fn(FilterField, usize, &mut Window, &mut App)>;

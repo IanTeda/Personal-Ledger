@@ -2,14 +2,16 @@
 //! reads from memory and queues each write, so a write never fails here; a failed save is the
 //! adapter's to report. `fake` implements it in memory.
 //!
-//! Ports only, for now: the Transactions View and every writer of Transactions are still today's
-//! code, which reaches this port through the Desktop's forwarding shim (#774). Interactors,
-//! Presenters and a Router trait come when the View migrates.
+//! Every writer of Transactions is still today's code, which reaches the repository through the
+//! Desktop's forwarding shim (#774); the Transactions page reads it, with the read ports, as one
+//! [`TransactionsPorts`] value.
 //!
 //! The read ports name the other domains' rows as Transactions-owned values with only the fields
 //! the query engine, rows, chips and filter form read, so this crate depends on no other feature
-//! crate. `lib-database`'s adapters answer them from the rows they hold; nothing reads them yet
-//! (#925, read by the View's move in #923).
+//! crate. `lib-database`'s adapters answer them from the rows they hold.
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use lib_core::{AccountId, CategoryId, HexColor, PayeeId, TagId, TransactionId, UnitId};
 
@@ -102,3 +104,16 @@ pub trait TransactionUnits {
     /// Unit `id`'s code, or `None` when it is gone.
     fn transaction_unit_code(&self, id: UnitId) -> Option<String>;
 }
+
+/// Every port the Transactions page reads, as one value: the Transactions themselves and the other
+/// domains' rows they name.
+pub trait TransactionsPorts:
+    TransactionAccounts + TransactionCategories + TransactionPayees + TransactionTags + TransactionUnits
+{
+    /// Every Transaction, in no particular order.
+    fn all_transactions(&self) -> Vec<Transaction>;
+}
+
+/// The ports as the page holds them, shared with the Client that keeps them in line.
+/// Single-threaded, as both Clients' UI threads are.
+pub type SharedPorts = Rc<RefCell<dyn TransactionsPorts>>;

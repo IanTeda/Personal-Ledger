@@ -5,13 +5,12 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 
-use crate::{
-    theme::color,
-    transactions::summary::{Footer, FooterTotal},
-};
+use lib_transactions::presenter::{FooterTotal, FooterView};
+
+use crate::theme::color;
 
 /// `padding:11px 28px; border-top:2px solid rgba(32,30,29,.38); background:#eae9e9`.
-pub fn render(footer: &Footer, cx: &App) -> AnyElement {
+pub fn render(footer: &FooterView, cx: &App) -> AnyElement {
     div()
         .flex_none()
         .flex()
@@ -27,7 +26,7 @@ pub fn render(footer: &Footer, cx: &App) -> AnyElement {
             div()
                 .text_size(px(11.5))
                 .text_color(color::muted(cx))
-                .child(footer.label()),
+                .child(footer.label.clone()),
         )
         .child(total(&footer.total, cx))
         .into_any_element()

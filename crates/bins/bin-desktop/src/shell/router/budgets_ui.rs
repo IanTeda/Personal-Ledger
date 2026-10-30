@@ -12,6 +12,7 @@ use lib_ledger::{ArchiveBudget, DuplicateBudget, LedgerCommand, RestoreBudget, S
 
 use super::Root;
 use lib_shell::NavInput;
+use lib_transactions::query::TransactionFilters;
 use std::rc::Rc;
 
 use crate::{
@@ -19,7 +20,6 @@ use crate::{
     period::Period,
     shell::view::rail::{self as rail_view},
     shell::view::{dialog_apply, dialog_host::OpenDialog},
-    transactions::query::TransactionFilters,
     view::budgets::{self as budgets_view, manage_dialog::ManageAction},
     view::format,
 };

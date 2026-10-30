@@ -18,7 +18,7 @@ use crate::{
         select_field::{self, SelectFieldProps},
     },
     theme::color,
-    transactions::rows::EMPTY_CELL,
+    view::format::EMPTY_CELL,
     view::format::amount,
 };
 

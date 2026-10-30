@@ -60,9 +60,6 @@ desktop-status-command-not-yet-built = :{ $command } — not yet built
 
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 
-desktop-status-open-transaction-not-yet-built = open transaction — not yet built
-desktop-status-add-transaction-not-yet-built = add transaction — not yet built
-desktop-status-edit-transaction-not-yet-built = edit transaction — not yet built
 desktop-status-sync-now-not-implemented = sync now — not implemented
 desktop-status-backup-now-not-implemented = backup now — not implemented
 desktop-status-export-ledger-not-implemented = export ledger — not implemented

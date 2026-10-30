@@ -360,7 +360,8 @@ pub fn query<'a, R>(
     search: &str,
 ) -> Visible<'a>
 where
-    R: TransactionAccounts
+    R: ?Sized
+        + TransactionAccounts
         + TransactionCategories
         + TransactionPayees
         + TransactionTags

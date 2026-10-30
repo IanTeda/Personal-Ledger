@@ -41,3 +41,38 @@ transactions-filter-field-tag = Tag
 transactions-filter-field-to = To
 transactions-filter-apply = apply
 transactions-filter-reset = reset
+
+## The page's header and footer. `$transactions` and `$accounts` count the whole Ledger; `$of` is
+## every Transaction, `$shown` those the filters and Search leave, and `$category` the chosen
+## Category's name followed by a space, or empty when no Category filter is set.
+
+transactions-count-line = { $transactions ->
+    [one] { $transactions } transaction
+   *[other] { $transactions } transactions
+} across { $accounts ->
+    [one] { $accounts } account
+   *[other] { $accounts } accounts
+}
+transactions-footer = { $of ->
+    [one] { $shown } of { $of } { $category }transaction shown
+   *[other] { $shown } of { $of } { $category }transactions shown
+}
+
+## A multi-Split row's Category cell. `$count` is how many Splits it has.
+
+transactions-split-summary = split · { $count }
+
+## The status line's legend for the page.
+
+transactions-hint-row = row
+transactions-hint-open = open
+transactions-hint-edit = edit
+transactions-hint-add = add
+transactions-hint-search = search
+transactions-hint-filter = filter
+
+## What `Enter`, `e` and `n` answer: there is no Transaction form yet.
+
+transactions-open-not-yet-built = open transaction — not yet built
+transactions-add-not-yet-built = add transaction — not yet built
+transactions-edit-not-yet-built = edit transaction — not yet built

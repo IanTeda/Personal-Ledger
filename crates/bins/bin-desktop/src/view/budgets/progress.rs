@@ -16,7 +16,7 @@ use lib_locale::format::upper;
 use crate::{
     budgets::{CategoryFigures, PeriodFigures},
     theme::color,
-    transactions::rows::EMPTY_CELL,
+    view::format::EMPTY_CELL,
     view::format::amount,
 };
 

@@ -381,3 +381,100 @@ fn a_failed_forwarded_write_puts_the_transactions_back_with_an_error_toast(
                 == "Couldn't save the change to transactions, so they are back as last saved"
     }));
 }
+
+/// Presses `keys` and asserts the input committed exactly once.
+fn press_committing_once(ui: &mut Harness<'_>, keys: &str) {
+    let before = ui.commits();
+    ui.press(keys);
+    assert_eq!(ui.commits(), before + 1, "{keys:?} is one input");
+}
+
+#[gpui::test]
+fn each_transactions_key_is_one_input_that_commits_once(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+
+    for key in [
+        "j",
+        "shift-g",
+        "ctrl-u",
+        "n",
+        "/",
+        "k",
+        "backspace",
+        "enter",
+    ] {
+        press_committing_once(&mut ui, key);
+    }
+    // The popover: open, a field, typing, a select's list, apply.
+    for key in ["f", "enter", "escape", "tab", "tab", "k", "enter"] {
+        press_committing_once(&mut ui, key);
+    }
+    assert!(
+        ui.transactions().filters_changed,
+        "the keys reached the Presenter"
+    );
+}
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+
+    ui.assert_cheat_sheet_matches_status("Transactions keys");
+}
+
+#[gpui::test]
+fn a_keybindings_override_moves_the_filter_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("transactions.filter", "F"));
+    ui.press("g l");
+
+    ui.press("f");
+    assert!(!ui.transactions().filter_open, "f is no longer bound");
+    ui.press("shift-f");
+    assert!(ui.transactions().filter_open);
+}
+
+#[gpui::test]
+fn a_payee_renamed_on_the_payees_page_shows_on_the_list(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g l");
+    let listed = ui.transactions().payees;
+    ui.press("g s j j j j j j j l");
+    assert_eq!(ui.settings().page, "Payees");
+    // The first Payee on the page that the list shows.
+    let is_listed = |name: &str| {
+        listed
+            .iter()
+            .any(|payee| payee.split(" +").next() == Some(name))
+    };
+    let mut name = ui.settings_payees().selected_payee.expect("seeded payees");
+    for _ in 0..100 {
+        if is_listed(&name) {
+            break;
+        }
+        ui.press("j");
+        name = ui.settings_payees().selected_payee.expect("seeded payees");
+    }
+    ui.press("g l");
+    let shown = |ui: &mut Harness<'_>, name: &str| {
+        ui.transactions()
+            .payees
+            .iter()
+            .filter(|payee| payee.split(" +").next() == Some(name))
+            .count()
+    };
+    let before = shown(&mut ui, &name);
+    assert!(before > 0, "{name} has Transactions this year");
+
+    ui.press("g s");
+    assert_eq!(ui.settings().page, "Payees");
+    ui.press("l e x enter");
+    let renamed = format!("{name}x");
+    assert_eq!(
+        ui.settings_payees().selected_payee.as_deref(),
+        Some(renamed.as_str())
+    );
+    ui.press("g l");
+
+    assert_eq!(shown(&mut ui, &renamed), before);
+    assert_eq!(shown(&mut ui, &name), 0);
+}
