@@ -463,6 +463,20 @@ pub const COMMANDS: &[Command] = &[
         colour_appearance_description(lib_locale::msg::colour_appearance_system())
     }),
     Command {
+        name: "units",
+        domain: Domain::Units,
+        description: crate::msg::desktop_command_units_description,
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Units),
+    },
+    Command {
+        name: "institutions",
+        domain: Domain::Institutions,
+        description: crate::msg::desktop_command_institutions_description,
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsPage::Institutions),
+    },
+    Command {
         name: "tags",
         domain: Domain::Tags,
         description: crate::msg::desktop_command_tags_description,
@@ -947,10 +961,38 @@ mod tests {
             ("categories", SettingsPage::Categories),
             ("payees", SettingsPage::Payees),
             ("tags", SettingsPage::Tags),
+            ("units", SettingsPage::Units),
+            ("institutions", SettingsPage::Institutions),
         ] {
             let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
             assert_eq!(command.effect, CommandEffect::OpenSettingsPage(section));
             assert_eq!(command.binding, None, "{name} lost its g binding");
+        }
+    }
+
+    #[test]
+    fn every_module_settings_page_has_a_noun_row_ranking_ahead_of_its_keymap_commands() {
+        // The palette ranks by name prefix and keeps `entries` order for ties, so the bare noun
+        // must be listed before `<noun> new`, or Enter on `:units` opens a Dialog, not the page.
+        let entries = defaults();
+        for (index, entry) in entries.iter().enumerate() {
+            let CommandEffect::Module {
+                page: ModulePage::Settings(page),
+                ..
+            } = entry.effect
+            else {
+                continue;
+            };
+            let noun = entries
+                .iter()
+                .position(|row| row.name == page.id())
+                .unwrap_or_else(|| panic!("{} has no `{}` noun row", entry.name, page.id()));
+            assert!(
+                noun < index,
+                "`{}` ranks ahead of the `{}` noun row",
+                entry.name,
+                page.id()
+            );
         }
     }
 

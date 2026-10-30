@@ -464,3 +464,20 @@ fn a_units_command_closes_an_open_prices_view_first(app: &mut TestAppContext) {
     assert!(ui.settings::<Option<UnitPricesSnapshot>>().is_none());
     assert_eq!(ui.dialog(), Some("SetBaseUnit"));
 }
+
+/// A module's listed keymap Commands (`units new`) rank ahead of `settings units`, so the bare
+/// noun needs its own alias row or Enter opens a Dialog instead of the page.
+#[gpui::test]
+fn a_bare_settings_noun_opens_its_page_not_a_dialog(app: &mut TestAppContext) {
+    for (noun, page) in [("units", "Units"), ("institutions", "Institutions")] {
+        let mut ui = Harness::new(app);
+        open_palette(&mut ui);
+        type_text(&mut ui, noun);
+        ui.press("enter");
+
+        let frame = ui.settings_frame();
+        assert_eq!(frame.page, page, ":{noun} opens its Settings page");
+        assert!(frame.page_focused, ":{noun} leaves focus in the page");
+        assert_eq!(ui.dialog(), None, ":{noun} opens no Dialog");
+    }
+}
