@@ -248,7 +248,7 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server, Data and backup, Tracing and About.
 
-Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
+Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work. `:units` and `:institutions` open their pages the same way.
 
 - Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` searches the index.
 - Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.

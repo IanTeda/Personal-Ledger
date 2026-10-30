@@ -25,7 +25,7 @@ An institution's name is how you tell it apart, so two institutions can't share 
 
 ## Approach
 
-In the desktop app, open the Institutions page in Settings (press `g` `s` and pick Institutions, or run `:settings institutions`). On the page:
+In the desktop app, open the Institutions page in Settings (press `g` `s` and pick Institutions, or run `:institutions`). On the page:
 
 - Move up and down the list with `j` and `k` or the arrow keys, jump to the top or bottom with `g` `g` and `G` (or `Home` and `End`), and move half a page with `ctrl+d` and `ctrl+u` (or `Page Down` and `Page Up`). Clicking a row selects it.
 - Press `n`, or click Add institution, to add one. If you've changed these keys under `[keybindings]` in your settings, the page follows your keys.

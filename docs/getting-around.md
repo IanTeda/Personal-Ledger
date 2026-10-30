@@ -40,7 +40,7 @@ Here are the jump letters for each app:
 | Credit cards | not in the terminal app yet | `g` `k` (not yet built) |
 | Investments | not in the terminal app yet | `g` `i` (not yet built) |
 
-In the desktop app, Accounts, Categories, Payees and Tags no longer have a screen of their own or a `g` key: they are pages inside Settings. Typing `:accounts`, `:categories`, `:payees` or `:tags` still takes you to the right page, and `:settings` followed by a page name (such as `:settings tags`) opens any Settings page directly. The screens marked "not yet built" respond to their key and tell you so.
+In the desktop app, Accounts, Categories, Payees and Tags no longer have a screen of their own or a `g` key: they are pages inside Settings. Typing `:accounts`, `:categories`, `:payees`, `:tags`, `:units` or `:institutions` still takes you to the right page, and `:settings` followed by a page name (such as `:settings tags`) opens any Settings page directly. The screens marked "not yet built" respond to their key and tell you so.
 
 The two apps don't share every screen yet, and Tags and Transactions use different letters in each one. We'd like them to match eventually.
 
