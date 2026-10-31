@@ -18,8 +18,7 @@
 //!   its snapshot; `keymap`: its default keys; `msg`: its Messages, which a Client composes into
 //!   its Locale as `LAYER`.
 //!
-//! The Desktop's Import doesn't use it yet: it still runs its own copy until it moves onto this
-//! module (#943).
+//! The Desktop's Import runs on it (#947); the TUI's is still a wireframe placeholder.
 
 #[cfg(feature = "contract-tests")]
 #[expect(

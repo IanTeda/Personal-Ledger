@@ -1,32 +1,28 @@
-//! The stubbed **6e** Import "match payees" step (`docs/ux/desktop-mockups/20-payees/README.md`): the
-//! stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS /
-//! AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
-//! and **continue**. Shown in place of the Transactions page while its Entity holds an
-//! [`ImportState`]; the pure rules live in `crate::import`.
+//! The Import "match payees" step's drawing (`docs/ux/desktop-mockups/20-payees/README.md`, 6e):
+//! the stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS
+//! / AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
+//! and **continue**. It draws `lib-transaction-import`'s view model and nothing else; `page.rs`
+//! holds the Presenter.
 //!
 //! A row resolved by a rule shows its Payee and Category as text, as in the handoff; any other
 //! row, and any row whose select is open, shows the two selects. Their lists open inline beneath
 //! the cell, the row growing to hold them, like the dialogs' shared select.
 
+pub mod page;
 pub mod snapshot;
-pub mod state;
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, Context, Rgba, ScrollHandle, SharedString, Window, div, prelude::*, px,
 };
-
 use lib_locale::format::upper;
+use lib_transaction_import::RowStatus;
+use lib_transaction_import::presenter::{ImportViewModel, OpenSelectView, RowLine, RowSelect};
 
-use crate::import::CategoryOptions;
-use lib_payees::{self, Payee};
-
-use crate::{
-    form::select::SelectState,
-    import::{self, ImportRow, ImportState, PayeeChoices, RowPayee, RowSelect, RowStatus},
-    theme::color,
-};
+use crate::theme::color;
+use page::ImportPage;
 
 const MONOSPACE: &str = "monospace";
 const PAYEE_WIDTH: gpui::Pixels = px(150.0);
@@ -36,79 +32,69 @@ const AMOUNT_WIDTH: gpui::Pixels = px(90.0);
 /// The gap between the fixed columns, so a select never touches its neighbour.
 const COLUMN_GAP: gpui::Pixels = px(8.0);
 
-pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-pub type OnSelectClick = Rc<dyn Fn(usize, RowSelect, &mut Window, &mut App)>;
-pub type OnOptionClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
+type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+type OnSelectClick = Rc<dyn Fn(usize, RowSelect, &mut Window, &mut App)>;
+type OnOptionClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-pub struct ImportPageProps<'a> {
-    pub state: &'a ImportState,
-    pub payees: &'a [Payee],
-    /// The Category select's options, "choose category…" first.
-    pub categories: &'a CategoryOptions,
-    pub on_row_click: OnRowClick,
-    pub on_select_click: OnSelectClick,
-    pub on_option_click: OnOptionClick,
-    pub on_remember_click: OnClick,
-    pub on_back_click: OnClick,
-    pub on_continue_click: OnClick,
+struct ImportPageProps {
+    view: ImportViewModel,
+    /// The open select's options to draw, its window onto the highlight.
+    select_range: Option<Range<usize>>,
+    on_row_click: OnRowClick,
+    on_select_click: OnSelectClick,
+    on_option_click: OnOptionClick,
+    on_remember_click: OnClick,
+    on_back_click: OnClick,
+    on_continue_click: OnClick,
 }
 
-/// The create option's label, shared by the select and the closed cell.
-pub fn create_label(name: &str) -> String {
-    crate::msg::desktop_import_create_payee("+", name)
-}
-
-/// Row `raw`'s Payee choices, as the select offers them.
-pub fn payee_choices(payees: &[Payee], raw: &str) -> PayeeChoices {
-    PayeeChoices::new(payees, raw, create_label)
-}
-
-impl Render for state::ImportView {
+impl Render for ImportPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let Some(import) = self.state.as_ref() else {
+        let Some(view) = self.view_model() else {
             return gpui::Empty.into_any_element();
         };
         let entity = cx.entity();
-        let plain = |handler: fn(&mut state::ImportView, &mut Context<'_, state::ImportView>)| {
+        let plain = |handler: fn(&mut ImportPage, &mut Context<'_, ImportPage>)| {
             let entity = entity.clone();
             let on_click: OnClick = Rc::new(move |_window, cx| entity.update(cx, handler));
             on_click
         };
-        let indexed =
-            |handler: fn(&mut state::ImportView, usize, &mut Context<'_, state::ImportView>)| {
-                let entity = entity.clone();
-                let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |view, cx| handler(view, index, cx));
-                });
-                on_click
-            };
+        let indexed = |handler: fn(&mut ImportPage, usize, &mut Context<'_, ImportPage>)| {
+            let entity = entity.clone();
+            let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
+                entity.update(cx, |page, cx| handler(page, index, cx));
+            });
+            on_click
+        };
         let on_select_click: OnSelectClick = {
             let entity = entity.clone();
-            Rc::new(move |index, select: RowSelect, _window, cx| {
-                entity.update(cx, |view, cx| view.click_select(index, select, cx));
+            Rc::new(move |index, which: RowSelect, _window, cx| {
+                entity.update(cx, |page, cx| page.click_select(index, which, cx));
             })
         };
-        let categories = self.categories(cx);
+        let select_range = view
+            .open_select
+            .as_ref()
+            .map(|open| self.select_range(open.select.options.len()));
         render(
             &self.scroll,
             ImportPageProps {
-                state: import,
-                payees: self.payees(cx),
-                categories: &categories,
-                on_row_click: indexed(state::ImportView::click_row),
+                view,
+                select_range,
+                on_row_click: indexed(ImportPage::click_row),
                 on_select_click,
-                on_option_click: indexed(state::ImportView::click_option),
-                on_remember_click: plain(state::ImportView::click_remember),
-                on_back_click: plain(state::ImportView::click_back),
-                on_continue_click: plain(state::ImportView::continue_import),
+                on_option_click: indexed(ImportPage::click_option),
+                on_remember_click: plain(ImportPage::click_remember),
+                on_back_click: plain(ImportPage::click_back),
+                on_continue_click: plain(ImportPage::click_continue),
             },
             cx,
         )
     }
 }
 
-fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) -> AnyElement {
+fn render(scroll_handle: &ScrollHandle, props: ImportPageProps, cx: &App) -> AnyElement {
     div()
         .id("import")
         .flex_1()
@@ -116,8 +102,8 @@ fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) ->
         .h_full()
         .flex()
         .flex_col()
-        .child(heading(props.state.rows.len(), cx))
-        .child(table_header(cx))
+        .child(heading(&props.view, cx))
+        .child(table_header(&props.view, cx))
         .child(
             div()
                 .id("import-rows")
@@ -127,7 +113,7 @@ fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) ->
                 .track_scroll(scroll_handle)
                 .children(
                     props
-                        .state
+                        .view
                         .rows
                         .iter()
                         .enumerate()
@@ -139,8 +125,9 @@ fn render(scroll_handle: &ScrollHandle, props: ImportPageProps<'_>, cx: &App) ->
 }
 
 /// The stepper (step 1 done, 2 current, 3 upcoming), the heading and the subline.
-fn heading(count: usize, cx: &App) -> impl IntoElement {
+fn heading(view: &ImportViewModel, cx: &App) -> impl IntoElement {
     let dash = || div().child("\u{2014}");
+    let step = |index: usize| view.steps.get(index).cloned().unwrap_or_default();
     div()
         .flex_none()
         .px(px(28.0))
@@ -157,41 +144,31 @@ fn heading(count: usize, cx: &App) -> impl IntoElement {
                 .text_size(px(11.0))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::faint_text(cx))
-                .child(
-                    div()
-                        .text_color(color::foreground(cx))
-                        .child(crate::msg::desktop_import_step_upload()),
-                )
+                .child(div().text_color(color::foreground(cx)).child(step(0)))
                 .child(dash())
-                .child(
-                    div()
-                        .text_color(color::accent_text(cx))
-                        .child(crate::msg::desktop_import_step_match()),
-                )
+                .child(div().text_color(color::accent_text(cx)).child(step(1)))
                 .child(dash())
-                .child(crate::msg::desktop_import_step_confirm()),
+                .child(step(2)),
         )
         .child(
             div()
                 .mb(px(4.0))
                 .text_size(px(26.0))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(crate::msg::desktop_import_title()),
+                .child(view.title.clone()),
         )
         .child(
             div()
                 .text_size(px(11.5))
                 .text_color(color::faint_text(cx))
-                .child(crate::msg::desktop_import_subline(
-                    i64::try_from(count).unwrap_or(i64::MAX),
-                    import::STATEMENT_FILE,
-                )),
+                .child(view.subline.clone()),
         )
 }
 
 /// `padding:8px 28px; font:800 10px; color:#9b9797`.
-fn table_header(cx: &App) -> impl IntoElement {
-    let fixed = |width, label: String| div().w(width).flex_none().child(upper(&label));
+fn table_header(view: &ImportViewModel, cx: &App) -> impl IntoElement {
+    let columns = &view.columns;
+    let fixed = |width, label: &str| div().w(width).flex_none().child(upper(label));
     div()
         .flex_none()
         .flex()
@@ -203,76 +180,40 @@ fn table_header(cx: &App) -> impl IntoElement {
         .text_size(px(10.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_color(color::faint_text(cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .child(upper(&crate::msg::desktop_import_column_raw())),
-        )
-        .child(fixed(
-            PAYEE_WIDTH,
-            crate::msg::desktop_import_column_payee(),
-        ))
-        .child(fixed(
-            CATEGORY_WIDTH,
-            crate::msg::desktop_import_column_category(),
-        ))
-        .child(fixed(
-            STATUS_WIDTH,
-            crate::msg::desktop_import_column_status(),
-        ))
+        .child(div().flex_1().min_w(px(0.0)).child(upper(&columns.raw)))
+        .child(fixed(PAYEE_WIDTH, &columns.payee))
+        .child(fixed(CATEGORY_WIDTH, &columns.category))
+        .child(fixed(STATUS_WIDTH, &columns.status))
         .child(
             div()
                 .w(AMOUNT_WIDTH)
                 .flex_none()
                 .flex()
                 .justify_end()
-                .child(upper(&crate::msg::desktop_import_column_amount())),
+                .child(upper(&columns.amount)),
         )
 }
 
-/// What a cell shows when its select is closed.
-fn payee_text(row: &ImportRow, payees: &[Payee]) -> Option<String> {
-    match row.payee.as_ref()? {
-        RowPayee::Rule(id) | RowPayee::Existing(id) => {
-            lib_payees::get(payees, *id).map(|p| p.name.clone())
-        }
-        RowPayee::Create(name) => Some(create_label(name)),
-    }
-}
-
-fn category_text(row: &ImportRow, categories: &CategoryOptions) -> Option<String> {
-    let id = row.category?;
-    categories
-        .ids
-        .iter()
-        .position(|candidate| *candidate == Some(id))
-        .map(|index| categories.labels[index].clone())
-}
-
-fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &App) -> AnyElement {
-    let state = props.state;
-    let selected = state.selected == index;
-    let unresolved = !matches!(row.payee, Some(RowPayee::Rule(_))) || row.category.is_none();
-    let open = state
-        .open_select
-        .as_ref()
-        .filter(|(open_row, _, _)| *open_row == index);
+fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) -> AnyElement {
+    let view = &props.view;
+    let selected = view.selected == index;
+    let unresolved = row.status != RowStatus::RuleMatch;
+    let open = view.open_select.as_ref().filter(|open| open.row == index);
     let show_selects = unresolved || open.is_some();
     let on_row_click = props.on_row_click.clone();
     let hover = color::hover(cx);
+    let open_list = |which: RowSelect| {
+        open.filter(|open| open.which == which)
+            .zip(props.select_range.clone())
+    };
 
     let payee_cell = if show_selects {
-        let choices = payee_choices(props.payees, &row.raw);
         cell_select(
             SelectCell {
                 id: format!("import-payee-{index}"),
-                text: payee_text(row, props.payees)
-                    .unwrap_or_else(crate::msg::desktop_import_choose_payee),
-                missing: row.payee.is_none(),
-                open: open
-                    .filter(|(_, select, _)| *select == RowSelect::Payee)
-                    .map(|(_, _, state)| (state, choices.labels.as_slice())),
+                text: row.payee.clone(),
+                missing: !row.payee_chosen,
+                open: open_list(RowSelect::Payee),
                 on_click: select_click(props, index, RowSelect::Payee),
                 on_option_click: props.on_option_click.clone(),
             },
@@ -282,19 +223,16 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
         div()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .truncate()
-            .child(payee_text(row, props.payees).unwrap_or_default())
+            .child(row.payee.clone())
             .into_any_element()
     };
     let category_cell = if show_selects {
         cell_select(
             SelectCell {
                 id: format!("import-category-{index}"),
-                text: category_text(row, props.categories)
-                    .unwrap_or_else(crate::msg::desktop_import_choose_category),
-                missing: row.category.is_none(),
-                open: open
-                    .filter(|(_, select, _)| *select == RowSelect::Category)
-                    .map(|(_, _, state)| (state, props.categories.labels.as_slice())),
+                text: row.category.clone(),
+                missing: !row.category_chosen,
+                open: open_list(RowSelect::Category),
                 on_click: select_click(props, index, RowSelect::Category),
                 on_option_click: props.on_option_click.clone(),
             },
@@ -304,10 +242,9 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
         div()
             .text_color(color::muted(cx))
             .truncate()
-            .child(category_text(row, props.categories).unwrap_or_default())
+            .child(row.category.clone())
             .into_any_element()
     };
-    let (negative, amount) = crate::view::format::amount(&row.amount);
 
     div()
         .debug_selector(move || format!("import-row-{index}"))
@@ -345,13 +282,11 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
         )
         .child(div().w(PAYEE_WIDTH).flex_none().child(payee_cell))
         .child(div().w(CATEGORY_WIDTH).flex_none().child(category_cell))
-        .child(
-            div()
-                .w(STATUS_WIDTH)
-                .flex_none()
-                .flex()
-                .child(status_tag(row.status(), cx)),
-        )
+        .child(div().w(STATUS_WIDTH).flex_none().flex().child(status_tag(
+            row.status,
+            row.status_label.clone(),
+            cx,
+        )))
         .child(
             div()
                 .w(AMOUNT_WIDTH)
@@ -359,13 +294,15 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
                 .flex()
                 .justify_end()
                 .whitespace_nowrap()
-                .when(negative, |this| this.text_color(color::negative_text(cx)))
-                .child(amount),
+                .when(row.negative, |this| {
+                    this.text_color(color::negative_text(cx))
+                })
+                .child(row.amount.clone()),
         )
         .into_any_element()
 }
 
-fn select_click(props: &ImportPageProps<'_>, index: usize, select: RowSelect) -> OnClick {
+fn select_click(props: &ImportPageProps, index: usize, select: RowSelect) -> OnClick {
     let on_select_click = props.on_select_click.clone();
     Rc::new(move |window: &mut Window, cx: &mut App| on_select_click(index, select, window, cx))
 }
@@ -375,8 +312,8 @@ struct SelectCell<'a> {
     text: String,
     /// Draws the red border: nothing chosen yet.
     missing: bool,
-    /// The open list's state and options, when this select is the open one.
-    open: Option<(&'a SelectState, &'a [String])>,
+    /// The open select and the options of it to draw, when this select is the open one.
+    open: Option<(&'a OpenSelectView, Range<usize>)>,
     on_click: OnClick,
     on_option_click: OnOptionClick,
 }
@@ -433,7 +370,8 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                         }),
                 ),
         )
-        .children(open.map(|(state, options)| {
+        .children(open.map(|(open, range)| {
+            let options = &open.select.options;
             div()
                 .flex()
                 .flex_col()
@@ -441,8 +379,8 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                 .border_1()
                 .border_t_0()
                 .border_color(color::border(cx))
-                .children(state.visible_range(options.len()).map(|option| {
-                    let highlighted = option == state.highlight();
+                .children(range.map(|option| {
+                    let highlighted = option == open.highlight;
                     let on_option_click = on_option_click.clone();
                     div()
                         .id(SharedString::from(format!("{id}-option-{option}")))
@@ -463,7 +401,7 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                             cx.stop_propagation();
                             on_option_click(option, window, cx)
                         })
-                        .child(options[option].clone())
+                        .child(options[option].label.clone())
                 }))
         }))
         .into_any_element()
@@ -471,32 +409,17 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
 
 /// `.tag` 10px, `padding:2px 7px`: neutral for a rule match or a hand-picked Payee, accent for a
 /// new Payee, a red outline for a row that needs review.
-fn status_tag(status: RowStatus, cx: &App) -> impl IntoElement {
-    let (label, background, text, border): (String, Option<Rgba>, Rgba, Rgba) = match status {
-        RowStatus::RuleMatch => (
-            crate::msg::desktop_import_status_rule_match(),
-            Some(color::chrome(cx)),
-            color::muted(cx),
-            color::border(cx),
-        ),
-        RowStatus::Matched => (
-            crate::msg::desktop_import_status_matched(),
-            Some(color::chrome(cx)),
-            color::muted(cx),
-            color::border(cx),
-        ),
+fn status_tag(status: RowStatus, label: String, cx: &App) -> impl IntoElement {
+    let (background, text, border): (Option<Rgba>, Rgba, Rgba) = match status {
+        RowStatus::RuleMatch | RowStatus::Matched => {
+            (Some(color::chrome(cx)), color::muted(cx), color::border(cx))
+        }
         RowStatus::NewPayee => (
-            crate::msg::desktop_import_status_new_payee(),
             Some(color::accent(cx)),
             color::selection_text(cx),
             color::accent(cx),
         ),
-        RowStatus::NeedsReview => (
-            crate::msg::desktop_import_status_needs_review(),
-            None,
-            color::accent_text(cx),
-            color::accent(cx),
-        ),
+        RowStatus::NeedsReview => (None, color::accent_text(cx), color::accent(cx)),
     };
     div()
         .mt(px(2.0))
@@ -513,10 +436,14 @@ fn status_tag(status: RowStatus, cx: &App) -> impl IntoElement {
 
 /// The footer bar: the summary, the remember checkbox, **back** and **continue** (disabled while
 /// any row needs review).
-fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
-    let summary = import::summary(&props.state.rows);
-    let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
-    let can_continue = props.state.can_continue();
+fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
+    let view = &props.view;
+    let summary = &view.summary;
+    let can_continue = view.can_continue;
+    let needs_review = view
+        .rows
+        .iter()
+        .any(|row| row.status == RowStatus::NeedsReview);
     let on_remember_click = props.on_remember_click.clone();
     let on_back_click = props.on_back_click.clone();
     let on_continue_click = props.on_continue_click.clone();
@@ -540,25 +467,19 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
                 .flex()
                 .flex_wrap()
                 .gap(px(4.0))
-                .child(crate::msg::desktop_import_summary_rows(count(summary.rows)))
+                .child(summary.rows.clone())
                 .child(dot())
-                .child(crate::msg::desktop_import_summary_matched(
-                    &summary.rule_matched.to_string(),
-                ))
+                .child(summary.matched.clone())
                 .child(dot())
-                .child(crate::msg::desktop_import_summary_new(count(
-                    summary.new_payees,
-                )))
+                .child(summary.new_payees.clone())
                 .child(dot())
                 .child(
                     div()
-                        .when(summary.needs_review > 0, |this| {
+                        .when(needs_review, |this| {
                             this.text_color(color::accent_text(cx))
                                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         })
-                        .child(crate::msg::desktop_import_summary_review(count(
-                            summary.needs_review,
-                        ))),
+                        .child(summary.needs_review.clone()),
                 ),
         )
         .child(
@@ -578,14 +499,14 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
                         .justify_center()
                         .border_1()
                         .border_color(color::foreground(cx))
-                        .when(props.state.remember, |this| {
+                        .when(view.remember, |this| {
                             this.bg(color::foreground(cx))
                                 .text_color(color::background(cx))
                                 .text_size(px(9.0))
                                 .child("\u{2713}")
                         }),
                 )
-                .child(crate::msg::desktop_import_remember()),
+                .child(view.remember_label.clone()),
         )
         .child(div().flex_1())
         .child(
@@ -599,7 +520,7 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
                 .text_color(color::foreground(cx))
                 .hover(move |style| style.bg(hover))
                 .on_click(move |_event, window, cx| on_back_click(window, cx))
-                .child(crate::msg::desktop_import_back()),
+                .child(view.back.clone()),
         )
         .child(
             div()
@@ -620,21 +541,7 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
                         this.opacity(0.38)
                     }
                 })
-                .child(crate::msg::desktop_import_continue())
+                .child(view.continue_label.clone())
                 .child(div().opacity(0.75).child("enter")),
         )
-}
-
-/// The 6e Import step's status-line legend. The handoff's `enter accept suggestion` has no
-/// separate key here: a suggestion is pre-selected, so `enter` continues (#290).
-pub(crate) fn import_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("p", crate::msg::desktop_hint_payee()),
-        ("c", crate::msg::desktop_hint_category()),
-        ("n", crate::msg::desktop_hint_create_new_payee()),
-        ("r", crate::msg::desktop_hint_remember_rules()),
-        ("enter", crate::msg::desktop_hint_continue()),
-        ("esc", crate::msg::desktop_hint_back()),
-    ]
 }

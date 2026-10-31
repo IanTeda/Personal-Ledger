@@ -9,7 +9,6 @@ pub mod documents;
 pub mod event;
 pub(crate) mod format;
 pub mod help;
-pub mod import;
 pub mod placeholder;
 
 use gpui::{ScrollHandle, point, px};

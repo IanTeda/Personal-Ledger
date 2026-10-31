@@ -12,9 +12,10 @@
 //! modes in the bin (`InputMode::Search`, `InputMode::Filter`) until their own slice: the page
 //! enters and leaves them through [`ViewEvent`] as the Presenter opens and closes them.
 //!
-//! The rows name Accounts, Categories, Payees, Tags and Units, read through the stores, and the
-//! writers not yet on a module (an Import commit, a Tag merge) write through `LedgerStore`, so the
-//! page redraws on every `LedgerChanged` naming any of them.
+//! The rows name Accounts, Categories, Payees, Tags and Units, read through the stores. A writer
+//! not yet on a module (a Tag merge) writes through `LedgerStore`, and a module that writes the
+//! Transactions (an Import commit) refreshes its read copy, so the page redraws on every
+//! `LedgerChanged` naming any of them.
 
 use gpui::UniformListScrollHandle;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription};
@@ -305,8 +306,11 @@ impl TransactionsPage {
         cx.emit(ViewEvent::Navigate(Noun::Transactions));
     }
 
-    /// Puts the table back on its first row, after an Import commit lands on the page. Not an input
-    /// of its own: the commit's input has already committed, and a move writes nothing.
+    /// Puts the table back on its first row, after an Import commit lands on the page
+    /// ([`router::first_row`]). Not an input of its own: it runs inside the commit's input, and a
+    /// move writes nothing.
+    ///
+    /// [`router::first_row`]: crate::transactions::router::first_row
     pub(crate) fn reset_selection(&mut self, cx: &mut Context<'_, Self>) {
         self.handle(TransactionsPageEvent::Move(Step::First), cx);
     }

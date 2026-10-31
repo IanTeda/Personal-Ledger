@@ -17,8 +17,8 @@ impl Root {
         self.ledger.read(cx).ledger().transactions()
     }
 
-    /// `:import`: opens the stubbed 6e step on the seeded statement, the Import View shown in place
-    /// of the Transactions list (#284, #924).
+    /// `:import`: opens the stubbed 6e step on the seeded statement, the Import step shown in place
+    /// of the Transactions list (#284, #924, #947).
     pub(super) fn open_import(&mut self, cx: &mut App) {
         self.navigate(NavInput::Show(Noun::Transactions));
         self.navigate(NavInput::Focus(FocusZone::View));

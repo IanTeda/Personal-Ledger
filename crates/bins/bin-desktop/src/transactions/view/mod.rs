@@ -6,9 +6,9 @@
 //! destination; this module draws its view model: the `header` (title, count line, add button,
 //! chip row, search), the `table` (column header and virtualised rows) and the `footer`, stacked as
 //! a fixed header, a fixed column header, the one flexing list and a fixed footer, with the filter
-//! popover drawn over the window while it is open. The Import View shows in its place while it is
-//! open (`view::import`). Every click is a call into the page Entity, so a click and a key reach
-//! the Presenter alike.
+//! popover drawn over the window while it is open. The Import step shows in its place while it is
+//! open (`crate::transaction_import`). Every click is a call into the page Entity, so a click and
+//! a key reach the Presenter alike.
 
 mod filter_popover;
 mod footer;

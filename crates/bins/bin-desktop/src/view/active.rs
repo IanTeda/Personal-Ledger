@@ -11,10 +11,11 @@ use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::{
     budgets::state::BudgetsView, dashboard::state::DashboardView, documents::state::DocumentsView,
-    event::Reveal, import::state::ImportView,
+    event::Reveal,
 };
 use crate::bills::BillsPage;
 use crate::settings::state::SettingsView;
+use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
 use crate::{
     navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
@@ -30,9 +31,9 @@ pub enum ActiveViewEntity {
     Budgets(Entity<BudgetsView>),
     /// The Transactions list.
     Transactions(Entity<TransactionsPage>),
-    /// The Transactions destination's Import View, shown in place of the list while it is open: a
-    /// legacy Entity until #810 makes Import a module.
-    Import(Entity<ImportView>),
+    /// The Transactions destination's Import step, shown in place of the list while it is open: the
+    /// Transaction Import module's View.
+    Import(Entity<ImportPage>),
     Documents(Entity<DocumentsView>),
     /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
     /// forwarded to by the View; `Root` still draws the other pages with Ledger data and handles
@@ -56,7 +57,7 @@ pub struct ViewEntities {
     pub bills: Entity<BillsPage>,
     pub budgets: Entity<BudgetsView>,
     pub transactions: Entity<TransactionsPage>,
-    pub import: Entity<ImportView>,
+    pub import: Entity<ImportPage>,
     pub documents: Entity<DocumentsView>,
     pub settings: Entity<SettingsView>,
 }
@@ -109,18 +110,15 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the focused module's keymap takes, by `chord`: the Bills or Transactions page's, or a
-    /// Settings page that is a module's View. Returns whether it took the key.
+    /// A key the focused module's keymap takes, by `chord`: the Bills or Transactions page's, the
+    /// Import step's, or a Settings page that is a module's View. Returns whether it took the key.
     pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Dashboard(_)
-            | Self::Budgets(_)
-            | Self::Import(_)
-            | Self::Documents(_)
-            | Self::Shell(_) => false,
+            Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Dashboard(_) | Self::Budgets(_) | Self::Documents(_) | Self::Shell(_) => false,
         }
     }
 
@@ -131,10 +129,10 @@ impl ActiveViewEntity {
             Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            Self::Import(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            Self::Shell(_) => false,
+            // Every step key is its keymap's.
+            Self::Import(_) | Self::Shell(_) => false,
         }
     }
 
@@ -147,7 +145,7 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            // The step takes its keys ahead of the Shell's fallback.
+            // Every step key is its keymap's.
             Self::Import(_) | Self::Shell(_) => false,
         }
     }
@@ -162,7 +160,7 @@ impl ActiveViewEntity {
             }
             Self::Documents(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            // `j`/`k` are the step's own keys; it has no jumps or half pages.
+            // The step's movements are its keymap's.
             Self::Import(_) | Self::Shell(_) => {}
         }
     }
@@ -236,7 +234,7 @@ impl ActiveViewEntity {
     }
 
     /// The narrowest the View lays out at, when it has content that must not squeeze (the
-    /// Transactions table, whose width the Import View keeps). A View area narrower than this
+    /// Transactions table, whose width the Import step keeps). A View area narrower than this
     /// scrolls sideways (ADR-0042).
     pub fn min_width(&self) -> Option<gpui::Pixels> {
         match self {

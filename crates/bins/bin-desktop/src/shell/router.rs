@@ -76,8 +76,8 @@ type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
 
 use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
+use crate::transaction_import::{ImportPage, ImportStores};
 use crate::transactions::TransactionsPage;
-use crate::view::import::state::{ImportCommitted, ImportView};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
@@ -355,6 +355,14 @@ impl Root {
             storage.tags.clone(),
             settings.units.ports.clone(),
         );
+        // The Import writes the Payees and Transactions stores and reads the Accounts and
+        // Categories, as their modules hold them.
+        let import_stores = ImportStores {
+            payees: storage.payees.clone(),
+            transactions: storage.transactions.clone(),
+            accounts: storage.accounts.clone(),
+            categories: storage.categories.clone(),
+        };
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -384,16 +392,9 @@ impl Root {
         let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
-        let import_view = cx.new(|cx| ImportView::new(ledger.clone(), &clock, cx));
+        let import_view = cx.new(|_| ImportPage::new(import_stores, ledger.clone(), clock.clone()));
         // The status line reads the step's state, and which View shows turns on it being open.
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
-        // A commit lands on the Transactions list, from its first row.
-        let import_committed = cx.subscribe(&import_view, |shell, _, _: &ImportCommitted, cx| {
-            shell
-                .views
-                .transactions
-                .update(cx, |view, cx| view.reset_selection(cx));
-        });
         let budgets_current = ledger
             .read(cx)
             .ledger()
@@ -495,7 +496,6 @@ impl Root {
                 transactions_subscription,
                 transactions_view_observer,
                 import_view_observer,
-                import_committed,
                 documents_subscription,
                 documents_view_observer,
                 tags_subscription,
@@ -635,6 +635,9 @@ impl Root {
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
         self.views
             .transactions
+            .update(cx, |view, _| view.set_keymaps(config));
+        self.views
+            .import
             .update(cx, |view, _| view.set_keymaps(config));
     }
 

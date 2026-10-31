@@ -1,7 +1,7 @@
-//! What the integration tests read back of the Import View (ADR-0030), built by its Entity from
-//! its own state (ADR-0037).
+//! What the integration tests read back of the Import step (ADR-0030), built by its Entity from
+//! the Presenter's view model (ADR-0037).
 
-use super::state::ImportView;
+use super::page::ImportPage;
 
 /// One Import row: the raw statement text and its status.
 #[doc(hidden)]
@@ -12,7 +12,7 @@ pub struct ImportRowSnapshot {
     pub status: String,
 }
 
-/// The Import View's state.
+/// The Import step's state.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportSnapshot {
@@ -24,27 +24,24 @@ pub struct ImportSnapshot {
     pub can_continue: bool,
 }
 
-impl ImportView {
-    /// The Import View for a test; `None` while it is not showing.
+impl ImportPage {
+    /// The Import step for a test; `None` while it is not showing.
     #[doc(hidden)]
     pub fn snapshot(&self) -> Option<ImportSnapshot> {
-        let state = self.state.as_ref()?;
+        let view = self.view_model()?;
         Some(ImportSnapshot {
-            rows: state
+            rows: view
                 .rows
                 .iter()
                 .map(|row| ImportRowSnapshot {
                     raw: row.raw.clone(),
-                    status: format!("{:?}", row.status()),
+                    status: format!("{:?}", row.status),
                 })
                 .collect(),
-            selected: state.selected,
-            remember: state.remember,
-            open_select: state
-                .open_select
-                .as_ref()
-                .map(|(_, select, _)| format!("{select:?}")),
-            can_continue: state.can_continue(),
+            selected: view.selected,
+            remember: view.remember,
+            open_select: view.open_select.map(|open| format!("{:?}", open.which)),
+            can_continue: view.can_continue,
         })
     }
 }

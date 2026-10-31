@@ -15,7 +15,7 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_payees::{Payee, PayeeCategory};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, Keymap, SELECT};
+use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, DialogHint, SelectView};
 
 use crate::entity::{ImportRow, PayeeChoices, RowPayee, RowStatus, cleaned_name, summary};
@@ -56,15 +56,19 @@ pub enum ImportEvent {
     Cancel,
 }
 
-/// A row as drawn.
+/// A row as drawn. `payee` and `category` read "choose …" until chosen, which `payee_chosen` and
+/// `category_chosen` say, so a Client can mark the empty select.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowLine {
     pub raw: String,
     pub payee: String,
+    pub payee_chosen: bool,
     pub category: String,
+    pub category_chosen: bool,
     pub status: RowStatus,
     pub status_label: String,
     pub amount: String,
+    pub negative: bool,
 }
 
 /// The one open select: its row, which select, and its options as `lib-viper`'s [`SelectView`].
@@ -383,13 +387,19 @@ impl ImportPresenter {
         let rows = self
             .rows
             .iter()
-            .map(|row| RowLine {
-                raw: row.raw.clone(),
-                payee: self.payee_label(row),
-                category: self.category_label(row.category),
-                status: row.status(),
-                status_label: status_label(row.status()),
-                amount: format_amount(&row.amount, AmountStyle::own().with_plus()).text,
+            .map(|row| {
+                let amount = format_amount(&row.amount, AmountStyle::own());
+                RowLine {
+                    raw: row.raw.clone(),
+                    payee: self.payee_label(row),
+                    payee_chosen: row.payee.is_some(),
+                    category: self.category_label(row.category),
+                    category_chosen: row.category.is_some(),
+                    status: row.status(),
+                    status_label: status_label(row.status()),
+                    amount: amount.text,
+                    negative: amount.is_negative,
+                }
             })
             .collect();
         ImportViewModel {
@@ -468,6 +478,7 @@ impl ImportPresenter {
             ];
         }
         vec![
+            hint(&[MOVE_DOWN, MOVE_UP], msg::transaction_import_hint_row()),
             hint(&[PICK_PAYEE], msg::transaction_import_hint_payee()),
             hint(&[PICK_CATEGORY], msg::transaction_import_hint_category()),
             hint(
@@ -888,11 +899,12 @@ mod tests {
         let mut step = Harness::new();
         let rows = import_keymap(&KeyBindingConfig::default());
         let legend_rows = legend(&step.presenter.view_model().hints, &rows);
-        assert_eq!(legend_rows.len(), 6);
+        assert_eq!(legend_rows.len(), 7);
         assert!(legend_rows.iter().all(|(chord, action)| {
             !chord.is_empty() && !chord.split('/').any(str::is_empty) && !action.is_empty()
         }));
-        assert_eq!(legend_rows[0], ("p".to_string(), "payee".to_string()));
+        assert_eq!(legend_rows[0], ("j/k".to_string(), "row".to_string()));
+        assert_eq!(legend_rows[1], ("p".to_string(), "payee".to_string()));
 
         step.send(ImportEvent::Open(RowSelect::Payee));
         let select = import_select_keymap(&KeyBindingConfig::default());
@@ -913,6 +925,6 @@ mod tests {
         let moved = import_keymap(&config);
         step.send(ImportEvent::Cancel);
         let legend_moved = legend(&step.presenter.view_model().hints, &moved);
-        assert_eq!(legend_moved[2].0, "N");
+        assert_eq!(legend_moved[3].0, "N");
     }
 }

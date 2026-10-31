@@ -738,6 +738,7 @@ dependencies = [
  "lib_tags",
  "lib_toast",
  "lib_tracing",
+ "lib_transaction_import",
  "lib_transactions",
  "lib_unit_deletion",
  "lib_units",

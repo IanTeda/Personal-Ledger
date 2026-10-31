@@ -88,6 +88,46 @@ fn escape_leaves_the_import_step(app: &mut TestAppContext) {
     assert_eq!(ui.noun(), Noun::Transactions);
 }
 
+/// The step's keys are its module's keymap, so `[keybindings]` moves them and the legend follows.
+#[gpui::test]
+fn a_keybindings_override_moves_the_new_payee_key(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("import.new_payee", "N"));
+    ui.press(": i m p o r t enter");
+    let candle = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .position(|row| row.raw == "SP AUSSIE CANDLE CO")
+        .expect("the seeded statement has the candle shop");
+    select_row(&mut ui, candle);
+    // An existing Payee and a Category, so a new Payee shows as the row's status changing.
+    ui.press("p j enter");
+    ui.press("c j enter");
+    assert_eq!(
+        ui.import().expect("import is open").rows[candle].status,
+        "Matched"
+    );
+
+    ui.press("n");
+    assert_eq!(
+        ui.import().expect("import is open").rows[candle].status,
+        "Matched",
+        "n is no longer bound"
+    );
+    ui.press("shift-n");
+    assert_eq!(
+        ui.import().expect("import is open").rows[candle].status,
+        "NewPayee"
+    );
+    assert!(
+        ui.status_as_shortcuts()
+            .iter()
+            .any(|(action, chord)| action == "create new payee" && chord == "N"),
+        "the legend names the moved key"
+    );
+}
+
 /// Moves the Import selection to row `index` with `j` and `k`.
 #[expect(
     clippy::expect_used,
@@ -200,11 +240,14 @@ fn a_refused_commit_raises_an_error_toast_naming_the_clash(app: &mut TestAppCont
         .cloned()
         .expect("a Toast says so");
     assert_eq!(toast.kind, "Error");
-    assert_eq!(toast.text, "Aussie Candle Co already exists");
+    assert_eq!(
+        toast.text,
+        "A payee named \"Aussie Candle Co\" already exists, so nothing was imported."
+    );
 }
 
-/// The Import View and the Transactions list are separate Entities, so the commit's landing on
-/// the list's first row is a hand-off between them.
+/// The Import step and the Transactions list are separate Entities, so the commit's landing on
+/// the list's first row is a hand-off between them, through the Transactions Router.
 #[gpui::test]
 fn a_commit_lands_on_the_transactions_list_from_its_first_row(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);

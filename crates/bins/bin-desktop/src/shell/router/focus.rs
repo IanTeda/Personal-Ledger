@@ -27,7 +27,7 @@ impl Root {
     /// A new noun's view is a different (usually much shorter) length -- carrying over the
     /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
     /// fresh noun starts scrolled to the top, and the View that is now the destination is told
-    /// (`on_enter`), so it can reset its own scroll and focus. The Import View is the Transactions
+    /// (`on_enter`), so it can reset its own scroll and focus. The Import step is the Transactions
     /// destination's second View: entering it closes the step, so the list it uncovers is told too.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_x_scroll_handle.set_offset(gpui::Point::default());

@@ -1,7 +1,8 @@
 //! The Transactions module's entry point for other modules' Routers, as
 //! `bill_payments::router::open_pay` is for the Pay Dialog: [`show`] and [`show_filtered`] hand
 //! the page what to show and ask the Shell to make it the destination. Every hand-off into the
-//! page calls one of them, from Bills, Documents, Accounts, Payees, Tags and the Budgets detail.
+//! page calls one of them, from Bills, Documents, Accounts, Payees, Tags and the Budgets detail,
+//! and the Import's commit lands through [`first_row`].
 
 use gpui::{App, Entity, Global, WeakEntity};
 use lib_core::TransactionId;
@@ -28,6 +29,12 @@ pub fn show(cx: &mut App, id: TransactionId) {
 /// Shows the Transactions page filtered to `filters`, from its first row.
 pub fn show_filtered(cx: &mut App, filters: TransactionFilters) {
     hand_off(cx, |page, cx| page.show_filtered(filters, cx));
+}
+
+/// Puts the Transactions page back on its first row, where an Import commit lands. The page is
+/// already the destination, the Noun staying Transactions under the Import.
+pub fn first_row(cx: &mut App) {
+    hand_off(cx, TransactionsPage::reset_selection);
 }
 
 /// Runs `hand_off` on the installed page. Without one (a part built with no Shell) there is

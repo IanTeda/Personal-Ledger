@@ -431,8 +431,8 @@ impl KeyRoute for Keys<'_, '_> {
         shell.view_has_keys() && shell.active_view_entity(self.cx).module_key(chord, self.cx)
     }
 
-    /// The View's keys that sit ahead of the Shell's fallback (Budgets' `tab`, the Import step,
-    /// the Documents keys, the Settings pages' own keys).
+    /// The View's keys that sit ahead of the Shell's fallback (Budgets' `tab`, the Documents keys,
+    /// the Settings pages' own keys).
     fn view(&mut self) -> bool {
         self.shell.handle_view_key_ahead(self.keystroke, self.cx)
     }

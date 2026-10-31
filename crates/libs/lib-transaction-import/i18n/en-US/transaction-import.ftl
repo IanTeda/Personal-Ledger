@@ -50,6 +50,7 @@ transaction-import-continue = continue
 
 ## The status line: the legend's labels and the right-hand text.
 
+transaction-import-hint-row = row
 transaction-import-hint-payee = payee
 transaction-import-hint-category = category
 transaction-import-hint-create-new-payee = create new payee
