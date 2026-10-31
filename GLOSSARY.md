@@ -305,6 +305,18 @@ _Avoid_: Transaction Line — Split is this glossary's canonical term (shorter, 
 A single-entry record of an amount moving against exactly one Transaction Account or Credit Card Account — the two Account Kinds that accept Transactions directly (see Account Kind, above) — on a date, carrying a Transaction Status and, independently, a Flagged marker. Composed of one or more Splits (see above), which carry the Category, optional Payee, and Tags — a plain Transaction (one Category, one Payee) is just the one-Split case, not a distinct shape. Personal Ledger is deliberately single-entry, not double-entry (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)) — a Transaction, and each of its Splits, is one row, not a balanced pair; splitting a Transaction's amount across several Categories is not the same thing as double-entry bookkeeping's balanced debit/credit pairs across Accounts.
 _Avoid_: Posting, entry, ledger entry — these imply the balanced debit/credit pairs of double-entry bookkeeping, which Personal Ledger does not use.
 
+**Import**:
+The step in the Transactions destination where the lines of a bank statement are given a Payee and a Category and then committed as Transactions in one action. Each line is an Import row; the commit creates any new Payees, remembers their match rules when the user asks, and adds the Transactions, or writes nothing if it is refused. It brings statement lines into the Ledger, never a file into the Documents Inbox.
+_Avoid_: Filing (see **File**), upload, sync.
+
+**Import row**:
+One statement line in an Import: its raw description, its amount and date, the Payee it resolves to (or a new Payee's cleaned name) and its Category. It has one Row status.
+_Avoid_: line item, entry, Split (a Split belongs to a Transaction; an Import row only becomes one on commit).
+
+**Row status**:
+Where an Import row stands: **rule match** (its Payee came from a Payee Alias), **new payee** (the commit creates its Payee), **matched** (the user picked a Payee by hand), or **needs review** (its Payee or Category is unresolved). The Import cannot be committed while any row needs review.
+_Avoid_: Transaction Status (that is the reconciliation state of a saved Transaction).
+
 **Transaction Status**:
 Where a Transaction sits in the reconciliation workflow — one of:
 - **Open**: recorded but not yet confirmed against any external source. The default
