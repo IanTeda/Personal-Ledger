@@ -13,7 +13,7 @@ pub use account_form::{
 };
 pub use accounts_page::{
     AccountColumns, AccountGroupView, AccountLine, AccountsCommand, AccountsPageEvent,
-    AccountsPagePresenter, AccountsPageViewModel, Hint,
+    AccountsPagePresenter, AccountsPageViewModel,
 };
 
 use lib_core::InstitutionId;

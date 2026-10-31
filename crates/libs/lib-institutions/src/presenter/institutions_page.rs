@@ -9,6 +9,7 @@
 use lib_core::InstitutionId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::view::Hint;
 
 use crate::msg;
 use crate::protocols::{InstitutionsDialog, InstitutionsOutcome, InstitutionsRouter, SharedPorts};
@@ -115,12 +116,6 @@ pub struct InstitutionLine {
     pub id: InstitutionId,
     pub name: String,
     pub products: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct InstitutionsPagePresenter {

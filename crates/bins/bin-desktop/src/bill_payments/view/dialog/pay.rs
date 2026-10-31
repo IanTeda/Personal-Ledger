@@ -32,9 +32,9 @@ use crate::form::viper::typed;
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::theme::color;
 use lib_shell::DialogCommand;
+use lib_shell::Hint;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
 /// The Dialog's width: 8d's.
@@ -174,13 +174,10 @@ impl HostedDialog for PayDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
-            (key(BACK), crate::msg::desktop_hint_cancel()),
-            (key(SELECT), crate::msg::desktop_hint_confirm()),
-            ("j/k".to_string(), crate::msg::desktop_hint_choose()),
-            (
-                "\u{2190}/\u{2192}".to_string(),
-                crate::msg::desktop_hint_switch_panel(),
-            ),
+            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
+            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
+            Hint::new("j/k", crate::msg::desktop_hint_choose()),
+            Hint::new("\u{2190}/\u{2192}", crate::msg::desktop_hint_switch_panel()),
         ])
     }
 

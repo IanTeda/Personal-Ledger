@@ -230,7 +230,7 @@ impl Dialog for DocumentTypesDialog {
     }
 
     /// The legend: Remove and the notice have no fields to `tab` through.
-    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
         let mut hints = vec![
             ("esc", crate::msg::desktop_hint_cancel()),
             ("enter", crate::msg::desktop_hint_confirm()),

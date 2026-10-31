@@ -26,9 +26,9 @@ use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::tags::ports::{self, LedgerPorts};
 use crate::tags::router::DialogRouter;
+use lib_shell::Hint;
 
 /// The open Tags Dialog's clicks.
 type Clicks = DialogClicks<TagsDialog>;
@@ -172,28 +172,31 @@ impl HostedDialog for TagsDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         let mut hints = vec![
-            (key(BACK), crate::msg::desktop_hint_cancel()),
-            (key(SELECT), crate::msg::desktop_hint_confirm()),
+            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
+            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
         ];
         match &self.view {
             View::Form(presenter) => {
-                hints.push((key(NEXT_FIELD), crate::msg::desktop_hint_next_field()));
-                hints.push((
-                    "\u{2190}/\u{2192}".to_string(),
+                hints.push(Hint::new(
+                    key(NEXT_FIELD),
+                    crate::msg::desktop_hint_next_field(),
+                ));
+                hints.push(Hint::new(
+                    "\u{2190}/\u{2192}",
                     crate::msg::desktop_hint_colour(),
                 ));
                 if presenter.view_model().editing {
-                    hints.push((
-                        "space".to_string(),
-                        crate::msg::desktop_hint_toggle_active(),
-                    ));
+                    hints.push(Hint::new("space", crate::msg::desktop_hint_toggle_active()));
                 }
             }
             View::Remove(_) => {}
             View::Merge(..) => {
-                hints.push((key(NEXT_FIELD), crate::msg::desktop_hint_next_field()));
-                hints.push((
-                    "\u{2191}/\u{2193}".to_string(),
+                hints.push(Hint::new(
+                    key(NEXT_FIELD),
+                    crate::msg::desktop_hint_next_field(),
+                ));
+                hints.push(Hint::new(
+                    "\u{2191}/\u{2193}",
                     crate::msg::desktop_hint_choose(),
                 ));
             }

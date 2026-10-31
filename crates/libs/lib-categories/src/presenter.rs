@@ -11,7 +11,7 @@ mod delete_category;
 
 pub use categories_page::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel, CategoryColumns,
-    CategoryLine, CategoryTree, Hint,
+    CategoryLine, CategoryTree,
 };
 pub use category_form::{
     BudgetField, CategoryField, CategoryFormEvent, CategoryFormPresenter, CategoryFormViewModel,

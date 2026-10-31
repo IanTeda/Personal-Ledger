@@ -14,6 +14,8 @@ use lib_accounts::presenter::{
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
+use lib_shell::Hint;
+
 use crate::account_deletion::DeletionStores;
 use crate::accounts::SettingsAccountsSnapshot;
 use crate::accounts::ports::{self, DesktopPorts};
@@ -24,7 +26,6 @@ use crate::{
     navigation::command::AccountsVerb,
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
-    shell::view::statusline::Hint,
     view::event::{Reveal, ViewEvent},
 };
 
@@ -188,7 +189,7 @@ impl Page for AccountsPage {
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
     fn hints(&self, cx: &App) -> Vec<Hint> {
-        legend(self.view_model(cx).hints)
+        self.view_model(cx).hints
     }
 
     /// The page's account count.
@@ -203,12 +204,4 @@ impl Page for AccountsPage {
     fn heading_meta(&self, cx: &App) -> AnyElement {
         self.view_model(cx).scope.into_any_element()
     }
-}
-
-/// The Presenter's hints as the status line and the `?` cheat sheet take them.
-fn legend(hints: Vec<lib_accounts::presenter::Hint>) -> Vec<Hint> {
-    hints
-        .into_iter()
-        .map(|hint| (hint.chord, hint.action))
-        .collect()
 }

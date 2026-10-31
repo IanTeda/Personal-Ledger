@@ -12,6 +12,8 @@ use lib_payees::PayeesOutcome;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
 use lib_viper::keymap::Keymap;
 
+use lib_shell::Hint;
+
 use crate::payees::SettingsPayeesSnapshot;
 use crate::payees::ports::{self, DesktopPorts};
 use crate::payees::router::PageRouter;
@@ -20,7 +22,6 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
-    shell::view::statusline::Hint,
     view::event::{Reveal, ViewEvent},
 };
 
@@ -164,7 +165,7 @@ impl Page for PayeesPage {
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
     fn hints(&self, cx: &App) -> Vec<Hint> {
-        legend(self.view_model(cx).hints)
+        self.view_model(cx).hints
     }
 
     fn status_note(&self, cx: &App) -> String {
@@ -178,12 +179,4 @@ impl Page for PayeesPage {
     fn heading_meta(&self, cx: &App) -> AnyElement {
         render::scope_note(&self.view_model(cx).scope, cx)
     }
-}
-
-/// The Presenter's hints as the status line and the `?` cheat sheet take them.
-fn legend(hints: Vec<lib_payees::presenter::Hint>) -> Vec<Hint> {
-    hints
-        .into_iter()
-        .map(|hint| (hint.chord, hint.action))
-        .collect()
 }

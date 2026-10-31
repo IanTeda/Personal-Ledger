@@ -16,6 +16,7 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::upper;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::view::Hint;
 
 use super::count;
 use crate::interactor::MoveArea;
@@ -146,12 +147,6 @@ pub struct MenuEntry {
     pub action: MenuAction,
     pub label: String,
     pub destructive: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct InventoryPagePresenter {

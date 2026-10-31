@@ -77,7 +77,7 @@ pub(crate) fn budgets_switcher_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
         ("enter", crate::msg::desktop_hint_open()),
-        ("/", crate::msg::desktop_hint_search()),
+        ("/", lib_locale::msg::hint_search()),
         ("n", crate::msg::desktop_hint_new_budget()),
         ("esc", crate::msg::desktop_hint_close()),
     ]

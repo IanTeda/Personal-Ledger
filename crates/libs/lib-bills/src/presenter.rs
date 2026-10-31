@@ -14,9 +14,7 @@ mod skip;
 use lib_core::{Money, UnitId};
 use lib_locale::format::{AmountStyle, format_amount};
 
-pub use bills_page::{
-    BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, Hint, TabView,
-};
+pub use bills_page::{BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, TabView};
 pub use plan_form::{ActiveView, PlanField, PlanFormEvent, PlanFormPresenter, PlanFormViewModel};
 pub use planner::{PlanLine, PlannerColumns, PlannerEvent, PlannerPresenter, PlannerViewModel};
 pub use schedule::{

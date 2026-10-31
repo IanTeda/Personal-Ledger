@@ -9,6 +9,7 @@ use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::view::Hint;
 
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
@@ -270,12 +271,6 @@ pub struct SourceLine {
     /// Whether it fetches but has not yet, which draws a muted ✗ before LAST UPDATED.
     pub not_fetched: bool,
     pub selected: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -13,6 +13,8 @@ pub mod dialogs;
 pub mod form;
 pub(crate) mod render;
 
+use lib_shell::Hint;
+
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::settings::{page::PageRowClicked, pages::Page};
@@ -26,10 +28,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::hints::settings_documents_hints,
-    shell::view::{
-        dialog_host::open_dialog,
-        statusline::{Hint, owned_hints},
-    },
+    shell::view::{dialog_host::open_dialog, statusline::owned_hints},
     view::event::ViewEvent,
 };
 use apply::DocumentTypeOutcome;

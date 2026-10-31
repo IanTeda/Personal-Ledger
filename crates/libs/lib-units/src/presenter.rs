@@ -43,7 +43,7 @@ pub use unit_prices::{
     ChartWeek, PriceColumns, PriceRow, UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel,
 };
 pub use units_page::{
-    ActivityLine, Hint, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,
+    ActivityLine, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,
     UnitColumns, UnitLine, UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
 };
 pub use units_pane::{

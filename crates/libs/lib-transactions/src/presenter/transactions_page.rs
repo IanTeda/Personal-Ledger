@@ -27,6 +27,7 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::view::Hint;
 
 use super::filter::{
     ChipField, ChipView, FilterEvent, FilterOutcome, FilterPresenter, FilterViewModel,
@@ -133,13 +134,6 @@ pub struct FooterView {
     /// `8 of 96 groceries transactions shown`.
     pub label: String,
     pub total: FooterTotal,
-}
-
-/// One key of the status line's legend.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

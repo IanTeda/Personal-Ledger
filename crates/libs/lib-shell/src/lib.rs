@@ -29,8 +29,10 @@ pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Noun};
 pub use presenter::{
-    DialogInput, NavInput, ShellHint, ShellInput, ShellKey, ShellPresenter, ShellViewModel,
-    ToastInput,
+    DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };
 pub use protocols::ShellRouter;
 pub use window_size::WindowSize;
+
+/// What every status-line hint is, the Shell's own and each module's, so the bins name it here.
+pub use lib_viper::view::Hint;

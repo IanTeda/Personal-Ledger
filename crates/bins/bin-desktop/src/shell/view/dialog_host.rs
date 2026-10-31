@@ -95,7 +95,7 @@ pub trait Dialog {
 
     /// The status line's hints while this Dialog is open, in place of the View's (ADR-0037).
     /// `None` leaves them to the View, as for a Dialog whose View still words its hints itself.
-    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
         None
     }
 
@@ -367,7 +367,7 @@ impl Dialog for OpenDialog {
         self.inner_mut().close_open_select()
     }
 
-    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
         self.inner().hints()
     }
 

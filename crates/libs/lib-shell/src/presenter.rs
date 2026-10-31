@@ -16,8 +16,10 @@ use chrono::{DateTime, Local};
 use lib_config::KeyBindingConfig;
 use lib_core::{Clock, Period};
 use lib_list_cursor::{HALF_PAGE, Step};
+use lib_locale::msg;
 use lib_toast::{Display, Notice, Toasts};
 use lib_viper::keymap::Keymap;
+use lib_viper::view::Hint;
 
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
@@ -112,14 +114,6 @@ pub enum ToastInput {
     Display(Display),
 }
 
-/// One of the Shell's own status-line hints: the key its command is bound to now, after
-/// `[keybindings]`, for the Client to label.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShellHint {
-    pub command: ShellCommand,
-    pub key: String,
-}
-
 /// What the frame draws from the Shell, as owned values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellViewModel {
@@ -128,16 +122,24 @@ pub struct ShellViewModel {
     /// The message answering the last key, which replaces the hints until the next.
     pub status: Option<String>,
     /// The Shell's hints in the order they drop from the end: the palette, Search, Help and the
-    /// rail toggle, each under its key now. A command `[keybindings]` unbinds has none.
-    pub hints: Vec<ShellHint>,
+    /// rail toggle, each under its key now. A command `[keybindings]` unbinds has none. Each keeps
+    /// its command, so the Client can tell what a click on it does.
+    pub hints: Vec<(ShellCommand, Hint)>,
 }
 
-/// The commands the Shell's hints name, in the order they drop from the end.
-const HINTS: [(&str, ShellCommand); 4] = [
-    (OPEN_COMMAND_POPUP, ShellCommand::Command),
-    (SEARCH, ShellCommand::Search),
-    (HELP, ShellCommand::Help),
-    (TOGGLE_RAIL, ShellCommand::ToggleRail),
+/// A Shell hint's Message: what its key does.
+type Label = fn() -> String;
+
+/// The commands the Shell's hints name, with their labels, in the order they drop from the end.
+const HINTS: [(&str, ShellCommand, Label); 4] = [
+    (OPEN_COMMAND_POPUP, ShellCommand::Command, msg::hint_command),
+    (SEARCH, ShellCommand::Search, msg::hint_search),
+    (HELP, ShellCommand::Help, msg::hint_help),
+    (
+        TOGGLE_RAIL,
+        ShellCommand::ToggleRail,
+        msg::hint_toggle_sidebar,
+    ),
 ];
 
 /// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between.
@@ -202,12 +204,15 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             status: self.status.clone(),
             hints: HINTS
                 .iter()
-                .filter_map(|&(name, command)| {
-                    let key = self.keymap.chord(name).filter(|key| !key.is_empty())?;
-                    Some(ShellHint {
+                .filter_map(|&(name, command, label)| {
+                    let chord = self.keymap.chord(name).filter(|chord| !chord.is_empty())?;
+                    Some((
                         command,
-                        key: key.to_string(),
-                    })
+                        Hint {
+                            chord: chord.to_string(),
+                            action: label(),
+                        },
+                    ))
                 })
                 .collect(),
         }
@@ -915,8 +920,28 @@ mod tests {
             .view_model()
             .hints
             .into_iter()
-            .map(|hint| (hint.command, hint.key))
+            .map(|(command, hint)| (command, hint.chord))
             .collect()
+    }
+
+    #[test]
+    fn the_hints_carry_their_labels() {
+        let actions: Vec<String> = shell()
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|(_, hint)| hint.action)
+            .collect();
+
+        assert_eq!(
+            actions,
+            [
+                msg::hint_command(),
+                msg::hint_search(),
+                msg::hint_help(),
+                msg::hint_toggle_sidebar(),
+            ]
+        );
     }
 
     #[test]

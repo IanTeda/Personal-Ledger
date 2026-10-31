@@ -11,6 +11,7 @@ use lib_core::{BillPlanId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::view::Hint;
 
 use super::planner::{PlannerEvent, PlannerPresenter, PlannerViewModel};
 use super::schedule::{FilterField, ScheduleEvent, SchedulePresenter, ScheduleViewModel};
@@ -99,12 +100,6 @@ pub struct TabView {
     pub tab: BillsTab,
     pub label: String,
     pub active: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct BillsPagePresenter {

@@ -12,8 +12,8 @@ use lib_core::{Money, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_month_day};
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::view::Hint;
 
-use super::units_page::Hint;
 use super::units_pane::{Fact, amount};
 use super::{Clock, ago};
 use crate::keymap::{EARLIER, LATER, SET_PRICE};

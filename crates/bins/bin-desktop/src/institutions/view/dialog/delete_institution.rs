@@ -18,8 +18,8 @@ use crate::institutions::ports::{self, DesktopPorts};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::theme::color;
+use lib_shell::Hint;
 
 const WIDTH: gpui::Pixels = px(440.0);
 
@@ -119,9 +119,9 @@ impl HostedDialog for DeleteInstitutionDialog {
     /// Cancel, and delete while the name can be typed back.
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
-        let mut hints = vec![(key(BACK), crate::msg::desktop_hint_cancel())];
+        let mut hints = vec![Hint::new(key(BACK), crate::msg::desktop_hint_cancel())];
         if self.presenter.view_model().confirm.is_some() {
-            hints.push((key(SELECT), crate::msg::desktop_hint_confirm()));
+            hints.push(Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()));
         }
         Some(hints)
     }

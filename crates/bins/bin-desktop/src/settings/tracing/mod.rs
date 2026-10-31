@@ -12,16 +12,15 @@ pub mod dialogs;
 pub mod log;
 mod render;
 
+use lib_shell::Hint;
+
 use crate::settings::snapshot::PageSnapshot;
 use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{
     settings::{SettingsPage, hints::settings_tracing_hints, step_choice},
-    shell::view::{
-        dialog_host::open_dialog,
-        statusline::{Hint, owned_hints},
-    },
+    shell::view::{dialog_host::open_dialog, statusline::owned_hints},
     view::event::ViewEvent,
 };
 use apply::TracingOutcome;

@@ -339,11 +339,7 @@ impl TransactionsPage {
         let hints = if self.presenter.is_filtering() {
             owned_hints(filter_hints())
         } else {
-            self.presenter
-                .hints()
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect()
+            self.presenter.hints()
         };
         Some(PageStatus {
             hints,
@@ -357,7 +353,7 @@ impl TransactionsPage {
             .page_status(cx)?
             .hints
             .into_iter()
-            .map(|(keys, action)| (action, keys))
+            .map(|hint| (hint.action, hint.chord))
             .collect();
         Some(HelpGroup {
             heading: crate::msg::desktop_help_transactions_label(),

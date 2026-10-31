@@ -14,6 +14,7 @@ use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::view::Hint;
 
 use super::{count, institution_label};
 use crate::protocols::{AccountUnit, AccountsDialog, AccountsOutcome, AccountsRouter, SharedPorts};
@@ -104,12 +105,6 @@ pub struct AccountLine {
     pub institution: String,
     /// The Unit's code.
     pub unit: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct AccountsPagePresenter {

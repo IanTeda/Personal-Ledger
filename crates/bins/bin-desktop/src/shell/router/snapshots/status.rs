@@ -20,7 +20,7 @@ impl Root {
             hints: status
                 .hints
                 .into_iter()
-                .map(|(key, action)| (key.to_string(), action))
+                .map(|hint| (hint.chord, hint.action))
                 .collect(),
             right: status.right,
         })
@@ -32,5 +32,8 @@ impl Root {
     pub fn shell_hints_snapshot(&self) -> Vec<(String, String)> {
         use crate::shell::view::statusline::{shell_hint_entries, shell_hints};
         shell_hints(&shell_hint_entries(&self.presenter.view_model().hints))
+            .into_iter()
+            .map(|hint| (hint.chord, hint.action))
+            .collect()
     }
 }

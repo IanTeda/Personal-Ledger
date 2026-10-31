@@ -1232,7 +1232,7 @@ mod tests {
                     .expect("Budgets always has a status")
                     .hints
                     .into_iter()
-                    .map(|(key, _)| key)
+                    .map(|hint| hint.chord)
                     .collect::<Vec<_>>()
             })
         };

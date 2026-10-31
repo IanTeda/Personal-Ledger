@@ -31,8 +31,8 @@ use crate::inventory::router::DialogRouter;
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::theme::color;
+use lib_shell::Hint;
 
 /// The open Inventory Dialog's clicks.
 type Clicks = DialogClicks<InventoryDialog>;
@@ -203,13 +203,16 @@ impl HostedDialog for InventoryDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         let mut hints = vec![
-            (key(BACK), crate::msg::desktop_hint_cancel()),
-            (key(SELECT), crate::msg::desktop_hint_confirm()),
+            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
+            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
         ];
         if let View::Location(presenter, _) = &self.view
             && !presenter.view_model().editing
         {
-            hints.push((key(NEXT_FIELD), crate::msg::desktop_hint_next_field()));
+            hints.push(Hint::new(
+                key(NEXT_FIELD),
+                crate::msg::desktop_hint_next_field(),
+            ));
         }
         Some(hints)
     }

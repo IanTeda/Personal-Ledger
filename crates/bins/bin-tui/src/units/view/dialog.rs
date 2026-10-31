@@ -550,9 +550,9 @@ fn footer_line<'a>(dialog: &DialogFrame, keymap: &Keymap<DialogCommand>, c: &Col
     };
     let confirm = keymap.chord(SELECT).unwrap_or_default();
     let mut spans = vec![Span::styled(format!("{confirm} {}", dialog.submit), submit)];
-    for (chord, action) in dialog.legend(keymap) {
+    for hint in dialog.legend(keymap) {
         spans.push(Span::styled(
-            format!("{FOOTER_SEPARATOR}{chord} {action}"),
+            format!("{FOOTER_SEPARATOR}{} {}", hint.chord, hint.action),
             c.muted(),
         ));
     }

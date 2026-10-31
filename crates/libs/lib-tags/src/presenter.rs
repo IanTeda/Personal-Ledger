@@ -16,7 +16,7 @@ pub use remove_tag::{RemoveTagEvent, RemoveTagPresenter, RemoveTagViewModel};
 pub use tag_form::{
     ActiveField, ColourField, Swatch, TagField, TagFormEvent, TagFormPresenter, TagFormViewModel,
 };
-pub use tags_page::{Hint, TagLine, TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
+pub use tags_page::{TagLine, TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
 
 use crate::{TagError, msg};
 

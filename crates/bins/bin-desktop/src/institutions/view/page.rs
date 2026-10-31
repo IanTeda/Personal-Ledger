@@ -17,6 +17,8 @@ use lib_institutions::presenter::{
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
+use lib_shell::Hint;
+
 use crate::institutions::SettingsInstitutionsSnapshot;
 use crate::institutions::ports::{self, DesktopPorts};
 use crate::institutions::router::PageRouter;
@@ -25,7 +27,6 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
-    shell::view::statusline::Hint,
     view::event::ViewEvent,
 };
 
@@ -184,7 +185,7 @@ impl Page for InstitutionsPage {
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
     fn hints(&self, cx: &App) -> Vec<Hint> {
-        legend(self.view_model(cx).hints)
+        self.view_model(cx).hints
     }
 
     fn status_note(&self, cx: &App) -> String {
@@ -198,12 +199,4 @@ impl Page for InstitutionsPage {
     fn heading_meta(&self, cx: &App) -> AnyElement {
         self.view_model(cx).scope.into_any_element()
     }
-}
-
-/// The Presenter's hints as the status line and the `?` cheat sheet take them.
-fn legend(hints: Vec<lib_institutions::presenter::Hint>) -> Vec<Hint> {
-    hints
-        .into_iter()
-        .map(|hint| (hint.chord, hint.action))
-        .collect()
 }

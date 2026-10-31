@@ -354,11 +354,7 @@ impl BillsPage {
     pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
         let view = self.view_model();
         Some(PageStatus {
-            hints: view
-                .hints
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect(),
+            hints: view.hints,
             right: view.status,
         })
     }
@@ -369,7 +365,7 @@ impl BillsPage {
             .page_status(cx)?
             .hints
             .into_iter()
-            .map(|(keys, action)| (action, keys))
+            .map(|hint| (hint.action, hint.chord))
             .collect();
         Some(HelpGroup {
             heading: crate::msg::desktop_help_bills_label(),

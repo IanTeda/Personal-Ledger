@@ -8,6 +8,8 @@ use gpui::{
     Keystroke, ListAlignment, ListState, Render, Subscription,
 };
 
+use lib_shell::Hint;
+
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
     categories::{CategoriesPage, CategoriesSetup, categories_page},
@@ -33,7 +35,7 @@ use crate::{
         },
     },
     shell::view::{
-        statusline::{Hint, PageStatus, owned_hints},
+        statusline::{PageStatus, owned_hints},
         window_size::WindowSize,
     },
     tags::{TagsPage, TagsSetup, tags_page},
@@ -139,7 +141,7 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
         Self::PAGE.scope_note().into_any_element()
     }
 
-    /// The page's keys as `(key, action)`, for the legend and the `?` cheat sheet. The keys are
+    /// The page's keys, for the legend and the `?` cheat sheet. The keys are
     /// owned, so a page on a module Presenter returns its Presenter's hints here, rebound keys
     /// included, and the cheat sheet lists what its status line shows.
     fn hints(&self, _cx: &App) -> Vec<Hint> {

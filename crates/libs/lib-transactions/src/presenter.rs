@@ -12,7 +12,7 @@ pub use filter::{
     status_filter_label,
 };
 pub use transactions_page::{
-    EMPTY_CELL, FooterTotal, FooterView, Hint, RowView, TagsCell, TransactionsPageEvent,
+    EMPTY_CELL, FooterTotal, FooterView, RowView, TagsCell, TransactionsPageEvent,
     TransactionsPagePresenter, TransactionsPageViewModel,
 };
 

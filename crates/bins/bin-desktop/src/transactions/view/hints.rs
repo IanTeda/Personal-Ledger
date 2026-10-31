@@ -22,7 +22,7 @@ pub(crate) fn transactions_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_open()),
         ("e", crate::msg::desktop_hint_edit()),
         ("n", crate::msg::desktop_hint_add()),
-        ("/", crate::msg::desktop_hint_search()),
+        ("/", lib_locale::msg::hint_search()),
         ("f", crate::msg::desktop_hint_filter()),
     ]
 }

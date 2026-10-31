@@ -404,7 +404,7 @@ impl Dialog for BudgetsDialog {
         self.inner_mut().is_some_and(Dialog::close_open_select)
     }
 
-    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
         use crate::view::budgets::hints;
         Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Switcher(_) => hints::budgets_switcher_hints(),

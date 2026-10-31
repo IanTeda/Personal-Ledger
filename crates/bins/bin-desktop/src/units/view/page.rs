@@ -27,6 +27,8 @@ use lib_units::presenter::{
 };
 use lib_viper::keymap::Keymap;
 
+use lib_shell::Hint;
+
 use crate::units::ports::{self, DesktopPorts};
 use crate::units::router::PageRouter;
 use crate::{
@@ -37,7 +39,7 @@ use crate::{
         page::PageRowClicked,
         pages::{Page, PageFrame},
     },
-    shell::view::{statusline::Hint, window_size::WindowSize},
+    shell::view::window_size::WindowSize,
     view::event::ViewEvent,
 };
 
@@ -256,16 +258,10 @@ impl Page for UnitsPage {
             return view
                 .hints
                 .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .chain([("esc".to_string(), view.back)])
+                .chain([Hint::new("esc", view.back)])
                 .collect();
         }
-        self.presenter
-            .view_model()
-            .hints
-            .into_iter()
-            .map(|hint| (hint.chord, hint.action))
-            .collect()
+        self.presenter.view_model().hints
     }
 
     /// X-Large docks the detail pane. The layout, not an input, so nothing is committed.

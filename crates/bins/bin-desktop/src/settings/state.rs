@@ -316,7 +316,7 @@ impl SettingsView {
         let keys = owned_hints(settings_index_hints())
             .into_iter()
             .chain(self.pages.get(self.selected_section).hints(cx))
-            .map(|(keys, action)| (action, keys))
+            .map(|hint| (hint.action, hint.chord))
             .collect();
         Some(HelpGroup {
             heading: crate::msg::desktop_help_settings_label(),

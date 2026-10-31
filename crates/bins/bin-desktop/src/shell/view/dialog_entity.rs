@@ -25,8 +25,8 @@ use lib_viper::keymap::Keymap;
 use crate::dialog::OnClick;
 use crate::form::select_field::OnOptionClick;
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::view::event::ViewEvent;
+use lib_shell::Hint;
 
 /// A Dialog's Presenter has closed it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

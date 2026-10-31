@@ -15,6 +15,8 @@ use lib_categories::{CategoriesOutcome, SharedCategories};
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
+use lib_shell::Hint;
+
 use crate::categories::ports;
 use crate::categories::router::PageRouter;
 use crate::categories::{CategoriesSetup, SettingsCategoriesSnapshot};
@@ -23,7 +25,6 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
-    shell::view::statusline::Hint,
     view::event::ViewEvent,
 };
 
@@ -168,7 +169,7 @@ impl Page for CategoriesPage {
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
     fn hints(&self, _cx: &App) -> Vec<Hint> {
-        legend(self.view_model().hints)
+        self.view_model().hints
     }
 
     fn status_note(&self, _cx: &App) -> String {
@@ -182,12 +183,4 @@ impl Page for CategoriesPage {
     fn heading_meta(&self, _cx: &App) -> AnyElement {
         self.view_model().scope.into_any_element()
     }
-}
-
-/// The Presenter's hints as the status line and the `?` cheat sheet take them.
-fn legend(hints: Vec<lib_categories::presenter::Hint>) -> Vec<Hint> {
-    hints
-        .into_iter()
-        .map(|hint| (hint.chord, hint.action))
-        .collect()
 }

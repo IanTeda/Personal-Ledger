@@ -26,8 +26,8 @@ use crate::form::viper::{enter, typed};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
-use crate::shell::view::statusline::Hint;
 use crate::theme::color;
+use lib_shell::Hint;
 
 /// The Dialog's width: the Accounts dialogs' 440px.
 const WIDTH: gpui::Pixels = px(440.0);
@@ -131,8 +131,8 @@ impl HostedDialog for DeleteAccountDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
-            (key(BACK), crate::msg::desktop_hint_cancel()),
-            (key(SELECT), crate::msg::desktop_hint_confirm()),
+            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
+            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
         ])
     }
 

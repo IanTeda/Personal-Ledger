@@ -11,13 +11,6 @@ desktop-mode-dialog = Dialog
 desktop-mode-filter = Filter
 desktop-mode-import = Import
 
-## The shell-wide hint strip. Each label sits beside its key, which the caller styles.
-
-desktop-hint-command = command
-desktop-hint-search = search
-desktop-hint-help = help
-desktop-hint-toggle-sidebar = toggle sidebar
-
 ## A page's own hint strip, beside its keys.
 
 desktop-hint-row = row

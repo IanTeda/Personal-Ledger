@@ -19,8 +19,8 @@ mod remove_location;
 pub use area_blocked::{AreaBlockedEvent, AreaBlockedPresenter, AreaBlockedViewModel};
 pub use area_form::{AreaFormEvent, AreaFormPresenter, AreaFormViewModel};
 pub use inventory_page::{
-    Hint, InventoryLine, InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel,
-    MenuAction, MenuEntry, MenuView,
+    InventoryLine, InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
+    MenuEntry, MenuView,
 };
 pub use location_form::{
     LocationField, LocationFormEvent, LocationFormPresenter, LocationFormViewModel, UnitField,

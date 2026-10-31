@@ -46,7 +46,7 @@ impl DialogFrame {
     /// The hints as `(chord, action)` pairs, each chord read from `keymap`, the Dialog keymap the
     /// Client looks keys up in, so a `[keybindings]` override shows. A hint of two commands reads
     /// `up/down`; an unbound command reads empty.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<(String, String)> {
+    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
         self.hints
             .iter()
             .map(|hint| {
@@ -55,9 +55,30 @@ impl DialogFrame {
                     .iter()
                     .map(|command| keymap.chord(command).unwrap_or_default())
                     .collect();
-                (chords.join("/"), hint.action.clone())
+                Hint {
+                    chord: chords.join("/"),
+                    action: hint.action.clone(),
+                }
             })
             .collect()
+    }
+}
+
+/// One key a View or Dialog takes, as the status line and the `?` cheat sheet show it: the chord
+/// its command is bound to now, after `[keybindings]`, and what it does. Every Presenter's legend
+/// is a list of these, so a Client draws them without an adapter per module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hint {
+    pub chord: String,
+    pub action: String,
+}
+
+impl Hint {
+    pub fn new(chord: impl Into<String>, action: impl Into<String>) -> Self {
+        Self {
+            chord: chord.into(),
+            action: action.into(),
+        }
     }
 }
 
@@ -103,10 +124,13 @@ mod tests {
         }
     }
 
-    fn pairs(legend: &[(&str, &str)]) -> Vec<(String, String)> {
+    fn pairs(legend: &[(&str, &str)]) -> Vec<Hint> {
         legend
             .iter()
-            .map(|(chord, action)| (chord.to_string(), action.to_string()))
+            .map(|(chord, action)| Hint {
+                chord: chord.to_string(),
+                action: action.to_string(),
+            })
             .collect()
     }
 

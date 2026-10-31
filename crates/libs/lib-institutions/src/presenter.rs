@@ -16,7 +16,7 @@ pub use institution_form::{
     InstitutionProduct,
 };
 pub use institutions_page::{
-    Hint, InstitutionColumns, InstitutionLine, InstitutionsPageEvent, InstitutionsPagePresenter,
+    InstitutionColumns, InstitutionLine, InstitutionsPageEvent, InstitutionsPagePresenter,
     InstitutionsPageViewModel, MenuAction, MenuEntry, RowMenu,
 };
 

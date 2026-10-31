@@ -9,6 +9,7 @@ use lib_core::PayeeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::view::Hint;
 
 use super::count;
 use crate::protocols::{PayeeChange, PayeesDialog, PayeesOutcome, PayeesRouter, SharedPorts};
@@ -82,12 +83,6 @@ pub struct PayeeLine {
     pub rules: String,
     /// Drawn dimmed and tagged, rather than hidden.
     pub is_active: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct PayeesPagePresenter {

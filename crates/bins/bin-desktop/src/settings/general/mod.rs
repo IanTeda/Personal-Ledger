@@ -12,11 +12,13 @@ use lib_ledger::Domain;
 use lib_units::UnitsPorts as _;
 use lib_units::interactor::SetBaseUnit;
 
+use lib_shell::Hint;
+
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     settings::{SettingsPage, hints::settings_general_hints, page::PageRowClicked, pages::Page},
-    shell::view::statusline::{Hint, owned_hints},
+    shell::view::statusline::owned_hints,
     units::DesktopPorts,
     view::event::ViewEvent,
 };

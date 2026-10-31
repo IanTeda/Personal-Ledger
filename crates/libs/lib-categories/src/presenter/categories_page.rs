@@ -12,6 +12,7 @@ use lib_list_cursor::{Step, step_id};
 use lib_locale::format::upper;
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::view::Hint;
 
 use super::count;
 use crate::keymap::{COLLAPSE, EXPAND, NEW_CHILD};
@@ -99,12 +100,6 @@ pub struct CategoryLine {
     pub subcount: Option<String>,
     /// Whether the row offers **+ sub**: it sits above the depth cap.
     pub can_add_child: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct CategoriesPagePresenter {

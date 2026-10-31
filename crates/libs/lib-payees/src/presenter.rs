@@ -14,7 +14,7 @@ pub use delete_payee::{
 };
 pub use payee_form::{Callout, PayeeField, PayeeFormEvent, PayeeFormPresenter, PayeeFormViewModel};
 pub use payees_page::{
-    Hint, PayeeColumns, PayeeLine, PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel,
+    PayeeColumns, PayeeLine, PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel,
 };
 
 use crate::{PayeeError, msg};

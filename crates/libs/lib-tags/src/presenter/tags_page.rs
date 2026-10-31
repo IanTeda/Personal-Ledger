@@ -12,6 +12,7 @@ use lib_core::{HexColor, TagId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::view::Hint;
 
 use super::count;
 use crate::keymap::{MERGE, REMOVE};
@@ -78,12 +79,6 @@ pub struct TagLine {
     pub is_active: bool,
     /// `looks like a duplicate of "work-trip"`, for a flagged Tag, which also offers **merge**.
     pub duplicate_of: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub chord: String,
-    pub action: String,
 }
 
 pub struct TagsPagePresenter {

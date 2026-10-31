@@ -29,7 +29,7 @@ impl Dialog for TracingDialog {
     }
 
     /// Clear logs is a confirm.
-    fn hints(&self) -> Option<Vec<crate::shell::view::statusline::Hint>> {
+    fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
         Some(crate::shell::view::statusline::owned_hints(
             hints::confirm_dialog_hints(),
         ))

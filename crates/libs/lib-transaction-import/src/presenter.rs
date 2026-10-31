@@ -16,7 +16,7 @@ use lib_locale::format::{AmountStyle, format_amount};
 use lib_payees::{Payee, PayeeCategory};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
-use lib_viper::view::{Choice, DialogHint, SelectView};
+use lib_viper::view::{Choice, DialogHint, Hint, SelectView};
 
 use crate::entity::{ImportRow, PayeeChoices, RowPayee, RowStatus, cleaned_name, summary};
 use crate::error::Error;
@@ -120,9 +120,9 @@ pub struct ImportViewModel {
     pub hints: Vec<DialogHint>,
 }
 
-/// `hints` as `(chord, action)` pairs, each chord read from `keymap` so a `[keybindings]` override
-/// shows. A hint of two commands reads `up/down`.
-pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<(String, String)> {
+/// `hints` with each chord read from `keymap` so a `[keybindings]` override shows. A hint of two
+/// commands reads `up/down`.
+pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<Hint> {
     hints
         .iter()
         .map(|hint| {
@@ -131,7 +131,10 @@ pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<(String
                 .iter()
                 .map(|command| keymap.chord(command).unwrap_or_default())
                 .collect();
-            (chords.join("/"), hint.action.clone())
+            Hint {
+                chord: chords.join("/"),
+                action: hint.action.clone(),
+            }
         })
         .collect()
 }
@@ -894,11 +897,11 @@ mod tests {
         let rows = import_keymap(&KeyBindingConfig::default());
         let legend_rows = legend(&step.presenter.view_model().hints, &rows);
         assert_eq!(legend_rows.len(), 7);
-        assert!(legend_rows.iter().all(|(chord, action)| {
+        assert!(legend_rows.iter().all(|Hint { chord, action }| {
             !chord.is_empty() && !chord.split('/').any(str::is_empty) && !action.is_empty()
         }));
-        assert_eq!(legend_rows[0], ("j/k".to_string(), "row".to_string()));
-        assert_eq!(legend_rows[1], ("p".to_string(), "payee".to_string()));
+        assert_eq!(legend_rows[0], hint("j/k", "row"));
+        assert_eq!(legend_rows[1], hint("p", "payee"));
 
         step.send(ImportEvent::Open(RowSelect::Payee));
         let select = import_select_keymap(&KeyBindingConfig::default());
@@ -906,9 +909,9 @@ mod tests {
         assert_eq!(
             legend_select,
             [
-                ("up/down".to_string(), "choose".to_string()),
-                ("enter".to_string(), "select".to_string()),
-                ("esc".to_string(), "close".to_string()),
+                hint("up/down", "choose"),
+                hint("enter", "select"),
+                hint("esc", "close"),
             ]
         );
 
@@ -919,6 +922,13 @@ mod tests {
         let moved = import_keymap(&config);
         step.send(ImportEvent::Cancel);
         let legend_moved = legend(&step.presenter.view_model().hints, &moved);
-        assert_eq!(legend_moved[3].0, "N");
+        assert_eq!(legend_moved[3].chord, "N");
+    }
+
+    fn hint(chord: &str, action: &str) -> Hint {
+        Hint {
+            chord: chord.to_string(),
+            action: action.to_string(),
+        }
     }
 }

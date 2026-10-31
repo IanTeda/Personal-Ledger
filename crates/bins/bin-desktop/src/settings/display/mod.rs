@@ -14,6 +14,8 @@ use gpui::{App, Context, EventEmitter, Keystroke};
 use lib_colour_theme::ColourTheme;
 use lib_core::DateStyle;
 
+use lib_shell::Hint;
+
 use crate::{
     navigation::movement::Movement,
     settings::{
@@ -23,7 +25,7 @@ use crate::{
         pages::{Page, PageFrame},
         step_choice,
     },
-    shell::view::statusline::{Hint, PageStatus, owned_hints},
+    shell::view::statusline::{PageStatus, owned_hints},
     theme::colours::ColourChange,
     view::event::ViewEvent,
 };

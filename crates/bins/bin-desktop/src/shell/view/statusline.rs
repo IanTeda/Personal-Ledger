@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use gpui::{App, FontWeight, Pixels, Window, div, prelude::*, px};
 
-use lib_shell::{ShellCommand, ShellHint, ShellViewModel};
+use lib_shell::{Hint, ShellCommand, ShellViewModel};
 use lib_toast::ToastKind;
 
 use crate::{
@@ -31,21 +31,18 @@ const HINT_GAP: Pixels = px(4.0);
 pub const HEIGHT: Pixels = px(28.0);
 
 /// A page's own status-line content, replacing the shell-wide hint strip and file path while that
-/// page is showing: its key legend (`(key, action)` pairs) and its right-aligned text.
+/// page is showing: its key legend and its right-aligned text.
 #[derive(Debug, Clone)]
 pub struct PageStatus {
     pub hints: Vec<Hint>,
     pub right: String,
 }
 
-/// One hint: its key, as the keymap binds it, and its action.
-pub type Hint = (String, String);
-
 /// `hints` written with fixed keys, as the status line takes them.
 pub fn owned_hints(hints: Vec<(&'static str, String)>) -> Vec<Hint> {
     hints
         .into_iter()
-        .map(|(key, action)| (key.to_string(), action))
+        .map(|(key, action)| Hint::new(key, action))
         .collect()
 }
 
@@ -73,7 +70,7 @@ pub struct StatusLine {
     /// be showing here right after the palette that set it has already closed.
     status_message: Option<String>,
     /// The Shell's own hints, keyed as the global keymap binds them now.
-    shell_hints: Vec<ShellHint>,
+    shell_hints: Vec<(ShellCommand, Hint)>,
     /// The active command-mode echo text and its own "esc closes ..." hint, `Some` while
     /// `InputMode::Command` has something other than the ordinary hint strip to show: either
     /// the palette's live input (`docs/ux/desktop-mockups/01-shell/README.md`'s "1d" spec:
@@ -153,10 +150,10 @@ impl RenderOnce for StatusLine {
         let fit = |hints: &[Hint]| -> usize {
             let widths: Vec<Pixels> = hints
                 .iter()
-                .map(|(key, action)| {
-                    text_width(window, key, TEXT_SIZE, FontWeight::EXTRA_BOLD)
+                .map(|hint| {
+                    text_width(window, &hint.chord, TEXT_SIZE, FontWeight::EXTRA_BOLD)
                         + HINT_GAP
-                        + text_width(window, action, TEXT_SIZE, FontWeight::NORMAL)
+                        + text_width(window, &hint.action, TEXT_SIZE, FontWeight::NORMAL)
                 })
                 .collect();
             let separator =
@@ -287,49 +284,29 @@ fn mode_badge(mode: InputMode, label: String, cx: &App) -> impl IntoElement {
         .child(label)
 }
 
-/// A shell-wide hint as the strip draws it: `(id, action, key, label)`.
-pub(crate) type HintEntry = (&'static str, HintAction, String, String);
+/// A shell-wide hint as the strip draws it: `(id, action, hint)`.
+pub(crate) type HintEntry = (&'static str, HintAction, Hint);
 
-/// The Shell's hints, in the order they drop from the end, each with its tag, click action and
-/// label.
-pub(crate) fn shell_hint_entries(hints: &[ShellHint]) -> Vec<HintEntry> {
+/// The Shell's hints, in the order they drop from the end, each with its tag and click action.
+pub(crate) fn shell_hint_entries(hints: &[(ShellCommand, Hint)]) -> Vec<HintEntry> {
     hints
         .iter()
-        .filter_map(|hint| {
-            let (id, action, label) = match hint.command {
-                ShellCommand::Command => (
-                    "hint-command",
-                    HintAction::Command,
-                    crate::msg::desktop_hint_command(),
-                ),
-                ShellCommand::Search => (
-                    "hint-search",
-                    HintAction::Search,
-                    crate::msg::desktop_hint_search(),
-                ),
-                ShellCommand::Help => (
-                    "hint-help",
-                    HintAction::Help,
-                    crate::msg::desktop_hint_help(),
-                ),
-                ShellCommand::ToggleRail => (
-                    "hint-rail",
-                    HintAction::ToggleRail,
-                    crate::msg::desktop_hint_toggle_sidebar(),
-                ),
+        .filter_map(|(command, hint)| {
+            let (id, action) = match command {
+                ShellCommand::Command => ("hint-command", HintAction::Command),
+                ShellCommand::Search => ("hint-search", HintAction::Search),
+                ShellCommand::Help => ("hint-help", HintAction::Help),
+                ShellCommand::ToggleRail => ("hint-rail", HintAction::ToggleRail),
                 _ => return None,
             };
-            Some((id, action, hint.key.clone(), label))
+            Some((id, action, hint.clone()))
         })
         .collect()
 }
 
-/// The shell-wide hints as `(key, label)`, for measuring.
+/// The shell-wide hints alone, for measuring.
 pub(crate) fn shell_hints(entries: &[HintEntry]) -> Vec<Hint> {
-    entries
-        .iter()
-        .map(|(_, _, key, label)| (key.clone(), label.clone()))
-        .collect()
+    entries.iter().map(|(_, _, hint)| hint.clone()).collect()
 }
 
 /// The shell-wide hints, the first `shown` of them, each a click target for its key's action. The
@@ -341,7 +318,7 @@ fn hint_strip(
     shown: usize,
     cx: &App,
 ) -> impl IntoElement {
-    let entry = |id: &'static str, action: HintAction, key: String, label: String| {
+    let entry = |id: &'static str, action: HintAction, hint: Hint| {
         let on_hint = on_hint.clone();
         div()
             .id(id)
@@ -360,9 +337,9 @@ fn hint_strip(
                 div()
                     .font_weight(FontWeight::EXTRA_BOLD)
                     .text_color(color::foreground(cx))
-                    .child(key),
+                    .child(hint.chord),
             )
-            .child(label)
+            .child(hint.action)
             .into_any_element()
     };
 
@@ -372,9 +349,9 @@ fn hint_strip(
         .items_center()
         .gap(HINT_GAP)
         .children(entries.into_iter().take(shown).enumerate().flat_map(
-            |(index, (id, action, key, label))| {
+            |(index, (id, action, hint))| {
                 let separator = (index > 0).then(|| div().child("\u{b7}").into_any_element());
-                separator.into_iter().chain([entry(id, action, key, label)])
+                separator.into_iter().chain([entry(id, action, hint)])
             },
         ))
 }
@@ -388,7 +365,7 @@ fn page_hint_strip(hints: &[Hint], cx: &App) -> impl IntoElement {
         .flex()
         .items_center()
         .gap(HINT_GAP)
-        .children(hints.iter().enumerate().flat_map(|(index, (key, action))| {
+        .children(hints.iter().enumerate().flat_map(|(index, hint)| {
             let separator = (index > 0).then(|| div().child("\u{b7}").into_any_element());
             separator.into_iter().chain([div()
                 .debug_selector(move || format!("status-hint-{index}"))
@@ -399,9 +376,9 @@ fn page_hint_strip(hints: &[Hint], cx: &App) -> impl IntoElement {
                     div()
                         .font_weight(FontWeight::EXTRA_BOLD)
                         .text_color(color::foreground(cx))
-                        .child(key.clone()),
+                        .child(hint.chord.clone()),
                 )
-                .child(action.clone())
+                .child(hint.action.clone())
                 .into_any_element()])
         }))
 }
@@ -447,7 +424,7 @@ mod tests {
     #[test]
     fn the_toast_echo_replaces_the_hint_strip_and_the_page_legend() {
         let page = PageStatus {
-            hints: vec![("j/k".to_string(), "row".to_string())],
+            hints: vec![Hint::new("j/k", "row")],
             right: String::new(),
         };
         assert_eq!(left(None, None, None, None), Left::HintStrip);

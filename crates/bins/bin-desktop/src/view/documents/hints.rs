@@ -6,7 +6,7 @@ pub(crate) fn library_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
         ("enter", crate::msg::desktop_hint_open()),
-        ("/", crate::msg::desktop_hint_search()),
+        ("/", lib_locale::msg::hint_search()),
         ("l", crate::msg::desktop_hint_link()),
         ("L", crate::msg::desktop_hint_follow()),
         ("o", crate::msg::desktop_hint_show_in_folder()),
