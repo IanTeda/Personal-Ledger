@@ -88,11 +88,9 @@ use lib_ledger::Ledger;
 use lib_shell::{NavInput, ToastInput};
 
 use crate::view::active::{ActiveViewEntity, ViewEntities};
-use crate::view::budgets::state::{BudgetsSources, BudgetsView};
 use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
 use crate::{
-    budgets,
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
@@ -380,6 +378,8 @@ impl Root {
             units: settings.units.ports.clone(),
             payees: storage.payees.clone(),
         });
+        let budgets_ports =
+            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -412,23 +412,13 @@ impl Root {
         let import_view = cx.new(|_| ImportPage::new(import_stores, ledger.clone(), clock.clone()));
         // The status line reads the step's state, and which View shows turns on it being open.
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
-        let budgets_current = ledger
-            .read(cx)
-            .ledger()
-            .budgets()
-            .default_budget()
-            .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
-        let budgets_view = cx.new(|cx| {
-            BudgetsView::new(
-                BudgetsSources {
-                    ledger: ledger.clone(),
-                    reads: budget_reads,
-                },
-                budgets_current,
-                &clock,
-                cx,
-            )
-        });
+        let budgets_view = crate::budgets::router::budgets_page(
+            budgets_ports,
+            ledger.clone(),
+            lib_budgets::keymap::budgets_page_keymap(&lib_config::KeyBindingConfig::default()),
+            clock.clone(),
+            cx,
+        );
         let budgets_subscription = Self::view_event_subscription(&budgets_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
@@ -657,6 +647,9 @@ impl Root {
         self.views
             .import
             .update(cx, |view, _| view.set_keymaps(config));
+        self.views
+            .budgets
+            .update(cx, |page, _| page.set_keymaps(config));
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file
@@ -850,6 +843,9 @@ impl Root {
         self.views
             .documents
             .update(cx, |view, cx| view.set_display(date_style, cx));
+        self.views
+            .budgets
+            .update(cx, |page, cx| page.set_display(date_style, cx));
     }
 }
 

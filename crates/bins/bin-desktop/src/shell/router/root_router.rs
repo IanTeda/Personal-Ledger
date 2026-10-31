@@ -24,6 +24,7 @@ struct RootRouter<'a, 'b> {
     bills: &'a crate::bills::DesktopPorts,
     ledger: &'a Entity<LedgerStore>,
     dashboard: &'a Entity<DashboardView>,
+    budgets: &'a Entity<crate::budgets::view::page::BudgetsPage>,
     /// The Shell's today, which its legacy pages are dated by.
     today: &'a mut NaiveDate,
     /// The global commands the Presenter ran, for the Shell to act on once it returns.
@@ -43,13 +44,15 @@ impl ShellRouter for RootRouter<'_, '_> {
 
     /// Generates the new month's Bill Schedule, committed as the day poll's one write, and moves
     /// the Shell's and the Dashboard's today on to it, so Needs Attention and the rail badge date
-    /// their entries by it. The Bills page catches up on its own next event too, which finds
+    /// their entries by it. The Budgets page moves a month on its old one on to the new. The Bills page catches up on its own next event too, which finds
     /// nothing left to generate.
     fn month_turned(&mut self, today: NaiveDate) {
         *self.today = today;
         crate::bills::ports::new_month(self.bills, self.ledger, today, self.cx);
         self.dashboard
             .update(self.cx, |dashboard, cx| dashboard.set_today(today, cx));
+        self.budgets
+            .update(self.cx, |budgets, cx| budgets.month_turned(cx));
     }
 
     /// Puts each domain `failure` names back as stored, with an Error Toast for each.
@@ -85,6 +88,7 @@ impl Root {
                 bills: &self.bills,
                 ledger: &self.ledger,
                 dashboard: &self.views.dashboard,
+                budgets: &self.views.budgets,
                 today: &mut self.today,
                 ran: Vec::new(),
                 cx,
@@ -107,6 +111,7 @@ impl Root {
             bills: &self.bills,
             ledger: &self.ledger,
             dashboard: &self.views.dashboard,
+            budgets: &self.views.budgets,
             today: &mut self.today,
             ran: Vec::new(),
             cx,

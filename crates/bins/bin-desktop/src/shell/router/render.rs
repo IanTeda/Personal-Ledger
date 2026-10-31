@@ -2,6 +2,7 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Root;
+use crate::budgets::view::dialog::ListDialog;
 use lib_shell::{NavInput, ToastInput};
 use std::rc::Rc;
 
@@ -47,6 +48,7 @@ impl Render for Root {
             self.state.rail_override = None;
         }
         let rail_mode = self.primary_rail(window_size, cx);
+        self.place_budgets_switcher(rail_mode, cx);
         let focus = self.nav().focus();
         let active_entity = self.active_view_entity(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
@@ -214,13 +216,9 @@ impl Render for Root {
             confirm: on_settings_dialog_confirm.clone(),
         };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
+        let budget_reads = self.budgets_reads(cx);
         let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
-            budgets::period_figures(
-                budget,
-                self.budgets_reads(cx),
-                Period::of(self.today),
-                self.today,
-            )
+            budgets::period_figures(budget, &*budget_reads, Period::of(self.today), self.today)
         });
 
         // The active View's own element, told whether the View zone has focus before the status
@@ -378,9 +376,7 @@ impl Render for Root {
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))
-            .children(self.render_budgets_switcher(&entity, rail_mode, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
-            .children(self.render_budgets_manage_dialog(&entity, cx))
             .children(
                 self.state
                     .dialog
@@ -476,4 +472,27 @@ fn view_frame(
                 ),
         )
         .into_any_element()
+}
+
+impl Root {
+    /// Anchors an open Switcher under the page title: past the primary rail and the context
+    /// rail, inside the page's gutter.
+    fn place_budgets_switcher(
+        &self,
+        rail_mode: crate::navigation::nav::RailMode,
+        cx: &mut gpui::App,
+    ) {
+        let Some(dialog) = self
+            .hosted_dialog()
+            .and_then(|dialog| dialog.downcast::<ListDialog>())
+        else {
+            return;
+        };
+        let rail = match rail_mode {
+            crate::navigation::nav::RailMode::Expanded => rail_view::primary::WIDTH,
+            crate::navigation::nav::RailMode::Collapsed => rail_view::primary::COLLAPSED_WIDTH,
+        };
+        let left = rail + rail_view::context::WIDTH + px(28.0);
+        dialog.update(cx, |dialog, _| dialog.set_left(left));
+    }
 }

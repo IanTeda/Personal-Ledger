@@ -16,6 +16,7 @@ desktop-help-settings-label = Settings keys
 desktop-help-documents-label = Documents keys
 desktop-help-bills-label = Bills keys
 desktop-help-transactions-label = Transactions keys
+desktop-help-budgets-label = Budgets keys
 desktop-help-shortcut-palette = Command palette
 desktop-help-shortcut-help = This help
 desktop-help-shortcut-focus = Move focus

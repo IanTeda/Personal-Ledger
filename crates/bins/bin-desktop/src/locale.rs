@@ -40,6 +40,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             lib_account_deletion::msg::LAYER,
             lib_unit_deletion::msg::LAYER,
             lib_transaction_import::msg::LAYER,
+            lib_budgets::msg::LAYER,
         ],
     );
     let _ = INFO.set(LocaleInfo {
@@ -72,6 +73,7 @@ pub fn init_for_tests() {
             lib_account_deletion::msg::LAYER,
             lib_unit_deletion::msg::LAYER,
             lib_transaction_import::msg::LAYER,
+            lib_budgets::msg::LAYER,
         ],
     );
 }

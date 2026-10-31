@@ -183,3 +183,24 @@ fn a_dialog_opened_mid_edit_abandons_the_plan_cell(app: &mut TestAppContext) {
     ui.press("l");
     assert_eq!(ui.budgets().plan_cursor, (1, 3));
 }
+
+#[gpui::test]
+fn export_csv_on_history_writes_the_file_chosen(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    let folder = tempfile::tempdir().expect("a temp folder");
+    let path = folder.path().join("history.csv");
+    ui.click("budgets-tab-History");
+
+    ui.click("budgets-primary-action");
+    ui.answer_save_dialog(Some(path.clone()));
+
+    let csv = std::fs::read_to_string(&path).expect("the export wrote the file");
+    assert!(csv.starts_with("Category,"), "a header row: {csv}");
+    let shown = path.display().to_string();
+    assert!(
+        ui.toasts()
+            .visible
+            .into_iter()
+            .any(|toast| { toast.kind == "Success" && toast.text.contains(&shown) })
+    );
+}

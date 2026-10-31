@@ -325,3 +325,75 @@ fn a_failed_budgets_write_puts_the_budgets_back_with_an_error_toast(app: &mut Te
             && toast.text == "Couldn't save the change to budgets, so they are back as last saved"
     }));
 }
+
+#[gpui::test]
+fn question_mark_lists_each_tabs_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.assert_cheat_sheet_matches_status("Budgets keys");
+
+    for (key, tab) in [("2", "Plan"), ("3", "History")] {
+        ui.press("escape");
+        ui.press(key);
+        assert_eq!(ui.budgets().tab, tab);
+        ui.assert_cheat_sheet_matches_status("Budgets keys");
+    }
+}
+
+#[gpui::test]
+fn x_on_history_exports_the_table_to_the_file_chosen(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    let folder = tempfile::tempdir().expect("a temp folder");
+    let path = folder.path().join("history.csv");
+    ui.press("3");
+
+    ui.press("x");
+    ui.answer_save_dialog(Some(path.clone()));
+
+    let csv = std::fs::read_to_string(&path).expect("the export wrote the file");
+    assert!(csv.starts_with("Category,"), "a header row: {csv}");
+    assert!(csv.lines().count() > 1, "a row per Category: {csv}");
+    let shown = path.display().to_string();
+    assert!(
+        ui.toasts()
+            .visible
+            .into_iter()
+            .any(|toast| { toast.kind == "Success" && toast.text.contains(&shown) })
+    );
+}
+
+#[gpui::test]
+fn a_cancelled_export_writes_nothing_and_raises_no_toast(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("3");
+
+    ui.press("x");
+    ui.answer_save_dialog(None);
+
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn a_new_month_moves_the_months_on_that_sat_on_the_old_one(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    assert_eq!(ui.budgets().period, (2026, 6));
+    assert_eq!(ui.budgets().plan_start, (2026, 4));
+    assert_eq!(ui.budgets().history_end, (2026, 6));
+
+    ui.turn_date_to(common::date(2026, 7, 1));
+
+    let page = ui.budgets();
+    assert_eq!(page.period, (2026, 7), "Progress follows the month");
+    assert_eq!(page.plan_start, (2026, 5), "the Plan's range moves on");
+    assert_eq!(page.history_end, (2026, 7), "History ends on the new month");
+}
+
+#[gpui::test]
+fn a_new_month_leaves_a_month_stepped_to_where_it_is(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("[");
+    assert_eq!(ui.budgets().period, (2026, 5));
+
+    ui.turn_date_to(common::date(2026, 7, 1));
+
+    assert_eq!(ui.budgets().period, (2026, 5));
+}

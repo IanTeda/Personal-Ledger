@@ -2,8 +2,8 @@
 //! with the Budget on show and today into an [`OnBudget`] `lib_ledger` command, confirmed through
 //! [`confirm_ledger_with`](crate::shell::view::dialog_apply::confirm_ledger_with).
 //!
-//! Only the forms that write are here. The Switcher, Manage and Category detail lists answer
-//! with a request that opens another Dialog or moves the cursor, which stays `Root`'s.
+//! Only the forms that write are here. The Category detail answers with a request that opens
+//! another Dialog or moves its cursor, which stays `Root`'s.
 
 use chrono::NaiveDate;
 use lib_core::{BudgetId, CategoryId};
@@ -154,7 +154,7 @@ impl DialogForm for BudgetsDialog {
                 source: *source,
             }),
             // The lists answer with requests, not commands.
-            Self::Switcher(_) | Self::Manage(_) | Self::CategoryDetail(_) => Err(FormError),
+            Self::CategoryDetail(_) => Err(FormError),
         }
     }
 
@@ -166,7 +166,7 @@ impl DialogForm for BudgetsDialog {
             Self::Budget(form) => form.error = Some(error),
             Self::EditLimit(form) => form.error = Some(error),
             Self::Stop(form) => form.error = Some(error),
-            Self::Fill { .. } | Self::Switcher(_) | Self::Manage(_) | Self::CategoryDetail(_) => {}
+            Self::Fill { .. } | Self::CategoryDetail(_) => {}
         }
     }
 }
@@ -218,15 +218,11 @@ mod tests {
         let refused = ledger.update(cx, |store, cx| store.apply(cx, command));
         assert!(matches!(refused, Err(BudgetRefusal::Budget(_))));
 
-        let seeded = crate::budgets::default_budgets(
-            &lib_ledger::budget_accounts(&lib_accounts::default_accounts()),
-            &lib_ledger::budget_categories(&lib_categories::default_categories()),
-            today(),
-        );
-        let switcher = BudgetsDialog::Switcher(crate::budgets::Switcher::new(
-            &seeded,
-            crate::budgets::PERSONAL_SPENDING_ID,
+        let detail = BudgetsDialog::CategoryDetail(crate::budgets::Detail::new(
+            CategoryId::seed(1),
+            Period::of(today()),
+            0,
         ));
-        assert!(switcher.command().is_err(), "a list answers with a request");
+        assert!(detail.command().is_err(), "a list answers with a request");
     }
 }

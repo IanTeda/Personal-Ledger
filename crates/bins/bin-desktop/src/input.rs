@@ -283,6 +283,9 @@ mod tests {
         let transactions = lib_transactions::keymap::TRANSACTIONS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let budgets = lib_budgets::keymap::BUDGETS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         // The Shell keeps `esc` and hands the step `back` as a Cancel, so the step's own `back`
         // binding is never offered to it.
         let import = lib_transaction_import::keymap::IMPORT_BINDINGS
@@ -300,6 +303,7 @@ mod tests {
             .chain(tags)
             .chain(inventory)
             .chain(transactions)
+            .chain(budgets)
             .chain(import)
             .collect()
     }

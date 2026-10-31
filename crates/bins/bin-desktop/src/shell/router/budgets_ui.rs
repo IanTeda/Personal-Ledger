@@ -1,14 +1,16 @@
-//! The Budgets dialogs' wiring in the Dialog host: confirming them, the requests their lists answer
-//! with, the palette's `budgets` verbs and the element builders for each dialog. The page itself
-//! is the `BudgetsView` Entity (ADR-0037), which builds the dialogs `Root` opens here; the pure
-//! rules live in `budgets`.
+//! The legacy Budgets Dialogs' wiring in the Dialog host (#955): confirming them, the requests the
+//! Category detail answers with, and the element builders for each. The page, the Switcher and
+//! Manage budgets run on `lib-budgets`' Presenters (`crate::budgets::view`); the Dialogs here are
+//! built by [`Legacy`] over the page's ports.
 
 use crate::budgets::{
     BudgetsDialog,
     apply::{BudgetOutcome, OnBudget},
+    legacy::Legacy,
 };
+use lib_budgets::BudgetReads;
 use lib_core::{BudgetId, CategoryId};
-use lib_ledger::{ArchiveBudget, DuplicateBudget, LedgerCommand, RestoreBudget, SetDefaultBudget};
+use lib_ledger::LedgerCommand;
 
 use super::Root;
 use lib_shell::NavInput;
@@ -18,18 +20,13 @@ use std::rc::Rc;
 use crate::{
     budgets,
     period::Period,
-    shell::view::rail::{self as rail_view},
     shell::view::{dialog_apply, dialog_host::OpenDialog},
-    view::budgets::{self as budgets_view, manage_dialog::ManageAction},
+    view::budgets as budgets_view,
     view::format,
 };
 use lib_categories::{self};
 
-use gpui::{Context, px};
-
-/// Where the Switcher's card starts below the window's top: under the top bar, the page's top
-/// padding and the title line.
-pub(super) const BUDGETS_SWITCHER_TOP: gpui::Pixels = px(122.0);
+use gpui::Context;
 
 impl Root {
     /// The shared Budgets, read from their store Entity.
@@ -54,9 +51,18 @@ impl Root {
         self.views.budgets.read(cx).current()
     }
 
+    /// The legacy Budgets Dialogs' builders, over the page's ports and day.
+    pub(super) fn budgets_legacy<'a>(&self, cx: &'a gpui::App) -> Legacy<'a> {
+        let page = self.views.budgets.read(cx);
+        Legacy {
+            ports: page.ports(),
+            today: page.today(),
+        }
+    }
+
     /// Everything the Budgets figures are worked out from, as the Budgets page reads it.
-    pub(super) fn budgets_reads<'a>(&self, cx: &'a gpui::App) -> &'a dyn budgets::BudgetReads {
-        self.views.budgets.read(cx).budget_sources()
+    pub(super) fn budgets_reads(&self, cx: &gpui::App) -> Rc<lib_database::StoredBudgetReads> {
+        self.views.budgets.read(cx).ports().reads()
     }
 
     /// The open Category detail's figures, or `None` once its Budget or Category is gone.
@@ -64,23 +70,20 @@ impl Root {
         let Some(BudgetsDialog::CategoryDetail(detail)) = self.dialog::<BudgetsDialog>() else {
             return None;
         };
-        self.views
-            .budgets
-            .read(cx)
-            .category_detail(detail.category_id, detail.month, cx)
+        self.budgets_legacy(cx).category_detail(
+            self.budgets_current(cx),
+            detail.category_id,
+            detail.month,
+        )
     }
 
     /// Whether 9d offers Edit budget on `category_id`.
     pub(super) fn budgets_detail_editable(&self, category_id: CategoryId, cx: &gpui::App) -> bool {
-        self.views.budgets.read(cx).detail_editable(category_id, cx)
+        self.budgets_legacy(cx)
+            .detail_editable(self.budgets_current(cx), category_id)
     }
 
-    /// The Budget on show when it takes edits: an archived one is read-only.
-    pub(super) fn budgets_editable<'a>(&self, cx: &'a gpui::App) -> Option<&'a budgets::Budget> {
-        self.views.budgets.read(cx).editable(cx)
-    }
-
-    /// Opens a dialog the Budgets page built, when it built one.
+    /// Opens a Dialog `Legacy` built, when it built one.
     fn open_budgets_built(&mut self, dialog: Option<BudgetsDialog>) {
         if let Some(dialog) = dialog {
             self.open_budgets_dialog(dialog);
@@ -95,10 +98,8 @@ impl Root {
         cx: &gpui::App,
     ) {
         let dialog = self
-            .views
-            .budgets
-            .read(cx)
-            .limit_dialog(category_id, month, cx);
+            .budgets_legacy(cx)
+            .limit(self.budgets_current(cx), category_id, month);
         self.open_budgets_built(dialog);
     }
 
@@ -110,48 +111,22 @@ impl Root {
         cx: &gpui::App,
     ) {
         let dialog = self
-            .views
-            .budgets
-            .read(cx)
-            .stop_dialog(category_id, month, cx);
+            .budgets_legacy(cx)
+            .stop(self.budgets_current(cx), category_id, month);
         self.open_budgets_built(dialog);
-    }
-
-    /// `budgets switch`: 11b with the Budget on show highlighted.
-    pub(super) fn open_budgets_switcher(&mut self, cx: &gpui::App) {
-        let dialog = self.views.budgets.read(cx).switcher_dialog(cx);
-        self.open_budgets_dialog(dialog);
-    }
-
-    /// `budgets new` and the Switcher's and Manage's `+ New budget`: 11c.
-    pub(super) fn open_budgets_new(&mut self, cx: &gpui::App) {
-        let dialog = self.views.budgets.read(cx).new_budget_dialog(cx);
-        self.open_budgets_dialog(dialog);
-    }
-
-    /// 11c's edit mode on Budget `id`. An archived Budget is read-only, so it opens nothing.
-    pub(super) fn open_budgets_edit(&mut self, id: BudgetId, cx: &gpui::App) {
-        let dialog = self.views.budgets.read(cx).edit_budget_dialog(id, cx);
-        self.open_budgets_built(dialog);
-    }
-
-    /// `budgets manage` and the Switcher's `Manage budgets…`: 11f.
-    pub(super) fn open_budgets_manage(&mut self, cx: &gpui::App) {
-        let dialog = self.views.budgets.read(cx).manage_dialog(cx);
-        self.open_budgets_dialog(dialog);
     }
 
     /// Shows Budget `id` on the Budgets page.
     pub(super) fn switch_budget(&mut self, id: BudgetId, cx: &mut gpui::App) {
         self.views
             .budgets
-            .update(cx, |view, cx| view.switch_budget(id, cx));
+            .update(cx, |page, cx| page.show_budget(id, cx));
     }
 
     /// Confirms the open Budgets dialog. The forms that write (the Budget form, Edit budget, Stop
     /// and Fill) go through the host's cycle: the command runs against the Budgets store, a
-    /// refusal stays on the form, and a landed one closes the dialog. The Switcher, Manage and
-    /// Category detail lists answer with a request instead, run by [`Self::apply_budgets_request`].
+    /// refusal stays on the form, and a landed one closes the dialog. The Category detail answers
+    /// with a request instead, run by [`Self::apply_budgets_request`].
     pub(super) fn confirm_budgets_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let writes = matches!(
             self.dialog::<BudgetsDialog>(),
@@ -190,28 +165,12 @@ impl Root {
         }
     }
 
-    /// Runs the request a list dialog answered with, on the dialog the confirm took. A Dialog
-    /// that stays open afterwards (Manage's `*`/`x`, 9d's handoffs that find nothing to open) goes
-    /// back into the slot first, so the same code runs as when a click made the request.
+    /// Runs the request the Category detail answered with, on the dialog the confirm took. A
+    /// Dialog that stays open afterwards (9d's handoffs that find nothing to open) goes back into
+    /// the slot first, so the same code runs as when a click made the request.
     fn apply_budgets_request(&mut self, dialog: BudgetsDialog, cx: &mut Context<'_, Self>) {
-        use budgets::{DetailRequest, ManageRequest, SwitcherRequest};
+        use budgets::DetailRequest;
         match dialog {
-            BudgetsDialog::Switcher(switcher) => match switcher.request {
-                SwitcherRequest::Choose => {
-                    if let Some(id) = switcher.chosen() {
-                        self.choose_budgets_switcher(id, cx);
-                    }
-                }
-                SwitcherRequest::New => self.open_budgets_new(cx),
-            },
-            BudgetsDialog::Manage(mut manage) => match manage.request.take() {
-                Some(ManageRequest::New) => self.open_budgets_new(cx),
-                Some(ManageRequest::Action(id, action)) => {
-                    self.open_budgets_dialog(BudgetsDialog::Manage(manage));
-                    self.run_budgets_manage_action(id, action, cx);
-                }
-                None => {}
-            },
             BudgetsDialog::CategoryDetail(mut detail) => {
                 let Some(request) = detail.request.take() else {
                     return;
@@ -262,12 +221,6 @@ impl Root {
             return;
         };
         self.open_budgets_stop(category_id, month, cx);
-    }
-
-    /// `enter` or a click on a Switcher row: switches to it and closes the popover.
-    pub(super) fn choose_budgets_switcher(&mut self, id: BudgetId, cx: &mut gpui::App) {
-        self.close_dialog();
-        self.switch_budget(id, cx);
     }
 
     pub(super) fn budget_form_mut(&mut self) -> Option<&mut budgets::form::BudgetForm> {
@@ -362,244 +315,6 @@ impl Root {
         ))
     }
 
-    /// Runs one of 11f's actions on Budget `id`. Open and Edit leave Manage budgets; Duplicate
-    /// opens the copy in edit mode; the rest stay, showing a refusal when there is one. Run from
-    /// the palette with Manage closed, a refusal goes to the status line instead.
-    pub(super) fn run_budgets_manage_action(
-        &mut self,
-        id: BudgetId,
-        action: ManageAction,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let outcome = match action {
-            ManageAction::Open => {
-                self.choose_budgets_switcher(id, cx);
-                return;
-            }
-            ManageAction::Edit => {
-                self.open_budgets_edit(id, cx);
-                return;
-            }
-            ManageAction::Duplicate => {
-                self.apply_budgets_command(cx, DuplicateBudget(id))
-                    .map(|copy| {
-                        self.switch_budget(copy, cx);
-                        self.open_budgets_edit(copy, cx);
-                    })
-            }
-            ManageAction::SetDefault => self.apply_budgets_command(cx, SetDefaultBudget(id)),
-            ManageAction::Archive => self.apply_budgets_command(
-                cx,
-                ArchiveBudget {
-                    id,
-                    today: self.today,
-                },
-            ),
-            ManageAction::Restore => self.apply_budgets_command(cx, RestoreBudget(id)),
-        };
-        let refused = outcome.err();
-        match self.state.dialog.as_mut() {
-            Some(OpenDialog::Budgets(dialog)) if matches!(**dialog, BudgetsDialog::Manage(_)) => {
-                if let BudgetsDialog::Manage(manage) = &mut **dialog {
-                    // Archiving or restoring moves the row between the two sections: follow it.
-                    manage.refresh(self.ledger.read(cx).ledger().budgets(), id);
-                    manage.error = refused;
-                }
-            }
-            _ => {
-                if let Some(error) = refused {
-                    self.set_status(match error {
-                        budgets::BudgetError::DefaultCannotBeArchived => {
-                            crate::msg::desktop_budgets_manage_error_default()
-                        }
-                        other => budgets_view::limit_dialog::error_text(&other),
-                    });
-                }
-            }
-        }
-    }
-
-    /// Manage budgets (11f).
-    pub(super) fn render_budgets_manage_dialog(
-        &self,
-        entity: &gpui::Entity<Self>,
-        cx: &gpui::App,
-    ) -> Option<gpui::AnyElement> {
-        let Some(BudgetsDialog::Manage(manage)) = self.dialog::<BudgetsDialog>() else {
-            return None;
-        };
-        let plain = |handler: fn(&mut Root, &mut Context<'_, Root>)| {
-            let entity = entity.clone();
-            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        let current = Period::of(self.today);
-        let rows = budgets::switcher_ids(self.budgets(cx), "")
-            .into_iter()
-            .filter_map(|id| self.budgets(cx).get(id))
-            .map(|budget| budgets_view::manage_dialog::ManageRow {
-                id: budget.id,
-                name: budget.name.clone(),
-                method: budget.method,
-                accounts: crate::msg::desktop_budgets_manage_accounts(
-                    i64::try_from(budget.account_ids.len()).unwrap_or(i64::MAX),
-                ),
-                scope: crate::msg::desktop_budgets_manage_scope(
-                    i64::try_from(
-                        budget
-                            .category_ids()
-                            .filter(|id| budgets::applied(budget.chain(*id), current).is_some())
-                            .count(),
-                    )
-                    .unwrap_or(i64::MAX),
-                ),
-                is_default: budget.is_default,
-                archived: budget.is_archived(),
-            })
-            .collect();
-        Some(budgets_view::manage_dialog::render(
-            budgets_view::manage_dialog::ManageDialogProps {
-                counts: crate::msg::desktop_budgets_manage_counts(
-                    &self.budgets(cx).active().count().to_string(),
-                    &self.budgets(cx).archived().count().to_string(),
-                    &self
-                        .budgets(cx)
-                        .default_budget()
-                        .map(|budget| budget.name.clone())
-                        .unwrap_or_default(),
-                ),
-                rows,
-                selected: manage.selected,
-                error: manage.error.clone(),
-                on_row_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            if let Some(BudgetsDialog::Manage(manage)) =
-                                shell.dialog_mut::<BudgetsDialog>()
-                            {
-                                manage.selected = index;
-                            }
-                            cx.notify();
-                        });
-                    })
-                },
-                on_action_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |id, action, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.run_budgets_manage_action(id, action, cx);
-                            cx.notify();
-                        });
-                    })
-                },
-                on_new: plain(Root::handle_budgets_new_click),
-                on_close: plain(Root::handle_dialog_cancel),
-            },
-            cx,
-        ))
-    }
-
-    pub(super) fn handle_budgets_switcher_search_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(BudgetsDialog::Switcher(switcher)) = self.dialog_mut::<BudgetsDialog>() {
-            switcher.searching = true;
-        }
-        cx.notify();
-    }
-
-    pub(super) fn handle_budgets_new_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_new(cx);
-        cx.notify();
-    }
-
-    pub(super) fn handle_budgets_manage_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_manage(cx);
-        cx.notify();
-    }
-
-    /// A Budget's one-line summary in the Switcher: its health this month, or when it was
-    /// archived.
-    pub(super) fn budgets_summary(&self, budget: &budgets::Budget, cx: &gpui::App) -> String {
-        if let Some(date) = budget.archived_at {
-            return crate::msg::desktop_budgets_switcher_archived_on(&format::date(
-                date,
-                self.display(cx).date_style,
-            ));
-        }
-        let health = budgets::health(budget, self.budgets_reads(cx), self.today);
-        let left = format::amount(&health.left).1;
-        if health.at_risk > 0 {
-            crate::msg::desktop_budgets_switcher_health_at_risk(
-                &health.over.to_string(),
-                &left,
-                &health.at_risk.to_string(),
-            )
-        } else {
-            crate::msg::desktop_budgets_switcher_health(&health.over.to_string(), &left)
-        }
-    }
-
-    /// The Switcher popover (11b), anchored under the page title.
-    pub(super) fn render_budgets_switcher(
-        &self,
-        entity: &gpui::Entity<Self>,
-        rail_mode: crate::navigation::nav::RailMode,
-        cx: &gpui::App,
-    ) -> Option<gpui::AnyElement> {
-        let Some(BudgetsDialog::Switcher(switcher)) = self.dialog::<BudgetsDialog>() else {
-            return None;
-        };
-        let plain = |handler: fn(&mut Root, &mut Context<'_, Root>)| {
-            let entity = entity.clone();
-            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                entity.update(cx, handler);
-            });
-            on_click
-        };
-        let rows = budgets::switcher_ids(self.budgets(cx), switcher.query.text())
-            .into_iter()
-            .filter_map(|id| self.budgets(cx).get(id))
-            .map(|budget| budgets_view::switcher::SwitcherRow {
-                id: budget.id,
-                name: budget.name.clone(),
-                is_default: budget.is_default,
-                is_current: budget.id == self.budgets_current(cx),
-                archived: budget.is_archived(),
-                summary: self.budgets_summary(budget, cx),
-                method: budget.method,
-            })
-            .collect();
-        // The page's left edge: past the primary rail and the context rail, inside its gutter.
-        let rail = match rail_mode {
-            crate::navigation::nav::RailMode::Expanded => rail_view::primary::WIDTH,
-            crate::navigation::nav::RailMode::Collapsed => rail_view::primary::COLLAPSED_WIDTH,
-        };
-        Some(budgets_view::switcher::render(
-            budgets_view::switcher::SwitcherProps {
-                state: switcher,
-                rows,
-                left: rail + rail_view::context::WIDTH + px(28.0),
-                top: BUDGETS_SWITCHER_TOP,
-                on_search_click: plain(Root::handle_budgets_switcher_search_click),
-                on_budget_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |id, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.choose_budgets_switcher(id, cx);
-                            cx.notify();
-                        });
-                    })
-                },
-                on_new: plain(Root::handle_budgets_new_click),
-                on_manage: plain(Root::handle_budgets_manage_click),
-                on_cancel: plain(Root::handle_dialog_cancel),
-            },
-            cx,
-        ))
-    }
-
     pub(super) fn set_budgets_fill_source(&mut self, chosen: budgets::FillSource) {
         if let Some(BudgetsDialog::Fill { source, .. }) = self.dialog_mut::<BudgetsDialog>() {
             *source = chosen;
@@ -616,7 +331,8 @@ impl Root {
             return None;
         };
         let budget = self.budgets(cx).get(self.budgets_current(cx))?;
-        let ledger = self.budgets_reads(cx);
+        let reads = self.budgets_reads(cx);
+        let ledger: &dyn BudgetReads = &*reads;
         let plain = |handler: fn(&mut Root, &mut Context<'_, Root>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -627,7 +343,7 @@ impl Root {
         let previews =
             budgets::FillSource::ALL.map(|each| budgets::fill_preview(budget, ledger, month, each));
         let chosen = previews.iter().find(|preview| preview.source == source)?;
-        let categories = self.views.budgets.read(cx).categories();
+        let categories = self.budgets_legacy(cx).categories();
         let name = |category_id: &CategoryId| {
             categories
                 .iter()
@@ -733,7 +449,7 @@ impl Root {
             });
             on_click
         };
-        let categories = self.views.budgets.read(cx).categories();
+        let categories = self.budgets_legacy(cx).categories();
         let leaf_name = |category_id: CategoryId| {
             categories
                 .iter()
@@ -892,11 +608,10 @@ impl Root {
             on_click
         };
         let reads = self.budgets_reads(cx);
-        let category = lib_categories::path(
-            &self.views.budgets.read(cx).categories(),
-            detail.category_id,
-        )
-        .unwrap_or_default();
+        let reads: &dyn BudgetReads = &*reads;
+        let category =
+            lib_categories::path(&self.budgets_legacy(cx).categories(), detail.category_id)
+                .unwrap_or_default();
         let accounts = reads.budget_accounts();
         let name = category
             .rsplit(" / ")

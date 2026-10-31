@@ -5,5 +5,3 @@ desktop-hint-switch-panel = switch panel
 ## Status-line hints the Budgets and Documents Views read.
 
 desktop-hint-skip = skip
-desktop-hint-switch-view = switch view
-desktop-hint-period = period

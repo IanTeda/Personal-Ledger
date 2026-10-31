@@ -1,16 +1,21 @@
 //! In-memory ports and the stub rows, for tests and UI-first work. [`InMemoryBudgets`] and
 //! [`InMemoryBudgetReads`] hold every row in a plain field so a test can set up state directly;
 //! [`stub_accounts`] and [`stub_categories`] are the Accounts and Categories stubs as Budgets reads
-//! them, which `lib-ledger`'s seed tests hold to the stubs themselves.
+//! them, which `lib-ledger`'s seed tests hold to the stubs themselves. [`InMemoryPorts`] holds both
+//! as the Presenters share them, and [`RecordingRouter`] records what a Presenter asked for.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, CategoryId, CategoryTypes, PayeeId, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, PayeeId, Period, UnitId};
+use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
     BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
-    BudgetCategory, BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
+    BudgetCategory, BudgetPayees, BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits,
+    BudgetUnits, BudgetsOutcome, BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
 };
 use crate::{Budget, default_budgets};
 
@@ -115,6 +120,145 @@ impl BudgetUnits for InMemoryBudgetReads {
 impl BudgetPayees for InMemoryBudgetReads {
     fn payee_name(&self, id: PayeeId) -> Option<String> {
         self.payee_names.get(&id).cloned()
+    }
+}
+
+/// The Budgets and every read port in memory, as the Presenters share them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct InMemoryPorts {
+    pub budgets: InMemoryBudgets,
+    pub reads: InMemoryBudgetReads,
+}
+
+impl InMemoryPorts {
+    /// The stub Budgets as of `today`, over the stub reads.
+    pub fn stub(today: NaiveDate) -> Self {
+        Self {
+            budgets: InMemoryBudgets::stub(today),
+            reads: InMemoryBudgetReads::stub(),
+        }
+    }
+
+    /// The ports shared, with the handle a test reads them back through.
+    pub fn shared(self) -> (Rc<RefCell<Self>>, SharedPorts) {
+        let ports = Rc::new(RefCell::new(self));
+        let shared: SharedPorts = ports.clone();
+        (ports, shared)
+    }
+}
+
+impl BudgetsPorts for InMemoryPorts {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        &self.budgets
+    }
+
+    fn reads(&self) -> &dyn BudgetReads {
+        &self.reads
+    }
+
+    fn split_mut(&mut self) -> PortsMut<'_> {
+        PortsMut {
+            budgets: &mut self.budgets,
+            reads: &self.reads,
+        }
+    }
+}
+
+/// What a Presenter asked its Router for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Routed {
+    Switcher(BudgetId),
+    Manage(BudgetId),
+    NewBudget(BudgetId),
+    EditBudget(BudgetId),
+    Limit(BudgetId, CategoryId, Period),
+    LimitPicker(BudgetId),
+    Stop(BudgetId, CategoryId, Period),
+    Fill(BudgetId, Period),
+    Detail(BudgetId, CategoryId, Period),
+    Export(ExportHistory),
+    BillsPeriod(Period),
+    Closed(Option<BudgetsOutcome>),
+    Notice(Notice),
+}
+
+/// A Router that records every request and opens every Dialog it is asked for, unless told not
+/// to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingRouter {
+    pub routed: Vec<Routed>,
+    /// Refuses to open any Dialog, as a Client does on a Category with nothing to edit.
+    pub refuse: bool,
+}
+
+impl RecordingRouter {
+    /// The last status-line message the Presenter set, if any.
+    pub fn status(&self) -> Option<&str> {
+        self.routed.iter().rev().find_map(|routed| match routed {
+            Routed::Notice(Notice::Status(text)) => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    fn open(&mut self, routed: Routed) -> bool {
+        self.routed.push(routed);
+        !self.refuse
+    }
+}
+
+impl BudgetsRouter for RecordingRouter {
+    fn open_switcher(&mut self, current: BudgetId) -> bool {
+        self.open(Routed::Switcher(current))
+    }
+
+    fn open_manage(&mut self, current: BudgetId) -> bool {
+        self.open(Routed::Manage(current))
+    }
+
+    fn open_new_budget(&mut self, current: BudgetId) -> bool {
+        self.open(Routed::NewBudget(current))
+    }
+
+    fn open_edit_budget(&mut self, id: BudgetId) -> bool {
+        self.open(Routed::EditBudget(id))
+    }
+
+    fn open_limit(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
+        self.open(Routed::Limit(budget, category, month))
+    }
+
+    fn open_limit_picker(&mut self, budget: BudgetId) -> bool {
+        self.open(Routed::LimitPicker(budget))
+    }
+
+    fn open_stop(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
+        self.open(Routed::Stop(budget, category, month))
+    }
+
+    fn open_fill(&mut self, budget: BudgetId, month: Period) -> bool {
+        self.open(Routed::Fill(budget, month))
+    }
+
+    fn open_detail(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
+        self.open(Routed::Detail(budget, category, month))
+    }
+
+    fn export_history(&mut self, export: ExportHistory) {
+        self.routed.push(Routed::Export(export));
+    }
+
+    fn show_bills_period(&mut self, period: Period) {
+        self.routed.push(Routed::BillsPeriod(period));
+    }
+
+    fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {
+        self.routed.push(Routed::Closed(outcome));
+    }
+}
+
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.routed.push(Routed::Notice(notice));
     }
 }
 

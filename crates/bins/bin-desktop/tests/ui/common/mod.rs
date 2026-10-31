@@ -1360,6 +1360,13 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Answers the platform's open save dialog with `path`, `None` cancelling it, then lets what
+    /// waits on the answer run.
+    pub fn answer_save_dialog(&mut self, path: Option<std::path::PathBuf>) {
+        self.cx.simulate_new_path_selection(|_| path);
+        self.cx.run_until_parked();
+    }
+
     /// Presses a space-separated keystroke sequence, e.g. `press("g f")`.
     pub fn press(&mut self, keys: &str) {
         self.cx.simulate_keystrokes(keys);

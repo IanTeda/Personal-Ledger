@@ -1,125 +1,15 @@
-## The Budgets page (9a–9g): the shared header, tab strip and the Progress tab (9a).
+## The Budgets Dialogs still on the legacy host (#955). The page, the Switcher and Manage budgets
+## read their text from `lib-budgets`' own Catalogue.
 
-## The header: the method tag beside the title, the primary action, and the tab strip.
-
-desktop-budgets-method-limits = Limits
-desktop-budgets-edit-plan = Edit plan
-desktop-budgets-tab-progress = Progress
-desktop-budgets-tab-plan = Plan
-desktop-budgets-tab-history = History
-desktop-budgets-legend-spent = spent
-desktop-budgets-legend-known = known costs
-desktop-budgets-legend-elapsed = elapsed
-desktop-budgets-legend-over = over
-
-## The meta line under the title: `$month` (already formatted), then the day of the month for the
-## current month only, the over-budget count, the unbudgeted spend and the at-risk count.
-
-desktop-budgets-meta-period = { $month }
-desktop-budgets-meta-day = day { $day } of { $days }
-desktop-budgets-meta-over = <strong>{ $count }</strong> over budget
-desktop-budgets-meta-at-risk = { $count } at risk
-desktop-budgets-meta-unbudgeted = { $amount } unbudgeted
-
-## The stat strip: a label, a figure and a line of detail under it.
+## The stat labels the Category detail (9d) shares with the page, and the History export's Toasts.
+## `$path` is the file written.
 
 desktop-budgets-stat-budgeted = Budgeted
 desktop-budgets-stat-spent = Spent
 desktop-budgets-stat-known = Known costs
-desktop-budgets-stat-left = Left to spend
-desktop-budgets-stat-budgeted-detail = { $count ->
-    [one] { $count } category
-   *[other] { $count } categories
-}
-desktop-budgets-stat-carried = { $amount } carried in
-desktop-budgets-stat-spent-detail = { $spent }% of budget · { $elapsed }% of period
-desktop-budgets-stat-known-detail = { $count ->
-    [one] { $count } unpaid bill due this period
-   *[other] { $count } unpaid bills due this period
-}
-desktop-budgets-stat-known-link = Schedule →
-desktop-budgets-stat-left-per-day = ≈ { $amount } / day for { $days ->
-    [one] { $days } day
-   *[other] { $days } days
-}
-desktop-budgets-stat-left-over = over budget
-
-## The Progress table.
-
-desktop-budgets-column-budget = Budget
-desktop-budgets-column-spent = Spent
-desktop-budgets-column-known = Known
-desktop-budgets-column-left = Left
-desktop-budgets-column-progress = Progress
-desktop-budgets-row-rollup = rollup
-desktop-budgets-row-carried = incl. { $amount } carried
-desktop-budgets-row-unbudgeted = unbudgeted
-desktop-budgets-row-over = { $amount } over
-desktop-budgets-row-at-risk = at risk
-desktop-budgets-row-edit = edit
-desktop-budgets-row-set = set
-desktop-budgets-progress-empty = Nothing is budgeted or spent this period.
-
-## The Plan tab (9b): the meta line, the range nav, the grid's columns and footers.
-
-desktop-budgets-plan-meta = Monthly amounts per category · past months are read-only · bold = amount set this month
-desktop-budgets-plan-range = { $from } – { $to } { $year }
-desktop-budgets-plan-range-years = { $from } { $from_year } – { $to } { $to_year }
-desktop-budgets-plan-now = now
-desktop-budgets-plan-column-rollover = Rollover
-desktop-budgets-plan-rollover-unspent = carry unspent
-desktop-budgets-plan-rollover-both = carry both
-desktop-budgets-plan-other = Other
-desktop-budgets-plan-empty = No category has a budget amount in these months.
-desktop-budgets-plan-total = Total budgeted
-desktop-budgets-plan-unallocated = Unallocated of { $average } avg. income
-desktop-budgets-status-plan = { $range } · { $count ->
-    [one] { $count } category
-   *[other] { $count } categories
-}
-
-## The status-line legend on the Plan tab, in Normal and Insert modes.
-
-desktop-hint-cell = cell
-desktop-hint-rollover = rollover
-desktop-hint-range = range
-desktop-hint-clear = clear
-desktop-hint-save-cell = save cell
-desktop-hint-next-month = next month
-desktop-hint-this-month-only = this month only
-
-## The History tab (9c): the meta line, the export action, the chart's pairs and caption, the
-## table's AVG and OVER columns and the export's Toasts. `$path` is the file written.
-
-desktop-budgets-history-meta = Budget vs spent by month · the average and OVER count use closed months only
-desktop-budgets-history-export = Export CSV
-desktop-budgets-history-empty = No category has a budget amount yet.
 desktop-budgets-history-pair = { $spent } / { $budget }
-desktop-budgets-history-to-date = to date
-desktop-budgets-history-over-mark = over
-desktop-budgets-history-caption = { $months ->
-    [one] over in { $over } of the last { $months } closed month
-   *[other] over in { $over } of the last { $months } closed months
-}
-desktop-budgets-history-caption-none = no closed months in this range
-desktop-budgets-history-column-avg = Avg
-desktop-budgets-history-column-over = Over
-desktop-budgets-history-over-count = { $over }/{ $months }
 desktop-budgets-history-exported = Exported the budget history to { $path }
 desktop-budgets-history-export-failed = Couldn't export the budget history: { $error }
-desktop-budgets-status-history = { $count ->
-    [one] { $shown } of { $count } category shown
-   *[other] { $shown } of { $count } categories shown
-}
-desktop-hint-month = month
-desktop-hint-export = export
-
-## The status line's right-hand side.
-
-desktop-budgets-status-period = { $month } · { $count ->
-    [one] { $count } category
-   *[other] { $count } categories
-}
 
 ## The Category detail dialog (9d): the title, four stats, the bar's caption, the largest
 ## Transactions, the track record and the footer.
@@ -160,7 +50,6 @@ desktop-hint-transactions = transactions
 ## The Edit budget dialog (9e): the title on a budgeted Category or on the picker, the fields, the
 ## before/after summary, the note and the footer. `$month` is already formatted.
 
-desktop-budgets-plan-add = + Budget a category
 desktop-budgets-detail-edit = Edit budget
 desktop-budgets-limit-title = Edit budget — { $category }
 desktop-budgets-limit-title-new = Budget a category
@@ -200,14 +89,11 @@ desktop-budgets-stop-submit = Stop budgeting
 ## The status-line legend for Edit budget, Budget a category and Stop budgeting.
 
 desktop-hint-edit-budget = edit budget
-desktop-hint-budget-category = budget a category
-desktop-hint-stop-budgeting = stop budgeting
 desktop-hint-save = save
 
 ## The Fill dialog (9f): the Plan tab's button, the two sources with the total each gives, the
 ## diff against the plan and the footer. `$month` is already formatted.
 
-desktop-budgets-fill-button = Fill { $month } from…
 desktop-budgets-fill-title = Fill { $month } from…
 desktop-budgets-fill-source-previous = { $month } as budgeted
 desktop-budgets-fill-source-previous-detail = an exact copy, without carries
@@ -225,21 +111,6 @@ desktop-budgets-fill-note = Fill writes this month only, for categories budgeted
 desktop-budgets-fill-submit = Fill { $month }
 desktop-hint-fill = fill
 desktop-hint-source = source
-
-## The Switcher popover (11b): the search field, a row's default marker and health line, the
-## archived section and the footer. `$date` is already formatted.
-
-desktop-budgets-switcher-search = find a budget
-desktop-budgets-switcher-default = default
-desktop-budgets-switcher-health = { $over } over · { $left } left to spend
-desktop-budgets-switcher-health-at-risk = { $over } over · { $left } left to spend · { $risk } at risk
-desktop-budgets-switcher-archived = Archived
-desktop-budgets-switcher-archived-on = archived { $date }
-desktop-budgets-switcher-none = No budget matches.
-desktop-budgets-switcher-new = + New budget
-desktop-budgets-switcher-manage = Manage budgets…
-desktop-hint-switch-budget = switch budget
-desktop-hint-new-budget = new budget
 
 ## The New budget dialog (11c) and its edit mode: the fields, the four method cards (only
 ## Category limits can be chosen), the Account chips, Start from and the footer. `$budget` is the
@@ -274,40 +145,3 @@ desktop-budgets-new-start-help = Each writes its amounts onward from this month.
 desktop-budgets-new-error-name = Another budget already has that name.
 desktop-budgets-new-submit = Create budget
 desktop-budgets-new-submit-edit = Save
-
-## Manage budgets (11f): the header counts, the table, its row actions and the three notes.
-## `$budget` is the default Budget's name.
-
-desktop-budgets-manage-title = Manage budgets
-desktop-budgets-manage-counts = { $active } active · { $archived } archived · opens to <strong>{ $budget }</strong>
-desktop-budgets-manage-column-budget = Budget
-desktop-budgets-manage-column-method = Method
-desktop-budgets-manage-column-period = Period
-desktop-budgets-manage-column-accounts = Accounts
-desktop-budgets-manage-column-scope = Scope
-desktop-budgets-manage-column-actions = Actions
-desktop-budgets-manage-period-monthly = Monthly
-desktop-budgets-manage-accounts = { $count ->
-    [one] { $count } account
-   *[other] { $count } accounts
-}
-desktop-budgets-manage-scope = { $count ->
-    [one] { $count } category
-   *[other] { $count } categories
-}
-desktop-budgets-manage-action-open = open
-desktop-budgets-manage-action-edit = edit
-desktop-budgets-manage-action-duplicate = duplicate
-desktop-budgets-manage-action-default = set default
-desktop-budgets-manage-action-archive = archive
-desktop-budgets-manage-action-restore = restore
-desktop-budgets-manage-error-default = The default budget can't be archived. Set another default first.
-desktop-budgets-manage-note-views-title = Budgets are views
-desktop-budgets-manage-note-views = A budget never owns or copies transactions. A transaction counts in every budget whose accounts and categories cover it.
-desktop-budgets-manage-note-switching-title = Switching
-desktop-budgets-manage-note-switching = Switching keeps the tab you are on, and the last budget opened is remembered.
-desktop-budgets-manage-note-archive-title = Archive, not delete
-desktop-budgets-manage-note-archive = Archiving affects only the budget, never the ledger. Its history is kept and it can be restored.
-desktop-hint-duplicate = duplicate
-desktop-hint-set-default = set default
-desktop-hint-archive = archive

@@ -155,9 +155,9 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
         .flex()
         .flex_col()
         .gap(px(6.0))
-        .child(super::progress::bar(
-            figures,
-            detail.elapsed.percent,
+        .child(crate::budgets::view::progress::bar(
+            lib_budgets::presenter::bar_view(figures),
+            detail.elapsed.percent as f32 / 100.0,
             false,
             cx,
         ))

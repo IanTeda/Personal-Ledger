@@ -1,11 +1,12 @@
-//! What the integration tests read back of the Budgets page (ADR-0030), built by the Budgets
-//! Entity from its own state (ADR-0037). The open dialog's fields are the Dialog host's, so
-//! `Root`'s accessor fills them in.
+//! What the integration tests read back of the Budgets page (ADR-0030), built from the page
+//! Presenter's state and the figures its ports read. The open Dialog's fields are the Dialog
+//! host's, so `Root`'s accessor fills them in.
 
-use gpui::App;
+use lib_budgets::{BudgetReads, period_figures};
 use lib_core::CategoryId;
 
-use super::state::BudgetsView;
+use super::page::BudgetsPage;
+use crate::budgets::legacy::Legacy;
 
 /// One Progress row: the Category it shows and whether it carries a Budget Amount.
 #[doc(hidden)]
@@ -48,17 +49,26 @@ pub struct BudgetsSnapshot {
     pub fill_source: Option<String>,
     /// The Category the open Stop dialog is for.
     pub stop_category: Option<CategoryId>,
+    /// The status line's right-hand text for the tab shown.
+    pub status: String,
 }
 
-impl BudgetsView {
-    /// The page's part of the snapshot, built the way the render builds its rows. Every dialog
-    /// field is left `None` for `Root` to fill.
+impl BudgetsPage {
+    /// The page's part of the snapshot. Every Dialog field is left `None` for `Root` to fill.
     #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> BudgetsSnapshot {
-        let categories = self.categories();
-        let (budget, rows) = self
-            .figures(cx)
-            .map(|(budget, figures)| {
+    pub fn snapshot(&self) -> BudgetsSnapshot {
+        let presenter = self.presenter();
+        let legacy = Legacy {
+            ports: self.ports(),
+            today: self.today(),
+        };
+        let reads = self.ports().reads();
+        let reads: &dyn BudgetReads = &*reads;
+        let categories = reads.budget_categories();
+        let (budget, rows) = legacy
+            .budget(presenter.current())
+            .map(|budget| {
+                let figures = period_figures(&budget, reads, presenter.period(), self.today());
                 let rows = figures
                     .rows
                     .iter()
@@ -72,20 +82,24 @@ impl BudgetsView {
                         budgeted: row.budget.is_some(),
                     })
                     .collect::<Vec<_>>();
-                (budget.name.clone(), rows)
+                (budget.name, rows)
             })
             .unwrap_or_default();
-        let state = self.state();
+        let (period, plan_start, history_end) = (
+            presenter.period(),
+            presenter.plan_start(),
+            presenter.history_end(),
+        );
         BudgetsSnapshot {
-            tab: format!("{:?}", state.tab),
+            tab: format!("{:?}", presenter.tab()),
             budget,
-            period: (state.period.year, state.period.month),
-            selected: state.selected.min(rows.len().saturating_sub(1)),
+            period: (period.year, period.month),
+            selected: presenter.selected().min(rows.len().saturating_sub(1)),
             rows,
-            plan_start: (state.plan_start.year, state.plan_start.month),
-            plan_cursor: state.plan_cursor,
-            plan_edit: state.plan_edit.as_ref().map(|edit| edit.text.clone()),
-            history_end: (state.history_end.year, state.history_end.month),
+            plan_start: (plan_start.year, plan_start.month),
+            plan_cursor: presenter.plan_cursor(),
+            plan_edit: presenter.plan_draft().map(str::to_string),
+            history_end: (history_end.year, history_end.month),
             dialog: None,
             limit_amount: None,
             switcher_names: None,
@@ -93,6 +107,7 @@ impl BudgetsView {
             budget_name: None,
             fill_source: None,
             stop_category: None,
+            status: self.view_model().status,
         }
     }
 }

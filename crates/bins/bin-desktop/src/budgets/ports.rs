@@ -4,18 +4,103 @@
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
 //!
-//! Every Budget writer but the Categories Monthly budget is still a `LedgerCommand` (#954 moves them onto the Interactors #953 added), so
-//! [`forward`] carries each Budget a command wrote to the store. The Categories Monthly budget
-//! writes the store itself ([`set_monthly_limit`]).
+//! The Budgets page and its Switcher and Manage budgets write the store through `lib-budgets`'
+//! Interactors on [`DesktopPorts`] (#954), as does the Categories Monthly budget
+//! ([`set_monthly_limit`]). The Budgets Dialogs still on the legacy host (the Budget form, Edit
+//! budget, Stop budgeting and Fill, #955) write through `LedgerCommand`s, so [`forward`] carries
+//! each Budget a command wrote to the store. After either, [`refresh`] brings the Ledger's read
+//! copy in line, for the Dashboard, the rail badge and the legacy Dialogs that read it.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_budgets::{BudgetCategories, BudgetError, SetMonthlyLimit, fake::InMemoryBudgets};
+use gpui::{App, Entity};
+use lib_budgets::{
+    Budget, BudgetCategories, BudgetError, BudgetReads, BudgetRepository, BudgetsPorts, PortsMut,
+    SetMonthlyLimit, SharedPorts, fake::InMemoryBudgets,
+};
 use lib_core::{BudgetId, CategoryId, Money};
-use lib_database::{BudgetsStore, SharedBudgetsStore};
+use lib_database::{BudgetsStore, SharedBudgetsStore, StoredBudgetReads};
 use lib_ledger::{Ledger, LedgerChange};
+
+use crate::ledger_store::LedgerStore;
+
+/// The Budgets store as the repository an Interactor writes through. It forwards rather than
+/// lending the store's own: the store is shared behind a `RefCell` whose guard can't be lent out
+/// of it.
+pub struct Store(pub SharedBudgetsStore);
+
+impl BudgetRepository for Store {
+    fn budgets(&self) -> Vec<Budget> {
+        self.0.borrow().budgets().budgets()
+    }
+
+    fn budget(&self, id: BudgetId) -> Option<Budget> {
+        self.0.borrow().budgets().budget(id)
+    }
+
+    fn upsert_budget(&mut self, budget: &Budget) {
+        self.0.borrow_mut().budgets_mut().upsert_budget(budget);
+    }
+}
+
+/// The Budgets ports as the Desktop holds them: the store `LedgerStore` shares, and the other
+/// domains read through their stores (#952).
+pub struct StoredPorts {
+    pub budgets: Store,
+    pub reads: Rc<StoredBudgetReads>,
+}
+
+impl BudgetsPorts for StoredPorts {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        &self.budgets
+    }
+
+    fn reads(&self) -> &dyn BudgetReads {
+        &*self.reads
+    }
+
+    fn split_mut(&mut self) -> PortsMut<'_> {
+        PortsMut {
+            budgets: &mut self.budgets,
+            reads: &*self.reads,
+        }
+    }
+}
+
+/// The Budgets ports the page, its Dialogs and the legacy Dialogs share.
+#[derive(Clone)]
+pub struct DesktopPorts {
+    pub shared: Rc<RefCell<StoredPorts>>,
+}
+
+impl DesktopPorts {
+    pub fn new(store: SharedBudgetsStore, reads: Rc<StoredBudgetReads>) -> Self {
+        Self {
+            shared: Rc::new(RefCell::new(StoredPorts {
+                budgets: Store(store),
+                reads,
+            })),
+        }
+    }
+
+    /// The ports as the Presenters hold them.
+    pub fn presenter(&self) -> SharedPorts {
+        self.shared.clone()
+    }
+
+    /// The other domains' reads, for the legacy Dialogs that read their stores' own rows.
+    pub fn reads(&self) -> Rc<StoredBudgetReads> {
+        self.shared.borrow().reads.clone()
+    }
+}
+
+/// Brings the Ledger's Budgets read copy in line with the store after a Budgets write, announcing
+/// `Domain::Budgets` when it changed.
+pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.refresh_budgets(cx));
+}
 
 /// `ledger`'s own Budgets in memory, for a test that needs no storage.
 pub fn in_memory(ledger: &Ledger) -> SharedBudgetsStore {

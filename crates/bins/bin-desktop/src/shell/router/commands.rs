@@ -8,13 +8,12 @@ use super::{Root, explorer::explorer_start_dir};
 use crate::{
     accounts::AccountsPage,
     navigation::{
-        command::{self, AccountsVerb, BudgetsVerb, CommandEffect, Entry, ModulePage},
+        command::{self, AccountsVerb, CommandEffect, Entry, ModulePage},
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
     settings::SettingsPage,
     shell::view::{palette::Palette, window_size::WindowSize},
-    view::budgets::manage_dialog::ManageAction,
 };
 
 /// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
@@ -128,44 +127,6 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.run_documents_command(verb, cx);
             }
-            CommandEffect::Budgets(verb) => {
-                self.navigate(NavInput::ExitMode);
-                self.show_noun(Noun::Budgets, cx);
-                match verb {
-                    BudgetsVerb::Switch => self.open_budgets_switcher(cx),
-                    BudgetsVerb::New => self.open_budgets_new(cx),
-                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_current(cx), cx),
-                    BudgetsVerb::Manage => self.open_budgets_manage(cx),
-                    BudgetsVerb::Duplicate => {
-                        self.run_budgets_manage_action(
-                            self.budgets_current(cx),
-                            ManageAction::Duplicate,
-                            cx,
-                        );
-                    }
-                    BudgetsVerb::SetDefault => {
-                        self.run_budgets_manage_action(
-                            self.budgets_current(cx),
-                            ManageAction::SetDefault,
-                            cx,
-                        );
-                    }
-                    BudgetsVerb::Archive => {
-                        self.run_budgets_manage_action(
-                            self.budgets_current(cx),
-                            ManageAction::Archive,
-                            cx,
-                        );
-                    }
-                    BudgetsVerb::Restore => {
-                        self.run_budgets_manage_action(
-                            self.budgets_current(cx),
-                            ManageAction::Restore,
-                            cx,
-                        );
-                    }
-                }
-            }
             CommandEffect::NotYetBuilt => {
                 self.navigate(NavInput::ExitMode);
                 self.set_status(crate::msg::desktop_status_command_not_yet_built(
@@ -242,6 +203,12 @@ impl Root {
                 self.show_noun(Noun::Bills, cx);
                 self.views
                     .bills
+                    .update(cx, |page, cx| page.module_command(command, cx))
+            }
+            ModulePage::Budgets => {
+                self.show_noun(Noun::Budgets, cx);
+                self.views
+                    .budgets
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Transactions => {

@@ -128,6 +128,25 @@ impl<E: Clone> Keymap<E> {
             .map(|bound| bound.event.clone())
     }
 
+    /// Every event `chord` sends, in binding order: a module whose tabs each bind one chord to an
+    /// event of their own (Budgets' `x`) takes the one for the tab shown.
+    pub fn events(&self, chord: &str) -> impl Iterator<Item = E> + '_ {
+        let chord = chord.to_string();
+        self.bindings
+            .iter()
+            .filter(move |bound| !chord.is_empty() && bound.chord == chord)
+            .map(|bound| bound.event.clone())
+    }
+
+    /// Every event `command` sends, in binding order, for a command several tabs bind, each to its
+    /// own event.
+    pub fn events_for<'a>(&'a self, command: &'a str) -> impl Iterator<Item = E> + 'a {
+        self.bindings
+            .iter()
+            .filter(move |bound| bound.command == command)
+            .map(|bound| bound.event.clone())
+    }
+
     /// Whether `chord` begins a bound sequence (the `g` of `g g`), so the Client waits for the
     /// next key before looking the whole sequence up.
     pub fn is_prefix(&self, chord: &str) -> bool {
@@ -273,6 +292,33 @@ mod tests {
             Some(Event::Delete),
             "an override moves the key, not the name"
         );
+    }
+
+    #[test]
+    fn a_chord_or_command_bound_twice_reaches_each_event_in_binding_order() {
+        let bindings = [
+            Binding::hidden("tabs.act", "x", Event::New),
+            Binding::hidden("tabs.act", "x", Event::Delete),
+            Binding::hidden(NEW, "n", Event::New),
+        ];
+        let keymap = Keymap::new(&bindings, &KeyBindingConfig::default());
+
+        assert_eq!(
+            keymap.events("x").collect::<Vec<_>>(),
+            [Event::New, Event::Delete]
+        );
+        assert_eq!(
+            keymap.events_for("tabs.act").collect::<Vec<_>>(),
+            [Event::New, Event::Delete]
+        );
+        assert_eq!(keymap.events("").count(), 0);
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert("tabs.act".to_string(), "ctrl+x".to_string());
+        let moved = Keymap::new(&bindings, &config);
+        assert_eq!(moved.events("ctrl+x").count(), 2, "one override moves both");
+        assert_eq!(moved.events("x").count(), 0);
     }
 
     #[test]

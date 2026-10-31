@@ -63,9 +63,6 @@ pub enum CommandEffect {
     DismissToast,
     /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
     SetToasts(bool),
-    /// A `budgets <verb>` command: `Root::run_command` jumps to the Budgets page and runs the
-    /// verb on the Budget on show.
-    Budgets(BudgetsVerb),
     /// A `documents <verb>` command: `Root::run_command` jumps to Documents and runs the verb.
     Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
@@ -99,6 +96,7 @@ pub enum ModulePage {
     /// A Settings page that is a module's View.
     Settings(SettingsPage),
     Bills,
+    Budgets,
     Transactions,
 }
 
@@ -128,28 +126,6 @@ pub enum DocumentsVerb {
     Add,
     /// `documents import`: the `Import…` dialog.
     Import,
-}
-
-/// The Budgets verbs the palette understands (#400): the same actions the page's keys and the
-/// Switcher reach, through the same handlers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BudgetsVerb {
-    /// `budgets switch`: the Switcher popover (11b).
-    Switch,
-    /// `budgets new`: the New budget dialog (11c).
-    New,
-    /// `budgets edit`: 11c's edit mode on the Budget on show.
-    Edit,
-    /// `budgets manage`: Manage budgets (11f).
-    Manage,
-    /// `budgets duplicate`: copies the Budget on show and opens the copy in edit mode.
-    Duplicate,
-    /// `budgets set-default`: makes the Budget on show the default.
-    SetDefault,
-    /// `budgets archive`: archives the Budget on show.
-    Archive,
-    /// `budgets restore`: restores the Budget on show.
-    Restore,
 }
 
 /// The palette's resting-state group a command sits under: one per noun or module, plus `Ledger`
@@ -265,7 +241,7 @@ pub fn split_input(input: &str) -> (&str, &str) {
 /// The Commands no keymap has, which the palette lists beside the keymaps' ([`entries`]): the
 /// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the three `accounts
 /// <verb>` commands, which take a typed account name a keymap event can't carry (see
-/// [`split_input`]), the Budgets and Documents verbs until their modules have keymaps, the
+/// [`split_input`]), the Documents verbs until their module has a keymap, the
 /// file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
 /// commands `dismiss`, `toasts on|off` and `messages` (an alias of the `toasts` binding). A
 /// Command a keymap lists has no row here (`no_commands_row_is_a_command_a_keymap_lists`).
@@ -297,62 +273,6 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_accounts_delete_description,
         binding: None,
         effect: CommandEffect::Accounts(AccountsVerb::Delete),
-    },
-    Command {
-        name: "budgets switch",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_switch_description,
-        binding: Some("B"),
-        effect: CommandEffect::Budgets(BudgetsVerb::Switch),
-    },
-    Command {
-        name: "budgets new",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_new_description,
-        binding: Some("n"),
-        effect: CommandEffect::Budgets(BudgetsVerb::New),
-    },
-    Command {
-        name: "budgets edit",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_edit_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::Edit),
-    },
-    Command {
-        name: "budgets manage",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_manage_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::Manage),
-    },
-    Command {
-        name: "budgets duplicate",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_duplicate_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::Duplicate),
-    },
-    Command {
-        name: "budgets set-default",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_set_default_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::SetDefault),
-    },
-    Command {
-        name: "budgets archive",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_archive_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::Archive),
-    },
-    Command {
-        name: "budgets restore",
-        domain: Domain::Budgets,
-        description: crate::msg::desktop_command_budgets_restore_description,
-        binding: None,
-        effect: CommandEffect::Budgets(BudgetsVerb::Restore),
     },
     Command {
         name: "categories",
@@ -704,6 +624,12 @@ fn module_entries(config: &KeyBindingConfig) -> Vec<Entry> {
     );
     listed(
         &mut entries,
+        &lib_budgets::keymap::budgets_page_keymap(config),
+        ModulePage::Budgets,
+        Domain::Budgets,
+    );
+    listed(
+        &mut entries,
         &lib_categories::keymap::categories_page_keymap(config),
         settings(Page::Categories),
         Domain::Categories,
@@ -940,18 +866,26 @@ mod tests {
     }
 
     #[test]
-    fn the_budgets_verbs_carry_their_effects() {
-        for (name, verb) in [
-            ("budgets switch", BudgetsVerb::Switch),
-            ("budgets new", BudgetsVerb::New),
-            ("budgets edit", BudgetsVerb::Edit),
-            ("budgets manage", BudgetsVerb::Manage),
-            ("budgets duplicate", BudgetsVerb::Duplicate),
-            ("budgets set-default", BudgetsVerb::SetDefault),
-            ("budgets archive", BudgetsVerb::Archive),
-            ("budgets restore", BudgetsVerb::Restore),
+    fn the_budgets_verbs_run_on_the_budgets_page_by_their_keymap_command() {
+        use lib_budgets::keymap as budgets;
+        for (name, command) in [
+            ("budgets switch", budgets::SWITCH),
+            ("budgets new", lib_viper::keymap::NEW),
+            ("budgets edit", budgets::EDIT_BUDGET),
+            ("budgets manage", budgets::MANAGE),
+            ("budgets duplicate", budgets::DUPLICATE),
+            ("budgets set-default", budgets::SET_DEFAULT),
+            ("budgets archive", budgets::ARCHIVE),
+            ("budgets restore", budgets::RESTORE),
         ] {
-            assert_eq!(effect(name), Some(CommandEffect::Budgets(verb)), "{name}");
+            assert_eq!(
+                effect(name),
+                Some(CommandEffect::Module {
+                    page: ModulePage::Budgets,
+                    command,
+                }),
+                "{name}"
+            );
         }
     }
 

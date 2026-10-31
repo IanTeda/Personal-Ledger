@@ -4017,10 +4017,14 @@ mod tests {
         let payees = lib_payees::keymap::PAYEES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let budgets = lib_budgets::keymap::BUDGETS_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         units
             .chain(unit_prices)
             .chain(bills)
             .chain(payees)
+            .chain(budgets)
             .collect()
     }
 

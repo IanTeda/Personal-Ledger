@@ -9,11 +9,9 @@
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
-use super::{
-    budgets::state::BudgetsView, dashboard::state::DashboardView, documents::state::DocumentsView,
-    event::Reveal,
-};
+use super::{dashboard::state::DashboardView, documents::state::DocumentsView, event::Reveal};
 use crate::bills::BillsPage;
+use crate::budgets::view::page::BudgetsPage;
 use crate::settings::state::SettingsView;
 use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
@@ -28,7 +26,7 @@ use crate::{
 pub enum ActiveViewEntity {
     Dashboard(Entity<DashboardView>),
     Bills(Entity<BillsPage>),
-    Budgets(Entity<BudgetsView>),
+    Budgets(Entity<BudgetsPage>),
     /// The Transactions list.
     Transactions(Entity<TransactionsPage>),
     /// The Transactions destination's Import step, shown in place of the list while it is open: the
@@ -55,7 +53,7 @@ pub enum ShellView {
 pub struct ViewEntities {
     pub dashboard: Entity<DashboardView>,
     pub bills: Entity<BillsPage>,
-    pub budgets: Entity<BudgetsView>,
+    pub budgets: Entity<BudgetsPage>,
     pub transactions: Entity<TransactionsPage>,
     pub import: Entity<ImportPage>,
     pub documents: Entity<DocumentsView>,
@@ -110,15 +108,16 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the focused module's keymap takes, by `chord`: the Bills or Transactions page's, the
-    /// Import step's, or a Settings page that is a module's View. Returns whether it took the key.
+    /// A key the focused module's keymap takes, by `chord`: the Bills, Budgets or Transactions
+    /// page's, the Import step's, or a Settings page that is a module's View. Returns whether it took the key.
     pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Dashboard(_) | Self::Budgets(_) | Self::Documents(_) | Self::Shell(_) => false,
+            Self::Budgets(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Dashboard(_) | Self::Documents(_) | Self::Shell(_) => false,
         }
     }
 
@@ -267,7 +266,8 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.read(cx).help_group(cx),
             Self::Documents(view) => view.read(cx).help_group(cx),
             Self::Settings(view) => view.read(cx).help_group(cx),
-            Self::Dashboard(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => None,
+            Self::Budgets(view) => view.read(cx).help_group(cx),
+            Self::Dashboard(_) | Self::Import(_) | Self::Shell(_) => None,
         }
     }
 }

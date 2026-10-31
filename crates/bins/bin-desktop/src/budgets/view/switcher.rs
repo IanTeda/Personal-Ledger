@@ -1,63 +1,27 @@
-//! Renders the **Switcher** popover (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 11b): a 380px card
-//! anchored under the page title over a dimmed page, listing the active Budgets with their health
-//! line and method tag, then the archived ones dimmed, with `+ New budget` and `Manage budgets…`
-//! in the footer. `Root` owns the state (`budgets::Switcher`) and every keystroke.
+//! Draws the **Switcher** popover (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 11b) from
+//! its view model: a 380px card anchored under the page title over a dimmed page, listing the
+//! active Budgets with their health line and method tag, then the archived ones dimmed, with
+//! `+ New budget` and `Manage budgets…` in the footer.
 
-use lib_core::BudgetId;
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};
+use gpui::{AnyElement, App, BoxShadow, Context, Pixels, SharedString, div, point, prelude::*, px};
+use lib_budgets::presenter::{SwitcherEvent, SwitcherRow, SwitcherViewModel};
 use lib_locale::format::upper;
 
-use crate::{
-    budgets::{Method, Switcher},
-    dialog,
-    theme::color,
-};
+use super::dialog::{ListDialog, SWITCHER_TOP};
+use crate::dialog::OnClick;
+use crate::theme::color;
 
 /// The card's width: the handoff's 11b.
 const WIDTH: Pixels = px(380.0);
 
-/// Called with the clicked Budget's id.
-pub type OnBudgetClick = Rc<dyn Fn(BudgetId, &mut Window, &mut App)>;
-
-/// One Budget, already worded.
-pub struct SwitcherRow {
-    pub id: BudgetId,
-    pub name: String,
-    pub is_default: bool,
-    /// The Budget the page is showing: its row carries the check.
-    pub is_current: bool,
-    pub archived: bool,
-    /// The health summary, or "archived <date>".
-    pub summary: String,
-    pub method: Method,
-}
-
-pub struct SwitcherProps<'a> {
-    pub state: &'a Switcher,
-    /// The rows matching the search, active first.
-    pub rows: Vec<SwitcherRow>,
-    /// The card's top-left corner in window coordinates: under the page title.
-    pub left: Pixels,
-    pub top: Pixels,
-    pub on_search_click: dialog::OnClick,
-    pub on_budget_click: OnBudgetClick,
-    pub on_new: dialog::OnClick,
-    pub on_manage: dialog::OnClick,
-    /// A click outside the card.
-    pub on_cancel: dialog::OnClick,
-}
-
 fn row(
     index: usize,
-    row: SwitcherRow,
+    row: &SwitcherRow,
     selected: bool,
-    on_click: &OnBudgetClick,
+    default_label: &str,
+    on_click: OnClick,
     cx: &App,
 ) -> AnyElement {
-    let on_click = on_click.clone();
-    let id = row.id;
     let (primary, secondary) = if selected {
         (color::selection_text(cx), color::selection_muted(cx))
     } else {
@@ -66,6 +30,7 @@ fn row(
     let hover = color::hover(cx);
     div()
         .id(SharedString::from(format!("budgets-switcher-{index}")))
+        .debug_selector(move || format!("budgets-switcher-{index}"))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -76,7 +41,7 @@ fn row(
         .when(row.archived && !selected, |this| this.opacity(0.55))
         .when(selected, |this| this.bg(color::selection_background(cx)))
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_click(id, window, cx))
+        .on_click(move |_event, window, cx| on_click(window, cx))
         .child(
             div()
                 .w(px(12.0))
@@ -96,7 +61,7 @@ fn row(
                             div()
                                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                                 .truncate()
-                                .child(row.name),
+                                .child(row.name.clone()),
                         )
                         .when(row.is_default, |this| {
                             this.child(
@@ -104,7 +69,7 @@ fn row(
                                     .flex_none()
                                     .text_size(px(10.0))
                                     .text_color(secondary)
-                                    .child(crate::msg::desktop_budgets_switcher_default()),
+                                    .child(default_label.to_string()),
                             )
                         }),
                 )
@@ -113,7 +78,7 @@ fn row(
                         .text_size(px(11.5))
                         .text_color(secondary)
                         .truncate()
-                        .child(row.summary),
+                        .child(row.summary.clone()),
                 ),
         )
         .child(
@@ -125,7 +90,7 @@ fn row(
                 .border_color(secondary)
                 .text_size(px(10.0))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(upper(&super::method_label(row.method))),
+                .child(upper(&row.method)),
         )
         .into_any_element()
 }
@@ -134,12 +99,13 @@ fn footer_button(
     id: &'static str,
     label: String,
     divided: bool,
-    on_click: dialog::OnClick,
+    on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
         .id(id)
+        .debug_selector(move || id.to_string())
         .cursor_pointer()
         .flex_1()
         .py(px(10.0))
@@ -154,66 +120,57 @@ fn footer_button(
         .child(label)
 }
 
-pub fn render(props: SwitcherProps<'_>, cx: &App) -> AnyElement {
-    let SwitcherProps {
-        state,
-        rows,
-        left,
-        top,
-        on_search_click,
-        on_budget_click,
-        on_new,
-        on_manage,
-        on_cancel,
-    } = props;
+pub(super) fn render(
+    view: &SwitcherViewModel,
+    left: Pixels,
+    cx: &Context<'_, ListDialog>,
+) -> AnyElement {
+    let on_search = ListDialog::on_switcher(cx, SwitcherEvent::Search);
+    let on_cancel = ListDialog::on_switcher(cx, SwitcherEvent::Cancel);
+    let on_new = ListDialog::on_switcher(cx, SwitcherEvent::New);
+    let on_manage = ListDialog::on_switcher(cx, SwitcherEvent::Manage);
+    let app: &App = cx;
 
-    let caret = if state.searching { "\u{2502}" } else { "" };
-    let (search_text, search_colour) = if state.query.text().is_empty() {
-        (
-            format!("{}{caret}", crate::msg::desktop_budgets_switcher_search()),
-            color::faint_text(cx),
-        )
+    let caret = if view.searching { "\u{2502}" } else { "" };
+    let search_colour = if view.search_empty {
+        color::faint_text(app)
     } else {
-        (
-            format!("{}{caret}", state.query.text()),
-            color::foreground(cx),
-        )
+        color::foreground(app)
     };
     let search = div().px(px(14.0)).py(px(12.0)).child(
         div()
             .id("budgets-switcher-search")
+            .debug_selector(|| "budgets-switcher-search".to_string())
             .cursor_pointer()
             .w_full()
             .py(px(8.0))
             .px(px(10.0))
             .border_1()
-            .border_color(if state.searching {
-                color::accent(cx)
+            .border_color(if view.searching {
+                color::accent(app)
             } else {
-                color::border(cx)
+                color::border(app)
             })
             .text_size(px(13.0))
             .text_color(search_colour)
-            .on_click(move |_event, window, cx| on_search_click(window, cx))
-            .child(search_text),
+            .on_click(move |_event, window, cx| on_search(window, cx))
+            .child(format!("{}{caret}", view.search)),
     );
 
-    let selected = state.selected.min(rows.len().saturating_sub(1));
-    let first_archived = rows.iter().position(|row| row.archived);
     let mut list: Vec<AnyElement> = Vec::new();
-    if rows.is_empty() {
+    if let Some(none) = &view.none {
         list.push(
             div()
                 .px(px(14.0))
                 .py(px(10.0))
                 .text_size(px(12.5))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_budgets_switcher_none())
+                .text_color(color::muted(app))
+                .child(none.clone())
                 .into_any_element(),
         );
     }
-    for (index, each) in rows.into_iter().enumerate() {
-        if first_archived == Some(index) {
+    for (index, each) in view.rows.iter().enumerate() {
+        if view.archived_from == Some(index) {
             list.push(
                 div()
                     .px(px(14.0))
@@ -221,27 +178,36 @@ pub fn render(props: SwitcherProps<'_>, cx: &App) -> AnyElement {
                     .pb(px(4.0))
                     .text_size(px(10.0))
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::muted(cx))
-                    .child(upper(&crate::msg::desktop_budgets_switcher_archived()))
+                    .text_color(color::muted(app))
+                    .child(upper(&view.archived_label))
                     .into_any_element(),
             );
         }
-        list.push(row(index, each, index == selected, &on_budget_click, cx));
+        let on_click = ListDialog::on_switcher(cx, SwitcherEvent::ChooseBudget(each.id));
+        list.push(row(
+            index,
+            each,
+            view.selected == Some(index),
+            &view.default_label,
+            on_click,
+            app,
+        ));
     }
 
     let card = div()
         .id("budgets-switcher")
+        .debug_selector(|| "budgets-switcher".to_string())
         .absolute()
         .left(left)
-        .top(top)
+        .top(SWITCHER_TOP)
         .w(WIDTH)
         .flex()
         .flex_col()
-        .bg(color::background(cx))
+        .bg(color::background(app))
         .border(px(2.0))
-        .border_color(color::foreground(cx))
+        .border_color(color::foreground(app))
         .shadow(vec![BoxShadow {
-            color: color::dialog_shadow(cx).into(),
+            color: color::dialog_shadow(app).into(),
             offset: point(px(6.0), px(6.0)),
             blur_radius: px(0.0),
             spread_radius: px(0.0),
@@ -254,28 +220,30 @@ pub fn render(props: SwitcherProps<'_>, cx: &App) -> AnyElement {
             div()
                 .flex()
                 .border_t(px(1.0))
-                .border_color(color::border(cx))
+                .border_color(color::border(app))
                 .child(footer_button(
                     "budgets-switcher-new",
-                    crate::msg::desktop_budgets_switcher_new(),
+                    view.new_label.clone(),
                     false,
                     on_new,
-                    cx,
+                    app,
                 ))
                 .child(footer_button(
                     "budgets-switcher-manage",
-                    crate::msg::desktop_budgets_switcher_manage(),
+                    view.manage_label.clone(),
                     true,
                     on_manage,
-                    cx,
+                    app,
                 )),
         );
 
     div()
         .id("budgets-switcher-layer")
+        .debug_selector(|| "budgets-switcher-layer".to_string())
         .absolute()
         .inset_0()
-        .bg(color::scrim(cx))
+        .occlude()
+        .bg(color::scrim(app))
         .on_click(move |_event, window, cx| on_cancel(window, cx))
         .child(card)
         .into_any_element()
