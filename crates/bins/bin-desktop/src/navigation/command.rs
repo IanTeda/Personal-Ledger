@@ -770,13 +770,14 @@ fn key(chord: &str) -> Option<String> {
     (!chord.is_empty()).then(|| chord.to_string())
 }
 
-/// The [`COMMANDS`] row named `name` under `config`, as the palette would run it: the empty
+/// The [`COMMANDS`] row named `name` in `entries`, as the palette would run it: the empty
 /// state's `open` and `new` links, which no keymap binds.
-pub fn find(name: &str, config: &KeyBindingConfig) -> Option<Entry> {
+pub fn find(name: &str, entries: &[Entry]) -> Option<Entry> {
     COMMANDS
         .iter()
         .find(|command| command.name == name)
-        .map(|command| Entry::from_command(command, config))
+        .and_then(|command| entries.iter().find(|entry| entry.name == command.name))
+        .cloned()
 }
 
 #[cfg(test)]

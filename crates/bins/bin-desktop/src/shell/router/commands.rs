@@ -185,7 +185,7 @@ impl Root {
         command_name: &'static str,
         cx: &mut Context<'_, Self>,
     ) {
-        let Some(command) = command::find(command_name, &self.keybindings) else {
+        let Some(command) = command::find(command_name, &self.palette_entries) else {
             return;
         };
         self.navigate(NavInput::EnterMode(InputMode::Command));
@@ -200,7 +200,7 @@ impl Root {
     pub(super) fn open_palette(&mut self) {
         self.navigate(NavInput::EnterMode(InputMode::Command));
         self.state.palette = Some(Palette::new(
-            command::entries(&self.keybindings),
+            self.palette_entries.clone(),
             self.command_history.clone(),
         ));
     }
