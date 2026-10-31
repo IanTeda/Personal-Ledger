@@ -49,7 +49,7 @@ Press `g` then `t` to jump to Transactions from anywhere. For the full set of ke
 
 ## Feature set and requirements
 
-Intended features for Transactions. Ticked means the Desktop does it. The Desktop lists, filters and searches Transactions today; its `n`, `e` and `Enter` keys say that adding, editing and opening one isn't built yet.
+Intended features for Transactions. Ticked means the Desktop does it. The Desktop lists, filters and searches Transactions today; its `n`, `e` and `Enter` keys say that adding, editing and opening one isn't built yet. Typing `:import` on the desktop opens a sample bank statement in place of the list, where you match each line to a payee and category and then add them all as transactions; reading your own CSV file isn't built yet, so TXN-010 stays unticked. The [Payees](payees.md) page walks through the import screen.
 
 - [ ] TXN-001: Record a single-entry transaction with date, amount, category, account, and status
 - [ ] TXN-002: Split a transaction across multiple categories

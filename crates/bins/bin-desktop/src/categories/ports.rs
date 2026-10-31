@@ -1,6 +1,6 @@
 //! The Categories ports as the Desktop holds them (#858, #859): the store `shell::router::build` is
 //! given, shared by the Categories module, the Ledger's forwarding shim and read copy, the Bills
-//! ports (`BillCategories`) and the Payees ports and Import's Category select (`PayeeCategories`).
+//! ports (`BillCategories`) and the Payees ports and the Import's Category select (`PayeeCategories`, `ImportCategories`).
 //! The writes are committed by the input they were made in (`crate::input::send`), not here.
 //!
 //! The Categories page writes the repository through `lib-categories`' Interactors. What the

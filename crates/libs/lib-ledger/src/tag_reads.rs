@@ -1,6 +1,6 @@
 //! The Ledger's Tags are a read copy of the Tags port (#862): a Client refreshes it from the port
 //! after each Tags write and on rollback ([`Ledger::refresh_tags`]), for the Views that still read
-//! Tags from the Ledger: the Tags page, Transactions and Import. The Tags writers still run as
+//! Tags from the Ledger: the Tags page and Transactions. The Tags writers still run as
 //! `LedgerCommand`s, which a Client forwards to the port, until the Tags page writes it itself
 //! (#863) and Tag delete and merge move to `lib-reassign` (#813). The copy goes when the last
 //! reader has its own port.

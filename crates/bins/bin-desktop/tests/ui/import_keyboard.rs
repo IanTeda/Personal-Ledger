@@ -225,7 +225,7 @@ fn a_refused_commit_raises_an_error_toast_naming_the_clash(app: &mut TestAppCont
         select_row(&mut ui, index);
         ui.press("c j enter");
     }
-    ui.book_payee("Aussie Candle Co");
+    ui.add_payee("Aussie Candle Co");
 
     ui.press("enter");
 

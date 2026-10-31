@@ -135,8 +135,9 @@ impl TransactionUnits for DesktopPorts {
 }
 
 /// Sends each Transaction row `changes` upserts to `store`, in the order recorded. The writers it
-/// carries: Import commit, Tag delete and merge, and Category reassign; none deletes a
-/// Transaction, since Account delete writes through `lib-account-deletion`'s port (#854). Every
+/// carries: Tag delete and merge, and Category reassign, until `lib-reassign` (#813); none deletes
+/// a Transaction, since Account delete writes through `lib-account-deletion`'s port (#854) and the
+/// Import through `lib-transaction-import`'s (#943). Every
 /// other change is another domain's, which nothing persists yet.
 pub fn forward(store: &mut dyn TransactionsStore, changes: &[LedgerChange]) {
     let port = store.transactions_mut();

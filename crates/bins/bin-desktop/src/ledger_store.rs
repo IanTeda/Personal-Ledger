@@ -184,12 +184,6 @@ impl LedgerStore {
         self.transactions.borrow().category_splits(id)
     }
 
-    /// The leaves a Split may be filed under, as Import's Category select offers them: read from
-    /// the Categories store by `lib-payees`' `PayeeCategories` labelling (#858).
-    pub fn payee_categories(&self) -> Vec<lib_payees::PayeeCategory> {
-        self.categories.borrow().payee_categories()
-    }
-
     /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
     /// names (#885).
     #[doc(hidden)]
@@ -215,33 +209,18 @@ impl LedgerStore {
         });
     }
 
-    /// Books a Payee called `name` through the Import commit, so a test can meet the refusal of
-    /// an Import that creates the same name.
+    /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
+    /// of an Import that creates the same name.
     #[doc(hidden)]
-    pub fn book_payee_for_test(&mut self, name: &str, cx: &mut Context<'_, Self>) {
-        let (Some(account), Some(category)) = (
-            self.ledger.accounts().first().map(|account| account.id),
-            self.ledger.categories().first().map(|category| category.id),
-        ) else {
-            return;
-        };
-        let booking = lib_ledger::ImportBooking {
-            date: chrono::NaiveDate::default(),
-            description: name.to_owned(),
-            amount: "0".parse().unwrap_or_else(|_| lib_core::Money::mock()),
-            payee: lib_ledger::BookingPayee::Create {
-                name: name.to_owned(),
-                alias: None,
-            },
-            category_id: category,
-        };
-        let _ = self.apply(
-            cx,
-            lib_ledger::CommitImport {
-                account_id: account,
-                bookings: vec![booking],
-            },
-        );
+    pub fn add_payee_for_test(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        PayeesStore::payees_mut(&mut *self.payees.borrow_mut()).upsert_payee(lib_payees::Payee {
+            id: lib_core::PayeeId::new(),
+            name: name.to_owned(),
+            aliases: Vec::new(),
+            default_category: None,
+            is_active: true,
+        });
+        self.refresh_payees(cx);
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -316,10 +295,10 @@ impl LedgerStore {
     /// touched. Its Category, Tag, Payee, Transaction, Bills and Inventory changes go to the ports
     /// (the forwarding shims, #774, #831, #858, #862, #866), for the input's one commit; run outside any input, it emits
     /// [`LegacyApplied`] to be committed. The Category upserts go first, since Category reassign
-    /// re-points rows to an Uncategorised it may create, then the Payees, since the Splits an
-    /// Import books name the Payees it creates; the Category deletes go last, once nothing names
-    /// them. The Inventory names only the Units, so its changes go in any order with the rest. The
-    /// other domains' changes aren't persisted yet (#636), so they're dropped here.
+    /// re-points rows to an Uncategorised it may create, then the Payees, then the Transactions;
+    /// the Category deletes go last, once nothing names them. The Inventory names only the Units,
+    /// so its changes go in any order with the rest. The other domains' changes aren't persisted
+    /// yet (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -815,51 +794,23 @@ mod tests {
     }
 
     #[gpui::test]
-    fn an_import_and_a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
-        use lib_ledger::{BookingPayee, CommitImport, ImportBooking};
-
+    fn a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
         let on = on_storage_with_bills(cx, storage);
         let store = on.store.clone();
-        let (wallet, everyday, groceries) = store.read_with(cx, |store, _| {
-            let ledger = store.ledger();
-            let account = |name: &str| {
-                ledger
-                    .accounts()
-                    .iter()
-                    .find(|account| account.name == name)
-                    .expect("a stub Account")
-                    .id
-            };
-            let groceries = lib_categories::find_by_name(ledger.categories(), "Groceries")
-                .expect("a stub Category");
-            (account("Wallet"), account("ANZ Everyday"), groceries)
+        let wallet = store.read_with(cx, |store, _| {
+            store
+                .ledger()
+                .accounts()
+                .iter()
+                .find(|account| account.name == "Wallet")
+                .expect("a stub Account")
+                .id
         });
 
-        store.update(cx, |store, cx| {
-            store
-                .apply(
-                    cx,
-                    CommitImport {
-                        account_id: everyday,
-                        bookings: vec![ImportBooking {
-                            date: today,
-                            description: "IMPORTED SHOP".into(),
-                            amount: "-12.34".parse().expect("a decimal"),
-                            payee: BookingPayee::Create {
-                                name: "Corner Store".into(),
-                                alias: None,
-                            },
-                            category_id: groceries,
-                        }],
-                    },
-                )
-                .expect("the import books");
-        });
-        on.pending.commit();
         delete_account(cx, &on, wallet).expect("nothing pays from the Wallet");
         on.pending.commit();
         let before = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
@@ -880,11 +831,6 @@ mod tests {
             after
                 .iter()
                 .all(|transaction| transaction.account_id != wallet)
-        );
-        assert!(
-            after
-                .iter()
-                .any(|transaction| transaction.description.as_deref() == Some("IMPORTED SHOP"))
         );
     }
 

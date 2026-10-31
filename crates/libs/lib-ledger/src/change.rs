@@ -42,7 +42,7 @@ pub enum Domain {
 /// prototype's commands write so far; each domain adds its own as its writes move onto commands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
-    /// From Import commit and Category reassign; the Payees module writes its own port (#832).
+    /// From Category reassign; the Payees module (#832) and the Import (#943) write their own ports.
     UpsertPayee(Payee),
     UpsertCategory(Category),
     DeleteCategory(CategoryId),

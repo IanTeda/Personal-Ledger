@@ -1,8 +1,8 @@
 //! The Ledger's Payees are a read copy of the Payees port (#831): a Client refreshes it from the
 //! port after each Payees write ([`Ledger::refresh_payees`]), for the Views that still read
-//! Payees from the Ledger. The Payees writes are `lib-payees`' Interactors (#832), except Import
-//! commit's and Category reassign's, which record `UpsertPayee` changes a Client forwards to the
-//! port. The copy goes when the last reader has its own port.
+//! Payees from the Ledger. The Payees writes are `lib-payees`' Interactors (#832) and
+//! `lib-transaction-import`'s commit (#943), except Category reassign's, which records
+//! `UpsertPayee` changes a Client forwards to the port. The copy goes when the last reader has its own port.
 //!
 //! [`Ledger::payee_uses`] counts what names each Payee from the Ledger's Splits and Bill Plans,
 //! for a Client whose Payees port is in memory and can't count them itself. The Payees adapter

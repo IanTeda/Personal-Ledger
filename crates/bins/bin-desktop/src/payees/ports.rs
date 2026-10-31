@@ -9,8 +9,8 @@
 //! same value as a `PayeesStore`.
 //!
 //! An in-memory store's usage is copied from the Ledger before each Payees event, since a port
-//! can't reach the `LedgerStore` Entity without a gpui context. So a Split written since, by an
-//! Import commit, is counted. The stored Desktop's usage is the adapter's, counted in the file.
+//! can't reach the `LedgerStore` Entity without a gpui context. So a Split written since, by a
+//! Category reassign, is counted. The stored Desktop's usage is the adapter's, counted in the file.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -126,9 +126,9 @@ impl PayeesStore for LedgerBackedPorts {
 }
 
 /// The forwarding shim (#831): sends each Payee row in `changes` to `store`, in the order recorded,
-/// returning whether it wrote anything. What it still carries are the writers not yet migrated:
-/// Import commit (the Payees it creates and the match rules it remembers, #810) and Category
-/// reassign (the Default categories it clears, #813). Every other change is another domain's.
+/// returning whether it wrote anything. What it still carries is the one writer not yet migrated:
+/// Category reassign (the Default categories it clears, #813); the Import writes through
+/// `lib-transaction-import`'s port (#943). Every other change is another domain's.
 pub fn forward(store: &mut dyn PayeesStore, changes: &[LedgerChange]) -> bool {
     let port = store.payees_mut();
     let mut wrote = false;

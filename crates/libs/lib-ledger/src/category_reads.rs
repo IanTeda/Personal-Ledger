@@ -1,7 +1,6 @@
 //! The Ledger's Categories are a read copy of the Categories port (#858): a Client refreshes it from
 //! the port after each Categories write and on rollback ([`Ledger::refresh_categories`]), for the
-//! Views not yet modules: the Categories page, Transactions, Budgets, Import, Documents and the
-//! Dashboard. The Categories writers still run as `LedgerCommand`s, which a Client forwards to the
+//! Views not yet modules: the Categories page, Transactions, Budgets, Documents and the Dashboard. The Categories writers still run as `LedgerCommand`s, which a Client forwards to the
 //! port, until the Categories page writes it itself (#859) and Category reassign moves to
 //! `lib-reassign` (#813). The copy goes when the last reader has its own port.
 

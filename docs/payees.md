@@ -47,7 +47,7 @@ In the desktop app, open the Payees page in Settings (press `g` `s` and pick Pay
 
 A message at the bottom of the window confirms each change. If a change can't be saved, a message says so straight away and the list goes back to what was last saved.
 
-To import, type `:import` in the command box. Each statement line is shown with the payee and category it will get. Lines a match rule recognised are ready to go. For the rest, Personal Ledger suggests a tidied-up name as a new payee. Move to a line with `j` and `k`, press `p` to choose its payee or `c` to choose its category, or `n` to create the suggested payee. Lines still missing a payee or category are marked "needs review", and you can't continue until there are none. Press `r` to turn "remember new payees' rules for next time" on or off, `enter` to continue, or `esc` to go back to Transactions. The new payees and remembered rules show on the Payees page straight away.
+To import, type `:import` in the command box. Each statement line is shown with the payee and category it will get. Lines a match rule recognised are ready to go. For the rest, Personal Ledger suggests a tidied-up name as a new payee. Move to a line with `j` and `k`, press `p` to choose its payee or `c` to choose its category, or `n` to create the suggested payee. Lines still missing a payee or category are marked "needs review", and you can't continue until there are none: pressing `enter` before then tells you in the status line how many are left. Press `r` to turn "remember new payees' rules for next time" on or off, `enter` to continue, or `esc` to go back to Transactions. The new payees and remembered rules show on the Payees page straight away.
 
 ## Worked example
 

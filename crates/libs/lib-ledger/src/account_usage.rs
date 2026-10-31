@@ -1,6 +1,6 @@
 //! `lib-accounts`' [`AccountUsage`] answered from the Ledger (#852), a halfway shim counting an
-//! Account's Transactions and Budgets from the rows themselves, so an Import can't leave the
-//! figure wrong. The Desktop counts the Transactions in `lib-database` since Accounts persist
+//! Account's Transactions and Budgets from the rows themselves, so a write can't leave the figure
+//! wrong. The Desktop counts the Transactions in `lib-database` since Accounts persist
 //! (#853) and reads only the Budgets count here, until Budgets persist (#811).
 
 use lib_accounts::{AccountUsage, AccountUse};

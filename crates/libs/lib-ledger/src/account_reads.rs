@@ -1,6 +1,6 @@
 //! The Ledger's Accounts are a read copy of the Accounts port (#853): a Client refreshes it from the
 //! port after each Accounts write and on rollback ([`Ledger::refresh_accounts`]), for the Views not
-//! yet modules: the Accounts page, Transactions, Budgets, Documents, Import and the Dashboard. The
+//! yet modules: the Accounts page, Transactions, Budgets, Documents and the Dashboard. The
 //! Accounts writers still run as `LedgerCommand`s, which a Client forwards to the port, until the
 //! Accounts page (#855) and `lib-account-deletion` (#854) write it themselves. The copy goes when
 //! the last reader has its own port.
