@@ -4,7 +4,7 @@
 //!   own read copies, each row's flags filled by its owning domain's rule
 //!   (`docs/development/viper-architecture.md`, Rules > Dependencies), for the Budgets
 //!   `LedgerCommand`s, the Dashboard and the rail badge. The Budgets View reads `lib-database`'s
-//!   stores instead (#952). They go when the Budgets Interactors (#953) and the Dashboard (#814)
+//!   stores instead (#952). They go when the Budgets View (#954) and the Dashboard (#814)
 //!   read the stores.
 //! - **The Budgets read copy ([`Ledger::refresh_budgets`]).** The Budgets store is the truth; the
 //!   Ledger keeps a copy for its Budgets and Category reassign commands, the Dashboard and the rail

@@ -33,7 +33,7 @@ None in `lib-core` for the v2 model yet. The desktop model's types (`Budget`, `M
 
 An upsert writes a Budget whole: its row, then its Accounts and records replaced. `Budgets::changed_since` orders a write so the Budget losing the default goes before the one taking it. `lib_budgets::contract` (feature `contract-tests`) is the suite both the in-memory fake and the adapter pass.
 
-The first launch writes `seed::stub_budgets` (Personal spending and a second Budget), and `open_storage` seeds an empty default Personal spending Budget in the base Unit, counting every Account that takes Transactions, when a Ledger has none. The Desktop's Budgets page reads the other domains through `lib_database::StoredBudgetReads`; its writers are still `LedgerCommand`s carried to the store by the forwarding shim (`budgets::ports::forward`) until the Budgets Interactors (#953).
+The first launch writes `seed::stub_budgets` (Personal spending and a second Budget), and `open_storage` seeds an empty default Personal spending Budget in the base Unit, counting every Account that takes Transactions, when a Ledger has none. The Desktop's Budgets page reads the other domains through `lib_database::StoredBudgetReads`; its writers are still `LedgerCommand`s carried to the store by the forwarding shim (`budgets::ports::forward`) until the View moves onto the Budgets Interactors (`lib_budgets::interactor`, #953) in #954. Each Interactor loads the Budget from the repository, applies the rule `Budget` or `Budgets` holds and writes the Budgets it changed whole; the Categories Monthly budget already saves through `SetMonthlyLimit`.
 
 ## UI
 

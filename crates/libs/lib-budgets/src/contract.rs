@@ -4,7 +4,7 @@
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
-//! the Budgets rules, as a Client does, reloads as a restart would, and expects the same rows back.
+//! the Budgets Interactors, as a Client does, reloads as a restart would, and expects the same rows back.
 //! The other domains' rows the rules read are the stub's ([`InMemoryBudgetReads::stub`]).
 
 use chrono::NaiveDate;
@@ -12,8 +12,9 @@ use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
 
 use crate::fake::{InMemoryBudgetReads, InMemoryBudgets};
 use crate::{
-    Budget, BudgetError, BudgetReads, BudgetRepository, Budgets, Limit, LimitRecord, NewBudget,
-    PERSONAL_SPENDING_ID, Rollover, Span, StartFrom, cents_money,
+    ArchiveBudget, Budget, BudgetRepository, CreateBudget, CycleRollover, EditBudget, Limit,
+    LimitRecord, NewBudget, PERSONAL_SPENDING_ID, Rollover, SetAmount, SetDefaultBudget, Span,
+    StartFrom, StopBudgeting, cents_money,
 };
 
 const JOINT_HOUSEHOLD: BudgetId = BudgetId::seed(2);
@@ -137,21 +138,6 @@ pub fn snapshot(ports: &impl BudgetRepository) -> Vec<Budget> {
     budgets
 }
 
-/// Runs `rule` on the Budgets `ports` holds and writes each Budget it changed, as an Interactor
-/// does.
-fn write<R>(
-    ports: &mut impl BudgetRepository,
-    rule: impl FnOnce(&mut Budgets, &dyn BudgetReads) -> Result<R, BudgetError>,
-) -> R {
-    let before = Budgets::from_stored(ports.budgets());
-    let mut after = before.clone();
-    let outcome = rule(&mut after, &InMemoryBudgetReads::stub()).expect("the rules allow it");
-    for budget in after.changed_since(&before) {
-        ports.upsert_budget(&budget);
-    }
-    outcome
-}
-
 fn budget(ports: &impl BudgetRepository, id: BudgetId) -> Budget {
     ports.budget(id).expect("the Budget is stored")
 }
@@ -175,49 +161,54 @@ fn current() -> Period {
 pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(stub_budgets());
 
-    let holiday = write(&mut ports, |budgets, reads| {
-        budgets.create(
-            &NewBudget {
-                name: "Holiday".into(),
-                unit: UnitId::SEED_AUD,
-                account_ids: vec![AccountId::seed(1), AccountId::seed(4)],
-                start_from: StartFrom::Copy(PERSONAL_SPENDING_ID),
-            },
-            reads,
-            today(),
-        )
-    });
+    let reads = InMemoryBudgetReads::stub();
+    let holiday = CreateBudget {
+        new: NewBudget {
+            name: "Holiday".into(),
+            unit: UnitId::SEED_AUD,
+            account_ids: vec![AccountId::seed(1), AccountId::seed(4)],
+            start_from: StartFrom::Copy(PERSONAL_SPENDING_ID),
+        },
+        today: today(),
+    }
+    .run(&reads, &mut ports)
+    .expect("the rules allow it");
     factory.commit(&mut ports);
-    write(&mut ports, |budgets, reads| {
-        budgets.set_amount(
-            PERSONAL_SPENDING_ID,
-            reads,
-            GROCERIES,
-            current().next(),
-            Span::MonthOnly,
-            cents_money(12_345),
-            Some(Rollover::CarryBoth),
-            today(),
-        )
-    });
+    SetAmount {
+        id: PERSONAL_SPENDING_ID,
+        category_id: GROCERIES,
+        month: current().next(),
+        span: Span::MonthOnly,
+        amount: cents_money(12_345),
+        rollover: Some(Rollover::CarryBoth),
+        today: today(),
+    }
+    .run(&reads, &mut ports)
+    .expect("the rules allow it");
     factory.commit(&mut ports);
-    write(&mut ports, |budgets, reads| {
-        budgets.stop(
-            PERSONAL_SPENDING_ID,
-            reads,
-            DINING,
-            current().shift(2),
-            today(),
-        )
-    });
+    StopBudgeting {
+        id: PERSONAL_SPENDING_ID,
+        category_id: DINING,
+        month: current().shift(2),
+        today: today(),
+    }
+    .run(&reads, &mut ports)
+    .expect("the rules allow it");
     factory.commit(&mut ports);
-    let rollover = write(&mut ports, |budgets, _| {
-        budgets.cycle_rollover(PERSONAL_SPENDING_ID, RENT, today())
-    });
+    let rollover = CycleRollover {
+        id: PERSONAL_SPENDING_ID,
+        category_id: RENT,
+        today: today(),
+    }
+    .run(&mut ports)
+    .expect("the rules allow it");
     factory.commit(&mut ports);
-    write(&mut ports, |budgets, _| {
-        budgets.archive(JOINT_HOUSEHOLD, today())
-    });
+    ArchiveBudget {
+        id: JOINT_HOUSEHOLD,
+        today: today(),
+    }
+    .run(&mut ports)
+    .expect("the rules allow it");
     factory.commit(&mut ports);
 
     let before = snapshot(&ports);
@@ -310,15 +301,15 @@ pub fn one_budget_is_the_default<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(stub_budgets());
     assert_eq!(defaults(&ports), [PERSONAL_SPENDING_ID]);
 
-    write(&mut ports, |budgets, _| {
-        budgets.set_default(JOINT_HOUSEHOLD)
-    });
+    SetDefaultBudget(JOINT_HOUSEHOLD)
+        .run(&mut ports)
+        .expect("the rules allow it");
     let mut ports = factory.reload(ports);
     assert_eq!(defaults(&ports), [JOINT_HOUSEHOLD]);
 
-    write(&mut ports, |budgets, _| {
-        budgets.set_default(PERSONAL_SPENDING_ID)
-    });
+    SetDefaultBudget(PERSONAL_SPENDING_ID)
+        .run(&mut ports)
+        .expect("the rules allow it");
     let ports = factory.reload(ports);
     assert_eq!(defaults(&ports), [PERSONAL_SPENDING_ID]);
 }
@@ -353,10 +344,12 @@ pub fn a_category_a_chain_names_cannot_be_deleted<F: PortsFactory>(factory: &mut
         "both stub Budgets budget Groceries"
     );
 
-    write(&mut ports, |budgets, _| {
-        budgets.remove_category(GROCERIES);
-        Ok(())
-    });
+    // Category reassign's clear, which is the Categories' write and not an intent here.
+    let mut all = ports.budgets();
+    for budget in &mut all {
+        budget.limits.remove(&GROCERIES);
+        ports.upsert_budget(budget);
+    }
     factory.commit(&mut ports);
     assert!(factory.delete_category(&mut ports, GROCERIES));
     let ports = factory.reload(ports);
@@ -374,9 +367,13 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     let before = snapshot(&ports);
 
     factory.break_writes(&mut ports);
-    write(&mut ports, |budgets, reads| {
-        budgets.edit(JOINT_HOUSEHOLD, "Shared house", vec![ANZ_EVERYDAY], reads)
-    });
+    EditBudget {
+        id: JOINT_HOUSEHOLD,
+        name: "Shared house".into(),
+        account_ids: vec![ANZ_EVERYDAY],
+    }
+    .run(&InMemoryBudgetReads::stub(), &mut ports)
+    .expect("the rules allow it");
     assert_eq!(budget(&ports, JOINT_HOUSEHOLD).name, "Shared house");
     factory.commit(&mut ports);
     let (ports, failures) = factory.recover(ports);

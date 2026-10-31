@@ -4,7 +4,7 @@
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
 //!
-//! Every Budget writer is still a `LedgerCommand` (#953 moves them onto Interactors), so
+//! Every Budget writer but the Categories Monthly budget is still a `LedgerCommand` (#954 moves them onto the Interactors #953 added), so
 //! [`forward`] carries each Budget a command wrote to the store. The Categories Monthly budget
 //! writes the store itself ([`set_monthly_limit`]).
 
@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_budgets::{BudgetCategories, BudgetError, Budgets, fake::InMemoryBudgets};
+use lib_budgets::{BudgetCategories, BudgetError, SetMonthlyLimit, fake::InMemoryBudgets};
 use lib_core::{BudgetId, CategoryId, Money};
 use lib_database::{BudgetsStore, SharedBudgetsStore};
 use lib_ledger::{Ledger, LedgerChange};
@@ -27,7 +27,7 @@ pub fn in_memory(ledger: &Ledger) -> SharedBudgetsStore {
 /// The forwarding shim (#952): sends each Budget `changes` upserts to `store`, in the order
 /// recorded, returning whether it wrote anything. Run before the Categories' deletes, since
 /// Category reassign clears the chains naming the Category it deletes (their foreign key). Writers
-/// carried: every Budgets `LedgerCommand`, until the Budgets Interactors (#953), and Category
+/// carried: every Budgets `LedgerCommand`, until the View moves onto the Interactors (#954), and Category
 /// reassign, until `lib-reassign` (#813).
 pub fn forward(store: &mut dyn BudgetsStore, changes: &[LedgerChange]) -> bool {
     let port = store.budgets_mut();
@@ -41,8 +41,8 @@ pub fn forward(store: &mut dyn BudgetsStore, changes: &[LedgerChange]) -> bool {
     wrote
 }
 
-/// Budget `id`'s Monthly budget for Category `category`, as `lib-budgets`' set-monthly-limit rule
-/// writes it, straight to `store`: the Categories Add and Edit Dialogs' save, which the input's
+/// Budget `id`'s Monthly budget for Category `category`, as `lib-budgets`' `SetMonthlyLimit`
+/// Interactor writes it, straight to `store`: the Categories Add and Edit Dialogs' save, which the input's
 /// one commit joins with the Category's. Returns whether it wrote.
 ///
 /// # Errors
@@ -55,13 +55,13 @@ pub fn set_monthly_limit(
     amount: Option<Money>,
     today: NaiveDate,
 ) -> Result<bool, BudgetError> {
-    let before = Budgets::from_stored(store.budgets().budgets());
-    let mut after = before.clone();
-    let wrote = after.set_monthly_limit(id, categories, category, amount, today)?;
-    for budget in after.changed_since(&before) {
-        store.budgets_mut().upsert_budget(&budget);
+    SetMonthlyLimit {
+        id,
+        category_id: category,
+        amount,
+        today,
     }
-    Ok(wrote)
+    .run(categories, store.budgets_mut())
 }
 
 #[cfg(test)]

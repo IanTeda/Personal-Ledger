@@ -282,8 +282,7 @@ impl Budgets {
         Ok(())
     }
 
-    /// Writes an Onward or Month-only Budget Amount starting in `month`, replacing whatever record
-    /// starts there. `rollover` of `None` inherits the record it follows.
+    /// Budget `id`'s [`Budget::set_amount`].
     #[expect(
         clippy::too_many_arguments,
         reason = "one call per Plan-grid or Edit budget save"
@@ -299,24 +298,18 @@ impl Budgets {
         rollover: Option<Rollover>,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
-        check_leaf(&categories.budget_categories(), category_id)?;
-        check_open_month(month, today)?;
-        if amount.0.is_negative() {
-            return Err(BudgetError::NegativeAmount);
-        }
-        let budget = self.editable_mut(id)?;
-        let chain = budget.limits.entry(category_id).or_default();
-        let rollover = rollover.unwrap_or_else(|| inherited_rollover(chain, month));
-        let limit = match span {
-            Span::Onward => Limit::Onward { amount, rollover },
-            Span::MonthOnly => Limit::MonthOnly { amount, rollover },
-        };
-        put(chain, LimitRecord { month, limit });
-        Ok(())
+        self.get_mut(id)?.set_amount(
+            categories,
+            category_id,
+            month,
+            span,
+            amount,
+            rollover,
+            today,
+        )
     }
 
-    /// Writes a Stop from `month`. A Category with no amount there and no record starting there
-    /// has nothing to stop, so nothing is written.
+    /// Budget `id`'s [`Budget::stop`].
     pub fn stop(
         &mut self,
         id: BudgetId,
@@ -325,28 +318,11 @@ impl Budgets {
         month: Period,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
-        check_leaf(&categories.budget_categories(), category_id)?;
-        check_open_month(month, today)?;
-        let budget = self.editable_mut(id)?;
-        let chain = budget.limits.entry(category_id).or_default();
-        let has_record = chain.iter().any(|record| record.month == month);
-        if has_record || applied(chain, month).is_some() {
-            put(
-                chain,
-                LimitRecord {
-                    month,
-                    limit: Limit::Stop,
-                },
-            );
-        }
-        if chain.is_empty() {
-            budget.limits.remove(&category_id);
-        }
-        Ok(())
+        self.get_mut(id)?
+            .stop(categories, category_id, month, today)
     }
 
-    /// Removes the Month-only record starting in `month`, so the month falls back to the carried
-    /// Onward value. Returns whether one was removed.
+    /// Budget `id`'s [`Budget::clear_month_only`].
     pub fn clear_month_only(
         &mut self,
         id: BudgetId,
@@ -354,51 +330,21 @@ impl Budgets {
         month: Period,
         today: NaiveDate,
     ) -> Result<bool, BudgetError> {
-        check_open_month(month, today)?;
-        let budget = self.editable_mut(id)?;
-        let Some(chain) = budget.limits.get_mut(&category_id) else {
-            return Ok(false);
-        };
-        let before = chain.len();
-        chain.retain(|r| !(r.month == month && matches!(r.limit, Limit::MonthOnly { .. })));
-        let removed = chain.len() != before;
-        if chain.is_empty() {
-            budget.limits.remove(&category_id);
-        }
-        Ok(removed)
+        self.get_mut(id)?
+            .clear_month_only(category_id, month, today)
     }
 
-    /// The Plan grid's `r`: cycles the current month's Rollover, writing an Onward record from the
-    /// current month with the same amount.
+    /// Budget `id`'s [`Budget::cycle_rollover`].
     pub fn cycle_rollover(
         &mut self,
         id: BudgetId,
         category_id: CategoryId,
         today: NaiveDate,
     ) -> Result<Rollover, BudgetError> {
-        let current = Period::of(today);
-        let budget = self.editable_mut(id)?;
-        let chain = budget.limits.entry(category_id).or_default();
-        let Some(found) = applied(chain, current) else {
-            return Err(BudgetError::NotBudgeted);
-        };
-        let next = found.rollover.next();
-        put(
-            chain,
-            LimitRecord {
-                month: current,
-                limit: Limit::Onward {
-                    amount: found.amount,
-                    rollover: next,
-                },
-            },
-        );
-        Ok(next)
+        self.get_mut(id)?.cycle_rollover(category_id, today)
     }
 
-    /// Saves what was typed into a Plan cell. An amount writes an Onward or Month-only record
-    /// (`0` is a real 0.00). Empty text clears: Onward writes a Stop from `month`, Month-only
-    /// removes that month's own Month-only record. Returns whether anything changed.
+    /// Budget `id`'s [`Budget::save_cell`].
     #[expect(
         clippy::too_many_arguments,
         reason = "one call per Plan-grid cell save"
@@ -413,45 +359,11 @@ impl Budgets {
         text: &str,
         today: NaiveDate,
     ) -> Result<bool, BudgetError> {
-        let text = text.trim();
-        if text.is_empty() {
-            return match span {
-                Span::Onward => {
-                    let before = self.get(id).ok_or(BudgetError::NotFound)?.clone();
-                    self.stop(id, categories, category_id, month, today)?;
-                    Ok(self.get(id) != Some(&before))
-                }
-                Span::MonthOnly => self.clear_month_only(id, category_id, month, today),
-            };
-        }
-        let amount: Money = text.parse().map_err(|_| BudgetError::InvalidAmount)?;
-        let amount = Money(amount.0.with_scale_round(2, RoundingMode::HalfUp));
-        let chain = self
-            .get(id)
-            .ok_or(BudgetError::NotFound)?
-            .chain(category_id);
-        let unchanged = applied(chain, month).is_some_and(|found| found.amount == amount)
-            && !chain
-                .iter()
-                .any(|r| r.month == month && matches!(r.limit, Limit::MonthOnly { .. }));
-        if span == Span::Onward && unchanged {
-            return Ok(false);
-        }
-        self.set_amount(
-            id,
-            categories,
-            category_id,
-            month,
-            span,
-            amount,
-            None,
-            today,
-        )?;
-        Ok(true)
+        self.get_mut(id)?
+            .save_cell(categories, category_id, month, span, text, today)
     }
 
-    /// Fill (9f): writes `source`'s Month-only amounts into `target`, as [`fill_preview`] lists
-    /// them. Returns how many Categories it wrote.
+    /// Budget `id`'s [`Budget::fill`].
     pub fn fill(
         &mut self,
         id: BudgetId,
@@ -460,28 +372,10 @@ impl Budgets {
         source: FillSource,
         today: NaiveDate,
     ) -> Result<usize, BudgetError> {
-        check_open_month(target, today)?;
-        let budget = self.editable_mut(id)?;
-        let preview = fill_preview(budget, reads, target, source);
-        for line in &preview.changes {
-            let chain = budget.limits.entry(line.category_id).or_default();
-            let rollover = inherited_rollover(chain, target);
-            put(
-                chain,
-                LimitRecord {
-                    month: target,
-                    limit: Limit::MonthOnly {
-                        amount: line.after.clone(),
-                        rollover,
-                    },
-                },
-            );
-        }
-        Ok(preview.changes.len())
+        self.get_mut(id)?.fill(reads, target, source, today)
     }
 
-    /// Categories 5c's write: a changed value is an Onward from the current month, clearing is a
-    /// Stop from it, and an unchanged value writes nothing. Returns whether it wrote.
+    /// Budget `id`'s [`Budget::set_monthly_limit`].
     pub fn set_monthly_limit(
         &mut self,
         id: BudgetId,
@@ -490,29 +384,8 @@ impl Budgets {
         amount: Option<Money>,
         today: NaiveDate,
     ) -> Result<bool, BudgetError> {
-        let current = Period::of(today);
-        let existing = self
-            .get(id)
-            .ok_or(BudgetError::NotFound)?
-            .chain(category_id);
-        let existing = applied(existing, current).map(|found| found.amount);
-        if existing == amount {
-            return Ok(false);
-        }
-        match amount {
-            Some(amount) => self.set_amount(
-                id,
-                categories,
-                category_id,
-                current,
-                Span::Onward,
-                amount,
-                None,
-                today,
-            )?,
-            None => self.stop(id, categories, category_id, current, today)?,
-        }
-        Ok(true)
+        self.get_mut(id)?
+            .set_monthly_limit(categories, category_id, amount, today)
     }
 
     /// The current month's Budget Amount as 5c shows it (Month-only included). A parent is a
@@ -584,6 +457,224 @@ impl Budgets {
             }
         }
         stopped
+    }
+}
+
+/// The Category Limit chain rules, on the Budget they edit so the Budgets set and the Interactors
+/// share them. Each refuses an archived Budget; a refusal can leave the chain half-edited, so a
+/// caller applies a rule to a copy and keeps it only when it lands.
+impl Budget {
+    fn ensure_editable(&self) -> Result<(), BudgetError> {
+        if self.is_archived() {
+            Err(BudgetError::Archived)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Writes an Onward or Month-only Budget Amount starting in `month`, replacing whatever record
+    /// starts there. `rollover` of `None` inherits the record it follows.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one call per Plan-grid or Edit budget save"
+    )]
+    pub fn set_amount(
+        &mut self,
+        categories: &dyn BudgetCategories,
+        category_id: CategoryId,
+        month: Period,
+        span: Span,
+        amount: Money,
+        rollover: Option<Rollover>,
+        today: NaiveDate,
+    ) -> Result<(), BudgetError> {
+        check_leaf(&categories.budget_categories(), category_id)?;
+        check_open_month(month, today)?;
+        if amount.0.is_negative() {
+            return Err(BudgetError::NegativeAmount);
+        }
+        self.ensure_editable()?;
+        let chain = self.limits.entry(category_id).or_default();
+        let rollover = rollover.unwrap_or_else(|| inherited_rollover(chain, month));
+        let limit = match span {
+            Span::Onward => Limit::Onward { amount, rollover },
+            Span::MonthOnly => Limit::MonthOnly { amount, rollover },
+        };
+        put(chain, LimitRecord { month, limit });
+        Ok(())
+    }
+
+    /// Writes a Stop from `month`. A Category with no amount there and no record starting there
+    /// has nothing to stop, so nothing is written.
+    pub fn stop(
+        &mut self,
+        categories: &dyn BudgetCategories,
+        category_id: CategoryId,
+        month: Period,
+        today: NaiveDate,
+    ) -> Result<(), BudgetError> {
+        check_leaf(&categories.budget_categories(), category_id)?;
+        check_open_month(month, today)?;
+        self.ensure_editable()?;
+        let chain = self.limits.entry(category_id).or_default();
+        let has_record = chain.iter().any(|record| record.month == month);
+        if has_record || applied(chain, month).is_some() {
+            put(
+                chain,
+                LimitRecord {
+                    month,
+                    limit: Limit::Stop,
+                },
+            );
+        }
+        if chain.is_empty() {
+            self.limits.remove(&category_id);
+        }
+        Ok(())
+    }
+
+    /// Removes the Month-only record starting in `month`, so the month falls back to the carried
+    /// Onward value. Returns whether one was removed.
+    pub fn clear_month_only(
+        &mut self,
+        category_id: CategoryId,
+        month: Period,
+        today: NaiveDate,
+    ) -> Result<bool, BudgetError> {
+        check_open_month(month, today)?;
+        self.ensure_editable()?;
+        let Some(chain) = self.limits.get_mut(&category_id) else {
+            return Ok(false);
+        };
+        let before = chain.len();
+        chain.retain(|r| !(r.month == month && matches!(r.limit, Limit::MonthOnly { .. })));
+        let removed = chain.len() != before;
+        if chain.is_empty() {
+            self.limits.remove(&category_id);
+        }
+        Ok(removed)
+    }
+
+    /// The Plan grid's `r`: cycles the current month's Rollover, writing an Onward record from the
+    /// current month with the same amount.
+    pub fn cycle_rollover(
+        &mut self,
+        category_id: CategoryId,
+        today: NaiveDate,
+    ) -> Result<Rollover, BudgetError> {
+        let current = Period::of(today);
+        self.ensure_editable()?;
+        let chain = self.limits.entry(category_id).or_default();
+        let Some(found) = applied(chain, current) else {
+            return Err(BudgetError::NotBudgeted);
+        };
+        let next = found.rollover.next();
+        put(
+            chain,
+            LimitRecord {
+                month: current,
+                limit: Limit::Onward {
+                    amount: found.amount,
+                    rollover: next,
+                },
+            },
+        );
+        Ok(next)
+    }
+
+    /// Saves what was typed into a Plan cell. An amount writes an Onward or Month-only record
+    /// (`0` is a real 0.00). Empty text clears: Onward writes a Stop from `month`, Month-only
+    /// removes that month's own Month-only record. Returns whether anything changed.
+    pub fn save_cell(
+        &mut self,
+        categories: &dyn BudgetCategories,
+        category_id: CategoryId,
+        month: Period,
+        span: Span,
+        text: &str,
+        today: NaiveDate,
+    ) -> Result<bool, BudgetError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return match span {
+                Span::Onward => {
+                    let before = self.clone();
+                    self.stop(categories, category_id, month, today)?;
+                    Ok(*self != before)
+                }
+                Span::MonthOnly => self.clear_month_only(category_id, month, today),
+            };
+        }
+        let amount: Money = text.parse().map_err(|_| BudgetError::InvalidAmount)?;
+        let amount = Money(amount.0.with_scale_round(2, RoundingMode::HalfUp));
+        let chain = self.chain(category_id);
+        let unchanged = applied(chain, month).is_some_and(|found| found.amount == amount)
+            && !chain
+                .iter()
+                .any(|r| r.month == month && matches!(r.limit, Limit::MonthOnly { .. }));
+        if span == Span::Onward && unchanged {
+            return Ok(false);
+        }
+        self.set_amount(categories, category_id, month, span, amount, None, today)?;
+        Ok(true)
+    }
+
+    /// Fill (9f): writes `source`'s Month-only amounts into `target`, as [`fill_preview`] lists
+    /// them. Returns how many Categories it wrote.
+    pub fn fill(
+        &mut self,
+        reads: &dyn BudgetReads,
+        target: Period,
+        source: FillSource,
+        today: NaiveDate,
+    ) -> Result<usize, BudgetError> {
+        check_open_month(target, today)?;
+        self.ensure_editable()?;
+        let preview = fill_preview(self, reads, target, source);
+        for line in &preview.changes {
+            let chain = self.limits.entry(line.category_id).or_default();
+            let rollover = inherited_rollover(chain, target);
+            put(
+                chain,
+                LimitRecord {
+                    month: target,
+                    limit: Limit::MonthOnly {
+                        amount: line.after.clone(),
+                        rollover,
+                    },
+                },
+            );
+        }
+        Ok(preview.changes.len())
+    }
+
+    /// Categories 5c's write: a changed value is an Onward from the current month, clearing is a
+    /// Stop from it, and an unchanged value writes nothing. Returns whether it wrote.
+    pub fn set_monthly_limit(
+        &mut self,
+        categories: &dyn BudgetCategories,
+        category_id: CategoryId,
+        amount: Option<Money>,
+        today: NaiveDate,
+    ) -> Result<bool, BudgetError> {
+        let current = Period::of(today);
+        let existing = applied(self.chain(category_id), current).map(|found| found.amount);
+        if existing == amount {
+            return Ok(false);
+        }
+        match amount {
+            Some(amount) => self.set_amount(
+                categories,
+                category_id,
+                current,
+                Span::Onward,
+                amount,
+                None,
+                today,
+            )?,
+            None => self.stop(categories, category_id, current, today)?,
+        }
+        Ok(true)
     }
 }
 
