@@ -23,6 +23,7 @@ use serde_json::Value;
 const MIGRATED: &[&str] = &[
     "lib_accounts",
     "lib_bills",
+    "lib_budgets",
     "lib_categories",
     "lib_institutions",
     "lib_inventory",

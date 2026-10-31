@@ -4,13 +4,13 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 
-use lib_accounts::Account;
-use lib_categories::{self as categories, Category};
 use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
-use lib_transactions as transactions;
 
+use super::protocols::{BudgetAccount, BudgetCategory};
 use super::store::Budgets;
-use super::{Budget, Limit, LimitRecord, Method, PERSONAL_SPENDING_ID, Rollover, cents_money, put};
+use super::{
+    Budget, Limit, LimitRecord, Method, PERSONAL_SPENDING_ID, Rollover, cents_money, put, tree,
+};
 
 /// One seeded Category Limit: Onward from `from` months before the current month, with an
 /// optional later change.
@@ -65,12 +65,12 @@ fn month_from(today: NaiveDate, offset: i32) -> Period {
 
 fn seeded_limits(
     seeds: &[LimitSeed],
-    categories: &[Category],
+    categories: &[BudgetCategory],
     today: NaiveDate,
 ) -> BTreeMap<CategoryId, Vec<LimitRecord>> {
     let mut limits: BTreeMap<CategoryId, Vec<LimitRecord>> = BTreeMap::new();
     for seed in seeds {
-        let Some(id) = categories::find_by_name(categories, seed.category) else {
+        let Some(id) = tree::find_by_name(categories, seed.category) else {
             continue;
         };
         let chain = limits.entry(id).or_default();
@@ -104,13 +104,15 @@ fn seeded_limits(
 /// takes Transactions) and **Joint household**, a second Limits Budget over two of the same
 /// Accounts and some of the same Categories, so the two overlap. A Category or Account the stubs
 /// lack is left out.
-pub fn default_budgets(accounts: &[Account], categories: &[Category], today: NaiveDate) -> Budgets {
+pub fn default_budgets(
+    accounts: &[BudgetAccount],
+    categories: &[BudgetCategory],
+    today: NaiveDate,
+) -> Budgets {
     let on_budget = |names: Option<&[&str]>| -> Vec<AccountId> {
         accounts
             .iter()
-            .filter(|a| {
-                a.unit == UnitId::SEED_AUD && transactions::takes_transactions(&a.account_type)
-            })
+            .filter(|a| a.unit == UnitId::SEED_AUD && a.takes_transactions)
             .filter(|a| names.is_none_or(|names| names.contains(&a.name.as_str())))
             .map(|a| a.id)
             .collect()

@@ -74,7 +74,8 @@ impl LimitOptions {
         count: usize,
         month_label: impl Fn(Period, bool) -> String,
     ) -> Self {
-        let unbudgeted = budgets::unbudgeted_leaves(budget, categories, current);
+        let unbudgeted =
+            budgets::unbudgeted_leaves(budget, &lib_ledger::budget_categories(categories), current);
         let (category_ids, category_labels) = lib_categories::paths_in_tree_order(categories)
             .into_iter()
             .filter(|(id, _)| unbudgeted.contains(id))
@@ -382,7 +383,7 @@ pub fn save(
 ) -> Result<(), BudgetError> {
     budgets.set_amount(
         id,
-        categories,
+        &lib_ledger::budget_categories(categories),
         draft.category_id,
         draft.month,
         draft.span,
@@ -407,14 +408,15 @@ pub fn preview(
     // The stub is small, so the after side is simply the save run on a copy.
     let mut after = budgets.clone();
     save(&mut after, id, categories, draft, today).ok()?;
+    let rows = lib_ledger::budget_categories(categories);
     Some(LimitPreview {
         unchanged: (draft.month > current).then(|| (current, amount_in(current))),
         month: draft.month,
         span: draft.span,
         before: amount_in(draft.month),
         after: draft.amount.clone(),
-        total_before: budgets::total_budgeted(budget, categories, draft.month),
-        total_after: budgets::total_budgeted(after.get(id)?, categories, draft.month),
+        total_before: budgets::total_budgeted(budget, &rows, draft.month),
+        total_after: budgets::total_budgeted(after.get(id)?, &rows, draft.month),
     })
 }
 
@@ -582,14 +584,18 @@ mod tests {
     impl World {
         fn new() -> Self {
             let categories = default_categories();
-            let mut budgets = budgets::default_budgets(&default_accounts(), &categories, today());
+            let mut budgets = budgets::default_budgets(
+                &lib_ledger::budget_accounts(&default_accounts()),
+                &lib_ledger::budget_categories(&categories),
+                today(),
+            );
             // The seed budgets every Expense leaf, so two are Stopped for the picker to offer.
             for name in ["Household", "Water"] {
                 let id = lib_categories::find_by_name(&categories, name).unwrap();
                 budgets
                     .stop(
                         budgets::PERSONAL_SPENDING_ID,
-                        &categories,
+                        &lib_ledger::budget_categories(&categories),
                         id,
                         Period::of(today()),
                         today(),

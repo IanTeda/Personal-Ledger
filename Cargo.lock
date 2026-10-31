@@ -4741,13 +4741,7 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_accounts",
- "lib_bills",
- "lib_categories",
  "lib_core",
- "lib_payees",
- "lib_tags",
- "lib_transactions",
  "thiserror 2.0.20",
 ]
 

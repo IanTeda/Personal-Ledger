@@ -7,6 +7,7 @@ mod bills_seed;
 #[cfg(test)]
 mod bills_seed_tests;
 mod budget_commands;
+mod budget_reads;
 #[cfg(test)]
 mod budgets_seed_tests;
 mod category_commands;
@@ -28,6 +29,7 @@ pub use budget_commands::{
     AddBudget, ArchiveBudget, CycleBudgetRollover, DuplicateBudget, EditBudget, FillBudget,
     RestoreBudget, SaveBudgetCell, SetBudgetAmount, SetDefaultBudget, StopBudgeting,
 };
+pub use budget_reads::{budget_accounts, budget_categories};
 pub use category_commands::{
     CategoryDeleted, DeleteCategory, DeleteCategoryRefusal, MonthlyBudget, SetCategoryMonthlyLimit,
 };
@@ -213,7 +215,11 @@ impl Ledger {
             &mut transactions,
             today,
         );
-        let budgets = default_budgets(&accounts, &categories, today);
+        let budgets = default_budgets(
+            &budget_accounts(&accounts),
+            &budget_categories(&categories),
+            today,
+        );
         Self::from_parts(LedgerParts {
             accounts,
             categories,

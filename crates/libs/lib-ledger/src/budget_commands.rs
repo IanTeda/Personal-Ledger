@@ -2,12 +2,13 @@
 //! anything is written so a refusal leaves the Ledger untouched, and recording an upsert per
 //! Budget it changed (ADR-0039).
 //!
-//! Single-Budget rules stay in `lib_budgets`. What lives here reads other domains: creating a
-//! Budget or filling a month reads the Accounts, Categories, Transactions and Bills, and every
-//! Category Limit write is checked against the Categories.
+//! The rules live in `lib_budgets`, which reads the other domains through its read ports: creating
+//! a Budget or filling a month reads the Accounts, Categories, Splits and Bills, and every Category
+//! Limit write is checked against the Categories. The Ledger answers those ports
+//! (`budget_reads.rs`).
 
 use chrono::NaiveDate;
-use lib_budgets::{BudgetError, BudgetSources, Budgets, FillSource, NewBudget, Rollover, Span};
+use lib_budgets::{BudgetError, BudgetReads, Budgets, FillSource, NewBudget, Rollover, Span};
 use lib_core::{AccountId, BudgetId, CategoryId, Money, Period};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
@@ -29,7 +30,7 @@ impl Ledger {
         name: &str,
         account_ids: Vec<AccountId>,
     ) -> Result<(), BudgetError> {
-        self.write_budgets(|budgets, sources| budgets.edit(id, name, account_ids, sources.accounts))
+        self.write_budgets(|budgets, sources| budgets.edit(id, name, account_ids, sources))
     }
 
     /// Copies Budget `id` and returns the copy's id.
@@ -57,7 +58,7 @@ impl Ledger {
         self.write_budgets(|budgets, sources| {
             budgets.set_amount(
                 set.budget_id,
-                sources.categories,
+                sources,
                 set.category_id,
                 set.month,
                 set.span,
@@ -77,7 +78,7 @@ impl Ledger {
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
         self.write_budgets(|budgets, sources| {
-            budgets.stop(budget_id, sources.categories, category_id, month, today)
+            budgets.stop(budget_id, sources, category_id, month, today)
         })
     }
 
@@ -86,7 +87,7 @@ impl Ledger {
         self.write_budgets(|budgets, sources| {
             budgets.save_cell(
                 cell.budget_id,
-                sources.categories,
+                sources,
                 cell.category_id,
                 cell.month,
                 cell.span,
@@ -122,19 +123,12 @@ impl Ledger {
     /// Runs `write` on a copy of the Budgets and takes the copy only when it lands, so a refusal
     /// leaves nothing half-written (some rules touch a chain before they refuse). Records an
     /// upsert for each Budget the write added or changed.
-    fn write_budgets<R>(
+    pub(crate) fn write_budgets<R>(
         &mut self,
-        write: impl FnOnce(&mut Budgets, &BudgetSources<'_>) -> Result<R, BudgetError>,
+        write: impl FnOnce(&mut Budgets, &dyn BudgetReads) -> Result<R, BudgetError>,
     ) -> Result<R, BudgetError> {
         let mut budgets = self.budgets.clone();
-        let sources = BudgetSources {
-            categories: &self.categories,
-            accounts: &self.accounts,
-            transactions: &self.transactions,
-            plans: &self.bill_plans,
-            entries: &self.bill_entries,
-        };
-        let result = write(&mut budgets, &sources)?;
+        let result = write(&mut budgets, self)?;
         let changed: Vec<_> = budgets
             .all()
             .iter()

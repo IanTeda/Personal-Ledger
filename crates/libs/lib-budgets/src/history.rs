@@ -6,10 +6,9 @@ use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
-use lib_categories::{self as categories, Category};
-
-use super::figures::{BudgetSources, SpentIndex, effective, expense_leaves};
-use super::{Budget, Limit, zero};
+use super::figures::{SpentIndex, effective, expense_leaves};
+use super::protocols::{BudgetCategories, BudgetReads};
+use super::{Budget, Limit, tree, zero};
 
 /// One month of one History row: what applied then against what was spent.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,12 +66,14 @@ pub fn history_bounds(budget: &Budget, today: NaiveDate) -> Option<(Period, Peri
 /// the Budget's current Accounts and the current Category tree. Known Costs are left out.
 pub fn history(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     first: Period,
     last: Period,
     today: NaiveDate,
 ) -> History {
-    let index = SpentIndex::build(budget, ledger);
+    let categories = reads.budget_categories();
+    let accounts = reads.budget_accounts();
+    let index = SpentIndex::load(budget, reads, &accounts, first, last);
     let current = Period::of(today);
     let mut months = Vec::new();
     let mut walking = first;
@@ -82,27 +83,26 @@ pub fn history(
     }
 
     // month index -> leaf -> cell
-    let leaf_cells: BTreeMap<CategoryId, Vec<Option<HistoryCell>>> =
-        expense_leaves(ledger.categories)
-            .into_iter()
-            .map(|id| {
-                let cells = months
-                    .iter()
-                    .map(|&month| {
-                        effective(budget, &index, id, month, today).map(|found| {
-                            let total = found.total();
-                            let spent = index.spent(id, month);
-                            HistoryCell {
-                                over: spent > total.0,
-                                budget: total,
-                                spent: Money(spent),
-                            }
-                        })
+    let leaf_cells: BTreeMap<CategoryId, Vec<Option<HistoryCell>>> = expense_leaves(&categories)
+        .into_iter()
+        .map(|id| {
+            let cells = months
+                .iter()
+                .map(|&month| {
+                    effective(budget, &index, id, month, today).map(|found| {
+                        let total = found.total();
+                        let spent = index.spent(id, month);
+                        HistoryCell {
+                            over: spent > total.0,
+                            budget: total,
+                            spent: Money(spent),
+                        }
                     })
-                    .collect();
-                (id, cells)
-            })
-            .collect();
+                })
+                .collect();
+            (id, cells)
+        })
+        .collect();
 
     let month_totals = months
         .iter()
@@ -126,25 +126,22 @@ pub fn history(
 
     let shown = |cells: &[Option<HistoryCell>]| cells.iter().any(Option::is_some);
     let mut rows = Vec::new();
-    for (id, _) in categories::paths_in_tree_order(ledger.categories) {
+    for category in &categories {
+        let id = category.id;
         if let Some(cells) = leaf_cells.get(&id) {
             if shown(cells) {
                 rows.push(history_row(id, false, cells.clone(), &months, current));
             }
             continue;
         }
-        let Some(category) = ledger.categories.iter().find(|c| c.id == id) else {
-            continue;
-        };
         if category.category_type != CategoryTypes::Expense {
             continue;
         }
-        let below: Vec<&Vec<Option<HistoryCell>>> =
-            categories::descendants_inclusive(ledger.categories, id)
-                .iter()
-                .filter_map(|leaf| leaf_cells.get(leaf))
-                .filter(|cells| shown(cells))
-                .collect();
+        let below: Vec<&Vec<Option<HistoryCell>>> = tree::descendants_inclusive(&categories, id)
+            .iter()
+            .filter_map(|leaf| leaf_cells.get(leaf))
+            .filter(|cells| shown(cells))
+            .collect();
         if below.is_empty() {
             continue;
         }
@@ -251,7 +248,7 @@ fn csv_field(text: &str) -> String {
 /// per month, then AVG and OVER. Plain numbers, an unbudgeted month left empty.
 pub fn history_csv(
     history: &History,
-    categories: &[Category],
+    categories: &dyn BudgetCategories,
     labels: &HistoryCsvLabels,
     month_label: impl Fn(Period) -> String,
 ) -> String {
@@ -265,8 +262,11 @@ pub fn history_csv(
     header.push(csv_field(&labels.average));
     header.push(csv_field(&labels.over));
     lines.push(header.join(","));
+    let categories = categories.budget_categories();
     for row in &history.rows {
-        let name = categories::path(categories, row.category_id).unwrap_or_default();
+        let name = tree::get(&categories, row.category_id)
+            .map(|category| category.path.clone())
+            .unwrap_or_default();
         let mut fields = vec![csv_field(&name)];
         for cell in &row.cells {
             match cell {

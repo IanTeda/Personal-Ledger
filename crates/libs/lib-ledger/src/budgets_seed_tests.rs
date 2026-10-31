@@ -1,22 +1,24 @@
-//! The Budgets seed tests that read the Transactions seed, so they need more than one domain.
-//! Lives here rather than in `lib_budgets` because `default_transactions` is in this crate. The
-//! rest of the Budgets model's tests live in `lib_budgets`.
+//! The Budgets seed tests that read the other domains' seeds, so they need more than one domain:
+//! the Budgets seed over the stub Accounts and Categories, its figures over the Transactions seed.
+//! Lives here rather than in `lib_budgets`, which depends on no other domain. The rest of the
+//! Budgets model's tests live in `lib_budgets`.
 
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
-use lib_accounts::{Account, default_accounts};
+use lib_accounts::default_accounts;
 use lib_budgets::{
-    Budget, BudgetSources, Budgets, CategoryFigures, LimitRecord, Method, PERSONAL_SPENDING_ID,
-    PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
+    Budget, BudgetAccounts, BudgetCategories, Budgets, CategoryFigures, LimitRecord, Method,
+    PERSONAL_SPENDING_ID, PeriodFigures, applied, check_accounts, check_leaf, default_budgets,
+    period_figures, zero,
 };
-use lib_categories::{self as categories, Category, default_categories};
+use lib_categories::{self as categories, default_categories};
 use lib_core::{BudgetId, CategoryId, Money, Period, UnitId};
 use lib_payees::default_payees;
 use lib_tags::default_tags;
-use lib_transactions::Transaction;
 
 use crate::seed::default_transactions;
+use crate::{Ledger, LedgerParts};
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).unwrap_or_default()
@@ -34,34 +36,18 @@ fn money(text: &str) -> Money {
     text.parse().expect("a valid test amount")
 }
 
-/// The Accounts, Categories and Transactions a Ledger figure reads; no Bills.
+/// The stub Accounts and Categories with the Transactions seed; no Bills.
 struct World {
-    accounts: Vec<Account>,
-    categories: Vec<Category>,
-    transactions: Vec<Transaction>,
+    ledger: Ledger,
 }
 
 impl World {
-    fn new() -> Self {
-        Self {
-            accounts: default_accounts(),
-            categories: default_categories(),
-            transactions: Vec::new(),
-        }
-    }
-
-    fn ledger(&self) -> BudgetSources<'_> {
-        BudgetSources {
-            categories: &self.categories,
-            accounts: &self.accounts,
-            transactions: &self.transactions,
-            plans: &[],
-            entries: &[],
-        }
+    fn ledger(&self) -> &Ledger {
+        &self.ledger
     }
 
     fn category(&self, name: &str) -> CategoryId {
-        categories::find_by_name(&self.categories, name).expect("a seeded Category")
+        categories::find_by_name(self.ledger.categories(), name).expect("a seeded Category")
     }
 }
 
@@ -87,16 +73,26 @@ fn unreachable_budget() -> Budget {
 }
 
 fn seeded() -> (World, Budgets) {
-    let mut world = World::new();
-    world.transactions = default_transactions(
-        &world.accounts,
-        &world.categories,
+    let (accounts, categories) = (default_accounts(), default_categories());
+    let transactions = default_transactions(
+        &accounts,
+        &categories,
         &default_payees(),
         &default_tags(),
         today(),
     );
-    let budgets = default_budgets(&world.accounts, &world.categories, today());
-    (world, budgets)
+    let ledger = Ledger::from_parts(LedgerParts {
+        accounts,
+        categories,
+        transactions,
+        ..LedgerParts::default()
+    });
+    let budgets = default_budgets(
+        &ledger.budget_accounts(),
+        &ledger.budget_categories(),
+        today(),
+    );
+    (World { ledger }, budgets)
 }
 
 #[test]
@@ -124,12 +120,16 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
 #[test]
 fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
     let (world, budgets) = seeded();
+    let (categories, accounts) = (
+        world.ledger().budget_categories(),
+        world.ledger().budget_accounts(),
+    );
     for budget in budgets.all() {
         for id in budget.category_ids() {
-            assert_eq!(check_leaf(&world.categories, id), Ok(()));
+            assert_eq!(check_leaf(&categories, id), Ok(()));
         }
         assert_eq!(
-            check_accounts(&world.accounts, budget.unit, &budget.account_ids),
+            check_accounts(&accounts, budget.unit, &budget.account_ids),
             Ok(())
         );
         assert!(!budget.account_ids.is_empty());
@@ -143,7 +143,7 @@ fn the_seed_produces_figures_with_parents_as_rollups() {
         .get(PERSONAL_SPENDING_ID)
         .cloned()
         .unwrap_or_else(unreachable_budget);
-    let figures = period_figures(&personal, &world.ledger(), sep(), today());
+    let figures = period_figures(&personal, world.ledger(), sep(), today());
     assert!(figures.budgeted.0 > zero());
     let household = row(&figures, world.category("Household"));
     assert!(household.is_some_and(|r| r.budget.is_some() && !r.is_parent));

@@ -7,41 +7,55 @@ use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::{Datelike, NaiveDate};
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
-use lib_accounts::Account;
-use lib_bills::{BillPlan, BillScheduleEntry};
-use lib_categories::{self as categories, Category};
-use lib_transactions::Transaction;
+use super::protocols::{
+    BudgetAccount, BudgetBill, BudgetCategories, BudgetCategory, BudgetReads, BudgetSplit,
+};
+use super::{Budget, LimitRecord, Rollover, applied, cents_money, tree, zero};
 
-use super::{Budget, LimitRecord, Rollover, applied, cents_money, zero};
-
-/// The stubs a Budget's figures read: the shared Categories, Accounts, Transactions and Bills.
-#[derive(Debug, Clone, Copy)]
-pub struct BudgetSources<'a> {
-    pub categories: &'a [Category],
-    pub accounts: &'a [Account],
-    pub transactions: &'a [Transaction],
-    pub plans: &'a [BillPlan],
-    pub entries: &'a [BillScheduleEntry],
+/// The Splits on Budget `budget`'s Accounts dated from `first` to `last`, reaching back to the
+/// Budget's first record so a carry can walk its whole chain.
+pub(super) fn counted_splits(
+    budget: &Budget,
+    reads: &dyn BudgetReads,
+    accounts: &[BudgetAccount],
+    first: Period,
+    last: Period,
+) -> Vec<BudgetSplit> {
+    let first = budget
+        .first_record_month()
+        .map_or(first, |earliest| earliest.min(first));
+    reads
+        .budget_splits(first.first_day(), last.last_day())
+        .into_iter()
+        .filter(|split| budget.counts(accounts, split.account_id))
+        .collect()
 }
 
 /// Spent per (leaf Category, month) on one Budget's Accounts, built once per query so the carry's
-/// walk down a chain doesn't rescan the Transactions for every month.
+/// walk down a chain doesn't rescan the Splits for every month.
 pub(super) struct SpentIndex(BTreeMap<(CategoryId, Period), BigDecimal>);
 
 impl SpentIndex {
-    pub(super) fn build(budget: &Budget, ledger: &BudgetSources<'_>) -> Self {
+    /// Indexes `splits`, which [`counted_splits`] has already held to the Budget's Accounts.
+    pub(super) fn build(splits: &[BudgetSplit]) -> Self {
         let mut spent: BTreeMap<(CategoryId, Period), BigDecimal> = BTreeMap::new();
-        for transaction in ledger
-            .transactions
-            .iter()
-            .filter(|t| budget.counts(ledger.accounts, t.account_id))
-        {
-            let month = Period::of(transaction.date);
-            for split in &transaction.splits {
-                *spent.entry((split.category_id, month)).or_default() -= split.amount.0.clone();
-            }
+        for split in splits {
+            *spent
+                .entry((split.category_id, Period::of(split.date)))
+                .or_default() -= split.amount.0.clone();
         }
         Self(spent)
+    }
+
+    /// Loads and indexes what Budget `budget` spent from `first` to `last`.
+    pub(super) fn load(
+        budget: &Budget,
+        reads: &dyn BudgetReads,
+        accounts: &[BudgetAccount],
+        first: Period,
+        last: Period,
+    ) -> Self {
+        Self::build(&counted_splits(budget, reads, accounts, first, last))
     }
 
     pub(super) fn spent(&self, category_id: CategoryId, month: Period) -> BigDecimal {
@@ -122,25 +136,22 @@ pub(super) fn effective(
 /// A leaf's effective budget for a month, `None` when Unbudgeted.
 pub fn effective_budget(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Option<Effective> {
-    effective(
-        budget,
-        &SpentIndex::build(budget, ledger),
-        category_id,
-        month,
-        today,
-    )
+    let accounts = reads.budget_accounts();
+    let index = SpentIndex::load(budget, reads, &accounts, month, month);
+    effective(budget, &index, category_id, month, today)
 }
 
 /// The open Bill Schedule amounts a leaf carries in `month` on the Budget's Accounts, and how
 /// many entries make them up.
 pub(super) fn known_costs(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    accounts: &[BudgetAccount],
+    bills: &[BudgetBill],
     category_id: CategoryId,
     month: Period,
     today: NaiveDate,
@@ -151,14 +162,11 @@ pub(super) fn known_costs(
     }
     let mut total = zero();
     let mut count = 0;
-    for entry in ledger.entries.iter().filter(|entry| entry.is_open()) {
-        let Some(plan) = lib_bills::get(ledger.plans, entry.plan_id) else {
-            continue;
-        };
-        if plan.category_id != category_id || !budget.counts(ledger.accounts, plan.account_id) {
+    for bill in bills {
+        if bill.category_id != category_id || !budget.counts(accounts, bill.account_id) {
             continue;
         }
-        let due = Period::of(entry.due);
+        let due = Period::of(bill.due);
         // The current month also takes the Overdue entries carried in from past months.
         let counts = if month == current {
             due <= current
@@ -166,7 +174,7 @@ pub(super) fn known_costs(
             due == month
         };
         if counts {
-            total += plan.planned_amount.0.clone();
+            total += bill.amount.0.clone();
             count += 1;
         }
     }
@@ -271,12 +279,10 @@ impl LeafFigures {
     }
 }
 
-pub(super) fn expense_leaves(categories: &[Category]) -> Vec<CategoryId> {
+pub(super) fn expense_leaves(categories: &[BudgetCategory]) -> Vec<CategoryId> {
     categories
         .iter()
-        .filter(|c| {
-            c.category_type == CategoryTypes::Expense && categories::is_leaf(categories, c.id)
-        })
+        .filter(|c| c.category_type == CategoryTypes::Expense && c.is_leaf)
         .map(|c| c.id)
         .collect()
 }
@@ -285,10 +291,10 @@ pub(super) fn expense_leaves(categories: &[Category]) -> Vec<CategoryId> {
 /// what 9e's Category picker offers.
 pub fn unbudgeted_leaves(
     budget: &Budget,
-    categories: &[Category],
+    categories: &dyn BudgetCategories,
     month: Period,
 ) -> Vec<CategoryId> {
-    expense_leaves(categories)
+    expense_leaves(&categories.budget_categories())
         .into_iter()
         .filter(|id| applied(budget.chain(*id), month).is_none())
         .collect()
@@ -297,15 +303,18 @@ pub fn unbudgeted_leaves(
 /// The one shared period query: every figure a Budget shows for `month`, as of `today`.
 pub fn period_figures(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     month: Period,
     today: NaiveDate,
 ) -> PeriodFigures {
-    let index = SpentIndex::build(budget, ledger);
-    let leaves: BTreeMap<CategoryId, LeafFigures> = expense_leaves(ledger.categories)
+    let categories = reads.budget_categories();
+    let accounts = reads.budget_accounts();
+    let bills = reads.open_bills();
+    let index = SpentIndex::load(budget, reads, &accounts, month, month);
+    let leaves: BTreeMap<CategoryId, LeafFigures> = expense_leaves(&categories)
         .into_iter()
         .map(|id| {
-            let (known, known_count) = known_costs(budget, ledger, id, month, today);
+            let (known, known_count) = known_costs(budget, &accounts, &bills, id, month, today);
             let figures = LeafFigures {
                 effective: effective(budget, &index, id, month, today),
                 spent: index.spent(id, month),
@@ -317,10 +326,8 @@ pub fn period_figures(
         .collect();
 
     let mut rows = Vec::new();
-    for (id, _) in categories::paths_in_tree_order(ledger.categories) {
-        let Some(category) = ledger.categories.iter().find(|c| c.id == id) else {
-            continue;
-        };
+    for category in &categories {
+        let id = category.id;
         if category.category_type != CategoryTypes::Expense {
             continue;
         }
@@ -331,11 +338,10 @@ pub fn period_figures(
             }
             continue;
         }
-        let under: Vec<(&CategoryId, &LeafFigures)> =
-            categories::descendants_inclusive(ledger.categories, id)
-                .iter()
-                .filter_map(|below| leaves.get_key_value(below))
-                .collect();
+        let under: Vec<(&CategoryId, &LeafFigures)> = tree::descendants_inclusive(&categories, id)
+            .iter()
+            .filter_map(|below| leaves.get_key_value(below))
+            .collect();
         let any_listed = under
             .iter()
             .any(|(_, l)| l.effective.is_some() || !l.spent.is_zero() || !l.known.is_zero());
@@ -450,8 +456,8 @@ pub struct Health {
     pub at_risk: usize,
 }
 
-pub fn health(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveDate) -> Health {
-    let figures = period_figures(budget, ledger, Period::of(today), today);
+pub fn health(budget: &Budget, reads: &dyn BudgetReads, today: NaiveDate) -> Health {
+    let figures = period_figures(budget, reads, Period::of(today), today);
     Health {
         over: figures.over_count,
         left: figures.left,
@@ -473,11 +479,15 @@ pub struct DashboardBar {
 
 /// The Dashboard's budget list: the budgeted top-level rows (a leaf, or a parent's rollup) that
 /// have used the largest share of their budget, [`DASHBOARD_BARS`] at most.
-pub fn dashboard_bars(figures: &PeriodFigures, categories: &[Category]) -> Vec<DashboardBar> {
+pub fn dashboard_bars(
+    figures: &PeriodFigures,
+    categories: &dyn BudgetCategories,
+) -> Vec<DashboardBar> {
+    let categories = categories.budget_categories();
     let mut bars: Vec<DashboardBar> = figures
         .rows
         .iter()
-        .filter(|row| categories::depth(categories, row.category_id) == 0)
+        .filter(|row| tree::get(&categories, row.category_id).is_none_or(|c| c.parent.is_none()))
         .filter_map(|row| {
             let budget = row.budget.clone()?;
             Some(DashboardBar {

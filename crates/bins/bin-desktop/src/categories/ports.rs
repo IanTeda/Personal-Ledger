@@ -146,7 +146,12 @@ impl CategoryBudget for LedgerPorts<'_> {
         let budgets = self.ledger().budgets();
         MonthlyBudget {
             amount: category.and_then(|id| {
-                budgets.monthly_limit(PERSONAL_SPENDING_ID, categories, id, self.today)
+                budgets.monthly_limit(
+                    PERSONAL_SPENDING_ID,
+                    &lib_ledger::budget_categories(categories),
+                    id,
+                    self.today,
+                )
             }),
             archived: budgets
                 .get(PERSONAL_SPENDING_ID)
@@ -166,7 +171,7 @@ impl CategoryBudget for LedgerPorts<'_> {
         budgets
             .set_monthly_limit(
                 PERSONAL_SPENDING_ID,
-                categories,
+                &lib_ledger::budget_categories(categories),
                 category,
                 amount.cloned(),
                 self.today,

@@ -188,15 +188,8 @@ impl DashboardView {
         let Some(budget) = ledger.budgets().default_budget() else {
             return BudgetList::default();
         };
-        let sources = budgets::BudgetSources {
-            categories: ledger.categories(),
-            accounts: ledger.accounts(),
-            transactions: ledger.transactions(),
-            plans: ledger.bill_plans(),
-            entries: ledger.bill_entries(),
-        };
-        let figures = budgets::period_figures(budget, &sources, Period::of(self.today), self.today);
-        let bars = budgets::dashboard_bars(&figures, ledger.categories())
+        let figures = budgets::period_figures(budget, ledger, Period::of(self.today), self.today);
+        let bars = budgets::dashboard_bars(&figures, ledger)
             .into_iter()
             .map(|bar| BudgetBar {
                 category: ledger

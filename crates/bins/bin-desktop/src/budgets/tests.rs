@@ -33,7 +33,11 @@ impl World {
 #[test]
 fn the_switcher_lists_active_budgets_then_archived_and_filters_by_name() {
     let world = World::new();
-    let mut budgets = default_budgets(&world.accounts, &world.categories, today());
+    let mut budgets = default_budgets(
+        &lib_ledger::budget_accounts(&world.accounts),
+        &lib_ledger::budget_categories(&world.categories),
+        today(),
+    );
     let ids: Vec<BudgetId> = budgets.all().iter().map(|b| b.id).collect();
     assert!(ids.len() >= 2, "the seed has more than one Budget");
     assert_eq!(switcher_ids(&budgets, ""), ids);
@@ -57,7 +61,11 @@ fn the_switcher_lists_active_budgets_then_archived_and_filters_by_name() {
 #[test]
 fn the_switcher_opens_on_the_current_budget_and_steps_inside_its_rows() {
     let world = World::new();
-    let budgets = default_budgets(&world.accounts, &world.categories, today());
+    let budgets = default_budgets(
+        &lib_ledger::budget_accounts(&world.accounts),
+        &lib_ledger::budget_categories(&world.categories),
+        today(),
+    );
     let ids = switcher_ids(&budgets, "");
     let last = *ids.last().expect("a seeded Budget");
     let mut switcher = Switcher::new(&budgets, last);

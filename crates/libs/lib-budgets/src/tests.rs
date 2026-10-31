@@ -3,17 +3,9 @@
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
-use lib_accounts::{Account, default_accounts};
-use lib_bills::{
-    self as bills, AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, Recurrence,
-};
-use lib_categories::{self as categories, Category, default_categories};
-use lib_core::{
-    AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, TransactionId,
-    TransactionStatus, UnitId,
-};
-use lib_transactions::{Split, Transaction};
+use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, UnitId};
 
+use super::fake::InMemoryBudgetReads;
 use super::*;
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -32,44 +24,30 @@ fn money(text: &str) -> Money {
     text.parse().expect("a valid test amount")
 }
 
-fn category_id(categories: &[Category], name: &str) -> CategoryId {
-    categories::find_by_name(categories, name).expect("a seeded Category")
+fn category_id(categories: &[BudgetCategory], name: &str) -> CategoryId {
+    tree::find_by_name(categories, name).expect("a seeded Category")
 }
 
-/// A tiny hand-built Ledger, so figures are exact rather than random.
+/// A tiny hand-built Ledger over the stub Accounts and Categories, so figures are exact rather
+/// than random.
 struct World {
-    accounts: Vec<Account>,
-    categories: Vec<Category>,
-    transactions: Vec<Transaction>,
-    plans: Vec<BillPlan>,
-    entries: Vec<BillScheduleEntry>,
-    next_transaction: u32,
+    reads: InMemoryBudgetReads,
 }
 
 impl World {
     fn new() -> Self {
         Self {
-            accounts: default_accounts(),
-            categories: default_categories(),
-            transactions: Vec::new(),
-            plans: Vec::new(),
-            entries: Vec::new(),
-            next_transaction: 1,
+            reads: InMemoryBudgetReads::stub(),
         }
     }
 
-    fn ledger(&self) -> BudgetSources<'_> {
-        BudgetSources {
-            categories: &self.categories,
-            accounts: &self.accounts,
-            transactions: &self.transactions,
-            plans: &self.plans,
-            entries: &self.entries,
-        }
+    fn ledger(&self) -> &InMemoryBudgetReads {
+        &self.reads
     }
 
     fn account(&self, name: &str) -> AccountId {
-        self.accounts
+        self.reads
+            .accounts
             .iter()
             .find(|a| a.name == name)
             .map(|a| a.id)
@@ -77,53 +55,55 @@ impl World {
     }
 
     fn category(&self, name: &str) -> CategoryId {
-        category_id(&self.categories, name)
+        category_id(&self.reads.categories, name)
     }
 
     /// A single-Split Transaction; `amount` follows the ledger's sign (expenses negative).
     fn post(&mut self, account: &str, category: &str, on: NaiveDate, amount: &str) {
-        let id = self.next_transaction;
-        self.next_transaction += 1;
-        self.transactions.push(Transaction {
-            id: TransactionId::seed(id),
+        let split = BudgetSplit {
             date: on,
             account_id: self.account(account),
-            status: TransactionStatus::Open,
-            is_flagged: false,
-            description: None,
-            splits: vec![Split {
-                amount: money(amount),
-                category_id: self.category(category),
-                payee_id: None,
-                tag_ids: Vec::new(),
-            }],
+            category_id: self.category(category),
+            amount: money(amount),
+            payee_id: None,
+        };
+        self.reads.splits.push(split);
+    }
+
+    /// A one-off Bill Plan, active, with its one open entry due `due`.
+    fn bill(&mut self, account: &str, category: &str, due: NaiveDate, amount: &str) {
+        let (account_id, category_id) = (self.account(account), self.category(category));
+        self.reads.open_bills.push(BudgetBill {
+            due,
+            category_id,
+            account_id,
+            amount: money(amount),
+        });
+        self.reads.active_bill_plans.push(BudgetBillPlan {
+            category_id,
+            account_id,
         });
     }
 
-    fn bill(&mut self, account: &str, category: &str, first_due: NaiveDate, amount: &str) {
-        let draft = BillPlanDraft {
-            name: format!("{category} bill"),
-            category_id: self.category(category),
-            unit: UnitId::SEED_AUD,
-            account_id: self.account(account),
-            payee_id: None,
-            planned_amount: money(amount),
-            amount_kind: AmountKind::Fixed,
-            recurrence: Recurrence::OneShot,
-            first_due,
-            ends_on: None,
-            attention_lead: None,
+    /// Nests a new Expense leaf `name` under `parent`, which stops being a leaf.
+    fn add_child(&mut self, name: &str, parent: CategoryId) {
+        let categories = &mut self.reads.categories;
+        let Some(at) = categories.iter().position(|c| c.id == parent) else {
+            panic!("a seeded parent Category");
         };
-        let inserted = bills::insert_plan(
-            &mut self.plans,
-            &mut self.entries,
-            &draft,
-            // The stub Categories and Accounts as Bills reads them; the World's are the same stubs.
-            &lib_bills::fake::stub_categories(),
-            &lib_bills::fake::stub_accounts(),
-            today(),
+        categories[at].is_leaf = false;
+        let path = format!("{} \u{203a} {name}", categories[at].path);
+        categories.insert(
+            at + 1,
+            BudgetCategory {
+                id: CategoryId::new(),
+                name: name.to_string(),
+                path,
+                parent: Some(parent),
+                category_type: CategoryTypes::Expense,
+                is_leaf: true,
+            },
         );
-        assert!(inserted.is_ok(), "{inserted:?}");
     }
 
     /// An empty Budget on the two ANZ accounts.
@@ -137,7 +117,7 @@ impl World {
                     account_ids: vec![self.account("ANZ Everyday"), self.account("ANZ Offset")],
                     start_from: StartFrom::Empty,
                 },
-                &self.ledger(),
+                self.ledger(),
                 today(),
             )
             .expect("a valid test Budget");
@@ -161,7 +141,7 @@ fn set(
 ) {
     let done = budgets.set_amount(
         id,
-        &world.categories,
+        world.ledger(),
         world.category(category),
         month,
         span,
@@ -316,7 +296,7 @@ fn carried_into_september(world: &World, rollover: Rollover) -> Option<Money> {
     let budget = electricity_budget(world, rollover);
     effective_budget(
         &budget,
-        &world.ledger(),
+        world.ledger(),
         world.category("Electricity"),
         sep(),
         today(),
@@ -368,7 +348,7 @@ fn the_current_month_never_carries_into_next_month() {
     let budget = electricity_budget(&world, Rollover::CarryBoth);
     let next = effective_budget(
         &budget,
-        &world.ledger(),
+        world.ledger(),
         world.category("Electricity"),
         sep().next(),
         today(),
@@ -397,7 +377,7 @@ fn a_stop_or_an_unbudgeted_month_resets_the_carry() {
             },
         );
     }
-    let found = effective_budget(&budget, &world.ledger(), electricity, sep(), today());
+    let found = effective_budget(&budget, world.ledger(), electricity, sep(), today());
     assert_eq!(found.map(|e| e.carried_in), Some(money("0.00")));
 }
 
@@ -420,7 +400,7 @@ fn a_month_only_amount_carries_on_its_own_rollover() {
             },
         );
     }
-    let found = effective_budget(&budget, &world.ledger(), electricity, sep(), today());
+    let found = effective_budget(&budget, world.ledger(), electricity, sep(), today());
     assert_eq!(found.map(|e| e.carried_in), Some(money("60.00")));
 }
 
@@ -467,7 +447,7 @@ fn spent_is_signed_and_counts_only_on_budget_accounts() {
     let (world, budgets, id) = september();
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -484,20 +464,20 @@ fn spent_is_signed_and_counts_only_on_budget_accounts() {
 fn a_budget_naming_a_missing_account_counts_only_its_other_accounts() {
     let (mut world, budgets, id) = september();
     let offset = world.account("ANZ Offset");
-    world.accounts.retain(|account| account.id != offset);
+    world.reads.accounts.retain(|account| account.id != offset);
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     assert!(
         budget.account_ids.contains(&offset),
         "the Budget keeps the id"
     );
 
-    let figures = period_figures(&budget, &world.ledger(), sep(), today());
+    let figures = period_figures(&budget, world.ledger(), sep(), today());
 
     // Everyday's 200 alone: Offset's 118.40 isn't counted, though a row still names it.
     let dining = row(&figures, world.category("Dining"));
     assert_eq!(dining.map(|r| r.spent.clone()), Some(money("200.00")));
-    assert!(!budget.counts(&world.accounts, offset));
-    assert!(budget.counts(&world.accounts, world.account("ANZ Everyday")));
+    assert!(!budget.counts(&world.reads.accounts, offset));
+    assert!(budget.counts(&world.reads.accounts, world.account("ANZ Everyday")));
 }
 
 /// A Budget left with no Account compares nothing.
@@ -506,10 +486,11 @@ fn a_budget_whose_accounts_are_all_missing_compares_nothing() {
     let (mut world, budgets, id) = september();
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     world
+        .reads
         .accounts
         .retain(|account| !budget.account_ids.contains(&account.id));
 
-    let figures = period_figures(&budget, &world.ledger(), sep(), today());
+    let figures = period_figures(&budget, world.ledger(), sep(), today());
 
     assert_eq!(figures.spent, money("0"));
 }
@@ -519,14 +500,14 @@ fn a_budget_whose_accounts_are_all_missing_compares_nothing() {
 fn editing_a_budget_drops_an_account_since_deleted() {
     let (mut world, mut budgets, id) = september();
     let offset = world.account("ANZ Offset");
-    world.accounts.retain(|account| account.id != offset);
+    world.reads.accounts.retain(|account| account.id != offset);
     let account_ids = budgets
         .get(id)
         .map(|budget| budget.account_ids.clone())
         .unwrap_or_default();
 
     assert_eq!(
-        budgets.edit(id, "Renamed", account_ids, &world.accounts),
+        budgets.edit(id, "Renamed", account_ids, world.ledger()),
         Ok(())
     );
 
@@ -541,7 +522,7 @@ fn a_leaf_over_its_budget_counts_and_carries_the_negative_left() {
     let (world, budgets, id) = september();
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -556,7 +537,7 @@ fn totals_reconcile_left_with_budgeted_spent_and_known() {
     let (world, budgets, id) = september();
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -571,7 +552,7 @@ fn unbudgeted_spending_is_listed_but_not_rolled_up_or_counted() {
     let (world, budgets, id) = september();
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -597,7 +578,7 @@ fn a_parent_rolls_up_only_its_budgeted_leaves() {
     );
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -625,7 +606,7 @@ fn a_parent_leaves_an_unbudgeted_childs_spending_out_of_its_spent() {
     );
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -653,7 +634,7 @@ fn a_zero_budget_makes_any_spend_over() {
     );
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -687,7 +668,7 @@ fn known_costs_are_current_due_and_carried_overdue_on_budget_accounts() {
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     let electricity = world.category("Electricity");
 
-    let now = period_figures(&budget, &world.ledger(), sep(), today());
+    let now = period_figures(&budget, world.ledger(), sep(), today());
     assert_eq!(
         row(&now, electricity).map(|r| r.known.clone()),
         Some(money("105.00"))
@@ -696,13 +677,13 @@ fn known_costs_are_current_due_and_carried_overdue_on_budget_accounts() {
     // The four unpaid bills on the Budget's Account: two this month, one carried, none off-budget.
     assert_eq!(now.known_count, 3);
 
-    let next = period_figures(&budget, &world.ledger(), sep().next(), today());
+    let next = period_figures(&budget, world.ledger(), sep().next(), today());
     assert_eq!(
         row(&next, electricity).map(|r| r.known.clone()),
         Some(money("9.00"))
     );
 
-    let past = period_figures(&budget, &world.ledger(), sep().prev(), today());
+    let past = period_figures(&budget, world.ledger(), sep().prev(), today());
     assert!(row(&past, electricity).is_none());
 }
 
@@ -710,11 +691,8 @@ fn known_costs_are_current_due_and_carried_overdue_on_budget_accounts() {
 fn a_paid_bill_stops_counting_once_it_is_no_longer_open() {
     let mut world = World::new();
     world.bill("ANZ Everyday", "Electricity", date(2026, 9, 28), "80.00");
-    if let Some(entry) = world.entries.first_mut() {
-        entry.resolution = bills::Resolution::Skipped {
-            planned: money("80.00"),
-        };
-    }
+    // Skipped, so no longer open.
+    world.reads.open_bills.clear();
     let (mut budgets, id) = world.budgets();
     set(
         &mut budgets,
@@ -728,7 +706,7 @@ fn a_paid_bill_stops_counting_once_it_is_no_longer_open() {
     );
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -753,7 +731,7 @@ fn known_costs_alone_pushing_a_leaf_over_is_at_risk_and_not_counted_as_over() {
     );
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -770,7 +748,7 @@ fn known_costs_without_a_budget_amount_are_listed_as_unbudgeted() {
     let (budgets, id) = world.budgets();
     let figures = period_figures(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         sep(),
         today(),
     );
@@ -786,7 +764,7 @@ fn known_costs_without_a_budget_amount_are_listed_as_unbudgeted() {
 fn elapsed_and_per_day_use_days_remaining_including_today() {
     let (world, budgets, id) = september();
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
-    let now = period_figures(&budget, &world.ledger(), sep(), today());
+    let now = period_figures(&budget, world.ledger(), sep(), today());
     // Day 21 of 30: 70% through, 10 days left including today.
     assert_eq!(
         now.elapsed,
@@ -799,11 +777,11 @@ fn elapsed_and_per_day_use_days_remaining_including_today() {
     );
     assert_eq!(now.per_day, Some(money("33.16")));
 
-    let past = period_figures(&budget, &world.ledger(), sep().prev(), today());
+    let past = period_figures(&budget, world.ledger(), sep().prev(), today());
     assert_eq!((past.elapsed.percent, past.elapsed.days_left), (100, 0));
     assert_eq!(past.per_day, None);
 
-    let future = period_figures(&budget, &world.ledger(), sep().next(), today());
+    let future = period_figures(&budget, world.ledger(), sep().next(), today());
     assert_eq!((future.elapsed.percent, future.elapsed.days_left), (0, 31));
 }
 
@@ -812,7 +790,7 @@ fn health_summarises_the_current_month() {
     let (world, budgets, id) = september();
     let health = health(
         &budgets.get(id).cloned().unwrap_or_else(unreachable_budget),
-        &world.ledger(),
+        world.ledger(),
         today(),
     );
     assert_eq!(
@@ -853,7 +831,7 @@ fn history_world() -> (World, Budget) {
 fn history_average_and_over_use_closed_months_only() {
     let (world, budget) = history_world();
     let first = Period::of(date(2026, 6, 1));
-    let history = history(&budget, &world.ledger(), first, sep(), today());
+    let history = history(&budget, world.ledger(), first, sep(), today());
     let dining = history
         .rows
         .iter()
@@ -876,7 +854,7 @@ fn history_average_and_over_use_closed_months_only() {
 fn history_shows_a_dash_for_an_unbudgeted_month_and_parents_as_rollups() {
     let (world, budget) = history_world();
     let earlier = Period::of(date(2026, 5, 1));
-    let history = history(&budget, &world.ledger(), earlier, sep(), today());
+    let history = history(&budget, world.ledger(), earlier, sep(), today());
     let dining = history
         .rows
         .iter()
@@ -899,7 +877,7 @@ fn history_month_totals_count_budgeted_leaves_only_and_mark_the_current_month() 
     let (mut world, budget) = history_world();
     world.post("ANZ Everyday", "Household", date(2026, 7, 9), "-999.00");
     let first = Period::of(date(2026, 6, 1));
-    let history = history(&budget, &world.ledger(), first, sep(), today());
+    let history = history(&budget, world.ledger(), first, sep(), today());
     let july = &history.months[1];
     assert_eq!(
         (july.budget.clone(), july.spent.clone(), july.over),
@@ -959,11 +937,12 @@ fn the_history_range_is_six_months_inside_the_bounds() {
 fn the_history_csv_writes_plain_numbers_and_quotes_awkward_names() {
     let (mut world, budget) = history_world();
     let dining = world.category("Dining");
-    if let Some(category) = world.categories.iter_mut().find(|c| c.id == dining) {
+    if let Some(category) = world.reads.categories.iter_mut().find(|c| c.id == dining) {
         category.name = "Dining, \"out\"".to_string();
+        category.path = "Food \u{203a} Dining, \"out\"".to_string();
     }
     let jun = Period::of(date(2026, 6, 1));
-    let shown = history(&budget, &world.ledger(), jun, sep(), today());
+    let shown = history(&budget, world.ledger(), jun, sep(), today());
     let labels = HistoryCsvLabels {
         category: "Category".into(),
         budget: "budget".into(),
@@ -971,7 +950,7 @@ fn the_history_csv_writes_plain_numbers_and_quotes_awkward_names() {
         average: "Avg".into(),
         over: "Over".into(),
     };
-    let csv = history_csv(&shown, &world.categories, &labels, |month| {
+    let csv = history_csv(&shown, world.ledger(), &labels, |month| {
         format!("{}-{:02}", month.year, month.month)
     });
     let lines: Vec<&str> = csv.lines().collect();
@@ -1014,12 +993,12 @@ fn the_three_month_average_rounds_to_the_nearest_ten_and_floors_at_zero() {
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     let ledger = world.ledger();
     assert_eq!(
-        three_month_average(&budget, &ledger, world.category("Dining"), sep()),
+        three_month_average(&budget, ledger, world.category("Dining"), sep()),
         money("100.00")
     );
     // A net refund averages below zero and is floored.
     assert_eq!(
-        three_month_average(&budget, &ledger, world.category("Groceries"), sep()),
+        three_month_average(&budget, ledger, world.category("Groceries"), sep()),
         money("0.00")
     );
 }
@@ -1044,7 +1023,7 @@ fn dashboard_bars_take_the_fullest_budgeted_top_level_rows() {
     ] {
         let set = budgets.set_amount(
             id,
-            &world.categories,
+            world.ledger(),
             world.category(name),
             sep(),
             Span::Onward,
@@ -1055,17 +1034,19 @@ fn dashboard_bars_take_the_fullest_budgeted_top_level_rows() {
         assert_eq!(set, Ok(()), "{name}");
     }
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
-    let figures = period_figures(&budget, &world.ledger(), sep(), today());
-    let bars = dashboard_bars(&figures, &world.categories);
+    let figures = period_figures(&budget, world.ledger(), sep(), today());
+    let bars = dashboard_bars(&figures, world.ledger());
     assert!(bars.len() <= DASHBOARD_BARS);
     for bar in &bars {
-        assert_eq!(categories::depth(&world.categories, bar.category_id), 0);
+        let category = tree::get(&world.reads.categories, bar.category_id);
+        assert_eq!(category.map(|c| c.parent), Some(None));
     }
     // Rent (90%) leads, as its top-level parent's rollup; Household is unbudgeted and so is
     // never shown.
     let top_of = |name: &str| {
         let id = world.category(name);
         world
+            .reads
             .categories
             .iter()
             .find(|category| category.id == id)
@@ -1109,14 +1090,15 @@ fn fill_world() -> (World, Budgets, BudgetId) {
         world.post("ANZ Everyday", "Groceries", date(2026, month, 4), "-500.00");
     }
     let (mut budgets, id) = world.budgets();
-    let categories = world.categories.clone();
+    let reads = world.reads.clone();
+    let categories = &reads.categories;
     let jun = Period::of(date(2026, 6, 1));
     let mut set = |name: &str, month: Period, span: Span, amount: &str| {
         budgets
             .set_amount(
                 id,
-                &categories,
-                category_id(&categories, name),
+                &reads,
+                category_id(categories, name),
                 month,
                 span,
                 money(amount),
@@ -1140,7 +1122,7 @@ fn fill_from_the_previous_month_copies_amounts_and_keeps_edited_cells() {
     let (world, mut budgets, id) = fill_world();
     let october = sep().next();
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
-    let preview = fill_preview(&budget, &world.ledger(), october, FillSource::PreviousMonth);
+    let preview = fill_preview(&budget, world.ledger(), october, FillSource::PreviousMonth);
     // Dining's September Month-only differs from the plan; Groceries matches it; Rent has its
     // own October record; Transport wasn't budgeted in September.
     assert_eq!(
@@ -1157,7 +1139,7 @@ fn fill_from_the_previous_month_copies_amounts_and_keeps_edited_cells() {
 
     let wrote = budgets.fill(
         id,
-        &world.ledger(),
+        world.ledger(),
         october,
         FillSource::PreviousMonth,
         today(),
@@ -1174,14 +1156,14 @@ fn fill_from_the_previous_month_copies_amounts_and_keeps_edited_cells() {
         Some(money("250.00"))
     );
     assert_eq!(
-        total_budgeted(&budget, &world.categories, october),
+        total_budgeted(&budget, world.ledger(), october),
         preview.total
     );
     // A second Fill finds every Category kept or unchanged.
     assert_eq!(
         budgets.fill(
             id,
-            &world.ledger(),
+            world.ledger(),
             october,
             FillSource::PreviousMonth,
             today()
@@ -1195,7 +1177,7 @@ fn fill_from_the_average_rounds_spent_and_refuses_a_closed_month() {
     let (world, mut budgets, id) = fill_world();
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     // The current month: the three months before it are June to August.
-    let preview = fill_preview(&budget, &world.ledger(), sep(), FillSource::Average);
+    let preview = fill_preview(&budget, world.ledger(), sep(), FillSource::Average);
     // Dining has its own September record and Rent has no spend: 1000.00 becomes 0.00.
     assert_eq!(preview.kept, vec![world.category("Dining")]);
     assert_eq!(
@@ -1210,7 +1192,7 @@ fn fill_from_the_average_rounds_spent_and_refuses_a_closed_month() {
     assert_eq!(
         budgets.fill(
             id,
-            &world.ledger(),
+            world.ledger(),
             sep().prev(),
             FillSource::Average,
             today()
@@ -1227,7 +1209,7 @@ fn an_average_exactly_on_a_five_rounds_away_from_zero() {
     let (budgets, id) = world.budgets();
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     assert_eq!(
-        three_month_average(&budget, &world.ledger(), world.category("Dining"), sep()),
+        three_month_average(&budget, world.ledger(), world.category("Dining"), sep()),
         money("20.00")
     );
 }
@@ -1263,13 +1245,13 @@ fn unallocated_is_average_income_minus_total_budgeted() {
     );
     let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
     let ledger = world.ledger();
-    assert_eq!(average_income(&budget, &ledger, today()), money("5850.00"));
+    assert_eq!(average_income(&budget, ledger, today()), money("5850.00"));
     assert_eq!(
-        total_budgeted(&budget, &world.categories, sep()),
+        total_budgeted(&budget, world.ledger(), sep()),
         money("6000.00")
     );
     assert_eq!(
-        unallocated(&budget, &ledger, sep(), today()),
+        unallocated(&budget, ledger, sep(), today()),
         money("-150.00")
     );
 }
@@ -1382,7 +1364,7 @@ fn only_leaf_expense_categories_hold_amounts() {
     for name in ["Food", "Salary"] {
         let refused = budgets.set_amount(
             id,
-            &world.categories,
+            world.ledger(),
             world.category(name),
             sep(),
             Span::Onward,
@@ -1401,7 +1383,7 @@ fn closed_months_are_read_only_and_amounts_cant_be_negative() {
     let dining = world.category("Dining");
     let closed = budgets.set_amount(
         id,
-        &world.categories,
+        world.ledger(),
         dining,
         sep().prev(),
         Span::Onward,
@@ -1412,7 +1394,7 @@ fn closed_months_are_read_only_and_amounts_cant_be_negative() {
     assert_eq!(closed, Err(BudgetError::ClosedMonth));
     let negative = budgets.set_amount(
         id,
-        &world.categories,
+        world.ledger(),
         dining,
         sep(),
         Span::Onward,
@@ -1422,7 +1404,7 @@ fn closed_months_are_read_only_and_amounts_cant_be_negative() {
     );
     assert_eq!(negative, Err(BudgetError::NegativeAmount));
     assert_eq!(
-        budgets.stop(id, &world.categories, dining, sep().prev(), today()),
+        budgets.stop(id, world.ledger(), dining, sep().prev(), today()),
         Err(BudgetError::ClosedMonth)
     );
 }
@@ -1444,7 +1426,7 @@ fn stopping_ends_the_amount_from_that_month_and_keeps_the_past() {
     assert_eq!(
         budgets.stop(
             id,
-            &world.categories,
+            world.ledger(),
             world.category("Dining"),
             sep().next(),
             today()
@@ -1464,13 +1446,7 @@ fn stopping_a_category_with_no_amount_writes_nothing() {
     let world = World::new();
     let (mut budgets, id) = world.budgets();
     assert_eq!(
-        budgets.stop(
-            id,
-            &world.categories,
-            world.category("Dining"),
-            sep(),
-            today()
-        ),
+        budgets.stop(id, world.ledger(), world.category("Dining"), sep(), today()),
         Ok(())
     );
     assert_eq!(budgets.get(id).map(|b| b.category_ids().count()), Some(0));
@@ -1562,19 +1538,19 @@ fn the_5c_write_is_onward_on_change_stop_on_clear_and_nothing_when_unchanged() {
     let (mut budgets, id) = world.budgets();
     let dining = world.category("Dining");
     let write = |budgets: &mut Budgets, amount: Option<&str>| {
-        budgets.set_monthly_limit(id, &world.categories, dining, amount.map(money), today())
+        budgets.set_monthly_limit(id, world.ledger(), dining, amount.map(money), today())
     };
     assert_eq!(write(&mut budgets, None), Ok(false));
     assert_eq!(write(&mut budgets, Some("250.00")), Ok(true));
     assert_eq!(write(&mut budgets, Some("250")), Ok(false));
     assert_eq!(write(&mut budgets, Some("300.00")), Ok(true));
     assert_eq!(
-        budgets.monthly_limit(id, &world.categories, dining, today()),
+        budgets.monthly_limit(id, world.ledger(), dining, today()),
         Some(money("300.00"))
     );
     assert_eq!(write(&mut budgets, None), Ok(true));
     assert_eq!(
-        budgets.monthly_limit(id, &world.categories, dining, today()),
+        budgets.monthly_limit(id, world.ledger(), dining, today()),
         None
     );
 }
@@ -1605,11 +1581,11 @@ fn a_parents_monthly_limit_is_the_sum_of_its_budgeted_leaves() {
     );
     let food = world.category("Food");
     assert_eq!(
-        budgets.monthly_limit(id, &world.categories, food, today()),
+        budgets.monthly_limit(id, world.ledger(), food, today()),
         Some(money("800.00"))
     );
     assert_eq!(
-        budgets.monthly_limit(id, &world.categories, world.category("Housing"), today()),
+        budgets.monthly_limit(id, world.ledger(), world.category("Housing"), today()),
         None
     );
 }
@@ -1639,15 +1615,9 @@ fn a_leaf_that_gains_a_child_is_stopped_from_the_current_month() {
         None,
     );
     let transport = world.category("Transport");
-    let child = categories::insert_category(
-        &mut world.categories,
-        "Fuel".to_string(),
-        Some(transport),
-        CategoryTypes::Expense,
-    );
-    assert!(child.is_ok());
+    world.add_child("Fuel", transport);
     assert_eq!(
-        budgets.stop_new_parents(&world.categories, today()),
+        budgets.stop_new_parents(world.ledger(), today()),
         vec![transport]
     );
     let chain = budgets
@@ -1657,11 +1627,7 @@ fn a_leaf_that_gains_a_child_is_stopped_from_the_current_month() {
     assert_eq!(amount_in(&chain, sep()), None);
     assert_eq!(amount_in(&chain, sep().next()), None);
     // A second pass finds nothing left to stop.
-    assert!(
-        budgets
-            .stop_new_parents(&world.categories, today())
-            .is_empty()
-    );
+    assert!(budgets.stop_new_parents(world.ledger(), today()).is_empty());
 }
 
 #[test]
@@ -1701,7 +1667,7 @@ fn the_first_budget_is_the_default_and_later_ones_are_not() {
     let (mut budgets, first) = world.budgets();
     let second = budgets.create(
         &new_budget(&world, "Second", StartFrom::Empty),
-        &world.ledger(),
+        world.ledger(),
         today(),
     );
     assert_eq!(budgets.default_budget().map(|b| b.id), Some(first));
@@ -1719,7 +1685,7 @@ fn a_budget_needs_a_unique_name_and_same_unit_accounts_that_take_transactions() 
     let world = World::new();
     let (mut budgets, _) = world.budgets();
     let ledger = world.ledger();
-    let create = |budgets: &mut Budgets, new: NewBudget| budgets.create(&new, &ledger, today());
+    let create = |budgets: &mut Budgets, new: NewBudget| budgets.create(&new, ledger, today());
     assert_eq!(
         create(&mut budgets, new_budget(&world, "  ", StartFrom::Empty)),
         Err(BudgetError::NameRequired)
@@ -1774,7 +1740,7 @@ fn start_from_copy_takes_the_sources_current_amounts_and_rollover_as_onward() {
     );
     let copy = budgets.create(
         &new_budget(&world, "Copy", StartFrom::Copy(source)),
-        &world.ledger(),
+        world.ledger(),
         today(),
     );
     let copied = copy
@@ -1801,7 +1767,7 @@ fn start_from_last_three_months_leaves_a_zero_average_unbudgeted() {
     let (mut budgets, _) = world.budgets();
     let created = budgets.create(
         &new_budget(&world, "Averages", StartFrom::LastThreeMonths),
-        &world.ledger(),
+        world.ledger(),
         today(),
     );
     let made = created
@@ -1827,18 +1793,18 @@ fn edit_renames_and_changes_accounts_but_keeps_the_unit() {
     let (mut budgets, id) = world.budgets();
     let accounts = vec![world.account("Wallet")];
     assert_eq!(
-        budgets.edit(id, " Renamed ", accounts.clone(), &world.accounts),
+        budgets.edit(id, " Renamed ", accounts.clone(), world.ledger()),
         Ok(())
     );
     let edited = budgets.get(id);
     assert_eq!(edited.map(|b| b.name.as_str()), Some("Renamed"));
     assert_eq!(edited.map(|b| b.account_ids.clone()), Some(accounts));
     assert_eq!(
-        budgets.edit(id, "", vec![], &world.accounts),
+        budgets.edit(id, "", vec![], world.ledger()),
         Err(BudgetError::NameRequired)
     );
     assert_eq!(
-        budgets.edit(id, "X", vec![world.account("Bitcoin")], &world.accounts),
+        budgets.edit(id, "X", vec![world.account("Bitcoin")], world.ledger()),
         Err(BudgetError::AccountNotInUnit)
     );
 }
@@ -1893,7 +1859,7 @@ fn the_default_cant_be_archived_but_another_can_be_archived_and_restored() {
     let second = budgets
         .create(
             &new_budget(&world, "Second", StartFrom::Empty),
-            &world.ledger(),
+            world.ledger(),
             today(),
         )
         .expect("the id exists");
@@ -1919,14 +1885,14 @@ fn set_default_moves_the_flag_and_refuses_an_archived_budget() {
     let second = budgets
         .create(
             &new_budget(&world, "Second", StartFrom::Empty),
-            &world.ledger(),
+            world.ledger(),
             today(),
         )
         .expect("the id exists");
     let third = budgets
         .create(
             &new_budget(&world, "Third", StartFrom::Empty),
-            &world.ledger(),
+            world.ledger(),
             today(),
         )
         .expect("the id exists");
@@ -1957,7 +1923,7 @@ fn an_archived_budget_is_read_only_but_still_computed() {
     let second = budgets
         .create(
             &new_budget(&world, "Second", StartFrom::Empty),
-            &world.ledger(),
+            world.ledger(),
             today(),
         )
         .expect("the id exists");
@@ -1974,7 +1940,7 @@ fn an_archived_budget_is_read_only_but_still_computed() {
     assert_eq!(budgets.archive(second, today()), Ok(()));
     let refused = budgets.set_amount(
         second,
-        &world.categories,
+        world.ledger(),
         world.category("Dining"),
         sep(),
         Span::Onward,
@@ -1984,14 +1950,14 @@ fn an_archived_budget_is_read_only_but_still_computed() {
     );
     assert_eq!(refused, Err(BudgetError::Archived));
     assert_eq!(
-        budgets.edit(second, "New name", vec![], &world.accounts),
+        budgets.edit(second, "New name", vec![], world.ledger()),
         Err(BudgetError::Archived)
     );
     let archived = budgets
         .get(second)
         .cloned()
         .unwrap_or_else(unreachable_budget);
-    let figures = period_figures(&archived, &world.ledger(), sep(), today());
+    let figures = period_figures(&archived, world.ledger(), sep(), today());
     assert_eq!(figures.budgeted, money("100.00"));
 }
 
@@ -2003,7 +1969,7 @@ fn overlapping_budgets_count_the_same_split_independently() {
     let second = budgets
         .create(
             &new_budget(&world, "Second", StartFrom::Empty),
-            &world.ledger(),
+            world.ledger(),
             today(),
         )
         .expect("the id exists");
@@ -2031,7 +1997,7 @@ fn overlapping_budgets_count_the_same_split_independently() {
     for (id, left) in [(first, "420.00"), (second, "120.00")] {
         let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
         assert_eq!(
-            period_figures(&budget, &ledger, sep(), today()).left,
+            period_figures(&budget, ledger, sep(), today()).left,
             money(left)
         );
     }
@@ -2075,7 +2041,7 @@ fn category_detail_lists_splits_largest_first_and_reads_the_track_record() {
     world.post("ANZ Everyday", "Dining", date(2026, 9, 9), "-278.40");
     // Off-budget Account: never counted.
     world.post("Amex Platinum", "Dining", date(2026, 9, 9), "-999.00");
-    let detail = category_detail(&budget, &world.ledger(), dining, sep(), today())
+    let detail = category_detail(&budget, world.ledger(), dining, sep(), today())
         .expect("Dining is an Expense Category");
 
     assert_eq!(detail.figures.spent, money("318.40"));
@@ -2106,20 +2072,10 @@ fn category_detail_of_a_parent_rolls_up_and_has_no_rollover() {
     let Some(budget) = budgets.get(id) else {
         panic!("the Budget was created");
     };
-    let parent = categories::path(&world.categories, world.category("Groceries"))
-        .and_then(|_| {
-            world
-                .categories
-                .iter()
-                .find(|c| {
-                    !categories::is_leaf(&world.categories, c.id)
-                        && categories::descendants_inclusive(&world.categories, c.id)
-                            .contains(&world.category("Groceries"))
-                })
-                .map(|c| c.id)
-        })
+    let parent = tree::get(&world.reads.categories, world.category("Groceries"))
+        .and_then(|c| c.parent)
         .expect("Groceries sits under a parent");
-    let detail = category_detail(budget, &world.ledger(), parent, sep(), today())
+    let detail = category_detail(budget, world.ledger(), parent, sep(), today())
         .expect("a parent Expense Category");
     assert!(detail.figures.is_parent);
     assert_eq!(detail.figures.spent, money("120.00"));
@@ -2134,13 +2090,14 @@ fn category_detail_is_none_for_a_non_expense_category() {
         panic!("the Budget was created");
     };
     let income = world
+        .reads
         .categories
         .iter()
         .find(|c| c.category_type == CategoryTypes::Income)
         .map(|c| c.id)
         .expect("the id exists");
     assert_eq!(
-        category_detail(budget, &world.ledger(), income, sep(), today()),
+        category_detail(budget, world.ledger(), income, sep(), today()),
         None
     );
 }
@@ -2158,7 +2115,7 @@ fn save(
 ) -> Result<bool, BudgetError> {
     budgets.save_cell(
         id,
-        &world.categories,
+        world.ledger(),
         world.category(category),
         month,
         span,
@@ -2457,7 +2414,7 @@ fn the_plan_groups_leaves_under_their_parent_and_totals_each_month() {
         panic!("the Budget was created");
     };
     let start = default_plan_start(today());
-    let grid = plan(budget, &world.ledger(), start, today());
+    let grid = plan(budget, world.ledger(), start, today());
     assert_eq!(grid.months.len(), PLAN_MONTHS);
     assert_eq!(grid.months.get(2), Some(&sep()));
     let labels: Vec<Option<&str>> = grid
@@ -2515,12 +2472,7 @@ fn a_cleared_row_stays_in_the_grid_while_a_record_starts_in_the_range() {
     let Some(budget) = budgets.get(id) else {
         panic!("the Budget was created");
     };
-    let grid = plan(
-        budget,
-        &world.ledger(),
-        default_plan_start(today()),
-        today(),
-    );
+    let grid = plan(budget, world.ledger(), default_plan_start(today()), today());
     assert_eq!(grid.row_count(), 1);
     assert!(
         grid.row(0)

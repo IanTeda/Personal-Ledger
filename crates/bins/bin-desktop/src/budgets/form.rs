@@ -481,7 +481,11 @@ mod tests {
 
     fn seeded() -> (Vec<Account>, Budgets) {
         let accounts = default_accounts();
-        let budgets = budgets::default_budgets(&accounts, &default_categories(), today());
+        let budgets = budgets::default_budgets(
+            &lib_ledger::budget_accounts(&accounts),
+            &lib_ledger::budget_categories(&default_categories()),
+            today(),
+        );
         (accounts, budgets)
     }
 
@@ -672,7 +676,11 @@ mod tests {
     fn budgets_world() -> (Vec<Account>, Vec<lib_categories::Category>, Budgets) {
         let accounts = default_accounts();
         let categories = default_categories();
-        let budgets = budgets::default_budgets(&accounts, &categories, budgets_today());
+        let budgets = budgets::default_budgets(
+            &lib_ledger::budget_accounts(&accounts),
+            &lib_ledger::budget_categories(&categories),
+            budgets_today(),
+        );
         (accounts, categories, budgets)
     }
 
@@ -761,7 +769,7 @@ mod tests {
             budgets
                 .stop(
                     budgets::PERSONAL_SPENDING_ID,
-                    &categories,
+                    &lib_ledger::budget_categories(&categories),
                     id,
                     crate::period::Period::of(today),
                     today,

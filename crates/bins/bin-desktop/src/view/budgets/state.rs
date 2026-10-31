@@ -135,16 +135,10 @@ impl BudgetsView {
         self.sources.ledger.read(cx).ledger().categories()
     }
 
-    /// Everything the Budgets figures are worked out from.
-    pub fn budget_sources<'a>(&self, cx: &'a App) -> budgets::BudgetSources<'a> {
-        let ledger = self.sources.ledger.read(cx).ledger();
-        budgets::BudgetSources {
-            categories: self.categories(cx),
-            accounts: self.sources.ledger.read(cx).ledger().accounts(),
-            transactions: self.sources.ledger.read(cx).ledger().transactions(),
-            plans: ledger.bill_plans(),
-            entries: ledger.bill_entries(),
-        }
+    /// Everything the Budgets figures are worked out from: the Ledger answers every Budgets read
+    /// port until the stores do (#952).
+    pub fn budget_sources<'a>(&self, cx: &'a App) -> &'a lib_ledger::Ledger {
+        self.sources.ledger.read(cx).ledger()
     }
 
     /// The Budget on show and its figures for the Progress month, as of today.
@@ -155,7 +149,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         let figures = budgets::period_figures(
             budget,
-            &self.budget_sources(cx),
+            self.budget_sources(cx),
             self.state.period,
             self.today,
         );
@@ -167,7 +161,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         Some(budgets::plan(
             budget,
-            &self.budget_sources(cx),
+            self.budget_sources(cx),
             self.state.plan_start,
             self.today,
         ))
@@ -188,7 +182,7 @@ impl BudgetsView {
         let (first, last) = budgets::history_range(budget, self.state.history_end, self.today)?;
         Some(budgets::history(
             budget,
-            &self.budget_sources(cx),
+            self.budget_sources(cx),
             first,
             last,
             self.today,
@@ -263,7 +257,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         budgets::category_detail(
             budget,
-            &self.budget_sources(cx),
+            self.budget_sources(cx),
             category_id,
             month,
             self.today,
@@ -345,7 +339,9 @@ impl BudgetsView {
                 return None;
             }
             LimitForm::edit(budget, category_id, month, &options)
-        } else if budgets::unbudgeted_leaves(budget, categories, current).contains(&category_id) {
+        } else if budgets::unbudgeted_leaves(budget, self.budget_sources(cx), current)
+            .contains(&category_id)
+        {
             LimitForm::pick(Some(category_id), &options)
         } else {
             return None;
@@ -958,7 +954,12 @@ impl BudgetsView {
             average: crate::msg::desktop_budgets_history_column_avg(),
             over: crate::msg::desktop_budgets_history_column_over(),
         };
-        let csv = budgets::history_csv(&history, self.categories(cx), &labels, super::period_label);
+        let csv = budgets::history_csv(
+            &history,
+            self.budget_sources(cx),
+            &labels,
+            super::period_label,
+        );
         let directory = dirs::download_dir()
             .or_else(dirs::home_dir)
             .unwrap_or_default();

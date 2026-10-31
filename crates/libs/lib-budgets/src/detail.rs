@@ -4,15 +4,14 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
-use lib_core::{AccountId, CategoryId, CategoryTypes, Money, PayeeId, Period};
-
-use lib_categories as categories;
+use lib_core::{AccountId, CategoryId, Money, PayeeId, Period};
 
 use super::figures::{
-    BudgetSources, CategoryFigures, Elapsed, LeafFigures, SpentIndex, effective, elapsed,
+    CategoryFigures, Elapsed, LeafFigures, SpentIndex, counted_splits, effective, elapsed,
     known_costs, leaf_row, parent_row,
 };
-use super::{Budget, Rollover, zero};
+use super::protocols::{BudgetCategory, BudgetReads};
+use super::{Budget, Rollover, tree, zero};
 
 /// How many closed months before the month shown the track record looks back over.
 const TRACK_MONTHS: usize = 6;
@@ -60,20 +59,14 @@ pub struct CategoryDetail {
 fn detail_leaves(
     budget: &Budget,
     index: &SpentIndex,
-    ledger: &BudgetSources<'_>,
+    categories: &[BudgetCategory],
     category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Vec<CategoryId> {
-    let below: Vec<CategoryId> = categories::descendants_inclusive(ledger.categories, category_id)
+    let below: Vec<CategoryId> = tree::descendants_inclusive(categories, category_id)
         .into_iter()
-        .filter(|id| {
-            categories::is_leaf(ledger.categories, *id)
-                && ledger
-                    .categories
-                    .iter()
-                    .any(|c| c.id == *id && c.category_type == CategoryTypes::Expense)
-        })
+        .filter(|id| tree::is_leaf(categories, *id) && tree::is_expense(categories, *id))
         .collect();
     let budgeted: Vec<CategoryId> = below
         .iter()
@@ -87,22 +80,25 @@ fn detail_leaves(
 /// Expense Category.
 pub fn category_detail(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     category_id: CategoryId,
     month: Period,
     today: NaiveDate,
 ) -> Option<CategoryDetail> {
-    let category = ledger.categories.iter().find(|c| c.id == category_id)?;
-    if category.category_type != CategoryTypes::Expense {
+    let categories = reads.budget_categories();
+    if !tree::is_expense(&categories, category_id) {
         return None;
     }
-    let index = SpentIndex::build(budget, ledger);
-    let is_parent = !categories::is_leaf(ledger.categories, category_id);
-    let leaves = detail_leaves(budget, &index, ledger, category_id, month, today);
+    let accounts = reads.budget_accounts();
+    let bills = reads.open_bills();
+    let splits = counted_splits(budget, reads, &accounts, month, month);
+    let index = SpentIndex::build(&splits);
+    let is_parent = !tree::is_leaf(&categories, category_id);
+    let leaves = detail_leaves(budget, &index, &categories, category_id, month, today);
     let figures: BTreeMap<CategoryId, LeafFigures> = leaves
         .iter()
         .map(|id| {
-            let (known, known_count) = known_costs(budget, ledger, *id, month, today);
+            let (known, known_count) = known_costs(budget, &accounts, &bills, *id, month, today);
             let leaf = LeafFigures {
                 effective: effective(budget, &index, *id, month, today),
                 spent: index.spent(*id, month),
@@ -121,33 +117,24 @@ pub fn category_detail(
             .map(|leaf| leaf_row(category_id, leaf))?
     };
 
-    let mut lines: Vec<DetailLine> = ledger
-        .transactions
+    let mut lines: Vec<DetailLine> = splits
         .iter()
-        .filter(|t| budget.counts(ledger.accounts, t.account_id) && month.contains(t.date))
-        .flat_map(|t| {
-            let leaves = &leaves;
-            t.splits
-                .iter()
-                .filter(move |s| leaves.contains(&s.category_id))
-                .map(move |s| DetailLine {
-                    date: t.date,
-                    account_id: t.account_id,
-                    payee_id: s.payee_id,
-                    amount: Money(-s.amount.0.clone()),
-                })
+        .filter(|s| month.contains(s.date) && leaves.contains(&s.category_id))
+        .map(|s| DetailLine {
+            date: s.date,
+            account_id: s.account_id,
+            payee_id: s.payee_id,
+            amount: Money(-s.amount.0.clone()),
         })
         .collect();
     lines.sort_by(|a, b| b.amount.0.cmp(&a.amount.0).then(b.date.cmp(&a.date)));
 
-    let bill_plans = ledger
-        .plans
+    let below = tree::descendants_inclusive(&categories, category_id);
+    let bill_plans = reads
+        .active_bill_plans()
         .iter()
         .filter(|plan| {
-            plan.is_active
-                && budget.counts(ledger.accounts, plan.account_id)
-                && categories::descendants_inclusive(ledger.categories, category_id)
-                    .contains(&plan.category_id)
+            budget.counts(&accounts, plan.account_id) && below.contains(&plan.category_id)
         })
         .count();
 

@@ -4,18 +4,33 @@ use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use chrono::NaiveDate;
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
-use lib_categories::{self as categories, Category};
-
-use super::figures::{BudgetSources, SpentIndex, expense_leaves};
-use super::{AVERAGE_MONTHS, Budget, Rollover, applied, zero};
+use super::figures::{SpentIndex, expense_leaves};
+use super::protocols::{BudgetCategories, BudgetCategory, BudgetReads};
+use super::{AVERAGE_MONTHS, Budget, Rollover, applied, tree, zero};
 
 /// A month's Total budgeted: Budget Amounts only, no carry.
-pub fn total_budgeted(budget: &Budget, categories: &[Category], month: Period) -> Money {
+pub fn total_budgeted(budget: &Budget, categories: &dyn BudgetCategories, month: Period) -> Money {
+    total_over(budget, &categories.budget_categories(), month)
+}
+
+fn total_over(budget: &Budget, categories: &[BudgetCategory], month: Period) -> Money {
     Money(
         expense_leaves(categories)
             .into_iter()
             .filter_map(|id| applied(budget.chain(id), month))
             .fold(zero(), |sum, found| sum + found.amount.0),
+    )
+}
+
+/// What Budget `budget` spent in the three months before `target`, indexed.
+fn spent_before(budget: &Budget, reads: &dyn BudgetReads, target: Period) -> SpentIndex {
+    let accounts = reads.budget_accounts();
+    SpentIndex::load(
+        budget,
+        reads,
+        &accounts,
+        target.shift(-AVERAGE_MONTHS),
+        target.prev(),
     )
 }
 
@@ -45,21 +60,21 @@ fn average_of(index: &SpentIndex, category_id: CategoryId, target: Period) -> Mo
 /// `target`: Fill's source and 11c's "Last 3 months' spending".
 pub fn three_month_average(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     category_id: CategoryId,
     target: Period,
 ) -> Money {
-    average_of(&SpentIndex::build(budget, ledger), category_id, target)
+    average_of(&spent_before(budget, reads, target), category_id, target)
 }
 
 /// Every leaf Expense Category's 3-month average for `target`, tree order.
 pub fn three_month_averages(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     target: Period,
 ) -> Vec<(CategoryId, Money)> {
-    let index = SpentIndex::build(budget, ledger);
-    expense_leaves(ledger.categories)
+    let index = spent_before(budget, reads, target);
+    expense_leaves(&reads.budget_categories())
         .into_iter()
         .map(|id| (id, average_of(&index, id, target)))
         .collect()
@@ -119,11 +134,11 @@ pub fn fill_target(cursor: Option<Period>, today: NaiveDate) -> Period {
 /// where the plan already has it.
 pub fn fill_preview(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     target: Period,
     source: FillSource,
 ) -> FillPreview {
-    let index = SpentIndex::build(budget, ledger);
+    let index = spent_before(budget, reads, target);
     let previous = target.prev();
     let mut preview = FillPreview {
         target,
@@ -133,7 +148,7 @@ pub fn fill_preview(
         unchanged: 0,
         total: Money(zero()),
     };
-    for id in expense_leaves(ledger.categories) {
+    for id in expense_leaves(&reads.budget_categories()) {
         let chain = budget.chain(id);
         let planned = applied(chain, target).map(|found| found.amount);
         let filled = applied(chain, previous).and_then(|last| {
@@ -167,28 +182,25 @@ pub fn fill_preview(
 }
 
 /// The average signed Income Splits on the Budget's Accounts over the last 3 closed months.
-pub fn average_income(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveDate) -> Money {
-    let last_three: Vec<Period> = months_before(Period::of(today)).collect();
-    let income: Vec<CategoryId> = ledger
-        .categories
+pub fn average_income(budget: &Budget, reads: &dyn BudgetReads, today: NaiveDate) -> Money {
+    let current = Period::of(today);
+    let income: Vec<CategoryId> = reads
+        .budget_categories()
         .iter()
         .filter(|c| c.category_type == CategoryTypes::Income)
         .map(|c| c.id)
         .collect();
+    let accounts = reads.budget_accounts();
     let mut total = zero();
-    for transaction in ledger
-        .transactions
+    for split in reads
+        .budget_splits(
+            current.shift(-AVERAGE_MONTHS).first_day(),
+            current.prev().last_day(),
+        )
         .iter()
-        .filter(|t| budget.counts(ledger.accounts, t.account_id))
-        .filter(|t| last_three.contains(&Period::of(t.date)))
+        .filter(|s| budget.counts(&accounts, s.account_id) && income.contains(&s.category_id))
     {
-        for split in transaction
-            .splits
-            .iter()
-            .filter(|s| income.contains(&s.category_id))
-        {
-            total += split.amount.0.clone();
-        }
+        total += split.amount.0.clone();
     }
     Money((total / BigDecimal::from(AVERAGE_MONTHS)).with_scale_round(2, RoundingMode::HalfUp))
 }
@@ -197,14 +209,11 @@ pub fn average_income(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveD
 /// over-allocated.
 pub fn unallocated(
     budget: &Budget,
-    ledger: &BudgetSources<'_>,
+    reads: &dyn BudgetReads,
     month: Period,
     today: NaiveDate,
 ) -> Money {
-    Money(
-        average_income(budget, ledger, today).0
-            - total_budgeted(budget, ledger.categories, month).0,
-    )
+    Money(average_income(budget, reads, today).0 - total_budgeted(budget, reads, month).0)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -292,14 +301,17 @@ pub fn plan_start_bounds(budget: &Budget, today: NaiveDate) -> (Period, Period) 
 
 /// The Plan grid's figures for the six months from `start`. A row is any leaf with an amount or
 /// a record in those months, so a cell just cleared keeps its row.
-pub fn plan(budget: &Budget, ledger: &BudgetSources<'_>, start: Period, today: NaiveDate) -> Plan {
+pub fn plan(budget: &Budget, reads: &dyn BudgetReads, start: Period, today: NaiveDate) -> Plan {
     let current = Period::of(today);
+    let categories = reads.budget_categories();
+    let leaves = expense_leaves(&categories);
     let months: Vec<Period> = std::iter::successors(Some(start), |month| Some(month.next()))
         .take(PLAN_MONTHS)
         .collect();
     let mut sections: Vec<PlanSection> = Vec::new();
-    for (id, _) in categories::paths_in_tree_order(ledger.categories) {
-        if !expense_leaves(ledger.categories).contains(&id) {
+    for category in &categories {
+        let id = category.id;
+        if !leaves.contains(&id) {
             continue;
         }
         let chain = budget.chain(id);
@@ -318,15 +330,12 @@ pub fn plan(budget: &Budget, ledger: &BudgetSources<'_>, start: Period, today: N
         let shown = months.iter().zip(&cells).any(|(month, cell)| {
             cell.amount.is_some() || chain.iter().any(|record| record.month == *month)
         });
-        let Some(category) = ledger.categories.iter().find(|c| c.id == id) else {
-            continue;
-        };
         if !shown {
             continue;
         }
         let parent = category
             .parent
-            .and_then(|parent| ledger.categories.iter().find(|c| c.id == parent))
+            .and_then(|parent| tree::get(&categories, parent))
             .map(|parent| parent.name.clone());
         let row = PlanRow {
             category_id: id,
@@ -344,10 +353,10 @@ pub fn plan(budget: &Budget, ledger: &BudgetSources<'_>, start: Period, today: N
     }
     // Top-level leaves have no label, so they close the grid as its "Other" group.
     sections.sort_by_key(|section| section.parent.is_none());
-    let average_income = average_income(budget, ledger, today);
+    let average_income = average_income(budget, reads, today);
     let totals: Vec<Money> = months
         .iter()
-        .map(|month| total_budgeted(budget, ledger.categories, *month))
+        .map(|month| total_over(budget, &categories, *month))
         .collect();
     let unallocated = totals
         .iter()

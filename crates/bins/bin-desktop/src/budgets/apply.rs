@@ -186,7 +186,11 @@ mod tests {
     fn ledger(cx: &mut TestAppContext) -> Entity<LedgerStore> {
         let accounts = lib_accounts::default_accounts();
         let categories = lib_categories::default_categories();
-        let seeded = crate::budgets::default_budgets(&accounts, &categories, today());
+        let seeded = crate::budgets::default_budgets(
+            &lib_ledger::budget_accounts(&accounts),
+            &lib_ledger::budget_categories(&categories),
+            today(),
+        );
         test_ledger(
             cx,
             LedgerParts {
@@ -215,8 +219,8 @@ mod tests {
         assert!(matches!(refused, Err(BudgetRefusal::Budget(_))));
 
         let seeded = crate::budgets::default_budgets(
-            &lib_accounts::default_accounts(),
-            &lib_categories::default_categories(),
+            &lib_ledger::budget_accounts(&lib_accounts::default_accounts()),
+            &lib_ledger::budget_categories(&lib_categories::default_categories()),
             today(),
         );
         let switcher = BudgetsDialog::Switcher(crate::budgets::Switcher::new(

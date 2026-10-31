@@ -5,15 +5,16 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::NaiveDate;
-use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
 
-use lib_accounts::Account;
-use lib_categories::{self as categories, Category};
-use lib_transactions as transactions;
-
-use super::figures::{BudgetSources, expense_leaves};
+use super::figures::expense_leaves;
 use super::plan::{FillSource, fill_preview, three_month_averages};
-use super::{Budget, Limit, LimitRecord, Method, Rollover, applied, inherited_rollover, put, zero};
+use super::protocols::{
+    BudgetAccount, BudgetAccounts, BudgetCategories, BudgetCategory, BudgetReads,
+};
+use super::{
+    Budget, Limit, LimitRecord, Method, Rollover, applied, inherited_rollover, put, tree, zero,
+};
 
 /// Errors for Budget and Category Limit operations.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -129,7 +130,7 @@ impl Budgets {
     pub fn create(
         &mut self,
         new: &NewBudget,
-        ledger: &BudgetSources<'_>,
+        reads: &dyn BudgetReads,
         today: NaiveDate,
     ) -> Result<BudgetId, BudgetError> {
         let name = new.name.trim();
@@ -139,7 +140,7 @@ impl Budgets {
         if self.name_taken(name, None) {
             return Err(BudgetError::NameTaken);
         }
-        check_accounts(ledger.accounts, new.unit, &new.account_ids)?;
+        check_accounts(&reads.budget_accounts(), new.unit, &new.account_ids)?;
         let copy_from = match &new.start_from {
             StartFrom::Copy(source) => {
                 Some(self.get(*source).ok_or(BudgetError::NotFound)?.clone())
@@ -158,7 +159,7 @@ impl Budgets {
             limits: BTreeMap::new(),
         };
         if let Some(source) = copy_from {
-            for id in expense_leaves(ledger.categories) {
+            for id in expense_leaves(&reads.budget_categories()) {
                 if let Some(found) = applied(source.chain(id), current) {
                     put(
                         budget.limits.entry(id).or_default(),
@@ -173,7 +174,7 @@ impl Budgets {
                 }
             }
         } else if new.start_from == StartFrom::LastThreeMonths {
-            for (id, average) in three_month_averages(&budget, ledger, current) {
+            for (id, average) in three_month_averages(&budget, reads, current) {
                 if !average.0.is_zero() {
                     put(
                         budget.limits.entry(id).or_default(),
@@ -201,8 +202,9 @@ impl Budgets {
         id: BudgetId,
         name: &str,
         account_ids: Vec<AccountId>,
-        accounts: &[Account],
+        accounts: &dyn BudgetAccounts,
     ) -> Result<(), BudgetError> {
+        let accounts = accounts.budget_accounts();
         let name = name.trim();
         if name.is_empty() {
             return Err(BudgetError::NameRequired);
@@ -215,7 +217,7 @@ impl Budgets {
             .into_iter()
             .filter(|id| accounts.iter().any(|account| account.id == *id))
             .collect();
-        check_accounts(accounts, budget.unit, &account_ids)?;
+        check_accounts(&accounts, budget.unit, &account_ids)?;
         budget.name = name.to_string();
         budget.account_ids = account_ids;
         Ok(())
@@ -276,7 +278,7 @@ impl Budgets {
     pub fn set_amount(
         &mut self,
         id: BudgetId,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         category_id: CategoryId,
         month: Period,
         span: Span,
@@ -284,7 +286,7 @@ impl Budgets {
         rollover: Option<Rollover>,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
-        check_leaf(categories, category_id)?;
+        check_leaf(&categories.budget_categories(), category_id)?;
         check_open_month(month, today)?;
         if amount.0.is_negative() {
             return Err(BudgetError::NegativeAmount);
@@ -305,12 +307,12 @@ impl Budgets {
     pub fn stop(
         &mut self,
         id: BudgetId,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         category_id: CategoryId,
         month: Period,
         today: NaiveDate,
     ) -> Result<(), BudgetError> {
-        check_leaf(categories, category_id)?;
+        check_leaf(&categories.budget_categories(), category_id)?;
         check_open_month(month, today)?;
         let budget = self.editable_mut(id)?;
         let chain = budget.limits.entry(category_id).or_default();
@@ -391,7 +393,7 @@ impl Budgets {
     pub fn save_cell(
         &mut self,
         id: BudgetId,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         category_id: CategoryId,
         month: Period,
         span: Span,
@@ -440,14 +442,14 @@ impl Budgets {
     pub fn fill(
         &mut self,
         id: BudgetId,
-        ledger: &BudgetSources<'_>,
+        reads: &dyn BudgetReads,
         target: Period,
         source: FillSource,
         today: NaiveDate,
     ) -> Result<usize, BudgetError> {
         check_open_month(target, today)?;
         let budget = self.editable_mut(id)?;
-        let preview = fill_preview(budget, ledger, target, source);
+        let preview = fill_preview(budget, reads, target, source);
         for line in &preview.changes {
             let chain = budget.limits.entry(line.category_id).or_default();
             let rollover = inherited_rollover(chain, target);
@@ -470,7 +472,7 @@ impl Budgets {
     pub fn set_monthly_limit(
         &mut self,
         id: BudgetId,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         category_id: CategoryId,
         amount: Option<Money>,
         today: NaiveDate,
@@ -505,15 +507,16 @@ impl Budgets {
     pub fn monthly_limit(
         &self,
         id: BudgetId,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         category_id: CategoryId,
         today: NaiveDate,
     ) -> Option<Money> {
         let budget = self.get(id)?;
         let current = Period::of(today);
-        let amounts: Vec<BigDecimal> = categories::descendants_inclusive(categories, category_id)
+        let categories = categories.budget_categories();
+        let amounts: Vec<BigDecimal> = tree::descendants_inclusive(&categories, category_id)
             .into_iter()
-            .filter(|below| categories::is_leaf(categories, *below))
+            .filter(|below| tree::is_leaf(&categories, *below))
             .filter_map(|below| applied(budget.chain(below), current))
             .map(|found| found.amount.0)
             .collect();
@@ -540,14 +543,15 @@ impl Budgets {
     /// stopped.
     pub fn stop_new_parents(
         &mut self,
-        categories: &[Category],
+        categories: &dyn BudgetCategories,
         today: NaiveDate,
     ) -> Vec<CategoryId> {
+        let categories = categories.budget_categories();
         let current = Period::of(today);
         let mut stopped = Vec::new();
         for budget in self.list.iter_mut().filter(|b| !b.is_archived()) {
             for (id, chain) in &mut budget.limits {
-                if categories::is_leaf(categories, *id) {
+                if tree::is_leaf(&categories, *id) {
                     continue;
                 }
                 let was_budgeted = applied(chain, current).is_some();
@@ -570,11 +574,11 @@ impl Budgets {
     }
 }
 
-pub fn check_leaf(categories: &[Category], category_id: CategoryId) -> Result<(), BudgetError> {
-    let expense = categories
-        .iter()
-        .any(|c| c.id == category_id && c.category_type == CategoryTypes::Expense);
-    if expense && categories::is_leaf(categories, category_id) {
+pub fn check_leaf(
+    categories: &[BudgetCategory],
+    category_id: CategoryId,
+) -> Result<(), BudgetError> {
+    if tree::is_expense(categories, category_id) && tree::is_leaf(categories, category_id) {
         Ok(())
     } else {
         Err(BudgetError::NotAnExpenseLeaf)
@@ -590,7 +594,7 @@ fn check_open_month(month: Period, today: NaiveDate) -> Result<(), BudgetError> 
 }
 
 pub fn check_accounts(
-    accounts: &[Account],
+    accounts: &[BudgetAccount],
     unit: UnitId,
     ids: &[AccountId],
 ) -> Result<(), BudgetError> {
@@ -599,7 +603,7 @@ pub fn check_accounts(
             .iter()
             .find(|a| a.id == *id)
             .ok_or(BudgetError::AccountNotFound)?;
-        if !transactions::takes_transactions(&account.account_type) || account.unit != unit {
+        if !account.takes_transactions || account.unit != unit {
             return Err(BudgetError::AccountNotInUnit);
         }
     }

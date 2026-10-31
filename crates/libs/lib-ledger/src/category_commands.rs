@@ -55,18 +55,15 @@ impl Ledger {
         id: CategoryId,
         monthly: &MonthlyBudget,
     ) -> Result<bool, BudgetError> {
-        let wrote = self.budgets.set_monthly_limit(
-            monthly.budget_id,
-            &self.categories,
-            id,
-            monthly.limit.clone(),
-            monthly.today,
-        )?;
-        if wrote && let Some(budget) = self.budgets.get(monthly.budget_id) {
-            self.pending
-                .push(LedgerChange::UpsertBudget(budget.clone()));
-        }
-        Ok(wrote)
+        self.write_budgets(|budgets, reads| {
+            budgets.set_monthly_limit(
+                monthly.budget_id,
+                reads,
+                id,
+                monthly.limit.clone(),
+                monthly.today,
+            )
+        })
     }
 
     /// Deletes leaf Category `id`. Its Splits and Bill Plans move to the Uncategorised Category of

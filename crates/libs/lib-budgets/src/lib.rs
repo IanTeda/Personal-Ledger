@@ -20,22 +20,28 @@
 //! - Every figure on every surface comes from [`period_figures`], [`history`] and their
 //!   helpers, all pure over an injectable `today`, so nothing is counted twice.
 //!
-//! Ids are the Ledger's `lib-core` newtypes (ADR-0040).
+//! Ids are the Ledger's `lib-core` newtypes (ADR-0040). The other domains are read through the
+//! read ports in [`protocols`], as `lib-budgets`' own rows, so the crate depends on no other
+//! feature crate.
 //!
 //! This file holds the Category Limit chain itself; each surface's figures sit in their own
 //! section module, re-exported here. The Desktop reads it through `LedgerStore`.
 
 mod detail;
+pub mod fake;
 mod figures;
 mod history;
 mod plan;
+pub mod protocols;
 mod seed;
 mod store;
+mod tree;
 
 pub use detail::*;
 pub use figures::*;
 pub use history::*;
 pub use plan::*;
+pub use protocols::*;
 pub use seed::*;
 pub use store::*;
 
@@ -46,7 +52,6 @@ use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_accounts::Account;
 use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
@@ -112,14 +117,14 @@ pub struct Budget {
     pub method: Method,
     /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
     pub unit: UnitId,
-    /// The [`Account::id`]s whose Splits this Budget counts. An id whose Account was deleted stays
+    /// The Account ids whose Splits this Budget counts. An id whose Account was deleted stays
     /// until Budgets persist with a link that cascades (#811), and is ignored: see
     /// [`Budget::counts`].
     pub account_ids: Vec<AccountId>,
     pub is_default: bool,
     /// Archived is computed and viewable but read-only; `None` while active.
     pub archived_at: Option<NaiveDate>,
-    /// One chain per leaf Expense [`Category::id`], sorted by month with one record per month.
+    /// One chain per leaf Expense Category id, sorted by month with one record per month.
     ///
     /// Public only so the Desktop's seeded-data tests can build a chain directly; everything else
     /// goes through [`Budgets`] and keeps the chain sorted.
@@ -130,7 +135,7 @@ impl Budget {
     /// Whether the Budget counts Account `id`: one of its [`Budget::account_ids`] that names one
     /// of `accounts`. An id with no Account counts nothing, so a Budget left with none compares
     /// nothing (#854).
-    pub fn counts(&self, accounts: &[Account], id: AccountId) -> bool {
+    pub fn counts(&self, accounts: &[BudgetAccount], id: AccountId) -> bool {
         self.account_ids.contains(&id) && accounts.iter().any(|account| account.id == id)
     }
 }
@@ -156,6 +161,15 @@ impl Budget {
             .values()
             .flatten()
             .filter(|record| !matches!(record.limit, Limit::Stop))
+            .map(|record| record.month)
+            .min()
+    }
+
+    /// The first month any record starts in, a Stop included: where a carry's walk begins.
+    fn first_record_month(&self) -> Option<Period> {
+        self.limits
+            .values()
+            .flatten()
             .map(|record| record.month)
             .min()
     }

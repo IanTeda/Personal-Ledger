@@ -55,7 +55,7 @@ impl Root {
     }
 
     /// Everything the Budgets figures are worked out from, as the Budgets page reads it.
-    pub(super) fn budgets_ledger<'a>(&self, cx: &'a gpui::App) -> budgets::BudgetSources<'a> {
+    pub(super) fn budgets_ledger<'a>(&self, cx: &'a gpui::App) -> &'a lib_ledger::Ledger {
         self.views.budgets.read(cx).budget_sources(cx)
     }
 
@@ -528,7 +528,7 @@ impl Root {
                 self.display(cx).date_style,
             ));
         }
-        let health = budgets::health(budget, &self.budgets_ledger(cx), self.today);
+        let health = budgets::health(budget, self.budgets_ledger(cx), self.today);
         let left = format::amount(&health.left).1;
         if health.at_risk > 0 {
             crate::msg::desktop_budgets_switcher_health_at_risk(
@@ -624,8 +624,8 @@ impl Root {
             });
             on_click
         };
-        let previews = budgets::FillSource::ALL
-            .map(|each| budgets::fill_preview(budget, &ledger, month, each));
+        let previews =
+            budgets::FillSource::ALL.map(|each| budgets::fill_preview(budget, ledger, month, each));
         let chosen = previews.iter().find(|preview| preview.source == source)?;
         let name = |category_id: &CategoryId| {
             self.categories(cx)
