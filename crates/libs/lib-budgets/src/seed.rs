@@ -100,6 +100,27 @@ fn seeded_limits(
     limits
 }
 
+/// The one Budget an existing Ledger with none is given (#952): **Personal spending**, the default,
+/// in `unit` (the base Unit) on every Account in it that takes Transactions, with no amounts, so
+/// there is always an active Budget for the Dashboard, the rail badge and the Categories Monthly
+/// budget field. It carries [`PERSONAL_SPENDING_ID`], as the stub's does.
+pub fn personal_spending(unit: UnitId, accounts: &[BudgetAccount]) -> Budget {
+    Budget {
+        id: PERSONAL_SPENDING_ID,
+        name: "Personal spending".to_string(),
+        method: Method::Limits,
+        unit,
+        account_ids: accounts
+            .iter()
+            .filter(|account| account.unit == unit && account.takes_transactions)
+            .map(|account| account.id)
+            .collect(),
+        is_default: true,
+        archived_at: None,
+        limits: BTreeMap::new(),
+    }
+}
+
 /// The seeded Budgets: **Personal spending** (migrated, the default, on every AUD Account that
 /// takes Transactions) and **Joint household**, a second Limits Budget over two of the same
 /// Accounts and some of the same Categories, so the two overlap. A Category or Account the stubs
@@ -117,7 +138,7 @@ pub fn default_budgets(
             .map(|a| a.id)
             .collect()
     };
-    Budgets::seeded(vec![
+    Budgets::from_stored(vec![
         Budget {
             id: PERSONAL_SPENDING_ID,
             name: "Personal spending".to_string(),

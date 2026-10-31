@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO budget_limit_records\n                     (budget_id, category_id, month, kind, amount, rollover)\n                 VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "d1c81db5a194ed768051eeed67c515a35e95aca6a1b57e2e5d75df41f8393ee4"
+}

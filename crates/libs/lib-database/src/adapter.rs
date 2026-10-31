@@ -6,6 +6,7 @@ pub mod account_deletion;
 pub mod accounts;
 pub mod bill_payments;
 pub mod bills;
+pub mod budgets;
 pub mod categories;
 pub mod institutions;
 pub mod inventory;

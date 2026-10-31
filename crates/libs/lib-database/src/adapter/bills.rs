@@ -154,6 +154,40 @@ impl BillScheduleRepository for BillsAdapter {
     }
 }
 
+/// The open Bill Schedule entries among `entries`, as `lib-budgets`' `BudgetBills` reads them,
+/// each with its Plan's Category, Account and estimated Amount. An entry whose Plan isn't among
+/// `plans` is left out.
+pub(crate) fn budget_open_bills(
+    plans: &[BillPlan],
+    entries: &[BillScheduleEntry],
+) -> Vec<lib_budgets::BudgetBill> {
+    entries
+        .iter()
+        .filter(|entry| entry.is_open())
+        .filter_map(|entry| {
+            let plan = lib_bills::get(plans, entry.plan_id)?;
+            Some(lib_budgets::BudgetBill {
+                due: entry.due,
+                category_id: plan.category_id,
+                account_id: plan.account_id,
+                amount: plan.planned_amount.clone(),
+            })
+        })
+        .collect()
+}
+
+/// The active Plans among `plans`, as `lib-budgets`' `BudgetBills` reads them.
+pub(crate) fn budget_bill_plans(plans: &[BillPlan]) -> Vec<lib_budgets::BudgetBillPlan> {
+    plans
+        .iter()
+        .filter(|plan| plan.is_active)
+        .map(|plan| lib_budgets::BudgetBillPlan {
+            category_id: plan.category_id,
+            account_id: plan.account_id,
+        })
+        .collect()
+}
+
 impl Change for BillsChange {
     fn domain(&self) -> Domain {
         Domain::Bills

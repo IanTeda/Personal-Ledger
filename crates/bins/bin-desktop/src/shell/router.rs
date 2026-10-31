@@ -127,7 +127,7 @@ pub struct ShellLogs {
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
 /// off. `stores` is where the Units, the Institutions, the Accounts, the Categories, the Tags, the Payees, the
-/// Transactions, the Bills and the Inventory are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
+/// Transactions, the Bills, the Budgets and the Inventory are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
 /// every input ends in (`crate::input::send`) and the writer's failure channel, on which a failed
 /// write rolls back.
 pub fn build(
@@ -148,6 +148,7 @@ pub fn build(
         payees,
         transactions,
         bills,
+        budgets,
         inventory,
         commit,
         failures,
@@ -183,9 +184,12 @@ pub fn build(
     // The Inventory store is shared by the Ledger's forwarding shim and read copy and the
     // Inventory page (#866, #867).
     let inventory: lib_database::SharedInventoryStore = Rc::new(std::cell::RefCell::new(inventory));
+    // The Budgets store is shared by the Ledger's forwarding shim and read copy, the Accounts,
+    // Units and Categories usage counts and the Categories Monthly budget (#952).
+    let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
     // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
     // (#853), and the Institutions' reads of which Accounts name one (#876).
-    let accounts = crate::accounts::LedgerBackedPorts::shared(accounts);
+    let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, budgets.clone());
     let institutions =
         crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
     let institutions_setup =
@@ -220,6 +224,7 @@ pub fn build(
         units,
         accounts.clone(),
         inventory.clone(),
+        budgets.clone(),
         &institutions,
         &bindings.keybindings,
     );
@@ -231,6 +236,7 @@ pub fn build(
         payees,
         transactions,
         bills: bills.clone(),
+        budgets,
         inventory,
     };
     let bills = crate::bills::BillsSetup::new(bills, payments, &bindings.keybindings);
@@ -364,6 +370,16 @@ impl Root {
             accounts: storage.accounts.clone(),
             categories: storage.categories.clone(),
         };
+        // The Budgets page reads the other domains through their stores, not the Ledger's read
+        // copies (#952).
+        let budget_reads = Rc::new(lib_database::StoredBudgetReads {
+            categories: storage.categories.clone(),
+            accounts: storage.accounts.clone(),
+            transactions: storage.transactions.clone(),
+            bills: storage.bills.borrow().store(),
+            units: settings.units.ports.clone(),
+            payees: storage.payees.clone(),
+        });
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -406,6 +422,7 @@ impl Root {
             BudgetsView::new(
                 BudgetsSources {
                     ledger: ledger.clone(),
+                    reads: budget_reads,
                 },
                 budgets_current,
                 &clock,
@@ -706,6 +723,13 @@ impl Root {
     pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
         self.ledger
             .update(cx, |store, cx| store.add_location_in_for_test(unit, cx));
+    }
+
+    /// Adds a Budget in `unit`, which then names it.
+    #[doc(hidden)]
+    pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
+        self.ledger
+            .update(cx, |store, cx| store.add_budget_in_for_test(unit, cx));
     }
 
     /// Adds a Payee called `name`, so an Import that creates it is refused.

@@ -55,8 +55,8 @@ impl Root {
     }
 
     /// Everything the Budgets figures are worked out from, as the Budgets page reads it.
-    pub(super) fn budgets_ledger<'a>(&self, cx: &'a gpui::App) -> &'a lib_ledger::Ledger {
-        self.views.budgets.read(cx).budget_sources(cx)
+    pub(super) fn budgets_reads<'a>(&self, cx: &'a gpui::App) -> &'a dyn budgets::BudgetReads {
+        self.views.budgets.read(cx).budget_sources()
     }
 
     /// The open Category detail's figures, or `None` once its Budget or Category is gone.
@@ -528,7 +528,7 @@ impl Root {
                 self.display(cx).date_style,
             ));
         }
-        let health = budgets::health(budget, self.budgets_ledger(cx), self.today);
+        let health = budgets::health(budget, self.budgets_reads(cx), self.today);
         let left = format::amount(&health.left).1;
         if health.at_risk > 0 {
             crate::msg::desktop_budgets_switcher_health_at_risk(
@@ -616,7 +616,7 @@ impl Root {
             return None;
         };
         let budget = self.budgets(cx).get(self.budgets_current(cx))?;
-        let ledger = self.budgets_ledger(cx);
+        let ledger = self.budgets_reads(cx);
         let plain = |handler: fn(&mut Root, &mut Context<'_, Root>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -627,8 +627,9 @@ impl Root {
         let previews =
             budgets::FillSource::ALL.map(|each| budgets::fill_preview(budget, ledger, month, each));
         let chosen = previews.iter().find(|preview| preview.source == source)?;
+        let categories = self.views.budgets.read(cx).categories();
         let name = |category_id: &CategoryId| {
-            self.categories(cx)
+            categories
                 .iter()
                 .find(|category| category.id == *category_id)
                 .map(|category| category.name.clone())
@@ -732,8 +733,9 @@ impl Root {
             });
             on_click
         };
+        let categories = self.views.budgets.read(cx).categories();
         let leaf_name = |category_id: CategoryId| {
-            self.categories(cx)
+            categories
                 .iter()
                 .find(|category| category.id == category_id)
                 .map(|category| category.name.clone())
@@ -745,7 +747,7 @@ impl Root {
                     budgets::limit_form::preview(
                         self.budgets(cx),
                         self.budgets_current(cx),
-                        self.categories(cx),
+                        &categories,
                         draft,
                         self.today,
                     )
@@ -889,8 +891,13 @@ impl Root {
             });
             on_click
         };
-        let category =
-            lib_categories::path(self.categories(cx), detail.category_id).unwrap_or_default();
+        let reads = self.budgets_reads(cx);
+        let category = lib_categories::path(
+            &self.views.budgets.read(cx).categories(),
+            detail.category_id,
+        )
+        .unwrap_or_default();
+        let accounts = reads.budget_accounts();
         let name = category
             .rsplit(" / ")
             .next()
@@ -905,15 +912,9 @@ impl Root {
                 date: lib_locale::format::format_month_day(line.date),
                 payee: line
                     .payee_id
-                    .and_then(|id| lib_payees::get(self.ledger.read(cx).ledger().payees(), id))
-                    .map_or_else(crate::msg::desktop_budgets_detail_no_payee, |payee| {
-                        payee.name.clone()
-                    }),
-                account: self
-                    .ledger
-                    .read(cx)
-                    .ledger()
-                    .accounts()
+                    .and_then(|id| reads.payee_name(id))
+                    .unwrap_or_else(crate::msg::desktop_budgets_detail_no_payee),
+                account: accounts
                     .iter()
                     .find(|account| account.id == line.account_id)
                     .map(|account| account.name.clone())

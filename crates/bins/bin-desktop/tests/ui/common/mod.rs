@@ -30,15 +30,17 @@ use lib_accounts::fake::{InMemoryAccountUsage, InMemoryAccounts};
 use lib_accounts::{Account, AccountRepository};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
+use lib_budgets::fake::InMemoryBudgets;
+use lib_budgets::{Budget, BudgetRepository};
 use lib_categories::fake::InMemoryCategories;
 use lib_categories::{Category, CategoryRepository};
 use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
-    AccountsStore, BillsStore, CategoriesStore, Commit, CountingCommit, Domain, FakeStores,
-    InstitutionsStore, InventoryStore, PayeesStore, Stores, TagsStore, TransactionsStore,
-    UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, CountingCommit, Domain,
+    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Stores, TagsStore,
+    TransactionsStore, UnitsStore, WriteFailure,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
@@ -526,6 +528,39 @@ impl BillsStore for FailingBills {
     }
 }
 
+impl<T: BudgetRepository> BudgetRepository for Marked<T> {
+    fn budgets(&self) -> Vec<Budget> {
+        self.inner.budgets()
+    }
+
+    fn upsert_budget(&mut self, budget: &Budget) {
+        self.written.set(true);
+        self.inner.upsert_budget(budget);
+    }
+}
+
+/// A Budgets store whose writes never reach `stored`, the rows as they are on disk: a reload puts
+/// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingBudgets {
+    budgets: Marked<InMemoryBudgets>,
+    stored: InMemoryBudgets,
+}
+
+impl BudgetsStore for FailingBudgets {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        &self.budgets
+    }
+
+    fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
+        &mut self.budgets
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.budgets.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
 /// The stub Ledger's Bill Plans and Bill Schedule as of the test date, as the in-memory ports
 /// hold them.
 fn stub_bills() -> InMemoryBills {
@@ -552,8 +587,14 @@ fn stub_fakes() -> FakeStores {
         payees: lib_payees::fake::InMemoryPorts::stub(),
         transactions: stub_transactions(),
         bills: stub_bills(),
+        budgets: stub_budgets(),
         inventory: stub_inventory(),
     }
+}
+
+/// The stub Ledger's Budgets as of the test date, as the in-memory port holds them.
+fn stub_budgets() -> InMemoryBudgets {
+    InMemoryBudgets::stub(today())
 }
 
 /// The stub Ledger's Transactions as of the test date, as the in-memory port holds them.
@@ -802,6 +843,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Units],
@@ -839,6 +881,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Institutions],
@@ -877,6 +920,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Accounts],
@@ -914,6 +958,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Categories],
@@ -952,6 +997,7 @@ impl<'a> Harness<'a> {
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Tags],
@@ -1019,6 +1065,7 @@ impl<'a> Harness<'a> {
                 }),
                 transactions: Box::new(stub_transactions()),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Payees],
@@ -1056,6 +1103,7 @@ impl<'a> Harness<'a> {
                     stored,
                 }),
                 bills: Box::new(stub_bills()),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions],
@@ -1093,9 +1141,49 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Bills],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on a Budgets store whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_budgets(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_budgets();
+        let fakes = stub_fakes();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(fakes.units),
+                institutions: Box::new(fakes.institutions),
+                accounts: Box::new(fakes.accounts),
+                categories: Box::new(fakes.categories),
+                tags: Box::new(fakes.tags),
+                payees: Box::new(fakes.payees),
+                transactions: Box::new(fakes.transactions),
+                bills: Box::new(fakes.bills),
+                budgets: Box::new(FailingBudgets {
+                    budgets: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    stored,
+                }),
+                inventory: Box::new(fakes.inventory),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Budgets],
                     written,
                     report,
                 }),
@@ -1136,6 +1224,7 @@ impl<'a> Harness<'a> {
                     },
                     stored: bills,
                 }),
+                budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions, Domain::Bills],
@@ -1354,6 +1443,15 @@ impl<'a> Harness<'a> {
     pub fn drop_unit_users(&mut self) {
         self.shell.update(self.cx, |shell, cx| {
             shell.drop_unit_users_for_test(cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
+    /// Adds a Budget in `unit`, which then names it.
+    pub fn add_budget_in(&mut self, unit: UnitId) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.add_budget_in_for_test(unit, cx);
             cx.notify();
         });
         self.cx.run_until_parked();

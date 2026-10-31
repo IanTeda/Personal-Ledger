@@ -122,19 +122,14 @@ impl Ledger {
 
     /// Runs `write` on a copy of the Budgets and takes the copy only when it lands, so a refusal
     /// leaves nothing half-written (some rules touch a chain before they refuse). Records an
-    /// upsert for each Budget the write added or changed.
+    /// upsert for each Budget the write added or changed, a Budget losing the default first.
     pub(crate) fn write_budgets<R>(
         &mut self,
         write: impl FnOnce(&mut Budgets, &dyn BudgetReads) -> Result<R, BudgetError>,
     ) -> Result<R, BudgetError> {
         let mut budgets = self.budgets.clone();
         let result = write(&mut budgets, self)?;
-        let changed: Vec<_> = budgets
-            .all()
-            .iter()
-            .filter(|budget| self.budgets.get(budget.id) != Some(budget))
-            .cloned()
-            .collect();
+        let changed = budgets.changed_since(&self.budgets);
         self.budgets = budgets;
         self.pending
             .extend(changed.into_iter().map(LedgerChange::UpsertBudget));

@@ -217,7 +217,7 @@ impl Render for Root {
         let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
             budgets::period_figures(
                 budget,
-                self.budgets_ledger(cx),
+                self.budgets_reads(cx),
                 Period::of(self.today),
                 self.today,
             )

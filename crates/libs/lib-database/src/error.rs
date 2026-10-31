@@ -81,20 +81,6 @@ pub enum Error {
     #[error("Error building Balance Check: {0}")]
     BalanceChecksBuilder(String),
 
-    /// Budgets Builder Error
-    ///
-    /// Occurs when constructing a Budget fails due to invalid input or missing required
-    /// fields.
-    #[error("Error building Budget: {0}")]
-    BudgetsBuilder(String),
-
-    /// Budget Non-Expense Category Error
-    ///
-    /// Occurs when `Budgets::insert` is called with a `category_id` that doesn't reference
-    /// an Expense-type Category — a Budget only has coherent meaning against spending.
-    #[error("Category {0} is not an Expense Category; a Budget can only cap Expense spending")]
-    BudgetCategoryNotExpense(String),
-
     /// Balance Check CSV Import Error
     ///
     /// Occurs when a Balance Check CSV import's header or a row can't be parsed (FR.33) —
@@ -171,8 +157,6 @@ impl PartialEq for Error {
             (Error::CategoryBuilder(a), Error::CategoryBuilder(b)) => a == b,
             (Error::PayeesBuilder(a), Error::PayeesBuilder(b)) => a == b,
             (Error::BalanceChecksBuilder(a), Error::BalanceChecksBuilder(b)) => a == b,
-            (Error::BudgetsBuilder(a), Error::BudgetsBuilder(b)) => a == b,
-            (Error::BudgetCategoryNotExpense(a), Error::BudgetCategoryNotExpense(b)) => a == b,
             (Error::CsvImport(a), Error::CsvImport(b)) => a == b,
             (Error::Connection(a), Error::Connection(b)) => a == b,
             (Error::Sqlx(a), Error::Sqlx(b)) => format!("{:?}", a) == format!("{:?}", b),

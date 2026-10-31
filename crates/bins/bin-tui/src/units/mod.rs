@@ -69,6 +69,7 @@ impl UnitsSetup {
             units,
             accounts,
             bills,
+            budgets,
             inventory,
             institutions,
             transactions,
@@ -79,6 +80,7 @@ impl UnitsSetup {
         let usage = StoredUsage {
             accounts,
             bills,
+            budgets,
             inventory,
             institutions,
             transactions,

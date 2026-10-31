@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO budget_accounts (budget_id, account_id)\n             SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2420c0ad3e8455086f4667025833fdcf13afac0c815a8fb164b896a7c90fa8e5"
+}

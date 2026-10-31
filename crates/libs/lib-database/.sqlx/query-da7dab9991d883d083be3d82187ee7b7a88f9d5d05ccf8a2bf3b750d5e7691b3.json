@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO budgets (id, name, method, unit_id, is_default, archived_on)\n         VALUES (?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             method = excluded.method,\n             unit_id = excluded.unit_id,\n             is_default = excluded.is_default,\n             archived_on = excluded.archived_on",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "da7dab9991d883d083be3d82187ee7b7a88f9d5d05ccf8a2bf3b750d5e7691b3"
+}

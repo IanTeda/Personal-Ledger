@@ -278,6 +278,52 @@ fn deleting_a_unit_an_account_in_the_opened_file_uses_is_refused() {
 }
 
 #[test]
+fn deleting_a_unit_a_budget_in_the_opened_file_uses_is_refused() {
+    use lib_budgets::BudgetRepository as _;
+
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    // xau, which nothing in the stub uses, with only a Budget in it in the file (#952).
+    common::ledger_file_with(&path, |storage| {
+        let mut xau = storage
+            .units
+            .units()
+            .unit(lib_core::UnitId::SEED_BTC)
+            .expect("the seed has btc");
+        xau.id = lib_core::UnitId::new();
+        xau.code = "xau".to_string();
+        xau.name = "Gold".to_string();
+        let unused = lib_units::UnitUse::default();
+        storage
+            .units
+            .split_mut(&unused)
+            .units
+            .upsert_unit(xau.clone());
+        let mut budget = storage.budgets.budgets()[1].clone();
+        budget.id = lib_core::BudgetId::new();
+        budget.name = "Gold".to_string();
+        budget.is_default = false;
+        budget.unit = xau.id;
+        budget.account_ids.clear();
+        storage.budgets.upsert_budget(&budget);
+    });
+    let mut shell = common::cold_shell(None);
+    common::run_command(&mut shell, &format!("open {}", path.display()));
+
+    press(&mut shell, "g u j j j d");
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains(&lib_units::msg::units_deactivate_title("xau")),
+        "refused before the commit, offering Deactivate:\n{frame}"
+    );
+    assert!(
+        frame.contains("xau is used by") && frame.contains("budget"),
+        "{frame}"
+    );
+}
+
+#[test]
 fn a_unit_only_the_stub_uses_can_be_deleted_from_the_opened_file() {
     use lib_database::InstitutionsStore;
 

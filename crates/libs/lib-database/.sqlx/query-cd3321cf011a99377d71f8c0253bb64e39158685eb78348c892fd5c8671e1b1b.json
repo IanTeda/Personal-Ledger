@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               budget_id   AS \"budget_id!: BudgetId\",\n               category_id AS \"category_id!: CategoryId\",\n               month       AS \"month!: NaiveDate\",\n               kind,\n               amount      AS \"amount?: Money\",\n               rollover\n           FROM budget_limit_records\n           ORDER BY month",
+  "describe": {
+    "columns": [
+      {
+        "name": "budget_id!: BudgetId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "category_id!: CategoryId",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "month!: NaiveDate",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "kind",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "amount?: Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "rollover",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "cd3321cf011a99377d71f8c0253bb64e39158685eb78348c892fd5c8671e1b1b"
+}

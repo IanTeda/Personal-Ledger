@@ -1,6 +1,5 @@
-//! Rows the legacy readers' tests total ([`crate::Payees::totals`],
-//! [`crate::Budgets::current_progress`]) and the Balance Checks and Budgets name, written straight
-//! to the tables since the Transactions, Accounts and Categories adapters take their domain crates'
+//! Rows the legacy readers' tests total ([`crate::Payees::totals`]) and the Balance Checks name,
+//! written straight to the tables since the Transactions, Accounts and Categories adapters take their domain crates'
 //! ids. Also the factory `lib-transactions`' read checks run each adapter on.
 
 use std::sync::mpsc;

@@ -2491,3 +2491,17 @@ fn the_plan_range_is_bounded_by_the_first_amount_and_a_year_ahead() {
     assert_eq!(earliest, default_plan_start(today()));
     assert_eq!(latest, (0..12).fold(earliest, |month, _| month.next()));
 }
+
+#[test]
+fn personal_spending_is_an_empty_default_on_every_account_in_its_unit_that_takes_transactions() {
+    let budget = personal_spending(UnitId::SEED_AUD, &fake::stub_accounts());
+    assert_eq!(budget.id, PERSONAL_SPENDING_ID);
+    assert!(budget.is_default);
+    assert!(!budget.is_archived());
+    assert!(budget.limits.is_empty());
+    assert_eq!(
+        budget.account_ids,
+        (1..=4).map(AccountId::seed).collect::<Vec<_>>(),
+        "the AUD Accounts that take Transactions, not the Home Loan"
+    );
+}

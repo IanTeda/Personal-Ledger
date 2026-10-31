@@ -295,3 +295,33 @@ fn an_insert_the_page_did_not_ask_for_leaves_its_keys_alone(app: &mut TestAppCon
     ui.press("escape");
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
+
+/// The Budget names the Switcher lists, closing it again.
+fn budget_names(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.press("shift-b");
+    let names = ui.budgets().switcher_names.unwrap_or_default();
+    ui.press("escape");
+    names
+}
+
+#[gpui::test]
+fn a_failed_budgets_write_puts_the_budgets_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_budgets(app);
+    ui.press("g b");
+    let stored = budget_names(&mut ui);
+
+    ui.press("n t r i p enter");
+    assert_eq!(ui.budgets().dialog, None, "the New budget Dialog confirmed");
+    assert!(
+        budget_names(&mut ui).contains(&"trip".to_string()),
+        "memory runs ahead of the file until the failure is heard"
+    );
+
+    ui.settle_writes();
+
+    assert_eq!(budget_names(&mut ui), stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to budgets, so they are back as last saved"
+    }));
+}

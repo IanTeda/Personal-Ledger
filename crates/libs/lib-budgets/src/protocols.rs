@@ -4,9 +4,31 @@
 //! and its helpers. `fake` implements each in memory.
 //!
 //! The figures read the ports together, through [`BudgetReads`].
+//!
+//! [`BudgetRepository`] is where the Budgets themselves are kept, synchronous as `lib-payees`' is
+//! (ADR-0046): an adapter serves reads from memory and queues each write, so a write never fails
+//! here; a failed save is the adapter's to report. `lib-database`'s Budgets adapter implements it
+//! (#952).
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, CategoryId, CategoryTypes, Money, PayeeId, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, PayeeId, UnitId};
+
+use crate::Budget;
+
+/// The Budgets on the Ledger, each with its on-budget Accounts and Category Limit chains. A Budget
+/// is archived, never deleted, so there is no delete.
+pub trait BudgetRepository {
+    /// Every Budget, in creation order.
+    fn budgets(&self) -> Vec<Budget>;
+
+    fn budget(&self, id: BudgetId) -> Option<Budget> {
+        self.budgets().into_iter().find(|budget| budget.id == id)
+    }
+
+    /// Writes `budget` whole, replacing the Budget with its id or adding it: its row, its Accounts
+    /// and every chain, so a chain it no longer holds is gone.
+    fn upsert_budget(&mut self, budget: &Budget);
+}
 
 /// A Category as Budgets reads it. `path` (ancestors then `name`) and `is_leaf` are the
 /// Categories' rules, filled by the side that answers [`BudgetCategories`].

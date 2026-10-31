@@ -279,7 +279,10 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(
+                &ledger,
+                crate::budgets::ports::in_memory(&ledger),
+            ),
             categories(&ledger),
             transactions(&ledger),
         );
@@ -333,7 +336,10 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             store.clone(),
-            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(
+                &ledger,
+                crate::budgets::ports::in_memory(&ledger),
+            ),
             categories(&ledger),
             transactions(&ledger),
         );
@@ -351,7 +357,10 @@ mod tests {
     #[test]
     fn the_accounts_are_read_from_the_accounts_store_not_copied_from_the_ledger() {
         let (mut ledger, _) = stub();
-        let store = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let store = crate::accounts::LedgerBackedPorts::in_memory(
+            &ledger,
+            crate::budgets::ports::in_memory(&ledger),
+        );
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
@@ -380,7 +389,10 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(
+                &ledger,
+                crate::budgets::ports::in_memory(&ledger),
+            ),
             store.clone(),
             transactions(&ledger),
         );
@@ -405,7 +417,10 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(&ledger),
+            crate::accounts::LedgerBackedPorts::in_memory(
+                &ledger,
+                crate::budgets::ports::in_memory(&ledger),
+            ),
             categories(&ledger),
             store.clone(),
         );

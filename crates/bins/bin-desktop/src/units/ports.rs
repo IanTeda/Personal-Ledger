@@ -1,13 +1,13 @@
 //! The Units ports as the Desktop holds them: the store `shell::router::build` is given, with
 //! `UnitHoldings` and the Accounts half of `UnitUsage` answered from the Accounts store (#853), the
-//! Locations half from the Inventory store (#885), the
-//! Bill Plans and Budgets halves from the Ledger read copy (#746's halfway shims), and the step that
-//! keeps that read copy in line after a Units write. The write is committed by the input it was
-//! made in (`crate::input::send`), not here.
+//! Locations half from the Inventory store (#885), the Budgets half from the Budgets store (#952),
+//! the Bill Plans half from the Ledger read copy (#746's halfway shim), and the step that keeps
+//! that read copy in line after a Units write. The write is committed by the input it was made in
+//! (`crate::input::send`), not here.
 //!
 //! Usage and holdings are copied before each Units event, since a port can't reach the
-//! `LedgerStore` Entity without a gpui context. The Ledger's halves go with the shims, when Bills
-//! and Budgets answer them through their own ports.
+//! `LedgerStore` Entity without a gpui context. The Ledger's half goes with the shim, when Bills
+//! answer it through their own port.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -23,17 +23,19 @@ use lib_units::{
 };
 
 use crate::ledger_store::LedgerStore;
-use lib_database::{SharedAccountsStore, SharedInventoryStore};
+use lib_database::{SharedAccountsStore, SharedBudgetsStore, SharedInventoryStore};
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// `store`'s Units, Price Sources and base Unit, with holdings and the Accounts naming each Unit
-/// copied from `accounts`, the Locations from `inventory`, and the Bill Plans and Budgets naming it from the Ledger.
+/// copied from `accounts`, the Locations from `inventory`, the Budgets from `budgets`, and the Bill
+/// Plans naming it from the Ledger.
 pub struct LedgerBackedPorts {
     store: Box<dyn lib_database::UnitsStore>,
     accounts: SharedAccountsStore,
     inventory: SharedInventoryStore,
+    budgets: SharedBudgetsStore,
     usage: InMemoryUnitUsage,
     holdings: InMemoryHoldings,
 }
@@ -43,22 +45,25 @@ impl LedgerBackedPorts {
         store: Box<dyn lib_database::UnitsStore>,
         accounts: SharedAccountsStore,
         inventory: SharedInventoryStore,
+        budgets: SharedBudgetsStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store,
             accounts,
             inventory,
+            budgets,
             usage: InMemoryUnitUsage::default(),
             holdings: InMemoryHoldings::default(),
         }))
     }
 
-    /// Copies what names each Unit from the Accounts store and `ledger`, so the next Interactor and
-    /// view model read it.
+    /// Copies what names each Unit from the Accounts, Inventory and Budgets stores and `ledger`,
+    /// so the next Interactor and view model read it.
     fn copy_usage(&mut self, ledger: &Ledger) {
         crate::accounts::ports::recount(&self.accounts, ledger);
         let accounts = self.accounts.borrow();
         let inventory = self.inventory.borrow();
+        let budgets = self.budgets.borrow();
         let ids: Vec<UnitId> = self
             .store
             .units()
@@ -72,6 +77,7 @@ impl LedgerBackedPorts {
                 let usage = lib_units::UnitUse {
                     accounts: accounts.unit_accounts(*id),
                     locations: inventory.unit_locations(*id),
+                    budgets: budgets.unit_budgets(*id),
                     ..ledger.unit_usage(*id)
                 };
                 (*id, usage)

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT budget_id AS \"budget_id!: BudgetId\", account_id AS \"account_id!: AccountId\"\n           FROM budget_accounts\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "budget_id!: BudgetId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "account_id!: AccountId",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "88a66f510557d7a32273e7338e4b890707ee53d87c06734befb79fb3d8f5be65"
+}

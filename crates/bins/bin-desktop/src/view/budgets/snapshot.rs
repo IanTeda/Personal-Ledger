@@ -55,7 +55,7 @@ impl BudgetsView {
     /// field is left `None` for `Root` to fill.
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> BudgetsSnapshot {
-        let categories = self.categories(cx);
+        let categories = self.categories();
         let (budget, rows) = self
             .figures(cx)
             .map(|(budget, figures)| {

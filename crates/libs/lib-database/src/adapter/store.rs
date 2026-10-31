@@ -38,9 +38,15 @@ use lib_bills::{
     BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository, BillSplit,
     BillTransactions, SplitRef,
 };
+use lib_budgets::fake::InMemoryBudgets;
+use lib_budgets::{
+    BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
+    BudgetCategory, BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
+    Budgets,
+};
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{AccountId, CategoryId, InstitutionId, LocationId, TagId, UnitId};
+use lib_core::{AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, UnitId};
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUse};
 use lib_inventory::InventoryRepository;
@@ -58,11 +64,11 @@ use lib_units::{
 };
 
 use crate::adapter::payees::bill_payees;
-use crate::adapter::{accounts, categories, transactions};
+use crate::adapter::{accounts, bills, categories, transactions};
 use crate::{
-    AccountsAdapter, BillsAdapter, CategoriesAdapter, Commit, InMemoryCommit, InstitutionsAdapter,
-    InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter, TransactionsAdapter,
-    UnitsAdapter,
+    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, InMemoryCommit,
+    InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
+    TransactionsAdapter, UnitsAdapter,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -76,6 +82,15 @@ pub trait UnitsStore {
 
     /// The three ports, with `usage`, for one Interactor call.
     fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a>;
+
+    /// Unit `id`'s code, as `lib-budgets`' `BudgetUnits` reads it.
+    fn unit_code(&self, id: UnitId) -> Option<String> {
+        self.units()
+            .units()
+            .into_iter()
+            .find(|unit| unit.id == id)
+            .map(|unit| unit.code)
+    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -234,7 +249,7 @@ pub trait AccountsStore {
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
 
     /// The Transactions booked to each Account. Its Budgets count is the holder's to add from the
-    /// `Ledger` until Budgets persist (#811).
+    /// Budgets store ([`BudgetsStore::account_budgets`]).
     fn usage(&self) -> &dyn AccountUsage;
 
     /// The usage a store holds in memory rather than counts, for its holder to recount from the
@@ -260,6 +275,11 @@ pub trait AccountsStore {
     /// Every Account as `lib-bills`' `BillAccounts` reads it.
     fn bill_accounts(&self) -> Vec<BillAccount> {
         accounts::bill_accounts(&self.accounts().accounts())
+    }
+
+    /// Every Account as `lib-budgets`' `BudgetAccounts` reads it.
+    fn budget_accounts(&self) -> Vec<BudgetAccount> {
+        accounts::budget_accounts(&self.accounts().accounts())
     }
 
     /// Account `id` as `lib-transaction-import`'s `ImportAccounts` reads it.
@@ -406,6 +426,11 @@ pub trait CategoriesStore {
     /// The leaves as `lib-payees`' `PayeeCategories` reads them, in tree order.
     fn payee_categories(&self) -> Vec<PayeeCategory> {
         categories::payee_categories(&self.categories().categories())
+    }
+
+    /// Every Category as `lib-budgets`' `BudgetCategories` reads it, in tree order.
+    fn budget_categories(&self) -> Vec<BudgetCategory> {
+        categories::budget_categories(&self.categories().categories())
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -708,6 +733,11 @@ pub trait TransactionsStore {
         transactions::paid_split(&self.all_transactions(), split)
     }
 
+    /// The Splits dated `from` to `to`: `lib-budgets`' `BudgetSplits::budget_splits`.
+    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
+        transactions::budget_splits(&self.all_transactions(), from, to)
+    }
+
     /// The Splits filed under Category `id`: the Splits half of `lib-categories`' `CategoryUsage`.
     /// An in-memory store counts its own rows; the adapter counts in the file.
     fn category_splits(&self, id: CategoryId) -> usize {
@@ -765,6 +795,10 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
         (**self).bill_paid_split(split)
     }
 
+    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
+        (**self).budget_splits(from, to)
+    }
+
     fn category_splits(&self, id: CategoryId) -> usize {
         (**self).category_splits(id)
     }
@@ -793,6 +827,10 @@ impl TransactionsStore for InMemoryTransactions {
         transactions::paid_split(&self.transactions, split)
     }
 
+    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
+        transactions::budget_splits(&self.transactions, from, to)
+    }
+
     fn category_splits(&self, id: CategoryId) -> usize {
         transactions::category_splits(&self.transactions, id)
     }
@@ -811,6 +849,16 @@ pub trait BillsStore {
     fn entries(&self) -> &dyn BillScheduleRepository;
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository;
+
+    /// Every open Bill Schedule entry with its Plan's figures: `lib-budgets`' `BudgetBills::open_bills`.
+    fn budget_open_bills(&self) -> Vec<BudgetBill> {
+        bills::budget_open_bills(&self.plans().bill_plans(), &self.entries().entries())
+    }
+
+    /// Every active Bill Plan: `lib-budgets`' `BudgetBills::active_bill_plans`.
+    fn budget_bill_plans(&self) -> Vec<BudgetBillPlan> {
+        bills::budget_bill_plans(&self.plans().bill_plans())
+    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -915,6 +963,11 @@ pub trait PayeesStore {
         bill_payees(&self.payees().payees())
     }
 
+    /// Payee `id`'s name, as `lib-budgets`' `BudgetPayees` reads it.
+    fn payee_name(&self, id: PayeeId) -> Option<String> {
+        self.payees().payee(id).map(|payee| payee.name)
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -1007,6 +1060,157 @@ impl PayeesStore for lib_payees::fake::InMemoryPorts {
     }
 }
 
+/// A Budgets store shared by the Ledger's forwarding shim and the Accounts, Units and Categories
+/// usage counts. Single-threaded, as the ports are.
+pub type SharedBudgetsStore = Rc<RefCell<dyn BudgetsStore>>;
+
+/// The Budgets repository port, wherever it is kept, and the counts of the Budgets naming another
+/// domain's row, which the Accounts, Units and Categories usage take their Budgets half from.
+pub trait BudgetsStore {
+    fn budgets(&self) -> &dyn BudgetRepository;
+
+    fn budgets_mut(&mut self) -> &mut dyn BudgetRepository;
+
+    /// The rows a store holds only in memory, for a test to set directly, since a Budget is never
+    /// deleted through the port. `None` for the adapter.
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
+        None
+    }
+
+    /// How many Budgets count Account `id`: the Budgets half of `lib-accounts`' `AccountUsage`.
+    fn account_budgets(&self, id: AccountId) -> usize {
+        self.budgets()
+            .budgets()
+            .iter()
+            .filter(|budget| budget.account_ids.contains(&id))
+            .count()
+    }
+
+    /// How many Budgets count in Unit `unit`: the Budgets half of `lib-units`' `UnitUsage`.
+    fn unit_budgets(&self, unit: UnitId) -> usize {
+        self.budgets()
+            .budgets()
+            .iter()
+            .filter(|budget| budget.unit == unit)
+            .count()
+    }
+
+    /// How many Budgets hold a chain for Category `id`: the Budgets half of `lib-categories`'
+    /// `CategoryUsage`.
+    fn category_budgets(&self, id: CategoryId) -> usize {
+        Budgets::from_stored(self.budgets().budgets()).limit_count(id)
+    }
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl BudgetsStore for BudgetsAdapter {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        self
+    }
+
+    fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        BudgetsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedBudgetsStore`]).
+impl<T: BudgetsStore + ?Sized> BudgetsStore for Box<T> {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        (**self).budgets()
+    }
+
+    fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
+        (**self).budgets_mut()
+    }
+
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
+        (**self).memory_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl BudgetsStore for InMemoryBudgets {
+    fn budgets(&self) -> &dyn BudgetRepository {
+        self
+    }
+
+    fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
+        self
+    }
+
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
+        Some(self)
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// `lib-budgets`' six read ports answered by the shared stores of the domains Budgets reads, each
+/// borrowed for the one read (#952). The Desktop's Budgets View reads through it.
+pub struct StoredBudgetReads {
+    pub categories: SharedCategoriesStore,
+    pub accounts: SharedAccountsStore,
+    pub transactions: SharedTransactionsStore,
+    pub bills: SharedBillsStore,
+    pub units: SharedUnitsStore,
+    pub payees: SharedPayeesStore,
+}
+
+impl BudgetCategories for StoredBudgetReads {
+    fn budget_categories(&self) -> Vec<BudgetCategory> {
+        self.categories.borrow().budget_categories()
+    }
+}
+
+impl BudgetAccounts for StoredBudgetReads {
+    fn budget_accounts(&self) -> Vec<BudgetAccount> {
+        self.accounts.borrow().budget_accounts()
+    }
+}
+
+impl BudgetSplits for StoredBudgetReads {
+    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
+        self.transactions.borrow().budget_splits(from, to)
+    }
+}
+
+impl BudgetBills for StoredBudgetReads {
+    fn open_bills(&self) -> Vec<BudgetBill> {
+        self.bills.borrow().budget_open_bills()
+    }
+
+    fn active_bill_plans(&self) -> Vec<BudgetBillPlan> {
+        self.bills.borrow().budget_bill_plans()
+    }
+}
+
+impl BudgetUnits for StoredBudgetReads {
+    fn unit_code(&self, id: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(id)
+    }
+}
+
+impl BudgetPayees for StoredBudgetReads {
+    fn payee_name(&self, id: PayeeId) -> Option<String> {
+        self.payees.borrow().payee_name(id)
+    }
+}
+
 /// A commit that counts its calls before handing each on, so a test asserts the Client commits
 /// exactly once per input, whether or not the input wrote anything.
 pub struct CountingCommit {
@@ -1046,19 +1250,27 @@ pub struct FakeStores {
     pub payees: lib_payees::fake::InMemoryPorts,
     pub transactions: InMemoryTransactions,
     pub bills: InMemoryBills,
+    pub budgets: InMemoryBudgets,
     pub inventory: InMemoryInventory,
 }
 
 impl FakeStores {
     /// Every domain's stub seed as of `today`, with the stub Ledger's Transactions and each
-    /// Account's usage counted from it. For a Client that runs on the stub without a Ledger file.
+    /// Account's usage counted from them and the stub Budgets. For a Client that runs on the stub without a Ledger file.
     pub fn stub(today: NaiveDate) -> Self {
         let ledger = lib_ledger::Ledger::stub_on(today);
+        let budgets = InMemoryBudgets::stub(today);
         let mut accounts = lib_accounts::fake::InMemoryPorts::stub();
         accounts.usage.uses = ledger
             .accounts()
             .iter()
-            .map(|account| (account.id, ledger.account_use(account.id)))
+            .map(|account| {
+                let uses = lib_accounts::AccountUse {
+                    transactions: ledger.account_transactions(account.id),
+                    budgets: budgets.account_budgets(account.id),
+                };
+                (account.id, uses)
+            })
             .collect();
         Self {
             units: InMemoryPorts::stub(chrono::Utc::now()),
@@ -1071,6 +1283,7 @@ impl FakeStores {
                 transactions: ledger.transactions().to_vec(),
             },
             bills: lib_bills::fake::InMemoryPorts::stub(today).bills,
+            budgets,
             inventory: InMemoryInventory::stub(today),
         }
     }
@@ -1089,6 +1302,7 @@ impl Stores {
             payees,
             transactions,
             bills,
+            budgets,
             inventory,
         } = fakes;
         let commit = CountingCommit::new(Rc::new(InMemoryCommit));
@@ -1102,6 +1316,7 @@ impl Stores {
             payees: Box::new(payees),
             transactions: Box::new(transactions),
             bills: Box::new(bills),
+            budgets: Box::new(budgets),
             inventory: Box::new(inventory),
             commit: Rc::new(commit),
             failures: mpsc::channel().1,
@@ -1125,6 +1340,7 @@ mod tests {
             payees: lib_payees::fake::InMemoryPorts::stub(),
             transactions: InMemoryTransactions::default(),
             bills: InMemoryBills::default(),
+            budgets: InMemoryBudgets::default(),
             inventory: InMemoryInventory::default(),
         });
 

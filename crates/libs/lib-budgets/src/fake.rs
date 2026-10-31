@@ -1,7 +1,7 @@
-//! In-memory read ports and the stub rows, for tests and UI-first work. [`InMemoryBudgetReads`]
-//! holds every row in a plain field so a test can set up state directly; [`stub_accounts`] and
-//! [`stub_categories`] are the Accounts and Categories stubs as Budgets reads them, which
-//! `lib-ledger`'s seed tests hold to the stubs themselves.
+//! In-memory ports and the stub rows, for tests and UI-first work. [`InMemoryBudgets`] and
+//! [`InMemoryBudgetReads`] hold every row in a plain field so a test can set up state directly;
+//! [`stub_accounts`] and [`stub_categories`] are the Accounts and Categories stubs as Budgets reads
+//! them, which `lib-ledger`'s seed tests hold to the stubs themselves.
 
 use std::collections::HashMap;
 
@@ -10,8 +10,39 @@ use lib_core::{AccountId, CategoryId, CategoryTypes, PayeeId, UnitId};
 
 use crate::protocols::{
     BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
-    BudgetCategory, BudgetPayees, BudgetSplit, BudgetSplits, BudgetUnits,
+    BudgetCategory, BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
 };
+use crate::{Budget, default_budgets};
+
+/// The Budgets repository over a plain list, in creation order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct InMemoryBudgets {
+    pub budgets: Vec<Budget>,
+}
+
+impl InMemoryBudgets {
+    /// The stub Budgets as of `today`, over the stub Accounts and Categories.
+    pub fn stub(today: NaiveDate) -> Self {
+        Self {
+            budgets: default_budgets(&stub_accounts(), &stub_categories(), today)
+                .all()
+                .to_vec(),
+        }
+    }
+}
+
+impl BudgetRepository for InMemoryBudgets {
+    fn budgets(&self) -> Vec<Budget> {
+        self.budgets.clone()
+    }
+
+    fn upsert_budget(&mut self, budget: &Budget) {
+        match self.budgets.iter_mut().find(|row| row.id == budget.id) {
+            Some(row) => *row = budget.clone(),
+            None => self.budgets.push(budget.clone()),
+        }
+    }
+}
 
 /// Every Budgets read port over rows a test sets.
 #[derive(Debug, Clone, Default, PartialEq)]

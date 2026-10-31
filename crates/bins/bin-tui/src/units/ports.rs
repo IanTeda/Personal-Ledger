@@ -14,8 +14,8 @@ use lib_units::{
 };
 
 use lib_database::{
-    AccountsStore, BillsStore, Commit, InstitutionsStore, InventoryStore, TransactionsStore,
-    UnitsStore,
+    AccountsStore, BillsStore, BudgetsStore, Commit, InstitutionsStore, InventoryStore,
+    TransactionsStore, UnitsStore,
 };
 
 /// The Units ports the Units View and its Dialogs share.
@@ -31,12 +31,12 @@ pub struct LedgerBackedPorts {
 }
 
 /// What names each Unit, read from the stores of the domains that name one: the Accounts, Bill
-/// Plans, Locations and Institutions. No Budget names one, since Budgets don't persist (#811). The
-/// Transactions are held for their count alone, which Settings › Ledger and the base Unit guard
-/// quote.
+/// Plans, Budgets (#952), Locations and Institutions. The Transactions are held for their count
+/// alone, which Settings › Ledger and the base Unit guard quote.
 pub struct StoredUsage {
     pub accounts: Box<dyn AccountsStore>,
     pub bills: Box<dyn BillsStore>,
+    pub budgets: Box<dyn BudgetsStore>,
     pub inventory: Box<dyn InventoryStore>,
     pub institutions: Box<dyn InstitutionsStore>,
     pub transactions: Box<dyn TransactionsStore>,
@@ -53,7 +53,7 @@ impl UnitUsage for StoredUsage {
                 .iter()
                 .filter(|plan| plan.unit == id)
                 .count(),
-            budgets: 0,
+            budgets: self.budgets.unit_budgets(id),
             locations: self.inventory.unit_locations(id),
             institutions: self
                 .institutions

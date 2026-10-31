@@ -78,10 +78,23 @@ pub struct Budgets {
 }
 
 impl Budgets {
-    /// The seeded store, taken as it is: the seed is authored to the rules, so it skips the checks
-    /// `create` runs.
-    pub(super) fn seeded(list: Vec<Budget>) -> Self {
+    /// Budgets as stored or seeded, taken as they are: each was checked against the rules when it
+    /// was written, and the seed is authored to them, so this skips the checks `create` runs.
+    pub fn from_stored(list: Vec<Budget>) -> Self {
         Self { list }
+    }
+
+    /// The Budgets added or changed since `before`, to write whole. A Budget that stopped being the
+    /// default comes first, so storage, which holds one default, never sees two.
+    pub fn changed_since(&self, before: &Budgets) -> Vec<Budget> {
+        let mut changed: Vec<Budget> = self
+            .list
+            .iter()
+            .filter(|budget| before.get(budget.id) != Some(*budget))
+            .cloned()
+            .collect();
+        changed.sort_by_key(|budget| budget.is_default);
+        changed
     }
 
     pub fn all(&self) -> &[Budget] {

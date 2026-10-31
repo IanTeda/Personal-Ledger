@@ -3,9 +3,9 @@
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
 //! The Ledger's Institutions, Accounts, Categories, Tags, Payees, Transactions, Bill Plans, Bill
-//! Schedule and Inventory are read copies of their ports (#774, #831, #849, #850, #853, #858,
-//! #862, #866): `apply` forwards a command's Category, Tag, Payee, Transaction, Bills and Inventory
-//! changes to the ports and refreshes the copies from them. The
+//! Schedule, Budgets and Inventory are read copies of their ports (#774, #831, #849, #850, #853,
+//! #858, #862, #866, #952): `apply` forwards a command's Category, Tag, Payee, Transaction, Bills,
+//! Budgets and Inventory changes to the ports and refreshes the copies from them. The
 //! Institutions, Payees and Bills ports are shared with their modules, which write them through
 //! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
 //! [`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
@@ -24,8 +24,8 @@ use lib_accounts::AccountUse;
 use lib_bills::BillsPorts as _;
 use lib_core::AccountId;
 use lib_database::{
-    PayeesStore, SharedAccountsStore, SharedCategoriesStore, SharedInventoryStore, SharedTagsStore,
-    SharedTransactionsStore,
+    PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
+    SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
@@ -40,7 +40,8 @@ use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 /// Categories store it shares with the Bills and Payees reads, the Tags store it shares with the
 /// Tags page, the Payees ports it shares with the
 /// Payees module and the Bills reads, where its Transactions are kept,
-/// shared with the Bill Payments module, the Bills ports it shares with the Bills module, and the
+/// shared with the Bill Payments module, the Bills ports it shares with the Bills module, the
+/// Budgets store it shares with the usage counts and the Categories Monthly budget, and the
 /// Inventory store it keeps a read copy of.
 pub struct LedgerSetup {
     pub institutions: DesktopInstitutionsPorts,
@@ -50,6 +51,7 @@ pub struct LedgerSetup {
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
+    pub budgets: SharedBudgetsStore,
     pub inventory: SharedInventoryStore,
 }
 
@@ -61,12 +63,14 @@ impl LedgerSetup {
         let ledger = Ledger::stub_on(today);
         let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
-        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let budgets = crate::budgets::ports::in_memory(&ledger);
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
         let transactions: SharedTransactionsStore =
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }));
         Self {
+            budgets,
             tags: crate::tags::ports::in_memory(&ledger),
             inventory: crate::inventory::ports::in_memory(&ledger),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(
@@ -108,6 +112,7 @@ pub struct LedgerStore {
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
     bills: DesktopBillsPorts,
+    budgets: SharedBudgetsStore,
     inventory: SharedInventoryStore,
 }
 
@@ -124,7 +129,8 @@ impl LedgerStore {
             }));
         let categories = crate::categories::ports::in_memory(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
-        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger);
+        let budgets = crate::budgets::ports::in_memory(&ledger);
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
         let bills = LedgerBackedPorts::in_memory(
             &ledger,
             payees.clone(),
@@ -145,6 +151,7 @@ impl LedgerStore {
             payees,
             transactions,
             bills,
+            budgets,
         }
     }
 
@@ -160,6 +167,7 @@ impl LedgerStore {
             payees: setup.payees,
             transactions: setup.transactions,
             bills: setup.bills,
+            budgets: setup.budgets,
             inventory: setup.inventory,
         };
         store.copy_institutions();
@@ -169,6 +177,7 @@ impl LedgerStore {
         store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
+        store.copy_budgets();
         store.copy_inventory();
         store.count_tag_uses();
         store
@@ -209,6 +218,21 @@ impl LedgerStore {
         });
     }
 
+    /// Writes an empty default Budget in `unit` straight to the Budgets store, which then names
+    /// the Unit.
+    #[doc(hidden)]
+    pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut Context<'_, Self>) {
+        let budget = lib_budgets::personal_spending(unit, &[]);
+        self.budgets
+            .borrow_mut()
+            .budgets_mut()
+            .upsert_budget(&budget);
+        self.copy_budgets();
+        cx.emit(LedgerChanged {
+            what: BTreeSet::from([Domain::Units, Domain::Budgets]),
+        });
+    }
+
     /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
     /// of an Import that creates the same name.
     #[doc(hidden)]
@@ -243,9 +267,20 @@ impl LedgerStore {
     }
 
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
-    /// the Accounts store, the Budgets by the Ledger until Budgets persist (#811).
+    /// the Accounts store, the Budgets by the Budgets store (#952).
     pub fn account_usage(&self, id: AccountId) -> AccountUse {
-        crate::accounts::ports::usage(&self.accounts, &self.ledger, id)
+        crate::accounts::ports::usage(&self.accounts, &self.budgets, &self.ledger, id)
+    }
+
+    /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
+    pub fn budgets_store(&self) -> &SharedBudgetsStore {
+        &self.budgets
+    }
+
+    /// The Categories store's tree as the Budgets rules read it, for the Categories Monthly budget's
+    /// save.
+    pub fn budget_categories(&self) -> Vec<lib_budgets::BudgetCategory> {
+        self.categories.borrow().budget_categories()
     }
 
     /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts and Inventory
@@ -253,6 +288,9 @@ impl LedgerStore {
     #[doc(hidden)]
     pub fn drop_unit_users_for_test(&mut self, cx: &mut Context<'_, Self>) {
         self.ledger.drop_unit_users_for_test();
+        if let Some(memory) = self.budgets.borrow_mut().memory_mut() {
+            memory.budgets.clear();
+        }
         {
             let mut inventory = self.inventory.borrow_mut();
             for location in inventory.inventory().locations() {
@@ -292,13 +330,14 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Category, Tag, Payee, Transaction, Bills and Inventory changes go to the ports
-    /// (the forwarding shims, #774, #831, #858, #862, #866), for the input's one commit; run outside any input, it emits
-    /// [`LegacyApplied`] to be committed. The Category upserts go first, since Category reassign
-    /// re-points rows to an Uncategorised it may create, then the Payees, then the Transactions;
-    /// the Category deletes go last, once nothing names them. The Inventory names only the Units,
-    /// so its changes go in any order with the rest. The other domains' changes aren't persisted
-    /// yet (#636), so they're dropped here.
+    /// touched. Its Category, Tag, Payee, Transaction, Bills, Budgets and Inventory changes go to
+    /// the ports (the forwarding shims, #774, #831, #858, #862, #866, #952), for the input's one
+    /// commit; run outside any input, it emits [`LegacyApplied`] to be committed. The Category
+    /// upserts go first, since Category reassign re-points rows to an Uncategorised it may create,
+    /// then the Payees, then the Transactions, Bills and Budgets; the Category deletes go last, once
+    /// nothing names them, the Budgets' chains included. The Inventory names only the Units, so its
+    /// changes go in any order with the rest. The other domains' changes aren't persisted yet
+    /// (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -313,6 +352,8 @@ impl LedgerStore {
                 crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
             let bills_written = crate::bills::ports::forward(&self.bills, &changes);
+            let budgets_written =
+                crate::budgets::ports::forward(&mut *self.budgets.borrow_mut(), &changes);
             let categories_deleted = crate::categories::ports::forward_deletes(
                 &mut *self.categories.borrow_mut(),
                 &changes,
@@ -342,6 +383,9 @@ impl LedgerStore {
             }
             if bills_written && self.copy_bills() {
                 what.insert(Domain::Bills);
+            }
+            if budgets_written {
+                self.copy_budgets();
             }
             self.announce(cx, what);
         }
@@ -433,6 +477,18 @@ impl LedgerStore {
         Ok(())
     }
 
+    /// Puts the Budgets back as stored, after a write that named them failed, and overwrites the
+    /// read copy, announcing `Domain::Budgets` so every reader redraws (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the store and the read copy are left as they were.
+    pub fn reload_budgets(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
+        self.budgets.borrow_mut().reload()?;
+        self.copy_budgets();
+        self.announce(cx, BTreeSet::from([Domain::Budgets]));
+        Ok(())
+    }
+
     /// Puts the Inventory back as stored, after a write that named it failed, and overwrites the
     /// read copy, announcing `Domain::Inventory` so every reader redraws (ADR-0046).
     ///
@@ -502,6 +558,14 @@ impl LedgerStore {
         }
     }
 
+    /// Brings the Budgets read copy in line with the store after the Categories Monthly budget
+    /// wrote it, announcing `Domain::Budgets` only when it changed.
+    pub fn refresh_budgets(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_budgets() {
+            self.announce(cx, BTreeSet::from([Domain::Budgets]));
+        }
+    }
+
     /// Brings the Transactions read copy in line with the port after the Bill Payments module
     /// wrote it, announcing `Domain::Transactions` only when it changed.
     pub fn refresh_transactions(&mut self, cx: &mut Context<'_, Self>) {
@@ -565,6 +629,12 @@ impl LedgerStore {
             (ports.bills().bill_plans(), ports.bills().entries())
         };
         self.ledger.refresh_bills(plans, entries)
+    }
+
+    /// Brings the Budgets read copy in line with the store, returning whether it changed.
+    fn copy_budgets(&mut self) -> bool {
+        let budgets = self.budgets.borrow().budgets().budgets();
+        self.ledger.refresh_budgets(budgets)
     }
 
     /// Brings the Inventory read copy in line with the store, returning whether it changed.
@@ -740,7 +810,9 @@ mod tests {
         let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
         let payees =
             crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees), categories.clone());
-        let accounts = crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts));
+        let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
+        let accounts =
+            crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts), budgets.clone());
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             Box::new(storage.institutions),
             accounts.clone(),
@@ -767,6 +839,7 @@ mod tests {
                     payees,
                     transactions,
                     bills: bills.clone(),
+                    budgets,
                     inventory: Rc::new(RefCell::new(storage.inventory)),
                 },
             )
@@ -1134,7 +1207,7 @@ mod tests {
             assert_eq!(
                 ledger.budgets(),
                 &budgets,
-                "Budgets keep the Account's id until #811"
+                "the Budgets store keeps the id in memory until it reloads; a write skips it"
             );
         });
 
@@ -1144,6 +1217,15 @@ mod tests {
         assert_eq!(resolution(cx, &reopened), Some(Resolution::Unresolved));
         reopened.read_with(cx, |store, _| {
             assert!(store.ledger().accounts().iter().all(|a| a.id != account));
+            assert!(
+                store
+                    .ledger()
+                    .budgets()
+                    .all()
+                    .iter()
+                    .all(|b| !b.account_ids.contains(&account)),
+                "the file dropped the Account from every Budget"
+            );
         });
     }
 

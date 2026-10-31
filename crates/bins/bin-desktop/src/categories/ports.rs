@@ -4,10 +4,10 @@
 //! The writes are committed by the input they were made in (`crate::input::send`), not here.
 //!
 //! The Categories page writes the repository through `lib-categories`' Interactors. What the
-//! module reaches of domains not yet persisted goes through the Ledger, in [`LedgerPorts`]: the
-//! Budgets half of the usage its Dialogs quote (the Splits half is the Transactions store's,
-//! #926), the Monthly budget the Add and Edit Dialogs save into the Personal
-//! spending Budget (#811), and Category delete, the reassign port, answered by running
+//! module reaches of other domains goes through [`LedgerPorts`]: the usage its Dialogs quote (the
+//! Splits from the Transactions store, #926, the Budgets from the Budgets store, #952), the
+//! Monthly budget the Add and Edit Dialogs read and save in the Personal spending Budget, on the
+//! Budgets store (#952), and Category delete, the reassign port, answered by running
 //! `lib_ledger::DeleteCategory` through `LedgerStore::apply`, whose shims carry its writes to the
 //! Categories, Payees, Transactions and Bills stores in the one commit (Q6, until `lib-reassign`,
 //! #813). [`forward`] and [`forward_deletes`] are the Categories shim's two halves.
@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use gpui::{App, Entity};
-use lib_budgets::BudgetError;
+use lib_budgets::{BudgetError, Budgets};
 use lib_categories::{
     Category, CategoryBudget, CategoryReassign, CategoryReassigned, CategoryRepository,
     CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal, ReassignRefusal,
@@ -25,9 +25,7 @@ use lib_categories::{
 };
 use lib_core::{CategoryId, Money};
 use lib_database::{CategoriesStore, SharedCategoriesStore};
-use lib_ledger::{
-    DeleteCategory, DeleteCategoryRefusal, Ledger, LedgerChange, SetCategoryMonthlyLimit,
-};
+use lib_ledger::{DeleteCategory, DeleteCategoryRefusal, Ledger, LedgerChange};
 
 use crate::budgets::PERSONAL_SPENDING_ID;
 use crate::ledger_store::LedgerStore;
@@ -111,19 +109,27 @@ pub struct LedgerPorts<'a> {
 }
 
 impl LedgerPorts<'_> {
-    fn ledger(&self) -> &Ledger {
-        self.ledger.read(self.cx).ledger()
+    /// The Budgets as the Budgets store holds them.
+    fn budgets(&self) -> Budgets {
+        Budgets::from_stored(
+            self.ledger
+                .read(self.cx)
+                .budgets_store()
+                .borrow()
+                .budgets()
+                .budgets(),
+        )
     }
 }
 
 impl CategoryUsage for LedgerPorts<'_> {
     /// The Splits counted by the Transactions store (#926), and the Budgets holding a Category
-    /// Limit for it from the Ledger's Budgets, until they persist (#811).
+    /// Limit for it by the Budgets store (#952).
     fn category_usage(&self, id: CategoryId) -> CategoryUse {
         let ledger_store = self.ledger.read(self.cx);
         CategoryUse {
             splits: ledger_store.category_splits(id),
-            budgets: ledger_store.ledger().budgets().limit_count(id),
+            budgets: ledger_store.budgets_store().borrow().category_budgets(id),
         }
     }
 }
@@ -143,7 +149,7 @@ impl CategoryBudget for LedgerPorts<'_> {
         categories: &[Category],
         category: Option<CategoryId>,
     ) -> MonthlyBudget {
-        let budgets = self.ledger().budgets();
+        let budgets = self.budgets();
         MonthlyBudget {
             amount: category.and_then(|id| {
                 budgets.monthly_limit(
@@ -167,7 +173,7 @@ impl CategoryBudget for LedgerPorts<'_> {
         category: CategoryId,
         amount: Option<&Money>,
     ) -> Result<(), MonthlyBudgetRefusal> {
-        let mut budgets = self.ledger().budgets().clone();
+        let mut budgets = self.budgets();
         budgets
             .set_monthly_limit(
                 PERSONAL_SPENDING_ID,
@@ -180,8 +186,8 @@ impl CategoryBudget for LedgerPorts<'_> {
             .map_err(budget_refusal)
     }
 
-    /// Brings the read copy in line with the Category just written, then saves the amount through
-    /// `LedgerStore::apply`.
+    /// Saves the amount to the Budgets store on the Categories store's tree, which holds the
+    /// Category just written, then brings the Budgets read copy in line.
     fn set_monthly_budget(
         &mut self,
         category: CategoryId,
@@ -190,20 +196,17 @@ impl CategoryBudget for LedgerPorts<'_> {
         let today = self.today;
         self.ledger.update(self.cx, |store, cx| {
             store.refresh_categories(cx);
-            store
-                .apply(
-                    cx,
-                    SetCategoryMonthlyLimit {
-                        id: category,
-                        monthly: lib_ledger::MonthlyBudget {
-                            budget_id: PERSONAL_SPENDING_ID,
-                            today,
-                            limit: amount,
-                        },
-                    },
-                )
-                .map(|_| ())
-                .map_err(budget_refusal)
+            let categories = store.budget_categories();
+            let saved = crate::budgets::ports::set_monthly_limit(
+                &mut *store.budgets_store().borrow_mut(),
+                &categories,
+                PERSONAL_SPENDING_ID,
+                category,
+                amount,
+                today,
+            );
+            store.refresh_budgets(cx);
+            saved.map(|_| ()).map_err(budget_refusal)
         })
     }
 }

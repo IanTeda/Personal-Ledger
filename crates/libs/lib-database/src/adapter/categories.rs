@@ -160,6 +160,25 @@ impl TransactionCategories for CategoriesAdapter {
 
 /// `categories` as Bills reads them, in order: each with its path, and whether it is an Expense
 /// and a leaf by `lib-categories`' rules.
+/// `categories` as `lib-budgets`' `BudgetCategories` reads them, in tree order, each with its path
+/// and whether it is a leaf by the Categories' rules.
+pub(crate) fn budget_categories(categories: &[Category]) -> Vec<lib_budgets::BudgetCategory> {
+    lib_categories::paths_in_tree_order(categories)
+        .into_iter()
+        .filter_map(|(id, path)| {
+            let category = lib_categories::get(categories, id)?;
+            Some(lib_budgets::BudgetCategory {
+                id,
+                name: category.name.clone(),
+                path,
+                parent: category.parent,
+                category_type: category.category_type.clone(),
+                is_leaf: lib_categories::is_leaf(categories, id),
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn bill_categories(categories: &[Category]) -> Vec<BillCategory> {
     categories
         .iter()

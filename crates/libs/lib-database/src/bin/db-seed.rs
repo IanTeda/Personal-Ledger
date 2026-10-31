@@ -1,4 +1,4 @@
-//! `mise run db-seed`: adds the stub seed (Units, then Institutions, then Accounts, then Categories, then Tags, then Payees, then Transactions and Bills, then the Inventory), and generated Units, Transactions and Bill Plans on top, to the already-migrated dev database named by the
+//! `mise run db-seed`: adds the stub seed (Units, then Institutions, then Accounts, then Categories, then Tags, then Payees, then Transactions and Bills, then Budgets, then the Inventory), and generated Units, Transactions and Bill Plans on top, to the already-migrated dev database named by the
 //! path in argument one. It never drops or migrates the database, and it is idempotent: running it again leaves the same rows.
 
 use std::process::ExitCode;
@@ -25,7 +25,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => {
             println!(
-                "Seeded {path} with the stub (Institutions, Accounts, Categories, Tags, Payees and Inventory included), {FAKE_ROWS} generated Units and Transactions, and generated Bill Plans"
+                "Seeded {path} with the stub (Institutions, Accounts, Categories, Tags, Payees, Budgets and Inventory included), {FAKE_ROWS} generated Units and Transactions, and generated Bill Plans"
             );
             ExitCode::SUCCESS
         }

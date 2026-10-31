@@ -25,8 +25,16 @@
 //! feature crate.
 //!
 //! This file holds the Category Limit chain itself; each surface's figures sit in their own
-//! section module, re-exported here. The Desktop reads it through `LedgerStore`.
+//! section module, re-exported here. The Budgets are kept behind [`BudgetRepository`], which
+//! `lib-database` implements; `fake` holds the in-memory ports and `contract` the checks both they
+//! and the adapter keep.
 
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
 mod detail;
 pub mod fake;
 mod figures;
@@ -117,9 +125,9 @@ pub struct Budget {
     pub method: Method,
     /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
     pub unit: UnitId,
-    /// The Account ids whose Splits this Budget counts. An id whose Account was deleted stays
-    /// until Budgets persist with a link that cascades (#811), and is ignored: see
-    /// [`Budget::counts`].
+    /// The Account ids whose Splits this Budget counts. Storage drops a deleted Account's id
+    /// (its link cascades), but a Budget already in memory keeps it until it next loads, and
+    /// ignores it: see [`Budget::counts`].
     pub account_ids: Vec<AccountId>,
     pub is_default: bool,
     /// Archived is computed and viewable but read-only; `None` while active.

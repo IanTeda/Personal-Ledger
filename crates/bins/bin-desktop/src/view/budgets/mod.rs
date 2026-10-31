@@ -380,6 +380,7 @@ impl Render for BudgetsView {
                 .into_any_element();
         };
         let state = &self.state;
+        let categories = self.categories();
         let plan = (state.tab == BudgetsTab::Plan)
             .then(|| self.plan_data(cx))
             .flatten();
@@ -401,14 +402,14 @@ impl Render for BudgetsView {
             }),
             history: history.as_ref().map(|history| history::HistoryProps {
                 history,
-                categories: self.categories(cx),
+                categories: &categories,
                 cursor: self.history_cursor_in(history),
                 on_cell_click: cell(BudgetsView::click_history_cell),
             }),
             on_export_click: plain(BudgetsView::export_history),
             on_range_prev: plain(|view, cx| view.shift_range(false, cx)),
             on_range_next: plain(|view, cx| view.shift_range(true, cx)),
-            categories: self.categories(cx),
+            categories: &categories,
             selected: (!figures.rows.is_empty())
                 .then(|| state.selected.min(figures.rows.len() - 1)),
             on_tab_click,

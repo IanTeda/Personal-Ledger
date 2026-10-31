@@ -1,35 +1,19 @@
-//! `lib-accounts`' [`AccountUsage`] answered from the Ledger (#852), a halfway shim counting an
-//! Account's Transactions and Budgets from the rows themselves, so a write can't leave the figure
-//! wrong. The Desktop counts the Transactions in `lib-database` since Accounts persist
-//! (#853) and reads only the Budgets count here, until Budgets persist (#811).
+//! How many Transactions the Ledger's read copy books to an Account (#852), for a Client's
+//! in-memory Accounts store to recount its usage from, since it has no file to count in; the
+//! adapter counts in the file (#853). The Budgets half of an Account's usage is the Budgets
+//! store's (#952), so the Ledger no longer answers `AccountUsage`.
 
-use lib_accounts::{AccountUsage, AccountUse};
 use lib_core::AccountId;
 
 use crate::Ledger;
 
 impl Ledger {
-    /// How many Transactions are booked to Account `id`, and how many Budgets count it.
-    pub fn account_use(&self, id: AccountId) -> AccountUse {
-        AccountUse {
-            transactions: self
-                .transactions
-                .iter()
-                .filter(|transaction| transaction.account_id == id)
-                .count(),
-            budgets: self
-                .budgets
-                .all()
-                .iter()
-                .filter(|budget| budget.account_ids.contains(&id))
-                .count(),
-        }
-    }
-}
-
-impl AccountUsage for Ledger {
-    fn account_usage(&self, id: AccountId) -> AccountUse {
-        self.account_use(id)
+    /// How many Transactions are booked to Account `id`.
+    pub fn account_transactions(&self, id: AccountId) -> usize {
+        self.transactions
+            .iter()
+            .filter(|transaction| transaction.account_id == id)
+            .count()
     }
 }
 
@@ -41,7 +25,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_stubs_account_usage_counts_its_transactions_and_budgets() {
+    fn the_stubs_accounts_count_their_transactions() {
         let ledger = Ledger::stub();
         for account in ledger.accounts() {
             let transactions = ledger
@@ -49,32 +33,19 @@ mod tests {
                 .iter()
                 .filter(|t| t.account_id == account.id)
                 .count();
-            let budgets = ledger
-                .budgets()
-                .all()
-                .iter()
-                .filter(|b| b.account_ids.contains(&account.id))
-                .count();
             assert_eq!(
-                ledger.account_usage(account.id),
-                AccountUse {
-                    transactions,
-                    budgets
-                },
+                ledger.account_transactions(account.id),
+                transactions,
                 "{}",
                 account.name
             );
         }
-        let everyday = ledger.account_usage(AccountId::seed(2));
-        assert!(everyday.transactions > 0 && everyday.budgets > 0);
-        assert_eq!(
-            ledger.account_usage(AccountId::new()),
-            AccountUse::default()
-        );
+        assert!(ledger.account_transactions(AccountId::seed(2)) > 0);
+        assert_eq!(ledger.account_transactions(AccountId::new()), 0);
     }
 
     #[test]
-    fn a_new_account_has_no_usage_until_something_names_it() {
+    fn a_new_account_has_no_transactions_until_one_is_booked_to_it() {
         let mut ledger = Ledger::stub();
         let id = lib_accounts::insert_account(
             &mut ledger.accounts,
@@ -92,6 +63,6 @@ mod tests {
         )
         .id;
 
-        assert_eq!(ledger.account_usage(id), AccountUse::default());
+        assert_eq!(ledger.account_transactions(id), 0);
     }
 }

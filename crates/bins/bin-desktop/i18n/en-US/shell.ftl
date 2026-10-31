@@ -103,5 +103,7 @@ desktop-toast-write-failed-transactions = Couldn't save the change to transactio
 desktop-toast-write-failed-transactions-unsaved = Couldn't save the change to transactions or reload them, so what you see isn't saved
 desktop-toast-write-failed-bills = Couldn't save the change to bills, so they are back as last saved
 desktop-toast-write-failed-bills-unsaved = Couldn't save the change to bills or reload them, so what you see isn't saved
+desktop-toast-write-failed-budgets = Couldn't save the change to budgets, so they are back as last saved
+desktop-toast-write-failed-budgets-unsaved = Couldn't save the change to budgets or reload them, so what you see isn't saved
 desktop-toast-write-failed-inventory = Couldn't save the change to the inventory, so it is back as last saved
 desktop-toast-write-failed-inventory-unsaved = Couldn't save the change to the inventory or reload it, so what you see isn't saved

@@ -6,7 +6,7 @@ End-user documentation: [Budgets](../budgets.md).
 
 A **Budget** is a named view over the one Ledger: a Method, one Unit locked at creation, a set of on-budget Accounts, a default flag and an archived date. A Category limits Budget holds a chain of effective-dated records per leaf Expense Category. [ADR-0028](../adr/0028-budget-amounts-are-effective-dated-and-never-rewrite-closed-months.md) and [ADR-0029](../adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md) settled the design, and the [Desktop Budgets Surface](https://github.com/IanTeda/Personal-Ledger/issues/398) map settled the details (#383–#387, #399, #400).
 
-The desktop app builds the whole surface (handoff `docs/ux/desktop-mockups/14-budgets-v2/`, screens 9a–9g and 11b, 11c, 11f) on in-memory stubs. There is no `lib-core` type for the v2 model, `lib-database`'s `budgets` table still has the pre-v2 shape and is not read, and the TUI's Budgets screen is a wireframe placeholder.
+The desktop app builds the whole surface (handoff `docs/ux/desktop-mockups/14-budgets-v2/`, screens 9a–9g and 11b, 11c, 11f) on in-memory stubs. The Budgets persist through `lib-database` (#952), and the TUI's Budgets screen is a wireframe placeholder.
 
 ## Data model
 
@@ -25,7 +25,15 @@ None in `lib-core` for the v2 model yet. The desktop model's types (`Budget`, `M
 
 ## Persistence
 
-Not yet built for v2. `budgets::default_budgets` seeds the stub (Personal spending and a second Budget) with an injectable `today`. The existing `lib-database` `budgets` entity predates ADR-0028 and ADR-0029 and needs reshaping before it can hold chains.
+`lib-database`'s `adapter/budgets.rs` holds the Budgets in memory and sends each write to the shared writer thread (ADR-0046), implementing `lib_budgets::BudgetRepository`; `BudgetsStore` is the store the bins share. Three tables hold a Budget (`migrations/client/`):
+
+- `budgets`: the row, its Unit (no cascade, so a Unit a Budget uses can't be deleted) and the default flag, one default kept by a partial unique index.
+- `budget_accounts`: the on-budget Accounts, `ON DELETE CASCADE` from `accounts`, so a deleted Account leaves every Budget. An upsert skips an id with no Account.
+- `budget_limit_records`: one row per chain record, keyed by Budget, Category and month. The Category doesn't cascade, so a Category a chain names can't be deleted until the chain is gone.
+
+An upsert writes a Budget whole: its row, then its Accounts and records replaced. `Budgets::changed_since` orders a write so the Budget losing the default goes before the one taking it. `lib_budgets::contract` (feature `contract-tests`) is the suite both the in-memory fake and the adapter pass.
+
+The first launch writes `seed::stub_budgets` (Personal spending and a second Budget), and `open_storage` seeds an empty default Personal spending Budget in the base Unit, counting every Account that takes Transactions, when a Ledger has none. The Desktop's Budgets page reads the other domains through `lib_database::StoredBudgetReads`; its writers are still `LedgerCommand`s carried to the store by the forwarding shim (`budgets::ports::forward`) until the Budgets Interactors (#953).
 
 ## UI
 

@@ -21,6 +21,7 @@ lib_core = { path = "../../../crates/libs/lib-core", features = ["sqlx"] }
 lib_units = { path = "../../../crates/libs/lib-units" }
 lib_transactions = { path = "../../../crates/libs/lib-transactions" }
 lib_bills = { path = "../../../crates/libs/lib-bills" }
+lib_budgets = { path = "../../../crates/libs/lib-budgets" }
 lib_payees = { path = "../../../crates/libs/lib-payees" }
 lib_institutions = { path = "../../../crates/libs/lib-institutions" }
 lib_accounts = { path = "../../../crates/libs/lib-accounts" }
@@ -58,6 +59,7 @@ uuid = { workspace = true }
 lib_units = { path = "../../../crates/libs/lib-units", features = ["contract-tests"] }
 lib_transactions = { path = "../../../crates/libs/lib-transactions", features = ["contract-tests"] }
 lib_bills = { path = "../../../crates/libs/lib-bills", features = ["contract-tests"] }
+lib_budgets = { path = "../../../crates/libs/lib-budgets", features = ["contract-tests"] }
 lib_payees = { path = "../../../crates/libs/lib-payees", features = ["contract-tests"] }
 lib_institutions = { path = "../../../crates/libs/lib-institutions", features = ["contract-tests"] }
 lib_accounts = { path = "../../../crates/libs/lib-accounts", features = ["contract-tests"] }

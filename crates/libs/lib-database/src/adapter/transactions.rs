@@ -177,6 +177,28 @@ pub(crate) fn splits_between(
         .collect()
 }
 
+/// `transactions`' Splits dated `from` to `to`, as `lib-budgets`' `BudgetSplits` reads them, each
+/// with its Transaction's date and Account, in the Transactions' order.
+pub(crate) fn budget_splits(
+    transactions: &[Transaction],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Vec<lib_budgets::BudgetSplit> {
+    transactions
+        .iter()
+        .filter(|row| (from..=to).contains(&row.date))
+        .flat_map(|row| {
+            row.splits.iter().map(|split| lib_budgets::BudgetSplit {
+                date: row.date,
+                account_id: row.account_id,
+                category_id: split.category_id,
+                amount: split.amount.clone(),
+                payee_id: split.payee_id,
+            })
+        })
+        .collect()
+}
+
 /// The Split `split` names among `transactions`, as Bills reads it.
 pub(crate) fn paid_split(transactions: &[Transaction], split: SplitRef) -> Option<BillSplit> {
     let row = transactions

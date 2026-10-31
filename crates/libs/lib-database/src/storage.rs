@@ -1,6 +1,6 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
 //! the Client migrations, then the Units, Institutions, Accounts, Categories, Tags, Payees,
-//! Transactions, Bills and Inventory adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
+//! Transactions, Bills, Budgets and Inventory adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
 //! so they read and write the same rows (ADR-0046), and both build their Shell on the [`Stores`]
 //! made from it.
 
@@ -11,9 +11,9 @@ use std::sync::mpsc;
 use chrono::{NaiveDate, Utc};
 
 use crate::{
-    AccountsAdapter, BillsAdapter, CategoriesAdapter, Error, InstitutionsAdapter, InventoryAdapter,
-    PayeesAdapter, PendingWrites, Result, TagsAdapter, TransactionsAdapter, UnitsAdapter,
-    WriteFailure, Writer, adapter::store, seed,
+    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Error, InstitutionsAdapter,
+    InventoryAdapter, PayeesAdapter, PendingWrites, Result, TagsAdapter, TransactionsAdapter,
+    UnitsAdapter, WriteFailure, Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -27,6 +27,7 @@ pub struct Storage {
     pub payees: PayeesAdapter,
     pub transactions: TransactionsAdapter,
     pub bills: BillsAdapter,
+    pub budgets: BudgetsAdapter,
     pub inventory: InventoryAdapter,
     pub pending: PendingWrites,
     /// Flushed when the Client quits, so the last writes land before the thread dies.
@@ -48,6 +49,7 @@ pub struct Stores {
     pub payees: Box<dyn store::PayeesStore>,
     pub transactions: Box<dyn store::TransactionsStore>,
     pub bills: Box<dyn store::BillsStore>,
+    pub budgets: Box<dyn store::BudgetsStore>,
     pub inventory: Box<dyn store::InventoryStore>,
     pub commit: Rc<dyn crate::Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
@@ -64,6 +66,7 @@ impl From<Storage> for Stores {
             payees: Box::new(storage.payees),
             transactions: Box::new(storage.transactions),
             bills: Box::new(storage.bills),
+            budgets: Box::new(storage.budgets),
             inventory: Box::new(storage.inventory),
             commit: Rc::new(storage.pending),
             failures: storage.failures,
@@ -81,10 +84,15 @@ impl From<Storage> for Stores {
 /// Accounts name (#849), its Accounts, which its Transactions and Bill Plans name (#853), its
 /// Categories, which its Payees, Splits and Bill Plans name (#858), its Tags, which its Splits
 /// carry (#862), its Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions
-/// and Bills as of `today`, whose Paid entries and Documents name those Transactions (#774), and
-/// last its Inventory as of `today`, whose Items the stub Documents link (#866). All or nothing,
-/// so a first launch cut short leaves no base Unit and the next open writes it whole (#886).
-/// Opening an existing Ledger writes nothing of it.
+/// and Bills as of `today`, whose Paid entries and Documents name those Transactions (#774), its
+/// Budgets as of `today`, which name its Units, Accounts and Categories (#952), and last its
+/// Inventory as of `today`, whose Items the stub Documents link (#866). All or nothing, so a first
+/// launch cut short leaves no base Unit and the next open writes it whole (#886). Opening an
+/// existing Ledger writes nothing of it.
+///
+/// A Ledger with no Budget, one written before Budgets persisted, is given an empty default
+/// Personal spending Budget in its base Unit on every Account in it that takes Transactions
+/// (`lib_budgets::personal_spending`), so there is always an active Budget.
 ///
 /// The first-launch seed is removed once every domain persists. The Personal Institution is part
 /// of every new Ledger, not of the stub seed, so it stays; but on its own it writes no base Unit,
@@ -112,6 +120,16 @@ pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Sto
     let payees = PayeesAdapter::load(pending.clone())?;
     let transactions = TransactionsAdapter::load(pending.clone())?;
     let bills = BillsAdapter::load(pending.clone())?;
+    if BudgetsAdapter::is_empty(&writer)? {
+        let base = units.base_unit().base_unit();
+        let accounts = crate::adapter::accounts::budget_accounts(&accounts.accounts().accounts());
+        BudgetsAdapter::seed(
+            &writer,
+            vec![lib_budgets::personal_spending(base, &accounts)],
+        )?;
+        tracing::info!(path = %path.display(), "Gave a Ledger with no Budget a default one");
+    }
+    let budgets = BudgetsAdapter::load(pending.clone())?;
     let inventory = InventoryAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
@@ -122,6 +140,7 @@ pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Sto
         payees,
         transactions,
         bills,
+        budgets,
         inventory,
         pending,
         writer,
@@ -168,6 +187,60 @@ mod tests {
         expected.remove(0);
         assert_eq!(reopened.transactions.transactions(), expected);
         assert!(reopened.transactions.transaction(gone).is_none());
+    }
+
+    #[test]
+    fn a_new_ledger_opens_with_the_stub_budgets_and_an_edit_survives_a_restart() {
+        use lib_budgets::BudgetRepository as _;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
+        assert_eq!(storage.budgets.budgets(), seed::stub_budgets(today()));
+        let mut joint = storage
+            .budgets
+            .budget(lib_core::BudgetId::seed(2))
+            .expect("a stub Budget");
+        joint.name = "Shared house".into();
+        storage.budgets.upsert_budget(&joint);
+        storage.pending.commit();
+        storage.writer.flush().expect("the writer is running");
+        drop(storage);
+
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
+        let mut expected = seed::stub_budgets(today());
+        expected[1] = joint;
+        assert_eq!(reopened.budgets.budgets(), expected);
+    }
+
+    /// A Ledger written before Budgets persisted has none, so it opens with an empty default
+    /// Personal spending Budget, once.
+    #[test]
+    fn an_existing_ledger_with_no_budget_opens_with_an_empty_default_one() {
+        use lib_budgets::BudgetRepository as _;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        let storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
+        storage
+            .writer
+            .run(|pool| async move {
+                sqlx::query("DELETE FROM budgets").execute(&pool).await?;
+                Ok(())
+            })
+            .expect("the Budgets are cleared");
+        drop(storage);
+
+        let reopened = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
+        let accounts = crate::adapter::accounts::budget_accounts(&seed::stub_accounts());
+        let personal = lib_budgets::personal_spending(lib_core::UnitId::SEED_AUD, &accounts);
+        assert!(personal.limits.is_empty() && personal.is_default);
+        assert_eq!(reopened.budgets.budgets(), std::slice::from_ref(&personal));
+        reopened.writer.flush().expect("the writer is running");
+        drop(reopened);
+
+        let again = open_storage(&path, today(), PERSONAL).expect("the Ledger opens again");
+        assert_eq!(again.budgets.budgets(), [personal], "seeded once");
     }
 
     #[test]
@@ -280,6 +353,10 @@ mod tests {
         assert_eq!(storage.categories.categories(), seed::stub_categories());
         assert_eq!(storage.tags.tags().tags(), seed::stub_tags());
         assert_eq!(storage.payees.payees().payees(), seed::stub_payees());
+        assert_eq!(
+            lib_budgets::BudgetRepository::budgets(&storage.budgets),
+            seed::stub_budgets(today())
+        );
         assert_eq!(
             storage.transactions.transactions(),
             seed::stub_ledger_transactions(today())

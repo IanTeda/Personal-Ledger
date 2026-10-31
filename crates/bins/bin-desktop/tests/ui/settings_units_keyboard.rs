@@ -751,6 +751,21 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
 }
 
 #[gpui::test]
+fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.drop_unit_users();
+    ui.add_budget_in(UnitId::SEED_VAS);
+    ui.press("j j d");
+    assert_eq!(ui.dialog(), Some("DeleteUnit"));
+    assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
+    assert_eq!(
+        ui.dialog_value("in_use_text").as_deref(),
+        Some("vas is used by 1 budget, so it can't be deleted."),
+    );
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+#[gpui::test]
 fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
     app: &mut TestAppContext,
 ) {

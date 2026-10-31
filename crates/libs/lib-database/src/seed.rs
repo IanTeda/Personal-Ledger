@@ -2,6 +2,8 @@
 //! seed is the one seed for its domain, so a change to a persisted entity updates that seed and
 //! this follows. Ids match `lib-ledger`'s stub, which the domains not yet persisted still read.
 //!
+//! The Budgets are `lib-budgets`' stub, fed the stub Accounts and Categories as Budgets reads them.
+//!
 //! The Transactions are the stub Ledger's rather than `lib_transactions::fake`'s alone: the Bills
 //! and Documents stubs add the Transactions their Paid entries and Links name (#774). They, and
 //! the Bills, come from `lib-ledger` until those domains persist their own seeds.
@@ -25,6 +27,7 @@ use lib_units::{Precision, PriceLink, UnitRow, seed_weekly_prices};
 use crate::Result;
 use crate::adapter::accounts::AccountsAdapter;
 use crate::adapter::bills::BillsAdapter;
+use crate::adapter::budgets::BudgetsAdapter;
 use crate::adapter::categories::CategoriesAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
 use crate::adapter::inventory::InventoryAdapter;
@@ -38,9 +41,10 @@ use crate::writer::Writer;
 /// Price Sources and the base Unit, the Institutions, which the Accounts name, the Accounts, which
 /// the Transactions and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans
 /// name, the Tags, which the Splits name (#862), the Payees, which the Splits and Bill Plans name,
-/// then the Transactions and the Bills dated from `now`'s local day, and last the Inventory as of
-/// that day (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees,
-/// Transactions, Bills, Inventory (Q17).
+/// then the Transactions and the Bills dated from `now`'s local day, the Budgets as of that day,
+/// which name the Units, Accounts and Categories (#952), and last the Inventory as of that day
+/// (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions,
+/// Bills, Budgets, Inventory (Q17).
 ///
 /// # Errors
 /// Returns the error of a write; nothing is written then.
@@ -77,6 +81,7 @@ pub(crate) fn write_stub(
     let payees = stub_payees();
     let transactions = stub_ledger_transactions(today);
     let bills = stub_ledger_bills(today);
+    let budgets = stub_budgets(today);
     let inventory = stub_inventory(today);
     writer.run(move |pool| async move {
         let mut conn = pool.begin().await?;
@@ -98,6 +103,7 @@ pub(crate) fn write_stub(
         PayeesAdapter::seed_in(&mut conn, &payees).await?;
         TransactionsAdapter::seed_in(&mut conn, &transactions).await?;
         BillsAdapter::seed_in(&mut conn, &bills.plans, &bills.entries).await?;
+        BudgetsAdapter::seed_in(&mut conn, &budgets).await?;
         InventoryAdapter::seed_in(&mut conn, &inventory).await?;
         conn.commit().await?;
         Ok(())
@@ -119,6 +125,16 @@ pub fn stub_accounts() -> Vec<lib_accounts::Account> {
 /// Payees and Budgets name.
 pub fn stub_categories() -> Vec<lib_categories::Category> {
     lib_categories::fake::InMemoryCategories::stub().categories
+}
+
+/// `lib-budgets`' stub seed as of `today`, the stub Ledger's Budgets, fed the stub Accounts and
+/// Categories as Budgets reads them.
+pub fn stub_budgets(today: NaiveDate) -> Vec<lib_budgets::Budget> {
+    let accounts = crate::adapter::accounts::budget_accounts(&stub_accounts());
+    let categories = crate::adapter::categories::budget_categories(&stub_categories());
+    lib_budgets::default_budgets(&accounts, &categories, today)
+        .all()
+        .to_vec()
 }
 
 /// `lib-tags`' stub seed, the stub Ledger's Tags, with the ids its Splits carry.
@@ -449,6 +465,27 @@ mod tests {
         assert_eq!(
             stored.inventory().inventory(),
             *lib_ledger::Ledger::stub_on(today).inventory()
+        );
+    }
+
+    /// The Budgets are the stub Ledger's as of the seed's day, by id, so Categories 5c finds
+    /// Personal spending by `PERSONAL_SPENDING_ID`.
+    #[test]
+    fn the_stub_seed_writes_the_stub_ledgers_budgets_twice_over_the_same_rows() {
+        use lib_budgets::BudgetRepository as _;
+
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+
+        stub(&writer, now).expect("the first seed lands");
+        stub(&writer, now).expect("the second seed lands");
+
+        let stored =
+            BudgetsAdapter::load(PendingWrites::new(writer.clone())).expect("the Budgets load");
+        let today = now.with_timezone(&Local).date_naive();
+        assert_eq!(
+            stored.budgets(),
+            lib_ledger::Ledger::stub_on(today).budgets().all()
         );
     }
 

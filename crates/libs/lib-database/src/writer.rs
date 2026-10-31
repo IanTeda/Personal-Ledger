@@ -46,6 +46,7 @@ pub enum Domain {
     Payees,
     Transactions,
     Bills,
+    Budgets,
     Inventory,
     /// The test-only second adapter, which proves one commit spans domains.
     #[cfg(test)]

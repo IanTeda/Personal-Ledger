@@ -2,27 +2,15 @@
 //! own refusal, checked before anything is written so a refusal leaves the Ledger untouched, and
 //! recording an upsert or delete per row it wrote (ADR-0039).
 //!
-//! Add, rename, move and the type change are `lib_categories`' Interactors (#859). What stays here
-//! is the Ledger's until its domains persist: the Monthly budget a Category Dialog saves writes a
-//! Budget (#811), and a delete re-points Splits and Bill Plans, clears Payee defaults and drops
-//! Budget Limits, the Desktop's answer to `lib_categories::CategoryReassign` until
-//! `lib-reassign` (#813).
+//! Add, rename, move and the type change are `lib_categories`' Interactors (#859), and the Monthly
+//! budget a Category Dialog saves is written to the Budgets store by the Desktop (#952). What stays
+//! here is a delete, which re-points Splits and Bill Plans, clears Payee defaults and drops Budget
+//! Limits, the Desktop's answer to `lib_categories::CategoryReassign` until `lib-reassign` (#813).
 
-use chrono::NaiveDate;
-use lib_budgets::BudgetError;
 use lib_categories::{get, get_or_create_uncategorised, is_leaf};
-use lib_core::{BudgetId, CategoryId, Money};
+use lib_core::{BudgetId, CategoryId};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
-
-/// The Monthly budget a Category dialog saves into one Budget: an Onward amount from the current
-/// month, or a Stop when `limit` is `None`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MonthlyBudget {
-    pub budget_id: BudgetId,
-    pub today: NaiveDate,
-    pub limit: Option<Money>,
-}
 
 /// Why a Category delete was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -48,24 +36,6 @@ pub struct CategoryDeleted {
 }
 
 impl Ledger {
-    /// Saves Category `id`'s Monthly budget; an unchanged value writes nothing. Returns whether it
-    /// wrote.
-    pub fn set_category_monthly_limit(
-        &mut self,
-        id: CategoryId,
-        monthly: &MonthlyBudget,
-    ) -> Result<bool, BudgetError> {
-        self.write_budgets(|budgets, reads| {
-            budgets.set_monthly_limit(
-                monthly.budget_id,
-                reads,
-                id,
-                monthly.limit.clone(),
-                monthly.today,
-            )
-        })
-    }
-
     /// Deletes leaf Category `id`. Its Splits and Bill Plans move to the Uncategorised Category of
     /// its type (created only if something moves), Payees that default to it lose the default,
     /// and every Budget drops its Category Limits.
@@ -174,22 +144,6 @@ impl Ledger {
     }
 }
 
-/// [`Ledger::set_category_monthly_limit`] as a value: the Monthly budget a Category Dialog
-/// saves, after the Category itself is written and the Ledger's read copy brought in line.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SetCategoryMonthlyLimit {
-    pub id: CategoryId,
-    pub monthly: MonthlyBudget,
-}
-
-impl LedgerCommand for SetCategoryMonthlyLimit {
-    type Outcome = bool;
-    type Refusal = BudgetError;
-    fn run(self, ledger: &mut Ledger) -> Result<bool, BudgetError> {
-        ledger.set_category_monthly_limit(self.id, &self.monthly)
-    }
-}
-
 /// [`Ledger::delete_category`] as a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeleteCategory(pub CategoryId);
@@ -204,8 +158,9 @@ impl LedgerCommand for DeleteCategory {
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
+
     use super::*;
-    use lib_budgets::PERSONAL_SPENDING_ID;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 11).expect("a real date")
@@ -221,54 +176,6 @@ mod tests {
 
     fn snapshot(ledger: &Ledger) -> String {
         format!("{ledger:?}")
-    }
-
-    fn money(text: &str) -> Money {
-        text.parse().expect("a money amount")
-    }
-
-    fn monthly(limit: Option<Money>) -> MonthlyBudget {
-        MonthlyBudget {
-            budget_id: PERSONAL_SPENDING_ID,
-            today: today(),
-            limit,
-        }
-    }
-
-    #[test]
-    fn a_monthly_limit_records_its_budget_and_an_unchanged_one_writes_nothing() {
-        let mut ledger = ledger();
-        let groceries = category_id(&ledger, "Groceries");
-        let set = SetCategoryMonthlyLimit {
-            id: groceries,
-            monthly: monthly(Some(money("612"))),
-        };
-
-        assert_eq!(set.clone().run(&mut ledger), Ok(true));
-        assert!(
-            ledger.drain_changes().iter().any(
-                |c| matches!(c, LedgerChange::UpsertBudget(b) if b.id == PERSONAL_SPENDING_ID)
-            )
-        );
-        assert_eq!(set.run(&mut ledger), Ok(false));
-        assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
-    fn a_monthly_limit_on_a_missing_budget_is_refused_untouched() {
-        let mut ledger = ledger();
-        let before = snapshot(&ledger);
-        let refusal = SetCategoryMonthlyLimit {
-            id: category_id(&ledger, "Groceries"),
-            monthly: MonthlyBudget {
-                budget_id: BudgetId::new(),
-                ..monthly(Some(money("1")))
-            },
-        }
-        .run(&mut ledger);
-
-        assert_eq!(refusal, Err(BudgetError::NotFound));
-        assert_eq!(snapshot(&ledger), before);
     }
 
     #[test]

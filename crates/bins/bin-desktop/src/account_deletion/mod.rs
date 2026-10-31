@@ -67,7 +67,7 @@ impl DeletionStores {
 }
 
 /// The figures the Delete Dialog quotes, read from the Ledger when it opens: the Transactions
-/// counted by the Accounts store and the Budgets by the Ledger until Budgets persist (#811), and
+/// counted by the Accounts store and the Budgets by the Budgets store (#952), and
 /// the Unit codes from its Units read copy.
 pub(crate) struct LedgerReads<'a>(pub &'a LedgerStore);
 

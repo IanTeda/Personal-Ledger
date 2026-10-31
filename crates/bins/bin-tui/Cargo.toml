@@ -64,6 +64,8 @@ rustix = { version = "1.1.4", features = ["event"] }
 # The key-clash test checks the Bills and Payees modules' default keys before the TUI draws them.
 lib_bills = { path = "../../libs/lib-bills" }
 lib_payees = { path = "../../libs/lib-payees" }
+# The Units refusal test writes a Budget naming a Unit into a real Ledger file.
+lib_budgets = { path = "../../libs/lib-budgets" }
 # The Units persistence test opens a real Ledger file in a throwaway directory.
 tempfile = { workspace = true }
 

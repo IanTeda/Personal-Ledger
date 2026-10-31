@@ -4,9 +4,12 @@
 //! movement, and reaches `Root` only through [`ViewEvent`]. It builds the Budgets dialogs, and
 //! `Root` asks it for the ones the palette and the other dialogs open.
 
+use std::rc::Rc;
+
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_core::{BudgetId, CategoryId, CategoryTypes};
+use lib_database::StoredBudgetReads;
 use lib_ledger::{CycleBudgetRollover, SaveBudgetCell};
 use lib_toast::ToastKind;
 
@@ -77,6 +80,8 @@ impl BudgetsState {
 #[derive(Clone)]
 pub struct BudgetsSources {
     pub ledger: Entity<LedgerStore>,
+    /// The other domains, read through `lib-budgets`' read ports on their stores (#952).
+    pub reads: Rc<StoredBudgetReads>,
 }
 
 /// The Budgets Entity.
@@ -131,14 +136,28 @@ impl BudgetsView {
         self.budgets(cx).get(self.state.current)
     }
 
-    pub fn categories<'a>(&self, cx: &'a App) -> &'a [lib_categories::Category] {
-        self.sources.ledger.read(cx).ledger().categories()
+    /// The Categories as their store holds them (#952).
+    pub fn categories(&self) -> Vec<lib_categories::Category> {
+        self.sources
+            .reads
+            .categories
+            .borrow()
+            .categories()
+            .categories()
     }
 
-    /// Everything the Budgets figures are worked out from: the Ledger answers every Budgets read
-    /// port until the stores do (#952).
-    pub fn budget_sources<'a>(&self, cx: &'a App) -> &'a lib_ledger::Ledger {
-        self.sources.ledger.read(cx).ledger()
+    /// The Accounts and the Units the Budget Dialog offers, as their stores hold them (#952).
+    fn accounts_and_units(&self) -> (Vec<lib_accounts::Account>, Vec<lib_units::UnitRow>) {
+        (
+            self.sources.reads.accounts.borrow().accounts().accounts(),
+            self.sources.reads.units.borrow().units().units(),
+        )
+    }
+
+    /// Everything the Budgets figures are worked out from: the stores answer every Budgets read
+    /// port (#952).
+    pub fn budget_sources(&self) -> &dyn budgets::BudgetReads {
+        &*self.sources.reads
     }
 
     /// The Budget on show and its figures for the Progress month, as of today.
@@ -147,12 +166,8 @@ impl BudgetsView {
         cx: &'a App,
     ) -> Option<(&'a budgets::Budget, budgets::PeriodFigures)> {
         let budget = self.budget(cx)?;
-        let figures = budgets::period_figures(
-            budget,
-            self.budget_sources(cx),
-            self.state.period,
-            self.today,
-        );
+        let figures =
+            budgets::period_figures(budget, self.budget_sources(), self.state.period, self.today);
         Some((budget, figures))
     }
 
@@ -161,7 +176,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         Some(budgets::plan(
             budget,
-            self.budget_sources(cx),
+            self.budget_sources(),
             self.state.plan_start,
             self.today,
         ))
@@ -182,7 +197,7 @@ impl BudgetsView {
         let (first, last) = budgets::history_range(budget, self.state.history_end, self.today)?;
         Some(budgets::history(
             budget,
-            self.budget_sources(cx),
+            self.budget_sources(),
             first,
             last,
             self.today,
@@ -207,9 +222,9 @@ impl BudgetsView {
 
     /// Whether 9d offers Edit budget: a leaf Expense Category in a Budget that takes edits.
     pub fn detail_editable(&self, category_id: CategoryId, cx: &App) -> bool {
-        let categories = self.categories(cx);
+        let categories = self.categories();
         self.editable(cx).is_some()
-            && lib_categories::is_leaf(categories, category_id)
+            && lib_categories::is_leaf(&categories, category_id)
             && categories.iter().any(|category| {
                 category.id == category_id && category.category_type == CategoryTypes::Expense
             })
@@ -257,7 +272,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         budgets::category_detail(
             budget,
-            self.budget_sources(cx),
+            self.budget_sources(),
             category_id,
             month,
             self.today,
@@ -269,7 +284,7 @@ impl BudgetsView {
         let budget = self.budget(cx)?;
         Some(LimitOptions::new(
             budget,
-            self.categories(cx),
+            &self.categories(),
             Period::of(self.today),
             count,
             |month, current| {
@@ -298,9 +313,10 @@ impl BudgetsView {
 
     /// 11c, with the Budget on show as what "Copy categories from" names.
     pub fn new_budget_dialog(&self, cx: &App) -> BudgetsDialog {
+        let (accounts, units) = self.accounts_and_units();
         BudgetsDialog::Budget(budgets::form::BudgetForm::new(
-            self.sources.ledger.read(cx).ledger().accounts(),
-            self.sources.ledger.read(cx).ledger().units(),
+            &accounts,
+            &units,
             self.budget(cx),
         ))
     }
@@ -312,12 +328,9 @@ impl BudgetsView {
             .budgets(cx)
             .get(id)
             .filter(|budget| !budget.is_archived())?;
+        let (accounts, units) = self.accounts_and_units();
         Some(BudgetsDialog::Budget(
-            budgets::form::BudgetForm::from_budget(
-                budget,
-                self.sources.ledger.read(cx).ledger().accounts(),
-                self.sources.ledger.read(cx).ledger().units(),
-            ),
+            budgets::form::BudgetForm::from_budget(budget, &accounts, &units),
         ))
     }
 
@@ -333,13 +346,13 @@ impl BudgetsView {
         let budget = self.editable(cx)?;
         let options = self.limit_options(budgets::limit_form::START_MONTHS, cx)?;
         let current = Period::of(self.today);
-        let categories = self.categories(cx);
+        let categories = self.categories();
         let form = if budgets::applied(budget.chain(category_id), current).is_some() {
-            if !lib_categories::is_leaf(categories, category_id) {
+            if !lib_categories::is_leaf(&categories, category_id) {
                 return None;
             }
             LimitForm::edit(budget, category_id, month, &options)
-        } else if budgets::unbudgeted_leaves(budget, self.budget_sources(cx), current)
+        } else if budgets::unbudgeted_leaves(budget, self.budget_sources(), current)
             .contains(&category_id)
         {
             LimitForm::pick(Some(category_id), &options)
@@ -956,7 +969,7 @@ impl BudgetsView {
         };
         let csv = budgets::history_csv(
             &history,
-            self.budget_sources(cx),
+            self.budget_sources(),
             &labels,
             super::period_label,
         );
@@ -1124,8 +1137,17 @@ mod tests {
                 .default_budget()
                 .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id)
         });
+        let fakes = lib_database::FakeStores::stub(today());
         let sources = BudgetsSources {
             ledger: ledger.clone(),
+            reads: Rc::new(StoredBudgetReads {
+                categories: Rc::new(RefCell::new(fakes.categories)),
+                accounts: Rc::new(RefCell::new(fakes.accounts)),
+                transactions: Rc::new(RefCell::new(fakes.transactions)),
+                bills: Rc::new(RefCell::new(fakes.bills)),
+                units: Rc::new(RefCell::new(fakes.units)),
+                payees: Rc::new(RefCell::new(fakes.payees)),
+            }),
         };
         let view =
             cx.new(|cx| BudgetsView::new(sources, current, &lib_core::Clock::fixed(today()), cx));

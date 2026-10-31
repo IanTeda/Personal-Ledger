@@ -46,11 +46,6 @@ pub use payee_aliases::PayeeAliases;
 pub mod balance_checks;
 pub use balance_checks::BalanceChecks;
 
-/// A cap on Transaction totals in one Expense Category over a recurring period (FR.22-27,
-/// CC-TUI-010).
-pub mod budgets;
-pub use budgets::{BudgetProgress, Budgets};
-
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;
@@ -71,15 +66,17 @@ pub use adapter::account_deletion::AccountDeletionAdapter;
 pub use adapter::accounts::AccountsAdapter;
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
+pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::CategoriesAdapter;
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::inventory::InventoryAdapter;
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
-    AccountsStore, BillsStore, CategoriesStore, CountingCommit, FakeStores, InstitutionsStore,
-    InventoryStore, PayeesStore, SharedAccountsStore, SharedBillsStore, SharedCategoriesStore,
-    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore, UnitsStore,
+    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, FakeStores,
+    InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore, SharedBillsStore,
+    SharedBudgetsStore, SharedCategoriesStore, SharedInstitutionsStore, SharedInventoryStore,
+    SharedPayeesStore, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore,
+    StoredBudgetReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transaction_import::TransactionImportAdapter;

@@ -312,6 +312,20 @@ pub(crate) fn bill_accounts(accounts: &[Account]) -> Vec<BillAccount> {
         .collect()
 }
 
+/// `accounts` as `lib-budgets`' `BudgetAccounts` reads them, each flagged by the Transactions'
+/// rule for whether it takes Transactions.
+pub(crate) fn budget_accounts(accounts: &[Account]) -> Vec<lib_budgets::BudgetAccount> {
+    accounts
+        .iter()
+        .map(|account| lib_budgets::BudgetAccount {
+            id: account.id,
+            name: account.name.clone(),
+            unit: account.unit,
+            takes_transactions: lib_transactions::takes_transactions(&account.account_type),
+        })
+        .collect()
+}
+
 impl Change for AccountsChange {
     fn domain(&self) -> Domain {
         Domain::Accounts

@@ -67,10 +67,11 @@ impl UnitsSetup {
         ports: Box<dyn UnitsStore>,
         accounts: lib_database::SharedAccountsStore,
         inventory: lib_database::SharedInventoryStore,
+        budgets: lib_database::SharedBudgetsStore,
         institutions: &crate::institutions::ports::DesktopPorts,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
-        let ports = LedgerBackedPorts::shared(ports, accounts, inventory);
+        let ports = LedgerBackedPorts::shared(ports, accounts, inventory, budgets);
         Self {
             deletion: crate::unit_deletion::deletion(&ports, institutions),
             ports,
@@ -79,7 +80,8 @@ impl UnitsSetup {
         }
     }
 
-    /// The stub seed in memory under the default keys, reading `storage`'s Accounts and Inventory
+    /// The stub seed in memory under the default keys, reading `storage`'s Accounts, Inventory and
+    /// Budgets
     /// and deleting beside its Institutions, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
@@ -87,6 +89,7 @@ impl UnitsSetup {
             Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
             storage.accounts.clone(),
             storage.inventory.clone(),
+            storage.budgets.clone(),
             &storage.institutions,
             &lib_config::KeyBindingConfig::default(),
         )
