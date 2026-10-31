@@ -14,7 +14,12 @@
 //! - `fake`: the in-memory port and reads; `contract`: the checks both the fake and the adapter
 //!   keep.
 //!
-//! The Desktop's Import doesn't use it yet: its Interactors and Presenter follow (#943).
+//! - `interactor`: [`MatchStatement`] and [`CommitImport`]; `presenter`: the step's Presenter and
+//!   its snapshot; `keymap`: its default keys; `msg`: its Messages, which a Client composes into
+//!   its Locale as `LAYER`.
+//!
+//! The Desktop's Import doesn't use it yet: it still runs its own copy until it moves onto this
+//! module (#943).
 
 #[cfg(feature = "contract-tests")]
 #[expect(
@@ -24,7 +29,11 @@
 pub mod contract;
 mod entity;
 pub mod fake;
+pub mod interactor;
+pub mod keymap;
+pub mod msg;
 mod plan;
+pub mod presenter;
 pub mod protocols;
 mod statement;
 
@@ -32,10 +41,11 @@ use bigdecimal::BigDecimal;
 use lib_core::Money;
 
 pub use entity::*;
+pub use interactor::{CommitImport, CommitRefused, MatchStatement, Matched};
 pub use plan::{ImportCommitted, ImportPlan, ImportRefused, PlanError};
 pub use protocols::{
-    ImportAccount, ImportAccounts, ImportCategories, ImportPayees, SharedImport, StatementSource,
-    TransactionImport,
+    ImportAccount, ImportAccounts, ImportCategories, ImportPayees, ImportPorts, ImportRouter,
+    SharedImport, StatementSource, TransactionImport,
 };
 pub use statement::{STATEMENT_FILE, SeededStatement};
 

@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 use lib_core::AccountId;
 use lib_payees::{Payee, PayeeCategory};
+use lib_toast::Notify;
 
 use crate::entity::Statement;
 use crate::plan::{ImportCommitted, ImportPlan, ImportRefused};
@@ -63,4 +64,23 @@ pub trait ImportPayees {
 /// `lib-payees`' `PayeeCategories` labels them, which the Categories adapter already answers.
 pub trait ImportCategories {
     fn import_categories(&self) -> Vec<PayeeCategory>;
+}
+
+/// Everything the Import step reads and writes, as the Client builds it once. The payees read and
+/// the write are separate handles so a Client may back them with one store (an `Rc<RefCell<_>>`
+/// coerces to both), as the in-memory fake does.
+#[derive(Clone)]
+pub struct ImportPorts {
+    pub import: SharedImport,
+    pub payees: Rc<RefCell<dyn ImportPayees>>,
+    pub accounts: Rc<dyn ImportAccounts>,
+    pub categories: Rc<dyn ImportCategories>,
+    pub statement: Rc<dyn StatementSource>,
+}
+
+/// Navigation out of the Import step's Presenter, implemented by each Client and passed into each
+/// `handle` call. A Toast or status-line message goes to the Shell through [`Notify`] (ADR-0048).
+pub trait ImportRouter: Notify {
+    /// Leaves the step. `committed` is what **continue** wrote, `None` when it was cancelled.
+    fn close_import(&mut self, committed: Option<ImportCommitted>);
 }

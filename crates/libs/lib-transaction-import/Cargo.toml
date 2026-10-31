@@ -14,18 +14,28 @@ doctest = false
 ## -- Internal Dependencies --
 ## A cross-domain module depends on the feature crates it writes and nothing else
 ## (`docs/development/viper-architecture.md`, Rules > Dependencies).
+lib_config = { path = "../lib-config" }
 lib_core = { path = "../lib-core" }
+lib_list_cursor = { path = "../lib-list-cursor" }
+lib_locale = { path = "../lib-locale" }
 lib_payees = { path = "../lib-payees" }
+## `Notify`, which its Router declares (ADR-0048).
+lib_toast = { path = "../lib-toast" }
 lib_transactions = { path = "../lib-transactions" }
+lib_viper = { path = "../lib-viper" }
 
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [features]
 # The port contract suite (`contract`), for `lib-database` to run against its adapter.
 contract-tests = []
+
+[build-dependencies]
+lib_locale_build = { path = "../lib-locale-build" }
 
 [lints]
 workspace = true
