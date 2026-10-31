@@ -41,6 +41,8 @@ struct ImportPageProps {
     view: ImportViewModel,
     /// The open select's options to draw, its window onto the highlight.
     select_range: Option<Range<usize>>,
+    /// The chord **continue** is on, from the keymap.
+    continue_chord: String,
     on_row_click: OnRowClick,
     on_select_click: OnSelectClick,
     on_option_click: OnOptionClick,
@@ -82,6 +84,7 @@ impl Render for ImportPage {
             ImportPageProps {
                 view,
                 select_range,
+                continue_chord: self.continue_chord(),
                 on_row_click: indexed(ImportPage::click_row),
                 on_select_click,
                 on_option_click: indexed(ImportPage::click_option),
@@ -542,6 +545,6 @@ fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
                     }
                 })
                 .child(view.continue_label.clone())
-                .child(div().opacity(0.75).child("enter")),
+                .child(div().opacity(0.75).child(props.continue_chord.clone())),
         )
 }

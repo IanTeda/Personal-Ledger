@@ -22,6 +22,8 @@ pub struct ImportSnapshot {
     /// `Payee` or `Category` while a row's select is open.
     pub open_select: Option<String>,
     pub can_continue: bool,
+    /// The chord the footer's **continue** shows.
+    pub continue_chord: String,
 }
 
 impl ImportPage {
@@ -42,6 +44,7 @@ impl ImportPage {
             remember: view.remember,
             open_select: view.open_select.map(|open| format!("{:?}", open.which)),
             can_continue: view.can_continue,
+            continue_chord: self.continue_chord(),
         })
     }
 }

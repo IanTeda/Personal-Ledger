@@ -18,14 +18,15 @@ use lib_payees::{Payee, PayeeCategory};
 use lib_toast::Notify;
 
 use crate::entity::Statement;
-use crate::plan::{ImportCommitted, ImportPlan, ImportRefused};
+use crate::error::Result;
+use crate::plan::{ImportCommitted, ImportPlan};
 
 /// The one write an Import makes.
 pub trait TransactionImport {
     /// Writes `plan`'s new Payees with their aliases and its Transactions with their Splits, as one
     /// write: all land or none do. Refused, writing nothing, when [`ImportPlan::check`] refuses it
     /// against the stored Payees.
-    fn commit(&mut self, plan: ImportPlan) -> Result<ImportCommitted, ImportRefused>;
+    fn commit(&mut self, plan: ImportPlan) -> Result<ImportCommitted>;
 }
 
 /// The import port as the step holds it, shared with the Client that commits its writes.

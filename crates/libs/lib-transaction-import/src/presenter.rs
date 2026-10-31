@@ -19,10 +19,10 @@ use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, Keymap, MOVE_DOWN, MOVE_UP, 
 use lib_viper::view::{Choice, DialogHint, SelectView};
 
 use crate::entity::{ImportRow, PayeeChoices, RowPayee, RowStatus, cleaned_name, summary};
-use crate::interactor::{CommitImport, CommitRefused, MatchStatement};
+use crate::error::Error;
+use crate::interactor::{CommitImport, MatchStatement};
 use crate::keymap::{CONTINUE, NEW_PAYEE, PICK_CATEGORY, PICK_PAYEE, REMEMBER};
 use crate::msg;
-use crate::plan::ImportRefused;
 use crate::protocols::{ImportPorts, ImportRouter};
 
 /// Which of a row's two selects.
@@ -351,7 +351,7 @@ impl ImportPresenter {
                 ));
                 router.close_import(Some(committed));
             }
-            Err(CommitRefused::NeedsReview(pending)) => {
+            Err(Error::NeedsReview(pending)) => {
                 router.notify(Notice::Status(msg::transaction_import_status_pending(
                     count(pending),
                 )));
@@ -510,19 +510,13 @@ fn status_label(status: RowStatus) -> String {
 }
 
 /// A refused commit, worded. `NeedsReview` never gets here: it is a status-line message.
-fn refusal_text(refusal: &CommitRefused) -> String {
+fn refusal_text(refusal: &Error) -> String {
     match refusal {
-        CommitRefused::AccountGone => msg::transaction_import_error_account_gone(),
-        CommitRefused::AccountInactive => msg::transaction_import_error_account_inactive(),
-        CommitRefused::Refused(ImportRefused::PayeeNameTaken(name)) => {
-            msg::transaction_import_error_name_taken(name)
-        }
-        CommitRefused::Refused(ImportRefused::AliasTaken(alias)) => {
-            msg::transaction_import_error_alias_taken(alias)
-        }
-        CommitRefused::NeedsReview(pending) => {
-            msg::transaction_import_status_pending(count(*pending))
-        }
+        Error::AccountGone => msg::transaction_import_error_account_gone(),
+        Error::AccountInactive => msg::transaction_import_error_account_inactive(),
+        Error::PayeeNameTaken(name) => msg::transaction_import_error_name_taken(name),
+        Error::AliasTaken(alias) => msg::transaction_import_error_alias_taken(alias),
+        Error::NeedsReview(pending) => msg::transaction_import_status_pending(count(*pending)),
     }
 }
 

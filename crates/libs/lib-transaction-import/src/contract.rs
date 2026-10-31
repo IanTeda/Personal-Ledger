@@ -15,8 +15,9 @@ use lib_transactions::{Split, Transaction};
 
 use crate::cents;
 use crate::entity::{ImportRow, match_line};
+use crate::error::Error;
 use crate::fake::InMemoryImport;
-use crate::plan::{ImportCommitted, ImportPlan, ImportRefused};
+use crate::plan::{ImportCommitted, ImportPlan};
 use crate::protocols::{StatementSource, TransactionImport};
 use crate::statement::SeededStatement;
 
@@ -174,7 +175,7 @@ pub fn a_refused_plan_writes_nothing<F: ImportFactory>(factory: &mut F) {
     let refused = ports.commit(plan);
     let stored = factory.stored(ports);
 
-    assert_eq!(refused, Err(ImportRefused::PayeeNameTaken(taken)));
+    assert_eq!(refused, Err(Error::PayeeNameTaken(taken)));
     assert_eq!(stored, before);
 }
 

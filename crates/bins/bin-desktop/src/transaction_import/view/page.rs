@@ -12,7 +12,7 @@ use std::ops::Range;
 
 use gpui::{App, Context, Entity, ScrollHandle};
 use lib_core::Clock;
-use lib_transaction_import::keymap::{import_keymap, import_select_keymap};
+use lib_transaction_import::keymap::{CONTINUE, import_keymap, import_select_keymap};
 use lib_transaction_import::presenter::{
     ImportEvent, ImportPresenter, ImportViewModel, RowSelect, legend,
 };
@@ -222,6 +222,11 @@ impl ImportPage {
             }
         }
         cx.notify();
+    }
+
+    /// The chord **continue** is on, which the footer shows beside it, so an override shows.
+    pub(super) fn continue_chord(&self) -> String {
+        self.keymap.chord(CONTINUE).unwrap_or_default().to_owned()
     }
 
     /// The open select's options to draw: at most [`MAX_VISIBLE_ROWS`], from where its window has

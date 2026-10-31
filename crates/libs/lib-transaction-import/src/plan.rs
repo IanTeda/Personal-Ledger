@@ -9,6 +9,7 @@ use lib_payees::{self, Payee};
 use lib_transactions::{Split, Transaction};
 
 use crate::entity::{ImportRow, RowPayee, cleaned_token};
+use crate::error::{Error, Result};
 
 /// Everything one Import writes, as one write.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,26 +18,6 @@ pub struct ImportPlan {
     pub payees: Vec<Payee>,
     /// One single-Split Transaction per row, in the statement's order.
     pub transactions: Vec<Transaction>,
-}
-
-/// Why rows can't become a plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum PlanError {
-    #[error("{0} rows still need review")]
-    NeedsReview(usize),
-}
-
-/// Why the port refused a plan, which it then wrote none of. A variant carries the name or alias
-/// the Presenter's Message needs, but the `#[error]` text never repeats it: it is for logs, which
-/// never hold a Payee's name.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ImportRefused {
-    /// A new Payee's name is another Payee's name or alias, case-insensitively.
-    #[error("a new payee's name is taken")]
-    PayeeNameTaken(String),
-    /// A new Payee's alias is another Payee's, or isn't stored-normalised.
-    #[error("a new payee's alias is taken or not normalised")]
-    AliasTaken(String),
 }
 
 /// What a commit wrote, for its Toast.
@@ -55,16 +36,16 @@ impl ImportPlan {
         rows: &[ImportRow],
         remember: bool,
         payees: &[Payee],
-    ) -> Result<Self, PlanError> {
+    ) -> Result<Self> {
         let pending = rows.iter().filter(|row| row.needs_review()).count();
         if pending > 0 {
-            return Err(PlanError::NeedsReview(pending));
+            return Err(Error::NeedsReview(pending));
         }
         let mut created: Vec<Payee> = Vec::new();
         let mut transactions = Vec::with_capacity(rows.len());
         for row in rows {
             let (Some(payee), Some(category_id)) = (&row.payee, row.category) else {
-                return Err(PlanError::NeedsReview(1));
+                return Err(Error::NeedsReview(1));
             };
             let payee_id = match payee {
                 RowPayee::Rule(id) | RowPayee::Existing(id) => *id,
@@ -119,17 +100,17 @@ impl ImportPlan {
     /// Checks the plan against `stored`, every Payee already stored: each new Payee's name must be
     /// free and each of its aliases normalised and unowned, among the stored Payees and the plan's
     /// earlier ones. A port runs this before it writes anything, so a refused plan writes nothing.
-    pub fn check(&self, stored: &[Payee]) -> Result<ImportCommitted, ImportRefused> {
+    pub fn check(&self, stored: &[Payee]) -> Result<ImportCommitted> {
         let mut known = stored.to_vec();
         for payee in &self.payees {
             if !lib_payees::name_available(&known, &payee.name) {
-                return Err(ImportRefused::PayeeNameTaken(payee.name.clone()));
+                return Err(Error::PayeeNameTaken(payee.name.clone()));
             }
             if let Some(alias) = payee.aliases.iter().find(|alias| {
                 lib_payees::normalise_alias(alias).as_deref() != Some(alias.as_str())
                     || lib_payees::alias_owner(&known, alias).is_some()
             }) {
-                return Err(ImportRefused::AliasTaken(alias.clone()));
+                return Err(Error::AliasTaken(alias.clone()));
             }
             known.push(payee.clone());
         }
@@ -171,7 +152,7 @@ mod tests {
             .collect()
     }
 
-    fn resolve(rows: &[ImportRow], remember: bool) -> Result<ImportPlan, PlanError> {
+    fn resolve(rows: &[ImportRow], remember: bool) -> Result<ImportPlan> {
         ImportPlan::resolve(
             SeededStatement::STUB_ACCOUNT,
             rows,
@@ -189,7 +170,7 @@ mod tests {
             .iter()
             .map(|line| match_line(&payees, line))
             .collect();
-        assert_eq!(resolve(&rows, true), Err(PlanError::NeedsReview(4)));
+        assert_eq!(resolve(&rows, true), Err(Error::NeedsReview(4)));
     }
 
     #[test]
@@ -304,20 +285,20 @@ mod tests {
 
         assert_eq!(
             plan(vec![new_payee("woolworths", &[])]).check(&payees),
-            Err(ImportRefused::PayeeNameTaken("woolworths".to_string()))
+            Err(Error::PayeeNameTaken("woolworths".to_string()))
         );
         assert_eq!(
             plan(vec![new_payee("Twice", &[]), new_payee("TWICE", &[])]).check(&payees),
-            Err(ImportRefused::PayeeNameTaken("TWICE".to_string()))
+            Err(Error::PayeeNameTaken("TWICE".to_string()))
         );
         let owned = payees[0].aliases[0].clone();
         assert_eq!(
             plan(vec![new_payee("Fresh", &[&owned])]).check(&payees),
-            Err(ImportRefused::AliasTaken(owned))
+            Err(Error::AliasTaken(owned))
         );
         assert_eq!(
             plan(vec![new_payee("Fresh", &["lower case"])]).check(&payees),
-            Err(ImportRefused::AliasTaken("lower case".to_string()))
+            Err(Error::AliasTaken("lower case".to_string()))
         );
     }
 }

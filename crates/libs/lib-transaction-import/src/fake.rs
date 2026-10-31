@@ -12,7 +12,8 @@ use lib_toast::{Notice, Notify};
 use lib_transactions::TransactionRepository;
 use lib_transactions::fake::InMemoryTransactions;
 
-use crate::plan::{ImportCommitted, ImportPlan, ImportRefused};
+use crate::error::Result;
+use crate::plan::{ImportCommitted, ImportPlan};
 use crate::protocols::{
     ImportAccount, ImportAccounts, ImportCategories, ImportPayees, ImportPorts, ImportRouter,
     TransactionImport,
@@ -27,7 +28,7 @@ pub struct InMemoryImport {
 }
 
 impl TransactionImport for InMemoryImport {
-    fn commit(&mut self, plan: ImportPlan) -> Result<ImportCommitted, ImportRefused> {
+    fn commit(&mut self, plan: ImportPlan) -> Result<ImportCommitted> {
         let committed = plan.check(&self.payees.payees)?;
         for payee in plan.payees {
             self.payees.upsert_payee(payee);

@@ -128,6 +128,18 @@ fn a_keybindings_override_moves_the_new_payee_key(app: &mut TestAppContext) {
     );
 }
 
+#[gpui::test]
+fn the_continue_button_shows_the_key_continue_is_on(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("import.continue", "C"));
+    ui.press(": i m p o r t enter");
+
+    assert_eq!(
+        ui.import().expect("import is open").continue_chord,
+        "C",
+        "the footer follows [keybindings]"
+    );
+}
+
 /// Moves the Import selection to row `index` with `j` and `k`.
 #[expect(
     clippy::expect_used,
