@@ -76,6 +76,7 @@ members = [
   "./crates/libs/lib-account-deletion",
   "./crates/libs/lib-unit-deletion",
   "./crates/libs/lib-bill-payments",
+  "./crates/libs/lib-transaction-import",
   "./crates/libs/lib-budgets",
   "./crates/libs/lib-categories",
   "./crates/libs/lib-institutions",

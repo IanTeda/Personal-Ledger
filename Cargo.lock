@@ -5027,6 +5027,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_transaction_import"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_core",
+ "lib_payees",
+ "lib_transactions",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "lib_transactions"
 version = "0.1.0"
 dependencies = [

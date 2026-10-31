@@ -59,6 +59,10 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
         &["lib_accounts", "lib_transactions", "lib_bills"],
     ),
     ("lib_unit_deletion", &["lib_units", "lib_institutions"]),
+    (
+        "lib_transaction_import",
+        &["lib_payees", "lib_transactions"],
+    ),
 ];
 
 /// The Shell module, which hosts every other module: only the bins may depend on it, so no
@@ -331,6 +335,45 @@ fn violations_keeps_lib_units_off_lib_institutions_and_both_off_lib_unit_deletio
             "lib_units -> lib_unit_deletion",
             "lib_institutions -> lib_unit_deletion",
             "lib_unit_deletion -> lib_accounts",
+        ]
+    );
+}
+
+#[test]
+fn violations_keeps_lib_transaction_import_on_payees_and_transactions_and_off_every_feature_crate()
+{
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_payees",
+                "dependencies": [{ "name": "lib_transaction_import" }]
+            },
+            {
+                "name": "lib_transactions",
+                "dependencies": [{ "name": "lib_transaction_import" }]
+            },
+            {
+                "name": "lib_transaction_import",
+                "dependencies": [
+                    { "name": "lib_payees" },
+                    { "name": "lib_transactions" },
+                    { "name": "lib_core" },
+                    { "name": "lib_viper" },
+                    { "name": "lib_accounts" },
+                    { "name": "lib_categories" },
+                ]
+            },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_transaction_import" }] }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata, MIGRATED),
+        vec![
+            "lib_payees -> lib_transaction_import",
+            "lib_transactions -> lib_transaction_import",
+            "lib_transaction_import -> lib_accounts",
+            "lib_transaction_import -> lib_categories"
         ]
     );
 }
