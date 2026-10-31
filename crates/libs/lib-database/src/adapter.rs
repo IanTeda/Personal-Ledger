@@ -11,6 +11,7 @@ pub mod institutions;
 pub mod inventory;
 pub mod payees;
 pub mod tags;
+pub mod transaction_import;
 pub mod transactions;
 pub mod unit_deletion;
 pub mod units;

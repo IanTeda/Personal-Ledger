@@ -30,6 +30,7 @@ lib_inventory = { path = "../../../crates/libs/lib-inventory" }
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments" }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion" }
 lib_unit_deletion = { path = "../../../crates/libs/lib-unit-deletion" }
+lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import" }
 ## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
 ## Documents stubs add to, and its Bills, so they take them from the joined stub (#774, removed
 ## with the seed).
@@ -66,6 +67,7 @@ lib_inventory = { path = "../../../crates/libs/lib-inventory", features = ["cont
 lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments", features = ["contract-tests"] }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion", features = ["contract-tests"] }
 lib_unit_deletion = { path = "../../../crates/libs/lib-unit-deletion", features = ["contract-tests"] }
+lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import", features = ["contract-tests"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 

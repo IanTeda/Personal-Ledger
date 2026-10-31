@@ -4826,6 +4826,7 @@ dependencies = [
  "lib_ledger",
  "lib_payees",
  "lib_tags",
+ "lib_transaction_import",
  "lib_transactions",
  "lib_unit_deletion",
  "lib_units",

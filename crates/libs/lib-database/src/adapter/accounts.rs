@@ -1,7 +1,8 @@
 //! The Accounts adapter: `lib-accounts`' repository and `AccountUsage` ports over the `accounts`
 //! table, and the reads other modules make of the same rows: `lib-units`' `UnitHoldings` and the
 //! Accounts half of its `UnitUsage`, `lib-bills`' `BillAccounts`, `lib-institutions`'
-//! `InstitutionUsage` and `lib-transactions`' `TransactionAccounts` (ADR-0046, #853, #925).
+//! `InstitutionUsage`, `lib-transactions`' `TransactionAccounts` and `lib-transaction-import`'s
+//! `ImportAccounts` (ADR-0046, #853, #925, #945).
 //!
 //! It loads every Account into memory, blocking, and serves the rows from there, in the order they
 //! were added. A port write changes memory at once and joins the [`PendingWrites`] every adapter
@@ -22,6 +23,7 @@ use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse};
 use lib_bills::{BillAccount, BillAccounts};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_institutions::{InstitutionUsage, InstitutionUse};
+use lib_transaction_import::{ImportAccount, ImportAccounts};
 use lib_transactions::{TransactionAccount, TransactionAccounts};
 use lib_units::{Holding, UnitHoldings, UnitUsage, UnitUse};
 use sqlx::SqliteConnection;
@@ -236,6 +238,25 @@ impl TransactionAccounts for AccountsAdapter {
             })
             .collect()
     }
+}
+
+impl ImportAccounts for AccountsAdapter {
+    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
+        import_account(&self.accounts.rows, id)
+    }
+}
+
+/// Account `id` in `accounts` as an Import reads it, active when `lib-transactions`' rule says it
+/// takes Transactions, or `None` when it is gone.
+pub(crate) fn import_account(accounts: &[Account], id: AccountId) -> Option<ImportAccount> {
+    accounts
+        .iter()
+        .find(|account| account.id == id)
+        .map(|account| ImportAccount {
+            id: account.id,
+            name: account.name.clone(),
+            is_active: lib_transactions::takes_transactions(&account.account_type),
+        })
 }
 
 /// The Accounts in `accounts` whose Unit is `unit`, in order, as the Units page lists them, each
@@ -859,6 +880,44 @@ mod tests {
         assert_eq!(bills.len(), default_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);
+    }
+
+    /// An Import reads the Account its statement names, active only when it takes Transactions.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_import_reads_the_statements_account(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let ports = factory.create(default_accounts());
+        let adapter = &ports.adapter;
+
+        let everyday = AccountId::seed(2);
+        assert_eq!(
+            ImportAccounts::import_account(adapter, everyday),
+            Some(ImportAccount {
+                id: everyday,
+                name: "ANZ Everyday".to_string(),
+                is_active: true,
+            })
+        );
+        let held = default_accounts()
+            .into_iter()
+            .find(|account| !lib_transactions::takes_transactions(&account.account_type))
+            .expect("a stub Account takes no Transactions");
+        assert_eq!(
+            ImportAccounts::import_account(adapter, held.id).map(|account| account.is_active),
+            Some(false)
+        );
+        assert_eq!(
+            ImportAccounts::import_account(adapter, AccountId::new()),
+            None
+        );
+        assert_eq!(
+            crate::adapter::store::AccountsStore::import_account(adapter, everyday),
+            import_account(&default_accounts(), everyday),
+            "the store answers as the in-memory rows do"
+        );
     }
 
     /// Another Unit's Transactions neither show in a Unit's holdings nor change its counts.

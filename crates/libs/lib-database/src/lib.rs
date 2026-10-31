@@ -82,6 +82,7 @@ pub use adapter::store::{
     SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
+pub use adapter::transaction_import::TransactionImportAdapter;
 pub use adapter::transactions::TransactionsAdapter;
 pub use adapter::unit_deletion::UnitDeletionAdapter;
 pub use adapter::units::UnitsAdapter;

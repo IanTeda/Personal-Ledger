@@ -16,8 +16,10 @@
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
 //! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
 //! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
-//! ([`SharedPayeesStore`]): Bills reads its rows, and the Desktop's Ledger forwards the Payees
-//! writers not yet migrated to it.
+//! ([`SharedPayeesStore`]): Bills reads its rows, the Desktop's Ledger forwards the Payees writers
+//! not yet migrated to it, and [`TransactionImportAdapter`](crate::TransactionImportAdapter)
+//! writes it beside the Transactions store. A cross-domain adapter holds only the shared stores,
+//! so over [`Stores::fake`]'s in-memory stores it is its own in-memory counterpart.
 //!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
@@ -38,7 +40,7 @@ use lib_bills::{
 };
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{CategoryId, InstitutionId, LocationId, TagId, UnitId};
+use lib_core::{AccountId, CategoryId, InstitutionId, LocationId, TagId, UnitId};
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUse};
 use lib_inventory::InventoryRepository;
@@ -46,6 +48,7 @@ use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
 use lib_tags::fake::InMemoryTagUsage;
 use lib_tags::{TagRepository, TagUsage};
+use lib_transaction_import::ImportAccount;
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
@@ -259,6 +262,11 @@ pub trait AccountsStore {
         accounts::bill_accounts(&self.accounts().accounts())
     }
 
+    /// Account `id` as `lib-transaction-import`'s `ImportAccounts` reads it.
+    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
+        accounts::import_account(&self.accounts().accounts(), id)
+    }
+
     /// The Accounts naming `institution`: `lib-institutions`' `InstitutionUsage`. The one place this is
     /// worked out: the adapter's `InstitutionUsage` impl, and every other store, answer through it.
     fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
@@ -300,6 +308,10 @@ impl AccountsStore for AccountsAdapter {
         lib_bills::BillAccounts::bill_accounts(self)
     }
 
+    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
+        lib_transaction_import::ImportAccounts::import_account(self, id)
+    }
+
     fn reload(&mut self) -> Result<()> {
         AccountsAdapter::reload(self)
     }
@@ -333,6 +345,10 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
 
     fn bill_accounts(&self) -> Vec<BillAccount> {
         (**self).bill_accounts()
+    }
+
+    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
+        (**self).import_account(id)
     }
 
     fn reload(&mut self) -> Result<()> {

@@ -1,7 +1,8 @@
 //! The Categories adapter: `lib-categories`' repository port over the `categories` table, and the
 //! reads other modules make of the same rows: `lib-bills`' `BillCategories`, `lib-payees`'
-//! `PayeeCategories` and `lib-transactions`' `TransactionCategories`, each flag and path filled by
-//! `lib-categories`' own rule (ADR-0046, #858, #925).
+//! `PayeeCategories`, `lib-transactions`' `TransactionCategories` and `lib-transaction-import`'s
+//! `ImportCategories`, each flag and path filled by `lib-categories`' own rule (ADR-0046, #858,
+//! #925, #945).
 //!
 //! It loads every Category into memory, blocking, and serves the rows from there in tree order,
 //! siblings in the order they were added (rowid order, which an upsert keeps). A port write
@@ -18,6 +19,7 @@ use lib_bills::{BillCategories, BillCategory};
 use lib_categories::{Category, CategoryRepository, tree_order};
 use lib_core::{CategoryId, CategoryTypes};
 use lib_payees::{PayeeCategories, PayeeCategory};
+use lib_transaction_import::ImportCategories;
 use lib_transactions::{TransactionCategories, TransactionCategory};
 use sqlx::SqliteConnection;
 
@@ -129,6 +131,13 @@ impl BillCategories for CategoriesAdapter {
 
 impl PayeeCategories for CategoriesAdapter {
     fn payee_categories(&self) -> Vec<PayeeCategory> {
+        payee_categories(&self.categories())
+    }
+}
+
+/// The leaves an Import row may be filed under, labelled as a Payee's Default category reads them.
+impl ImportCategories for CategoriesAdapter {
+    fn import_categories(&self) -> Vec<PayeeCategory> {
         payee_categories(&self.categories())
     }
 }
@@ -551,10 +560,10 @@ mod tests {
         assert!(crate::BillsAdapter::seed(&factory.writer, vec![plan], Vec::new()).is_err());
     }
 
-    /// The adapter answers Bills and Payees from its rows by `lib-categories`' rules, as the stub
+    /// The adapter answers Bills, Payees and the Import from its rows by `lib-categories`' rules, as the stub
     /// Ledger's own reads did: the fakes both modules test on are the stub's.
     #[sqlx::test(migrations = "migrations/client")]
-    async fn the_reads_match_the_fakes_bills_and_payees_test_on(
+    async fn the_reads_match_the_fakes_bills_payees_and_the_import_test_on(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
@@ -568,6 +577,11 @@ mod tests {
         assert_eq!(
             categories.payee_categories(),
             lib_payees::fake::stub_categories()
+        );
+        assert_eq!(
+            categories.import_categories(),
+            lib_payees::fake::stub_categories(),
+            "an Import files rows under the leaves a Payee's Default category is chosen from"
         );
     }
 
