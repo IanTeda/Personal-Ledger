@@ -2,7 +2,7 @@
 
 A budget is a plan for your spending: "no more than 500.00 a month on groceries", say. Personal Ledger lets you keep several budgets over the same ledger, each with its own monthly amounts per category, and shows you how each month is going against them.
 
-> **Heads up:** Budgets are built in the desktop app only, and for now they run on sample data that isn't saved between sessions. Only the Category limits method is built; Envelope, Percentage split and Project come later. Budgets are monthly and cover expense categories only. The terminal app's Budgets screen is a placeholder.
+> **Heads up:** Budgets are built in the desktop app only, and they are saved in your ledger file, so they are there when you reopen it. Only the Category limits method is built; Envelope, Percentage split and Project come later. Budgets are monthly and cover expense categories only. The terminal app's Budgets screen is a placeholder.
 
 ## What you can do
 
@@ -36,7 +36,9 @@ A budget is a container. Inside it, each category you choose to budget has a cha
 
 ### Budgets and the default
 
-You start with one budget, **Personal spending**. You can add more, for example one for the household accounts you share. One budget is always the default, and the Dashboard's budget list and the Budgets badge in the sidebar read it. The Monthly budget field on a category (see [Categories](categories.md)) always reads and writes Personal spending.
+A new ledger starts with the sample budgets. A ledger file made before budgets were saved opens with one empty **Personal spending** budget (the base unit, all your accounts that take transactions, set as the default), so the Dashboard and the Monthly budget field work straight away. Add your amounts to it, or create more budgets.
+
+The starting budget is **Personal spending**. You can add more, for example one for the household accounts you share. One budget is always the default, and the Dashboard's budget list and the Budgets badge in the sidebar read it. The Monthly budget field on a category (see [Categories](categories.md)) always reads and writes Personal spending.
 
 ### Budget Amounts over time
 
@@ -86,7 +88,7 @@ September still shows as over, because its amount didn't change. On Plan, Octobe
 - Closed months are read-only. The current and future months can be changed.
 - Over budget means spent is more than the budget. Unpaid bills alone make a category "at risk", not over.
 - Rollover carries a closed month's budget minus what you spent. The current month never carries.
-- A category that gains a sub-category stops being budgeted from the current month, because a parent only adds up its children.
+- A parent only adds up its children, so stop budgeting a category before you give it a sub-category. Budgets don't stop it for you yet.
 - The default budget can't be archived. Make another budget the default first.
 - An archived budget can be viewed but not changed.
 
@@ -101,6 +103,7 @@ September still shows as over, because its amount didn't change. On Plan, Octobe
 
 - Envelope, Percentage split and Project budgets: not built yet.
 - Income targets: not built.
+- Stopping a category's budget automatically when it gains a sub-category: not built yet; stop it yourself first.
 - Weekly, quarterly and yearly budget periods: not built; budgets are monthly.
 - Budgets across more than one unit: not supported; a budget has one unit.
 - Budget vs Actual reporting: see Reports, not built in the desktop app yet.
@@ -144,7 +147,7 @@ Intended features for Budgets. Ticked means built in at least one app; the tag s
 - [x] BUD-015 (desktop): Open a category's transactions for a month from its budget
 - [x] BUD-016 (desktop): Show the default budget's over-budget count in the sidebar and its progress on the Dashboard
 - [x] BUD-017 (desktop): Read and write Personal spending from a category's Monthly budget field
-- [ ] BUD-018: Save budgets in the ledger file
+- [x] BUD-018 (desktop): Save budgets in the ledger file
 - [ ] BUD-019: Weekly, quarterly and yearly budget periods
 - [ ] BUD-020: Envelope method
 - [ ] BUD-021: Percentage split method

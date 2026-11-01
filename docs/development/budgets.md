@@ -6,7 +6,7 @@ End-user documentation: [Budgets](../budgets.md).
 
 A **Budget** is a named view over the one Ledger: a Method, one Unit locked at creation, a set of on-budget Accounts, a default flag and an archived date. A Category limits Budget holds a chain of effective-dated records per leaf Expense Category. [ADR-0028](../adr/0028-budget-amounts-are-effective-dated-and-never-rewrite-closed-months.md) and [ADR-0029](../adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md) settled the design, and the [Desktop Budgets Surface](https://github.com/IanTeda/Personal-Ledger/issues/398) map settled the details (#383–#387, #399, #400).
 
-The desktop app builds the whole surface (handoff `docs/ux/desktop-mockups/14-budgets-v2/`, screens 9a–9g and 11b, 11c, 11f) on in-memory stubs. The Budgets persist through `lib-database` (#952), and the TUI's Budgets screen is a wireframe placeholder.
+Budgets are a VIPER module (slice 8, [#950](https://github.com/IanTeda/Personal-Ledger/issues/950); [Migrating a domain](viper-architecture.md#migrating-a-domain)). `lib-budgets` holds the model, the figures, one Interactor per intent and the Presenters for the whole View and its Dialogs, and depends on no feature crate. `lib-database` persists them, and `bin-desktop/src/budgets/` draws them. The desktop app builds the whole surface (handoff `docs/ux/desktop-mockups/14-budgets-v2/`, screens 9a–9g and 11b, 11c, 11f). The TUI's Budgets screen is a wireframe placeholder.
 
 ## Data model
 
@@ -16,77 +16,90 @@ The parts that are hardest to change later:
 - **Closed months are never rewritten.** Every write checks the month is the current one or later (`check_open_month`).
 - **Rollover is held on each record** and applied on read. A closed month's carry is its effective budget (amount plus carry in) minus Spent, Known Costs excluded; it compounds, can go negative with Carry both, and resets on a Stop or an unbudgeted month. The current month never carries.
 - **Figures are derived, never stored.** Spent is signed Splits of every Transaction Status on the on-budget Accounts. Known Costs are the open Bill Schedule entries on those Accounts: the current month's plus carried-in Overdue, none for a past month, a future month's own.
-- **Parents only roll up.** A budgeted leaf that gains a child gets an automatic Stop from the current month (`Budgets::stop_new_parents`).
+- **Parents only roll up.** A budgeted leaf that gains a child should get an automatic Stop from the current month (`Budgets::stop_new_parents`), but nothing calls it yet (#957).
 - **Exactly one default, and it can't be archived**, so an active Budget always exists. Archived Budgets are read-only (`BudgetError::Archived`).
 
 ## Domain types
 
-None in `lib-core` for the v2 model yet. The desktop model's types (`Budget`, `Method`, `Rollover`, `Limit`, `LimitRecord`, `Budgets`, `Span`, `NewBudget`, `StartFrom`, `BudgetError`) live in `crates/bins/bin-desktop/src/budgets/` (`mod.rs` and `store.rs`) and are the starting point for real domain types.
+In `lib-budgets` (`crates/libs/lib-budgets/src/`), none in `lib-core`:
+
+- `lib.rs`: `Budget`, `Method`, `Rollover`, `LimitRecord`, `applied` (what a month resolves to).
+- `store.rs`: the `Budgets` set (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, which need the whole set for names and the one default), `BudgetError`, `NewBudget`, `StartFrom`, `Span`. The chain rules (`set_amount`, `stop`, `clear_month_only`, `cycle_rollover`, `save_cell`, `fill`, `set_monthly_limit`) are methods on `Budget`; `Budgets` keeps one-line wrappers.
+- `figures.rs`: `effective_budget`, `period_figures` (the one shared period query), `health`, `dashboard_bars`. `plan.rs`: `plan`, `PlanEdit`, `fill_preview`, `three_month_average`, `unallocated`. `history.rs`: `history`, `history_range`, `history_csv`. `detail.rs`: `category_detail`.
+- `protocols.rs`: the read ports `BudgetCategories`, `BudgetAccounts`, `BudgetSplits`, `BudgetBills`, `BudgetUnits` and `BudgetPayees` (bundled as `BudgetReads`) with their row types, the write port `BudgetRepository` (`upsert_budget` only: a Budget is never deleted), `BudgetsPorts`, `BudgetsOutcome` and `BudgetsRouter`.
+- `interactor.rs`: `CreateBudget`, `EditBudget`, `DuplicateBudget`, `ArchiveBudget`, `RestoreBudget`, `SetDefaultBudget`, `SetAmount`, `StopBudgeting`, `ClearMonthOnly`, `CycleRollover`, `SaveCell`, `Fill`, `SetMonthlyLimit`. A chain Interactor runs the rule on a copy of one Budget and upserts it only if it changed; a set-wide one writes `changed_since`.
+- `presenter/`: `BudgetsPagePresenter` (one Presenter for the three tabs, whose view models are in `progress.rs`, `plan.rs` and `history.rs`), `SwitcherPresenter`, `ManagePresenter`, `BudgetFormPresenter`, `LimitFormPresenter`, `StopPresenter`, `FillPresenter` and `DetailPresenter`. Every confirming Dialog raises its own Toast through `Notify`.
 
 ## Persistence
 
 `lib-database`'s `adapter/budgets.rs` holds the Budgets in memory and sends each write to the shared writer thread (ADR-0046), implementing `lib_budgets::BudgetRepository`; `BudgetsStore` is the store the bins share. Three tables hold a Budget (`migrations/client/`):
 
 - `budgets`: the row, its Unit (no cascade, so a Unit a Budget uses can't be deleted) and the default flag, one default kept by a partial unique index.
-- `budget_accounts`: the on-budget Accounts, `ON DELETE CASCADE` from `accounts`, so a deleted Account leaves every Budget. An upsert skips an id with no Account.
+- `budget_accounts`: the on-budget Accounts, `ON DELETE CASCADE` from `accounts`, so a deleted Account leaves every Budget. The adapter's memory keeps the dead id until it next loads; `Budget::counts` ignores an id with no Account, and an upsert skips it.
 - `budget_limit_records`: one row per chain record, keyed by Budget, Category and month. The Category doesn't cascade, so a Category a chain names can't be deleted until the chain is gone.
 
 An upsert writes a Budget whole: its row, then its Accounts and records replaced. `Budgets::changed_since` orders a write so the Budget losing the default goes before the one taking it. `lib_budgets::contract` (feature `contract-tests`) is the suite both the in-memory fake and the adapter pass.
 
-The first launch writes `seed::stub_budgets` (Personal spending and a second Budget), and `open_storage` seeds an empty default Personal spending Budget in the base Unit, counting every Account that takes Transactions, when a Ledger has none. The Desktop's Budgets page reads the other domains through `lib_database::StoredBudgetReads`; its writers are still `LedgerCommand`s carried to the store by the forwarding shim (`budgets::ports::forward`) until the View moves onto the Budgets Interactors (`lib_budgets::interactor`, #953) in #954. Each Interactor loads the Budget from the repository, applies the rule `Budget` or `Budgets` holds and writes the Budgets it changed whole; the Categories Monthly budget already saves through `SetMonthlyLimit`.
+The first launch writes `seed::stub_budgets` (Personal spending and a second Budget). `open_storage` seeds an empty default Personal spending Budget (`PERSONAL_SPENDING_ID`) in the base Unit, counting every Account that takes Transactions, whenever the `budgets` table is empty. That is how a Ledger file made before Budgets persisted gets its Budget, so there is always one active Budget.
+
+The Figures read the other domains through the six read ports, which `lib-database`'s `StoredBudgetReads` answers from the shared Categories, Accounts, Transactions, Bills, Units and Payees stores. They return rows, not sums, so Spent, the Rollover carry and Known Costs stay one query in `lib-budgets`.
+
+**The Categories Monthly budget writes two domains in one commit, with no cross-domain module.** Saving a Category's Monthly budget writes the Category and the Personal spending Budget. The Desktop answers `lib-categories`' `CategoryBudget` port with `SetMonthlyLimit` over the Budgets store (`budgets::ports::set_monthly_limit`), and both writes join the one pending batch `input.rs`'s `send` commits after the Presenter's `handle`. That commit already makes them atomic, so a module such as `lib-bill-payments` would add a crate and an atomic port for nothing. This is deliberate, not an oversight; a workflow that has to write two domains outside a single `send` (a Presenter that commits for itself, or a TUI without `send`) would need one.
 
 ## UI
 
-- **Desktop** — all on in-memory stubs, under `crates/bins/bin-desktop/`:
-  - `src/budgets/` — the `gpui`-free model, one module per section (`figures`, `detail`, `history`, `plan`, `store`, `surface`, `seed`) re-exported from `mod.rs`: `applied` and `effective_budget` (what a month resolves to), `period_figures` (the one shared period query), `health`, `category_detail`, `history`, `history_range` and `history_csv`, `plan` and `PlanEdit`, `fill_target`/`fill_preview`/`Budgets::fill`, `three_month_average`, `unallocated`, `dashboard_bars`, the `Switcher` state and `switcher_ids`, the `Budgets` store (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, `set_amount`, `stop`, `save_cell`, `cycle_rollover`, `set_monthly_limit`), and the `BudgetsTab` and `BudgetsDialog` surface state.
-  - `src/budgets/limit_form.rs` (9e and 9g) and `src/budgets/form.rs` (11c) — the dialogs' pure state.
-  - `src/view/budgets/` — `state.rs` the `BudgetsView` Entity, which renders the page and handles its own keys (`B`, `n`, `c`, `e`, `s`, `[`, `]`, `1`–`3`, `tab`, the Plan grid's Normal and Insert keys, and on History `h`/`l`/`x`), movement, `Esc`, the History export (the platform save dialog) and the page's status line, and builds the dialogs (ADR-0037); `mod.rs` the shared header and tabs, `hints.rs` the status-line legends, `snapshot.rs` what the UI tests read back, `progress.rs` (9a), `plan.rs` (9b), `history.rs` (9c), `detail_dialog.rs` (9d), `limit_dialog.rs` (9e), `fill_dialog.rs` (9f), `stop_dialog.rs` (9g), `switcher.rs` (11b), `budget_dialog.rs` (11c), `manage_dialog.rs` (11f).
-  - `src/app/budgets_ui.rs` — the Dialog host's side: confirming the Budgets dialogs, the requests the Switcher, Manage and Category detail answer with, the palette verbs' dialogs and each dialog's element builder.
-  - `src/navigation/command.rs` — the `budgets switch|new|edit|manage|duplicate|set-default|archive|restore` palette commands (`BudgetsVerb`).
-  - `src/chrome/rail/primary.rs` — the Budgets badge (the default Budget's over count); `src/view/dashboard.rs` — the budget list, from `budgets::dashboard_bars`.
-  - Messages in `i18n/en-US/budgets.ftl`.
-- **TUI** — a wireframe placeholder, `crates/bins/bin-tui/src/view/budgets.rs`.
+- **Desktop** — under `crates/bins/bin-desktop/src/budgets/`:
+  - `view/page.rs` — the page Entity: header and tabs, its keys through `lib-budgets`' keymap (`budgets_page_keymap`), and the page's status line. `view/progress.rs` (9a), `view/plan.rs` (9b), `view/history.rs` (9c), `view/snapshot.rs` (what the UI tests read back).
+  - `view/dialog.rs`, `view/switcher.rs` (11b), `view/manage.rs` (11f) — the Switcher and Manage budgets, Dialogs on the Entity host. `view/form_dialog.rs` and `view/form_dialog/{budget,limit,stop,fill,detail}.rs` — one hosted Entity, `FormDialog`, for the Budget form (11c), Edit budget (9e), Stop budgeting (9g), Fill from… (9f) and the Category detail (9d).
+  - `ports.rs` — the Budgets store and the read ports, the forwarding shim for Category reassign (`forward`), the read-copy refresh and `set_monthly_limit`. `router.rs` — the `BudgetsRouter` implementation: it builds the Presenters, owns the History export's platform save dialog, the write and the outcome Toast (`ExportHistory`), and answers `show_transactions` through `transactions::router::show_filtered`.
+  - The `budgets switch|new|edit|manage|duplicate|set-default|archive|restore` palette verbs are the Budgets keymap's module Commands (`navigation/command.rs`). `shell/view/rail/primary.rs` draws the Budgets badge (the default Budget's over count) and the Dashboard its budget list, both from the `Ledger` read copy.
+  - Messages are in `lib-budgets`' `i18n/en-US/` (`budgets.ftl` for the View, `dialogs.ftl` for the Dialogs) and the Desktop's `i18n/en-US/budgets.ftl` (History's pair label and export outcomes).
+- **TUI** — a wireframe placeholder, `crates/bins/bin-tui/src/view/budgets.rs`. Its Units ports count Budgets from the Budgets store.
 
-`B` rather than `b` opens the Switcher because bare `b` is the rail toggle. `c` rather than `n` budgets a Category because `n` is New budget on this page (#400).
+The Presenter takes `today` from the Shell's Clock on each event and refreshes on `month_turned`, so the View moves on when the month turns. `B` rather than `b` opens the Switcher because bare `b` is the rail toggle. `c` rather than `n` budgets a Category because `n` is New budget on this page (#400).
 
 ## Traceability
 
-Desktop locations for the ticked requirements. Paths are under `crates/bins/bin-desktop/src/`; tests are in the named file's `tests` module.
+Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-budgets/src/` (`lib-budgets`) or `crates/bins/bin-desktop/` (`desktop`); the rule tests are in `lib-budgets`' `tests.rs` and the Interactor tests in `interactor.rs`.
 
 | Requirement | Code | Test |
 | --- | --- | --- |
-| BUD-001 | `budgets::Budget`, `budgets::Budgets` | `budgets/tests.rs` |
-| BUD-002 | `Budgets::create`, `budgets/form.rs`, `view/budgets/budget_dialog.rs` | `budgets/tests.rs`, `budgets/form.rs` |
-| BUD-003 | `Budgets::edit`, `budgets::form::BudgetForm::from_budget` | `budgets/tests.rs`, `budgets/form.rs` |
-| BUD-004 | `budgets::Switcher`, `budgets::health`, `view/budgets/switcher.rs`, `Shell::switch_budget` | `budgets/tests.rs` |
-| BUD-005 | `Budgets::{duplicate, set_default, archive, restore}`, `view/budgets/manage_dialog.rs` | `budgets/tests.rs`, `view/budgets/manage_dialog.rs` |
-| BUD-006 | `Budgets::set_amount`, `budgets/limit_form.rs`, `view/budgets/limit_dialog.rs` | `budgets/tests.rs`, `budgets/limit_form.rs` |
-| BUD-007 | `Budgets::stop`, `budgets::limit_form::StopForm`, `view/budgets/stop_dialog.rs` | `budgets/tests.rs`, `budgets/limit_form.rs` |
-| BUD-008 | `budgets::period_figures`, `view/budgets/progress.rs` | `budgets/tests.rs` |
-| BUD-009 | `budgets::period_figures` (parent rows, `unbudgeted_spent`) | `budgets/tests.rs` |
-| BUD-010 | `budgets::effective_budget`, `Budgets::cycle_rollover` | `budgets/tests.rs` |
-| BUD-011 | `budgets::plan`, `Budgets::save_cell`, `view/budgets/plan.rs` | `budgets/tests.rs` |
-| BUD-012 | `budgets::fill_preview`, `Budgets::fill`, `view/budgets/fill_dialog.rs` | `budgets/tests.rs` |
-| BUD-013 | `budgets::history`, `budgets::history_range`, `view/budgets/history.rs` | `budgets/tests.rs` |
-| BUD-014 | `budgets::history_csv`, `Shell::export_budgets_history` | `budgets/tests.rs` (the CSV text only) |
-| BUD-015 | `Shell::open_budgets_detail_transactions`, `TransactionFilters::for_budget_category` | `transactions/query.rs` |
-| BUD-016 | `chrome/rail/primary.rs` (`budget_over`), `budgets::dashboard_bars`, `view/dashboard.rs` | `budgets/tests.rs` |
-| BUD-017 | `Budgets::{monthly_limit, set_monthly_limit}`, `Shell::save_category_budget`, `categories::BudgetLock` | `budgets/tests.rs` |
+| BUD-001 | `lib.rs::Budget`, `store.rs::Budgets` | `tests.rs` |
+| BUD-002 | `interactor::CreateBudget`, `presenter/budget_form.rs`, desktop `src/budgets/view/form_dialog/budget.rs` | `tests.rs`, `presenter/budget_form.rs`, desktop `tests/ui/budgets_keyboard.rs` |
+| BUD-003 | `interactor::EditBudget`, `presenter/budget_form.rs` | `interactor.rs`, `presenter/budget_form.rs` |
+| BUD-004 | `presenter/switcher.rs`, `figures::health`, desktop `src/budgets/view/switcher.rs` | `presenter/switcher.rs`, `tests.rs` |
+| BUD-005 | `interactor::{DuplicateBudget, SetDefaultBudget, ArchiveBudget, RestoreBudget}`, `presenter/manage.rs` | `interactor.rs`, `presenter/manage.rs` |
+| BUD-006 | `interactor::SetAmount`, `presenter/limit_form.rs`, desktop `src/budgets/view/form_dialog/limit.rs` | `interactor.rs`, `presenter/limit_form.rs` |
+| BUD-007 | `interactor::StopBudgeting`, `presenter/stop.rs`, desktop `src/budgets/view/form_dialog/stop.rs` | `presenter/stop.rs` |
+| BUD-008 | `figures::period_figures`, `presenter/progress.rs`, desktop `src/budgets/view/progress.rs` | `tests.rs`, `presenter/budgets_page.rs` |
+| BUD-009 | `figures::period_figures` (parent rows, `unbudgeted_spent`) | `tests.rs` |
+| BUD-010 | `figures::effective_budget`, `interactor::CycleRollover` | `tests.rs`, `interactor.rs` |
+| BUD-011 | `plan::plan`, `interactor::SaveCell`, `presenter/plan.rs`, desktop `src/budgets/view/plan.rs` | `tests.rs`, `presenter/budgets_page.rs` |
+| BUD-012 | `plan::fill_preview`, `interactor::Fill`, `presenter/fill.rs` | `tests.rs`, `presenter/fill.rs` |
+| BUD-013 | `history::history`, `history::history_range`, `presenter/history.rs`, desktop `src/budgets/view/history.rs` | `tests.rs`, `presenter/budgets_page.rs` |
+| BUD-014 | `history::history_csv`, `presenter/history.rs` (`ExportHistory`), desktop `src/budgets/router.rs` | `tests.rs` (the CSV text), `presenter/budgets_page.rs` (the request); the save dialog is untested |
+| BUD-015 | `presenter/detail.rs` (`BudgetsOutcome::Transactions`), `BudgetsRouter::show_transactions` | `presenter/detail.rs`, desktop `tests/ui/budgets_mouse.rs` |
+| BUD-016 | `figures::dashboard_bars`, desktop `src/shell/view/rail/primary.rs` (`budget_over`) | `tests.rs`, desktop `tests/ui/dashboard_keyboard.rs` |
+| BUD-017 | `interactor::SetMonthlyLimit`, desktop `src/budgets/ports.rs::set_monthly_limit` | `interactor.rs`, desktop Categories UI tests |
+| BUD-018 | `lib-database` `adapter/budgets.rs`, `open_storage` | `lib_budgets::contract`, desktop `tests/ui/smoke_budgets_persist.rs` |
 
 ## Decisions
 
 - [ADR-0028](../adr/0028-budget-amounts-are-effective-dated-and-never-rewrite-closed-months.md): Budget Amounts are effective-dated and never rewrite closed months.
 - [ADR-0029](../adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md): Budgets are named, overlapping views over one Ledger.
 - [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md): the Bill Schedule that Known Costs reads.
+- [ADR-0041](../adr/0041-lib-database-one-file-per-entity.md), [ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md) and [ADR-0048](../adr/0048-modules-notify-the-shell-through-one-lib-toast-trait.md): the one-file adapter, the shared writer and Notices.
 - `GLOSSARY.md` terms: Budget, Method, Category Limit, Budget Amount, Stop, Unbudgeted, Rollover, Budget History, Known Costs (Bills).
 
 ## Open questions and known gaps
 
-- The surface has not been walked live against the handoff. The Switcher's position under the title is computed from the rail widths (`BUDGETS_SWITCHER_TOP`, `Shell::render_budgets_switcher`), and the History export's save dialog has not been run end to end.
-- The last opened Budget is Shell state only; persisting it as a Client-scoped Preference waits on real persistence.
+- The Dialogs and tabs have been driven only by the headless UI tests, not walked live against the handoff, and the History export's save dialog has not been run end to end.
+- The last opened Budget is not kept: the Presenter holds the current Budget in memory and opens on the default. Persisting it as a Client-scoped Preference is out of scope (#950).
+- A budgeted Category that gains a child keeps its limit, because `Budgets::stop_new_parents` has no caller (#957).
 - The Switcher's search takes the keys only after `/` or a click, because `j`, `k` and `n` are letters too. The handoff doesn't say how the two share the keyboard.
 - The handoff doesn't say where Stop budgeting opens from. It is `s` on a Progress row and a link in Edit budget's footer.
 - History's table cells show Spent only; the month's effective budget is in the chart, the Category detail and the CSV export.
 - Whether an over-budget Category earns a row in the Dashboard's Needs Attention list ([ADR-0020](../adr/0020-needs-attention-as-derived-view.md)) is undecided.
 - The Plan range starts no earlier than the Budget's first Budget Amount month and no later than 12 months ahead (`plan_start_bounds`, `PLAN_MAX_LEAD`); the handoff sets no bounds.
 - The Dashboard budget list carries no label naming the default Budget it is showing yet.
+- The Dashboard and the rail badge still read Budgets from the `Ledger` read copy (`viper-architecture.md`, During the transition) until the Dashboard (#814) and `lib-reassign` (#813) move.
