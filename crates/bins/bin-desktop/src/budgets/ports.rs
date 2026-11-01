@@ -4,12 +4,11 @@
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
 //!
-//! The Budgets page and its Switcher and Manage budgets write the store through `lib-budgets`'
-//! Interactors on [`DesktopPorts`] (#954), as does the Categories Monthly budget
-//! ([`set_monthly_limit`]). The Budgets Dialogs still on the legacy host (the Budget form, Edit
-//! budget, Stop budgeting and Fill, #955) write through `LedgerCommand`s, so [`forward`] carries
-//! each Budget a command wrote to the store. After either, [`refresh`] brings the Ledger's read
-//! copy in line, for the Dashboard, the rail badge and the legacy Dialogs that read it.
+//! The Budgets page and its Dialogs write the store through `lib-budgets`' Interactors on
+//! [`DesktopPorts`] (#954, #955), as does the Categories Monthly budget ([`set_monthly_limit`]).
+//! The one writer left on the Ledger's forwarding shim is Category reassign, so [`forward`] carries
+//! the Budgets it writes to the store. After either, [`refresh`] brings the Ledger's read copy in
+//! line, for the Dashboard and the rail badge.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -69,7 +68,7 @@ impl BudgetsPorts for StoredPorts {
     }
 }
 
-/// The Budgets ports the page, its Dialogs and the legacy Dialogs share.
+/// The Budgets ports the page and its Dialogs share.
 #[derive(Clone)]
 pub struct DesktopPorts {
     pub shared: Rc<RefCell<StoredPorts>>,
@@ -90,7 +89,7 @@ impl DesktopPorts {
         self.shared.clone()
     }
 
-    /// The other domains' reads, for the legacy Dialogs that read their stores' own rows.
+    /// The other domains' reads, for the Dashboard's figures.
     pub fn reads(&self) -> Rc<StoredBudgetReads> {
         self.shared.borrow().reads.clone()
     }
@@ -111,9 +110,8 @@ pub fn in_memory(ledger: &Ledger) -> SharedBudgetsStore {
 
 /// The forwarding shim (#952): sends each Budget `changes` upserts to `store`, in the order
 /// recorded, returning whether it wrote anything. Run before the Categories' deletes, since
-/// Category reassign clears the chains naming the Category it deletes (their foreign key). Writers
-/// carried: every Budgets `LedgerCommand`, until the View moves onto the Interactors (#954), and Category
-/// reassign, until `lib-reassign` (#813).
+/// Category reassign clears the chains naming the Category it deletes (their foreign key). The one
+/// writer carried is Category reassign, until `lib-reassign` (#813).
 pub fn forward(store: &mut dyn BudgetsStore, changes: &[LedgerChange]) -> bool {
     let port = store.budgets_mut();
     let mut wrote = false;

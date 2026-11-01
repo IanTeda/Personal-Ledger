@@ -5,26 +5,41 @@
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`BudgetsRouter`](crate::protocols::BudgetsRouter) the Client passes in.
 //!
-//! The Budget form, Edit budget, Stop budgeting, Fill and the Category detail are still the
-//! Client's own Dialogs (#955): the page asks its Router to open them.
+//! The Budget form, Edit budget, Stop budgeting, Fill and the Category detail are Presenters too
+//! (#955): the page asks its Router to open each, and a Dialog hands what follows back to the page
+//! through [`BudgetsOutcome`](crate::protocols::BudgetsOutcome).
 
+mod budget_form;
 mod budgets_page;
+mod detail;
+mod fill;
 mod history;
+mod limit_form;
 mod manage;
 mod plan;
 mod progress;
+mod stop;
 mod switcher;
 
 use lib_core::{CategoryId, Money, Period};
 use lib_locale::Segment;
 use lib_locale::format::{AmountStyle, format_amount, format_month, format_year_month};
 
+pub use budget_form::{
+    AccountChip, BudgetField, BudgetFormEvent, BudgetFormPresenter, BudgetFormViewModel,
+    MethodCard, StartChoice,
+};
 pub use budgets_page::{
     BudgetsPageEvent, BudgetsPagePresenter, BudgetsPageViewModel, BudgetsTab, HeaderView, TabBody,
     TabView,
 };
+pub use detail::{DetailEvent, DetailPresenter, DetailStat, DetailViewModel, LISTED, LineRow};
+pub use fill::{ChangeRow, FillEvent, FillPresenter, FillViewModel, SourceRow};
 pub use history::{
     HistoryBarView, HistoryCellView, HistoryColumns, HistoryEvent, HistoryRowView, HistoryViewModel,
+};
+pub use limit_form::{
+    LimitField, LimitFormEvent, LimitFormPresenter, LimitFormViewModel, LimitPreviewView,
 };
 pub use manage::{
     ManageColumns, ManageEvent, ManagePresenter, ManageRow, ManageViewModel, actions,
@@ -36,6 +51,7 @@ pub use plan::{
 pub use progress::{
     BarView, ProgressColumns, ProgressEvent, ProgressRow, ProgressViewModel, StatView, bar_view,
 };
+pub use stop::{StopEvent, StopPresenter, StopViewModel};
 pub use switcher::{SwitcherEvent, SwitcherPresenter, SwitcherRow, SwitcherViewModel};
 
 use crate::protocols::BudgetCategory;
@@ -53,6 +69,21 @@ fn count(n: usize) -> i64 {
 /// Budget is in its one Unit.
 fn money(amount: &Money) -> String {
     format_amount(amount, AmountStyle::own()).text
+}
+
+/// A month as a Dialog's select words it: `September 2026 (current)` for the current month.
+fn month_label(month: Period, current: Period) -> String {
+    let label = period_label(month);
+    if month == current {
+        msg::budgets_limit_month_current(&label)
+    } else {
+        label
+    }
+}
+
+/// An amount with a `+` in front of a positive one: a change.
+fn signed_money(amount: &Money) -> String {
+    format_amount(amount, AmountStyle::own().with_plus()).text
 }
 
 /// A month as the Locale writes a month and year (`September 2026`). Public for the Dashboard,
@@ -130,6 +161,18 @@ fn error_text(error: &BudgetError) -> String {
         BudgetError::DefaultCannotBeArchived => msg::budgets_manage_error_default(),
         BudgetError::Archived => msg::budgets_manage_error_archived(),
         _ => msg::budgets_manage_error_refused(),
+    }
+}
+
+/// A refused Dialog write, as the Dialog words it under its fields.
+fn dialog_error_text(error: &BudgetError) -> String {
+    match error {
+        BudgetError::NameTaken => msg::budgets_new_error_name(),
+        BudgetError::Archived => msg::budgets_limit_error_archived(),
+        BudgetError::NegativeAmount | BudgetError::InvalidAmount => {
+            msg::budgets_limit_error_amount()
+        }
+        _ => msg::budgets_limit_error_refused(),
     }
 }
 

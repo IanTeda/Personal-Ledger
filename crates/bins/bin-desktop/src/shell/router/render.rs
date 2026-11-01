@@ -216,10 +216,16 @@ impl Render for Root {
             confirm: on_settings_dialog_confirm.clone(),
         };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
-        let budget_reads = self.budgets_reads(cx);
-        let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
-            budgets::period_figures(budget, &*budget_reads, Period::of(self.today), self.today)
-        });
+        let budget_reads = self.views.budgets.read(cx).ports().reads();
+        let default_budget_figures = self
+            .ledger
+            .read(cx)
+            .ledger()
+            .budgets()
+            .default_budget()
+            .map(|budget| {
+                budgets::period_figures(budget, &*budget_reads, Period::of(self.today), self.today)
+            });
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
@@ -373,10 +379,6 @@ impl Render for Root {
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
-            .children(self.render_budgets_detail(&entity, cx))
-            .children(self.render_budgets_limit_dialog(&entity, cx))
-            .children(self.render_budgets_fill_dialog(&entity, cx))
-            .children(self.render_budgets_form_dialog(&entity, cx))
             .children(
                 self.state
                     .dialog

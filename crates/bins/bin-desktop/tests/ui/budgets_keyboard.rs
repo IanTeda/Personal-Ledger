@@ -397,3 +397,140 @@ fn a_new_month_leaves_a_month_stepped_to_where_it_is(app: &mut TestAppContext) {
 
     assert_eq!(ui.budgets().period, (2026, 5));
 }
+
+#[gpui::test]
+fn the_limit_dialog_takes_only_digits_and_one_point_and_enter_saves_with_a_toast(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+    ui.press("j e");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    let prefilled = ui.budgets().limit_amount.unwrap_or_default().len();
+    for _ in 0..prefilled {
+        ui.press("backspace");
+    }
+    assert_eq!(ui.budgets().limit_amount.as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+
+    ui.press("x 7 . 5 . 0 0");
+    assert_eq!(ui.budgets().limit_amount.as_deref(), Some("7.500"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+
+    let before = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(
+        ui.budgets().dialog,
+        None,
+        "a saved amount closes the Dialog"
+    );
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text.starts_with("Saved the budget for")),
+        "the Dialog raised its own Toast: {:?}",
+        ui.toast_texts()
+    );
+}
+
+#[gpui::test]
+fn the_limit_dialog_tab_walks_the_fields_and_the_arrows_step_the_segments(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+    ui.press("j e");
+
+    // Amount, Starting, Applies to, Rollover: the arrows step only the segmented controls.
+    ui.press("tab tab right");
+    ui.press("tab left");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    ui.press("shift-tab shift-tab shift-tab");
+    ui.press("1");
+    assert!(
+        ui.budgets().limit_amount.unwrap_or_default().ends_with('1'),
+        "shift-tab came back to the Amount"
+    );
+    ui.press("escape");
+    assert_eq!(ui.budgets().dialog, None);
+}
+
+#[gpui::test]
+fn the_stop_dialog_picks_the_month_and_enter_stops_the_category(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("j s");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Stop"));
+
+    ui.press("j k");
+    let before = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.budgets().dialog, None);
+    assert_eq!(ui.commits(), before + 1, "the key is one input");
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text.starts_with("Stopped budgeting")),
+        "{:?}",
+        ui.toast_texts()
+    );
+}
+
+#[gpui::test]
+fn the_fill_dialog_j_and_k_pick_the_source(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("2 f");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("PreviousMonth"));
+
+    ui.press("j");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("Average"));
+    ui.press("j");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("Average"));
+    ui.press("k");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("PreviousMonth"));
+}
+
+#[gpui::test]
+fn the_new_budget_dialog_creates_the_budget_and_shows_it(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("n");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+
+    // Name, then Tab through the Unit, the Accounts and Start from, and back.
+    ui.press("t r i p tab tab tab tab");
+    assert_eq!(ui.budgets().budget_name.as_deref(), Some("trip"));
+    ui.press("backspace");
+    assert_eq!(
+        ui.budgets().budget_name.as_deref(),
+        Some("tri"),
+        "tab came back to the Name"
+    );
+    ui.press("p enter");
+
+    let page = ui.budgets();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.budget, "trip", "the new Budget is on show");
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text == "Created the budget trip"),
+        "{:?}",
+        ui.toast_texts()
+    );
+}
+
+#[gpui::test]
+fn the_new_budget_dialog_refuses_a_name_another_budget_has(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("n");
+
+    ui.press("shift-p e r s o n a l space s p e n d i n g enter");
+
+    assert_eq!(
+        ui.budgets().dialog.as_deref(),
+        Some("Budget"),
+        "a taken name stays on the form"
+    );
+    ui.press("escape");
+    assert_eq!(ui.budgets().dialog, None);
+}

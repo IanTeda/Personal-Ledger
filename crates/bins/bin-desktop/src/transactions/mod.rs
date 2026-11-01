@@ -19,5 +19,5 @@ pub(crate) mod view;
 
 #[cfg(test)]
 pub use lib_ledger::default_transactions;
-pub use lib_transactions::{Transaction, takes_transactions};
+pub use lib_transactions::Transaction;
 pub use view::page::TransactionsPage;

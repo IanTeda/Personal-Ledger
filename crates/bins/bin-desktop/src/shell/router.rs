@@ -19,14 +19,12 @@
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
 //! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/` that is an
 //! `impl Root` block, not the real module of the same name; a `_ui` suffix (`documents_ui`,
-//! `budgets_ui`, ...) marks per-domain wiring.
+//! ...) marks per-domain wiring.
 //!
 //! `Root` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
-
-mod budgets_ui;
 
 mod commands;
 mod date_clock;

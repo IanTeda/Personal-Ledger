@@ -204,3 +204,127 @@ fn export_csv_on_history_writes_the_file_chosen(app: &mut TestAppContext) {
             .any(|toast| { toast.kind == "Success" && toast.text.contains(&shown) })
     );
 }
+
+#[gpui::test]
+fn the_details_buttons_hand_off_to_transactions_and_to_edit_budget(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-progress-row-1");
+    ui.click("budgets-progress-row-1");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Detail"));
+    ui.click("budgets-detail-edit");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    ui.click("budgets-limit-cancel");
+
+    ui.click("budgets-progress-row-1");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Detail"));
+    let before = ui.commits();
+    ui.click("budgets-detail-transactions");
+    assert_eq!(ui.noun(), Noun::Transactions);
+    assert_eq!(ui.budgets().dialog, None);
+    assert_eq!(ui.commits(), before + 1, "the click is one input");
+}
+
+#[gpui::test]
+fn the_limit_dialog_segments_and_confirm_save_the_amount(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.click("budgets-progress-action-1");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+
+    // Month only, then Carry unspent; the preview and the field stay on the form.
+    ui.click("budgets-limit-span-0");
+    ui.click("budgets-limit-rollover-1");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    ui.click("budgets-limit-amount");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+
+    let before = ui.commits();
+    ui.click("budgets-limit-confirm");
+
+    assert_eq!(ui.budgets().dialog, None);
+    assert_eq!(ui.commits(), before + 1, "the click is one input");
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text.starts_with("Saved the budget for")),
+        "{:?}",
+        ui.toast_texts()
+    );
+}
+
+#[gpui::test]
+fn the_limit_dialogs_starting_select_opens_and_a_click_on_a_month_chooses_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+    ui.click("budgets-progress-action-1");
+
+    ui.click("budgets-limit-starting");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    ui.click("budgets-limit-starting-option-1");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    ui.click("budgets-limit-cancel");
+    assert_eq!(ui.budgets().dialog, None);
+}
+
+#[gpui::test]
+fn the_stop_dialog_confirm_stops_the_category(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.click("budgets-progress-action-1");
+    ui.click("budgets-limit-stop");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Stop"));
+
+    let before = ui.commits();
+    ui.click("budgets-stop-confirm");
+
+    assert_eq!(ui.budgets().dialog, None);
+    assert_eq!(ui.commits(), before + 1, "the click is one input");
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text.starts_with("Stopped budgeting")),
+        "{:?}",
+        ui.toast_texts()
+    );
+}
+
+#[gpui::test]
+fn clicking_a_fill_source_chooses_it_and_cancel_closes_the_dialog(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.click("budgets-tab-Plan");
+    ui.click("budgets-fill");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("PreviousMonth"));
+
+    ui.click("budgets-fill-Average");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("Average"));
+    ui.click("budgets-fill-PreviousMonth");
+    assert_eq!(ui.budgets().fill_source.as_deref(), Some("PreviousMonth"));
+    ui.click("budgets-fill-cancel");
+    assert_eq!(ui.budgets().dialog, None);
+}
+
+#[gpui::test]
+fn the_new_budget_dialog_start_cells_and_cancel(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.click("budgets-title");
+    ui.click("budgets-switcher-new");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Budget"));
+
+    ui.click("budgets-new-start-2");
+    ui.click("budgets-new-start-0");
+    ui.click("budgets-new-name");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Budget"));
+    assert_eq!(
+        ui.dialog_value("can_confirm").as_deref(),
+        Some("false"),
+        "a Budget needs a name"
+    );
+    ui.click("budgets-new-confirm");
+    assert_eq!(
+        ui.budgets().dialog.as_deref(),
+        Some("Budget"),
+        "an incomplete form takes no confirm"
+    );
+    ui.click("budgets-new-cancel");
+    assert_eq!(ui.budgets().dialog, None);
+}

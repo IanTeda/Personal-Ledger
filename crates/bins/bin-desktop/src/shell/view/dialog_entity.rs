@@ -278,6 +278,11 @@ impl<D: HostedDialog> DialogClicks<D> {
         run(self.this.clone(), move |dialog, _| change(dialog))
     }
 
+    /// A click that runs `change` on the Dialog with its context: one that closes the Dialog.
+    pub fn act(&self, change: impl Fn(&mut D, &mut Context<'_, D>) + 'static) -> OnClick {
+        run(self.this.clone(), change)
+    }
+
     /// A click on row `index` of an open list, running `change` with it.
     pub fn option(&self, change: impl Fn(&mut D, usize) + 'static) -> OnOptionClick {
         self.choose(change)

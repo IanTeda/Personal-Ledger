@@ -84,9 +84,11 @@ pub struct BudgetBill {
     pub amount: Money,
 }
 
-/// An active Bill Plan's Category and Account, which the Category detail counts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An active Bill Plan's name, Category and Account, which the Category detail counts and Stop
+/// budgeting names.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetBillPlan {
+    pub name: String,
     pub category_id: CategoryId,
     pub account_id: AccountId,
 }
@@ -188,8 +190,8 @@ pub enum ManageAction {
     Restore,
 }
 
-/// What a closed Switcher or Manage budgets hands the page: a Budget to show, or the Dialog the
-/// page opens next, since a Dialog's Router can't open another.
+/// What a closed Dialog hands the page: a Budget to show, or the Dialog the page opens next, since a
+/// Dialog's Router can't open another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetsOutcome {
     /// Show this Budget.
@@ -202,6 +204,13 @@ pub enum BudgetsOutcome {
     EditBudget(BudgetId),
     /// Open Manage budgets.
     Manage,
+    /// Open Edit budget on this Category, starting in this month: the Category detail's **Edit
+    /// budget**.
+    Limit(CategoryId, Period),
+    /// Open Stop budgeting on this Category from this month: Edit budget's footer link.
+    Stop(CategoryId, Period),
+    /// Show Transactions filtered to this Category and month: the Category detail's hand-off.
+    Transactions(CategoryId, Period),
 }
 
 /// The History table as CSV, which the Router saves where the person chooses and reports with a
@@ -215,9 +224,8 @@ pub struct ExportHistory {
 /// `handle` call, since the Desktop can only open a Dialog with the gpui context that call runs in.
 /// A Toast or status-line message goes to the Shell through [`Notify`] (ADR-0048).
 ///
-/// The Budget form, Edit budget, Stop budgeting, Fill and the Category detail are still the
-/// Client's own Dialogs (#955), so the Router builds each from the Budget and month it is given and
-/// answers whether it opened one: a Category with nothing to edit or stop opens nothing.
+/// Each `open_*` builds the Dialog's Presenter from the Budget and month it is given and answers
+/// whether it opened one: a Category with nothing to edit or stop opens nothing.
 pub trait BudgetsRouter: Notify {
     /// The Switcher popover, with Budget `current` highlighted.
     fn open_switcher(&mut self, current: BudgetId) -> bool;
@@ -253,7 +261,11 @@ pub trait BudgetsRouter: Notify {
     /// Shows the Bills Schedule on `period`.
     fn show_bills_period(&mut self, period: Period);
 
-    /// Closes the open Switcher or Manage budgets. `outcome` is what it hands the page, `None`
-    /// when it closed with nothing to show.
+    /// Shows Transactions filtered to Category `category` in `month` and Budget `budget`'s
+    /// on-budget Accounts.
+    fn show_transactions(&mut self, budget: BudgetId, category: CategoryId, month: Period);
+
+    /// Closes the open Dialog. `outcome` is what it hands the page, `None` when it closed with
+    /// nothing to show.
     fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>);
 }

@@ -178,6 +178,7 @@ pub enum Routed {
     Detail(BudgetId, CategoryId, Period),
     Export(ExportHistory),
     BillsPeriod(Period),
+    Transactions(BudgetId, CategoryId, Period),
     Closed(Option<BudgetsOutcome>),
     Notice(Notice),
 }
@@ -249,6 +250,11 @@ impl BudgetsRouter for RecordingRouter {
 
     fn show_bills_period(&mut self, period: Period) {
         self.routed.push(Routed::BillsPeriod(period));
+    }
+
+    fn show_transactions(&mut self, budget: BudgetId, category: CategoryId, month: Period) {
+        self.routed
+            .push(Routed::Transactions(budget, category, month));
     }
 
     fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {

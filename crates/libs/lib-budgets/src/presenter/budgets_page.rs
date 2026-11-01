@@ -368,6 +368,15 @@ impl BudgetsPagePresenter {
                 Some(BudgetsOutcome::Manage) => {
                     router.open_manage(self.current);
                 }
+                Some(BudgetsOutcome::Limit(category, month)) => {
+                    router.open_limit(self.current, category, month);
+                }
+                Some(BudgetsOutcome::Stop(category, month)) => {
+                    router.open_stop(self.current, category, month);
+                }
+                Some(BudgetsOutcome::Transactions(category, month)) => {
+                    router.show_transactions(self.current, category, month);
+                }
                 None => {}
             },
         }

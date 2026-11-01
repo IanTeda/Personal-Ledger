@@ -24,6 +24,7 @@ desktop-hint-filter = filter
 desktop-hint-next-field = next field
 desktop-hint-apply = apply
 desktop-hint-cancel = cancel
+desktop-hint-close = close
 desktop-hint-reset = reset
 desktop-hint-colour = colour
 desktop-hint-choose = choose

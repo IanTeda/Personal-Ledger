@@ -1,28 +1,30 @@
-//! `impl BudgetsRouter` for the Desktop: where the Budgets page's Presenter asks to go. The
-//! Switcher and Manage budgets open as Entities in the Dialog host; the Budget form, Edit budget,
-//! Stop budgeting, Fill and the Category detail are still legacy Dialogs (#955), built by
-//! [`Legacy`] and opened through `Root`'s host. All of it goes through the page's gpui context,
-//! which is why the Router is built for each `handle` call. A Notice goes onto the bin's queue
-//! (`crate::notices`), which the input's `send` drains.
+//! `impl BudgetsRouter` for the Desktop: where the Budgets page's Presenter asks to go. Every
+//! Dialog (the Switcher, Manage budgets, the Budget form, Edit budget, Stop budgeting, Fill and the
+//! Category detail) opens as an Entity in the Dialog host, holding its Presenter. All of it goes
+//! through the page's gpui context, which is why the Router is built for each `handle` call. A
+//! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 //!
 //! The History export is the Router's: the platform's save dialog, the write and the Toast that
 //! reports it (#811 Q15).
 
 use gpui::{AppContext as _, Context, Entity};
-use lib_budgets::presenter::{BudgetsPageEvent, ManagePresenter, SwitcherPresenter};
-use lib_budgets::{BudgetsOutcome, BudgetsRouter, ExportHistory};
+use lib_budgets::presenter::{
+    BudgetFormPresenter, BudgetsPageEvent, DetailPresenter, FillPresenter, LimitFormPresenter,
+    ManagePresenter, StopPresenter, SwitcherPresenter,
+};
+use lib_budgets::{BudgetRepository as _, BudgetsOutcome, BudgetsRouter, ExportHistory};
 use lib_core::{BudgetId, CategoryId, Clock, DateStyle, Period};
 use lib_toast::{Notice, Notify, ToastKind};
+use lib_transactions::query::TransactionFilters;
 
-use super::BudgetsDialog;
-use super::legacy::Legacy;
 use super::ports::DesktopPorts;
 use super::view::dialog::ListDialog;
+use super::view::form_dialog::{Form, FormDialog};
 use super::view::page::BudgetsPage;
+use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
-use crate::shell::view::dialog_host::OpenDialog;
 use crate::view::event::{Reveal, ViewEvent};
 
 /// The file name the History export's save dialog suggests.
@@ -38,26 +40,14 @@ pub(super) struct PageRouter<'a, 'b> {
 }
 
 impl PageRouter<'_, '_> {
-    fn legacy(&self) -> Legacy<'_> {
-        Legacy {
-            ports: &self.ports,
-            today: self.clock.today(),
-        }
-    }
-
-    /// Opens `dialog` in `Root`'s legacy host, when there is one.
-    fn open(&mut self, dialog: Option<BudgetsDialog>) -> bool {
-        let Some(dialog) = dialog else {
-            return false;
-        };
-        self.cx
-            .emit(ViewEvent::OpenDialog(Box::new(OpenDialog::Budgets(
-                Box::new(dialog),
-            ))));
+    /// Hosts the Dialog `form` opens, which hands its outcome back to the page.
+    fn host(&mut self, form: Form) -> bool {
+        let dialog = FormDialog::new(form, &self.ledger, self.landed());
+        host_dialog(self.cx, |_| dialog);
         true
     }
 
-    /// What a closed Switcher or Manage budgets hands back: its outcome, to
+    /// What a closed Dialog hands back: its outcome, to
     /// [`BudgetsPage::dialog_landed`].
     fn landed(&self) -> super::view::dialog::Landed {
         let page = self.cx.weak_entity();
@@ -89,38 +79,77 @@ impl BudgetsRouter for PageRouter<'_, '_> {
     }
 
     fn open_new_budget(&mut self, current: BudgetId) -> bool {
-        let dialog = self.legacy().new_budget(current);
-        self.open(Some(dialog))
+        let presenter =
+            BudgetFormPresenter::new_budget(&self.ports.presenter(), self.clock.clone(), current);
+        self.host(Form::Budget(presenter, SelectState::default()))
     }
 
     fn open_edit_budget(&mut self, id: BudgetId) -> bool {
-        let dialog = self.legacy().edit_budget(id);
-        self.open(dialog)
+        match BudgetFormPresenter::edit(&self.ports.presenter(), self.clock.clone(), id) {
+            Some(presenter) => self.host(Form::Budget(presenter, SelectState::default())),
+            None => false,
+        }
     }
 
     fn open_limit(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        let dialog = self.legacy().limit(budget, category, month);
-        self.open(dialog)
+        match LimitFormPresenter::edit(
+            &self.ports.presenter(),
+            self.clock.clone(),
+            budget,
+            category,
+            month,
+        ) {
+            Some(presenter) => self.host(Form::Limit(
+                presenter,
+                SelectState::default(),
+                SelectState::default(),
+            )),
+            None => false,
+        }
     }
 
     fn open_limit_picker(&mut self, budget: BudgetId) -> bool {
-        let dialog = self.legacy().limit_picker(budget);
-        self.open(dialog)
+        match LimitFormPresenter::picker(&self.ports.presenter(), self.clock.clone(), budget) {
+            Some(presenter) => self.host(Form::Limit(
+                presenter,
+                SelectState::default(),
+                SelectState::default(),
+            )),
+            None => false,
+        }
     }
 
     fn open_stop(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        let dialog = self.legacy().stop(budget, category, month);
-        self.open(dialog)
+        match StopPresenter::new(
+            &self.ports.presenter(),
+            self.clock.clone(),
+            budget,
+            category,
+            month,
+        ) {
+            Some(presenter) => self.host(Form::Stop(presenter, SelectState::default())),
+            None => false,
+        }
     }
 
     fn open_fill(&mut self, budget: BudgetId, month: Period) -> bool {
-        let dialog = self.legacy().fill(budget, month);
-        self.open(dialog)
+        match FillPresenter::new(&self.ports.presenter(), self.clock.clone(), budget, month) {
+            Some(presenter) => self.host(Form::Fill(presenter)),
+            None => false,
+        }
     }
 
     fn open_detail(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        let dialog = self.legacy().detail(budget, category, month);
-        self.open(Some(dialog))
+        match DetailPresenter::new(
+            &self.ports.presenter(),
+            self.clock.clone(),
+            budget,
+            category,
+            month,
+        ) {
+            Some(presenter) => self.host(Form::Detail(presenter)),
+            None => false,
+        }
     }
 
     /// Asks where to save through the platform's save dialog, writes the CSV there and raises a
@@ -160,6 +189,23 @@ impl BudgetsRouter for PageRouter<'_, '_> {
 
     fn show_bills_period(&mut self, period: Period) {
         self.cx.emit(ViewEvent::Reveal(Reveal::BillsPeriod(period)));
+    }
+
+    /// Transactions filtered to the Category, the month and the Budget's on-budget Accounts, through
+    /// `transactions::router::show_filtered`.
+    fn show_transactions(&mut self, budget: BudgetId, category: CategoryId, month: Period) {
+        let account_ids = self
+            .ports
+            .shared
+            .borrow()
+            .budgets
+            .budget(budget)
+            .map(|budget| budget.account_ids)
+            .unwrap_or_default();
+        crate::transactions::router::show_filtered(
+            self.cx,
+            TransactionFilters::for_budget_category(category, month, &account_ids),
+        );
     }
 
     /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.

@@ -48,8 +48,8 @@ impl EventEmitter<DialogClosed> for ListDialog {}
 /// The Router a Dialog's Presenter closes it through: it opens nothing itself, so it only keeps
 /// the outcome for the Dialog to hand on.
 #[derive(Default)]
-struct DialogRouter {
-    closed: Option<Option<BudgetsOutcome>>,
+pub(super) struct DialogRouter {
+    pub(super) closed: Option<Option<BudgetsOutcome>>,
 }
 
 impl BudgetsRouter for DialogRouter {
@@ -92,6 +92,8 @@ impl BudgetsRouter for DialogRouter {
     fn export_history(&mut self, _export: ExportHistory) {}
 
     fn show_bills_period(&mut self, _period: Period) {}
+
+    fn show_transactions(&mut self, _budget: BudgetId, _category: CategoryId, _month: Period) {}
 
     fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {
         self.closed = Some(outcome);

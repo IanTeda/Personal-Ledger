@@ -30,10 +30,9 @@ use gpui::{AnyElement, App, Context, Entity, EventEmitter, WeakEntity};
 use lib_toast::ToastKind;
 
 use crate::{
-    budgets::BudgetsDialog, dialog::OnClick, documents::form::DocumentsDialog,
-    form::field::TextField, ledger_store::LedgerStore,
-    settings::documents::dialogs::DocumentTypesDialog, settings::tracing::dialogs::TracingDialog,
-    view::event::ViewEvent, view::help::HelpDialog,
+    dialog::OnClick, documents::form::DocumentsDialog, form::field::TextField,
+    ledger_store::LedgerStore, settings::documents::dialogs::DocumentTypesDialog,
+    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
@@ -270,13 +269,11 @@ impl Dialog for ToastHistoryDialog {
     }
 }
 
-/// The open legacy Dialog, one variant per feature: the six not yet on a module's Presenter.
+/// The open legacy Dialog, one variant per feature: the ones not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
     DocumentTypes(DocumentTypesDialog),
-    /// Boxed: its forms carry their select choices.
-    Budgets(Box<BudgetsDialog>),
     Documents(DocumentsDialog),
     ToastHistory(ToastHistoryDialog),
     Help(HelpDialog),
@@ -287,7 +284,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
-            Self::Budgets(dialog) => &**dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
             Self::Help(dialog) => dialog,
@@ -298,7 +294,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
-            Self::Budgets(dialog) => &mut **dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
             Self::Help(dialog) => dialog,
@@ -342,7 +337,6 @@ macro_rules! dialog_variant {
 
 dialog_variant!(Tracing, TracingDialog);
 dialog_variant!(DocumentTypes, DocumentTypesDialog);
-dialog_variant!(Budgets, BudgetsDialog);
 dialog_variant!(Documents, DocumentsDialog);
 dialog_variant!(Help, HelpDialog);
 

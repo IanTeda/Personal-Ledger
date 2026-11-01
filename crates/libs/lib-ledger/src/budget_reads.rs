@@ -85,6 +85,7 @@ impl BudgetBills for Ledger {
             .iter()
             .filter(|plan| plan.is_active)
             .map(|plan| BudgetBillPlan {
+                name: plan.name.clone(),
                 category_id: plan.category_id,
                 account_id: plan.account_id,
             })

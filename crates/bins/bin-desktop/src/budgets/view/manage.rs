@@ -8,8 +8,8 @@ use lib_locale::format::upper;
 
 use super::dialog::ListDialog;
 use crate::dialog;
+use crate::form::colour_field::error_line;
 use crate::theme::color;
-use crate::view::budgets::limit_dialog::error_line;
 
 /// Wide enough for the table's seven columns.
 const WIDTH: gpui::Pixels = px(880.0);

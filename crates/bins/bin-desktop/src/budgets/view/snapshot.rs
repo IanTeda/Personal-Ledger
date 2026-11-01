@@ -2,11 +2,10 @@
 //! Presenter's state and the figures its ports read. The open Dialog's fields are the Dialog
 //! host's, so `Root`'s accessor fills them in.
 
-use lib_budgets::{BudgetReads, period_figures};
+use lib_budgets::{BudgetReads, BudgetRepository as _, period_figures};
 use lib_core::CategoryId;
 
 use super::page::BudgetsPage;
-use crate::budgets::legacy::Legacy;
 
 /// One Progress row: the Category it shows and whether it carries a Budget Amount.
 #[doc(hidden)]
@@ -58,14 +57,14 @@ impl BudgetsPage {
     #[doc(hidden)]
     pub fn snapshot(&self) -> BudgetsSnapshot {
         let presenter = self.presenter();
-        let legacy = Legacy {
-            ports: self.ports(),
-            today: self.today(),
-        };
         let reads = self.ports().reads();
         let reads: &dyn BudgetReads = &*reads;
         let categories = reads.budget_categories();
-        let (budget, rows) = legacy
+        let (budget, rows) = self
+            .ports()
+            .shared
+            .borrow()
+            .budgets
             .budget(presenter.current())
             .map(|budget| {
                 let figures = period_figures(&budget, reads, presenter.period(), self.today());

@@ -80,6 +80,7 @@ impl World {
             amount: money(amount),
         });
         self.reads.active_bill_plans.push(BudgetBillPlan {
+            name: "A bill plan".into(),
             category_id,
             account_id,
         });

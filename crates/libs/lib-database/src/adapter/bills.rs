@@ -182,6 +182,7 @@ pub(crate) fn budget_bill_plans(plans: &[BillPlan]) -> Vec<lib_budgets::BudgetBi
         .iter()
         .filter(|plan| plan.is_active)
         .map(|plan| lib_budgets::BudgetBillPlan {
+            name: plan.name.clone(),
             category_id: plan.category_id,
             account_id: plan.account_id,
         })

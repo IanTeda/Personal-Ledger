@@ -215,7 +215,7 @@ impl DashboardView {
             .collect();
         BudgetList {
             period: crate::msg::desktop_dashboard_budgets_period(
-                &crate::view::budgets::period_label(figures.month),
+                &lib_budgets::presenter::period_label(figures.month),
                 &figures.elapsed.day.to_string(),
                 &figures.elapsed.days_in_month.to_string(),
                 &figures.elapsed.percent.to_string(),
