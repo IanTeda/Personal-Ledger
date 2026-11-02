@@ -2,7 +2,7 @@
 
 Documents is your library of proof: receipts, statements, insurance policies, warranties, tax papers and identity scans. A file only matters for what it proves, so each one links to the records it backs up, such as the Transaction for a fridge, the Payee that issued a policy or the Bill it settles. Personal Ledger keeps the links and details; the files themselves stay on disk beside your ledger and are never renamed or moved.
 
-> **Heads up:** The Documents screen is built in the desktop app only, and it runs on sample data for now, so nothing you add or file is saved. Reading text out of scanned files (OCR), watched folders, dropping files onto the window and reminders that actually notify you aren't built yet. You manage the list of document types in Settings › Documents, which is also on sample data.
+> **Heads up:** The Documents screen is built in the desktop app only, and what you add, edit and file is saved in your ledger file, so it is there when you reopen it. Reading text out of scanned files (OCR), watched folders, dropping files onto the window and reminders that actually notify you aren't built yet. You manage the list of document types in Settings › Documents, which is saved too.
 
 ## What you can do
 
@@ -83,7 +83,8 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 - Filing is your decision. Adding a link to a filed document doesn't move it, and a filed document with no links is fine.
 - Only a Transaction can be suggested, and only if its amount or payee agrees with the file and it's within 7 days of the date. The date counts as agreeing within 3 days.
 - A file with no readable amount never gets a suggestion. File it by hand or skip it.
-- Skip lasts for the session: skipped files drop to the bottom of the Inbox.
+- Skip lasts for the session and is never saved: skipped files drop to the bottom of the Inbox, and are back in place next time you open the ledger.
+- Deleting a record a document links to (a transaction, account, payee, inventory item or location) removes that link and keeps the document. A document left with no links shows as not linked.
 - Undo reverses only the last accept, pick or accept-all.
 - A document can't be sent back to the Inbox. Fix a misfiled one in place with `e` and `l`.
 - Open and Show in folder use your system. If the file isn't at its path, you get a message saying where it should be.
@@ -102,7 +103,7 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 - Raising a notification from a key date isn't built; the Notifications screen is its own piece of work.
 - Attaching a file from a Transaction or Inventory item, with an `:attach` command, isn't built.
 - Documents isn't in the terminal app.
-- Nothing is saved: files, links and filings reset when you restart.
+- Deleting a document isn't built; only its links go, when the record they name is deleted.
 
 ## Related
 
@@ -158,7 +159,7 @@ Intended features for Documents. Ticked means built in at least one app; the tag
 - [ ] DOC-012: Read text from files (OCR and PDF extraction)
 - [ ] DOC-013: Watched folder and dropping files onto the window
 - [ ] DOC-014: Raise a notification from a key date reminder
-- [ ] DOC-015: Save documents and links in the ledger
+- [x] DOC-015 (desktop): Save documents and links in the ledger, and drop a link when its record is deleted
 - [ ] DOC-016: Documents in the terminal app
 
 ## For developers
