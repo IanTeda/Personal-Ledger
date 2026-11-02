@@ -83,7 +83,7 @@ The two stubs are independent and do not share a model. Desktop differs from TUI
 
 - **The TUI isn't wired to `lib-database`.** Its stub disagrees with the Desktop's tree — two fixed roots and unlimited depth against 12 nodes three levels deep — until its redesign (#805).
 - **Per-Category totals (FR.35) have no reader.** The old module's `totals.rs` went with the old table.
-- **A Ledger file made before #858 can't migrate.** `create_categories_table.sql` was rewritten in place, so its checksum changed and an old file needs a fresh Ledger (viper-architecture.md, Migrating a domain, step 15).
+- **A Ledger file made before #858 can't migrate.** `create_categories_table.sql` was rewritten in place, so its checksum changed and an old file needs a fresh Ledger ([Schema](viper-architecture.md#schema)).
 - **Delete is a store write, not a port write.** `CategoryRepository` has no delete, so `CategoriesStore::delete_category` is a store-level method the forwarding shim calls, after the Payees, Transactions and Bills writes whose foreign keys name the Category. `lib-reassign` (#813) decides whether it becomes a port write.
 - **Order changed from added order to tree order.** The Ledger's read copy, `BillCategories` and `PayeeCategories` come in the store's tree order, so a child added later under an early parent lists among its siblings in the Bills and Payees selects.
 - **Where the rules live twice.** `lib-ledger` still runs the same entity rules over its own rows for Category `LedgerCommand`s (reassign's Uncategorised and delete). The `docs/diagrams/workspace-dependencies.html` diagram is pinned at 2ef177e and still draws `lib-categories`' old edges to `lib-accounts` and `lib-transactions`; it is redrawn at the slice's close.

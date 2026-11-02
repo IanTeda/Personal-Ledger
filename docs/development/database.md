@@ -19,3 +19,9 @@ Every write is an upsert, so running the seed twice leaves the same rows. The ba
 ## Not the first-launch seed
 
 `db-seed` is for development only. The Clients seed an empty Ledger themselves at start-up (`open_storage`), a separate halfway shim removed once every domain persists.
+
+### The first-launch seed's order
+
+`open_storage` seeds a new Ledger file in foreign-key order, so each domain's rows find the rows they name: the stub's Units, Price Sources and base Unit (`UnitsAdapter::seed`), then the Institutions, the Accounts, the Categories, the Tags and the Payees (`lib_institutions`', `lib_accounts`', `lib_categories`', `lib_tags`' and `lib_payees`' `fake` stubs), then the Transactions, Bill Plans and Bill Schedule dated from that first launch (`seed::stub_transactions`, `seed::stub_bills`, from `lib_transactions::fake::booked_stub_transactions` and `lib_bills`' own stub, not `lib-ledger`'s joined stub), then the Budgets (`seed::stub_budgets`), the Locations, Areas and Items (`lib_inventory`'s stub), and last the Document Types, Documents and Document Links (`seed::stub_documents`), each as of that day. `db-seed` writes them in the same order.
+
+A Ledger file that already exists isn't given the stub. Two domains seed an empty table on open instead: an existing Ledger with no Budgets gains an empty default Budget, and one with no Document Types the nine default ones, with no Documents.
