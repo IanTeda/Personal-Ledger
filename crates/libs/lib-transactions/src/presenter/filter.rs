@@ -370,7 +370,7 @@ impl FilterPresenter {
         vec![
             DialogHint {
                 commands: &[NEXT_FIELD],
-                action: msg::transactions_hint_next_field(),
+                action: lib_locale::msg::dialog_hint_next_field(),
             },
             DialogHint {
                 commands: &[SELECT],
@@ -378,7 +378,7 @@ impl FilterPresenter {
             },
             DialogHint {
                 commands: &[BACK],
-                action: msg::transactions_hint_cancel(),
+                action: lib_locale::msg::dialog_hint_cancel(),
             },
             DialogHint {
                 commands: &[RESET_FILTERS],
