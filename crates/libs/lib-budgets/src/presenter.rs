@@ -60,11 +60,6 @@ use crate::{Error, Method, msg};
 /// A cell with no figure.
 const EMPTY_CELL: &str = "\u{2014}";
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// An amount as the Budgets tables show it: its own places, no Unit, since every figure on a
 /// Budget is in its one Unit.
 fn money(amount: &Money) -> String {

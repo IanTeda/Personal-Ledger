@@ -20,11 +20,6 @@ pub use tags_page::{TagLine, TagsPageEvent, TagsPagePresenter, TagsPageViewModel
 
 use crate::{TagError, msg};
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// A name's problem as the form words it. A blank name only keeps Save from confirming, and the
 /// rest come from Remove and Merge, so none has text of its own here.
 fn name_error_text(error: &TagError) -> String {

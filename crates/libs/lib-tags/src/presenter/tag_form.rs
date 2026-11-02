@@ -14,9 +14,9 @@
 //! page selects the Tag instead.
 
 use lib_core::{HexColor, TagId};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{count, name_error_text};
+use super::name_error_text;
 use crate::interactor::{AddTag, DeactivateTag, EditTag, ReactivateTag};
 use crate::protocols::{SharedPorts, TagChange, TagsOutcome, TagsRouter};
 use crate::{Tag, TagDraft, TagError, msg, name_error, swatches};

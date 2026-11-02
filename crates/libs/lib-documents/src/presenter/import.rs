@@ -4,9 +4,9 @@
 
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{BACK, Keymap, SUBMIT};
-use lib_viper::view::{DialogFrame, Hint};
+use lib_viper::view::{DialogFrame, Hint, count};
 
-use super::{DialogPorts, count};
+use super::DialogPorts;
 use crate::interactor::ImportDocuments;
 use crate::protocols::{DocumentsOutcome, DocumentsRouter};
 use crate::{ImportOutcome, Source, msg};

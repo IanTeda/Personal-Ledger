@@ -27,11 +27,6 @@ pub use skip::{SkipEvent, SkipPresenter, SkipViewModel};
 use crate::protocols::BillsPorts;
 use crate::{BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, msg};
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// An amount as the Bills tables show it: its own places, and its Unit's code after it unless it
 /// is the base Unit. Public for `lib-bill-payments`' Pay Dialog, which words a Plan's amount the
 /// same way.

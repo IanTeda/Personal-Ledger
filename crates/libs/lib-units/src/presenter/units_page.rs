@@ -9,7 +9,7 @@ use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
@@ -474,7 +474,7 @@ impl UnitsPagePresenter {
         };
 
         UnitsPageViewModel {
-            scope: msg::units_scope(super::count(units.len())),
+            scope: msg::units_scope(count(units.len())),
             unit_columns: UnitColumns {
                 code: lib_locale::msg::column_code(),
                 name: lib_locale::msg::column_name(),

@@ -12,9 +12,8 @@ use lib_list_cursor::{Step, step_id};
 use lib_locale::format::upper;
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::count;
 use crate::keymap::{COLLAPSE, EXPAND, NEW_CHILD};
 use crate::protocols::{CategoriesDialog, CategoriesOutcome, CategoriesRouter, SharedCategories};
 use crate::{

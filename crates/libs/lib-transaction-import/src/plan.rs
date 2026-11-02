@@ -4,7 +4,7 @@
 //!
 //! [`TransactionImport`]: crate::TransactionImport
 
-use lib_core::{AccountId, PayeeId, TransactionId, TransactionStatus};
+use lib_core::{AccountId, CategoryId, PayeeId, TransactionId, TransactionStatus};
 use lib_payees::{self, Payee};
 use lib_transactions::{Split, Transaction};
 
@@ -37,16 +37,19 @@ impl ImportPlan {
         remember: bool,
         payees: &[Payee],
     ) -> Result<Self> {
-        let pending = rows.iter().filter(|row| row.needs_review()).count();
+        // A row needs review exactly when it lacks a Payee or a Category (`ImportRow::status`), so
+        // keeping the rows with both and counting the rest is the review check.
+        let resolved: Vec<(&ImportRow, &RowPayee, CategoryId)> = rows
+            .iter()
+            .filter_map(|row| Some((row, row.payee.as_ref()?, row.category?)))
+            .collect();
+        let pending = rows.len() - resolved.len();
         if pending > 0 {
             return Err(Error::NeedsReview(pending));
         }
         let mut created: Vec<Payee> = Vec::new();
         let mut transactions = Vec::with_capacity(rows.len());
-        for row in rows {
-            let (Some(payee), Some(category_id)) = (&row.payee, row.category) else {
-                return Err(Error::NeedsReview(1));
-            };
+        for (row, payee, category_id) in resolved {
             let payee_id = match payee {
                 RowPayee::Rule(id) | RowPayee::Existing(id) => *id,
                 RowPayee::Create(name) => {
@@ -100,6 +103,11 @@ impl ImportPlan {
     /// Checks the plan against `stored`, every Payee already stored: each new Payee's name must be
     /// free and each of its aliases normalised and unowned, among the stored Payees and the plan's
     /// earlier ones. A port runs this before it writes anything, so a refused plan writes nothing.
+    ///
+    /// It doesn't re-check that a row's chosen existing Payee or Category is still stored: the
+    /// step is the only thing on screen while it is open, so nothing deletes one under it, and
+    /// should one go the Splits' foreign keys (`payee_id`, `category_id`) refuse the commit's one
+    /// transaction, so nothing is half-written either way.
     pub fn check(&self, stored: &[Payee]) -> Result<ImportCommitted> {
         let mut known = stored.to_vec();
         for payee in &self.payees {
@@ -124,7 +132,6 @@ impl ImportPlan {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use lib_core::CategoryId;
     use lib_payees::default_payees;
 
     use super::*;

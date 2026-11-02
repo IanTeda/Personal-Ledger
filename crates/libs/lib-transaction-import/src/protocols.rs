@@ -9,6 +9,12 @@
 //! The reads name the other domains' rows as Import-owned values, or `lib-payees`' own, so the
 //! module depends on no feature crate but the two it writes. `lib-database`'s adapters answer them
 //! from the rows they hold.
+//!
+//! The Payee reads are the exception to Import-owned values: [`ImportPayees`] answers
+//! `lib-payees`' [`Payee`] and [`ImportCategories`] its [`PayeeCategory`]. The Import creates
+//! Payees, so its plan already carries `lib-payees`' type and its rules (name taken, alias owner)
+//! run on it; an `ImportPayee` would be the same fields copied back and forth. A read of a domain
+//! the module doesn't write still gets its own value (`ImportAccount`).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -40,11 +46,11 @@ pub trait StatementSource {
 }
 
 /// An Account as an Import reads it: the one a statement books to, which must be active to take
-/// Transactions.
+/// Transactions. Only what the commit checks; the step names the statement's file, not its
+/// Account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportAccount {
     pub id: AccountId,
-    pub name: String,
     pub is_active: bool,
 }
 

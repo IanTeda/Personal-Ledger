@@ -30,11 +30,6 @@ pub use remove_location::{RemoveLocationEvent, RemoveLocationPresenter, RemoveLo
 
 use crate::{AreaError, LocationError, NameError, msg};
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// A Location name's problem as the form words it.
 fn location_name_error_text(error: NameError) -> String {
     match error {

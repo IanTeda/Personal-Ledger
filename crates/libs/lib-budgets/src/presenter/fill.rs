@@ -9,9 +9,9 @@ use lib_core::{BudgetId, Clock, Money, Period};
 use lib_locale::format::format_month;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{BACK, Keymap, SELECT};
-use lib_viper::view::{DialogFrame, Hint};
+use lib_viper::view::{DialogFrame, Hint, count};
 
-use super::{EMPTY_CELL, count, dialog_error_text, money, period_label, signed_money};
+use super::{EMPTY_CELL, dialog_error_text, money, period_label, signed_money};
 use crate::interactor::Fill;
 use crate::protocols::{BudgetsRouter, SharedPorts};
 use crate::{FillPreview, FillSource, fill_preview, msg};

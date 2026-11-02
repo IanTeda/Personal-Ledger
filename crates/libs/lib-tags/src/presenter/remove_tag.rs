@@ -11,9 +11,9 @@
 use lib_core::TagId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{count, refusal_text};
+use super::refusal_text;
 use crate::msg;
 use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome, TagsRouter};
 

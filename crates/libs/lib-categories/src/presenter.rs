@@ -21,11 +21,6 @@ pub use delete_category::{DeleteCategoryEvent, DeleteCategoryPresenter, DeleteCa
 use crate::protocols::{MonthlyBudgetRefusal, ReassignRefusal};
 use crate::{CategoryError, SaveCategoryRefusal, msg};
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// A refused Add or Edit as the form shows it.
 fn save_refusal_text(refusal: &SaveCategoryRefusal) -> String {
     match refusal {

@@ -2,9 +2,9 @@
 //! Units it prices, which fall back to Manual entry.
 
 use lib_core::PriceSourceId;
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{UnitsOutcome, count, linked_codes};
+use super::{UnitsOutcome, linked_codes};
 use crate::interactor::DeletePriceSource;
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{Error, msg};

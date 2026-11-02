@@ -23,7 +23,7 @@ use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT_NEXT, SELECT_PREVIOUS};
-use lib_viper::view::{Choice, DialogHint};
+use lib_viper::view::{Choice, DialogHint, count};
 
 pub use delete_price_source::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
@@ -134,11 +134,6 @@ fn linked_codes(ports: &dyn UnitsPorts, id: PriceSourceId) -> Vec<String> {
         .filter(|unit| unit.link.source_id == id)
         .map(|unit| unit.code)
         .collect()
-}
-
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
 }
 
 /// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets, 1 location`.

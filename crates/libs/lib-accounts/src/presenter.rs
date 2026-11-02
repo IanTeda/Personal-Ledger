@@ -20,11 +20,6 @@ use lib_core::InstitutionId;
 
 use crate::protocols::AccountInstitution;
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// What to show for an Account's `institution`: the name of the one of `institutions` it names,
 /// unchanged (Ledger data, not a Message). An id `institutions` doesn't hold shows nothing.
 fn institution_label(institution: InstitutionId, institutions: &[AccountInstitution]) -> String {

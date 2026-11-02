@@ -19,11 +19,6 @@ pub use payees_page::{
 
 use crate::{PayeeError, msg};
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 /// A refusal as the Dialogs, and the Import step's Toast, show it. A blank name only keeps Save from confirming, and in-use
 /// comes back from Delete as its own refusal, so neither has text of its own.
 pub fn refusal_text(error: &PayeeError) -> String {

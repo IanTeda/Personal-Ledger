@@ -8,7 +8,10 @@ use lib_transaction_import::{ImportCommitted, ImportRouter};
 /// drains once the key or click returns.
 #[derive(Default)]
 pub(super) struct PageRouter {
-    /// `Some` once the Presenter left the step, with what its commit wrote.
+    /// `Some` once the Presenter left the step, holding what its commit wrote or `None` when it
+    /// was cancelled. The nested `Option` is the close every Desktop Router records (the Dialogs'
+    /// `closed`, `bill_payments::router`), kept so this one reads like them rather than as an enum
+    /// of its own.
     pub closed: Option<Option<ImportCommitted>>,
 }
 

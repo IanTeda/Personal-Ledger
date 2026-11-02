@@ -9,9 +9,9 @@
 
 use lib_core::LocationId;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{count, location_refusal_text};
+use super::location_refusal_text;
 use crate::msg;
 use crate::protocols::{
     InventoryChange, InventoryOutcome, InventoryReassign, InventoryRouter, InventoryRow,

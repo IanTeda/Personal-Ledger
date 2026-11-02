@@ -9,9 +9,9 @@
 
 use lib_core::{AreaId, LocationId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{Choice, DialogFrame, SelectView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, count};
 
-use super::{area_refusal_text, count};
+use super::area_refusal_text;
 use crate::default_destination;
 use crate::interactor::RemoveArea;
 use crate::msg;

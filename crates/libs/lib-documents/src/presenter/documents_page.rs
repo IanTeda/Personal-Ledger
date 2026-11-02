@@ -17,9 +17,8 @@ use lib_core::{Clock, DateStyle, DocumentId, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::count;
 use super::inbox::{self, InboxDetailView, InboxRowView};
 use super::library::{self, DetailView, Lookups, RailRow, RowView, link_name, size_text};
 use crate::interactor::{

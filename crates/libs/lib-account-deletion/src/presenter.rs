@@ -16,7 +16,7 @@ use lib_core::AccountId;
 use lib_locale::Segment;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use crate::error::Error;
 use crate::interactor::DeleteAccount;
@@ -151,11 +151,6 @@ impl DeleteAccountPresenter {
             }
         }
     }
-}
-
-/// A count as a Message's plural argument.
-fn count(count: usize) -> i64 {
-    i64::try_from(count).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

@@ -3,9 +3,8 @@
 //! one batch, since the page holds what the batch keeps in view and leaves last.
 
 use lib_viper::keymap::{BACK, Keymap, SELECT};
-use lib_viper::view::{DialogFrame, Hint};
+use lib_viper::view::{DialogFrame, Hint, count};
 
-use super::count;
 use crate::msg;
 use crate::protocols::{DocumentsOutcome, DocumentsRouter};
 

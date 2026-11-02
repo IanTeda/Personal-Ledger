@@ -6,9 +6,9 @@
 //! base Unit also asks for the Unit that takes over as base, since the Ledger always has one.
 
 use lib_core::UnitId;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
-use super::{UnitChange, UnitsOutcome, count, uses_text};
+use super::{UnitChange, UnitsOutcome, uses_text};
 use crate::interactor::{DeactivateUnit, DeleteUnit};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{Error, UnitRow, UnitUse, msg, units_by_code};

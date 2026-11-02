@@ -2,9 +2,8 @@
 //! other Area to take them. Its one button closes it, and it changes nothing.
 
 use lib_core::AreaId;
-use lib_viper::view::DialogFrame;
+use lib_viper::view::{DialogFrame, count};
 
-use super::count;
 use crate::msg;
 use crate::protocols::{InventoryRouter, SharedInventory};
 

@@ -55,8 +55,8 @@ pub const IMPORT_SELECT_BINDINGS: &[Binding<ImportEvent>] = &[
     Binding::hidden(MOVE_UP, "k", ImportEvent::Highlight(Step::Prev)),
     Binding::hidden(ARROW_DOWN, "down", ImportEvent::Highlight(Step::Next)),
     Binding::hidden(ARROW_UP, "up", ImportEvent::Highlight(Step::Prev)),
-    Binding::hidden(SELECT, "enter", ImportEvent::Commit),
-    Binding::hidden(CHOOSE, "space", ImportEvent::Commit),
+    Binding::hidden(SELECT, "enter", ImportEvent::ChooseHighlighted),
+    Binding::hidden(CHOOSE, "space", ImportEvent::ChooseHighlighted),
     Binding::hidden(BACK, "esc", ImportEvent::Cancel),
 ];
 
@@ -98,8 +98,8 @@ mod tests {
         assert_eq!(rows.event("esc"), Some(ImportEvent::Cancel));
 
         let select = import_select_keymap(&KeyBindingConfig::default());
-        assert_eq!(select.event("enter"), Some(ImportEvent::Commit));
-        assert_eq!(select.event("space"), Some(ImportEvent::Commit));
+        assert_eq!(select.event("enter"), Some(ImportEvent::ChooseHighlighted));
+        assert_eq!(select.event("space"), Some(ImportEvent::ChooseHighlighted));
         assert_eq!(
             select.event("down"),
             Some(ImportEvent::Highlight(Step::Next))

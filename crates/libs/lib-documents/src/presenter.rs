@@ -80,11 +80,6 @@ fn tracks_label(tracks: TracksDate) -> String {
     }
 }
 
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
-}
-
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::cell::RefCell;

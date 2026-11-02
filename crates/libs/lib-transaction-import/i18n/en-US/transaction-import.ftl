@@ -35,7 +35,10 @@ transaction-import-summary-rows = { $count ->
     [one] { $count } row
    *[other] { $count } rows
 }
-transaction-import-summary-matched = { $count } matched by rule
+transaction-import-summary-matched = { $count ->
+    [one] { $count } matched by rule
+   *[other] { $count } matched by rule
+}
 transaction-import-summary-new = { $count ->
     [one] { $count } new payee to create
    *[other] { $count } new payees to create

@@ -12,9 +12,8 @@ use lib_core::{HexColor, TagId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::count;
 use crate::keymap::{MERGE, REMOVE};
 use crate::protocols::{SharedPorts, TagChange, TagsDialog, TagsOutcome, TagsRouter};
 use crate::{

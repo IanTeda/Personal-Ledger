@@ -15,8 +15,8 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_payees::{Payee, PayeeCategory};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
-use lib_viper::view::{Choice, DialogHint, Hint, SelectView};
+use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::view::{Choice, DialogHint, SelectView, count};
 
 use crate::entity::{ImportRow, PayeeChoices, RowPayee, RowStatus, cleaned_name, summary};
 use crate::error::Error;
@@ -44,8 +44,9 @@ pub enum ImportEvent {
     OpenRow(usize, RowSelect),
     /// The open select's highlight, clamped at either end.
     Highlight(Step),
-    /// `enter`/`space` in an open select: chooses the highlighted option.
-    Commit,
+    /// `enter`/`space` in an open select: chooses the highlighted option. Committing the Import is
+    /// [`Continue`](Self::Continue).
+    ChooseHighlighted,
     /// A click on option `index` of the open select.
     Choose(usize),
     /// `n`: the selected row creates a Payee from its cleaned name, if that name is free.
@@ -116,27 +117,9 @@ pub struct ImportViewModel {
     pub can_continue: bool,
     /// The status line's right-hand text.
     pub status: String,
-    /// The keys the step takes now, in drawn order; read their chords with [`legend`].
+    /// The keys the step takes now, in drawn order; read their chords with `lib-viper`'s
+    /// [`legend`](lib_viper::view::legend).
     pub hints: Vec<DialogHint>,
-}
-
-/// `hints` with each chord read from `keymap` so a `[keybindings]` override shows. A hint of two
-/// commands reads `up/down`.
-pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<Hint> {
-    hints
-        .iter()
-        .map(|hint| {
-            let chords: Vec<&str> = hint
-                .commands
-                .iter()
-                .map(|command| keymap.chord(command).unwrap_or_default())
-                .collect();
-            Hint {
-                chord: chords.join("/"),
-                action: hint.action.clone(),
-            }
-        })
-        .collect()
 }
 
 struct OpenSelect {
@@ -193,7 +176,7 @@ impl ImportPresenter {
                     open.highlight = lib_list_cursor::step(open.highlight, len, step);
                 }
             }
-            ImportEvent::Commit => {
+            ImportEvent::ChooseHighlighted => {
                 if let Some(open) = &self.open {
                     self.apply(open.highlight);
                 }
@@ -425,7 +408,7 @@ impl ImportPresenter {
             open_select: self.open_select_view(),
             summary: SummaryLines {
                 rows: msg::transaction_import_summary_rows(count(figures.rows)),
-                matched: msg::transaction_import_summary_matched(&figures.rule_matched.to_string()),
+                matched: msg::transaction_import_summary_matched(count(figures.rule_matched)),
                 new_payees: msg::transaction_import_summary_new(count(figures.new_payees)),
                 needs_review: msg::transaction_import_summary_review(count(figures.needs_review)),
             },
@@ -499,10 +482,6 @@ fn create_label(name: &str) -> String {
     msg::transaction_import_create_payee("+", name)
 }
 
-fn count(count: usize) -> i64 {
-    i64::try_from(count).unwrap_or(i64::MAX)
-}
-
 fn status_label(status: RowStatus) -> String {
     match status {
         RowStatus::RuleMatch => msg::transaction_import_status_rule_match(),
@@ -531,6 +510,7 @@ mod tests {
     use chrono::NaiveDate;
     use lib_config::KeyBindingConfig;
     use lib_core::PayeeId;
+    use lib_viper::view::{Hint, legend};
 
     use super::*;
     use crate::fake::{InMemoryImport, InMemoryImportReads, RecordingRouter, stub_ports};
@@ -580,7 +560,7 @@ mod tests {
                 self.send(ImportEvent::SelectRow(index));
                 self.send(ImportEvent::Open(RowSelect::Category));
                 self.send(ImportEvent::Highlight(Step::Next));
-                self.send(ImportEvent::Commit);
+                self.send(ImportEvent::ChooseHighlighted);
             }
         }
 
@@ -701,13 +681,13 @@ mod tests {
 
         step.send(ImportEvent::Open(RowSelect::Category));
         step.send(ImportEvent::Highlight(Step::Next));
-        step.send(ImportEvent::Commit);
+        step.send(ImportEvent::ChooseHighlighted);
         let chosen = step.presenter.view_model().rows[0].category.clone();
         // Option `opened + 1` is Category `opened`, the lead option being option 0.
         assert_eq!(chosen, step.presenter.categories[opened].label);
 
         step.send(ImportEvent::Open(RowSelect::Category));
-        step.send(ImportEvent::Commit);
+        step.send(ImportEvent::ChooseHighlighted);
         assert_eq!(
             step.presenter.view_model().rows[0].category,
             chosen,
@@ -715,7 +695,7 @@ mod tests {
         );
         step.send(ImportEvent::Open(RowSelect::Category));
         step.send(ImportEvent::Highlight(Step::First));
-        step.send(ImportEvent::Commit);
+        step.send(ImportEvent::ChooseHighlighted);
         assert_eq!(
             step.presenter.view_model().rows[0].category,
             "choose category…",
@@ -837,7 +817,6 @@ mod tests {
     fn an_inactive_account_is_refused_with_a_toast_and_writes_nothing() {
         let step = refused_with_accounts(vec![crate::ImportAccount {
             id: crate::SeededStatement::STUB_ACCOUNT,
-            name: "ANZ Everyday".to_string(),
             is_active: false,
         }]);
 

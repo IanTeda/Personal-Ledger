@@ -12,9 +12,9 @@
 use lib_core::PayeeId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{count, refusal_text};
+use super::refusal_text;
 use crate::interactor::{DeactivatePayee, DeletePayee, ReactivatePayee};
 use crate::protocols::{PayeeChange, PayeesOutcome, PayeesRouter, SharedPorts};
 use crate::{DeletePayeeRefusal, PayeeError, PayeeUse, msg};

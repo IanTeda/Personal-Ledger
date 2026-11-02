@@ -13,9 +13,9 @@ use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_locale::format::{format_month_day, format_year_month, upper};
 use lib_toast::Notice;
-use lib_viper::view::{Choice, SelectView};
+use lib_viper::view::{Choice, SelectView, count};
 
-use super::{count, money, paid_splits, status_chip_label};
+use super::{money, paid_splits, status_chip_label};
 use crate::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod, plan_stats};
 use crate::interactor::MatchCandidates;
 use crate::protocols::{BillsPorts, BillsRouter, PayRequest, SharedPorts};

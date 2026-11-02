@@ -6,10 +6,10 @@
 //! keychain's, off this module (ADR-0043).
 
 use lib_core::PriceSourceId;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::{UnitsOutcome, count, cycle, step, updates_choices};
+use super::{UnitsOutcome, cycle, step, updates_choices};
 use crate::interactor::{AddPriceSource, EditPriceSource};
 use crate::protocols::{SharedPorts, UnitsRouter};
 use crate::{Endpoint, Error, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg};

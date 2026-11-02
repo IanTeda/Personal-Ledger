@@ -9,9 +9,8 @@ use lib_core::PayeeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::count;
 use crate::protocols::{PayeeChange, PayeesDialog, PayeesOutcome, PayeesRouter, SharedPorts};
 use crate::{Payee, active_count, msg, sorted_by_name, without_default_category_count};
 

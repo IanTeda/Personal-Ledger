@@ -23,9 +23,8 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
-use super::count;
 use crate::interactor::{AddAccount, EditAccount};
 use crate::protocols::{AccountsOutcome, AccountsRouter, SharedPorts};
 use crate::{AccountDraft, AccountError, GROUP_ORDER, NewAccount, msg};

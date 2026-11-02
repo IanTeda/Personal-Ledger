@@ -21,7 +21,7 @@ use lib_units::presenter::{
     confirms_delete, delete_refusal,
 };
 use lib_units::{SharedPorts, UnitUse, UnitsRouter};
-use lib_viper::view::{Choice, SelectView};
+use lib_viper::view::{Choice, SelectView, count};
 
 use crate::error::Error;
 use crate::interactor::{DeleteUnit, Replacement};
@@ -292,11 +292,6 @@ impl Deleting {
         };
         None
     }
-}
-
-/// A count as a Message's plural argument.
-fn count(count: usize) -> i64 {
-    i64::try_from(count).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

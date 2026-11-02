@@ -10,9 +10,9 @@ use lib_core::{BudgetId, CategoryId, CategoryTypes, Clock, Money, Period};
 use lib_list_cursor::Step;
 use lib_locale::format::format_month_day;
 use lib_viper::keymap::{BACK, Keymap};
-use lib_viper::view::{DialogFrame, Hint};
+use lib_viper::view::{DialogFrame, Hint, count};
 
-use super::{BarView, EMPTY_CELL, bar_view, count, money, period_label};
+use super::{BarView, EMPTY_CELL, bar_view, money, period_label};
 use crate::protocols::{BudgetsOutcome, BudgetsRouter, SharedPorts};
 use crate::{CategoryDetail, Rollover, category_detail, msg};
 

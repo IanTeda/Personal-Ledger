@@ -11,9 +11,10 @@ use chrono::NaiveDate;
 use lib_core::{CategoryId, Period};
 use lib_list_cursor::Step;
 use lib_locale::format::format_month;
+use lib_viper::view::count;
 
 use super::budgets_page::BudgetsPagePresenter;
-use super::{EMPTY_CELL, count, money, range_label};
+use super::{EMPTY_CELL, money, range_label};
 use crate::interactor::{CycleRollover, SaveCell};
 use crate::protocols::{BudgetCategories, BudgetReads, BudgetsRouter};
 use crate::{

@@ -9,9 +9,9 @@
 use lib_core::{BudgetId, Clock, Period};
 use lib_locale::Segment;
 use lib_viper::keymap::{Keymap, SELECT};
-use lib_viper::view::{Choice, Hint};
+use lib_viper::view::{Choice, Hint, count};
 
-use super::{count, error_text, method_label};
+use super::{error_text, method_label};
 use crate::interactor::{ArchiveBudget, DuplicateBudget, RestoreBudget, SetDefaultBudget};
 use crate::protocols::{BudgetsOutcome, BudgetsRouter, ManageAction, SharedPorts};
 use crate::{Budget, Error, applied, msg};

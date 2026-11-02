@@ -47,21 +47,33 @@ impl DialogFrame {
     /// Client looks keys up in, so a `[keybindings]` override shows. A hint of two commands reads
     /// `up/down`; an unbound command reads empty.
     pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        self.hints
-            .iter()
-            .map(|hint| {
-                let chords: Vec<&str> = hint
-                    .commands
-                    .iter()
-                    .map(|command| keymap.chord(command).unwrap_or_default())
-                    .collect();
-                Hint {
-                    chord: chords.join("/"),
-                    action: hint.action.clone(),
-                }
-            })
-            .collect()
+        legend(&self.hints, keymap)
     }
+}
+
+/// `hints` as `(chord, action)` pairs, each chord read from `keymap` so a `[keybindings]` override
+/// shows. A hint of two commands reads `up/down`; an unbound command reads empty. A View with no
+/// [`DialogFrame`] (the Import step) reads its hints through this too.
+pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<Hint> {
+    hints
+        .iter()
+        .map(|hint| {
+            let chords: Vec<&str> = hint
+                .commands
+                .iter()
+                .map(|command| keymap.chord(command).unwrap_or_default())
+                .collect();
+            Hint {
+                chord: chords.join("/"),
+                action: hint.action.clone(),
+            }
+        })
+        .collect()
+}
+
+/// A count as a Message's plural argument, which the generated accessors take as `i64`.
+pub fn count(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
 }
 
 /// One key a View or Dialog takes, as the status line and the `?` cheat sheet show it: the chord
@@ -156,5 +168,11 @@ mod tests {
             frame().legend(&keymap)[1],
             pairs(&[("ctrl+h", "cancel")])[0]
         );
+    }
+
+    #[test]
+    fn a_count_too_big_for_a_message_saturates() {
+        assert_eq!(count(3), 3);
+        assert_eq!(count(usize::MAX), i64::MAX);
     }
 }

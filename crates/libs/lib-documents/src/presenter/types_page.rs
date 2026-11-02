@@ -12,9 +12,9 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::{count, tracks_label};
+use super::tracks_label;
 use crate::interactor::MoveDocumentType;
 use crate::keymap::{MOVE_TYPE_DOWN, MOVE_TYPE_UP, REMOVE_TYPE};
 use crate::msg;

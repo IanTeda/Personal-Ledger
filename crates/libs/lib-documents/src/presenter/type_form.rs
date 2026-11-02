@@ -12,9 +12,9 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
-use super::{count, tracks_label};
+use super::tracks_label;
 use crate::interactor::{AddDocumentType, EditDocumentType};
 use crate::msg;
 use crate::protocols::{DocumentTypesOutcome, DocumentTypesRouter, SharedRepository, TypeChange};

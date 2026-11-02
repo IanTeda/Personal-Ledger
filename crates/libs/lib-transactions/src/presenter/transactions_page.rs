@@ -27,7 +27,7 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
 use super::filter::{
     ChipField, ChipView, FilterEvent, FilterOutcome, FilterPresenter, FilterViewModel,
@@ -416,11 +416,6 @@ fn newest_first(ports: &dyn TransactionsPorts) -> Vec<Transaction> {
     let mut transactions = ports.all_transactions();
     transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
     transactions
-}
-
-/// A count as a Message's plural argument.
-fn count(n: usize) -> i64 {
-    i64::try_from(n).unwrap_or(i64::MAX)
 }
 
 /// `700 transactions across 4 accounts`: the whole Ledger, and how many Accounts hold any of it.

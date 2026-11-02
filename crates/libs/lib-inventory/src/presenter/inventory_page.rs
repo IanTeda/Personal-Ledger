@@ -16,9 +16,8 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::upper;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::count;
 use crate::interactor::MoveArea;
 use crate::keymap::{ADD_AREA, COLLAPSE, EXPAND, MOVE_AREA_DOWN, MOVE_AREA_UP, REMOVE};
 use crate::protocols::{

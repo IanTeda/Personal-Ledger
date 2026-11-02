@@ -13,10 +13,9 @@ use std::ops::Range;
 use gpui::{App, Context, Entity, ScrollHandle};
 use lib_core::Clock;
 use lib_transaction_import::keymap::{CONTINUE, import_keymap, import_select_keymap};
-use lib_transaction_import::presenter::{
-    ImportEvent, ImportPresenter, ImportViewModel, RowSelect, legend,
-};
+use lib_transaction_import::presenter::{ImportEvent, ImportPresenter, ImportViewModel, RowSelect};
 use lib_viper::keymap::Keymap;
+use lib_viper::view::legend;
 
 use crate::form::select::MAX_VISIBLE_ROWS;
 use crate::ledger_store::LedgerStore;

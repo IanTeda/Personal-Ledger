@@ -10,9 +10,9 @@
 use lib_core::CategoryId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
-use super::{count, reassign_refusal_text};
+use super::reassign_refusal_text;
 use crate::msg;
 use crate::protocols::{
     CategoriesOutcome, CategoriesRouter, CategoryChange, CategoryReassign, CategoryUsage,

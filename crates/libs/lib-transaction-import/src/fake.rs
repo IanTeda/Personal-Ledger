@@ -81,7 +81,6 @@ pub fn stub_ports(today: NaiveDate) -> (ImportPorts, Rc<RefCell<InMemoryImport>>
     let reads = Rc::new(InMemoryImportReads {
         accounts: vec![ImportAccount {
             id: SeededStatement::STUB_ACCOUNT,
-            name: "ANZ Everyday".to_string(),
             is_active: true,
         }],
         categories: lib_payees::fake::stub_categories(),
@@ -126,7 +125,6 @@ mod tests {
     fn the_reads_answer_what_they_hold() {
         let everyday = ImportAccount {
             id: AccountId::seed(2),
-            name: "ANZ Everyday".to_string(),
             is_active: true,
         };
         let reads = InMemoryImportReads {

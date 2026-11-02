@@ -14,9 +14,9 @@ use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
-use lib_viper::view::Hint;
+use lib_viper::view::{Hint, count};
 
-use super::{count, institution_label};
+use super::institution_label;
 use crate::protocols::{AccountUnit, AccountsDialog, AccountsOutcome, AccountsRouter, SharedPorts};
 use crate::{Account, NameLookup, display_order, find_by_name, group_accounts, msg, net_worth};
 

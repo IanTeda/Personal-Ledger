@@ -6,10 +6,11 @@ use chrono::{DateTime, Utc};
 use lib_core::{Money, UnitId};
 use lib_locale::Label as _;
 use lib_locale::format::{AmountStyle, format_amount};
+use lib_viper::view::count;
 
 use super::unit_prices::price_figures;
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
-use super::{ago, count, joined, updates_label};
+use super::{ago, joined, updates_label};
 use crate::protocols::UnitsPorts;
 use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
 

@@ -12,9 +12,9 @@
 //! nothing changes them under it.
 
 use lib_core::{CategoryId, PayeeId};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
-use super::{count, refusal_text};
+use super::refusal_text;
 use crate::interactor::{AddPayee, EditPayee};
 use crate::protocols::{PayeeChange, PayeesOutcome, PayeesRouter, SharedPorts};
 use crate::{PayeeDraft, PayeeError, alias_owner, clean_name, msg, normalise_alias};

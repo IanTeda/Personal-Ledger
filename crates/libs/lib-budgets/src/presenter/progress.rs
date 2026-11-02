@@ -9,9 +9,10 @@ use chrono::NaiveDate;
 use lib_core::{CategoryId, Money, Period};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
+use lib_viper::view::count;
 
 use super::budgets_page::BudgetsPagePresenter;
-use super::{EMPTY_CELL, category_name, count, depth, money, plain};
+use super::{EMPTY_CELL, category_name, depth, money, plain};
 use crate::protocols::{BudgetReads, BudgetsRouter};
 use crate::{Budget, CategoryFigures, PeriodFigures, msg, period_figures};
 

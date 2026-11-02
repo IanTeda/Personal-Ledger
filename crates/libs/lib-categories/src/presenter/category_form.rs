@@ -19,9 +19,9 @@ use std::collections::BTreeMap;
 
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_locale::format::format_month;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
-use super::{count, save_refusal_text};
+use super::save_refusal_text;
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
     CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange, CategoryUsage, ParentStop,

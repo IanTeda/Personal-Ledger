@@ -6,8 +6,9 @@ use lib_core::BillPlanId;
 use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_locale::format::upper;
+use lib_viper::view::count;
 
-use super::{count, money, recurrence_label};
+use super::{money, recurrence_label};
 use crate::protocols::{BillsRouter, SharedPorts};
 use crate::{AmountKind, BillPlan, inactive_count, msg, planner_order};
 

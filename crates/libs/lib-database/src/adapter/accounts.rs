@@ -254,7 +254,6 @@ pub(crate) fn import_account(accounts: &[Account], id: AccountId) -> Option<Impo
         .find(|account| account.id == id)
         .map(|account| ImportAccount {
             id: account.id,
-            name: account.name.clone(),
             is_active: lib_transactions::takes_transactions(&account.account_type),
         })
 }
@@ -933,7 +932,6 @@ mod tests {
             ImportAccounts::import_account(adapter, everyday),
             Some(ImportAccount {
                 id: everyday,
-                name: "ANZ Everyday".to_string(),
                 is_active: true,
             })
         );

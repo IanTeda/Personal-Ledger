@@ -9,7 +9,7 @@
 
 use lib_core::InstitutionId;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use crate::interactor::{DeleteInstitution, DeleteInstitutionRefusal};
 use crate::msg;
@@ -188,11 +188,6 @@ impl DeleteInstitutionPresenter {
             Err(DeleteInstitutionRefusal::NotFound) => self.state = State::Gone,
         }
     }
-}
-
-/// A count as a Message's plural argument.
-fn count(count: usize) -> i64 {
-    i64::try_from(count).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]
