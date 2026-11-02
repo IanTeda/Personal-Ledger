@@ -365,7 +365,7 @@ The figure a Category Limit (see above) holds for one month, set by effective-da
 _Avoid_: Override, category default, limit — a month's figure is simply its Budget Amount, whether set in that month or carried forward.
 
 **Stop**:
-A record that ends a Category Limit's Budget Amounts, in one Budget, from a chosen month (the current month or later): from then on the Category has no Budget Amount and its spending is Unbudgeted, until a later Onward Budget Amount resumes it. Nothing is deleted, and closed months keep their Budget Amounts. The act is "stop budgeting".
+A record that ends a Category Limit's Budget Amounts, in one Budget, from a chosen month (the current month or later): from then on the Category has no Budget Amount and its spending is Unbudgeted, until a later Onward Budget Amount resumes it. Nothing is deleted, and closed months keep their Budget Amounts. The act is "stop budgeting". A budgeted leaf Category that gains a child is Stopped automatically from the current month in every active Budget, since only a leaf holds a Category Limit.
 _Avoid_: Deactivate, inactive, delete — a Stop is dated and non-destructive.
 
 **Unbudgeted**:
