@@ -238,3 +238,25 @@ fn the_sub_button_on_a_budgeted_leaf_warns_and_the_confirm_stops_its_budget(
         .find(|row| row.category == "Transport");
     assert!(!row.as_ref().is_some_and(|row| row.budgeted), "{row:?}");
 }
+
+#[gpui::test]
+fn the_sub_button_on_an_unbudgeted_leaf_shows_no_notice_and_stops_nothing(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_categories(app);
+    let budgets = ui.budgets().rows;
+
+    // Salary is an Income leaf, so no Budget holds an amount for it.
+    ui.click(&format!("settings-categories-sub-{}", CategoryId::seed(11)));
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Salary"));
+    assert!(
+        !ui.dialog_value("notice")
+            .expect("a notice")
+            .contains("stops from")
+    );
+    ui.press("b o n u s");
+    ui.click("add-category-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.budgets().rows, budgets);
+}

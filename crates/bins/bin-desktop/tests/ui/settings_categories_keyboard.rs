@@ -495,7 +495,7 @@ fn adding_a_child_under_a_budgeted_leaf_warns_then_stops_its_budget(app: &mut Te
 }
 
 #[gpui::test]
-fn a_parent_with_children_or_an_unbudgeted_parent_shows_no_stop_notice(app: &mut TestAppContext) {
+fn a_parent_that_already_has_children_shows_no_stop_notice(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
     // Housing already has children.
@@ -507,4 +507,37 @@ fn a_parent_with_children_or_an_unbudgeted_parent_shows_no_stop_notice(app: &mut
             .contains("stops from")
     );
     ui.press("escape");
+}
+
+#[gpui::test]
+fn adding_a_child_under_an_unbudgeted_leaf_shows_no_notice_and_stops_nothing(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+    let budgets = ui.budgets().rows;
+    // Salary is an Income leaf, so no Budget holds an amount for it.
+    for _ in 0..12 {
+        if ui
+            .settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref()
+            == Some("Salary")
+        {
+            break;
+        }
+        ui.press("j");
+    }
+
+    ui.press("shift-n");
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Salary"));
+    assert!(
+        !ui.dialog_value("notice")
+            .expect("a notice")
+            .contains("stops from")
+    );
+    ui.press("b o n u s");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.budgets().rows, budgets);
 }
